@@ -40,6 +40,7 @@ import gunbc.ci.repository_ci_profile {
   PublicSeed,
   RepositoryCiProfile,
   gunbc_roster_gate,
+  repository_ci_profile_refusal,
   profile_overlay,
 }
 import gunbc.ci.repository_compose_overlay {
@@ -96,6 +97,17 @@ data drift_no_overlay_refusal_reason: String = "REFUSED gunbc.ci.repository_proj
 // says where the mirror's rows are copied -- is matched, and its absence refuses with the reason an
 // operator can act on. A Bool asking each arm "are you there" would put the decision one `if` away from
 // the render, which is exactly the distance a fabricated fallback used to fill.
+// THE DRIFT ENTRYPOINT'S ADMISSION: the repository's profile must be admitted as a whole - a publisher
+// that declares a heal trigger without a heal row, a runner group that was never declared, a roster
+// duration that is not positive - before a drift workflow is composed. Checking only the drift arm's own
+// fields would let a repository whose profile is invalid still emit YAML.
+fn drift_admission(profile: RepositoryCiProfile) -> Optional<String> {
+  match repository_ci_profile_refusal(profile: profile) {
+    Present { value: reason } => Present { value: reason as String }
+    Absent => projection_drift_refusal(profile: profile)
+  }
+}
+
 fn projection_drift_refusal(profile: RepositoryCiProfile) -> Optional<String> {
   match profile.drift {
     Absent => Present { value: drift_no_job_refusal_reason }
@@ -181,9 +193,9 @@ fn drift_check_script(
 // THE SEAL: compose at the pull request HEAD and run the project's regenerate-and-seal target. The cache
 // clears are the same discipline as the check - a composition must not inherit a cache from a previous
 // tree, or a candidate can be assembled out of bytes that are not in the commit being sealed.
-fn heal_seal_statements(seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal) -> List<Node> {
+fn heal_seal_statements(profile: RepositoryCiProfile, seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal) -> List<Node> {
   let roots = composed_source_roots(
-    profile_roots: roster_source_roots(),
+    profile_roots: profile.roster.source_roots,
     overlay: overlay
   )
   concat(
@@ -203,8 +215,8 @@ fn heal_seal_statements(seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal
   )
 }
 
-fn heal_seal_script(seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal) -> Outcome<String> {
-  bash_emit_stmts(statements: heal_seal_statements(seed: seed, overlay: overlay, seal: seal), set_e: true)
+fn heal_seal_script(profile: RepositoryCiProfile, seed: PublicSeed, overlay: OverlayIngest, seal: HealSeal) -> Outcome<String> {
+  bash_emit_stmts(statements: heal_seal_statements(profile: profile, seed: seed, overlay: overlay, seal: seal), set_e: true)
 }
 
 // A job with no seal step needs no seal script; an accepted empty script is that case, so the step
@@ -215,18 +227,15 @@ fn no_seal_script() -> Outcome<String> {
 
 // A row that declares no seal has no seal script to refuse; the accepted empty script is that case, so
 // the generator matches one shape at this point rather than testing for a seal twice.
-fn seal_script_or_empty(seed: PublicSeed, overlay: OverlayIngest, drift: ProjectionDrift) -> Outcome<String> {
+fn seal_script_or_empty(profile: RepositoryCiProfile, seed: PublicSeed, overlay: OverlayIngest, drift: ProjectionDrift) -> Outcome<String> {
   match drift.seal {
-    Present { value: seal } => heal_seal_script(seed: seed, overlay: overlay, seal: seal)
+    Present { value: seal } => heal_seal_script(profile: profile, seed: seed, overlay: overlay, seal: seal)
     Absent => no_seal_script()
   }
 }
 
 // THE SEAL COMPOSES THE SAME SOURCE TREES THE GATE CHECKS, because the candidate must be produced by the
 // set of roots the gate's verdict is about. One row, read twice -- not two lists kept equal by hand.
-fn roster_source_roots() -> List<String> {
-  gunbc_roster_gate().source_roots
-}
 
 fn projection_drift_steps(
   profile: RepositoryCiProfile,
@@ -423,7 +432,7 @@ fn expected_projection_drift_workflow_yml(
   overlay: OverlayIngest,
   program: DriftProgram
 ) -> ProjectionDriftWorkflowGenerationOutcome {
-  match projection_drift_refusal(profile: profile) {
+  match drift_admission(profile: profile) {
     Present { value: reason } => ProjectionDriftWorkflowGenerationRefused { reason: reason as String }
     Absent =>
       match drift_row(profile: profile) {
@@ -439,7 +448,7 @@ fn expected_projection_drift_workflow_yml(
               reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the drift check script, so no workflow is emitted rather than one carrying a step no grammar row accounts for"
             }
             Accepted { value: check_body, diagnostics: _ } =>
-          match seal_script_or_empty(seed: seed, overlay: overlay, drift: drift) {
+          match seal_script_or_empty(profile: profile, seed: seed, overlay: overlay, drift: drift) {
             Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
               reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the heal seal script, so no workflow is emitted rather than one publishing a candidate no grammar row accounted for"
             }

@@ -708,3 +708,127 @@ test fn a_mirror_with_no_cadence_gets_no_schedule_trigger() -> Bool {
     ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
   }
 }
+
+// THE GATE CANNOT BE GREEN WHILE JUDGING NOTHING (review 89571 / side-chat finding 1). An enforced row
+// with no aggregate step is refused at the admission the emission itself consumes - the same call the
+// emitter makes, so a passing claim here means the emitted gate cannot be the vacuous one.
+test fn an_enforced_program_with_no_aggregate_is_refused_at_admission() -> Bool {
+  match enforced_rows_need_an_aggregate_refusal(
+    program: program_without_aggregate(entries: [
+      RosterEntry { entry: "dag/claim/a.dag", function: "a_check", kind: Enforced }
+    ])
+  ) {
+    Present { value: reason } => string_contains(s: reason as String, pattern: "no aggregate step")
+    Absent => false
+  }
+}
+
+test fn a_quarantine_with_no_declared_causes_is_refused_at_admission() -> Bool {
+  match lane_admission(
+    profile: mirror_profile(seal: true, publish: true),
+    program: gate_program(entries: [
+      RosterEntry {
+        entry: "dag/claim/b.dag",
+        function: "b_check",
+        kind: KnownRed {
+          reason: "quarantined pending the fix",
+          expected_causes: [] as List<NonEmptyStr>,
+          restoration_trigger: "when the cause is fixed"
+        }
+      }
+    ])
+  ) {
+    Present { value: reason } => string_contains(s: reason as String, pattern: "declare no expected causes")
+    Absent => false
+  }
+}
+
+test fn a_wall_with_no_expected_refusal_text_is_refused_at_admission() -> Bool {
+  match lane_admission(
+    profile: mirror_profile(seal: true, publish: true),
+    program: gate_program(entries: [
+      RosterEntry {
+        entry: "dag/claim/c.dag",
+        function: "c_check",
+        kind: MustNotCompile {
+          guards: "the wall",
+          expected_refusals: [] as List<NonEmptyStr>,
+          dissolution: "when the wall is retired"
+        }
+      }
+    ])
+  ) {
+    Present { value: reason } => string_contains(s: reason as String, pattern: "no expected refusal text")
+    Absent => false
+  }
+}
+
+// THE DRIFT ENTRYPOINT CONSUMES THE ADMITTED PROFILE (side-chat finding 4): a repository whose profile is
+// invalid - here, a runner group no census declared - does not get YAML.
+test fn the_drift_entrypoint_refuses_a_repository_whose_runner_group_is_never_declared() -> Bool {
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile_on_group(group: "group-no-census-declared"),
+    seed: fixture_seed(),
+    overlay: fixture_overlay(),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerationRefused { reason: reason } => count(reason) > 0
+    ProjectionDriftWorkflowGenerated { content: _ } => false
+  }
+}
+
+// THE SEAL IS INVOKED THROUGH THE ROW, LIKE THE CHECK (side-chat finding 3): the roots the seal passes
+// come from the admitted profile, so renaming them in the row moves BOTH steps. Before this the seal read
+// gunbc's own row through a helper, and the two agreed only because the literals happened to match.
+test fn the_seal_step_is_invoked_through_the_rows_roots() -> Bool {
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile_with_roots(roots: ["mirror_only", "src/v2"]),
+    seed: fixture_seed(),
+    overlay: fixture_overlay(),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerated { content: text } =>
+      string_contains(s: text, pattern: "'--source-root' 'mirror_only'") &&
+      string_contains(s: text, pattern: "'--source-root' 'overlay/dag'") &&
+      !(string_contains(s: text, pattern: "'--source-root' 'dag'"))
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+  }
+}
+
+fn program_without_aggregate(entries: List<RosterEntry>) -> RosterProgram {
+  let base = gate_program(entries: entries)
+  RosterProgram {
+    entries: base.entries,
+    aggregate: Absent,
+    roster_authority: base.roster_authority,
+    scaffold_banner: base.scaffold_banner,
+    checkout_step_name: base.checkout_step_name,
+    toolchain_step_name: base.toolchain_step_name
+  }
+}
+
+fn mirror_profile_with_roots(roots: List<String>) -> RepositoryCiProfile {
+  let base = mirror_profile(seal: true, publish: true)
+  RepositoryCiProfile {
+    repository: base.repository,
+    default_branch: base.default_branch,
+    heal: base.heal,
+    roster: RosterGate {
+      workflow_file: base.roster.workflow_file,
+      workflow_name: base.roster.workflow_name,
+      job_id: base.roster.job_id,
+      job_display_name: base.roster.job_display_name,
+      required_context: base.roster.required_context,
+      runner: base.roster.runner,
+      timeout: base.roster.timeout,
+      source_roots: roots,
+      schedule: base.roster.schedule,
+      memory_budget: base.roster.memory_budget,
+      route: base.roster.route,
+      annotation: base.roster.annotation
+    },
+    public_seed: base.public_seed,
+    drift: base.drift,
+    publisher: base.publisher
+  }
+}

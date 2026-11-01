@@ -655,7 +655,7 @@ fn expected_repository_witnesses_yml(profile: RepositoryCiProfile, seed: PublicS
 }
 
 fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> YamlEmitResult {
-  match repository_witness_lane_refusal(profile: profile, program: program) {
+  match lane_admission(profile: profile, program: program) {
     Present { value: reason } => YamlEmitRefused { path: profile.roster.workflow_file as String, reason: reason as String }
     Absent => match repository_witness_workflow(
       profile: profile,
