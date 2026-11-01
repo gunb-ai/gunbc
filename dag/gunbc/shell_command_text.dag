@@ -21,8 +21,10 @@ data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a 
 
 // THE TOKEN IS OWNED HERE, AND THE FORK IS DECLARED HERE. This constant is the authority for the bash-fold
 // marker: a check that has to recognise a refusal out of GENERATED text derives its needle from this line
-// instead of re-typing the token -- gunbc.test.claim.host.fleet_keypair_mint_witness
-// ::shell_command_text_refusal_marker does, and it fails closed (refuses) when the derivation fails. The token is
+// instead of re-typing the token. This module's own shell_command_text_refusal_marker derives it, and
+// the one claim that reads a refusal out of generated text -- test.claim.host.fleet_keypair_mint_witness
+// ::refusal_poison_never_reaches_a_build_step_body -- goes through that derivation and fails closed
+// (refuses) when it yields nothing. The token is
 // not yet spelled only here: four other constants repeat it in their own prose --
 // ci_floor_build_verify_refused_poison in gunbc.ci.ci_spec,
 // fleet_converge_locked_apply_emit_refused_poison in gunbc.fleet.fleet_converge_plan,
