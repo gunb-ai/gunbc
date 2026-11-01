@@ -14,7 +14,7 @@ pub use crate::extdeps_languages_rust_capabilities::{
     symbol_wrapped_ord_carrier_derive_traits, RustCapability,
 };
 pub use crate::extdeps_languages_rust_derive_contracts::{
-    rust_btree_set_supplemental_generic_bound_rows, rust_heap_reference_unconditional_bound_rows,
+    rust_btree_set_supplemental_generic_bound_rows,
     rust_vec_freemonoid_supplemental_generic_bound_rows, RustVecSupplementalGenericBoundRow,
 };
 pub use crate::extdeps_languages_rust_emit::{
@@ -3593,32 +3593,6 @@ pub fn v1_type_expr_clone_undecided_head(
     })
 }
 
-pub fn v1_type_expr_clone_unconditional_heap_reference(
-    type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let leaf = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices, type_expr),
-        );
-        {
-            let mut __found = false;
-            for row in rust_heap_reference_unconditional_bound_rows()
-                .iter()
-                .cloned()
-            {
-                if ((row.carrier_leaf.clone() == leaf.clone())
-                    && (row.capability.clone() == RustCapability::RustClone))
-                {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
-    }
-}
-
 pub fn v1_type_expr_clone_impl_needs_param(
     param_name: String,
     type_expr: Rc<Node>,
@@ -3637,78 +3611,71 @@ pub fn v1_type_expr_clone_impl_needs_param(
             if ((type_expr.children.clone().len() as i64) == 0) {
                 false
             } else {
-                if v1_type_expr_clone_unconditional_heap_reference(
+                match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+                    type_decl_items.clone(),
                     type_expr.clone(),
                     source_indices.clone(),
-                ) {
-                    false
-                } else {
-                    match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
-                        type_decl_items.clone(),
-                        type_expr.clone(),
-                        source_indices.clone(),
-                    ))
-                    .clone()
-                    {
-                        TypeDeclResolution::TypeDeclResolved { identity, decl, .. } => {
-                            v1_declared_type_app_clone_impl_needs_param(
+                ))
+                .clone()
+                {
+                    TypeDeclResolution::TypeDeclResolved { identity, decl, .. } => {
+                        v1_declared_type_app_clone_impl_needs_param(
+                            param_name.clone(),
+                            identity.clone(),
+                            decl.clone(),
+                            type_expr.children.clone(),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        )
+                    }
+                    TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => {
+                        let mut __found = false;
+                        for c in type_expr.children.clone().iter().cloned() {
+                            if v1_type_expr_clone_impl_needs_param(
                                 param_name.clone(),
-                                identity.clone(),
-                                decl.clone(),
-                                type_expr.children.clone(),
+                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
                                 bounds.clone(),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
-                            )
-                        }
-                        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => {
-                            let mut __found = false;
-                            for c in type_expr.children.clone().iter().cloned() {
-                                if v1_type_expr_clone_impl_needs_param(
-                                    param_name.clone(),
-                                    v1_wf_child_type_node(c.clone(), source_indices.clone()),
-                                    bounds.clone(),
-                                    type_decl_items.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    __found = true;
-                                    break;
-                                }
+                            ) {
+                                __found = true;
+                                break;
                             }
-                            __found
                         }
-                        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
-                            let mut __found = false;
-                            for c in type_expr.children.clone().iter().cloned() {
-                                if v1_type_expr_clone_impl_needs_param(
-                                    param_name.clone(),
-                                    v1_wf_child_type_node(c.clone(), source_indices.clone()),
-                                    bounds.clone(),
-                                    type_decl_items.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    __found = true;
-                                    break;
-                                }
+                        __found
+                    }
+                    TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
+                        let mut __found = false;
+                        for c in type_expr.children.clone().iter().cloned() {
+                            if v1_type_expr_clone_impl_needs_param(
+                                param_name.clone(),
+                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                bounds.clone(),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            ) {
+                                __found = true;
+                                break;
                             }
-                            __found
                         }
-                        TypeDeclResolution::TypeDeclNotDeclared => {
-                            let mut __found = false;
-                            for c in type_expr.children.clone().iter().cloned() {
-                                if v1_type_expr_clone_impl_needs_param(
-                                    param_name.clone(),
-                                    v1_wf_child_type_node(c.clone(), source_indices.clone()),
-                                    bounds.clone(),
-                                    type_decl_items.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    __found = true;
-                                    break;
-                                }
+                        __found
+                    }
+                    TypeDeclResolution::TypeDeclNotDeclared => {
+                        let mut __found = false;
+                        for c in type_expr.children.clone().iter().cloned() {
+                            if v1_type_expr_clone_impl_needs_param(
+                                param_name.clone(),
+                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                bounds.clone(),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            ) {
+                                __found = true;
+                                break;
                             }
-                            __found
                         }
+                        __found
                     }
                 }
             }

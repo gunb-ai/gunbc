@@ -18,7 +18,6 @@ import extdeps.languages.rust.derive_contracts {
   RustVecSupplementalGenericBoundRow,
   rust_vec_freemonoid_supplemental_generic_bound_rows,
   rust_btree_set_supplemental_generic_bound_rows,
-  rust_heap_reference_unconditional_bound_rows,
 }
 import v1.std.core {
   Node,
@@ -110,10 +109,15 @@ data trait_derive_emit_item_clone_bound_rule_note: String = "Item-level Clone bo
 // well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the
 // same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone -- and
 // the answer is each head's OWN Clone impl, not the head's arity: containers bound their element and declared
-// generic items bound per their declared bounds, so the walk descends through those, while Rc and Arc bound
-// NOTHING of the pointee (extdeps.languages.rust.derive_contracts
-// rust_heap_reference_unconditional_bound_rows), so the walk stops at a heap reference rather than reducing
-// the question to `P occurs in tau` -- while v1_type_expr_wf_needs_clone_param asks whether NAMING tau
+// generic items bound per their declared bounds, so the walk descends through those, rather than reducing
+// the question to `P occurs in tau`. There is no heap-reference case in this predicate. An earlier revision
+// carried one (rows in extdeps.languages.rust.derive_contracts, read by a v1_type_expr_clone_unconditional_heap_reference
+// helper) and it was deleted as unreachable AND wrong: the corpus never authors Rc<...> in a field position,
+// and where it does try, the head is neither a container nor a declared type in the closure, which is the
+// UNDECIDABLE residue below and refuses by design -- a rule that recognised Rc by name would have pre-empted
+// that designed refusal, which is worse than answering nothing. See the measurement recorded in
+// gunbc.instruments.native_emission_controls heap_reference_carrier_cases. -- while
+// v1_type_expr_wf_needs_clone_param asks whether NAMING tau
 // requires it (only the argument positions the fixpoint has already bounded count), and there descending
 // through Rc is correct, because naming `Rc<ServedRoute<H>>` is ill-formed unless ServedRoute's own bound on H
 // is satisfied. The undecidable residue is answered by its own total function rather than fused into either
@@ -554,12 +558,18 @@ fn v1_freemonoid_element_params(
   // question is whether the element type's own Clone impl asks that of the parameter -- which is
   // exactly what v1_type_expr_clone_impl_needs_param answers, over the same rows the v2 target-model
   // contract map reads. The test here used to ask whether the parameter merely OCCURRED inside the
-  // element type, a different question with a wider answer: for `Rc<Vec<Rc<ServedRoute<H>>>>` the
-  // element is `Rc<ServedRoute<H>>`, whose Clone is unconditional, so H owes nothing -- while the
-  // appearance walk said it did, `H: Clone` landed in the serde bound and in the hand-written Debug
-  // and PartialEq impl headers, and the generic enum carrying that struct in a variant payload
-  // derives with serde's DEFAULT bound, so the emitted crate refused: 5x E0277 plus 1x E0369 in
-  // v2-emitted-policy-unit-4 of gunbc.auth.approval_device_crypto_serve at main 70e952cbfbc8.
+  // element type, a different question with a wider answer. In the product that broke, the authored
+  // field is extdeps.http.server `ServedRouteTable<H> { routes: List<ServedRoute<H>> }`: the element
+  // this walk sees is the DECLARED type `ServedRoute<H>` (the `Rc<Vec<Rc<...>>>` wrapping is the
+  // renderer's lowering, which happens after this walk and never reaches it), and ServedRoute declares
+  // no bound of its own, so H owes nothing. The appearance walk said it did, `H: Clone` landed in the
+  // serde bound and in the hand-written Debug and PartialEq impl headers, and the generic enum carrying
+  // that struct in a variant payload derives with serde's DEFAULT bound, so the emitted crate refused:
+  // 5x E0277 plus 1x E0369 in v2-emitted-policy-unit-4 of
+  // gunbc.auth.approval_device_crypto_serve at main 70e952cbfbc8. The heap-reference arm further down is
+  // a SEPARATE rule for the case where the source itself writes the reference -- `List<Rc<X>>` -- and it
+  // is exercised by that case alone, pinned by ControlHeapOwedRow and ControlHeapOwedCarrier in
+  // gunbc.instruments.native_emission_controls.
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
       v1_type_expr_is_free_monoid_carrier(type_expr: te, source_indices: source_indices)
@@ -1949,19 +1959,6 @@ fn v1_type_expr_clone_undecided_head(
   }
 }
 
-// WHICH HEADS' OWN Clone impl asks NOTHING of its argument is the extdeps row list, not a
-// spelling test here: rust_heap_reference_unconditional_bound_rows cites `impl<T: ?Sized> Clone
-// for Rc<T>` and the Arc twin. The walk ASKS the rows, so the fact lives in one place and the
-// v2 target-model contract map can read the same rows.
-fn v1_type_expr_clone_unconditional_heap_reference(
-  type_expr: Node,
-  source_indices: Map<String, NewlineIndex>
-) -> Bool {
-  let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
-  rust_heap_reference_unconditional_bound_rows
-    |> any(row => row.carrier_leaf == leaf && row.capability == RustClone)
-}
-
 fn v1_type_expr_clone_impl_needs_param(
   param_name: String,
   type_expr: Node,
@@ -1972,12 +1969,6 @@ fn v1_type_expr_clone_impl_needs_param(
   if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
     true
   } else if (type_expr.children |> count) == 0 {
-    false
-  } else if v1_type_expr_clone_unconditional_heap_reference(type_expr: type_expr, source_indices: source_indices) {
-    // `Rc<X>: Clone` and `Arc<X>: Clone` hold for EVERY X, so the requirement stops at the
-    // reference: it reaches no parameter through the pointee. Naming the type is a different
-    // question and v1_type_expr_wf_needs_clone_param keeps descending there, because writing
-    // `Rc<ServedRoute<H>>` really does require whatever ServedRoute declares of H.
     false
   } else {
     match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
