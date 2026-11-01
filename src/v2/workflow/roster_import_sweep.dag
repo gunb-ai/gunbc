@@ -1460,7 +1460,10 @@ fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterC
                 Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
                 Accepted { value: scoped, diagnostics: _ } =>
                   let sites = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites
-                  let census_mode = match census_call { Present { value: _ } => true; Absent => false }
+                  let census_mode = match census_call {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
                   let gated = roster_site_gated_site_refusal(candidates: candidates, gates: gates, sites: sites, census_mode: census_mode)
                   let unmet = match gated {
                     Present { value: reason } => Present { value: reason }
