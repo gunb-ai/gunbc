@@ -65,14 +65,13 @@ import std.primitive_identity {
   primitive_sorted_map_keys_cost,
   primitive_fold_list_cost,
   primitive_index_by_cost,
-  primitive_map_keys,
   primitive_sorted_map_keys,
   primitive_map_values,
   primitive_fold_list,
   primitive_index_by,
   primitive_identity_eq,
 }
-import std.primitive_projection { PrimitiveIdentity, primitive_chars, primitive_list_push, primitive_sha256_hex_of_text }
+import std.primitive_projection { PrimitiveIdentity, primitive_chars, primitive_list_push, primitive_map_keys, primitive_sha256_hex_of_text }
 import std.types { Bool, Int, List, String }
 
 fn modeled_cost_bound(cost: PrimitiveModeledCost) -> CostBound? {

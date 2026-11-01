@@ -1,6 +1,6 @@
 module v2.test.claim.value_use_dependency
 
-import std.algebra { Cons, Empty, contains, fold_list, length, list_append, list_at_optional, map_contains_key, map_lookup, map_support_keys }
+import std.algebra { Cons, Empty, contains, fold_list, length, list_append, list_at_optional, map_contains_key, map_lookup, map_keys }
 import extdeps.communication.medium { Lossless, Medium }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceId }
@@ -373,7 +373,7 @@ fn vudd_disposition_count(d: ValueUseDependencies) -> Int {
 }
 
 fn vudd_record_count(tree: ResolvedTree) -> Int {
-  length(xs: map_support_keys(m: tree.occurrence_resolutions))
+  length(xs: map_keys(m: tree.occurrence_resolutions))
 }
 
 // EVERY ROW IS A DataDependsOn. A Contains edge in this output would mean the derivation was reading
@@ -761,7 +761,7 @@ fn vudd_every_input_is_non_lexical(d: ValueUseDependencies) -> Bool {
 // parameter uses be mis-sorted unseen.
 fn vudd_every_parameter_record_is_a_parameter_input(d: ValueUseDependencies, tree: ResolvedTree) -> Bool {
   fold_list(
-    xs: map_support_keys(m: tree.occurrence_resolutions),
+    xs: map_keys(m: tree.occurrence_resolutions),
     empty: true,
     cons: fn(acc, id) { acc && vudd_parameter_record_disposed(d: d, tree: tree, id: id) }
   )

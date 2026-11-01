@@ -4,7 +4,7 @@ import gunbc.instruments.native_emission_controls_enum_alias_a { enum_identity_f
 import gunbc.instruments.native_emission_controls_enum_alias_b { enum_identity_foreign_b }
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, Set, String }
-import std.algebra { length, FinitePowerSet }
+import std.algebra { length, map_keys, FinitePowerSet }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_from_dotted_string }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import gunbc.instruments.native_emission_controls_alias { ControlWords, control_words_of }

@@ -9,7 +9,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import v2.std.provenance { node_occurrence_id_optional }
 import std.integer { int_to_decimal_string }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_support_keys, collection_concat_shape, collection_count_shape }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_keys, collection_concat_shape, collection_count_shape }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -508,7 +508,7 @@ fn concat_inferred_facts_entries(
   a: Map<Node, List<InferredFacts>>,
   b: Map<Node, List<InferredFacts>>,
 ) -> Map<Node, List<InferredFacts>> {
-  fold_list(xs: map_support_keys(m: b), empty: a, cons: fn(acc, key) {
+  fold_list(xs: map_keys(m: b), empty: a, cons: fn(acc, key) {
     match map_lookup(m: b, key: key) {
       Present { value: xs } =>
         fold_list(xs: xs, empty: acc, cons: fn(into, facts) {
@@ -11303,7 +11303,7 @@ fn infer_entries_adopt_absent(
   into: Map<Node, List<InferredFacts>>,
   from: Map<Node, List<InferredFacts>>,
 ) -> Map<Node, List<InferredFacts>> {
-  fold_list(xs: map_support_keys(m: from), empty: into, cons: fn(acc, key) {
+  fold_list(xs: map_keys(m: from), empty: into, cons: fn(acc, key) {
     match map_lookup(m: acc, key: key) {
       Present { value: _ } => acc
       Absent =>

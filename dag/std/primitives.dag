@@ -481,14 +481,6 @@ data map_merge_contract: PrimitiveContract = {
   carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "m * log32(n + m)" }
 }
 
-data map_keys_contract: PrimitiveContract = {
-  name: "map_keys",
-  work: "n",
-  output_size: "n",
-  certainty: Proven,
-  carrier_cost: CarrierInsensitive
-}
-
 data map_values_contract: PrimitiveContract = {
   name: "map_values",
   work: "n",
@@ -803,7 +795,6 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     map_contains_key_contract,
     lookup_contract,
     map_merge_contract,
-    map_keys_contract,
     map_values_contract,
     sorted_map_keys_contract,
     index_by_contract,

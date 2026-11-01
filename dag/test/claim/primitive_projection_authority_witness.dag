@@ -19,6 +19,7 @@ import std.primitive_projection {
   primitive_lookup,
   primitive_projection_row,
   primitive_projection_roster,
+  primitive_map_keys,
 }
 import std.primitive_identity {
   BuiltinRegistry,
@@ -33,7 +34,6 @@ import std.primitive_identity {
   SymbolJoinsDeclaredPrimitive,
   SymbolUndisposed,
   primitive_identity_eq,
-  primitive_map_keys,
   primitive_projection_divergent_row_count,
   primitive_projection_one_authority_row_count,
   primitive_projection_violation_count,
