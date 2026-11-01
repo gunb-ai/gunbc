@@ -5,10 +5,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { string_contains }
 import std.process { ExitSuccess, ExitFailure }
-import extdeps.bmc.ipmi_sdr { SdrTypeLine, sdr_decode_lines, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows }
+import std.optional { Present, Absent }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine, sdr_decode_lines, sdr_unstructured_texts, sdr_verbose_readout, SdrVerboseRead, SdrVerboseUnreadable, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
-import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, PostPowerFanVerdict, FanRowsUndecoded, FanFailureSensorNotNominal, FanFailureSensorNoReading, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict }
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable, fan_observation, thermal_observation, render_round_block }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, PostPowerFanVerdict, FanRowsUndecoded, FanFailureSensorNotNominal, FanFailureSensorNoReading, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict, thermal_refusal }
+import gunbc.machine_intake.bmc_fan_observation { SdrVerboseNotRequired, SdrVerboseCaptured, FanObservationRound, ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable, fan_observation, thermal_observation, render_round_block }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGatePowered, FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, post_power_fan_gate_stop_section, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, PostPowerFanGateReading, PostPowerFanGateReached, PostPowerFanGateNotReached, post_power_fan_gate_exit, post_power_fan_gate_text, post_power_fan_gate_pre_stop_text, post_power_fan_refusal_text }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set }
 
@@ -25,7 +26,7 @@ fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
 fn published() -> ThermalObservation { ThermalRead { publication: TemperaturePublished, undecoded_texts: [], unrecognised_readings: [] } }
 
 fn round(on: Bool, lines: List<SdrTypeLine>) -> FanObservationRound {
-  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: on }, chassis_raw: "", thermal: published(), fans: FanSensorsRead { lines: lines, undecoded_lines: [], failure_rows: [] } }
+  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: on }, chassis_raw: "", thermal: published(), fans: FanSensorsRead { lines: lines, undecoded_lines: [], failure_rows: [] }, verbose: SdrVerboseNotRequired }
 }
 
 
@@ -61,7 +62,7 @@ fn raw_stdout() -> String {
 }
 
 fn replay_round(stdout: String) -> FanObservationRound {
-  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: true }, chassis_raw: "", thermal: published(), fans: fan_observation(success: true, results: sdr_decode_lines(stdout: stdout)) }
+  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: true }, chassis_raw: "", thermal: published(), fans: fan_observation(success: true, results: sdr_decode_lines(stdout: stdout)), verbose: SdrVerboseNotRequired }
 }
 
 fn verdict_of(stdout: String) -> PostPowerFanVerdict {
@@ -291,8 +292,103 @@ test fn the_stopped_boot_observation_records_each_undecoded_thermal_row() -> Boo
     chassis_raw: "",
     thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: ["PSU2_Status      | EBh | ok  |  0.0 | ", "Watchdog2        | D7h | ok  | 33.0 | "], unrecognised_readings: [] },
     fans: FanSensorsRead { lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr), undecoded_lines: [], failure_rows: [] },
+    verbose: SdrVerboseNotRequired,
   }
   string_contains(s: render_round_block(round: r), pattern: "round=0 thermal_undecoded_row=[PSU2_Status      | EBh | ok  |  0.0 | ]")
     && string_contains(s: render_round_block(round: r), pattern: "round=0 thermal_undecoded_row=[Watchdog2        | D7h | ok  | 33.0 | ]")
     && string_contains(s: render_round_block(round: r), pattern: "undecoded=2")
+}
+
+fn boot5_empty_reading_rows() -> String {
+  "PSU2_Status      | EBh | ok  |  0.0 |\nWatchdog2        | D7h | ok  | 33.0 |\nEndOfPost        | E2h | ok  |  6.2 |\nEvent_log        | D6h | ok  |  6.2 |"
+}
+
+fn boot5_unstructured() -> List<String> {
+  sdr_unstructured_texts(results: sdr_decode_lines(stdout: boot5_empty_reading_rows()))
+}
+
+// BOOT 7 STATIC ADMISSION CHECK (manager ask: does the gate AS MERGED in #15327 admit boot 5's
+// thermal reading, or still refuse it? no live run). THE COMMITTED INPUT: boot 5 (run 40258937016)
+// committed its sensor dump at artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt,
+// section "== bmc sensors (ipmi sdr elist) ==", header "read at 2026-10-26T02:57:00Z: 197 line(s),
+// 4 without a reading field"; the four rows WITHOUT a reading field, verbatim as committed, are the
+// literals below. Two caveats, stated not hidden: (a) that dump is a diagnostic RENDER - rows carry two
+// leading indent spaces (stripped here) and the renderer drops trailing spaces, so raw stdout would end
+// "| " where the committed row ends "|"; (b) that read is 19 s after the gate's own round (02:56:41Z)
+// and after the safe power-off - same controller, same discrete status rows, but NOT the gate round's
+// own stdout, which was never committed raw because boot 5 predates #15327. The gate round itself is
+// committed as a rendering (mtcollins1-boot-fan-gate-observation.txt): "round=0 ... thermal=published
+// undecoded=4" - the source of the TemperaturePublished input below.
+
+test fn the_four_committed_boot5_empty_reading_rows_are_the_undecoded_rows() -> Bool {
+  let u = boot5_unstructured()
+  let t = join(u, "\n")
+  u.length() == 4 &&
+  string_contains(s: t, pattern: "PSU2_Status") &&
+  string_contains(s: t, pattern: "Watchdog2") &&
+  string_contains(s: t, pattern: "EndOfPost") &&
+  string_contains(s: t, pattern: "Event_log")
+}
+
+// THE ANSWER, MEASURED: with the committed publication fact (thermal=published) and the committed rows,
+// thermal_refusal - the arm that stopped boot 5 - still REFUSES: PostPowerThermalRowsUndecoded over the
+// four rows. Admission would be Absent. #15327 changed the RECEIPT (raw rows carried), not the DECISION.
+test fn the_merged_gate_still_refuses_the_boot5_thermal_reading() -> Bool {
+  let thermal_read = ThermalRead { publication: TemperaturePublished, undecoded_texts: boot5_unstructured(), unrecognised_readings: [] }
+  match thermal_refusal(thermal: thermal_read) {
+    Present { value: PostPowerThermalRowsUndecoded { texts: t } } => t.length() == 4
+    _ => false
+  }
+}
+
+// THE #15327 RECEIPT HALF: the refusal text names each committed row, so a boot that stops here EMITS
+// the bytes the later admission rule will classify.
+test fn the_refusal_text_carries_each_committed_boot5_row() -> Bool {
+  let text = post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { texts: boot5_unstructured() })
+  string_contains(s: text, pattern: "PSU2_Status") &&
+  string_contains(s: text, pattern: "Watchdog2") &&
+  string_contains(s: text, pattern: "EndOfPost") &&
+  string_contains(s: text, pattern: "Event_log")
+}
+
+// VERBOSE GROUPING (admission-rule stage 1): grouping is FORMAT-AGNOSTIC - any elist-shaped
+// five-field line starts a record, indented continuation lines belong to it verbatim. The bytes
+// below are UNIT-SHAPE (written to exercise this parser), NOT vendor captures: no mtcollins1
+// verbose bytes are committed yet, and the admission rule waits for the real capture (manager
+// msg_4049c507) - these rows prove the capture path keeps records and detail apart, nothing more.
+fn unit_verbose_stdout() -> String {
+  "PSU2_Status      | EBh | ok  |  0.0 |\n   Sensor Type : Power Supply (08h)\n   Event/Reading Type Code   : 6Fh\nWatchdog2        | D7h | ok  | 33.0 |\n   Sensor Type : Watchdog2 (23h)\n"
+}
+
+test fn the_verbose_grouping_keeps_each_record_with_its_detail_lines() -> Bool {
+  match sdr_verbose_readout(success: true, stdout: unit_verbose_stdout()) {
+    SdrVerboseRead { records: recs } =>
+      recs.length() == 2 &&
+      string_contains(s: join(map(recs, r => r.record_line), "\n"), pattern: "PSU2_Status") &&
+      string_contains(s: join(map(recs, r => r.record_line), "\n"), pattern: "Watchdog2") &&
+      string_contains(s: join(flat_map(recs, r => r.detail_lines), "\n"), pattern: "Event/Reading Type Code")
+    _ => false
+  }
+}
+
+// A FAILED VERBOSE READ IS UNREAD, NEVER ZERO RECORDS: an unread repository must not read as a
+// controller that publishes no records (the fan_lines lesson, applied to the new read).
+test fn a_failed_verbose_read_reports_unread_not_zero_records() -> Bool {
+  match sdr_verbose_readout(success: false, stdout: "") {
+    SdrVerboseUnreadable => true
+    _ => false
+  }
+}
+
+// THE RENDER STATES THE VERBOSE FACT PER ROUND: not_required when the round had nothing to answer,
+// and captured records print elist line and detail lines verbatim in brackets.
+test fn a_round_without_capture_prints_verbose_state_as_not_required() -> Bool {
+  string_contains(s: render_round_block(round: round(on: true, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr))), pattern: "verbose_sdr=not_required")
+}
+
+test fn a_captured_verbose_record_prints_its_lines_verbatim() -> Bool {
+  let r = FanObservationRound { observed_at: "2026-10-31T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: true }, chassis_raw: "", thermal: published(), fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] }, verbose: SdrVerboseCaptured { readout: sdr_verbose_readout(success: true, stdout: unit_verbose_stdout()) } }
+  let block = render_round_block(round: r)
+  string_contains(s: block, pattern: "verbose_record=[PSU2_Status      | EBh | ok  |  0.0 |") &&
+  string_contains(s: block, pattern: "verbose_detail=[   Event/Reading Type Code   : 6Fh")
 }
