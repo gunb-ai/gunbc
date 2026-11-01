@@ -1,8 +1,8 @@
 module v2.test.claim.char_at_unicode_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { collection_concat_shape }
-import std.host_text { char_at }
+import std.algebra { collection_concat_shape, length }
+import std.host_text { char_at, chars, text_of_chars }
 import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -12,21 +12,32 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // U+00A9 misread as ©) while code-point indexing returns U+00E9.
 //
 // THE SWITCHED CONSUMER (2026-11-01, valiant-deer-27 on tidy-ant-251's F5 ruling). The `char_at`
-// here is std.host_text's declared operation, named by import -- not the ambient builtin the rest of
-// the corpus still calls. That declaration returns std.optional Optional of the one-code-point host
-// text, so absence is an arm to match rather than a value to compare against, and its position is a
-// Nat, so nothing in this file can ask for a negative index. Before the switch the last arm below
-// asserted that reading past the end yields the EMPTY TEXT: a claim about a sentinel (src/v1/runtime_rust.dag,
-// v1_rt::char_at returns an empty String past the end and clamps a negative position to 0), which is
+// measured here is std.host_text's declared operation, named by import -- NOT the ambient builtin the
+// rest of the corpus still calls, and not `string_length`, which is also ambient (its egress is a
+// separate row of gunbc.primitive_egress.dispositions_text). That declaration returns
+// std.optional Optional of the one-code-point host text, so absence is an arm to match rather than a
+// value to compare against, and its position is a std.nat Nat, so nothing in this file can ask for a
+// negative index. Before the switch the last arm below asserted that reading past the end yields the
+// EMPTY TEXT: a claim about a sentinel (src/v1/runtime_rust.dag, v1_rt::char_at answers an empty
+// String at or past the end and clamps a negative position to 0), which is
 // gunbc.recurring_failure_mode `absence_carried_by_a_second_representation` in its plainest form. It
 // now asserts Absent. Every other assertion in this file keeps its meaning.
+//
+// The samples are built as structural text (FreeMonoid<Char>, which is what `concat` folds over) and
+// cross to the host carrier through the DECLARED inverse text_of_chars; no argument reaches
+// char_at's HostText parameter by an implicit crossing (DESIGN section 4: text crossings go through
+// the declared unfold).
 
 fn ae_b_sample() -> String {
   concat("a", concat("\u{e9}", "b"))
 }
 
+fn ae_b_text() -> HostText {
+  text_of_chars(scalars: ae_b_sample())
+}
+
 // One read, one answer, matched: present means the value is the text we expect, absent fails.
-fn at_is(read: HostText?, want: String) -> Bool {
+fn at_is(read: HostText?, want: HostText) -> Bool {
   match read {
     Absent => false
     Present { value: v } => v == want
@@ -34,20 +45,23 @@ fn at_is(read: HostText?, want: String) -> Bool {
 }
 
 test fn char_at_indexes_code_points_on_multibyte_text() -> Bool {
-  let s = ae_b_sample()
+  let s = ae_b_text()
   at_is(read: char_at(text: s, pos: 0), want: "a")
     && at_code_point(read: char_at(text: s, pos: 1), want: 233)
     && at_is(read: char_at(text: s, pos: 2), want: "b")
 }
 
 test fn char_at_byte_offset_would_mismatch_at_index_one() -> Bool {
-  let s = ae_b_sample()
+  let s = ae_b_text()
   at_code_point(read: char_at(text: s, pos: 1), want: 233)
     && !at_is(read: char_at(text: s, pos: 1), want: "\u{a9}")
 }
 
-test fn string_length_counts_code_points_not_bytes() -> Bool {
-  string_length(s: ae_b_sample()) == 3
+// The count is taken through the DECLARED unfold -- `chars` then std.algebra length -- so this arm
+// says the same thing about code points without routing through the ambient `string_length`, whose
+// egress this PR does not claim.
+test fn the_declared_unfold_counts_code_points_not_bytes() -> Bool {
+  length(xs: chars(text: ae_b_text())) == 3
 }
 
 // STRING-INDEX-0 discriminating control for the prefix-bounded ASCII fast path. char_at/substring
@@ -64,27 +78,32 @@ fn ab_e_c_sample() -> String {
   concat("ab", concat("\u{e9}", "c"))
 }
 
+fn ab_e_c_text() -> HostText {
+  text_of_chars(scalars: ab_e_c_sample())
+}
+
 test fn char_at_agrees_across_the_ascii_prefix_boundary() -> Bool {
-  let s = ab_e_c_sample()
+  let s = ab_e_c_text()
   at_is(read: char_at(text: s, pos: 0), want: "a")
     && at_is(read: char_at(text: s, pos: 1), want: "b")
     && at_code_point(read: char_at(text: s, pos: 2), want: 233)
     && at_is(read: char_at(text: s, pos: 3), want: "c")
 }
 
+// The out-of-range position: this is the arm that carried the empty-text sentinel before the switch.
+// A realization that answers at or past the end with the empty text, or with anything at all, refuses
+// here rather than passing on a fabricated default.
 test fn char_at_past_the_multibyte_char_is_not_a_byte_offset() -> Bool {
-  let s = ab_e_c_sample()
+  let s = ab_e_c_text()
   !at_is(read: char_at(text: s, pos: 3), want: "\u{a9}")
     && at_absent(read: char_at(text: s, pos: 4))
 }
 
-// The refusal is a typed arm, not a value. This is the arm that carried the empty-text sentinel
-// before the switch; a realization that answers the out-of-range position with the empty text, or
-// with anything at all, refuses here rather than passing on a fabricated default.
+// Absence is a typed arm, not a value: the read that found nothing has no value to compare.
 fn at_absent(read: HostText?) -> Bool {
   match read {
     Absent => true
-    Present { value: v } => false
+    Present { value: _ } => false
   }
 }
 
