@@ -4813,6 +4813,33 @@ mod instrument_registry_generated_falsifier {
         }
     }
 
+    /// RED, AND THE FAST ONE: the gate itself refuses a subject the checkout does not carry. This
+    /// leg calls the gate directly so the refusal is observed without a dispatch that, absent the
+    /// gate, walks into the interpreter on a path that is gone -- the fail-open behaviour this gate
+    /// exists to stop, and the reason the dispatch leg below is the slower one.
+    #[test]
+    fn the_gate_refuses_an_absent_subject_by_name() {
+        let absent = "dag/gunbc/instruments/absent_subject_fixture.dag";
+        assert!(!std::path::Path::new(absent).exists());
+        let refusal = instrument_subject_absence_refusal(
+            &TargetProducer::NativeClaimProgram { entry: absent },
+            "native-claim-program",
+        )
+        .expect("an absent subject must be refused, not dispatched");
+        let rendered = invocation_refusal_rendered(&refusal);
+        assert!(
+            rendered.contains("instrument native-claim-program")
+                && rendered.contains("names entry ")
+                && rendered.contains(absent)
+                && rendered.contains("absent from this checkout"),
+            "the refusal must name the instrument, the field and the path: {rendered}"
+        );
+        assert!(
+            rendered.contains("instrument_registry_generated.rs"),
+            "the refusal must name the file to regenerate: {rendered}"
+        );
+    }
+
     /// RED: a generated row whose subject the checkout lacks refuses, typed and located, at exit 2,
     /// and never reaches the subject. Without the check the host would evaluate a path that is gone
     /// and report on it.
