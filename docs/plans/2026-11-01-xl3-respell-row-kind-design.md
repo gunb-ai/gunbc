@@ -20,7 +20,7 @@ Occurrence KIND (call heads vs every reference position) is a property of the ar
 
 ## What it rewrites
 
-Only reference sites whose bare spelling is one the row names AND which the resolver binds to `row.declaring` in the file's own ingest (the same `occurrence_resolutions` read the witness uses). A site binding elsewhere (a local, a parameter, a same-leaf wrong declaration) is untouched and, if the row demanded it, REFUSES (`RefusalSpellingBindsElsewhere`), matching the existing no-fallback rule for occurrence keys. Imports are unchanged. Open point (not decided here): whether the module must keep importing the name for the qualified spelling to resolve; `std.declaring_identity_spelling` `authored_is_suffix_of_canonical` is the authority on the accepted suffix relation and the P2 run shows it empirically.
+Only reference sites whose bare spelling is one the row names AND which the resolver binds to `home.import_name` in the file's own ingest (the same `occurrence_resolutions` read the witness uses). A site binding elsewhere (a local, a parameter, a same-leaf wrong declaration) is untouched and, if the row demanded it, REFUSES (`RefusalSpellingBindsElsewhere`), matching the existing no-fallback rule for occurrence keys. Imports are unchanged. Open point (not decided here): whether the module must keep importing the name for the qualified spelling to resolve; `std.declaring_identity_spelling` `authored_is_suffix_of_canonical` is the authority on the accepted suffix relation and the P2 run shows it empirically.
 
 Not rewritten: strings, comments, namespace tokens, and anything the route cannot see (the known route limit: the ingest-fed collector does not see qualified references in some positions). Those are dispositions, not a fallback.
 
