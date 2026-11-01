@@ -18,7 +18,9 @@ import extdeps.bmc.access_profile {
   SurfaceBmcShell,
   SurfaceBootControl,
   SurfaceEventLog,
+  SurfaceManagerIdentity,
   SurfaceOemRestRemoteMedia,
+  SurfaceSensors,
   SurfaceSystemInventory,
 }
 
@@ -314,4 +316,110 @@ data mtcollins1_current_build_identity: BmcObservedIdentity? = match mtcollins1_
     },
   }
   Absent => Absent
+}
+
+// ── THE 2026-10-26 BOOTS, AND THE OBSERVATION ONLY THEY CAN AUTHOR ────────────────────────────────────
+// Everything above describes the 2026-09-05 intake probe, taken while the controller ran 0.32, and it stays
+// as history: that row is what was observed THEN, on the build observed THEN. The unit has run 0.45 since
+// the 2026-10-02 reflash; from boot run 40258937016 onward the boots themselves read that build, retained
+// their reads verbatim per run id, and executed operations against it. The row below is authored ONLY from
+// those committed captures (artifacts/bmc/mtcollins1-boot-run-40258937016/ and -40264233543/, with their
+// SHA256SUMS), and where it DISAGREES with the 0.32 row the disagreement is the finding, not noise:
+//   * SurfaceSystemInventory was READ successfully at 0.32 and is REFUSED at 0.45 -- boot 6's diagnostics
+//     print `UNREAD: BMC refused the credential at https://192.168.1.228/redfish/v1/Systems
+//     (2026-10-26T06:30:20Z): curl: (22) The requested URL returned error: 401` for Systems and for
+//     Memory, and `system=not-read`. It is recorded as read-and-refused with the cause UNKNOWN: nothing in
+//     the corpus grounds a credential reset, a rate limit, or any other explanation, and guessing one would
+//     be inventing a fact (DESIGN.md §4d).
+//   * SurfaceBmcClock is NOT claimed. The only clock line in the boot captures is the RUNNER HOST's
+//     `/proc/uptime (boot-based; not stepped by NTP)`; no BMC clock was read at this build.
+//   * SurfaceOemRestRemoteMedia is claimed on a different footing from the 0.32 row's 401: the boot READ
+//     the media rows and the general settings (1792996207072) and the configurations (1792996207470), and
+//     boot 5 WROTE through it -- start-media accepted, the same row read back redirection_status 1 with
+//     session_index 0, cd_error_code 0 before any write and at ready.
+
+data mtcollins1_boot_run_40258937016_diagnostics_hash: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "16a18fed0a9630d33194fef1a0a5efb80807f64b2363ad7e63f94cc44dec498f",
+})
+
+data mtcollins1_boot_run_40264233543_diagnostics_hash: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "e419f3fcc65dea77b6774ae037067c82a03acf3e3784ea4ef5f63be8d41b2822",
+})
+
+// 2026-10-26T02:56:46Z: boot 5's `chassis bootparam get 5` read-back AFTER it set the override (the read
+// BEFORE it was 02:55:10Z).
+data mtcollins1_boot_run_40258937016_boot_param_read_back_at: EpochMs = 1792983406000
+
+// 2026-10-26T06:30:20Z: the instant boot 6's diagnostics stamp their own reads. An observation is dated by
+// the LATEST instant any read inside it was taken -- here boot 6's, since boot 5's writes precede them.
+data mtcollins1_boot_run_40264233543_observed_at: EpochMs = 1792996220000
+
+// BOOT CONTROL OVER IPMI LANPLUS AT THIS BUILD -- carried, not claimed as written. Production SELECTS a
+// route from this row (gunbc.machine_intake.oob_boot_handoff first_observed_boot_control_route refuses
+// OobHandoffRouteUnobserved when the list is empty), and the boots drove parameter 5 over IPMI lanplus with
+// no cipher-suite operand, reading it valid/unlocked before (02:55:10Z) and after (02:56:46Z) the set. But
+// boot 5's own harness records that an override matching the attempt's was ALREADY PENDING before it was
+// set, so the post-set read-back cannot show that write's effect, and the write's own answer is not
+// retained separately. So SurfaceBootControl is in discovered and in the READ list and NOT in the write
+// list -- and what licenses driving the host is the capability row
+// (gunbc.host.bmc_release_capability_catalog, established by executed runs), never an absence in this list.
+data mtcollins1_boot_run_40258937016_boot_control_route: BmcBootControlRouteObservation = BmcBootControlRouteObservation {
+  route: IpmiLanplusRoute { cipher_suite: Absent },
+  raw_response: mtcollins1_boot_run_40258937016_diagnostics_hash,
+  observed_at: mtcollins1_boot_run_40258937016_boot_param_read_back_at,
+}
+
+// THE OBSERVATION THE BOOTS EVIDENCE -- OR NOTHING, when the committed build read refused and there is no
+// 0.45 identity to attach a dated observation to (DESIGN.md §5: Absent, not a stand-in). The identity is
+// the machine read's own (board and chassis come from the controller's retained `fru print 0` and a build
+// change does not move them; boot 6's committed fru capture re-reads the same board and chassis strings,
+// so the identity is corroborated at this build rather than merely inherited).
+data mtcollins1_machine_read_access_observation: BmcAccessObservation? = match mtcollins1_current_build_identity {
+  Absent => Absent
+  Present { value: identity } => Present {
+    value: BmcAccessObservation {
+      endpoint: mtcollins1_endpoint,
+      identity: identity,
+      // EXPOSED is not READ. SurfaceSystemInventory is here because the Redfish path ANSWERED -- with 401,
+      // where a controller serving no Redfish answers 404 -- and it is deliberately NOT in the read list.
+      discovered_surfaces: [
+        SurfaceSystemInventory,
+        SurfaceBootControl,
+        SurfaceEventLog,
+        SurfaceSensors,
+        SurfaceOemRestRemoteMedia,
+      ],
+      boot_control_routes: [mtcollins1_boot_run_40258937016_boot_control_route],
+      // Absent, and it is a finding: no Redfish VirtualMedia probe was answered at this build at all -- the
+      // Redfish path refused with 401 before any media call. A receipt arm here would be a fabricated read.
+      redfish_virtual_media_probe: none,
+      // Boot 6 retained `mc info` (585 B) and `fru print 0` (894 B) verbatim per run id, read the sensor
+      // table, the system event log, the media rows and settings, and boot parameter 5.
+      successful_read_surfaces: [
+        SurfaceManagerIdentity,
+        SurfaceBootControl,
+        SurfaceEventLog,
+        SurfaceSensors,
+        SurfaceOemRestRemoteMedia,
+      ],
+      // The ONE write this build evidences with a discriminating read-back: start-media accepted, and the
+      // same row read back redirection_status 1 at session_index 0 with cd_error_code 0, after which the
+      // host booted the medium. Boot 6's attach refusal on the leftover row is this surface READ, not
+      // written.
+      successful_write_surfaces: [SurfaceOemRestRemoteMedia],
+      raw_response: mtcollins1_boot_run_40264233543_diagnostics_hash,
+      observed_at: mtcollins1_boot_run_40264233543_observed_at,
+    },
+  }
+}
+
+// WHAT THE MANAGED-HOST ROW'S ACCESS AXIS CARRIES, and the fail-closed half of the cutover: if the
+// committed build read ever refuses, there is no 0.45 observation, the row keeps the 2026-09-05 standing,
+// and admission REFUSES at every operation with a typed cause (MegaRacCurrentBuildUnobserved /
+// MegaRacObservationNotCurrent in gunbc.host.megarac_managed_host) rather than driving a controller whose
+// current build nobody has read. The older standing is not a fallback that hides the deficit -- it is the
+// honest statement of what is known about this controller, and the shadow gate treats it as stale.
+data mtcollins1_current_access_standing: BmcAccessObservationStanding = match mtcollins1_machine_read_access_observation {
+  Present { value: observation } => BmcAccessObserved { observation: observation }
+  Absent => mtcollins1_access_standing
 }
