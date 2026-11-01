@@ -1,6 +1,7 @@
 module extdeps.llm.openai
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, brand }
+import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -622,24 +623,53 @@ data extdeps_completions_external_authority_anchor: ExternalAuthority = External
 // whole text-completion answer with one event of a streamed chat answer.
 data openai_text_completion_object_wire: String = "text_completion"
 
-// THE `object` MEMBER IS A CONSTANT IN THE SPEC, SO IT IS TYPED AS ONE, NOT AS A FREE STRING: the
-// value is the wire constant above, and the constraint is this module's where-predicate. std.types
-// spells NonEmptyStr exactly this way (`type NonEmptyStr = String where string_non_empty`, with the
-// predicate as an ordinary fn beside it at std/types.dag:264-277), so the where atom binds to a
-// declaration in the same module. It lives here rather than as a bare `String` because the two
-// endpoints' bodies are otherwise indistinguishable at the type: a `chat.completion`, a
-// `chat.completion.chunk` and an error envelope would each type-check as a text completion, which is
-// the confusion the constant exists to prevent. A reader decoding a response must therefore REFUSE
-// when `object` is not this constant, and that refusal is the consumer this constant exists for --
-// its executing route is //test/claim/extdeps/openai_text_completion_wire_witness, which calls the
-// predicate with the documented value and with each chat endpoint's value, so a constant that drifted
-// goes red. Where-refinements are enforced at literal sites today, so the decoder is where the
-// constraint bites in practice; declaring it is the model fact, exactly as NonEmptyStr is.
-fn openai_text_completion_object_is_documented(value: String) -> Bool {
-  value == openai_text_completion_object_wire
+// THE `object` MEMBER IS A CONSTANT IN THE SPEC, SO IT IS TYPED AS ONE, AND IT IS CONSTRUCTED ONLY BY
+// CHECKING. The two text-completion bodies used to type `object: String`, which made the endpoints
+// indistinguishable at the type: a `chat.completion`, a `chat.completion.chunk` and an error envelope
+// would each have type-checked as a text completion, and the constant above stood nowhere near the
+// fields it describes. It is now a carrier with a checked constructor, so a decoder can obtain the
+// value for one endpoint and refuse every other one:
+//
+//   extdeps.languages.json.grammar is the pattern -- `type JsonNumberLexeme = String where
+//   brand("JsonNumberLexeme")` (:36) with `json_number_lexeme_valid`, an `..._unchecked` coercion and a
+//   smart constructor returning Optional (:149-159). A where-BRAND carries nominal identity only (the
+//   atom yields a WherePredicateMarker that is never evaluated as a refinement, std/types.dag:280-292),
+//   so no validation is claimed by the type: the check lives in the constructor, which is DESIGN section
+//   4's ruling gunbc.design_ruling where_refinements_retire_for_checked_constructors -- "where-refinements
+//   are retired in favour of checked constructors returning `Optional`". That is why this is not spelled
+//   `String where openai_text_completion_object_is_documented`: std.types' NonEmptyStr still is
+//   (std/types.dag:264), but it is the legacy the ruling retires, not a pattern to copy, and DESIGN
+//   section 4 also refuses to lean on the interim literal-only judgment
+//   (design_ruling.dag: literal_only_refinement_judgment_is_interim) for a value that arrives from a
+//   decoder rather than being written in source.
+//
+// The refusal is a refusal, not a default: no arm of this constructor yields a carrier for a value that
+// is not the documented constant, so a body from another endpoint cannot be laundered into a text
+// completion (§5). The consumer is executed in-repo today:
+// //test/claim/extdeps/openai_text_completion_wire_witness calls the constructor with the documented
+// value (Present) and with each chat endpoint's value (Absent), so a constant that drifted goes red.
+type OpenAiTextCompletionObject = String where brand("OpenAiTextCompletionObject")
+
+fn openai_text_completion_object_valid(s: String) -> Bool {
+  s == openai_text_completion_object_wire
 }
 
-type OpenAiTextCompletionObject = String where openai_text_completion_object_is_documented
+// The coercion is spelled separately so no caller can reach a carrier without having been checked: every
+// production of one in this repository goes through openai_text_completion_object below.
+fn openai_text_completion_object_unchecked(s: String) -> OpenAiTextCompletionObject {
+  s as OpenAiTextCompletionObject
+}
+
+// Present for "text_completion", Absent for anything else -- including "chat.completion" and
+// "chat.completion.chunk", which is what stops a chat answer or an error envelope from reading as a text
+// completion.
+fn openai_text_completion_object(s: String) -> OpenAiTextCompletionObject? {
+  if openai_text_completion_object_valid(s: s) {
+    Present { value: openai_text_completion_object_unchecked(s: s) }
+  } else {
+    Absent
+  }
+}
 
 // The prompt member as the endpoint document gives it. Four arms, each cited to the one member's union
 // in the anchor above (platform.openai.com/docs/api-reference/completions/create, member

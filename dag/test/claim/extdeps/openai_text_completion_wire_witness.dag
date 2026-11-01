@@ -1,38 +1,48 @@
 // What the legacy /v1/completions wire's `object` constraint must never do: let a response from
-// ANOTHER endpoint read as a text completion.
+// ANOTHER endpoint build as a text completion.
 //
-// The two text-completion bodies type `object` as `OpenAiTextCompletionObject`, a `String` refined by
-// `openai_text_completion_object_is_documented`, which is the documented constant and nothing else.
-// These rows EXECUTE that predicate -- the constraint's only other consumer is a decoder that does not
-// exist yet (S3 of `gunbc.plans.fabric_serving_router`) -- so a constant that drifted, or a predicate
-// widened to `value == value`, has a red row to answer.
+// The two text-completion bodies type `object` as `OpenAiTextCompletionObject`, a carrier obtainable only
+// through the checked constructor `openai_text_completion_object`, which yields Present for the documented
+// constant and Absent for everything else (DESIGN section 4, gunbc.design_ruling
+// where_refinements_retire_for_checked_constructors; the shape is extdeps.languages.json.grammar's
+// JsonNumberLexeme). These rows EXECUTE that constructor -- its other consumer is a decoder that does not
+// exist yet (S3 of `gunbc.plans.fabric_serving_router`) -- so a constant that drifted, or a constructor
+// that stopped refusing, has a red row to answer.
 //
 // Each row says, in the words below its name, the mutation that turns it red, and every row has a
 // counterpart to the OTHER side: a set that only ever returns true is indistinguishable from a
 // placeholder (`gunbc.recurring_failure_mode` a_green_case_set_that_counts_row_identities_and_never_the_branches_those_rows_take).
 //
 // These are `test fn`, not `@test fn`: `@test` is the Rust seed's annotation (the compiler reports
-// `expected item declaration` for it in a .dag), and the claim harness collects these by declaration
-// through the dag-file-target filegroup beside this file.
+// `expected item declaration` for it in a .dag), and the claim harness collects these by declaration.
 
+import std.optional { Absent, Present }
 import extdeps.llm.openai {
-  openai_text_completion_object_is_documented,
+  openai_text_completion_object,
   openai_chat_completion_chunk_object_wire
 }
 
-// The documented value satisfies its own constraint. RED WHEN: `openai_text_completion_object_wire`
-// is changed away from "text_completion" -- which is what the counterpart row below exists to catch,
-// since a constant edited to a chat value would otherwise stay green here too.
-test fn the_documented_object_value_satisfies_the_refinement() -> Bool {
-  openai_text_completion_object_is_documented("text_completion")
+// 1 when the string builds a carrier, 0 when the constructor refuses it.
+fn builds_a_carrier(value: String) -> Int {
+  match openai_text_completion_object(s: value) {
+    Present { value: _ } => 1
+    Absent => 0
+  }
+}
+
+// The documented value builds a carrier. RED WHEN: `openai_text_completion_object_wire` is changed away
+// from "text_completion", or the constructor's check is broken -- which the counterpart row below exists
+// to catch, since a constant edited to a chat value would otherwise stay green here too.
+test fn the_documented_object_value_builds_the_carrier() -> Bool {
+  builds_a_carrier(value: "text_completion") == 1
 }
 
 // A response from either chat endpoint is REFUSED as a text completion: the non-streaming chat body
-// (`chat.completion`) and the streamed chunk (`chat.completion.chunk`) both carry an `object` member,
-// and both bodies type it as a plain `String`, so this predicate is the only thing that keeps one
-// endpoint's answer out of the other's type. RED WHEN: the predicate is widened to accept anything, or
-// the text-completion constant is set to a chat value.
+// (`chat.completion`) and the streamed chunk (`chat.completion.chunk`) both carry an `object` member, and
+// both bodies type it as a plain `String`, so this constructor is the only thing standing between one
+// endpoint's answer and the other's type. RED WHEN: the constructor stops refusing (its `else` arm returns
+// Present), or the text-completion constant is set to a chat value.
 test fn another_endpoints_object_value_is_refused() -> Bool {
-  !openai_text_completion_object_is_documented("chat.completion")
-    && !openai_text_completion_object_is_documented(openai_chat_completion_chunk_object_wire)
+  if builds_a_carrier(value: "chat.completion") == 0
+    && builds_a_carrier(value: openai_chat_completion_chunk_object_wire) == 0 { true } else { false }
 }
