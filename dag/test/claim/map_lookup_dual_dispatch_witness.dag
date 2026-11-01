@@ -1,5 +1,7 @@
 module test.claim.map_lookup_dual_dispatch_witness
 
+import std.algebra { map_lookup }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn map_get_method_routes_through_dual_dispatch_chokepoint() -> Bool {
@@ -42,4 +44,33 @@ test fn std_graph_build_adjacency_views_evaluates() -> Bool {
     Present { value: ns } => ns == ["b"]
     Absent => false
   }
+}
+
+// THE map_get -> map_lookup WAVE MOVES A CALL TO THE DECLARED FREE FN, SO IT MUST MEAN THE SAME ANSWER on both outcomes of a
+// keyed read: a present key answers Present with its value, an absent key answers Absent. Each claim states the answer for
+// the declared head and for the ambient head on the SAME map, so neither can drift alone and still pass.
+test fn map_lookup_present_key_answers_present_value() -> Bool {
+  let m = empty_map() |> map_insert("k", 7)
+  let declared = match map_lookup(m, "k") {
+    Present { value: v } => v == 7
+    Absent => false
+  }
+  let ambient = match map_get(m, "k") {
+    Present { value: v } => v == 7
+    Absent => false
+  }
+  declared && ambient
+}
+
+test fn map_lookup_absent_key_answers_absent() -> Bool {
+  let m = empty_map() |> map_insert("k", 7)
+  let declared = match map_lookup(m, "missing") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  let ambient = match map_get(m, "missing") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  declared && ambient
 }
