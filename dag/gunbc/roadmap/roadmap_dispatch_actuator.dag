@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptAuditVerdict, AttemptDirectoryAudit, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectoryRoot, AttemptDirectorySupervisor, AttemptDirectoryVerification, AttemptDirectoryWire, AttemptDirectoryWorker, AttemptReviewEvents, AttemptReviewLog, AttemptReviewRequestScratch, AttemptReviewVerdict, AttemptSupervisorEvents, AttemptWorkerEvents, AttemptWorkerLog, AttemptWorkerRequestScratch, attempt_state_current_directory_text, attempt_state_current_text, attempt_state_directory_text, attempt_state_member_name, attempt_state_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_unit_stem, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, GunbcHarnessProvider }
+import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_unit_stem, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, GunbcHarnessProvider, dispatch_provider_word }
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_argv_command }
 import gunbc.managed_directory { declared_directory_mode, DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
 import extdeps.tools.env { env_path_resolved_program }
@@ -962,13 +962,12 @@ data dispatch_codex_exec_spec: CodexExecSpec = CodexExecSpec {
 // Spawned and session-present remain actuator/process observations only — never a claim that the
 // provider completed successfully.
 
+// THE WORD IS NOT SPELLED HERE. The provider word is declared once, beside the provider type, in
+// gunbc.roadmap.dispatch_worker_unit_confinement (dispatch_provider_words / dispatch_provider_word); this is a
+// reader, not a second map. The snapshot store reads the same row, so the label the belt reports a provider
+// under and the provider segment of the snapshot file name cannot drift apart (review 89845).
 fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
-  match provider {
-    ClaudeCodeProvider => "claude"
-    CodexDispatchProvider => "codex"
-    CursorDispatchProvider => "cursor"
-    GunbcHarnessProvider => "gunbc-harness"
-  }
+  dispatch_provider_word(provider: provider) as String
 }
 
 type HostExecArgv {
