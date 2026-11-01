@@ -207,6 +207,7 @@ import gunbc.worker_lifecycle {
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap.roadmap_attempt_identity_store_root { AttemptIdentityStore, AttemptIdentityClaimed, AttemptIdentityClaimRefused, attempt_identity_claim }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_provider_state_root,
@@ -1206,40 +1207,16 @@ fn dispatch_attempt_key(node_id: RoadmapNodeId, ordinal: Int) -> String {
   content_hash_atom(value: join([node_id as String, "\nordinal:", to_string(value: ordinal)], "") as NonEmptyStr).digest as String
 }
 
-data dispatch_attempt_identity_prefix: String = "attempt-identity-"
-
-// The ordinal space is bounded so a host that refuses every create ends in a typed refusal, not a loop.
-data dispatch_attempt_ordinal_limit: Int = 4096
-
-fn dispatch_attempt_identity_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, ordinal: Int) -> String {
-  join([
-    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
-    "/", dispatch_attempt_identity_prefix, node_id as String, "-n", to_string(value: ordinal),
-  ], "")
-}
-
 type DispatchAttemptIdentity
   = DispatchAttemptMinted { attempt_key: String, ordinal: Int }
   | DispatchAttemptIdentityRefused { detail: String }
 
-fn dispatch_attempt_identity_mint(instance: HostDashboardInstance, node_id: RoadmapNodeId, minted_at: String) -> DispatchAttemptIdentity {
-  dispatch_attempt_identity_claim(instance: instance, node_id: node_id, minted_at: minted_at, ordinal: 1)
-}
-
-// An occupied ordinal belongs to an earlier attempt and is never read back or overwritten: the next
-// ordinal is claimed. Any other refusal is the host's and ends the mint.
-fn dispatch_attempt_identity_claim(instance: HostDashboardInstance, node_id: RoadmapNodeId, minted_at: String, ordinal: Int) -> DispatchAttemptIdentity {
-  if ordinal > dispatch_attempt_ordinal_limit {
-    DispatchAttemptIdentityRefused { detail: join(["every ordinal up to ", to_string(value: dispatch_attempt_ordinal_limit), " is already claimed for node ", node_id as String], "") }
-  } else {
-    let path = dispatch_attempt_identity_path_for_instance(instance: instance, node_id: node_id, ordinal: ordinal)
-    let write = Filesystem.WriteCreateNew(path: path, content: join(["minted_at: ", minted_at, "\n"], ""))
-    match filesystem_create_new(path: path, success: write.success, error: write.error, error_kind: write.error_kind) {
-      FilesystemCreated { path: _ } => DispatchAttemptMinted { attempt_key: dispatch_attempt_key(node_id: node_id, ordinal: ordinal), ordinal: ordinal }
-      FilesystemCreateTargetOccupied { path: _ } => dispatch_attempt_identity_claim(instance: instance, node_id: node_id, minted_at: minted_at, ordinal: ordinal + 1)
-      FilesystemCreateRefused { path: _, kind: _, error: e } => DispatchAttemptIdentityRefused { detail: join(["the attempt identity could not be created at ", path, ": ", e], "") }
-      FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => DispatchAttemptIdentityRefused { detail: join(["the attempt identity could not be created at ", path, ": ", e], "") }
-    }
+// The claim is the sealed store's (gunbc.roadmap.roadmap_attempt_identity_store_root): an exclusive hold slot
+// per (node, ordinal), the next ordinal on an occupied one, a typed refusal on any other outcome.
+fn dispatch_attempt_identity_mint(store: AttemptIdentityStore, node_id: RoadmapNodeId, minted_at: String) -> DispatchAttemptIdentity {
+  match attempt_identity_claim(store: store, node_id: node_id as String, minted_at: minted_at, ordinal: 1) {
+    AttemptIdentityClaimed { ordinal } => DispatchAttemptMinted { attempt_key: dispatch_attempt_key(node_id: node_id, ordinal: ordinal), ordinal: ordinal }
+    AttemptIdentityClaimRefused { detail } => DispatchAttemptIdentityRefused { detail: detail }
   }
 }
 

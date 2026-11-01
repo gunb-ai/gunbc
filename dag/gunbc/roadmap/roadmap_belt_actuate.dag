@@ -35,6 +35,7 @@ import gunbc.roadmap.roadmap_review_function {
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
+import gunbc.roadmap.roadmap_attempt_identity_store_root { attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at }
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
@@ -760,6 +761,15 @@ type BeltExecOutcome
 // availability probe (consumed as the refuse/fail discriminator, never discarded), BeltExecOutcome,
 // BeltObserve — never unit. Dispatch failure is not an exit code, stays anomalous, and does not
 // travel this arm.
+// A store that is not Ready (the directory unlistable, or legacy flat identities still present) refuses the
+// spawn at step attempt-identity with the store's own detail; it is never read as an empty store.
+fn belt_dispatch_attempt_identity_mint(instance: HostDashboardInstance, node_id: RoadmapNodeId, minted_at: String) -> DispatchAttemptIdentity {
+  match attempt_identity_store(instance: instance) {
+    AttemptIdentityStoreUnready { detail } => DispatchAttemptIdentityRefused { detail: detail }
+    AttemptIdentityStoreReady { store } => dispatch_attempt_identity_mint(store: store, node_id: node_id, minted_at: minted_at)
+  }
+}
+
 fn belt_program_available(program: String) -> Bool {
   shell.PosixCommandV.Check(command: program as NonEmptyStr, expect: OutcomeIsData).exists
 }
@@ -2368,7 +2378,7 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+      match belt_dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
         DispatchAttemptIdentityRefused { detail } =>
           SpawnFailed {
             node_id: node.node as String,
@@ -3539,7 +3549,7 @@ fn belt_actuate_spawn(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+      match belt_dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
         DispatchAttemptIdentityRefused { detail } =>
           SpawnFailed {
             node_id: node.node as String,
