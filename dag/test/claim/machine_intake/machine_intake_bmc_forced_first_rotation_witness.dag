@@ -540,7 +540,9 @@ fn srv13_forced_write_transition(subject: MachineIntakeSubject, pre_capture: Pri
 
 test fn the_forced_first_write_transition_is_produced_by_the_real_producers() -> Bool {
   let subject = srv13_intake_subject(attempt: "attempt-1" as AttemptIdentity)
-  match srv13_forced_write_sequence(subject: subject, pre_capture: none, began_millis: 1793145630000, finished_millis: 1793145635000, applied_at_millis: t_apply) {
+  // The leg window brackets the apply instant the producer stamps (t_apply), which is what makes the
+  // transition mint accept this pair; the RED below changes only the apply instant.
+  match srv13_forced_write_sequence(subject: subject, pre_capture: none, began_millis: 1793145630000, finished_millis: 1793145645000, applied_at_millis: t_apply) {
     Absent => false
     Present { value: s } =>
       (s.transition.leg.write.attempt as String) == (subject.attempt_id as String)
@@ -564,13 +566,14 @@ test fn the_forced_first_write_transition_is_produced_by_the_real_producers() ->
 // carry a write its own leg never carried, so the sequence produces nothing at all. Paired positive: the claim
 // above, identical but for the apply instant (t_apply, inside the window).
 // Rung: the real producers, refusing at the transition mint.
+
 test fn a_write_applied_outside_its_leg_window_produces_no_transition() -> Bool {
   let subject = srv13_intake_subject(attempt: "attempt-1" as AttemptIdentity)
   match srv13_forced_write_sequence(
     subject: subject,
     pre_capture: none,
     began_millis: 1793145630000,
-    finished_millis: 1793145635000,
+    finished_millis: 1793145645000,
     applied_at_millis: 1793145695000,
   ) {
     Absent => true
