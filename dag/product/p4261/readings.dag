@@ -1,0 +1,1219 @@
+module product.p4261.readings
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat, nat_min }
+import std.measure {
+  milliampere,
+  millivolt,
+  millivolt_count,
+  Volt,
+  volt_count,
+}
+import product.placement_supply { PhysicalAssetIdentity }
+import extdeps.electronic_component.types {
+  CapacitorSpec,
+  ConnectorSpec,
+  ControllerPin,
+  ElectronicComponentRow,
+  FetDrain,
+  FetGate,
+  FetSource,
+  FetTerminalRole,
+  HotSwapControllerSpec,
+  HotSwapControllerSpecification,
+  InternalRegulatorOutput,
+  LevelTranslatorSpec,
+  LevelTranslatorSpecification,
+  LogicGateSpec,
+  LogicGateSpecification,
+  MosfetSpec,
+  MosfetSpecification,
+  NumberedPin,
+  OvervoltageLockout,
+  PackageTab,
+  PackageTerminal,
+  ProgrammableLogicSpec,
+  ProgrammableLogicSpecification,
+  RootOfTrustSpec,
+  RootOfTrustSpecification,
+  SerialFlashSpec,
+  SerialFlashSpecification,
+  ShiftRegisterSpec,
+  ShiftRegisterSpecification,
+  TemperatureSensorSpec,
+  ThresholdWindow,
+  TvsDiodeSpec,
+  UndervoltageEnable,
+  VoltageWithstand,
+}
+import product.electrical.carrier_phase {
+  carrier_phase_standing,
+  CarrierPhaseObservation,
+  CarrierPhaseStanding,
+  phase_by_key,
+  PhaseNodeVoltage,
+  protected_bus_standing,
+  ProtectedBusStanding,
+}
+import product.electrical.connectivity {
+  component_identity_eq,
+  ComponentInstanceIdentity,
+  ElectricalTerminalRef,
+  terminal_ref,
+  terminal_ref_equal,
+  TerminalIdentity,
+}
+import product.electrical.source_draw {
+  is_draw_bounded,
+  is_draw_contradicted,
+  source_draw_standing,
+  SourceDrawObservation,
+  SourceDrawStanding,
+}
+import product.electrical.bench_session {
+  DisplayOverRange,
+  is_at_baseline,
+  is_read_value,
+  is_reported_zero,
+  NodeVoltageObservation,
+  observation_reads_pair,
+  ProbeAttachment,
+  ReadAbout,
+  ReadBelow,
+  ResistanceObservation,
+  StatedHedged,
+  StatedPlainly,
+  value_ceiling,
+  valued_ohms,
+}
+import product.electrical.continuity {
+  ContinuityObservation,
+  evidence_grade,
+  EvidenceGrade,
+  EvidenceRef,
+  is_reachability_contradicted,
+  is_reachable,
+  is_read_above_threshold,
+  junction_between,
+  JunctionStanding,
+  reach,
+  reachability_graph,
+  ReachabilityGraph,
+  ReachabilityStanding,
+  supporting_readings,
+}
+import product.electrical.measured_netlist { measured_netlist, MeasuredNetlist }
+import product.electrical.identification {
+  ComponentIdentification,
+  FootprintUnpopulated,
+  identified_withstand,
+  IdentifiedByMarking,
+  InstalledComponent,
+  MarkingCandidate,
+  MarkingSharedByMakers,
+  MarkingUnresolved,
+  names,
+  RatingPrintedOnBody,
+  ResistanceCodeRead,
+}
+import product.p4261.design {
+  AwayFromLatch,
+  CarrierLayoutObservation,
+  ConnectorHousing,
+  InputConnector,
+  LatchSide,
+  MeasuredBoard,
+  RowSide,
+  SideUnrecorded,
+}
+import product.p4261.e1 {
+  e1_ground_ref,
+  e1_j68,
+  e1_j68_points,
+  e1_q300_lead_b,
+  e1_terminal,
+}
+
+// WHAT IS DERIVED FROM A CARRIER'S RECORDS: polarity, placement across the input, the input voltage
+// bound, the energized draw, switch and controller-pin standings, and the readings that some
+// derivations take from the E1's records.
+
+// ── POLARITY ──────────────────────────────────────────────────────────────────────────────────
+
+type PolarityGap
+  = SidesUnrecorded
+  | NoMeasuredBoard
+  | InputUnmapped
+  | FusedSideNotReached
+  | ReturnSideNotJoined
+  | IsolationUnread
+
+type InputPolarity
+  = PolarityEstablished { fused_side: RowSide, return_side: RowSide, fused: List<ContinuityObservation>, returns: List<ContinuityObservation>, isolation: List<ContinuityObservation> }
+  | PolarityContradicted { readings: List<ContinuityObservation> }
+  | PolarityUnestablished { gaps: List<PolarityGap> }
+
+fn row_side_code(s: RowSide) -> Nat {
+  match s {
+    SideUnrecorded => 0
+    LatchSide => 1
+    AwayFromLatch => 2
+  }
+}
+
+fn other_side(s: RowSide) -> RowSide {
+  match s {
+    LatchSide => AwayFromLatch
+    AwayFromLatch => LatchSide
+    SideUnrecorded => SideUnrecorded
+  }
+}
+
+fn side_terminals(h: ConnectorHousing, side: RowSide) -> List<ElectricalTerminalRef> {
+  map(filter(h.positions, p => row_side_code(s: p.side) == row_side_code(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
+}
+
+fn board_graph(b: MeasuredBoard) -> ReachabilityGraph {
+  reachability_graph(observations: b.continuity, asset: b.asset)
+}
+
+// The board as measured: its beep classes joined by its baseline resistance readings into nodes, and
+// every other resistance reading a link between them (product.electrical.measured_netlist).
+fn board_netlist(b: MeasuredBoard) -> MeasuredNetlist {
+  measured_netlist(graph: board_graph(b: b), resistances: b.bench.resistances)
+}
+
+fn standings_to(g: ReachabilityGraph, ts: List<ElectricalTerminalRef>, target: ElectricalTerminalRef) -> List<ReachabilityStanding> {
+  map(ts, t => reach(g: g, a: t, b: target))
+}
+
+fn all_reachable(ss: List<ReachabilityStanding>) -> Bool {
+  count(ss) > 0 && all(ss, s => is_reachable(s: s))
+}
+
+fn readings_of(ss: List<ReachabilityStanding>) -> List<ContinuityObservation> {
+  flat_map(ss, s => supporting_readings(s: s))
+}
+
+// Every standing on an established side is reachability into ONE class, whose supporting readings each
+// standing carries whole; the first carries them once, where concatenating all would repeat them per
+// contact.
+fn class_readings(ss: List<ReachabilityStanding>) -> List<ContinuityObservation> {
+  match ss.first() {
+    Absent => []
+    Present { value: s } => supporting_readings(s: s)
+  }
+}
+
+fn side_reaches_fuse(g: ReachabilityGraph, input: InputConnector, side: RowSide) -> Bool {
+  all_reachable(ss: standings_to(g: g, ts: side_terminals(h: input.housing, side: side), target: input.fuse_terminal))
+}
+
+fn polarity_gaps(to_fuse: List<ReachabilityStanding>, to_return: List<ReachabilityStanding>, isolation: ReachabilityStanding) -> List<PolarityGap> {
+  concat(concat(
+    if all_reachable(ss: to_fuse) { [] } else { [FusedSideNotReached] },
+    if all_reachable(ss: to_return) { [] } else { [ReturnSideNotJoined] }),
+    if is_read_above_threshold(s: isolation) { [] } else { [IsolationUnread] })
+}
+
+// The polarity a fused side implies, if the readings establish it: every fused-side contact reaches the
+// fuse terminal, every return-side contact reaches the first return-side contact, and the first
+// fused-side contact is read silent (above the continuity threshold) to the first return-side one. Any contradicted standing contradicts.
+fn polarity_from(g: ReachabilityGraph, input: InputConnector, fused: RowSide, f0: ElectricalTerminalRef, r0: ElectricalTerminalRef) -> InputPolarity {
+  let ret = other_side(s: fused)
+  let to_fuse = standings_to(g: g, ts: side_terminals(h: input.housing, side: fused), target: input.fuse_terminal)
+  let to_return = standings_to(g: g, ts: side_terminals(h: input.housing, side: ret), target: r0)
+  let isolation = reach(g: g, a: f0, b: r0)
+  let contradicted = filter(concat(concat(to_fuse, to_return), [isolation]), s => is_reachability_contradicted(s: s))
+  let gaps = polarity_gaps(to_fuse: to_fuse, to_return: to_return, isolation: isolation)
+  match contradicted.first() {
+    Present { value: _ } => PolarityContradicted { readings: readings_of(ss: contradicted) }
+    Absent => match gaps.first() {
+      Present { value: _ } => PolarityUnestablished { gaps: gaps }
+      Absent => PolarityEstablished { fused_side: fused, return_side: ret, fused: class_readings(ss: to_fuse), returns: class_readings(ss: to_return), isolation: supporting_readings(s: isolation) }
+    }
+  }
+}
+
+fn polarity_with(g: ReachabilityGraph, input: InputConnector, fused: RowSide) -> InputPolarity {
+  match side_terminals(h: input.housing, side: fused).first() {
+    Absent => PolarityUnestablished { gaps: [FusedSideNotReached] }
+    Present { value: f0 } => match side_terminals(h: input.housing, side: other_side(s: fused)).first() {
+      Absent => PolarityUnestablished { gaps: [ReturnSideNotJoined] }
+      Present { value: r0 } => polarity_from(g: g, input: input, fused: fused, f0: f0, r0: r0)
+    }
+  }
+}
+
+fn measured_polarity(g: ReachabilityGraph, input: InputConnector) -> InputPolarity {
+  if any(input.housing.positions, p => row_side_code(s: p.side) == 0) {
+    PolarityUnestablished { gaps: [SidesUnrecorded] }
+  } else {
+    if side_reaches_fuse(g: g, input: input, side: LatchSide) && !side_reaches_fuse(g: g, input: input, side: AwayFromLatch) {
+      polarity_with(g: g, input: input, fused: LatchSide)
+    } else {
+      polarity_with(g: g, input: input, fused: AwayFromLatch)
+    }
+  }
+}
+
+fn input_polarity(layout: CarrierLayoutObservation) -> InputPolarity {
+  match layout.measured {
+    Absent => PolarityUnestablished { gaps: [NoMeasuredBoard] }
+    Present { value: b } => match layout.input {
+      Absent => PolarityUnestablished { gaps: [InputUnmapped] }
+      Present { value: input } => measured_polarity(g: board_graph(b: b), input: input)
+    }
+  }
+}
+
+fn polarity_grade(p: InputPolarity) -> EvidenceGrade {
+  match p {
+    PolarityEstablished { fused_side: _, return_side: _, fused, returns, isolation } => evidence_grade(readings: concat(concat(fused, returns), isolation))
+    PolarityContradicted { readings } => evidence_grade(readings: readings)
+    PolarityUnestablished { gaps: _ } => evidence_grade(readings: [])
+  }
+}
+
+// ── PLACEMENT ACROSS THE INPUT ────────────────────────────────────────────────────────────────
+
+type TerminalPair {
+  a: ElectricalTerminalRef
+  b: ElectricalTerminalRef
+}
+
+fn component_terminal_refs(c: InstalledComponent) -> List<ElectricalTerminalRef> {
+  map(c.terminals, t => terminal_ref(component: c.component, terminal: t))
+}
+
+fn pairs_of(ts: List<ElectricalTerminalRef>) -> List<TerminalPair> {
+  match ts.first() {
+    Absent => []
+    Present { value: a } => match filter(ts, t => !terminal_ref_equal(a: t, b: a)).first() {
+      Absent => []
+      Present { value: b } => if count(ts) == 2 { [TerminalPair { a: a, b: b }] } else { [] }
+    }
+  }
+}
+
+type AcrossGap
+  = InputPolarityNotEstablished
+  | NotTwoTerminals
+  | TerminalsNotPlaced
+
+type AcrossInputStanding
+  = AcrossInput { component: ComponentInstanceIdentity, on_fused: ElectricalTerminalRef, on_return: ElectricalTerminalRef, fused_path: List<ContinuityObservation>, return_path: List<ContinuityObservation> }
+  | AcrossInputContradicted { component: ComponentInstanceIdentity, readings: List<ContinuityObservation> }
+  | AcrossInputUnestablished { component: ComponentInstanceIdentity, gap: AcrossGap }
+
+fn placed_pair(g: ReachabilityGraph, comp: ComponentInstanceIdentity, p: TerminalPair, f0: ElectricalTerminalRef, r0: ElectricalTerminalRef) -> AcrossInputStanding {
+  let af = reach(g: g, a: p.a, b: f0)
+  let br = reach(g: g, a: p.b, b: r0)
+  let bf = reach(g: g, a: p.b, b: f0)
+  let ar = reach(g: g, a: p.a, b: r0)
+  let contradicted = filter([af, br, bf, ar], s => is_reachability_contradicted(s: s))
+  match contradicted.first() {
+    Present { value: _ } => AcrossInputContradicted { component: comp, readings: readings_of(ss: contradicted) }
+    Absent =>
+      if is_reachable(s: af) && is_reachable(s: br) {
+        AcrossInput { component: comp, on_fused: p.a, on_return: p.b, fused_path: supporting_readings(s: af), return_path: supporting_readings(s: br) }
+      } else {
+        if is_reachable(s: bf) && is_reachable(s: ar) {
+          AcrossInput { component: comp, on_fused: p.b, on_return: p.a, fused_path: supporting_readings(s: bf), return_path: supporting_readings(s: ar) }
+        } else {
+          AcrossInputUnestablished { component: comp, gap: TerminalsNotPlaced }
+        }
+      }
+  }
+}
+
+fn placed_under(g: ReachabilityGraph, input: InputConnector, c: InstalledComponent, fused: RowSide, ret: RowSide) -> AcrossInputStanding {
+  match side_terminals(h: input.housing, side: fused).first() {
+    Absent => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
+    Present { value: f0 } => match side_terminals(h: input.housing, side: ret).first() {
+      Absent => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
+      Present { value: r0 } => match pairs_of(ts: component_terminal_refs(c: c)).first() {
+        Absent => AcrossInputUnestablished { component: c.component, gap: NotTwoTerminals }
+        Present { value: p } => placed_pair(g: g, comp: c.component, p: p, f0: f0, r0: r0)
+      }
+    }
+  }
+}
+
+// WHAT EVERY PLACEMENT ON ONE BOARD READS: its reachability graph and its established polarity, derived
+// once per layout rather than once per component asked about.
+type PlacementBasis
+  = PlacementOnPolarity { graph: ReachabilityGraph, input: InputConnector, fused: RowSide, ret: RowSide, readings: List<ContinuityObservation> }
+  | NoPlacementBasis
+
+fn placement_basis(layout: CarrierLayoutObservation) -> PlacementBasis {
+  match layout.measured {
+    Absent => NoPlacementBasis
+    Present { value: b } => match layout.input {
+      Absent => NoPlacementBasis
+      Present { value: input } => {
+        let g = board_graph(b: b)
+        match measured_polarity(g: g, input: input) {
+          PolarityEstablished { fused_side, return_side, fused, returns, isolation } =>
+            PlacementOnPolarity { graph: g, input: input, fused: fused_side, ret: return_side, readings: concat(concat(fused, returns), isolation) }
+          PolarityContradicted { readings: _ } => NoPlacementBasis
+          PolarityUnestablished { gaps: _ } => NoPlacementBasis
+        }
+      }
+    }
+  }
+}
+
+// A two-terminal part is across the input when one terminal reaches a fused-side contact and the other a
+// return-side contact, under an established polarity. Which terminal is which is derived, not stated.
+fn placed_on(basis: PlacementBasis, c: InstalledComponent) -> AcrossInputStanding {
+  match basis {
+    PlacementOnPolarity { graph, input, fused, ret, readings: _ } => placed_under(g: graph, input: input, c: c, fused: fused, ret: ret)
+    NoPlacementBasis => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
+  }
+}
+
+fn across_input(layout: CarrierLayoutObservation, c: InstalledComponent) -> AcrossInputStanding {
+  placed_on(basis: placement_basis(layout: layout), c: c)
+}
+
+fn is_across(s: AcrossInputStanding) -> Bool {
+  match s {
+    AcrossInput { component: _, on_fused: _, on_return: _, fused_path: _, return_path: _ } => true
+    AcrossInputContradicted { component: _, readings: _ } => false
+    AcrossInputUnestablished { component: _, gap: _ } => false
+  }
+}
+
+fn is_contradicted_placement(s: AcrossInputStanding) -> Bool {
+  match s {
+    AcrossInput { component: _, on_fused: _, on_return: _, fused_path: _, return_path: _ } => false
+    AcrossInputContradicted { component: _, readings: _ } => true
+    AcrossInputUnestablished { component: _, gap: _ } => false
+  }
+}
+
+fn placement_readings(s: AcrossInputStanding) -> List<ContinuityObservation> {
+  match s {
+    AcrossInput { component: _, on_fused: _, on_return: _, fused_path, return_path } => concat(fused_path, return_path)
+    AcrossInputContradicted { component: _, readings } => readings
+    AcrossInputUnestablished { component: _, gap: _ } => []
+  }
+}
+
+// ── THE INPUT VOLTAGE BOUND ───────────────────────────────────────────────────────────────────
+//
+// A BOUND IS DERIVED ONLY FROM A PART WHOSE LIMIT IS ESTABLISHED ACROSS THE INPUT: the rail would exceed
+// that part's limit otherwise. Every other rated part is an observed rating, carried with its placement
+// standing and never folded in. (GH200-5, 2026-10-04: adjacency once set a ceiling; a lower-rated part on
+// a downstream rail sharing the region would have lowered it, so adjacency never participates.) The
+// lowest established limit bounds the rail; parts tying it are carried beside it. The bound carries the
+// grade of the readings it rests on, polarity's included. A bound never says what the rail IS.
+
+type InputVoltageUpperBound {
+  asset: PhysicalAssetIdentity
+  input_connector: ComponentInstanceIdentity
+  limiting_component: ComponentInstanceIdentity
+  rated: VoltageWithstand
+  identification: ComponentIdentification
+  placement: AcrossInputStanding
+  grade: EvidenceGrade
+}
+
+type ObservedRating {
+  component: ComponentInstanceIdentity
+  identification: ComponentIdentification
+  rated: VoltageWithstand
+  placement: AcrossInputStanding
+}
+
+type InputBoundStanding
+  = BoundEstablished { bound: InputVoltageUpperBound, equally_limiting: List<InputVoltageUpperBound>, observed: List<ObservedRating> }
+  | BoundContradicted { contradicted: List<ObservedRating>, observed: List<ObservedRating> }
+  | BoundUnestablished { observed: List<ObservedRating> }
+
+fn observed_ratings(layout: CarrierLayoutObservation, basis: PlacementBasis) -> List<ObservedRating> {
+  flat_map(layout.components, c => match identified_withstand(i: c.identification) {
+    Absent => []
+    Present { value: w } => [ObservedRating { component: c.component, identification: c.identification, rated: w, placement: placed_on(basis: basis, c: c) }]
+  })
+}
+
+fn bound_from(layout: CarrierLayoutObservation, input: InputConnector, polarity_readings: List<ContinuityObservation>, o: ObservedRating) -> InputVoltageUpperBound {
+  InputVoltageUpperBound {
+    asset: layout.asset,
+    input_connector: input.housing.component,
+    limiting_component: o.component,
+    rated: o.rated,
+    identification: o.identification,
+    placement: o.placement,
+    grade: evidence_grade(readings: concat(placement_readings(s: o.placement), polarity_readings)),
+  }
+}
+
+fn lowest_rating(across: List<ObservedRating>, first: ObservedRating) -> ObservedRating {
+  fold(across, init: first, f: (acc, x) => if volt_count(v: x.rated.maximum) < volt_count(v: acc.rated.maximum) { x } else { acc })
+}
+
+fn established_bound(layout: CarrierLayoutObservation, input: InputConnector, polarity_readings: List<ContinuityObservation>, across: List<ObservedRating>, first: ObservedRating, observed: List<ObservedRating>) -> InputBoundStanding {
+  let lowest = lowest_rating(across: across, first: first)
+  let ties = filter(across, x => volt_count(v: x.rated.maximum) == volt_count(v: lowest.rated.maximum) && !component_identity_eq(a: x.component, b: lowest.component))
+  BoundEstablished { bound: bound_from(layout: layout, input: input, polarity_readings: polarity_readings, o: lowest), equally_limiting: map(ties, x => bound_from(layout: layout, input: input, polarity_readings: polarity_readings, o: x)), observed: observed }
+}
+
+fn input_bound(layout: CarrierLayoutObservation) -> InputBoundStanding {
+  let basis = placement_basis(layout: layout)
+  let observed = observed_ratings(layout: layout, basis: basis)
+  let contradicted = filter(observed, o => is_contradicted_placement(s: o.placement))
+  let across = filter(observed, o => is_across(s: o.placement))
+  match contradicted.first() {
+    Present { value: _ } => BoundContradicted { contradicted: contradicted, observed: observed }
+    Absent => match across.first() {
+      Absent => BoundUnestablished { observed: observed }
+      Present { value: first } => match basis {
+        NoPlacementBasis => BoundUnestablished { observed: observed }
+        PlacementOnPolarity { graph: _, input, fused: _, ret: _, readings } => established_bound(layout: layout, input: input, polarity_readings: readings, across: across, first: first, observed: observed)
+      }
+    }
+  }
+}
+
+// The junction readings across a two-terminal part on its measured board.
+fn component_junction(layout: CarrierLayoutObservation, c: InstalledComponent) -> List<JunctionStanding> {
+  match layout.measured {
+    Absent => []
+    Present { value: b } => map(pairs_of(ts: component_terminal_refs(c: c)), p => junction_between(observations: b.diode_readings, asset: b.asset, a: p.a, b: p.b))
+  }
+}
+
+// ── ENERGIZED INPUT DRAW ──────────────────────────────────────────────────────────────────────
+//
+// A source reading counts for the input only when its positive lead sat on the input's fused side and
+// its negative lead on the return side, as the established polarity places them; a reading elsewhere is
+// about another pair of terminals. Among the readings on the input, any contradicted bound contradicts
+// the input's; otherwise the bounded ones establish it. A bound says how much the board drew from the
+// input at most, never which circuit drew it or what the input's nominal is.
+
+type InputDrawGap
+  = NoEnergizedInputReading
+  | DrawPolarityNotEstablished
+  | InputReadingsInconclusive { standings: List<SourceDrawStanding> }
+
+type InputDrawStanding
+  = InputDrawBounded { bounded: List<SourceDrawStanding>, observed: List<SourceDrawStanding> }
+  | InputDrawContradicted { contradicted: List<SourceDrawStanding>, observed: List<SourceDrawStanding> }
+  | InputDrawUnestablished { gaps: List<InputDrawGap> }
+
+fn on_side(h: ConnectorHousing, side: RowSide, t: ElectricalTerminalRef) -> Bool {
+  any(side_terminals(h: h, side: side), x => terminal_ref_equal(a: x, b: t))
+}
+
+fn draws_on_input(b: MeasuredBoard, input: InputConnector, fused: RowSide, ret: RowSide) -> List<SourceDrawObservation> {
+  filter(b.source_draws, o => on_side(h: input.housing, side: fused, t: o.feed) && on_side(h: input.housing, side: ret, t: o.return_terminal))
+}
+
+fn input_draw_from(observed: List<SourceDrawStanding>) -> InputDrawStanding {
+  let contradicted = filter(observed, s => is_draw_contradicted(s: s))
+  let bounded = filter(observed, s => is_draw_bounded(s: s))
+  match contradicted.first() {
+    Present { value: _ } => InputDrawContradicted { contradicted: contradicted, observed: observed }
+    Absent => match bounded.first() {
+      Present { value: _ } => InputDrawBounded { bounded: bounded, observed: observed }
+      Absent => match observed.first() {
+        Absent => InputDrawUnestablished { gaps: [NoEnergizedInputReading] }
+        Present { value: _ } => InputDrawUnestablished { gaps: [InputReadingsInconclusive { standings: observed }] }
+      }
+    }
+  }
+}
+
+fn input_draw(layout: CarrierLayoutObservation) -> InputDrawStanding {
+  match layout.measured {
+    Absent => InputDrawUnestablished { gaps: [NoEnergizedInputReading] }
+    Present { value: b } => match layout.input {
+      Absent => InputDrawUnestablished { gaps: [NoEnergizedInputReading] }
+      Present { value: input } => match input_polarity(layout: layout) {
+        PolarityEstablished { fused_side, return_side, fused: _, returns: _, isolation: _ } =>
+          input_draw_from(observed: map(draws_on_input(b: b, input: input, fused: fused_side, ret: return_side), o => source_draw_standing(o: o)))
+        PolarityContradicted { readings: _ } => InputDrawUnestablished { gaps: [DrawPolarityNotEstablished] }
+        PolarityUnestablished { gaps: _ } => InputDrawUnestablished { gaps: [DrawPolarityNotEstablished] }
+      }
+    }
+  }
+}
+
+// ── THE INPUT SWITCHES AND THEIR CONTROLLER ───────────────────────────────────────────────────
+//
+// A SWITCH'S STATE IS READ OFF ITS TERMINALS. Which leads are drain and which source comes from the
+// identified part's datasheet roles, never from a lead's place in a photograph. With the drain read near
+// the input and every source read below half of it, the switch is blocking; with every source within a
+// tenth of the drain it conducts; anything between, or any side unread, establishes no state. A switch
+// whose marking is not matched to a MOSFET row has no roles and no state.
+//
+// AN ENABLE PIN IS HELD LOW ONLY BELOW ITS THRESHOLD'S MINIMUM. A controller's enable pin, found by its
+// datasheet role, is held below threshold when a reading at it -- a value or a stated bound -- lies below
+// the datasheet minimum, and is above threshold when a read value exceeds the maximum. A stated bound
+// at or above the minimum ("below 2.5 V" against a 2.41 V minimum) establishes neither, whatever its
+// words. Each standing carries its readings, so whether they were taken after an incident, of unrecorded
+// order, or hedged travels with it.
+
+type SwitchStateGap
+  = SwitchNotIdentified
+  | DrainUnread
+  | SourcesUnread
+  | SourcesBetweenStates
+
+type InputSwitchStanding
+  = SwitchBlocking { component: ComponentInstanceIdentity, drain: List<NodeVoltageObservation>, sources: List<NodeVoltageObservation> }
+  | SwitchConducting { component: ComponentInstanceIdentity, drain: List<NodeVoltageObservation>, sources: List<NodeVoltageObservation> }
+  | SwitchStateUnestablished { component: ComponentInstanceIdentity, gap: SwitchStateGap }
+
+// Which threshold pin a standing is about: the enable (UVLO/EN), held off below its threshold, or the
+// overvoltage lockout (OVLO), locked out above it.
+type ThresholdPin
+  = EnablePin
+  | OvervoltagePin
+
+type PinReadingGap
+  = ControllerNotIdentified
+  | NoSuchPin
+  | PinUnread
+  | BoundNotBelowMinimum { bound: Millivolt, minimum: Millivolt }
+  | AccessPointUnseparated { points: List<ElectricalTerminalRef>, neighbours: List<ElectricalTerminalRef> }
+  | ReadOnlyAtAttachment { attachments: List<AttachmentStanding> }
+  | ReadWithinWindow
+
+type ControllerPinStanding
+  = PinBelowThreshold { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, minimum: Millivolt }
+  | PinAboveThreshold { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, maximum: Millivolt }
+  | PinThresholdUnestablished { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, gap: PinReadingGap }
+
+fn bench_of(layout: CarrierLayoutObservation) -> List<NodeVoltageObservation> {
+  match layout.measured {
+    Absent => []
+    Present { value: b } => b.bench.voltages
+  }
+}
+
+fn identified_row(c: InstalledComponent) -> ElectronicComponentRow? {
+  match c.identification {
+    IdentifiedByMarking { row, marking: _ } => Present { value: row }
+    MarkingSharedByMakers { rows: _, marking: _ } => Absent
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => Absent
+    RatingPrintedOnBody { rating: _, marking: _ } => Absent
+    ResistanceCodeRead { milliohms: _, marking: _ } => Absent
+    MarkingUnresolved { marking: _, discriminator: _ } => Absent
+    FootprintUnpopulated { evidence: _ } => Absent
+  }
+}
+
+fn mosfet_of(c: InstalledComponent) -> MosfetSpecification? {
+  match identified_row(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      MosfetSpec { mosfet } => Present { value: mosfet }
+      TvsDiodeSpec { tvs: _ } => Absent
+      CapacitorSpec { capacitor: _ } => Absent
+      TemperatureSensorSpec { sensor: _ } => Absent
+      ConnectorSpec { connector: _ } => Absent
+      HotSwapControllerSpec { controller: _ } => Absent
+      ShiftRegisterSpec { register: _ } => Absent
+      LevelTranslatorSpec { translator: _ } => Absent
+      LogicGateSpec { gate: _ } => Absent
+      ProgrammableLogicSpec { logic: _ } => Absent
+      RootOfTrustSpec { root_of_trust: _ } => Absent
+      SerialFlashSpec { flash: _ } => Absent
+    }
+  }
+}
+
+fn controller_of(c: InstalledComponent) -> HotSwapControllerSpecification? {
+  match identified_row(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      HotSwapControllerSpec { controller } => Present { value: controller }
+      TvsDiodeSpec { tvs: _ } => Absent
+      CapacitorSpec { capacitor: _ } => Absent
+      MosfetSpec { mosfet: _ } => Absent
+      TemperatureSensorSpec { sensor: _ } => Absent
+      ConnectorSpec { connector: _ } => Absent
+      ShiftRegisterSpec { register: _ } => Absent
+      LevelTranslatorSpec { translator: _ } => Absent
+      LogicGateSpec { gate: _ } => Absent
+      ProgrammableLogicSpec { logic: _ } => Absent
+      RootOfTrustSpec { root_of_trust: _ } => Absent
+      SerialFlashSpec { flash: _ } => Absent
+    }
+  }
+}
+
+fn register_of(c: InstalledComponent) -> ShiftRegisterSpecification? {
+  match identified_row(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      ShiftRegisterSpec { register } => Present { value: register }
+      _ => Absent
+    }
+  }
+}
+
+// A LEVEL TRANSLATOR'S PINOUT IS READ FROM ITS CANDIDATE ROW, AND SAID SO. A MarkingCandidate credits no
+// property (identified_row is Absent), but naming a pin under the candidate's pinout is a conditional
+// reading the hypothesis may use; the rendering says 'under the candidate pinout'. An identified row
+// reads unconditionally.
+fn translator_row_of(c: InstalledComponent) -> ElectronicComponentRow? {
+  match c.identification {
+    IdentifiedByMarking { row, marking: _ } => Present { value: row }
+    MarkingCandidate { row, marking: _, discriminator: _ } => Present { value: row }
+    MarkingSharedByMakers { rows: _, marking: _ } => Absent
+    RatingPrintedOnBody { rating: _, marking: _ } => Absent
+    ResistanceCodeRead { milliohms: _, marking: _ } => Absent
+    MarkingUnresolved { marking: _, discriminator: _ } => Absent
+    FootprintUnpopulated { evidence: _ } => Absent
+  }
+}
+
+fn translator_of(c: InstalledComponent) -> LevelTranslatorSpecification? {
+  match translator_row_of(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      LevelTranslatorSpec { translator } => Present { value: translator }
+      _ => Absent
+    }
+  }
+}
+
+fn logic_of(c: InstalledComponent) -> ProgrammableLogicSpecification? {
+  match identified_row(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      ProgrammableLogicSpec { logic } => Present { value: logic }
+      _ => Absent
+    }
+  }
+}
+
+// HOW FAR J68 IS IDENTIFIED AS A JTAG HEADER, DERIVED FROM THE READINGS AND NEVER DECLARED. The
+// resistance fingerprint is the ten unpowered readings in the shape of Intel's ten-pin layout (both
+// end positions of one row at the return, the second of that row a low path, three positions open,
+// the first of the other row about 1 kohm, its third and fifth alike); powered corroboration is the
+// labelled re-read with the two returns at 0 V and the reference near 1.8 V; functional identification
+// is a chain scan returning an IDCODE. Each stage requires the one before it.
+type JtagHeaderStanding
+  = JtagFingerprintAbsent
+  | CandidateByResistanceFingerprint
+  | PoweredCorroborated
+  | FunctionallyIdentified
+
+type JtagChainScan {
+  read_on: NonEmptyStr
+  idcode: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+data e1_j68_chain_scans: List<JtagChainScan> = []
+
+fn j68_ohms(rs: List<ResistanceObservation>, n: NonEmptyStr) -> Nat? {
+  match (filter(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref))).first() {
+    Present { value: o } => valued_ohms(o: o)
+    Absent => Absent
+  }
+}
+
+fn j68_is_zero(rs: List<ResistanceObservation>, n: NonEmptyStr) -> Bool {
+  any(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref) && is_reported_zero(o: o))
+}
+
+fn j68_is_open(rs: List<ResistanceObservation>, n: NonEmptyStr) -> Bool {
+  any(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref) && match o.display { DisplayOverRange => true, _ => false })
+}
+
+fn j68_fingerprint_holds(rs: List<ResistanceObservation>) -> Bool {
+  let l3 = j68_ohms(rs: rs, n: "L3")
+  let l5 = j68_ohms(rs: rs, n: "L5")
+  let alike = match l3 { Present { value: v } => match l5 { Present { value: w } => v == w, Absent => false }, Absent => false }
+  let r2_low = match j68_ohms(rs: rs, n: "R2") { Present { value: v } => v < 200, Absent => false }
+  let l1_pulldown = match j68_ohms(rs: rs, n: "L1") { Present { value: v } => v >= 500 && v <= 2000, Absent => false }
+  j68_is_zero(rs: rs, n: "R1") && j68_is_zero(rs: rs, n: "R5") && j68_is_open(rs: rs, n: "R3") && j68_is_open(rs: rs, n: "R4") && j68_is_open(rs: rs, n: "L4") && alike && r2_low && l1_pulldown
+}
+
+fn j68_volt_within(vs: List<PhaseNodeVoltage>, n: NonEmptyStr, lo: Nat, hi: Nat) -> Bool {
+  any(vs, v => terminal_ref_equal(a: v.at, b: e1_terminal(c: e1_j68, name: n)) && match v.value { ReadAbout { value } => millivolt_count(v: value) >= lo && millivolt_count(v: value) <= hi, ReadBelow { bound: _ } => false })
+}
+
+fn j68_powered_corroborated(vs: List<PhaseNodeVoltage>) -> Bool {
+  j68_volt_within(vs: vs, n: "R1", lo: 0, hi: 100) && j68_volt_within(vs: vs, n: "R5", lo: 0, hi: 100) && j68_volt_within(vs: vs, n: "R2", lo: 1600, hi: 2000)
+}
+
+fn j68_jtag_standing(rs: List<ResistanceObservation>, vs: List<PhaseNodeVoltage>, scans: List<JtagChainScan>) -> JtagHeaderStanding {
+  if !j68_fingerprint_holds(rs: rs) { JtagFingerprintAbsent }
+  else if !j68_powered_corroborated(vs: vs) { CandidateByResistanceFingerprint }
+  else if count(scans) == 0 { PoweredCorroborated }
+  else { FunctionallyIdentified }
+}
+
+// J68's powered rows as the layout's own phases hold them, plainly stated only: the 2026-10-20 map's
+// rows carry the orientation dispute as a hedge and so never count toward corroboration, and a layout
+// whose phases lack the labelled re-read derives no corroboration from readings that are not its own.
+fn j68_plain_volts(phases: List<CarrierPhaseObservation>) -> List<PhaseNodeVoltage> {
+  filter(flat_map(phases, p => p.node_voltages), v => any(e1_j68_points, n => terminal_ref_equal(a: v.at, b: e1_terminal(c: e1_j68, name: n))) && match v.certainty { StatedPlainly => true, StatedHedged { verbatim: _ } => false })
+}
+
+fn nat_min_of(vs: List<Nat>) -> Nat {
+  fold(vs, init: 0, f: (acc, v) => if acc == 0 { v } else { nat_min(a: acc, b: v) })
+}
+
+fn root_of_trust_of(c: InstalledComponent) -> RootOfTrustSpecification? {
+  match identified_row(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      RootOfTrustSpec { root_of_trust } => Present { value: root_of_trust }
+      _ => Absent
+    }
+  }
+}
+
+fn flash_of(c: InstalledComponent) -> SerialFlashSpecification? {
+  match identified_row(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      SerialFlashSpec { flash } => Present { value: flash }
+      _ => Absent
+    }
+  }
+}
+
+fn gate_of(c: InstalledComponent) -> LogicGateSpecification? {
+  match translator_row_of(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      LogicGateSpec { gate } => Present { value: gate }
+      _ => Absent
+    }
+  }
+}
+
+// A package terminal's name on this carrier's components: "pin N", or "tab".
+fn package_terminal_name(t: PackageTerminal) -> NonEmptyStr {
+  match t {
+    NumberedPin { number } => join(["pin ", to_string(number)], "") as NonEmptyStr
+    PackageTab => "tab"
+  }
+}
+
+fn is_drain_role(r: FetTerminalRole) -> Bool {
+  match r {
+    FetDrain => true
+    FetSource => false
+    FetGate => false
+  }
+}
+
+fn is_source_role(r: FetTerminalRole) -> Bool {
+  match r {
+    FetSource => true
+    FetDrain => false
+    FetGate => false
+  }
+}
+
+fn role_terminals(c: InstalledComponent, m: MosfetSpecification, drain: Bool) -> List<ElectricalTerminalRef> {
+  map(filter(m.terminals, t => if drain { is_drain_role(r: t.role) } else { is_source_role(r: t.role) }), t => terminal_ref(component: c.component, terminal: package_terminal_name(t: t.terminal) as TerminalIdentity))
+}
+
+fn readings_at(vs: List<NodeVoltageObservation>, ts: List<ElectricalTerminalRef>) -> List<NodeVoltageObservation> {
+  filter(vs, o => any(ts, t => terminal_ref_equal(a: t, b: o.at)))
+}
+
+fn lowest_read_value(vs: List<NodeVoltageObservation>, first: Nat) -> Nat {
+  fold(vs, init: first, f: (acc, o) => if value_ceiling(v: o.value) < acc { value_ceiling(v: o.value) } else { acc })
+}
+
+fn highest_ceiling(vs: List<NodeVoltageObservation>, first: Nat) -> Nat {
+  fold(vs, init: first, f: (acc, o) => if value_ceiling(v: o.value) > acc { value_ceiling(v: o.value) } else { acc })
+}
+
+fn switch_from(c: InstalledComponent, drain: List<NodeVoltageObservation>, sources: List<NodeVoltageObservation>) -> InputSwitchStanding {
+  let drain_values = filter(drain, o => is_read_value(v: o.value))
+  match drain_values.first() {
+    Absent => SwitchStateUnestablished { component: c.component, gap: DrainUnread }
+    Present { value: d0 } => match sources.first() {
+      Absent => SwitchStateUnestablished { component: c.component, gap: SourcesUnread }
+      Present { value: s0 } => {
+        let d = lowest_read_value(vs: drain_values, first: value_ceiling(v: d0.value))
+        let s_high = highest_ceiling(vs: sources, first: value_ceiling(v: s0.value))
+        if s_high * 2 < d {
+          SwitchBlocking { component: c.component, drain: drain_values, sources: sources }
+        } else {
+          if all(sources, o => is_read_value(v: o.value) && value_ceiling(v: o.value) * 10 >= d * 9) {
+            SwitchConducting { component: c.component, drain: drain_values, sources: sources }
+          } else {
+            SwitchStateUnestablished { component: c.component, gap: SourcesBetweenStates }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn input_switch_standing(layout: CarrierLayoutObservation, c: InstalledComponent) -> InputSwitchStanding {
+  match mosfet_of(c: c) {
+    Absent => SwitchStateUnestablished { component: c.component, gap: SwitchNotIdentified }
+    Present { value: m } => {
+      let vs = bench_of(layout: layout)
+      switch_from(c: c, drain: readings_at(vs: vs, ts: role_terminals(c: c, m: m, drain: true)), sources: readings_at(vs: vs, ts: role_terminals(c: c, m: m, drain: false)))
+    }
+  }
+}
+
+fn has_threshold_role(p: ControllerPin, which: ThresholdPin) -> Bool {
+  match p.role {
+    UndervoltageEnable => match which {
+      EnablePin => true
+      OvervoltagePin => false
+    }
+    OvervoltageLockout => match which {
+      EnablePin => false
+      OvervoltagePin => true
+    }
+    _ => false
+  }
+}
+
+fn threshold_window(ctl: HotSwapControllerSpecification, which: ThresholdPin) -> ThresholdWindow {
+  match which {
+    EnablePin => ctl.enable_threshold
+    OvervoltagePin => ctl.overvoltage_threshold
+  }
+}
+
+fn controller_pin_terminal(c: InstalledComponent, p: ControllerPin) -> ElectricalTerminalRef {
+  terminal_ref(component: c.component, terminal: package_terminal_name(t: NumberedPin { number: p.number }) as TerminalIdentity)
+}
+
+fn threshold_from(c: InstalledComponent, window: ThresholdWindow, readings: List<NodeVoltageObservation>) -> ControllerPinStanding {
+  let minimum = millivolt_count(v: window.minimum)
+  let maximum = millivolt_count(v: window.maximum)
+  let below = filter(readings, o => value_ceiling(v: o.value) < minimum)
+  let above = filter(readings, o => is_read_value(v: o.value) && value_ceiling(v: o.value) > maximum)
+  match below.first() {
+    Present { value: _ } => PinBelowThreshold { component: c.component, readings: below, minimum: window.minimum }
+    Absent => match above.first() {
+      Present { value: _ } => PinAboveThreshold { component: c.component, readings: above, maximum: window.maximum }
+      Absent => match readings.first() {
+        Absent => PinThresholdUnestablished { component: c.component, readings: [], gap: PinUnread }
+        Present { value: r0 } => if is_read_value(v: r0.value) {
+          PinThresholdUnestablished { component: c.component, readings: readings, gap: ReadWithinWindow }
+        } else {
+          PinThresholdUnestablished { component: c.component, readings: readings, gap: BoundNotBelowMinimum { bound: millivolt(count: value_ceiling(v: r0.value)), minimum: window.minimum } }
+        }
+      }
+    }
+  }
+}
+
+fn resistances_of(layout: CarrierLayoutObservation) -> List<ResistanceObservation> {
+  match layout.measured {
+    Absent => []
+    Present { value: b } => b.bench.resistances
+  }
+}
+
+fn other_end(o: ResistanceObservation, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
+  if terminal_ref_equal(a: o.first, b: t) { [o.second] } else { if terminal_ref_equal(a: o.second, b: t) { [o.first] } else { [] } }
+}
+
+// WHERE A PIN MAY BE READ: the pin itself, and a point a resistance reading joins to it at the
+// shorted-probe baseline AND readings separate from each neighbouring pin on the same side of the
+// package -- a value or over range, not the baseline. A pad joined to "the seventh lead" is the
+// eighth's as easily, so until its neighbours are excluded it is a candidate, not an access point. A
+// point joined only by a kilohm reading is another node, whatever its place.
+fn joined_at_baseline(layout: CarrierLayoutObservation, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
+  flat_map(filter(resistances_of(layout: layout), o => is_at_baseline(o: o)), o => other_end(o: o, t: t))
+}
+
+// Points a reading reports at zero to t with no shorted-probe baseline recorded: not joined to it.
+fn reported_zero_to(layout: CarrierLayoutObservation, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
+  flat_map(filter(resistances_of(layout: layout), o => is_reported_zero(o: o)), o => other_end(o: o, t: t))
+}
+
+// Separated: some reading between the two stands above the baseline, and none joins them at it.
+fn separated(layout: CarrierLayoutObservation, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  let between = filter(resistances_of(layout: layout), o => any(other_end(o: o, t: a), x => terminal_ref_equal(a: x, b: b)))
+  any(between, o => !is_at_baseline(o: o)) && !any(between, o => is_at_baseline(o: o))
+}
+
+fn same_side(n: Nat, m: Nat, half: Nat) -> Bool {
+  (n <= half && m <= half) || (n > half && m > half)
+}
+
+fn neighbour_terminals(c: InstalledComponent, ctl: HotSwapControllerSpecification, pin: ControllerPin) -> List<ElectricalTerminalRef> {
+  let half = count(ctl.pins) / 2
+  map(filter(ctl.pins, q => same_side(n: q.number, m: pin.number, half: half) && (q.number + 1 == pin.number || pin.number + 1 == q.number)), q => controller_pin_terminal(c: c, p: q))
+}
+
+fn is_access_point(layout: CarrierLayoutObservation, x: ElectricalTerminalRef, neighbours: List<ElectricalTerminalRef>) -> Bool {
+  all(neighbours, n => separated(layout: layout, a: x, b: n))
+}
+
+// A WIRE STANDS FOR ITS LEAD ONLY ONCE A READING JOINS THEM. An attachment is the operator's word that a
+// probe wire sits on a terminal (product.electrical.bench_session ProbeAttachment). It is joined when a
+// resistance reading puts the wire's point at the shorted-probe baseline to that terminal -- the
+// relation an access point is found by -- and until then it is disputed if the operator has since
+// doubted where it sat, and otherwise unconfirmed. A joined wire is then one more point joined to the
+// pin, and reads for it only as an access point, separated from the pin's neighbours.
+// An attachment the operator has ruled on, with no reading joining it, is settled in the record but
+// still no reading of the pin: a ruling closes the question, and a voltage at the wire stands for the
+// pin only once a reading joins them.
+type AttachmentStanding
+  = AttachmentJoined { attachment: ProbeAttachment, joins: List<ResistanceObservation> }
+  | AttachmentRuled { attachment: ProbeAttachment }
+  | AttachmentDisputed { attachment: ProbeAttachment }
+  | AttachmentUnconfirmed { attachment: ProbeAttachment }
+
+fn attachments_of(layout: CarrierLayoutObservation) -> List<ProbeAttachment> {
+  match layout.measured {
+    Absent => []
+    Present { value: b } => b.bench.attachments
+  }
+}
+
+fn attachment_standing(layout: CarrierLayoutObservation, a: ProbeAttachment) -> AttachmentStanding {
+  let joins = filter(resistances_of(layout: layout), o => is_at_baseline(o: o) && any(other_end(o: o, t: a.point), x => terminal_ref_equal(a: x, b: a.intended)))
+  match joins.first() {
+    Present { value: _ } => AttachmentJoined { attachment: a, joins: joins }
+    Absent => match a.ruling.first() {
+      Present { value: _ } => AttachmentRuled { attachment: a }
+      Absent => match a.disputes.first() {
+        Present { value: _ } => AttachmentDisputed { attachment: a }
+        Absent => AttachmentUnconfirmed { attachment: a }
+      }
+    }
+  }
+}
+
+fn attachment_of(s: AttachmentStanding) -> ProbeAttachment {
+  match s {
+    AttachmentJoined { attachment, joins: _ } => attachment
+    AttachmentRuled { attachment } => attachment
+    AttachmentDisputed { attachment } => attachment
+    AttachmentUnconfirmed { attachment } => attachment
+  }
+}
+
+fn is_attachment_joined(s: AttachmentStanding) -> Bool {
+  match s {
+    AttachmentJoined { attachment: _, joins: _ } => true
+    AttachmentRuled { attachment: _ } => false
+    AttachmentDisputed { attachment: _ } => false
+    AttachmentUnconfirmed { attachment: _ } => false
+  }
+}
+
+// The attachments meant for a terminal that no reading yet joins to it.
+fn unjoined_attachments(layout: CarrierLayoutObservation, t: ElectricalTerminalRef) -> List<AttachmentStanding> {
+  filter(map(filter(attachments_of(layout: layout), a => terminal_ref_equal(a: a.intended, b: t)), a => attachment_standing(layout: layout, a: a)), s => !is_attachment_joined(s: s))
+}
+
+fn threshold_pin_of(ctl: HotSwapControllerSpecification, which: ThresholdPin) -> ControllerPin? {
+  (filter(ctl.pins, p => has_threshold_role(p: p, which: which))).first()
+}
+
+fn pin_readings(layout: CarrierLayoutObservation, c: InstalledComponent, ctl: HotSwapControllerSpecification, which: ThresholdPin) -> List<NodeVoltageObservation> {
+  match threshold_pin_of(ctl: ctl, which: which) {
+    Absent => []
+    Present { value: pin } => {
+      let t = controller_pin_terminal(c: c, p: pin)
+      let neighbours = neighbour_terminals(c: c, ctl: ctl, pin: pin)
+      readings_at(vs: bench_of(layout: layout), ts: concat([t], filter(joined_at_baseline(layout: layout, t: t), x => is_access_point(layout: layout, x: x, neighbours: neighbours))))
+    }
+  }
+}
+
+fn controller_pin_standing(layout: CarrierLayoutObservation, c: InstalledComponent, which: ThresholdPin) -> ControllerPinStanding {
+  match controller_of(c: c) {
+    Absent => PinThresholdUnestablished { component: c.component, readings: [], gap: ControllerNotIdentified }
+    Present { value: ctl } => match threshold_pin_of(ctl: ctl, which: which) {
+      Absent => PinThresholdUnestablished { component: c.component, readings: [], gap: NoSuchPin }
+      Present { value: pin } => match (pin_readings(layout: layout, c: c, ctl: ctl, which: which)).first() {
+        Present { value: _ } => threshold_from(c: c, window: threshold_window(ctl: ctl, which: which), readings: pin_readings(layout: layout, c: c, ctl: ctl, which: which))
+        Absent => {
+          let t = controller_pin_terminal(c: c, p: pin)
+          let neighbours = neighbour_terminals(c: c, ctl: ctl, pin: pin)
+          let candidates = filter(joined_at_baseline(layout: layout, t: t), x => !is_access_point(layout: layout, x: x, neighbours: neighbours))
+          let at_candidates = readings_at(vs: bench_of(layout: layout), ts: candidates)
+          match at_candidates.first() {
+            Absent => unjoined_pin_standing(layout: layout, c: c, window: threshold_window(ctl: ctl, which: which), t: t)
+            Present { value: _ } => PinThresholdUnestablished { component: c.component, readings: at_candidates, gap: AccessPointUnseparated { points: candidates, neighbours: neighbours } }
+          }
+        }
+      }
+    }
+  }
+}
+
+// A pin with no reading at it or at a point joined to it: readings at a wire meant for it, which no
+// reading joins to it, say so rather than leave the pin merely unread; they never stand for the pin.
+// Only the attachments whose points carry a reading are named: a wire that was never read at is not
+// where the pin's readings are.
+fn unjoined_pin_standing(layout: CarrierLayoutObservation, c: InstalledComponent, window: ThresholdWindow, t: ElectricalTerminalRef) -> ControllerPinStanding {
+  let unjoined = filter(unjoined_attachments(layout: layout, t: t), s => count(readings_at(vs: bench_of(layout: layout), ts: [attachment_of(s: s).point])) > 0)
+  let at_unjoined = readings_at(vs: bench_of(layout: layout), ts: map(unjoined, s => attachment_of(s: s).point))
+  match at_unjoined.first() {
+    Absent => threshold_from(c: c, window: window, readings: [])
+    Present { value: _ } => PinThresholdUnestablished { component: c.component, readings: at_unjoined, gap: ReadOnlyAtAttachment { attachments: unjoined } }
+  }
+}
+
+fn controller_enable_standing(layout: CarrierLayoutObservation, c: InstalledComponent) -> ControllerPinStanding {
+  controller_pin_standing(layout: layout, c: c, which: EnablePin)
+}
+
+fn controller_overvoltage_standing(layout: CarrierLayoutObservation, c: InstalledComponent) -> ControllerPinStanding {
+  controller_pin_standing(layout: layout, c: c, which: OvervoltagePin)
+}
+
+// WHETHER THE INPUT ALONE CAN EVER ENABLE THE CONTROLLER. Two read values of the enable pin under two
+// source settings, in the same proportion to their sources within a twentieth, say the pin tracks the
+// input; the input at which it would reach the threshold's minimum is then the source scaled by the
+// threshold over the reading. Above the input's established upper bound, no input the board is rated
+// for enables it on its own.
+type ProjectionGap
+  = ProjectionControllerNotIdentified
+  | FewerThanTwoSourceSettings
+  | NotProportionalToSource
+  | NoInputBound
+  | ProjectionReadOnlyAtAttachment { attachments: List<AttachmentStanding> }
+
+type EnableProjection
+  = EnableUnreachableWithinInputBound { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, turn_on_millivolts: Nat, bound: Volt }
+  | EnableReachableWithinInputBound { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, turn_on_millivolts: Nat, bound: Volt }
+  | EnableProjectionUnestablished { component: ComponentInstanceIdentity, gap: ProjectionGap }
+
+fn source_millivolts(o: NodeVoltageObservation) -> Nat {
+  volt_count(v: o.source) * 1000
+}
+
+fn proportional(a: NodeVoltageObservation, b: NodeVoltageObservation) -> Bool {
+  let p = value_ceiling(v: a.value) * source_millivolts(o: b)
+  let q = value_ceiling(v: b.value) * source_millivolts(o: a)
+  let d = if p >= q { p - q } else { q - p }
+  d * 20 <= p
+}
+
+fn bound_volt(layout: CarrierLayoutObservation) -> Volt? {
+  match input_bound(layout: layout) {
+    BoundEstablished { bound, equally_limiting: _, observed: _ } => Present { value: bound.rated.maximum }
+    BoundContradicted { contradicted: _, observed: _ } => Absent
+    BoundUnestablished { observed: _ } => Absent
+  }
+}
+
+fn projection_from(layout: CarrierLayoutObservation, c: InstalledComponent, ctl: HotSwapControllerSpecification, a: NodeVoltageObservation, b: NodeVoltageObservation) -> EnableProjection {
+  if !proportional(a: a, b: b) {
+    EnableProjectionUnestablished { component: c.component, gap: NotProportionalToSource }
+  } else {
+    match bound_volt(layout: layout) {
+      Absent => EnableProjectionUnestablished { component: c.component, gap: NoInputBound }
+      Present { value: bound } => {
+        let turn_on = millivolt_count(v: ctl.enable_threshold.minimum) * source_millivolts(o: a) / value_ceiling(v: a.value)
+        if turn_on > volt_count(v: bound) * 1000 {
+          EnableUnreachableWithinInputBound { component: c.component, readings: [a, b], turn_on_millivolts: turn_on, bound: bound }
+        } else {
+          EnableReachableWithinInputBound { component: c.component, readings: [a, b], turn_on_millivolts: turn_on, bound: bound }
+        }
+      }
+    }
+  }
+}
+
+// With no value at the pin, the enable standing says whether its only readings sit at a wire no reading
+// joins to it; the projection takes that gap from the standing rather than finding it again.
+fn unread_projection_gap(s: ControllerPinStanding) -> ProjectionGap {
+  match s {
+    PinThresholdUnestablished { component: _, readings: _, gap } => match gap {
+      ReadOnlyAtAttachment { attachments } => ProjectionReadOnlyAtAttachment { attachments: attachments }
+      _ => FewerThanTwoSourceSettings
+    }
+    _ => FewerThanTwoSourceSettings
+  }
+}
+
+fn enable_projection(layout: CarrierLayoutObservation, c: InstalledComponent) -> EnableProjection {
+  match controller_of(c: c) {
+    Absent => EnableProjectionUnestablished { component: c.component, gap: ProjectionControllerNotIdentified }
+    Present { value: ctl } => {
+      let values = filter(pin_readings(layout: layout, c: c, ctl: ctl, which: EnablePin), o => is_read_value(v: o.value) && value_ceiling(v: o.value) > 0)
+      match values.first() {
+        Absent => EnableProjectionUnestablished { component: c.component, gap: unread_projection_gap(s: controller_enable_standing(layout: layout, c: c)) }
+        Present { value: a } => match (filter(values, o => volt_count(v: o.source) != volt_count(v: a.source))).first() {
+          Absent => EnableProjectionUnestablished { component: c.component, gap: FewerThanTwoSourceSettings }
+          Present { value: b } => projection_from(layout: layout, c: c, ctl: ctl, a: a, b: b)
+        }
+      }
+    }
+  }
+}
+
+// THE BIAS SUPPLY IS RENDERED, NOT JUDGED. Readings at the controller's internal-regulator output, or at
+// a point joined to it at the shorted-probe baseline, are shown with whether that point is the pin's
+// access point by the threshold pins' rule; no window is read from them. That rule needs separation from
+// both neighbouring leads, and SNVS950C lets CL and the address pins be tied to VDD, so it is not this
+// pin's rule on every board, and this pin's own access rule is unmodeled.
+fn is_regulator_output(p: ControllerPin) -> Bool {
+  match p.role {
+    InternalRegulatorOutput => true
+    _ => false
+  }
+}
+
+// ── CARRIER PHASES (product.electrical.carrier_phase, read on this carrier) ──────────────────
+
+// The draw the carrier showed on J20 before any local control was moved: the highest loaded reading
+// among its source-draw observations. A phase with nothing lit drawing no more than this is bias only.
+fn highest_loaded(ds: List<SourceDrawObservation>, first: Nat) -> Nat {
+  fold(ds, init: first, f: (acc, d) => if milliampere_count(i: d.loaded_reading) > acc { milliampere_count(i: d.loaded_reading) } else { acc })
+}
+
+fn bias_ceiling(b: MeasuredBoard) -> Milliampere {
+  milliampere(count: highest_loaded(ds: b.source_draws, first: 0))
+}
+
+// The input switches' source-role terminals: where the protected input bus would read, on parts whose
+// identification gives their terminals roles.
+fn downstream_terminals(layout: CarrierLayoutObservation) -> List<ElectricalTerminalRef> {
+  flat_map(layout.components, c => match mosfet_of(c: c) {
+    Absent => []
+    Present { value: m } => role_terminals(c: c, m: m, drain: false)
+  })
+}
+
+fn phases_of(layout: CarrierLayoutObservation) -> List<CarrierPhaseObservation> {
+  match layout.measured {
+    Absent => []
+    Present { value: b } => b.phases
+  }
+}
+
+fn phase_standing_in(layout: CarrierLayoutObservation, key: NonEmptyStr) -> CarrierPhaseStanding? {
+  match layout.measured {
+    Absent => Absent
+    Present { value: b } => match phase_by_key(phases: b.phases, key: key) {
+      Absent => Absent
+      Present { value: p } => Present { value: carrier_phase_standing(o: p, bias_ceiling: bias_ceiling(b: b)) }
+    }
+  }
+}
+
+fn protected_bus_in(layout: CarrierLayoutObservation, key: NonEmptyStr) -> ProtectedBusStanding? {
+  match phase_by_key(phases: phases_of(layout: layout), key: key) {
+    Absent => Absent
+    Present { value: p } => Present { value: protected_bus_standing(o: p, downstream: downstream_terminals(layout: layout)) }
+  }
+}
+
+// How many of a part's terminals read at or below a ceiling from Q300's lead b, from the record: the
+// count that says whether a part meets the gate network at one contact or sits across it.
+fn terminals_reading_at_most(rs: List<ResistanceObservation>, c: ComponentInstanceIdentity, names: List<NonEmptyStr>, ceiling_ohms: Nat) -> List<NonEmptyStr> {
+  filter(names, n => any(rs, o => observation_reads_pair(o: o, a: e1_q300_lead_b, b: e1_terminal(c: c, name: n)) && match valued_ohms(o: o) { Present { value: v } => v <= ceiling_ohms, Absent => false }))
+}

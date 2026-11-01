@@ -1,0 +1,129 @@
+module product.electrical.identification
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Ampere, Volt, volt_count }
+import extdeps.electronic_component.types {
+  CapacitorRatedVoltage,
+  DrainSourceMaximum,
+  ElectronicComponentRow,
+  FuseInterruptRating,
+  TvsReverseStandoff,
+  voltage_withstand,
+  VoltageWithstand,
+  VoltageWithstandKind,
+}
+import product.electrical.connectivity { ComponentInstanceIdentity, TerminalIdentity }
+import product.electrical.continuity { EvidenceRef }
+
+// HOW AN INSTALLED PART IS IDENTIFIED, for any board read at the bench. A part credits its
+// datasheet row (extdeps.electronic_component) only once its marking is read and matched; until then it
+// contributes no property. The vocabulary was first written for the P4261 carriers (product.p4261) and
+// holds nothing particular to them.
+
+// ── IDENTIFICATION ────────────────────────────────────────────────────────────────────────────
+//
+//   IdentifiedByMarking      the marking matches one maker's table, so the part's specification is cited
+//   MarkingSharedByMakers    the marking matches one code in several makers' tables and the maker is not
+//                            identified: a property counts only where every candidate supports it
+//   MarkingCandidate         the marking matches one maker's code, but whether that maker made the part
+//                            is unread: a lead, contributing no property until the discriminator is read
+//   RatingPrintedOnBody      the part prints its own rating; no datasheet, and no decoding either
+//   ResistanceCodeRead       a resistance code, read and decoded
+//   MarkingUnresolved        the marking is read (or unread) and NOT decoded; it contributes nothing
+//   FootprintUnpopulated     a footprint with no part on it
+//
+// Each reading of a marking carries its own receipt, so a part never inherits another's identity by
+// sitting nearby or looking alike.
+
+type MarkingReading {
+  text: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+type PrintedRating = PrintedFuseRating { current: Ampere, interrupt_voltage: Volt? }
+
+type ComponentIdentification
+  = IdentifiedByMarking { row: ElectronicComponentRow, marking: MarkingReading }
+  | MarkingSharedByMakers { rows: List<ElectronicComponentRow>, marking: MarkingReading }
+  | MarkingCandidate { row: ElectronicComponentRow, marking: MarkingReading, discriminator: NonEmptyStr }
+  | RatingPrintedOnBody { rating: PrintedRating, marking: MarkingReading }
+  | ResistanceCodeRead { milliohms: Nat, marking: MarkingReading }
+  | MarkingUnresolved { marking: MarkingReading?, discriminator: NonEmptyStr }
+  | FootprintUnpopulated { evidence: EvidenceRef }
+
+type InstalledComponent {
+  component: ComponentInstanceIdentity
+  terminals: List<TerminalIdentity>
+  identification: ComponentIdentification
+}
+
+fn names(ns: List<NonEmptyStr>) -> List<TerminalIdentity> {
+  map(ns, n => n as TerminalIdentity)
+}
+
+fn withstand_kind_key(k: VoltageWithstandKind) -> Nat {
+  match k {
+    TvsReverseStandoff => 0
+    CapacitorRatedVoltage => 1
+    DrainSourceMaximum => 2
+    FuseInterruptRating => 3
+  }
+}
+
+fn withstand_list(rows: List<ElectronicComponentRow>) -> List<VoltageWithstand> {
+  flat_map(rows, r => match voltage_withstand(spec: r.specification) {
+    Absent => []
+    Present { value: w } => [w]
+  })
+}
+
+fn highest_withstand(ws: List<VoltageWithstand>, w0: VoltageWithstand) -> VoltageWithstand {
+  fold(ws, init: w0, f: (acc, w) => if volt_count(v: w.maximum) > volt_count(v: acc.maximum) { w } else { acc })
+}
+
+// THE PROPERTY EVERY CANDIDATE SUPPORTS. The installed part is one of the candidates, so a voltage limit
+// holds for it only if it holds for all of them: they must agree on the kind of limit, and the limit
+// carried is the HIGHEST candidate figure -- the rail stays below the installed part's figure, which is
+// at most that. (The first revision carried the lowest, which a higher-rated installed candidate would
+// falsify.) Candidates of different kinds support no limit.
+fn agreed_withstand(rows: List<ElectronicComponentRow>, ws: List<VoltageWithstand>, w0: VoltageWithstand) -> List<VoltageWithstand> {
+  if count(ws) == count(rows) && all(ws, w => withstand_kind_key(k: w.kind) == withstand_kind_key(k: w0.kind)) { [highest_withstand(ws: ws, w0: w0)] } else { [] }
+}
+
+fn shared_withstand(rows: List<ElectronicComponentRow>) -> VoltageWithstand? {
+  let ws = withstand_list(rows: rows)
+  match ws.first() {
+    Absent => Absent
+    Present { value: w0 } => agreed_withstand(rows: rows, ws: ws, w0: w0).first()
+  }
+}
+
+fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
+  match i {
+    IdentifiedByMarking { row, marking: _ } => voltage_withstand(spec: row.specification)
+    MarkingSharedByMakers { rows, marking: _ } => shared_withstand(rows: rows)
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => Absent
+    RatingPrintedOnBody { rating, marking: _ } => match rating {
+      PrintedFuseRating { current: _, interrupt_voltage } => match interrupt_voltage {
+        Absent => Absent
+        Present { value: v } => Present { value: VoltageWithstand { kind: FuseInterruptRating, maximum: v } }
+      }
+    }
+    ResistanceCodeRead { milliohms: _, marking: _ } => Absent
+    MarkingUnresolved { marking: _, discriminator: _ } => Absent
+    FootprintUnpopulated { evidence: _ } => Absent
+  }
+}
+
+fn identification_text(i: ComponentIdentification) -> String? {
+  match i {
+    IdentifiedByMarking { row, marking } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking.text as String, "'"], "") }
+    MarkingSharedByMakers { rows, marking } => Present { value: join(["one of ", join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or "), " (maker not identified), from the marking '", marking.text as String, "'"], "") }
+    MarkingCandidate { row, marking, discriminator } => Present { value: join(["CANDIDATE ", row.vendor.legal_name as String, " ", row.ordering_code as String, " from the marking '", marking.text as String, "' (not identified: ", discriminator as String, ")"], "") }
+    RatingPrintedOnBody { rating: _, marking } => Present { value: join(["rating printed on the body: '", marking.text as String, "'"], "") }
+    ResistanceCodeRead { milliohms, marking } => Present { value: join([to_string(milliohms), " milliohms by the resistor code '", marking.text as String, "'"], "") }
+    MarkingUnresolved { marking: _, discriminator: _ } => Absent
+    FootprintUnpopulated { evidence: _ } => Absent
+  }
+}

@@ -14,15 +14,10 @@ import extdeps.external_authority { cited_figure_read_obligation }
 import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
 import extdeps.systems.types { SuperchipServerCatalogRow, SuperchipCarrierBoardRow, BoardPowerInput }
 import extdeps.boards.asrock_rack_arlington_mb { asrock_rack_arlington_mb }
-import product.p4261_carrier_layout {
-  CarrierLayoutObservation,
-  p4261_k1_layout,
-  p4261_e1_layout,
-  carrier_input_reading,
-  carrier_label_text,
-  management_io_text,
-  edge_connector_text,
-}
+import product.p4261.design { CarrierLayoutObservation }
+import product.p4261.k1 { p4261_k1_layout }
+import product.p4261.e1 { p4261_e1_layout }
+import product.p4261.report { carrier_input_reading, carrier_label_text, management_io_text, edge_connector_text }
 
 // GH200-1 (2026-10-03). WHAT IT TAKES TO QUALIFY ONE MODULE-ON-CARRIER ASSEMBLY. The operator bought
 // two PG530 modules and one P4261 carrier and will qualify that pair before duplicating it -- and
@@ -174,7 +169,7 @@ data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation 
 }
 
 // The carrier's labels, PCB code and "Rework" silkscreen are typed readings on its layout
-// (product.p4261_carrier_layout p4261_k1_layout markings), and carrier_label reads the received unit's
+// (product.p4261.k1 p4261_k1_layout markings), and carrier_label reads the received unit's
 // label from there, so this row restates none of them. The module face is the two connectors
 // silkscreened J3 and J4, one toward each short edge, each flanked by mounting holes.
 data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
@@ -192,7 +187,7 @@ data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
 
 
 
-// The E1 carrier, the board the bench readings were taken on (product.p4261_carrier_layout
+// The E1 carrier, the board the bench readings were taken on (product.p4261.e1
 // p4261_e1_layout carries its label, PCB code and every reading). Its module receptacles were not
 // photographed face-on, so its face is unobserved: the K1's J3/J4 photographs are another board's.
 data p4261_e1_carrier: CarrierUnitObservation = CarrierUnitObservation {

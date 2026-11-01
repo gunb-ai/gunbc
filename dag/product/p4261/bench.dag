@@ -1,0 +1,26 @@
+module product.p4261.bench
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { milliampere }
+import product.electrical.carrier_phase { CurrentRead, CurrentUnrecorded, SourceModeUnrecorded, SupplyReading }
+import product.electrical.continuity { EvidenceRef, OperatorStatement }
+
+// WHAT ONE BENCH SESSION RECORDED ACROSS BOTH UNITS: statements and probe-point bases that the E1's
+// and the K1's records each cite, held here so neither unit's module imports the other's. Three
+// keep their e1_ names (e1_read_ma, e1_draw_unrecorded, e1_short_after_said): the K1's records cite
+// them too.
+
+data inductor_pad_unrecorded: NonEmptyStr = "pad read (which of the two unrecorded)"
+
+data inductor_pad_near_u4: NonEmptyStr = "pad closer to U4"
+
+data inductor_pad_far_u4: NonEmptyStr = "pad farther from U4"
+
+data e1_short_after_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-21", verbatim: "idk nothing is hot / 4R7 near U4 is showing both terminals at ground on 2k. On K1, that 4R7 is ~4k ohms / yeah they're all at 0 ohms" }
+
+fn e1_read_ma(count: Nat) -> SupplyReading {
+  SupplyReading { voltage: Absent, current: CurrentRead { value: milliampere(count: count) }, mode: SourceModeUnrecorded }
+}
+
+data e1_draw_unrecorded: SupplyReading = SupplyReading { voltage: Absent, current: CurrentUnrecorded, mode: SourceModeUnrecorded }

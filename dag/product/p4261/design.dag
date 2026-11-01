@@ -1,0 +1,269 @@
+module product.p4261.design
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer }
+import product.placement_supply { PhysicalAssetIdentity }
+import extdeps.electronic_component.types { ElectronicComponentRow }
+import product.electrical.carrier_phase { CarrierPhaseObservation, CarrierTransitionObservation, SwitchPoleClosure }
+import extdeps.connector.amphenol_g97v22332hr { g97v22332hr }
+import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalDesignIdentity, ElectricalTerminalRef, TerminalIdentity }
+import product.electrical.source_draw { SourceDrawObservation }
+import product.electrical.bench_session { BenchRecord }
+import product.electrical.continuity { ContinuityObservation, DiodeModeObservation, EvidenceRef }
+import product.electrical.identification { InstalledComponent, names }
+import product.electrical.investigation_hypothesis { InvestigationHypothesis }
+
+// GH200-3 (2026-10-04). THE P4261 CARRIER AS OBSERVED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
+// document names this board, so everything here is the operator's observation of a physical unit,
+// kept in the product layer (DESIGN section 3: observations are receipts downstream, never upstream
+// facts). What IS upstream -- a part's datasheet specification once its marking is matched -- lives in
+// extdeps.electronic_component and extdeps.connector and is consumed here.
+//
+// GH200-P10 (2026-10-16, review of gunbc#14070): ONE TYPED AUTHORITY. Each carrier is an
+// ElectricalDesignIdentity bound to its physical asset; its parts are ComponentInstanceIdentity values
+// and their pads ElectricalTerminalRef values (product.electrical.connectivity). Bench readings are
+// terminal-to-terminal receipts (product.electrical.continuity), and polarity, placement across the
+// input and the voltage bound are derived from them with typed causes, explicit Unestablished and
+// Contradicted standings, and the grade of their evidence: a reading whose second probe point is
+// inferred from the operator's words is kept and typed as such, and every derivation resting on one
+// says so. Strings below are transcriptions of what was printed or said, obligations, hypotheses, or
+// renderer output; no deduction reads them.
+//
+// THE P4261 AS A DESIGN: the shape of a carrier's observation record and the part pinouts and leads that hold
+// for every P4261 unit. Each unit's own records are product.p4261.e1 and product.p4261.k1, readings that one
+// bench session took across both units are product.p4261.bench, the derivations are
+// product.p4261.readings and the rendered report is product.p4261.report.
+
+// ── CONNECTOR HOUSINGS ────────────────────────────────────────────────────────────────────────
+
+// WHICH PHYSICAL ROW, against a reference anyone can find on the housing: the latch. A row swap reverses
+// polarity, so a position whose side was not recorded is never assumed.
+type RowSide
+  = LatchSide
+  | AwayFromLatch
+  | SideUnrecorded
+
+type HousingPosition {
+  terminal: TerminalIdentity
+  side: RowSide
+  index: Nat
+}
+
+// A connector's contact inventory: each position is a terminal of the connector's component instance,
+// so its count is the inventory's length and nothing else, and the sides carry their own receipt.
+type ConnectorHousing {
+  component: ComponentInstanceIdentity
+  positions: List<HousingPosition>
+  sides_evidence: EvidenceRef
+}
+
+type ConnectorPositionCensus
+  = CountedFromPhotograph { positions: Nat, evidence: EvidenceRef }
+  | MappedOnHousing { housing: ConnectorHousing }
+
+// A caliper span across a row of cavities: so many pitches plus so many cavity widths.
+type CaliperAxis
+  = AlongRow
+  | AcrossRows
+
+type CaliperSpan {
+  axis: CaliperAxis
+  measured: Micrometer
+  pitches: Nat
+  cavities: Nat
+  evidence: EvidenceRef
+}
+
+// ── BOARD MARKINGS AND SURVEYS ────────────────────────────────────────────────────────────────
+
+type BoardMarking
+  = AssemblyLabel { model: NonEmptyStr, part_number: NonEmptyStr, revision: NonEmptyStr, serial: NonEmptyStr, evidence: EvidenceRef }
+  | PcbCode { code: NonEmptyStr, printed_beside: NonEmptyStr?, evidence: EvidenceRef }
+  | RevisionSticker { revision: NonEmptyStr, serial: NonEmptyStr, evidence: EvidenceRef }
+  | FabricationMark { text: NonEmptyStr, evidence: EvidenceRef }
+
+type CavityGrid {
+  columns: Nat
+  rows: Nat
+}
+
+type BackplaneConnectorObservation {
+  seen: Nat
+  face: CavityGrid?
+  guide_pin_seen: Bool
+  power_blade_seen: Bool
+  evidence: EvidenceRef
+}
+
+type ReadOnUnit
+  = ReadOnAsset { asset: PhysicalAssetIdentity }
+  | UnitUnrecorded
+
+type ConnectorFamilyCandidate {
+  row: ElectronicComponentRow
+  marking: NonEmptyStr
+  read_on: ReadOnUnit
+}
+
+type ConnectorCensus
+  = CensusComplete { count: Nat, family: ElectronicComponentRow }
+  | CensusPartial { counted_at_least: Nat, designators_read: List<NonEmptyStr>, family_candidate: ConnectorFamilyCandidate?, obligation: NonEmptyStr }
+
+// HOW MUCH OF THE BOARD THE MANAGEMENT-I/O READING COVERS. An absence ("no RJ45, no console header") is a
+// reading only of a board photographed whole; close-ups establish what they show and nothing else.
+type ManagementIoSurvey
+  = WholeBoardPhotographed
+  | PartlyPhotographed { not_covered: NonEmptyStr }
+
+// A receptacle's candidate families stay candidates until a discriminator (part number, contact count
+// read, pinout) agrees: dimensions and a marking do not establish a protocol, a generation or a role.
+type ReceptacleCandidate
+  = UsbMicroB
+  | UsbSuperSpeedMicroB
+
+type PlugFit
+  = MicroUsbPlugFits
+  | PlugFitUntried
+
+type ManagementIoObservation
+  = PinHeader { designator: NonEmptyStr?, rows: Nat, columns: Nat, pin_one_marked: Bool, evidence: EvidenceRef }
+  | EdgeReceptacle { marking: NonEmptyStr?, opening_widths: List<Micrometer>, plug_fit: PlugFit, candidates: List<ReceptacleCandidate>, evidence: EvidenceRef }
+  | FlatCableConnectors { count: Nat, evidence: EvidenceRef }
+
+type UnresolvedPart {
+  designator: NonEmptyStr?
+  marking: NonEmptyStr?
+  obligation: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+// ── THE MEASURED BOARD AND ITS INPUT ──────────────────────────────────────────────────────────
+
+type MeasuredBoard {
+  asset: PhysicalAssetIdentity
+  continuity: List<ContinuityObservation>
+  diode_readings: List<DiodeModeObservation>
+  source_draws: List<SourceDrawObservation>
+  bench: BenchRecord
+  phases: List<CarrierPhaseObservation>
+  transitions: List<CarrierTransitionObservation>
+  pole_closures: List<SwitchPoleClosure>
+}
+
+// The input under study: a mapped housing and the terminal of the fuse beside it. The fused side is the
+// side whose contacts reach that fuse terminal; nothing else about the fuse is assumed.
+type InputConnector {
+  housing: ConnectorHousing
+  fuse_terminal: ElectricalTerminalRef
+}
+
+type CarrierLayoutObservation {
+  asset: PhysicalAssetIdentity
+  design: ElectricalDesignIdentity
+  markings: List<BoardMarking>
+  module_receptacles: List<NonEmptyStr>
+  backplane_connectors: List<BackplaneConnectorObservation>
+  j20: ConnectorPositionCensus
+  j20_calipers: List<CaliperSpan>
+  edge_high_speed_connectors: ConnectorCensus
+  management_io_survey: ManagementIoSurvey
+  management_io: List<ManagementIoObservation>
+  components: List<InstalledComponent>
+  measured: MeasuredBoard?
+  input: InputConnector?
+  unresolved: List<UnresolvedPart>
+}
+
+data p4261_grey_path_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "the grey blind-mate connectors carry the P4261's main input, and it is a 48-54 V-class bus",
+  sources: [
+    "the input-stage MOSFETs beside the grey blocks are Infineon IPB017N10N5LF, a 100 V part its vendor presents for hot-swap and e-fuse use and characterizes at VDS=56V (extdeps.electronic_component.infineon_ipb017n10n5lf): consistent with a 48-54 V stage, not a determination of one",
+    "the module part number 699-2G530-0215 reads as SKU215, which an uncited earlier NVIDIA guide revision tied to a 54 V module rail (extdeps.systems.nvidia_gh200 gh200_rail_variants): a lead about the module, not the carrier's input",
+    "counter-lead: a grey edge connector photographed face-on on the E1 (2026-10-16) shows fine contacts and no power blade",
+  ],
+  decided_by: "the grey blocks' contacts traced by terminal readings to the input stage, plus the input rating read off the original power-distribution board or harness, the carrier's schematic or vendor documentation, or a measurement of the original system's supply output",
+}
+
+data p4261_j20_main_input_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "J20 is the P4261's main input, and the input-stage MOSFETs switch it toward the module",
+  sources: [
+    "the E1's measured board puts F300 (75 V / 100 A) and the probed input-stage MOSFET's drain -- its tab and pin 4 on the IPB017N10N5LF pinout -- on J20's fused side, with none of that MOSFET's pins reaching ground: a hot-swap stage's shape, read on inferred probe points",
+    "J20's nine fused positions on a 3.0 mm-pitch housing could carry a 1 kW module's input current at 48-54 V, where its 12 A F1 could not -- so F1 is either a branch or the input is elsewhere",
+    "energized 2026-10-18 with the module removed, J20 fed a real load at up to 52 V without tripping a 100 mA over-current limit (input_draw): it accepts a 48-54 V-class voltage, and nothing large drew from J20 up to 52 V",
+  ],
+  decided_by: "where the probed MOSFET's sources go: terminal readings from its source pins toward the module receptacles' power contacts",
+}
+
+// THE LOCAL CONTROLS PUT THE CARRIER THROUGH RECORDED STATES; NONE IS NAMED BY FUNCTION. What S1, S2,
+// J30 and J68 are for is unread: their effects are the recorded phases and transitions
+// (product.electrical.carrier_phase), and a bridge held across a header's points reads the same
+// whether it pulls a logic input low or collapses a rail until the resistor-coupled test separates
+// the two.
+data p4261_local_control_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "on J20 power alone with the module absent, the carrier's local controls put it through recorded states: S2's poles select between the bias-only draw (about 13 mA, nothing lit) and a further domain drawing about 38 mA with nothing lit; from there, S1's pole 2 moved toward ON starts a sequence (about 80 mA, indicators lit) that settles at about 94 mA with a subset lit and one blinking; S2 returned takes it back to the bias-only state; a bridge held across J30's A and B lights DS3 and DS4 and, released, replays the sequence; a bridge held across J68's R1 and R2 extinguishes every indicator with an audible click and, released, restarts the sequence. U49 and U51, beside the end of Q300's lead b trace, are SN74LV165A parallel-load shift registers, parts that each read eight inputs and shift them out serially: the switch poles, the header points and Q300's node may be collected by them into a serial word for whatever clocks them. With all four poles toward ON at 48 V (97 mA, CV), and again settled after a J30 tap, Q21_P5's small output legs read about 1.7 V, so the protected input bus reads held off in those two states and is unread in the others; in the all-on state Q300's lead b reads 0 V, the via 4.37 V and pin 7 0 V, as before the switches were found. The module installed changes no step's draw. Unpowered, every pole of S1 and S2 reads about 0 ohm across its terminals toward the ON legend and over range on the 2 Mohm range away from it, so each closes toward ON (pole_closures_text). None of this names J68 a reset, J30 a button, S1 or S2 a power switch, S1's pole 1 inert, or any 0 V header point a ground",
+  sources: [
+    "2026-10-20, all four poles toward ON, 48 V, 97 mA with CV lit (p3-all-poles-on): Q21_P5's small output legs about 1.66 V (which lead, unrecorded), the via on Q301's lead b node 4.37 V, Q300's lead b 0 V, the resistor's far end 48 V; re-read from the pin 1 marker, pin 7 0 V, pin 8 1.8 V, P6 0 V. The first report's 'pin 7 is 1.8v i believe' matched pin 8 and is superseded. The protected bus reads held off from the legs (ProtectedInputBusInPhase p3-all-poles-on); the enable chain reads as before the switches were found",
+    "2026-10-20, the module installed and the steps repeated: 'the module doesn't change any of the supply current numbers' (p0 to p3 recorded again with the module installed, at the same draws; how it was seated, and under what cooling, unrecorded). After a J30 tap, 'it just repeats the power phases'; settled, Q21_P5's small output legs about 1.7 V with the module's state at that reading unrecorded (p3-after-j30-tap), so the bus reads held off there too",
+    "2026-10-20, module absent: 'found some literal on off switches - the current jumped a bit and some lights turned on'; the source's display read 54.00 V, 0.085 A, 4.587 W with CV lit and OCP armed, and green and red-or-amber indicators were lit (first-lit-state); which poles were moved, and whether with the output on, is unrecorded",
+    "the staircase, one pole set at a time (e1_phases, e1_transitions): S2.1 off / S2.2 on, 0.013 A, nothing lit; S2.1 on / S2.2 off, 0.038 A, nothing lit, 'toggling either S1 switch does nothing' there; S1 pole 2 on, about 0.08 A then 0.094 A as 'the lights settle (from all lit to a few lit/one blinking near U1_TFP)'; S1 pole 1 off afterwards 'doesn't matter'; S2 returned 'returns back to the initial state'. The attribution to S1's pole 2 is the operator's; a later sentence says 'switch 1', so which S1 pole started the sequence is recorded with that doubt. Whether S1 is sampled only at a start or a restart is unread",
+    "J30 bridged ('A and B'): 'a softer reset through the same sort of phase', 'slowly returns to .94A' (typed; 0.094 A or 0.94 A, unresolved), DS3 and DS4 lit 'as long as I hold J30 short'; energized in the settled state, 'J30 reads 3.1v, on pin 1 it's 0v'. A pulled-up input bridged to its return reads this way; so does a 3.3 V rail bridged to a point that happens to read 0 V",
+    "J68's bridge R1 to R2, re-read under the labelled positions and the candidate JTAG map (2026-10-21): R1 reads as the return unpowered and R2 a 57 ohm path, the reference-rail position, so the bridge most simply shorted that rail to the return; the lamps going out, the click and the restart on release are a management-island brownout and cold restart, and a reset input was not established. The 2026-10-20 powered map's orientation is disputed (it named R1 high) and its rows carry that hedge",
+    "J68 bridged (R1 to R2): 'an audible click, and the circuit repeats/resets a phase (or it holds it down, and then when i release again it automatically tries to boot again)'; 'stalls at .7A, until I let go', confirmed as 0.07 A ('yes, its .07A'); 'holding j68 turns all lights off, releasing starts boot sequence over'. Energized in the settled state its ten points read 'R1, L2-5 are all 1.8v, the rest are 0v': a 0 V point is a point that read 0 V, joined to the return only by an unpowered reading at a baseline, which none has. A shorted logic regulator in hiccup extinguishes a domain and restarts on release exactly as an active-low input would; the click's origin (carrier or source) is unrecorded, and the source's CV / CC / OCP state during the hold is unrecorded",
+    "U49 and U51 both read 'LV165A / 2BKG4 / AEC0' (operator photographs, 2026-10-20): SN74LV165APW by TI's package marking (extdeps.electronic_component.ti_sn74lv165a). A 2 x 5 header is a common debug footprint whose geometry fixes no pinout; which U49 / U51 pin each switch pole, header point and Q300's node meets is unread; Q300's lead b reads a junction path, not a join, to every U51 pin on the 20k range (2026-10-20)",
+    "the bench ceiling did not shape the staircase: the operator ran these states under a 0.6 A limit as often as under 0.10 A, with the supply at 48 V, and the draw was the same ('i had the amperage at .6A regularly so .1A was definitely not capping it, its not taking more'); which limit any one recorded step ran under is unrecorded, so the phases carry both as candidates and the voltage from their agreement. The switch-event photographs alone show 54.00 V",
+    "the Q21_P5 / Q22_P5 source-side terminals, P6, Q301's lead b node, Q300's lead b and the resistor's far end are unread in every recorded phase; the readings before the switch event were taken with the vector unrecorded",
+    "U4 read 2026-10-21 as Intel's Cyclone 10 GX 10CX085YF672E6G: the local controls, the headers and the shift registers are consistent with inputs an FPGA reads, and the indicator sequence with outputs it drives; a blinking indicator after settling is then a configured device running, which its CONF_DONE confirms or denies",
+    "two indicators blink in the settled state with different periods (DS1_2 about 2.5 s, DS6 about 2.7 s, videos of 2026-10-21): if DS1_2 is driven by U5_2, the root of trust is running; if DS6 is driven by U4, U4 is configured and running; which part drives each is unread, and a pattern that is an error code rather than a heartbeat is not excluded",
+    "J68 unpowered to J20's black lead on the 2k range (2026-10-21, under the labelled photograph): R1 '0.00' and R5 'ground', R2 57 ohm, R3, R4 and L4 over range, L1 937 ohm, L2 538, L3 and L5 both 1153. Position by position that is Intel's ten-pin JTAG layout with L as the odd pins (TCK with a pull-down, TDO, TMS and TDI with matching pull-ups, a no-connect at 7) and R the even (ground at 2 and 10, VCC at 4, no connection at 6 and 8): the FPGA's JTAG header, at VCCPGM if R2 reads 1.8 V powered, which the 10-20 map's '1.8v' points suggest under a count that named R1 high and so was oriented differently; a candidate until R2 reads 1.8 V and R1, R5 0 V under the labelled positions",
+    "2026-10-21, the K1 carrier (untouched by the probe bridge): 'starts at .013A like the other board, and with all the switches on, it only gets to .040 for some reason, no LEDs turn on' (k1_phases). The E1's P1 draw with nothing lit, reached by the K1 and never left: the K1 does not start the sequence the E1 runs, so the two carriers sit in two different states, neither reaching the bus, and damage on the E1 is not the simplest reading of either. In that state J68 reads no voltage on the K1 under the labelled map, R2 included ('I didn't read any voltage on that pin header on K1 at 40ma'), where the E1 settled holds R2 at 1.8 V, and J30's B and C at 0.26 V with A at 0 V where the E1 holds a J30 point at 3.1 V: the FPGA's programming reference is absent and the control domain's pull-ups sit at a fraction of a volt, so U4's domain is unpowered on the K1, while the E1 reached a more advanced powered state; U4's configuration state on the E1 is unread until CONF_DONE or INIT_DONE is read or a chain scan answers, and the K1's cause is unread among a missing input, an inactive enable, a converter fault and an overloaded load. In the same state a momentary bridge across J30's A and B, which lights DS3 and DS4 on the E1, changed nothing ('no change as far as i can see'), and S1's pole 2 cycled alone with S2 set as on the E1's P1, which starts the E1's sequence, left the current where it was ('nothing seems to happen to the current'): the controls that move the E1 do not move the K1 (k1_transitions). A photograph sent with those readings (board-corner photograph of 2026-10-21; which carrier is not stated) shows S1 and S2 beside J22 at the board edge, the MCIO receptacles J5, J7 and J8 along it and the regulatory silkscreen 'NVIDIA CORP MODEL: P4261'. The K1's pole order, the source's limit and the module's presence are unrecorded",
+  ],
+  decided_by: "Unpowered and discharged, each of J68's ten points and J30's three to J20's black lead on a recorded range against the shorted-probe baseline, which alone joins a point to the return. Then, in the settled state, J30's 3.1 V point taken low through 1 kohm to a point so joined, reading the point while held and the source's V, A and CV / CC / OCP: the same hold-and-release with the source in CV and the point near 0 V reads as a logic input; the point staying high, or CC or OCP appearing, reads otherwise. J68's hold test is withdrawn: under the candidate JTAG map R1 is a return and R2 the reference rail, so the 2026-10-20 bridge R1 to R2 read as a rail collapse (lamps out, a click, a restart on release) and established no reset input; no bridge is placed between J68's positions again, on either carrier. In each stable phase, Q21_P5's source-side terminals (ProtectedInputBusInPhase), P6, Q301's lead b node, Q300's lead b and the resistor's far end. Unpowered, Q300's lead b to the exact U51 pin its trace meets, and each S1 / S2 pole, J30's high point and J68's 1.8 V points to U49 / U51 pins. Each S1 pole moved with the output off, then across a cold start. A video holding the board and the source's display through a J30 and a J68 hold and release. Nothing is bridged hard again before the unpowered map, and nothing drives Q300's lead b or pin 7 until a reviewed decision",
+}
+
+data p4261_q4_temperature_diode_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "Q4_P5 is the diode-configured MMBT3904-class transistor on U1_P5's DIODE pin (pin 16), sensing the input MOSFETs' temperature, and is not part of the enable path",
+  sources: [
+    "TI SNVS950C pin 16 DIODE: connect a diode-configured MMBT3904 NPN transistor for temperature monitoring",
+    "operator photograph 2026-10-19: Q4_P5 is a SOT-23 beside Q21_P5 with a capacitor across two of its leads",
+  ],
+  decided_by: "Q4_P5's marking, and unpowered readings from its leads to U1_P5 pin 16 and to J20's return",
+}
+
+data p4261_vdd_bypass_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "on each carrier, the beige two-terminal part directly across from U1_P5 pin 21 is VDD's bypass capacitor",
+  sources: [
+    "TI SNVS950C pin 21 VDD: 'Internally sub-regulated 4.85-V bias supply. Connect a 1-uF capacitor on this pin to ground for bypassing'; section 8.3.7: a ceramic bypass of 1 uF or greater, placed as close to the VDD pin as the PCB layout allows",
+    "on both the E1 and the K1, pin 21 is reported at 0 ohm to the part's top end (no baseline recorded), with a visible trace between them; the two boards' parts are each their own",
+    "an unmarked beige body is how a ceramic chip capacitor commonly looks, which does not identify one",
+  ],
+  decided_by: "its bottom end at the shorted-probe baseline to J20's return and its top end not; then its capacitance read out of circuit or from the board's documentation",
+}
+
+data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the maker's datasheet for the series printed as 'ZU' (or measure the can's diameter and height to find it). 'J' is NOT decoded as 6.3 V: that EIA letter convention belongs to tantalum and some polymer-chip lines, and assuming it here would invent a rating" as NonEmptyStr
+
+// The HTSSOP-28's leads and its exposed pad, named as every reading of U1_P5 names them.
+data lv165a_pins: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "pin 8", "pin 9", "pin 10", "pin 11", "pin 12", "pin 13", "pin 14", "pin 15", "pin 16"]
+
+data lm5066i_terminals: List<TerminalIdentity> = concat(map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28], n => (join(["pin ", to_string(n)], "") as NonEmptyStr) as TerminalIdentity), names(ns: ["exposed pad"]))
+
+// An unmarked beige two-terminal part beside U1_P5 pin 21, on either board: identified by nothing yet.
+data beige_part_discriminator: NonEmptyStr = "unmarked beige body: an unmarked ceramic chip capacitor commonly looks like this, which does not identify one; read its capacitance out of circuit or from the board's documentation (see p4261_vdd_bypass_hypothesis)" as NonEmptyStr
+
+// One housing's marking, read from an operator photograph 2026-10-15; which carrier it was photographed
+// on was not recorded, so it is a candidate for each carrier's housings and a reading of neither.
+data operator_carrier_edge_family: ConnectorFamilyCandidate = ConnectorFamilyCandidate {
+  row: g97v22332hr,
+  marking: "G97V22332HR / 2248 / Amphenol",
+  read_on: UnitUnrecorded,
+}
+
+// The pitch as a photograph against a tape measure gives it: a measurement with its basis, not a
+// connector standard. Hole centres 68 px apart along a row and 143 px between rows at about 59 px per
+// millimetre (1/32-inch ticks 47 px apart), the tape nearer the camera than the connector.
+type PhotographicSpan {
+  along_row_tenths_mm: Nat
+  between_rows_tenths_mm: Nat
+  tolerance_tenths_mm: Nat
+  basis: EvidenceRef
+}
