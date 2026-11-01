@@ -563,6 +563,7 @@ fn layout_namespaces() -> List<String> {
     "v2.test.fixture.fn_family",
     "v2.test.fixture.interface_summary",
     "v2.test.fixture.meta_exec_confinement_scan.leak",
+    "v2.test.fixture.namespace_xl0",
     "v2.test.fixture.parse_mechanism",
     "v2.test.fixture.program_assembly",
     "v2.test.fixture.realization_vocab_scan.leak",

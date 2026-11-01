@@ -1,0 +1,16 @@
+// Materialized fixture for the statement-position claim suite (v2.test.claim.namespace_xl0.let_statement_position).
+// Read as a module by the native lane. The body normalizes: the statement `let` is followed by a trailing
+// expression, so it is not a tail let and no wrapper is retained. Its bound value names an atom this module never
+// declares. This is the non-widening control for the fold change: if the binder still hands that atom to the
+// resolver the census must refuse it with resolve_reason_unbound_symbol here, and if the fold were silently
+// dropping the tail the file would lower.
+module v2.test.fixture.namespace_xl0.lst_let_und_reachable
+
+import v2.std.integer { Int }
+
+fn lst_uses(x: Int) -> Int { x }
+
+fn lst_probe(i: Int) -> Int {
+  let q = lst_undeclared_atom(x: i)
+  lst_uses(x: q)
+}
