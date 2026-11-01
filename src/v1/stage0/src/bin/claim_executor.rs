@@ -120,9 +120,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut base_mirror_mode = false;
     let mut regen_affected_set_mode = false;
     let mut required_admitted_set_mode = false;
-    // `--query-module <identity>`: the typed admission answer for ONE identity, printed by
-    // --required-ci. Absence is never reported as silence -- see ModuleAdmission.
-    let mut required_query_identity: Option<String> = None;
     let mut regen_affected_scope = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
@@ -228,13 +225,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 regen_receipt_path = require_value(&args, i, "--regen-receipt")?;
             }
             "--required-ci" => {
-                required_admitted_set_mode = true;
-            }
-            "--query-module" => {
-                i += 1;
-                required_query_identity = Some(require_value(&args, i, "--query-module")?);
-                // The query IS the answer; it implies the producer mode so both the combined
-                // form the header cites (`--required-ci --query-module`) and the short form run.
                 required_admitted_set_mode = true;
             }
             // Accepted so every command form this repository cites parses. The lane selector
@@ -349,58 +339,10 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
-    // THE ADMITTED-SET PRODUCER, AS ITS OWN ENTRY POINT. This is the command the required-lane
-    // resolution census header names (`claim_executor --required-ci ... prints as
-    // admitted-module-identities`): the census reads the SAME producer in-process
-    // (`source_root_ingest_module_identities_for_ci`), and this mode prints what that call
-    // returns, so a reader can hold the census's denominator in their hands and tell
-    // "resolved by a lane" from "never admitted" apart by set membership. The flag died in
-    // 1f6b4107a046 (#13932) while 48 files kept citing it, and every one of those
-    // citations had been a lie about a binary that would exit 2 on an unknown argument.
-    // Read-only: prints, changes nothing. Refusal of the ingestion is rc 1 with the cause,
-    // never rc 2 -- rc 2 is reserved for arguments this binary does not parse.
+    // `--required-ci`: print the module identities the source-root ingestion admits
+    // (`source_root_ingest_module_identities_for_ci`). Read-only. Refusal of the ingestion is rc 1
+    // with the cause, never rc 2 -- rc 2 is reserved for arguments this binary does not parse.
     if required_admitted_set_mode {
-        // The typed single-identity answer, printed by the SAME producer the census reads.
-        // "never admitted" is never silence: the arm names itself and carries its evidence
-        // (the run's SHA, and the deleting commit when history proves one). rc 0 either way:
-        // the query OBSERVED a state; rc 1 stays for an ingestion refusal, rc 2 for arguments
-        // this binary does not parse.
-        if let Some(identity) = &required_query_identity {
-            let admission = v1_compiler::cli_run::module_admission(&source_roots, identity);
-            let line = match &admission {
-                v1_compiler::cli_run::ModuleAdmission::Admitted { module } => {
-                    serde_json::json!({"kind":"admitted","module":module})
-                }
-                v1_compiler::cli_run::ModuleAdmission::NeverAdmitted {
-                    module,
-                    run_sha,
-                    deleting_commit,
-                } => serde_json::json!({
-                    "kind":"never-admitted","module":module,
-                    "evidence":{"run_sha":run_sha,"deleting_commit":deleting_commit}
-                }),
-                v1_compiler::cli_run::ModuleAdmission::IndexRefused { module, cause } => {
-                    serde_json::json!({
-                        "kind":"index-refused","module":module,"cause":cause
-                    })
-                }
-            };
-            println!("module-admission: {line}");
-            eprintln!(
-                "claim_executor --query-module {identity}: {}",
-                match &admission {
-                    v1_compiler::cli_run::ModuleAdmission::Admitted { .. } => "admitted",
-                    v1_compiler::cli_run::ModuleAdmission::NeverAdmitted { .. } => "never-admitted",
-                    v1_compiler::cli_run::ModuleAdmission::IndexRefused { .. } => "index-refused",
-                }
-            );
-            return match admission {
-                v1_compiler::cli_run::ModuleAdmission::IndexRefused { .. } => {
-                    Err(ExitCode::FAILURE)
-                }
-                _ => Ok(ExitCode::SUCCESS),
-            };
-        }
         return match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(
             &source_roots,
         ) {

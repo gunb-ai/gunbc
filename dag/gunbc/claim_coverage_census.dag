@@ -10,8 +10,8 @@ import extdeps.languages.json.emit { serialize_json_string }
 // A roster that names a claim is not an executor of it. `v2.workflow.local_repo_wet_terminal`
 // `local_repo_wet_schedule` enrolls its claims as ExpectedToHold and its only executor was the
 // `floor` lane that gunbc.rung_drop v1_required_lanes_withdrawn deleted, so the enrollment kept
-// reading as coverage while nothing ran it. gunbc.required_lane_resolution_census answers the
-// neighbouring question at MODULE grain (does a lane resolve the module); it cannot say a claim
+// reading as coverage while nothing ran it. The retired required-lane resolution census answered the
+// neighbouring question at MODULE grain; it could not say a claim
 // runs, and no enumerated population said so at claim grain. This module is the fold that does.
 //
 // ONE INSTRUMENT, GENERIC OVER CLAIM SOURCES (manager ruling 2026-10-19, Charter 4): a further

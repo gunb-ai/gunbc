@@ -321,7 +321,6 @@ fn producer_named_identities(producer: TargetProducer, index: Map<String, String
     PrimitiveEgressCensusSeedProducer {} => []
     TypedGraphExclusiveBytesProducer {} => []
     TypedGraphExclusiveBytesFloorSubjectProducer {} => []
-    RequiredLaneResolutionCensusProducer {} => []
     BareReferenceChannelOutcomeProducer {} => []
     SelfHostBehavioralEquivalenceProducer {} => []
     NativeCensusVerbProducer { verb: _ } => []

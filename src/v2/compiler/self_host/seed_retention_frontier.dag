@@ -291,7 +291,6 @@ data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_support_dir_member(path: "src/cli_run/reach_base_standings.rs"),
   retained_support_dir_member(path: "src/cli_run/required_ci_measurement.rs"),
   retained_support_dir_member(path: "src/cli_run/required_floor_runner.rs"),
-  retained_support_dir_member(path: "src/cli_run/required_lane_resolution_census.rs"),
   retained_support_dir_member(path: "src/cli_run/rostered_row_join.rs"),
   retained_support_dir_member(path: "src/cli_run/scope_rank_view.rs"),
   retained_support_dir_member(path: "src/cli_run/serve_budget_refusal.rs"),
