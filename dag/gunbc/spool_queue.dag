@@ -188,6 +188,29 @@ fn spool_claim_realized(kind: SpoolKind) -> Bool {
 // every later one. The READER ROUTE is gunbc.live_deploy.emit, which creates each spool directory with the
 // ownership these principals imply instead of spelling it beside host_layout's path functions; that rewrite is
 // node://adhoc-ec4fbad6-dec. Requeue's writer is therefore IN this column, so the planned ownership cannot refuse it.
+// WHAT THE WRITERS COLUMN IMPLIES FOR A ROLE DIRECTORY (provisioning from the same declaration). A role only the drainer
+// writes is owner-only; a role any other principal writes into must be group-writable and searchable but NOT group-listable,
+// so the writer can create and cannot list, read or replace a peer's entry.
+type SpoolDirectoryShape
+  = SpoolDirectoryOwnerOnly
+  | SpoolDirectoryGroupBlindWrite
+
+fn spool_role_directory_shape(kind: SpoolKind, role: SpoolRole) -> SpoolDirectoryShape {
+  if spool_role_writers(kind: kind, role: role) |> any(w => spool_principal_is_not_drainer(p: w)) {
+    SpoolDirectoryGroupBlindWrite
+  } else {
+    SpoolDirectoryOwnerOnly
+  }
+}
+
+fn spool_principal_is_not_drainer(p: SpoolPrincipal) -> Bool {
+  match p {
+    PrincipalDrainer => false
+    PrincipalRequester => true
+    PrincipalExternalHook => true
+  }
+}
+
 fn spool_pending_writers(kind: SpoolKind) -> List<SpoolPrincipal> {
   if spool_claim_realized(kind: kind) {
     [spool_declaration(kind: kind).enqueuer, spool_declaration(kind: kind).claimant]

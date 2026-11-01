@@ -64,7 +64,7 @@ import gunbc.live_deploy.spec {
   tree_sync_unit_path, gunbc_service_uid,
 }
 import gunbc.host.host_layout { instance_receipts_dir }
-import gunbc.spool_queue { SpoolAttemptExit, SpoolAttemptUnit, SpoolPublication, RolePending, RoleClaimed, RoleRefused, spool_role_dirs, spool_declared_roles, spool_role_label }
+import gunbc.spool_queue { SpoolKind, SpoolRole, SpoolAttemptExit, SpoolAttemptUnit, SpoolPublication, RolePending, RoleClaimed, RoleRefused, SpoolDirectoryOwnerOnly, SpoolDirectoryGroupBlindWrite, spool_role_directory_shape, spool_role_dirs, spool_declared_roles, spool_role_label }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
 import gunbc.live_deploy.release_locus { HelperLocus }
 import gunbc.live_deploy.retract_legs { retract_remove_files }
@@ -607,6 +607,22 @@ fn apply_root_directory_leg(step: String, mode: FileMode, group: NonEmptyStr, pa
   apply_install_directory_leg(step: step, mode: mode, owner: approval_broker_helper_root_principal, group: group, path: path)
 }
 
+// Mode and group of a spool role directory, DERIVED from the writers column (spool_role_directory_shape): a role a
+// non-drainer principal writes is group-blind-write for the service group, otherwise owner-only for the owner's group.
+fn spool_role_leg_mode(kind: SpoolKind, role: SpoolRole) -> FileMode {
+  match spool_role_directory_shape(kind: kind, role: role) {
+    SpoolDirectoryGroupBlindWrite => publication_spool_request_mode
+    SpoolDirectoryOwnerOnly => declared_directory_mode(m: DirectoryOwnerOnly)
+  }
+}
+
+fn spool_role_leg_group(kind: SpoolKind, role: SpoolRole, owner_group: NonEmptyStr, writer_group: NonEmptyStr) -> NonEmptyStr {
+  match spool_role_directory_shape(kind: kind, role: role) {
+    SpoolDirectoryGroupBlindWrite => writer_group
+    SpoolDirectoryOwnerOnly => owner_group
+  }
+}
+
 fn deploy_apply_attempt_spool_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
   let root = approval_broker_helper_root_principal
   let service = spec.service.service_user
@@ -618,9 +634,9 @@ fn deploy_apply_attempt_spool_legs(spec: DeploymentSpec) -> List<DeployApplyLeg>
           apply_root_directory_leg(step: "attempt-spool-root", mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse), group: root, path: attempt_unit_spool_root(instance_root: instance_root)),
           apply_root_directory_leg(step: "attempt-spool-staging", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_staging_dir(instance_root: instance_root)),
         ],
-        map(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: instance_root, roles: [RolePending]), d => apply_root_directory_leg(step: "attempt-spool-request", mode: publication_spool_request_mode, group: service, path: d)),
+        map(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: instance_root, roles: [RolePending]), d => apply_root_directory_leg(step: "attempt-spool-request", mode: spool_role_leg_mode(kind: SpoolAttemptUnit, role: RolePending), group: spool_role_leg_group(kind: SpoolAttemptUnit, role: RolePending, owner_group: root, writer_group: service), path: d)),
       ),
-      map(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: instance_root, roles: [RoleClaimed]), d => apply_root_directory_leg(step: "attempt-spool-claimed", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: root, path: d)),
+      map(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: instance_root, roles: [RoleClaimed]), d => apply_root_directory_leg(step: "attempt-spool-claimed", mode: spool_role_leg_mode(kind: SpoolAttemptUnit, role: RoleClaimed), group: spool_role_leg_group(kind: SpoolAttemptUnit, role: RoleClaimed, owner_group: root, writer_group: service), path: d)),
     ),
     [
       apply_root_directory_leg(step: "attempt-spool-answer", mode: attempt_unit_spool_answer_mode, group: service, path: attempt_unit_spool_answer_dir(instance_root: instance_root)),
@@ -925,7 +941,7 @@ fn deploy_apply_publication_legs(spec: DeploymentSpec, path: NonEmptyStr) -> Lis
   let instance_root = spec.service.instance_root as String
   concat(
     concat(
-      concat([apply_install_directory_leg(step: "publication-spool-root", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_spool_root(instance_root: instance_root)),], map(spool_role_dirs(kind: SpoolPublication, instance_root: instance_root, roles: [RolePending]), d => apply_install_directory_leg(step: "publication-spool-request", mode: publication_spool_request_mode, owner: pub, group: spec.service.service_user, path: d))),
+      concat([apply_install_directory_leg(step: "publication-spool-root", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_spool_root(instance_root: instance_root)),], map(spool_role_dirs(kind: SpoolPublication, instance_root: instance_root, roles: [RolePending]), d => apply_install_directory_leg(step: "publication-spool-request", mode: spool_role_leg_mode(kind: SpoolPublication, role: RolePending), owner: pub, group: spool_role_leg_group(kind: SpoolPublication, role: RolePending, owner_group: pub, writer_group: spec.service.service_user), path: d))),
       concat([apply_install_directory_leg(step: "publication-spool-answer", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_answer_dir(instance_root: instance_root)),], map(spool_role_dirs(kind: SpoolPublication, instance_root: instance_root, roles: [RoleRefused]), d => apply_install_directory_leg(step: "publication-spool-refused", mode: publication_spool_answer_mode, owner: pub, group: pub, path: d))),
     ),
     concat(
