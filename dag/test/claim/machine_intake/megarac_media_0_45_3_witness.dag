@@ -31,6 +31,7 @@ import extdeps.bmc.ipmitool_observed_output {
 }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
+import gunbc.megarac_media_model { megarac_cleared_cd_at_the_current_build }
 import gunbc.machine_intake.megarac_media_row_reading {
   boot_run_40258937016_end_media_row, boot_run_40264233543_end_media_row,
   boot_run_40258937016_started_session_marker, mtcollins1_cd_row_ui_attestation,
@@ -828,5 +829,36 @@ test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenti
       && boot_run_40258937016_end_media_row.session_index == boot_run_40264233543_end_media_row.session_index
       && string_contains(s: boot_run_40264233543_end_media_row.artifact_path as String, pattern: "artifacts/bmc/mtcollins1-boot-run-")
       && string_contains(s: mtcollins1_boot_run_40082618814_hpm_check_artifact_path as String, pattern: "artifacts/bmc/mtcollins1-boot-run-")
+  }
+}
+
+// THE WORLD THE BOOT RUNS AGAINST PUTS THE SUPPLIED RELEASE'S WIRE IN ITS CD ROW, AND THE PAIRING IS NOT
+// INTERCHANGEABLE. After the cutover the boot asks the media policy with the release the admit gate supplies
+// from the reading of the current build, so the media world's cleared CD row has to carry THAT release's wire:
+// status and marker taken from the row the boot read back at that build, not typed. Arms: the model's row
+// equals what the attempt read (status, then marker, and the two attempts agree with each other); that row is
+// STOPPED at the identity the gate supplies, which is what lets the executed boot frames reach the attach and
+// the fan gate; and the same row shape at 0.32 -- the release the probe read 0 on -- is an unread code, so if
+// the world's wire ever became release-independent, or was swapped back to the probe's wire, this claim goes
+// red rather than the boot quietly refusing (or quietly passing on the wrong release).
+test fn w_the_boot_fixture_renders_the_cleared_cd_on_the_wire_the_current_build_reports() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      megarac_cleared_cd_at_the_current_build().redirection_status == boot_run_40264233543_end_media_row.redirection_status
+        && megarac_cleared_cd_at_the_current_build().session_index == boot_run_40264233543_end_media_row.session_index
+        && boot_run_40258937016_end_media_row.redirection_status == boot_run_40264233543_end_media_row.redirection_status
+        && match megarac_redirection_status_of_row(firmware: read, wire: megarac_cleared_cd_at_the_current_build().redirection_status, session_index: Present { value: megarac_cleared_cd_at_the_current_build().session_index }) {
+          RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: read)
+          _ => false
+        }
+        && match megarac_redirection_status_of_row(firmware: mtcollins1_identity.firmware, wire: megarac_cleared_cd_at_the_current_build().redirection_status, session_index: Present { value: megarac_cleared_cd_at_the_current_build().session_index }) {
+          RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: mtcollins1_identity.firmware)
+          _ => false
+        }
+        && match megarac_redirection_status_of_wire(firmware: mtcollins1_identity.firmware, wire: 0) {
+          RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: mtcollins1_identity.firmware)
+          _ => false
+        }
   }
 }
