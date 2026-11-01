@@ -581,6 +581,19 @@ fn sugar_node_is_token(node: Node, token: Symbol) -> Bool {
   }
 }
 
+// A string-keyed field init is the grammar's own production (^dag_surface_field_init_string_key,
+// v2.extdeps.languages.dag dag_grammar_field_init_expr): a record literal refuses it, so one is a map
+// literal's entry, so `{ "n": true }` is never read as field `n`. Admitting a quoted key whose decoded
+// text names a declared field is a declared frontier (gunbc#12740); a map literal's entry is the map
+// arm's (gunbc#12758), which dispatches on this same identity. Body lowering and generated-head demand
+// read it here, the one reader.
+fn sugar_field_init_is_string_keyed(item: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: sugar_deep_unwrap_optional(node: item)) {
+    Present { value: id } => id == ^dag_surface_field_init_string_key
+    Absent => false
+  }
+}
+
 fn sugar_list_literal_items_capture_optional(captured: Node) -> Optional<Node> {
   match sugar_sequence_pair_optional(node: sugar_unwrap_surface_shell(node: captured)) {
     Absent => optional_absent()

@@ -151,6 +151,7 @@ import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, application_actual_edges, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar {
   sugar_deep_unwrap_optional,
+  sugar_field_init_is_string_keyed,
   sugar_is_pass_through_emitted,
   sugar_list_literal_items_capture_optional,
   sugar_node_is_token,
@@ -10092,19 +10093,6 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
 // shape v2.std.node admits and the shape a fielded pattern lowers to, so `Rec { n: 1 }` and
 // `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is a postfix
 // chain and reaches the same builder, body_lower_record_construct, through its PostfixRecord step.
-// A STRING-KEYED INIT IS NOT A RECORD FIELD, AND THE PARSE SAYS SO. The key's kind is the grammar's
-// choice, carried as the production identity ^dag_surface_field_init_string_key
-// (v2.extdeps.languages.dag dag_grammar_field_init_expr), so a record literal refuses it at the item
-// rather than reading `{ "n": true }` as field `n`. Admitting a quoted key whose decoded text names a
-// declared field is a declared frontier (gunbc#12740); a map literal's entry is the map arm's
-// (gunbc#12758), which dispatches on this same identity.
-fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: sugar_deep_unwrap_optional(node: item)) {
-    Present { value: id } => id == ^dag_surface_field_init_string_key
-    Absent => false
-  }
-}
-
 // A PUN `R { s }` IS THE FIELD `s: s`, AND THE PARSE SAYS SO. The punned field is its own production
 // (^dag_surface_field_init_pun, v2.extdeps.languages.dag dag_grammar_field_init_pun_expr), so its kind is
 // the grammar's identity and not a guess from a missing colon. It lowers to the edge the explicit long
@@ -10154,7 +10142,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   if body_lower_field_init_is_pun(item: stripped) {
     body_lower_field_init_pun_edge(captured: captured, item: item)
   } else {
-  if body_lower_field_init_is_string_keyed(item: captured) {
+  if sugar_field_init_is_string_keyed(item: captured) {
     body_lower_map_literal_entry_edge_from_item(captured: captured, item: item, refuse: refuse)
   } else {
   match sugar_sequence_pair_optional(node: captured) {
@@ -10182,7 +10170,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
 }
 
 // A STRING-KEYED ITEM `"k": v` (a map literal's entry), recognised by the grammar's own production
-// (body_lower_field_init_is_string_keyed, the one reader). Its key is lowered as the VALUE any string
+// (sugar_field_init_is_string_keyed, the one reader). Its key is lowered as the VALUE any string
 // literal lowers to, never read as a field name, so the key's kind survives to resolve.
 fn body_lower_map_literal_entry_edge_from_item(captured: Node, item: Node, refuse: Outcome<Edge>) -> Outcome<Edge> {
   match sugar_sequence_pair_optional(node: parse_production_captured_child_optional_or_self(node: captured)) {
@@ -11774,7 +11762,7 @@ fn body_lower_transport_field_step(edges: List<Edge>, shell: Node) -> Outcome<Li
     Absent => outcome_accepted(value: edges)
     Present { value: id } =>
       if id == ^dag_surface_field_init {
-        if body_lower_field_init_is_string_keyed(item: shell) {
+        if sugar_field_init_is_string_keyed(item: shell) {
           outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: shell))
         } else {
           bind_outcome(o: body_lower_field_init_edge(item: shell), f: fn(e) {

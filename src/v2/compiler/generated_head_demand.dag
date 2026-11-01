@@ -10,8 +10,7 @@ import v2.std.list_introduction { list_introduction_head_path }
 import v2.std.map_introduction { map_introduction_entry_path, map_introduction_head_path }
 import v2.extdeps.languages.dag { string_template_optional }
 import v2.compiler.fold_lowering { collection_concat_shape_declaration_path }
-import v2.std.compilers.sugar { sugar_deep_unwrap_optional, sugar_list_literal_items_capture_optional }
-import v2.std.grammar { parse_production_emitted_identity_optional }
+import v2.std.compilers.sugar { sugar_field_init_is_string_keyed, sugar_list_literal_items_capture_optional }
 
 // THE DECLARATIONS A SURFACE TREE OWES BECAUSE THE COMPILER WILL GENERATE A REFERENCE TO THEM
 // (operator ruling 2026-10-15, v2-namespace-cutover N2b; gunbc.roadmap.roadmap_authority). A list
@@ -63,14 +62,10 @@ fn generated_list_head_paths(node: Node) -> List<QualifiedName> {
 // A string-keyed field init is the grammar's own production (^dag_surface_field_init_string_key); a record
 // literal refuses it, so one anywhere in a tree is a map literal's entry.
 fn generated_map_head_paths(node: Node) -> List<QualifiedName> {
-  match parse_production_emitted_identity_optional(node: sugar_deep_unwrap_optional(node: node)) {
-    Present { value: id } =>
-      if id == ^dag_surface_field_init_string_key {
-        [map_introduction_head_path(), map_introduction_entry_path()]
-      } else {
-        []
-      }
-    Absent => []
+  if sugar_field_init_is_string_keyed(item: node) {
+    [map_introduction_head_path(), map_introduction_entry_path()]
+  } else {
+    []
   }
 }
 
