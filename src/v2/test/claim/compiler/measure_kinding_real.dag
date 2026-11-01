@@ -20,7 +20,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE KINDING CLAIM FOR std.measure (type Measure<Q: Quantity, S: Scale, M>), on the REAL closure of std.measure assembled
 // from dag/. RED: Measure<One, Memory, Nat> (Scale where Quantity is kinded, and the converse) draws
 // resolve_reason_type_argument_kind_not_inhabited. CONTROL: Measure<Memory, One, Nat> in the right order leaves the whole
-// closure Accepted, which also shows every pass-through binder that feeds Measure is kinded (an unkinded one refuses).
+// closure Accepted. This covers the kinded declarations in std.measure only: the pass-through binders in std.realization*
+// and the nine files outside dag/std are NOT in this closure, so dropping a kind there leaves these claims green; their
+// witness is the native run of a claim that reaches them (clever-crane-830 srv1 controls), not this file.
 // The closure is the transitive imports of std.measure; one this list omits refuses at assembly, never a silent pass.
 data mkr_closure: List<String> = ["dag/extdeps/currency/currency.dag", "dag/extdeps/external_authority.dag", "dag/extdeps/units/dimensionless.dag", "dag/extdeps/units/iec_80000_13.dag", "dag/extdeps/units/iso8601.dag", "dag/extdeps/units/iso_80000_3.dag", "dag/extdeps/uri.dag", "dag/std/algebra.dag", "dag/std/checked_arithmetic.dag", "dag/std/decimal.dag", "dag/std/decl_ref.dag", "dag/std/dissolution.dag", "dag/std/error_primitives.dag", "dag/std/float.dag", "dag/std/keyed_roster.dag", "dag/std/keyed_row.dag", "dag/std/nat.dag", "dag/std/optional.dag", "dag/std/render_repeat_string_bootstrap.dag", "dag/std/roster_frontier.dag", "dag/std/types.dag", "dag/std/unicode/types.dag", "dag/std/measure.dag"]
 
