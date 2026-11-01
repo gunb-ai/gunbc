@@ -6435,6 +6435,7 @@ pub enum InhabitanceVerdict {
     InhabitanceUndecidable {
         reason: InhabitanceUndecidableReason,
     },
+    InhabitanceUnmodeled,
 }
 
 pub fn declared_type_position_label(position: DeclaredTypePosition, subject: String) -> String {
@@ -6844,7 +6845,7 @@ pub fn declared_type_inhabitance(
     Some(r) => Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: r.clone(),
 }),
-    std::option::Option::None => Rc::new(InhabitanceVerdict::Inhabits),
+    std::option::Option::None => Rc::new(InhabitanceVerdict::InhabitanceUnmodeled),
 }
                                                                         }
                                                                     },
@@ -7868,6 +7869,18 @@ pub fn declared_type_obligation_diags(
                         obligation.subject.clone(),
                     ),
                     reason: inhabitance_undecidable_reason_label(r.clone()),
+                    span: obligation.span.clone(),
+                }),
+                scope.module_name.clone(),
+            )])
+        }
+        InhabitanceVerdict::InhabitanceUnmodeled => {
+            Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled {
+                    position: declared_type_position_label(
+                        obligation.position.clone(),
+                        obligation.subject.clone(),
+                    ),
                     span: obligation.span.clone(),
                 }),
                 scope.module_name.clone(),
@@ -20106,6 +20119,80 @@ pub fn present_value_expected_from_optional(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AnonymousRecordExpectation {
+    pub declared: Rc<Node>,
+    pub label: String,
+    pub roster: Rc<Vec<Rc<Node>>>,
+}
+
+pub fn anonymous_record_literal_expectation(
+    type_name: Option<String>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<AnonymousRecordExpectation>> {
+    match type_name.clone() {
+        Some(_) => std::option::Option::None,
+        std::option::Option::None => match expected.clone() {
+            std::option::Option::None => std::option::Option::None,
+            Some(exp) => {
+                let expected_declaration = if (exp.connective.clone() == Connective::NoConnective) {
+                    crate::v1_compiler_infer_env::lookup_type_for(
+                        scope.type_env.clone(),
+                        exp.clone(),
+                    )
+                } else {
+                    if (exp.connective.clone() == Connective::Conj) {
+                        Some(exp.clone())
+                    } else {
+                        std::option::Option::None
+                    }
+                };
+                if ((exp.return_cardinality.clone() == Cardinality::CardOptional)
+                    || node_is_std_optional(exp.clone(), scope.clone()))
+                {
+                    std::option::Option::None
+                } else {
+                    match expected_declaration.clone() {
+                        std::option::Option::None => std::option::Option::None,
+                        Some(decl) => {
+                            if ((decl.connective.clone() != Connective::Conj)
+                                || ((decl.children.clone().len() as i64) == 0))
+                            {
+                                std::option::Option::None
+                            } else {
+                                {
+                                    let label = crate::v1_std_core::authored_name_at(
+                                        scope.type_env.source_indices.clone(),
+                                        exp.clone(),
+                                    );
+                                    let roster = if ((decl.params.clone().len() as i64) == 0) {
+                                        Some(decl.children.clone())
+                                    } else {
+                                        record_lit_instantiated_fields(
+                                            Some(label.clone()),
+                                            expected.clone(),
+                                            scope.clone(),
+                                        )
+                                    };
+                                    match roster.clone() {
+                                        Some(fields) => Some(Rc::new(AnonymousRecordExpectation {
+                                            declared: exp.clone(),
+                                            label: label.clone(),
+                                            roster: fields.clone(),
+                                        })),
+                                        std::option::Option::None => std::option::Option::None,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+}
+
 pub fn infer_record_lit_structural(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     type_name: Option<String>,
@@ -20118,11 +20205,23 @@ pub fn infer_record_lit_structural(
     {
         let instantiated_struct_fields =
             record_lit_instantiated_fields(type_name.clone(), expected.clone(), scope.clone());
+        let anonymous_expectation = anonymous_record_literal_expectation(
+            type_name.clone(),
+            expected.clone(),
+            scope.clone(),
+        );
         let expected_struct_fields =
-            if (instantiated_struct_fields.clone() == std::option::Option::None) {
-                record_lit_fields_from_expected(type_name.clone(), expected.clone(), scope.clone())
-            } else {
+            if (instantiated_struct_fields.clone() != std::option::Option::None) {
                 std::option::Option::None
+            } else {
+                match anonymous_expectation.clone() {
+                    Some(ae) => Some(ae.roster.clone()),
+                    std::option::Option::None => record_lit_fields_from_expected(
+                        type_name.clone(),
+                        expected.clone(),
+                        scope.clone(),
+                    ),
+                }
             };
         let expected_variant_node = if ((instantiated_struct_fields.clone()
             == std::option::Option::None)
@@ -20200,8 +20299,19 @@ pub fn infer_record_lit_structural(
         };
         let si_presence = scope.type_env.source_indices.clone();
         let presence_variant_owner = variant_owner_node(scope.clone(), tn_str.clone());
+        let roster_label = if (tn_str.clone() != "".to_string()) {
+            tn_str.clone()
+        } else {
+            match anonymous_expectation.clone() {
+                Some(ae) => ae.label.clone(),
+                std::option::Option::None => "".to_string(),
+            }
+        };
         let presence_fields = if (tn_str.clone() == "".to_string()) {
-            Rc::new(vec![])
+            match anonymous_expectation.clone() {
+                Some(ae) => ae.roster.clone(),
+                std::option::Option::None => Rc::new(vec![]),
+            }
         } else {
             match presence_variant_owner.clone() {
                 Some(variant_owner) => match Rc::new({
@@ -20286,7 +20396,7 @@ pub fn infer_record_lit_structural(
             Rc::new(vec![])
         };
         let construction_field_names =
-            if ((tn_str.clone() == "".to_string()) || presence_name_is_ambiguous.clone()) {
+            if ((roster_label.clone() == "".to_string()) || presence_name_is_ambiguous.clone()) {
                 std::option::Option::None
             } else {
                 if ((presence_fields.clone().len() as i64) > 0) {
@@ -20350,7 +20460,7 @@ pub fn infer_record_lit_structural(
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
-        let missing_field_diags = if (((tn_str.clone() == "".to_string())
+        let missing_field_diags = if (((roster_label.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
             || presence_name_is_ambiguous.clone())
         {
@@ -20393,7 +20503,7 @@ pub fn infer_record_lit_structural(
                                 si_presence.clone(),
                                 sf.clone(),
                             ),
-                            type_name: tn_str.clone(),
+                            type_name: roster_label.clone(),
                             span: name_span.clone(),
                         }),
                         scope.module_name.clone(),
@@ -20447,7 +20557,7 @@ let unknown_field_diags = match construction_field_names.clone() {
             } else {
                 Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
     field: fi_name.clone(),
-    type_name: tn_str.clone(),
+    type_name: roster_label.clone(),
     span: fi.span.clone(),
 }), scope.module_name.clone())])
             },
@@ -20699,6 +20809,10 @@ Rc::new(FieldInferResult {
                     ident: None,
                 });
                 let typed_field_nodes = typed_fields.clone();
+                let literal_type = match anonymous_expectation.clone() {
+                    Some(ae) => ae.declared.clone(),
+                    std::option::Option::None => anon_node.clone(),
+                };
                 let texpr = crate::v1_std_core::make_expr_node(
                     occurrence_identity.clone(),
                     Rc::new(ExprData::ExprRecordLit {
@@ -20706,7 +20820,7 @@ Rc::new(FieldInferResult {
                     }),
                     typed_field_nodes,
                     Some(Rc::new(InferredNode::Resolved {
-                        node: anon_node.clone(),
+                        node: literal_type.clone(),
                     })),
                     span.clone(),
                 );
@@ -20714,7 +20828,10 @@ Rc::new(FieldInferResult {
                     typed: texpr.clone(),
                     emissions: infer_emissions_concat(
                         fi_emissions.clone(),
-                        infer_emissions_of_diagnostics(alias_struct_diags.clone()),
+                        infer_emissions_of_diagnostics(v1_rt::concat(
+                            alias_struct_diags.clone(),
+                            missing_field_diags.clone(),
+                        )),
                     ),
                 })
             }

@@ -21,7 +21,6 @@ import gunbc.rung_drop_amendment.heal_green_window_over_a_stale_mirror { heal_gr
 import gunbc.rung_drop_amendment.claim_witnesses_dead_on_arrival_under_green_gate { claim_witnesses_dead_on_arrival_under_green_gate }
 import gunbc.rung_drop_amendment.regen_agreement_phase_enumeration_and_exclusions { regen_agreement_phase_enumeration_and_exclusions }
 import gunbc.rung_drop_amendment.floor_cost_withhold_threshold_and_population_derivation { floor_cost_withhold_threshold_and_population_derivation }
-import gunbc.rung_drop_amendment.kit_call_shape_drifted_on_first_use { kit_call_shape_drifted_on_first_use }
 
 data rung_drop_amendment_roster: List<RungDropAmendment> = [
   namespace_wave_admission_carrier_redesign,
@@ -39,7 +38,6 @@ data rung_drop_amendment_roster: List<RungDropAmendment> = [
   claim_witnesses_dead_on_arrival_under_green_gate,
   floor_cost_withhold_threshold_and_population_derivation,
   regen_agreement_phase_enumeration_and_exclusions,
-  kit_call_shape_drifted_on_first_use,
 ]
 
 // THE JOIN THE PROJECTION FOLDS, so a drop's amendments are selected in one place rather than at
