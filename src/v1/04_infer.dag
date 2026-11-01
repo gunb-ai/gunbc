@@ -1121,6 +1121,13 @@ fn expected_type_is_arrow(expected: Node?) -> Bool {
   }
 }
 
+// LOCAL MEANS LEXICAL. scope.locals also carries module-level names (top-level data declarations and
+// other declarations the module scope registers), so a hit there is not a binder. body_locals is the
+// corpus's shadowing authority (extend_scope, build_params_scope, lambda and match binders insert into
+// it in lockstep with locals), so only a name in both is a LocalValueBinding; a module-level hit is a
+// reference to a declaration and stays FunctionValueBinding, which is what emission needs to keep the
+// call parens of a zero-argument declaration. Consumers that read LocalValueBinding as "lexically bound"
+// (the emitter's declaration lookup) are then right by construction.
 fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   match lookup_variant_parent_enum(scope: scope, name: name) {
     Present { value: parent_enum } => VariantValueBinding { parent_enum: parent_enum, parent_identity: variant_parent_identity_of(owner: variant_owner_node(scope: scope, name: name), scope: scope) }
@@ -1129,7 +1136,8 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
         Present { value: binding } =>
           if map_has(scope.match_bound_names, name) { MatchBoundBinding }
           else if local_is_service_root_binding(scope: scope, name: name, binding: binding) { ServiceValueBinding }
-          else { LocalValueBinding }
+          else if map_has(scope.body_locals, name) { LocalValueBinding }
+          else { FunctionValueBinding }
         Absent => FunctionValueBinding
       }
   }
@@ -4369,7 +4377,7 @@ fn foreign_concrete_coproduct_where_parent_required(
 // stands for it unchanged.
 //
 // NO PRODUCER: PositionMapValue, PositionVariantPayload, PositionCastTarget,
-// PositionParameterDefault, PositionCallableReturn. These occur solely in
+// PositionCallableReturn. These occur solely in
 // declared_type_position_label's match, which renders a name and judges nothing.
 //
 // WHY AN UNPRODUCED POSITION IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: it is a
@@ -4380,7 +4388,7 @@ fn foreign_concrete_coproduct_where_parent_required(
 // InhabitanceUndecidable would report "we did not look" as "it cannot be decided", which is the
 // same inflation aimed at this relation's own self-description.
 //
-// NEXT-RUNG TRIGGERS. For the five: a producer at that grammar seam that builds a
+// NEXT-RUNG TRIGGERS. For the unproduced positions above: a producer at that grammar seam that builds a
 // DeclaredTypeObligation. For the four: the seam's older chain is measured against
 // declared_type_inhabitance on the corpus and replaced by declared_type_obligation_diags, which
 // deletes both that chain and optional_at_required_obligation_diags' call there. The decision
@@ -15520,6 +15528,51 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
   }
 }
 
+// A PARAMETER DEFAULT IS A DECLARED-TYPE POSITION (PositionParameterDefault). It was resolved and
+// emitted but never inferred, so `fn f(v: Nat = "x")` was accepted silently
+// (gunbc.recurring_failure_mode a_parameter_default_value_is_never_judged_against_its_parameter_type).
+// The default is inferred with the declared parameter type as `expected` (so a literal is introduced
+// at the carrier like any other expected position) and judged by declared_type_conformance_diags, the same
+// entry every other declared position uses (not the bare inhabitance projection, whose terminal arm answers an
+// Undecided that this position's witness does not count). A generic-declaring parameter or a formal carrying an unbound type variable has no
+// closed declared type at this seam and is left to the older path, as the direct-call argument chain does.
+//
+// DECLARED NODE: the param's type_expr child IS the resolved, use-site-rendered type (resolve_param stores it there), read
+// as-is exactly as the direct-call formal chain does (ResolvedFormal.declared_type in bind_local_func_conformance). Applying
+// resolved_type to that child read its own (absent) inference, got error_type with an empty name, and the relation answered
+// UndecidableFormalUnresolved, an advisory, so no default was ever refused.
+//
+// VISIBILITY: a default sees module scope only, never a sibling parameter. The interpreter evaluates it in the
+// caller-supplied env, not the bindings it is building (stage0 call_function_inner), and the Rust emitter splices the
+// default expression at the call site as a filled argument (v1.compiler.emit_rust fill_default_args,
+// fill_op_default_args); neither binds an earlier parameter for it. Both agree, so module scope is used here.
+//
+// NEXT TRIGGER, NOT A SILENT GAP: only the diagnostics are kept. The typed default is not stored back on the param
+// node, and emission still reads the untyped default, so a literal introduced at its carrier here does not yet reach
+// the emitted default.
+fn parameter_default_emissions(item: Node, scope: InferScope) -> InferEmissions {
+  infer_emissions_concat_all(chunks: item.params |> map(p =>
+    match param_node_default_value(n: p) {
+      Absent => infer_emissions_empty()
+      Present { value: default_expr } =>
+        if param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices) || direct_call_formal_has_unbound_type_variable(n: param_node_type_expr(n: p)) {
+          infer_emissions_empty()
+        } else {
+          let declared = param_node_type_expr(n: p)
+          let r = infer_expr(texpr: default_expr, scope: scope, expected: Present { value: declared })
+          infer_emissions_concat(
+            left: r.emissions,
+            right: infer_emissions_of_diagnostics(diagnostics: declared_type_conformance_diags(
+              position: PositionParameterDefault,
+              subject: authored_name_at(source_indices: scope.type_env.source_indices, node: p),
+              declared: declared,
+              produced: expression_value_type(e: r.typed),
+              span: r.typed.span,
+              scope: scope)))
+        }
+    }))
+}
+
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let typed_anno = item.type_annotation
   let transport_scope = if item.params |> count > 0 {
@@ -15588,7 +15641,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), in_tail: true, source_indices: scope.type_env.source_indices),
         match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
-      emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, body_emissions, infer_emissions_of_diagnostics(diagnostics: return_conformance_diags)])
+      emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, body_emissions, infer_emissions_of_diagnostics(diagnostics: return_conformance_diags), parameter_default_emissions(item: item, scope: scope)])
     }
   }
   else if item.body != none && item.params |> count == 0 {
@@ -15617,7 +15670,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
-      emissions: infer_emissions_concat(left: transport_emissions, right: props_emissions)
+      emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, parameter_default_emissions(item: item, scope: scope)])
     }
   }
   else {
