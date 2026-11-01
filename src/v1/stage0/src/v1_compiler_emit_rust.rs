@@ -40,7 +40,7 @@ pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, Varia
 pub use crate::std_syntax::{LiteralValue, BinOp, AlgebraFieldKind};
 pub use crate::std_target_representation::{VariantParentIdentity, variant_value_realization_refusal_message, ExactBindingResolution, VariantValueRealization, VariantParentKey};
 pub use crate::std_types::{SourceSpan};
-pub use crate::std_types::{is_container_type, is_kernel_type, container_template_algebra, container_spelling_is_algebra};
+pub use crate::std_types::{is_container_type, is_kernel_type, container_template_algebra};
 pub use crate::std_unicode_scalar::{ascii_lowercase};
 pub use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::{closure_stub_v2_std_integer_source};
@@ -59,7 +59,7 @@ pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
 pub use crate::v1_compiler_infer_resolve::{resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position};
 pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv};
-pub use crate::v1_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, is_product_type, is_coproduct_type, is_unit_like};
+pub use crate::v1_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, type_is_ordered_element_run, is_product_type, is_coproduct_type, is_unit_like};
 pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
 pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, build_read_only_params, collect_callable_refs, analyze_dying_base_sites};
 pub use crate::v1_compiler_resolve::{get_exported_names};
@@ -1374,7 +1374,7 @@ pub fn rust_declaration_checkpoint_grounding_at(
 }
 
 pub fn rust_seed_host_container_base(name: String) -> Option<String> {
-    if crate::std_types::container_spelling_is_algebra(name, "FreeMonoid".to_string()) {
+    if ((name.clone() == "List".to_string()) || (name.clone() == "FreeMonoid".to_string())) {
         Some("Vec".to_string())
     } else {
         std::option::Option::None
@@ -1406,8 +1406,7 @@ pub fn is_host_text_carrier_type(
                 crate::v1_std_core::type_reference_provenance(n.clone()),
             )
         } else {
-            if crate::std_types::container_spelling_is_algebra(nm.clone(), "FreeMonoid".to_string())
-            {
+            if ((nm.clone() == "FreeMonoid".to_string()) || (nm.clone() == "List".to_string())) {
                 if (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
                     != "Char".to_string())
                 {
@@ -37179,15 +37178,7 @@ pub fn type_node_is_ordered_element_run(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((((n.return_cardinality.clone() != Cardinality::CardOptional)
-        && crate::v1_compiler_infer_types::node_is_element_collection(
-            n.clone(),
-            source_indices.clone(),
-        ))
-        && !crate::v1_compiler_infer_types::node_is_set_collection(
-            n.clone(),
-            source_indices.clone(),
-        ))
+    (crate::v1_compiler_infer_types::type_is_ordered_element_run(n.clone(), source_indices.clone())
         && !is_rust_string_like(n.clone(), source_indices.clone()))
 }
 
