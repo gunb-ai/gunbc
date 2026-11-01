@@ -43,6 +43,10 @@ fn closure() -> List<FunctionFact> {
   ]
 }
 
+// These controls SUPPLY the vocabulary and the reading, so the demand they judge is hand-built and callee
+// normalization is not exercised here: normalization is the producer's job (demand_facts_closure_facts),
+// and the route claim is where it runs. Supplied single-name facts normalize to themselves, which is why
+// a row can be supplied without a closure at all.
 fn standing(function: String, reading: UsesRowReading) -> UsesRowStanding {
   uses_row_standing(rows: dependency_demand_of(functions: closure(), operations: ops()), function: q(dotted: function), reading: reading)
 }

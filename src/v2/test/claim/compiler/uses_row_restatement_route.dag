@@ -4,12 +4,13 @@ import std.algebra { Empty, fold_list, length, list_snoc_item }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { Bool, List }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.dependency_demand { FunctionFact, OperationFact }
 import v2.compiler.dependency_demand_facts {
   AuthoredRowReading,
   AuthoredTypeUnresolved,
   AuthoredUsesFunction,
+  DemandFactsModuleFacts,
   demand_facts_authored_readings,
+  demand_facts_closure_facts,
   demand_facts_module_facts
 }
 import v2.compiler.name_resolve { resolution_context_namespace }
@@ -57,10 +58,11 @@ import v2.std.text { String }
 // names the modules and the rows it expects, and an unobserved module makes the harness report itself
 // rather than quietly emptying the lists the REDs read.
 
+// The modules the walk read, in the producer's own shape: demand_facts_closure_facts normalizes their
+// callees once over the closure, and the consumer receives normalized facts.
 type UrrWalk {
   context: NativeTestContext
-  functions: List<FunctionFact>
-  operations: List<OperationFact>
+  modules: List<DemandFactsModuleFacts>
   authored: List<UsesRowAuthoredRows>
   unobserved_modules: Int
 }
@@ -102,8 +104,7 @@ fn urr_walk_module(w: UrrWalk, root: NormalizedTree, authored: List<AuthoredUses
   match qualified_name_from_module_node(root: root.root) {
     Rejected { diagnostics: _ } => UrrWalk {
       context: w.context,
-      functions: w.functions,
-      operations: w.operations,
+      modules: w.modules,
       authored: w.authored,
       unobserved_modules: w.unobserved_modules + 1
     }
@@ -115,8 +116,7 @@ fn urr_walk_module(w: UrrWalk, root: NormalizedTree, authored: List<AuthoredUses
       match step.resolved {
         Rejected { diagnostics: _ } => UrrWalk {
           context: step.context,
-          functions: w.functions,
-          operations: w.operations,
+          modules: w.modules,
           authored: w.authored,
           unobserved_modules: w.unobserved_modules + 1
         }
@@ -125,8 +125,7 @@ fn urr_walk_module(w: UrrWalk, root: NormalizedTree, authored: List<AuthoredUses
           let ctx = urr_module_ctx(context: step.context, module_qn: module_qn)
           UrrWalk {
             context: step.context,
-            functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
-            operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
+            modules: list_snoc_item(xs: w.modules, item: facts),
             authored: fold_list(xs: mine, empty: w.authored, cons: fn(acc, a) {
               list_snoc_item(xs: acc, item: UsesRowAuthoredRows {
                 function: urr_authored_path(a: a),
@@ -162,8 +161,7 @@ fn urr_entries(ingest: SourceRootIngest) -> Optional<List<UsesRowRestatementEntr
             xs: folded.context.roots,
             empty: UrrWalk {
               context: native_test_context_finish(state: folded.context, front: front, ingest: ingest),
-              functions: Empty,
-              operations: Empty,
+              modules: Empty,
               authored: Empty,
               unobserved_modules: 0
             },
@@ -173,8 +171,7 @@ fn urr_entries(ingest: SourceRootIngest) -> Optional<List<UsesRowRestatementEntr
             optional_absent()
           } else {
             optional_present(value: uses_row_restatement_of(
-              functions: walked.functions,
-              operations: walked.operations,
+              facts: demand_facts_closure_facts(modules: walked.modules),
               authored: walked.authored
             ))
           }
