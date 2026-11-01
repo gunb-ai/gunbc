@@ -1369,3 +1369,33 @@ fn integer_int_content_digest(value: Int) -> Fnv1a64Structural {
     payload: content_hash_atom(value: int_to_decimal_string(value: value) as NonEmptyStr)
   )
 }
+
+// MODEL CONTRACT, not a new value wrapper. The source remains Compose<A,MachineWidth<N>>:
+// its inhabitants are A intersected with the existing interval. Keeping Compose folded preserves
+// infer_int_literal_value_at's existing width observation. No other Compose gets a value carrier.
+// The ten std.integer aliases and ten v2.std.integer aliases express the same width axis. Their
+// Int declarations have different current realizations; a width binding must not silently change
+// either unbounded Int. No bounds are copied here: v2.std.integer owns the symbolic intervals.
+fn integer_width_domain(width: StandardIntegerType) -> IntegerIntervalSpec {
+  integer_standard_integer_type_interval_spec(standard_integer_type: width)
+}
+
+// Same signedness AND interval inclusion: no implicit narrowing, signedness change, saturation,
+// truncation or wrapping. This also makes all implicit widening chains denote the same value.
+// UInt8 -> Int16 is total and exact but remains named under the recorded signedness rule in
+// gunbc.recurring_failure_mode.a_width_constrained_integer_admits_a_value_outside_its_width;
+// the prohibition is that rule, not a claim that this particular crossing loses information.
+fn integer_width_implicit_conversion(source: StandardIntegerType, destination: StandardIntegerType) -> Bool {
+  integer_standard_integer_type_signedness(standard_integer_type: source)
+    == integer_standard_integer_type_signedness(standard_integer_type: destination)
+    && integer_interval_spec_contains(container: integer_width_domain(width: destination), contained: integer_width_domain(width: source))
+}
+
+// The source policy is checked/trapping, independent of Rust debug/release overflow settings.
+// A named checked arithmetic operation returns absence/refusal on a result outside the interval;
+// ordinary width arithmetic must propagate a located refusal, never select target wrapping.
+// Existing named wrapping operations remain explicit alternatives. This legacy disposition is
+// the projection of std.integer IntegerOverflowSemantics' raise arm; it does not claim that a
+// hardware trap, panic and typed refusal are one effect. The effectful consumer must retain its
+// particular failure carrier. Saturating and wrapping are never implicit defaults.
+fn integer_width_default_overflow() -> OverflowDisposition { Trapping }

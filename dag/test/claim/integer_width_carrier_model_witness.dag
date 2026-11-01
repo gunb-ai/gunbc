@@ -3,8 +3,7 @@ module test.claim.integer_width_carrier_model_witness
 import std.types { Bool, String }
 import std.optional { Present, Absent }
 import extdeps.languages.rust.primitives { IntegerPrimitive, NonIntegerPrimitive }
-import v2.std.integer { Int8, Int16, Int128, UInt8, UInt16, UInt128, StandardIntegerType, Trapping }
-import gunbc.integer_width_carrier { integer_width_implicit_conversion, integer_width_default_overflow }
+import v2.std.integer { Int8, Int16, Int128, UInt8, UInt16, UInt128, StandardIntegerType, Trapping, integer_width_implicit_conversion, integer_width_default_overflow }
 import gunbc.rust_integer_width_bindings { rust_integer_width_primitive, rust_integer_width_source_bindings }
 
 fn primitive_named(width: StandardIntegerType, expected: String) -> Bool {
@@ -17,6 +16,7 @@ fn primitive_named(width: StandardIntegerType, expected: String) -> Bool {
   }
 }
 
+// RED CONTROL (authored, not yet executed): Delete the u8 IntegerPrimitive row from rust_grounding_primitives: UInt8 resolves Absent and this test is false. Duplicate that row also refuses ambiguity.
 test fn signed_and_unsigned_widths_select_existing_target_rows() -> Bool {
   primitive_named(width: Int8, expected: "i8")
     && primitive_named(width: UInt8, expected: "u8")
@@ -24,6 +24,7 @@ test fn signed_and_unsigned_widths_select_existing_target_rows() -> Bool {
     && primitive_named(width: UInt128, expected: "u128")
 }
 
+// RED CONTROL (authored, not yet executed): Remove the signedness conjunct: UInt8 -> Int16 becomes implicit and this test is false. Reverse interval containment: the positive widening and negative narrowing controls fail.
 test fn only_same_signedness_widening_is_implicit() -> Bool {
   integer_width_implicit_conversion(source: UInt8, destination: UInt16)
     && integer_width_implicit_conversion(source: Int8, destination: Int16)
@@ -32,6 +33,7 @@ test fn only_same_signedness_widening_is_implicit() -> Bool {
     && !integer_width_implicit_conversion(source: Int8, destination: UInt16)
 }
 
+// RED CONTROL (authored, not yet executed): Delete either source declaration from integer_width_source_declarations: only one binding remains and this test is false.
 test fn both_source_declaration_homes_share_the_target_fact() -> Bool {
   match rust_integer_width_source_bindings(width: UInt8) {
     Absent => false
@@ -39,6 +41,7 @@ test fn both_source_declaration_homes_share_the_target_fact() -> Bool {
   }
 }
 
+// RED CONTROL (authored, not yet executed): Change the default disposition from Trapping to Wrapping: this test is false even though Rust primitives still advertise their native wrap fact.
 test fn width_arithmetic_does_not_inherit_target_wrapping() -> Bool {
   match integer_width_default_overflow() { Trapping => true _ => false }
 }
