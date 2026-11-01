@@ -55,7 +55,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemFunction, ModuleItemTyp
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
-    expr_call_func_at, expr_literal_int_optional, expr_method_name_at,
+    divergent_type, expr_call_func_at, expr_literal_int_optional, expr_method_name_at,
     field_from_key_property_name, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,

@@ -15,6 +15,7 @@ import extdeps.languages.json.emit {
 }
 import gunbc.roadmap.roadmap_component { roadmap_dispatch_asset_path }
 import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceArtifact }
+import std.algebra { list_append }
 
 data roadmap_site_health_path: NonEmptyStr = "/healthz"
 data roadmap_site_dispatch_url_path: NonEmptyStr = "/target/roadmap-dispatch.json"

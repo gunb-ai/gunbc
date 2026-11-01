@@ -1,6 +1,6 @@
 module product.cable_plant_assessment
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, list_length }
 import std.error_primitives { Never }
 import std.nat { Nat }
 import extdeps.ethernet.link_mode { LinkMode }

@@ -24,6 +24,8 @@ import gunbc.fleet.fleet_posix_accounts {
   grounded_posix_principal_name,
   fleet_apt_get_binary_path,
   posix_sudo_grant_to_effect_grant,
+  fleet_posix_ci_runner_principal,
+  fleet_posix_operator_principal,
 }
 import gunbc.host.host_effect {
   HostEffect,

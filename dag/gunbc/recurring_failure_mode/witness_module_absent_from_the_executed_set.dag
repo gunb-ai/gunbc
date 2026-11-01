@@ -1,5 +1,6 @@
 module gunbc.recurring_failure_mode.witness_module_absent_from_the_executed_set
 
+import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 

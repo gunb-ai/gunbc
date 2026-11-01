@@ -36,15 +36,14 @@ import gunbc.host.host_effect_realize {
 import gunbc.live_deploy.emit { path_ancestors_inclusive }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_locus }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
-import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
+import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables, RevisionBoundAtEmission }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
 import gunbc.host.host_effect_realize { RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved }
 import gunbc.host.host_effect { LocalShell, HostEffectTransport, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation }
 import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
-import std.algebra { list_map, non_empty_to_list, Cons, Empty }
+import std.algebra { list_map, non_empty_to_list, Cons, Empty, list_append }
 import std.types { list_length }
-import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal, fleet_posix_operator_user }
 import gunbc.auth.approval_broker_state_directories {

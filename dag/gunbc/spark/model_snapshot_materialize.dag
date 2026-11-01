@@ -39,6 +39,7 @@ import gunbc.spark.model_snapshot_acquisition {
   model_snapshot_subject_for, model_snapshot_completion_check_argv, spark_hub_cache_root,
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement,
 }
+import extdeps.network.ipv4 { render_ipv4_address }
 
 // THE SPARK SIDE OF ACQUISITION, RUN AS THE TYPED FOLD RATHER THAN AS RENDERED SHELL.
 //

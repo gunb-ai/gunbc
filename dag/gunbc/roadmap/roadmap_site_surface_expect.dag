@@ -18,6 +18,7 @@ import std.optional { Absent, Present }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, serialize_json }
 import extdeps.http.server { media_type_wire_label, application_json_utf8 }
 import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact, HealthzEffectiveRead, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused }
+import std.algebra { list_append }
 
 // PURE bundle predicates for roadmap served-surface witnesses. Every function here takes an
 // already-materialized RoadmapSiteSurfaceBundle (or a typed HTTP read) and performs no filesystem,

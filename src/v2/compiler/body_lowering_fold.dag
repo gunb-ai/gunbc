@@ -95,7 +95,7 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
-import v2.std.node { node_same_occurrence, positional_child_target_nodes, content_hash, symbol_lexeme, NotADeclaration }
+import v2.std.node { node_same_occurrence, positional_child_target_nodes, content_hash, symbol_lexeme, NotADeclaration, edge_declared }
 
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }

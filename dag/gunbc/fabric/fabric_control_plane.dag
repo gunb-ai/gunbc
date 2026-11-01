@@ -63,6 +63,7 @@ import gunbc.fabric.fabric_executor_class {
   CapacityClassRefused, ExecutorNotClassified,
   admit_executor_capacity, capacity_admission_wire,
 }
+import gunbc.fabric.fabric_witness_run { floor_grant_duration }
 
 // THE BROKER: SELECTION DECIDES WHICH CELL, THE STORE DECIDES WHETHER WE GET IT.
 //
