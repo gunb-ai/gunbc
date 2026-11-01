@@ -1,8 +1,7 @@
 module std.host_text
 
 import std.types { Char, List }
-import std.algebra { fold_list }
-import std.nat { Nat, Zero, Succ }
+import std.nat { Nat }
 
 // THE HOST-TEXT CARRIER AND THE OPERATIONS WHOSE SEMANTICS NEED IT (operator ruling H2, 2026-10-17,
 // v2-namespace-cutover). HostText is the opaque, native representation of text a host hands the
@@ -70,5 +69,5 @@ fn text_of_chars(scalars: List<Char>) -> HostText {
 // self-call and refuses. Dissolution trigger: a .dag realization (the scalar-count fold over chars)
 // replaces the host one once an explicit import outranks the ambient primitive.
 fn string_length(text: HostText) -> Nat {
-  fold_list(xs: chars(text: text), empty: Zero, cons: fn(n, _) { Succ { prev: n } })
+  string_length(text: text)
 }
