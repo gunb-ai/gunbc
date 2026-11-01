@@ -6,7 +6,7 @@ import std.measure { second, second_count }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
-import gunbc.durable_handoff_host { RolePending, RoleHandedOff }
+import gunbc.spool_queue { RolePending, RoleHandedOff }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import gunbc.live_deploy.deployed_tree_observation {

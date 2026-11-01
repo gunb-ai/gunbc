@@ -8,9 +8,6 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
   SpoolListed, SpoolListingUnreadable,
 }
-import gunbc.durable_handoff_host {
-  SpoolRole, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
-}
 import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
 import gunbc.roadmap.spool_stall { SpoolStallStep, SpoolStallMove, SpoolStallClaim, SpoolStallListRequests, spool_stall_step_text, spool_stall_step_of_text, SpoolStallRead, spool_stall_read_at, SpoolStallNone, SpoolStallHeld, spool_stall_record_at, SpoolStallEntry, SpoolStallUnreadable }
 import gunbc.roadmap.roadmap_belt_actuate {
