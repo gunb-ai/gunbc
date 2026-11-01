@@ -4,17 +4,21 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,
   CensusNotRunnable,
-  census_rows_of_class,
-  census_total_count
+  census_count_at_key
 }
 import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-fn self_call_advisory_count(source: String) -> Int {
+// Scoped to class AND subject (the function name): the census row set is the WHOLE compile's, the imported
+// closure included (gunbc.compile_diagnostic_census), so a bare class total would count the corpus. Both
+// gate dispositions are summed so the claim does not depend on how the host labels an advisory.
+fn self_call_advisory_count(source: String, function: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SelfCallWithoutDescent"))
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "SelfCallWithoutDescent", subject_name: function, blocking: true)
+        + census_count_at_key(rows: rows, diagnostic_class: "SelfCallWithoutDescent", subject_name: function, blocking: false)
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
@@ -23,22 +27,22 @@ fn self_call_advisory_count(source: String) -> Int {
 // annotate_descent_evidence and folded here by derive_edge_evidence) is not Strict. Before this change the
 // evidence had no acceptance-path reader and the count was 0; the advisory makes it 1.
 // Specimen shape: gunbc.durable_append_log_store attempt_append_log_census_row (gunbc#15471).
-data unchanged_argument_self_call_source: String = "module probe_self_call_unchanged\nimport std.types { Int }\nfn spin(n: Int) -> Int { if n == 0 { 0 } else { spin(n: n) } }\n"
+data unchanged_argument_self_call_source: String = "module probe_self_call_unchanged\nimport std.types { Int }\nfn spin_unchanged(n: Int) -> Int { if n == 0 { 0 } else { spin_unchanged(n: n) } }\n"
 
 test fn w_a_self_call_passing_its_argument_unchanged_is_counted() -> Bool {
-  self_call_advisory_count(source: unchanged_argument_self_call_source) == 1
+  self_call_advisory_count(source: unchanged_argument_self_call_source, function: "spin_unchanged") == 1
 }
 
 // CONTROL: a Strict descent (n - 1 under the zero guard) is accepted with no advisory.
-data strict_descent_self_call_source: String = "module probe_self_call_strict\nimport std.types { Int }\nfn count_down(n: Int) -> Int { if n == 0 { 0 } else { count_down(n: n - 1) } }\n"
+data strict_descent_self_call_source: String = "module probe_self_call_strict\nimport std.types { Int }\nfn count_down_strict(n: Int) -> Int { if n == 0 { 0 } else { count_down_strict(n: n - 1) } }\n"
 
 test fn w_a_self_call_with_a_strict_descent_is_not_counted() -> Bool {
-  self_call_advisory_count(source: strict_descent_self_call_source) == 0
+  self_call_advisory_count(source: strict_descent_self_call_source, function: "count_down_strict") == 0
 }
 
 // CONTROL: a non-recursive function is untouched.
 data non_recursive_source: String = "module probe_self_call_none\nimport std.types { Int }\nfn leaf(n: Int) -> Int { n }\nfn caller(n: Int) -> Int { leaf(n: n) }\n"
 
 test fn w_a_non_recursive_function_is_not_counted() -> Bool {
-  self_call_advisory_count(source: non_recursive_source) == 0
+  self_call_advisory_count(source: non_recursive_source, function: "leaf") == 0
 }
