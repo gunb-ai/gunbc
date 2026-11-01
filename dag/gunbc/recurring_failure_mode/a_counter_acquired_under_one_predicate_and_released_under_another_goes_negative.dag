@@ -1,0 +1,90 @@
+module gunbc.recurring_failure_mode.a_counter_acquired_under_one_predicate_and_released_under_another_goes_negative
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A RESOURCE COUNTER WHOSE INCREMENT IS GUARDED BY ONE PREDICATE AND WHOSE DECREMENT IS GUARDED BY ANOTHER
+// DRIFTS, SILENTLY, IN THE DIRECTION THAT MAKES THE NEXT ADMISSION MORE PERMISSIVE. Filed 2026-10-31 by
+// proud-bear-756 at the manager's direction (calm-crab-645, msg_b18efa42). The defect was found by
+// calm-moth-166 reading the srv1 dev policy and fixed by them in PR #15113 (merged as 6975bc9e610e);
+// this row files the CLASS and its executed RED and claims no credit for the fix.
+
+data a_counter_acquired_under_one_predicate_and_released_under_another_goes_negative: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_counter_acquired_under_one_predicate_and_released_under_another_goes_negative" as NonEmptyStr,
+
+  // FOUND SILENTLY WRONG. The figure lives in a shared dictionary read only by a stats endpoint; no request
+  // failed because of it, so no case could have seen it through a status code. Silent wrongness is below the
+  // ladder, not a rung on it. The ceiling is MechanicallyPreventable: one case refuses the state and it has
+  // been executed once by hand.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability of a paired reservation and release to be ONE construct rather than two predicates in two phases -- the shape the modeled front door already has, where the seat's use is opened at admit and ended by front_door_stream_end exactly for the use that opened it -- plus the executed case that refuses any pair which can release a reservation it never made"
+    },
+  },
+
+  receipts: [
+    "**INVALID STATE.** An access-phase handler reserves a turn only under some predicate, and a log-phase
+    handler releases 'the turn' under a DIFFERENT predicate, with nothing shared between them but a name.
+    Read in the pre-fix blob at 50043a419018734c846f483c06fb97cc68335fa0 (dag/gunbc/serving/router_dev_policy.dag):
+    the reservation is 'begin_turn(u)', which increments 'active:<name>' and refuses past the cap; the release
+    is the log phase, 'if ngx.ctx.counted then state:incr(\"active:\" .. ngx.ctx.counted, -1, 0)' (line 482);
+    and the flag it keys on is set by 'serve(pick, session)' -- 'ngx.ctx.counted = pick.name' (line 245) --
+    not by the reservation. The two guards are not the same test. For a hard engine-local row whose cap is
+    the 0 sentinel, the bound-session arm reads 'if hard and bound.cap ~= 0 and not begin_turn(bound)' (line
+    315) and so SKIPS begin_turn entirely, then takes 'if hard then return serve(bound, session)' (line 320).
+    Every such turn decrements a counter that was never incremented.",
+
+    "**THE CASCADE, IN THE DIRECTION THAT OPENS THE DOOR.** 'active:<name>' walks negative, one per bound
+    turn. Every consumer of that figure then reads a permissive value: the pick loop scores
+    'local free = c.overflow and 1 or (c.cap - active(c))', so a negative counter turns into FREE CAPACITY
+    on a row whose cap the reservation path reads as saturated, and the tie-break prefers the largest free --
+    the corrupted row wins selection over rows holding real capacity. And begin_turn's own guard,
+    'if not u.overflow and active(u) > u.cap', passes once the counter is negative enough, so a row that was
+    being refused for capacity starts admitting. The published figure is wrong in whichever direction the
+    drift runs; only the drift that admits is safe to miss.",
+
+    "**WHY IT LOOKED SAFE.** Nothing at the request boundary moves: the session is served, by the engine the
+    stickiness rule wanted, with a 200. The counter is a number on a stats page. A case set that asserts
+    status codes and routing outcomes cannot see it at all, which is why the class needs a case that asserts
+    the COUNTER, not the response.",
+
+    "**THE FIX AS LANDED (calm-moth-166, not this row's claim).** One carrier, set in one place: begin_turn is
+    the only reservation and the only setter of the flag the log phase reads -- the merged code states it in
+    a comment at that function -- the log phase decrements only when that flag is set, and the forwarded body
+    is computed BEFORE any reservation or binding so a refusal leaves no counter and no binding behind.",
+
+    "**THE DISCRIMINATING RED, EXECUTED.** The case 'dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted'
+    in falsifier_cases drives the cap-0 engine_local fixture (f1) with the SAME session twice and asserts four
+    things at once: a 429 with 'at its active-turn cap', no upstream line at all, no 'upstream:f1:429' counter,
+    and the stats figure 'active:f1' equal to 0 after both turns. At the pre-fix policy the fourth assertion is
+    the one that breaks -- the figure reads negative -- which is exactly the manager's requested RED shape:
+    that row, that session twice, the counter staying at or above zero.",
+
+    "**WHY THE MODELED ROUTER DOES NOT HAVE THIS FAULT, AND WHERE THE CLASS STILL LIVES.** The front-door model
+    pairs the two halves structurally: a seat's use is opened by an admit and ended by
+    'front_door_stream_end' against the same grant, so a release cannot outlive an acquire that did not happen
+    (gunbc.serving.serving_front_door; capacity admission itself is turn admission,
+    gunbc.serving.turn_admission). The class survives anywhere the two halves are written separately -- and
+    while routing policy is authored as Lua lines inside 'LuaPhaseBlock' (extdeps.proxy.openresty), they are
+    always written separately. So the ceiling is MechanicallyPreventable, not structural, at this substrate.",
+
+    "**CEILING AND TRIGGER.** Blocker ClimbableButUnbuilt: the refusing case exists and has been executed by
+    hand on srv1, but the required path runs no claim rows, so today the guarantee holds only while someone
+    remembers to run it.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_access_lines"),
+    decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_log_lines"),
+    decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "falsifier_cases"),
+    decl_ref(module_path: "gunbc.serving.serving_front_door", decl_name: "front_door_stream_end"),
+    decl_ref(module_path: "gunbc.serving.turn_admission", decl_name: "serving_group_admission"),
+  ],
+}
