@@ -630,18 +630,19 @@ data openai_text_completion_object_wire: String = "text_completion"
 // fields it describes. It is now a carrier with a checked constructor, so a decoder can obtain the
 // value for one endpoint and refuse every other one:
 //
-//   extdeps.languages.json.grammar is the pattern -- `type JsonNumberLexeme = String where
-//   brand("JsonNumberLexeme")` (:36) with `json_number_lexeme_valid`, an `..._unchecked` coercion and a
-//   smart constructor returning Optional (:149-159). A where-BRAND carries nominal identity only (the
-//   atom yields a WherePredicateMarker that is never evaluated as a refinement, std/types.dag:280-292),
-//   so no validation is claimed by the type: the check lives in the constructor, which is DESIGN section
-//   4's ruling gunbc.design_ruling where_refinements_retire_for_checked_constructors -- "where-refinements
-//   are retired in favour of checked constructors returning `Optional`". That is why this is not spelled
-//   `String where openai_text_completion_object_is_documented`: std.types' NonEmptyStr still is
-//   (std/types.dag:264), but it is the legacy the ruling retires, not a pattern to copy, and DESIGN
-//   section 4 also refuses to lean on the interim literal-only judgment
-//   (design_ruling.dag: literal_only_refinement_judgment_is_interim) for a value that arrives from a
-//   decoder rather than being written in source.
+//   extdeps.languages.json.grammar is the pattern: its `JsonNumberLexeme` carrier is declared as
+//   `String where brand("JsonNumberLexeme")` alongside `json_number_lexeme_valid`, the
+//   `json_number_lexeme_unchecked` coercion, and the checked constructor `json_number_lexeme` returning
+//   Optional. A where-BRAND carries nominal identity only -- `std.types`' `brand` yields a
+//   `WherePredicateMarker`, which is never evaluated as a refinement -- so no validation is claimed by
+//   the type: the check lives in the constructor, which is DESIGN section 4's ruling
+//   gunbc.design_ruling where_refinements_retire_for_checked_constructors -- "where-refinements are
+//   retired in favour of checked constructors returning `Optional`". That is why this is not spelled
+//   `String where openai_text_completion_object_is_documented`: `std.types`' `NonEmptyStr` is still
+//   spelled that way, but it is the legacy that ruling retires, not a pattern to copy, and DESIGN
+//   section 4 also refuses to lean on `gunbc.design_ruling`'s
+//   `literal_only_refinement_judgment_is_interim`, an explicitly interim judgment, for a value that
+//   arrives from a decoder rather than being written in source.
 //
 // The refusal is a refusal, not a default: no arm of this constructor yields a carrier for a value that
 // is not the documented constant, so a body from another endpoint cannot be laundered into a text
