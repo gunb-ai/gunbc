@@ -28,12 +28,15 @@ module test.claim.by_ref_bridge_argument_declared_carrier_witness
 // substring set would catch, and a text test would silently follow whatever spacing the renderer uses
 // (DESIGN.md §4: the richer source exists, so a heuristic is not permitted).
 //
-// THE GUARD'S RED INPUT IS THE SEED, NOT A FIXTURE. A program whose checker leaves a hole in a by-ref
-// argument is precisely what run 41299024017 supplied; writing one by hand means making the checker
-// accept something it should refuse, which tests nothing. So the executed evidence for the guard is that
-// run and its rerun, and what this file adds is the control that keeps the guard from being quietly
-// weakened: `by_ref_bridge_annotation_never_carries_an_inference_hole` compiles the same program and
-// forbids any hole spelling inside the annotation it does write.
+// WHAT THIS FILE DOES NOT CLAIM ABOUT THE GUARD. `rust_type_node_is_fully_resolved` has no red input
+// reachable from these arms: the programs below are fully resolved, so they emit the same annotation with
+// or without the guard, and a claim over them could only ever be green -- a control that cannot fail
+// controls nothing (§5: "a real consumer green by execution plus a discriminating input that goes red
+// when the behavior is wrong"). The guard's red input is the seed itself, which is where a hole reached a
+// by-ref argument: the rebuild of run 41299024017 (`expected im::HashMap<_, _>, found
+// Rc<im::HashMap<_, bool>>`), and its rerun on this head is the executing evidence. Stating that here is
+// the honest form of the claim; a fixture invented to look like it would have the checker accept
+// something it should refuse.
 //
 // THE REPAIR IS AT THE BORROW, NOT AT THE NAME, AND THESE CLAIMS PIN THAT. In
 // `src/v1/05_emit_rust.dag`, `rust_by_ref_bridge_argument` now binds a CALL argument at the carrier
@@ -86,32 +89,5 @@ test fn by_ref_bridge_over_a_name_keeps_the_plain_borrow() -> Bool {
     "src/byrefplainname.rs",
     ["v1_rt::string_length(&s"],
     ["v1_rt::string_length(&{"]
-  )
-}
-
-// THE CONTROL FOR THE GUARD. Same program, same required annotation, and the hole spellings forbidden:
-// if `rust_node_carrier_decl` stopped consulting `rust_type_node_is_fully_resolved`, an annotation with a
-// hole could reach the emitted file and this arm is the leg that says so. It is not the guard's red case
-// -- that is the seed rebuild named above -- it is the discriminating input that keeps the guard wired.
-test fn by_ref_bridge_annotation_never_carries_an_inference_hole() -> Bool {
-  let source = string_join(
-    lines: [
-      "module probe.by.ref.hole.control;",
-      "import std.collections { map_insert, empty_map }",
-      "import std.algebra { fold_list }",
-      "fn probe(xs: List<Int>) -> List<String> {",
-      "  sorted_map_keys(fold_list(xs: xs, empty: empty_map(), cons: fn(m: Map<String, Int>, id: Int) { map_insert(m: m, key: \"k\", value: id) }))",
-      "}",
-    ],
-    separator: "\n"
-  )
-  // required: the annotation is written; forbidden: any rendering with an unresolved leaf.
-  compile_dag_rust_emit_check(
-    source: source,
-    path: "src/mod.rs",
-    required: ["v1_rt::sorted_map_keys({ let __by_ref_arg: &", "; __by_ref_arg }"],
-    // Only the spellings that can only come from a container's own type arguments. Tuple and closure
-    // holes are plausible elsewhere in a file and are caught structurally, not by text.
-    forbidden: ["<_, ", ", _>", "<_>", "<_>()"]
   )
 }
