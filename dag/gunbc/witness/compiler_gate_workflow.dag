@@ -634,6 +634,25 @@ fn compiler_gate_required_job_env() -> List<YamlKeyValue> {
   [kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))]
 }
 
+// GUNBC PROJECTIONS, FOR CONSUMERS OUTSIDE THIS EMITTER'S RENDER AND ADMISSION PATH.
+// Each is ONE call on gunbc's own row through the profile-taking function the emitter also uses, so a fact
+// about the required gate has exactly one spelling (profile.roster.required_context, profile.roster.timeout)
+// and these are reads, not copies. Who consumes them:
+//  - gunbc.claim_coverage_census_live and gunbc.required_lane_resolution_census_live name the required job
+//    by its context, which is the row's required context - a question about GUNBC's merge path, not a
+//    question an emitter asks while rendering someone else's row;
+//  - gunbc.fleet.fleet_converge_workflow sizes its own job bounds from the CI gate's build bound;
+//  - the claims that assert which check must be green to merge and that the bound is not a budget.
+// None of them is reachable from compiler_gate_yml_for: the admission and every builder read the profile
+// argument, and the merge-path list is [profile.roster.required_context] of that same argument.
+data compiler_gate_required_job_id: String = gunbc_roster_gate().required_context as String
+
+data compiler_gate_emit_build_timeout: Minute = gunbc_roster_gate().timeout
+
+fn compiler_gate_required_job() -> Job {
+  compiler_gate_required_job_of(profile: gunbc_repository_ci_profile())
+}
+
 fn compiler_gate_required_job_of(profile: RepositoryCiProfile) -> Job {
   Job {
     id: profile.roster.required_context as String,
