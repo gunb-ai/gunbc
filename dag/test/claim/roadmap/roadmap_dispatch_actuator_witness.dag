@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_dispatch_actuator_witness
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, dispatch_attempt_state_path_for_instance, dispatch_attempt_worker_log_path_for_instance }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryPublication, AttemptDirectoryRoot, AttemptDirectoryWire, AttemptSupervisorEvents, AttemptWorkerEvents, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider }
 import gunbc.roadmap.roadmap_sizing {
   NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
 }
@@ -78,7 +79,7 @@ import extdeps.llm.cli {
   ProviderModelSelection,
   reasoning_effort_label,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_supervisor_unit_command, dispatch_attempt_audit_events_path_for_instance, dispatch_attempt_supervisor_events_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_unit_name, dispatch_reviewer_attempt_identity, dispatch_attempt_publication_dir_for_instance, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_for_origin, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_continuation_alignment_preamble, dispatch_review_unit_command, dispatch_supervisor_unit_command, dispatch_unit_exec_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, dispatch_attempt_wire_dir_for_instance, attempt_state_prepare_argvs_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_supervisor_unit_command, dispatch_attempt_unit_name, dispatch_reviewer_attempt_identity, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_for_origin, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_continuation_alignment_preamble, dispatch_review_unit_command, dispatch_supervisor_unit_command, dispatch_unit_exec_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, attempt_state_prepare_argvs_for_instance }
 import gunbc.dispatch_selection {
   dispatch_selection_standing_ineligible_reason,
   default_provider_selection_request,
@@ -975,16 +976,8 @@ test fn the_prepare_step_creates_the_publication_directory_with_the_attempt_dire
     attempt_key: key,
   )
   let wire = join(fold(argvs, init: [], f: (acc, a) => concat(acc, a.args)), separator: "\0")
-  let attempt_dir = dispatch_attempt_state_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: key,
-  )
-  let publication_dir = dispatch_attempt_publication_dir_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: key,
-  )
+  let attempt_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryRoot)
+  let publication_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryPublication)
   fold(argvs, init: true, f: (ok, a) => ok && a.program == "/usr/bin/install")
     && string_contains(s: wire, pattern: attempt_dir)
     && string_contains(s: wire, pattern: publication_dir)
@@ -1005,10 +998,10 @@ test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scra
   let node_id = "belt-cause-probe" as RoadmapNodeId
   let key = "a0123456789abcdef"
   let argvs = attempt_state_prepare_argvs_for_instance(instance: instance, node_id: node_id, attempt_key: key)
-  let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: key)
-  let scratch = path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: key))
-  let publication_dir = dispatch_attempt_publication_dir_for_instance(instance: instance, node_id: node_id, attempt_key: key)
-  let wire_dir = dispatch_attempt_wire_dir_for_instance(instance: instance, node_id: node_id, attempt_key: key)
+  let attempt_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryRoot)
+  let scratch = path_parent_directory(path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: key, member: AttemptWorkerLog))
+  let publication_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryPublication)
+  let wire_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryWire)
   let traverse = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerAllGroupTraverseSetgid))
   let writable = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid))
   let owner_only = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly))
@@ -1062,8 +1055,8 @@ test fn the_service_user_worker_prepare_stays_one_owner_only_install() -> Bool {
   let node_id = "belt-cause-probe" as RoadmapNodeId
   let key = "a0123456789abcdef"
   let argvs = attempt_state_prepare_argvs_for_instance(instance: instance, node_id: node_id, attempt_key: key)
-  let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: key)
-  let scratch = path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: key))
+  let attempt_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryRoot)
+  let scratch = path_parent_directory(path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: key, member: AttemptWorkerLog))
   let owner_only = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly))
   list_length(items: argvs) == 1
     && all_owner_only_with(argvs: argvs, owner_only: owner_only, attempt_dir: attempt_dir, scratch: scratch)
@@ -1081,16 +1074,8 @@ test fn the_prepared_publication_directory_is_inside_the_attempt_directory() -> 
   let instance = srv1_live_dashboard_instance()
   let node_id = "belt-cause-probe" as RoadmapNodeId
   let key = "a0123456789abcdef"
-  let attempt_dir = dispatch_attempt_state_path_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: key,
-  )
-  let publication_dir = dispatch_attempt_publication_dir_for_instance(
-    instance: instance,
-    node_id: node_id,
-    attempt_key: key,
-  )
+  let attempt_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryRoot)
+  let publication_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryPublication)
   publication_dir == join([attempt_dir, "/publication"], "")
     && publication_dir != attempt_dir
 }
@@ -1540,7 +1525,7 @@ test fn witness_auditor_launch_writes_the_events_path_metering_reads() -> Bool {
       witness_argv_member(
         xs: argv_words(command: command),
         x: join(
-          ["events_path=", dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", head_sha: "fci1witnesssha")],
+          ["events_path=", attempt_state_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", member: AttemptAuditEvents { head_sha: "fci1witnesssha" })],
           "",
         ),
       )
@@ -1563,7 +1548,7 @@ test fn witness_supervisor_launch_writes_the_events_path_metering_reads() -> Boo
       witness_argv_member(
         xs: argv_words(command: command),
         x: join(
-          ["events_path=", dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", turn: 7)],
+          ["events_path=", attempt_state_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", member: AttemptSupervisorEvents { turn: 7 })],
           "",
         ),
       )
@@ -1574,16 +1559,8 @@ test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_ev
   let instance = srv1_live_dashboard_instance()
   let node_id = "claude-headless"
   let attempt_key = "feedfacefeedface"
-  let events = dispatch_attempt_events_path_for_instance(
-    instance: instance,
-    node_id: roadmap_dispatch_actuator_nid(s: node_id),
-    attempt_key: attempt_key,
-  )
-  let log = dispatch_attempt_worker_log_path_for_instance(
-    instance: instance,
-    node_id: roadmap_dispatch_actuator_nid(s: node_id),
-    attempt_key: attempt_key,
-  )
+  let events = attempt_state_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: node_id), attempt_key: attempt_key, member: AttemptWorkerEvents)
+  let log = attempt_state_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: node_id), attempt_key: attempt_key, member: AttemptWorkerLog)
   match dispatch_session_container_for_provider(
     provider: ClaudeCodeProvider,
     instance: instance,

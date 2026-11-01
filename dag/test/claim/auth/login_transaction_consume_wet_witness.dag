@@ -1,68 +1,113 @@
 module test.claim.auth.login_transaction_consume_wet_witness
 
-import std.types { String, Bool, FilePath }
+import std.types { String, Bool, FilePath, NonEmptyStr }
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
 import gunbc.auth.auth_store_key { auth_store_key_of }
-import gunbc.auth.login_transaction_store { LoginTransactionStoreLayout, login_transaction_store_save, login_transaction_store_delete, login_transaction_store_lookup, login_transaction_file_path, LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.auth.login_transaction_store_root {
+  LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store, login_transaction_store_slots_path, login_transaction_store_consume,
+  LoginTransactionConsumeWon, LoginTransactionConsumeAlreadyWon, LoginTransactionConsumeRefused,
+}
+import gunbc.auth.login_transaction_store { login_transaction_store_save, login_transaction_store_delete, login_transaction_store_lookup, LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed }
 
-// THE ATOMIC CONSUME OVER REAL FILES. Exclusivity is a property of the filesystem's create-new
-// write, so these claims run on a throwaway temp directory in the required floor's local-repo wet
-// lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), never against a mock.
+// THE ATOMIC CONSUME OVER REAL FILES. Exclusivity is a property of the hold's create-new CAS write
+// (gunbc.durable_exclusive_hold_file_store), so these claims run on a throwaway temp directory in the required
+// floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), never against a
+// mock. The store is the production mint (login_transaction_store) over an instance whose root is the test's,
+// its directory created the way the instance directory row would create it.
 fn browser_transaction() -> OidcLoginTransaction {
   OidcLoginTransaction { state: "state-A", nonce: "nonce-A", created_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T00:10:00Z",
     verifier: OidcPkceCodeVerifier { verifier: "verifier-from-jar-A" }, return_path: RelativeReturnPath { path: "/" } }
 }
 
-test fn transaction_consume_has_one_winner_over_real_files() -> Bool {
-  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
-  if directory == "" { false } else {
-    let layout = LoginTransactionStoreLayout { root: directory as FilePath }
-    let transaction = browser_transaction()
-    match login_transaction_store_save(layout: layout, transaction: transaction) {
-      LoginTransactionSaved { state: _ } => match login_transaction_store_delete(layout: layout, state: transaction.state) {
-        LoginTransactionDeleted { state: _ } => match login_transaction_store_delete(layout: layout, state: transaction.state) {
-          LoginTransactionDeleted { state: _ } => false
-          LoginTransactionNothingToDelete { state: _ } => true
-          LoginTransactionDeleteRefused { state: _, detail: _ } => false
-        }
-        LoginTransactionNothingToDelete { state: _ } => false
-        LoginTransactionDeleteRefused { state: _, detail: _ } => false
-      }
-      LoginTransactionSaveRefused { step: _, reason: _ } => false
+fn consume_instance(directory: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(deployment: deployment_id(name: "login-consume-fixture" as NonEmptyStr), instance_id: "login-consume-fixture", layout: srv1_host_layout(), root: directory as FilePath,
+    serve_function: "unused", listen_port: 18745, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+}
+
+// The store the claims run against, minted the production way. A mint that refuses is the claim's own failure,
+// with its detail, never an empty store the business assertions below could read (stern-ram-763, 2026-10-25).
+type ConsumeStoreAt = ConsumeStoreMinted { store: LoginTransactionStore } | ConsumeStoreRefused { reason: String }
+
+fn transactions_at(directory: String) -> ConsumeStoreAt {
+  let instance = consume_instance(directory: directory)
+  let made = shell.Mkdir.Parents(path: login_transaction_store_slots_path(instance: instance))
+  if !made.success { ConsumeStoreRefused { reason: "the login transaction directory could not be created" } } else {
+    match login_transaction_store(instance: instance) {
+      LoginTransactionStoreReady { store: s } => ConsumeStoreMinted { store: s }
+      LoginTransactionStoreUnready { detail: d } => ConsumeStoreRefused { reason: join(["the login transaction store mint refused over the fixture tree: ", d], "") }
     }
   }
 }
 
-// THE CONCURRENT LOSER, by supplied state: a second consumer that still lists the transaction
-// file finds the winner's create-new claim already on disk. The claim is planted here rather than
-// raced, so the arm is reached deterministically. RED if the claim write stops being create-new
-// (the loser would then delete and report Deleted); the transaction file must survive the loser.
-test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing() -> Bool {
+test fn transaction_consume_has_one_winner_over_real_files() -> ProcessExit {
   let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
-  if directory == "" { false } else {
-    let layout = LoginTransactionStoreLayout { root: directory as FilePath }
-    let transaction = browser_transaction()
-    match login_transaction_store_save(layout: layout, transaction: transaction) {
-      LoginTransactionSaveRefused { step: _, reason: _ } => false
-      LoginTransactionSaved { state: _ } => {
-        match auth_store_key_of(raw: transaction.state as String) {
-          Absent => false
-          Present { value: key } => {
-        let planted = Filesystem.WriteCreateNewWithMode(path: concat(login_transaction_file_path(layout: layout, key: key), ".consumed"), content: "consumed", mode: 384)
-        planted.success && match login_transaction_store_delete(layout: layout, state: transaction.state) {
-          LoginTransactionDeleteRefused { state: _, detail: _ } =>
-            match login_transaction_store_lookup(layout: layout, state: transaction.state) {
-              LoginTransactionStoreFound { transaction: _ } => true
-              LoginTransactionStoreUnknown { state: _ } => false
-              LoginTransactionStoreUnread { state: _, detail: _ } => false
-              LoginTransactionStoreEntryMalformed { state: _, detail: _ } => false
+  if directory == "" { exit_failure(reason: "the fixture directory could not be created") } else {
+    match transactions_at(directory: directory) {
+      ConsumeStoreRefused { reason: r } => exit_failure(reason: r)
+      ConsumeStoreMinted { store: store } => {
+        let transaction = browser_transaction()
+        match login_transaction_store_save(store: store, transaction: transaction) {
+          LoginTransactionSaved { state: _ } => match login_transaction_store_delete(store: store, state: transaction.state) {
+            LoginTransactionDeleted { state: _ } => match login_transaction_store_delete(store: store, state: transaction.state) {
+              LoginTransactionDeleted { state: _ } => exit_failure(reason: "a second consume of one transaction also deleted it")
+              LoginTransactionNothingToDelete { state: _ } => ExitSuccess
+              LoginTransactionDeleteRefused { state: _, detail: d } => exit_failure(reason: join(["the second consume refused instead of answering nothing to delete: ", d], ""))
             }
-          LoginTransactionDeleted { state: _ } => false
-          LoginTransactionNothingToDelete { state: _ } => false
-        }
+            LoginTransactionNothingToDelete { state: _ } => exit_failure(reason: "the first consume found nothing to delete")
+            LoginTransactionDeleteRefused { state: _, detail: d } => exit_failure(reason: join(["the first consume refused: ", d], ""))
           }
+          LoginTransactionSaveRefused { step: s, reason: r } => exit_failure(reason: join(["the transaction could not be saved at ", s, ": ", r], ""))
+        }
+      }
+    }
+  }
+}
+
+// THE CONCURRENT LOSER, by supplied state: a second consumer that still lists the transaction file finds the
+// winner's consume hold already taken. The hold is won here through the store's own consume, rather than
+// raced, so the arm is reached deterministically; the same consume then answers AlreadyWon to anyone else.
+// RED if the consume stops being exclusive (the loser would then delete and report Deleted); the transaction
+// file must survive the loser. A consume that REFUSES is not a lost race: it fails the claim with its detail.
+test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing() -> ProcessExit {
+  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
+  if directory == "" { exit_failure(reason: "the fixture directory could not be created") } else {
+    match transactions_at(directory: directory) {
+      ConsumeStoreRefused { reason: r } => exit_failure(reason: r)
+      ConsumeStoreMinted { store: store } => {
+        let transaction = browser_transaction()
+        match login_transaction_store_save(store: store, transaction: transaction) {
+          LoginTransactionSaveRefused { step: s, reason: r } => exit_failure(reason: join(["the transaction could not be saved at ", s, ": ", r], ""))
+          LoginTransactionSaved { state: _ } =>
+            match auth_store_key_of(raw: transaction.state as String) {
+              Absent => exit_failure(reason: "the fixture state is not a store key")
+              Present { value: key } =>
+                match login_transaction_store_consume(store: store, key: key) {
+                  LoginTransactionConsumeAlreadyWon => exit_failure(reason: "the first consume found the hold already taken")
+                  LoginTransactionConsumeRefused { detail: d } => exit_failure(reason: join(["the first consume refused: ", d], ""))
+                  LoginTransactionConsumeWon =>
+                    match login_transaction_store_consume(store: store, key: key) {
+                      LoginTransactionConsumeWon => exit_failure(reason: "a second consume also won the hold")
+                      LoginTransactionConsumeRefused { detail: d } => exit_failure(reason: join(["the second consume refused instead of answering AlreadyWon: ", d], ""))
+                      LoginTransactionConsumeAlreadyWon =>
+                        match login_transaction_store_delete(store: store, state: transaction.state) {
+                          LoginTransactionDeleteRefused { state: _, detail: _ } =>
+                            match login_transaction_store_lookup(store: store, state: transaction.state) {
+                              LoginTransactionStoreFound { transaction: _ } => ExitSuccess
+                              LoginTransactionStoreUnknown { state: _ } => exit_failure(reason: "the losing consumer's refusal still removed the transaction")
+                              LoginTransactionStoreUnread { state: _, detail: d } => exit_failure(reason: join(["the transaction could not be re-read after the loser: ", d], ""))
+                              LoginTransactionStoreEntryMalformed { state: _, detail: d } => exit_failure(reason: join(["the transaction read back malformed after the loser: ", d], ""))
+                            }
+                          LoginTransactionDeleted { state: _ } => exit_failure(reason: "the losing consumer deleted the transaction")
+                          LoginTransactionNothingToDelete { state: _ } => exit_failure(reason: "the losing consumer found nothing to delete")
+                        }
+                    }
+                }
+            }
         }
       }
     }

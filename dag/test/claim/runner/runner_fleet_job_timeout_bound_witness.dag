@@ -62,7 +62,7 @@ import gunbc.generated_artifact { artifact_eq, WitnessFloorYamlArtifact, FleetCo
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow,
   fleet_converge_job_timeout_minutes,
-  fleet_converge_mtcollins1_probe_step_timeout_minutes,
+  fleet_converge_runner_host_step_timeout_minutes,
   fleet_converge_runner_host_cap_release_step,
   fleet_converge_runner_host_cap_release_receipt_upload_step,
   step_declared_timeout_minutes,
@@ -179,7 +179,7 @@ test fn the_population_holds_the_v2_bootstrap_job_at_its_declared_timeout() -> B
 // refuse itself. All folds are read off the policy and the workflow model — no literal bounds them.
 test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> Bool {
   let budget = (second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) as Int)
-  let step_minutes = fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)])
+  let step_minutes = fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)])
   let job_minutes = fleet_converge_job_timeout_minutes()
   let release_minutes = step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_step())
   let upload_minutes = step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_receipt_upload_step())

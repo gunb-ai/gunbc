@@ -104,17 +104,12 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
-    emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
-    run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
-    run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_self_host_frontier, run_type_declaration_use_census_runs,
-    run_v2_census_verb, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
-    run_v2_native_cli_emit, run_v2_native_frontier, run_v2_select_spelled_modules, CensusInferRun,
-    MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured,
-    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases, NativeServeProgramRun,
-    PreparationCause, PreparationRefusal, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
-    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
+    emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
+    run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_census_verb,
+    run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
+    NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
+    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    V2NativeCliHeld,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
@@ -11008,6 +11003,7 @@ pub enum WitnessRuntimeCause {
     NoSuchVariable,
     NoSuchField,
     TypeError,
+    CallDepthExceeded,
     CrossRepresentationEquality,
     StringRealizationStraddle,
     VariantRealizationRefused,
@@ -11052,6 +11048,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::NoSuchVariable => "no-such-variable",
             WitnessRuntimeCause::NoSuchField => "no-such-field",
             WitnessRuntimeCause::TypeError => "type-error",
+            WitnessRuntimeCause::CallDepthExceeded => "call-depth-exceeded",
             WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
@@ -11089,6 +11086,7 @@ impl WitnessRuntimeCause {
             E::NoSuchVariable { .. } => WitnessRuntimeCause::NoSuchVariable,
             E::NoSuchField { .. } => WitnessRuntimeCause::NoSuchField,
             E::TypeError { .. } => WitnessRuntimeCause::TypeError,
+            E::CallDepthExceeded { .. } => WitnessRuntimeCause::CallDepthExceeded,
             E::CrossRepresentationEquality { .. } => {
                 WitnessRuntimeCause::CrossRepresentationEquality
             }
@@ -30915,7 +30913,7 @@ pub fn shell_transport_operation_declaration(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(
+            crate::v1_std_core::undeclared_transport_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),
@@ -31356,7 +31354,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(
+            crate::v1_std_core::undeclared_transport_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),

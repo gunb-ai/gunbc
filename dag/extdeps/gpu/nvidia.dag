@@ -4,10 +4,11 @@ import extdeps.gpu.types {
   DenseTensorThroughput, TensorFp4, TensorFp8, TensorInt8, TensorBf16,
   GpuDeviceCatalogRow, GpuComputeCapability, GpuRuntime, GpuSmCacheGeometry, Cuda,
   cuda_compute_capabilities_authority, PcieAddInBoard, SxmModule,
-  GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, RatedBoardPower,
+  GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, RatedBoardPower, SingleGpu,
   PassiveThermalSolution, ActiveThermalSolution,
 }
 import extdeps.memory.types { MemoryFacts, Dram, Hbm }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
 import extdeps.storage.types { PcieLink, PcieGeneration, Gen4 }
 import extdeps.vendor.nvidia { nvidia }
 import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size, giga_tensor_operations_per_second }
@@ -74,13 +75,16 @@ data nvidia_rtx_5090_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "GeForce RTX 5090",
   gpu: nvidia_rtx_5090_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: rtx_5090_interconnect } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 575) } },
   zero_power: none,
   thermal: none,
   pci_device_id: none,
-  figure_citations: [],
+  driver_listed_name: Present { value: "NVIDIA GeForce RTX 5090" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_5090_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
 }
 
 data nvidia_rtx_5090_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_rtx_5090_board_facts)
@@ -187,15 +191,17 @@ data nvidia_rtx_pro_6000_workstation_board_facts: GpuBoardCatalogFacts = GpuBoar
   vendor: nvidia,
   model: "RTX PRO 6000 Blackwell Workstation Edition",
   gpu: nvidia_rtx_pro_6000_workstation_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: rtx_pro_pcie5_x16_endpoint } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 600) } },
   zero_power: none,
   thermal: none,
   pci_device_id: none,
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" },
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_board_facts", field_name: "board_power"), authority: rtx_pro_6000_workstation_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_board_facts", field_name: "attachment"), authority: rtx_pro_6000_workstation_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
   ],
 }
 
@@ -230,15 +236,17 @@ data nvidia_rtx_pro_6000_max_q_board_facts: GpuBoardCatalogFacts = GpuBoardCatal
   vendor: nvidia,
   model: "RTX PRO 6000 Blackwell Max-Q",
   gpu: nvidia_rtx_pro_6000_max_q_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: rtx_pro_pcie5_x16_endpoint } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
   zero_power: none,
   thermal: none,
   pci_device_id: none,
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition" },
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_max_q_board_facts", field_name: "board_power"), authority: rtx_pro_6000_max_q_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_max_q_board_facts", field_name: "attachment"), authority: rtx_pro_6000_family_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_max_q_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
   ],
 }
 
@@ -273,16 +281,18 @@ data nvidia_rtx_pro_6000_server_board_facts: GpuBoardCatalogFacts = GpuBoardCata
   vendor: nvidia,
   model: "RTX PRO 6000 Blackwell Server Edition",
   gpu: nvidia_rtx_pro_6000_server_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: rtx_pro_pcie5_x16_endpoint } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 600) } },
   zero_power: none,
   thermal: Present { value: PassiveThermalSolution },
   pci_device_id: none,
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 6000 Blackwell Server Edition" },
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_server_board_facts", field_name: "board_power"), authority: rtx_pro_6000_server_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_server_board_facts", field_name: "attachment"), authority: rtx_pro_6000_family_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_server_board_facts", field_name: "thermal"), authority: rtx_pro_6000_server_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_server_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
   ],
 }
 
@@ -367,15 +377,17 @@ data nvidia_rtx_pro_5000_48gb_board_facts: GpuBoardCatalogFacts = GpuBoardCatalo
   vendor: nvidia,
   model: "RTX PRO 5000 Blackwell",
   gpu: nvidia_rtx_pro_5000_48gb_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: rtx_pro_pcie5_x16_endpoint } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
   zero_power: none,
   thermal: none,
   pci_device_id: none,
+  driver_listed_name: Present { value: "NVIDIA RTX PRO 5000 Blackwell" },
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_48gb_board_facts", field_name: "board_power"), authority: rtx_pro_5000_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_48gb_board_facts", field_name: "attachment"), authority: rtx_pro_5000_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_48gb_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
   ],
 }
 
@@ -410,12 +422,13 @@ data nvidia_rtx_pro_5000_72gb_board_facts: GpuBoardCatalogFacts = GpuBoardCatalo
   vendor: nvidia,
   model: "RTX PRO 5000 72GB Blackwell",
   gpu: nvidia_rtx_pro_5000_72gb_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: rtx_pro_pcie5_x16_endpoint } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
   zero_power: none,
   thermal: none,
   pci_device_id: none,
+  driver_listed_name: none,
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_72gb_board_facts", field_name: "board_power"), authority: rtx_pro_5000_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_5000_72gb_board_facts", field_name: "attachment"), authority: rtx_pro_5000_datasheet_authority },
@@ -503,13 +516,16 @@ data nvidia_b200_sxm_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "NVIDIA B200 SXM",
   gpu: nvidia_b200_sxm_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: SxmModule,
   board_power: none,
   zero_power: none,
   thermal: none,
   pci_device_id: none,
-  figure_citations: [],
+  driver_listed_name: Present { value: "NVIDIA B200" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b200_sxm_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
 }
 
 data nvidia_b200_sxm_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_b200_sxm_board_facts)
@@ -537,12 +553,13 @@ data nvidia_b300_sxm_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "NVIDIA B300 SXM",
   gpu: nvidia_b300_sxm_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: SxmModule,
   board_power: none,
   zero_power: none,
   thermal: none,
   pci_device_id: none,
+  driver_listed_name: none,
   figure_citations: [],
 }
 
@@ -657,14 +674,16 @@ data nvidia_h200_nvl_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "NVIDIA H200 NVL",
   gpu: nvidia_h200_nvl_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 600) } },
   zero_power: none,
   thermal: none,
   pci_device_id: none,
+  driver_listed_name: Present { value: "NVIDIA H200 NVL" },
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_h200_nvl_board_facts", field_name: "board_power"), authority: h200_nvl_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_h200_nvl_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
   ],
 }
 
@@ -741,16 +760,18 @@ data nvidia_rtx_2000_ada_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFact
   vendor: nvidia,
   model: "RTX 2000 Ada Generation",
   gpu: nvidia_rtx_2000_ada_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 70) } },
   zero_power: none,
   thermal: Present { value: ActiveThermalSolution },
   pci_device_id: none,
+  driver_listed_name: Present { value: "NVIDIA RTX 2000 Ada Generation" },
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_board_facts", field_name: "board_power"), authority: rtx_2000_ada_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_board_facts", field_name: "attachment"), authority: rtx_2000_ada_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_board_facts", field_name: "thermal"), authority: rtx_2000_ada_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
   ],
 }
 

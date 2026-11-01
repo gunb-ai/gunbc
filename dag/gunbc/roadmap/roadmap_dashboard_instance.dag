@@ -24,6 +24,8 @@ import extdeps.git {
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
+import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
@@ -390,7 +392,7 @@ fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
 }
 
 // THE INSTANCE ROOT IS ABSOLUTE AND SPELLED ONE WAY, a fact of the instance that every store derived from
-// instance_root reads, so it is answered here once and not per store (review 86022 of gunb-ai/gunbc#15105).
+// instance_root reads, so it is answered here once and not per store: one rule, applied at every sibling store.
 // A relative root resolves against each process's working directory, so two processes would address two
 // directories as "the" instance; "/" is the host root, not an instance. A doubled or trailing separator, or
 // a `.` or `..` segment, still names the same directory on disk, but every identity this repository takes by
@@ -1623,12 +1625,16 @@ fn dashboard_declared_instance_roots_are_unique() -> Bool {
 }
 
 // The uniqueness law above compares spellings, so it means "one directory per instance" only over roots
-// spelled one way; this is that precondition, read off the same declared rows.
-fn dashboard_declared_instance_roots_are_one_spelling() -> Bool {
-  all(public_builtin_dashboard_instances(), i => match dashboard_instance_root_spelling_refusal(instance: i) {
+// spelled one way; this is that precondition, over any instance set, and read off the same declared rows.
+fn dashboard_instance_roots_are_one_spelling(instances: List<HostDashboardInstance>) -> Bool {
+  all(instances, i => match dashboard_instance_root_spelling_refusal(instance: i) {
     Present { value: _ } => false
     Absent => true
   })
+}
+
+fn dashboard_declared_instance_roots_are_one_spelling() -> Bool {
+  dashboard_instance_roots_are_one_spelling(instances: public_builtin_dashboard_instances())
 }
 
 // AT MOST ONE per host_identity among instances that answer host lookup. Distinct instance_ids
@@ -3214,6 +3220,20 @@ type DashboardInstanceProvisionOp
       // only route that executes (DESIGN 3 pairing).
       group: NonEmptyStr,
     }
+  // THE ONE-TIME MOVE OF A STORE'S FLAT ENTRIES OUT OF THE SHARED DISPATCH ATTEMPT-STATE ROOT INTO THE
+  // MEMBER THE STORE NOW OWNS (gunbc.roadmap.roadmap_attempt_state_layout_move). The same op for every
+  // store: the row carries the member and the legacy pattern, and nothing here names a store. It is the deploy
+  // leg of the cutover: the store's mint refuses permanently while a legacy entry remains, so this op runs
+  // before the new code starts or the store stays unready. Planned and read back like the git subtree
+  // re-group above; a second run finds nothing to move (Noop) and a collision refuses.
+  | DashboardMoveAttemptStateEntries {
+      row: MoveRow,
+      // The legacy writer's unit, observed stopped and masked before any entry is touched
+      // (gunbc.roadmap.roadmap_attempt_state_layout_move legacy_writer_exclusion).
+      fence: LegacyWriterFence,
+    }
+  // THE ACTIVATION GATE, last in the plan: the exclusion is re-observed before the new dispatcher may start.
+  | DashboardAssertLegacyWriterExcluded { fence: LegacyWriterFence }
 
 // live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
 // deployment_spec_for has no production caller. This plan does not start the process and does not
@@ -3294,10 +3314,14 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       },
     ]
   }
-  concat(controller_source_ops, concat(common, concat(source_ops, concat(
+  let attempt_state_moves = map(attempt_state_move_rows, row => DashboardMoveAttemptStateEntries { row: row, fence: dashboard_instance_legacy_writer_fence(instance: instance) })
+  concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
     shared_git_posture,
-    dashboard_instance_provider_verification_ops(instance: instance),
-  ))))
+    concat(
+      dashboard_instance_provider_verification_ops(instance: instance),
+      [DashboardAssertLegacyWriterExcluded { fence: dashboard_instance_legacy_writer_fence(instance: instance) }],
+    ),
+  )))))
 }
 
 fn dashboard_instance_provider_verification_ops(
@@ -3415,7 +3439,45 @@ fn dashboard_instance_provision_op_row(
         target: repo as String,
         detail: "bounded re-group of objects/, refs/ and logs/ to the attempt group with g+w and setgid (objects/ also +t); confined children pruned; read back path by path before the receipt",
       }
+    DashboardAssertLegacyWriterExcluded { fence: _ } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "assert-legacy-writer-excluded" as NonEmptyStr,
+        target: "legacy dispatcher units" as String,
+        detail: "activation gate: every declared legacy writer unit is observed stopped and masked again before the new dispatcher may start",
+      }
+    DashboardMoveAttemptStateEntries { row: row, fence: _ } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "move-attempt-state-entries" as NonEmptyStr,
+        target: row.member as String,
+        detail: join(["move the flat ", row.legacy_flat_prefix as String, "* entries of the dispatch attempt-state root into the member ", row.member as String, "; Noop when none remain, refused on a collision, read back before the receipt"], ""),
+      }
   }
+}
+
+// THE LEGACY IDENTITY WRITERS PER INSTANCE, as data, traced by symbol (read of srv1, stern 2026-10-31, system
+// units in /etc/systemd/system running /opt/gunbc-lab/codex-provider-feedback-v0/bin/gunbc as briansrls).
+// The mint is gunbc.roadmap.roadmap_belt_actuate belt_dispatch_attempt_identity_mint, reached by static call
+// graph from these unit entries and no others:
+//   gunbc-srv1-lab-codex-feedback-v0.service  serve, roadmap_serve_handle_srv1_lab -> roadmap_serve_handle_over
+//     -> serve_dispatch_handler_response_over -> belt_dispatch_node_for_instance_over -> belt_actuate_spawn_for_instance.
+// Entries traced NOT to reach it: the belt service (belt_launch_enqueue_cli), the exit drain, the publication
+// answer drain, credential recovery, the publication helper, and the attempt-unit drain (it launches an already
+// minted attempt's worker unit). Their .path/.timer triggers therefore start no writer. The serve unit has no
+// .path or .timer trigger; masking it refuses its restarts too. UNKNOWN, recorded not resolved: what starts
+// gunbc-srv1-lab-codex-feedback-v0-belt.service (no unit file references it); its entry does not reach the
+// mint, but if a trace of another entry ever does, its unit joins this row.
+data legacy_writer_fences: List<LegacyWriterFenceRow> = [
+  LegacyWriterFenceRow {
+    instance_id: srv1_dashboard_lab_id,
+    fence: LegacyWriterUnits {
+      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
+      units: ["gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr],
+    },
+  },
+]
+
+fn dashboard_instance_legacy_writer_fence(instance: HostDashboardInstance) -> LegacyWriterFence {
+  legacy_writer_fence_for(rows: legacy_writer_fences, instance_id: instance.instance_id)
 }
 
 fn dashboard_instance_provision_plan_rows(

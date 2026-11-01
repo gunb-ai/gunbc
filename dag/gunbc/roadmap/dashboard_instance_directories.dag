@@ -1,17 +1,20 @@
 module gunbc.roadmap.dashboard_instance_directories
 
 import std.types { List }
+import gunbc.roadmap.roadmap_attempt_identity_store_root { attempt_identity_directory }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_own_directory_demands, ProdRoleRealization }
 import gunbc.owned_directory { OwnedDirectoryTarget }
-import gunbc.auth.session_store { session_store_directory }
-import gunbc.auth.login_transaction_store { login_transaction_store_directory }
+import gunbc.auth.session_store_root { session_store_directory }
+import gunbc.auth.login_transaction_store_root { login_transaction_store_directory }
 import gunbc.auth.oidc_id_token_verification { jwks_cache_directory }
-import gunbc.auth.profile_projection { profile_store_directory }
+import gunbc.auth.profile_store_root { profile_store_directory }
 import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_directory }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
 import gunbc.compute.host_capacity { compute_root_directory }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
+import gunbc.roadmap.roadmap_belt_receipt_store_root { belt_projects_directory }
+import gunbc.roadmap.roadmap_dogfood_start_store_root { dogfood_start_receipt_owned_directory }
 import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory, cursor_attempt_runtime_directory }
 
@@ -48,6 +51,9 @@ fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instan
     credential_acquisition_slots_directory(instance: instance),
     cursor_attempt_runtime_directory(instance: instance),
     worktree_claim_slots_directory(instance: instance),
+    attempt_identity_directory(instance: instance),
+    belt_projects_directory(instance: instance),
+    dogfood_start_receipt_owned_directory(instance: instance),
     session_attempt_slots_directory(instance: instance),
   ], fabric_storage_directory_demands(realization: realization, instance: instance)))
 }

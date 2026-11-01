@@ -1,0 +1,98 @@
+module product.printed_chassis.duct_card_catalog
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.gpu.passive_card_row { CardRow, row_unread_fields }
+import extdeps.gpu.nvidia_a16 { a16_card_row }
+import extdeps.gpu.nvidia_t10 { t10_card_row }
+import extdeps.gpu.nvidia_t4 { t4_card_row }
+import extdeps.gpu.nvidia_a2 { a2_card_row }
+import extdeps.fans.noctua { noctua_nf_a9_pwm_mounting_pattern, noctua_nf_a9_pwm_frame_depth }
+import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy }
+import product.printed_chassis.gpu_duct { EndFaceMeasurement, CardEnvelope, GpuDuctDesign, BlowerDuctDesign, a16_end_face, card_envelope_of, duct_design, blower_duct_design_of }
+
+// ═══ THE CARDS A DUCT IS PRINTED FOR: A VENDOR ROW JOINED TO WHAT THIS REPOSITORY HAS READ ON THE CARD ═══
+//
+// Which cards the operator prints ducts for is a product fact, not NVIDIA's, so the roster lives here
+// rather than in extdeps (DESIGN section 3: a generic hub may not enumerate concrete products). Each
+// entry joins a card's vendor row (extdeps.gpu.<card> <card>_card_row) to the OBSERVATION the duct is
+// fitted to: the card's far-end face as a caliper reads it -- its outer extent, the fin window, the
+// threaded inserts in the end cap, where the 8-pin header sits on it. NVIDIA's briefs publish no
+// end-face drawing for any of these cards, so this reading is the duct's datum, and it is this
+// repository's receipt, not a property of the card's vendor.
+//
+// A card whose face has not been read carries the obligation to read it, and that is a coverage
+// obligation of THIS layer: the vendor row stays what the vendor published.
+
+type EndFaceStanding
+  = EndFaceRead { face: EndFaceMeasurement }
+  | EndFaceNeedsReading { read_obligation: NonEmptyStr }
+
+type DuctCard { row: CardRow, end_face: EndFaceStanding }
+
+fn end_face_obligation(card: NonEmptyStr) -> NonEmptyStr {
+  join(["operator, on a physical ", card as String, ", with a caliper and recorded with the date: the OUTER FACE of the card's far end (opposite the I/O bracket) -- overall length and thickness to 0.02 mm; the cooler's FIN WINDOW on that face (its extent at the tightest point, its distance from the top end and the back face, and how far the fins sit behind it); any threaded inserts in the end cap (count, bore, spacing, and each near edge from the top, bottom and back faces); and, if the card has an auxiliary power header on that end, its outer pin's distance from the top end. The duct's plug, flange and keep-out are derived from THIS face; the A16 was read the same way (product.printed_chassis.gpu_duct a16_end_face)."], "") as NonEmptyStr
+}
+
+// The A16's face was read on 2026-10-23, and the fit ring printed from it seats on the card
+// (product.printed_chassis.fit_observations plug_fit_ring_fit).
+data a16_duct_card: DuctCard = DuctCard { row: a16_card_row, end_face: EndFaceRead { face: a16_end_face } }
+data t10_duct_card: DuctCard = DuctCard { row: t10_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA Tesla T10") } }
+data t4_duct_card: DuctCard = DuctCard { row: t4_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA T4") } }
+data a2_duct_card: DuctCard = DuctCard { row: a2_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA A2") } }
+
+data duct_cards: List<DuctCard> = [a16_duct_card, t10_duct_card, t4_duct_card, a2_duct_card]
+
+fn duct_card(id: NonEmptyStr) -> DuctCard? {
+  fold(duct_cards, init: Absent, f: (found, c) => match found { Present { value: v } => Present { value: v } Absent => if c.row.id == id { Present { value: c } } else { Absent } })
+}
+
+fn end_face_is_read(card: DuctCard) -> Bool {
+  match card.end_face { EndFaceRead { face: _ } => true EndFaceNeedsReading { read_obligation: _ } => false }
+}
+
+fn end_face_unread(card: DuctCard) -> List<String> {
+  match card.end_face {
+    EndFaceRead { face: _ } => []
+    EndFaceNeedsReading { read_obligation: o } => [join(["end face: ", o as String], "")]
+  }
+}
+
+// What the duct geometry is fitted to on one card: the read end face and the vendor's stated length. A card
+// missing either has no dimensions to derive from, and the refusal names the reading it needs
+// (duct_card_unread_reason) rather than substituting another card's.
+// The wall design is the fan row plus the print-proven fit policy (never re-derived); the blower design takes
+// the card's slot pitch from its row. Neither names a card.
+type DuctCardDims { face: EndFaceMeasurement, card: CardEnvelope, wall: GpuDuctDesign, fan: BlowerDuctDesign }
+
+fn duct_card_dims(card: DuctCard) -> DuctCardDims? {
+  match card.end_face {
+    EndFaceRead { face: f } => match card_envelope_of(row: card.row) {
+      Present { value: l } => match blower_duct_design_of(row: card.row) {
+        Present { value: b } => Present { value: DuctCardDims { face: f, card: l, wall: duct_design(fan: noctua_nf_a9_pwm_mounting_pattern, fan_depth: noctua_nf_a9_pwm_frame_depth, policy: plug_and_flange_print_policy), fan: b } }
+        Absent => Absent
+      }
+      Absent => Absent
+    }
+    EndFaceNeedsReading { read_obligation: _ } => Absent
+  }
+}
+
+fn duct_card_unread_reason(card: DuctCard) -> String {
+  join([card.row.id as String, " has no duct dimensions to derive from: ", join(concat(end_face_unread(card: card), row_unread_fields(row: card.row)), "; ")], "")
+}
+
+// The reading list for every card, in roster order: the vendor fields no document has given yet, and
+// the face nobody has read yet. A card added to duct_cards appears here with no other change.
+fn duct_card_bench_list() -> List<String> {
+  fold(duct_cards, init: [], f: (acc, c) => {
+    let lines = concat(row_unread_fields(row: c.row), end_face_unread(card: c))
+    if length(list: lines) == 0 { acc } else { concat(concat(acc, [join(["== ", c.row.id as String, " (", c.row.product as String, ")"], "")]), lines) }
+  })
+}
+
+// DESIGN section 3c declared frontier: the roster's production consumer is the duct geometry.
+data duct_card_catalog_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the card_cooling_route reports derive from a DuctCard (RouteSubject built from duct_card_dims) instead of the A16 constants, completing what is stated next. The printed-chassis geometry derives every card-dependent dimension of the duct, plug and flange, fit ring, sleeve, blower duct, keep-outs and route admission from a DuctCard (its CardRow and its read end face) instead of the A16 constants, aims the blower duct's outlet from extdeps.fans.delta delta_bfb1012m_outlet (its edge, opening and frame) instead of the blower design's unread-outlet bound, and select_printable_assembly enumerates its roots from duct_cards; PARTLY DISCHARGED: select_printable_assembly now fits the duct, blower duct and flat-on-end duct to a DuctCard (duct_card_dims: the read end face and the vendor row's stated length) and refuses an unread card by naming its reading, and the fit and tolerance numbers are product.printed_chassis.duct_fit_policy. AND THE ROOTS ARE ENUMERATED FROM THIS ROSTER: PrintedAssemblyRoot's six per-card arms are gone, replaced by one card-parameterised arm DuctCardRoot (a catalogued card id and a DuctRootKind) whose wire spelling is \"<card id>-<kind>\" (printable_assembly DuctRootKind, duct_root_kinds, printed_assembly_root_wire), and printable_assembly_selection printed_assembly_roots crosses duct_cards with the six shapes -- the enumeration lives in printable_assembly_selection, not in printable_assembly, because gpu_duct imports printable_assembly and reading the roster there would close an import cycle. select_printable_assembly answers the card half of a root by looking its id up in duct_card and refuses an id that is not on the roster by naming that id; cad_check_run and preparation decode roots through printed_assembly_root_from_wire over the same enumeration, so a fifth card row brings six selectable, CAD-checkable, preparable roots with it and no code change. The six A16 spellings are byte-for-byte what they were (test.claim.printable_assembly_selection_witness w_the_duct_roots_are_enumerated_from_the_card_roster pins the count, those six spellings, that an off-roster id decodes to nothing, and that an unread card still HAS roots) and w_an_unread_card_refuses_every_shape_by_naming_its_reading now sends every enumerated root through select_printable_assembly; the fit-ring change detector's digest literal was re-recorded for the schema-string change only, verified by a field-by-field diff of the manifest against main 18a76b7 (the geometry is unchanged), so the printed records still name what was printed. STILL OPEN: card_cooling_route reports (shape_max_for_home, fan_pose_checks, cable_bend_path, over_the_row_height and the zero-argument A16 reports) still read a16_end_face and the A16 blower and wall designs directly; admit_home, admit_home_over and admit_plane_on_end now take a RouteSubject, and plane_on_end_selection_of builds it from the read end face; a16_blower_duct_design now takes its outlet edge from delta_bfb1012m_outlet (the 94.4 mm depth edge; the a16-blower-duct cavity edge was the unread 97.2 mm bound); THE DESIGNS A DUCT IS BUILT AGAINST NOW COME WITH THE CARD: duct_card_dims carries a wall design (gpu_duct duct_design over the fan row and plug_and_flange_print_policy, which is not re-derived) and a blower design (gpu_duct blower_duct_design_of: the Delta fan row and the slot pitch from the row's slot_count through pcie_cem cem_slot_envelope), and a card whose row states no slot count refuses naming that reading; the manifest schema is product.printed_chassis.duct_review_schema duct_review_schema, with the A16 spelling's successor declared as the transition a16_inlet_duct_review_v2_to_v3 (read by no production path yet: its own frontier is duct_review_schema duct_review_schema_consumer_frontier). STILL OPEN, and ONLY this: the A16-only route reports in card_cooling_route (above) read a16_duct_design and a16_blower_duct_design directly, and no card but the A16 has a read end face, so T4, A2 and T10 still refuse with EndFaceNeedsReading until readings exist. SUFFICIENT FOR: the cited Delta outlet, the vendor rows' height class, slot count, length, auxiliary power, board power and airflow fields, and this roster, have a production consumer; until then test.claim.duct_card_catalog_witness reads them, which exercises them and is not a consumer." as NonEmptyStr
+)

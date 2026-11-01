@@ -1,0 +1,57 @@
+module test.claim.roadmap.roadmap_dashboard_target_write_laundering_witness
+
+import std.types { Bool, Int, String, NonEmptyStr, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ProcessExit }
+import std.roster_frontier { frontier_rows_well_formed, frontier_subject_key }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_frontier_rows }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THERE IS NO EXPORTED FOLD FROM AN EXIT CODE TO CreateNewWritten. The outcome is decided inline in
+// dashboard_target_write_create_new beside the runs it reads, so no other module can mint "written" for a
+// write that never ran. The RED imports the deleted fold dashboard_create_new_outcome and the claim asserts
+// the row that says it is missing -- exactly one blocking MissingExport keyed on that name -- with the
+// same-closure delta on top. The LAWFUL CONTROL imports the surviving function in the same position and draws
+// no MissingExport for it, so the RED is the name's absence and not a broken import list.
+fn write_probe(name: String, imported: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { String }\n",
+    "import gunbc.roadmap.roadmap_dashboard_target_write { DashboardCreateNewOutcome, ", imported, " }\n",
+    "fn f(n: String) -> String {\n  n\n}\n",
+  ], "")
+}
+
+data deleted_fold_source: String = write_probe(name: "probe_target_write_deleted_fold", imported: "dashboard_create_new_outcome")
+data lawful_control_source: String = write_probe(name: "probe_target_write_lawful_control", imported: "dashboard_target_write_create_new")
+data baseline_source: String = write_probe(name: "probe_target_write_baseline", imported: "CreateNewWritten")
+
+test fn no_exit_code_fold_mints_created_new_written() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: blocking_subject_census(source: deleted_fold_source, wanted_class: "MissingExport", wanted_subject: "dashboard_create_new_outcome"),
+      holds: fn(n) { n == 1 },
+    ),
+    census_delta_verdict(red: total_blocking_census(source: deleted_fold_source), control: total_blocking_census(source: baseline_source), holds: fn(n) { n >= 1 }),
+  ])
+}
+
+test fn the_surviving_function_resolves_where_the_deleted_fold_does_not() -> ProcessExit {
+  census_exit(census_verdict(
+    census: blocking_subject_census(source: lawful_control_source, wanted_class: "MissingExport", wanted_subject: "dashboard_target_write_create_new"),
+    holds: fn(n) { n == 0 },
+  ))
+}
+
+// THE DECLARED FRONTIER ROW IS DISCHARGED, not merely absent: dashboard_target_write_create_new has a production
+// consumer (DashboardMoveAttemptStateEntries), and the one frontier row left on the move rows (session placement
+// records, Sb4581047) is well formed and enrolled in the census closure by subject key.
+test fn the_move_frontier_row_is_enrolled_and_well_formed() -> Bool {
+  let census_keys = census_closure_frontier_rows() |> map(row => frontier_subject_key(subject: row.subject))
+  frontier_rows_well_formed(rows: attempt_state_move_frontier_rows)
+    && length(xs: attempt_state_move_frontier_rows) == 1
+    && attempt_state_move_frontier_rows |> all(row => census_keys |> any(k => k == frontier_subject_key(subject: row.subject)))
+}

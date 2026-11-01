@@ -6,8 +6,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles, FabricStora
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.workspace_allocation_store {
   workspace_record_request, workspace_read_owner, workspace_request_release, workspace_settle_unplanned_retirement,
-  WorkspaceStoreWritten, WorkspaceStoreWriteRefused, WorkspaceStoreReadOk, WorkspaceReleased,
-}
+  WorkspaceStoreWritten, WorkspaceStoreWriteRefused, WorkspaceStoreReadOk, WorkspaceReleased, workspace_allocation_store }
 import test.claim.workspace_allocation_lifecycle_witness { allocation_test_request, allocation_test_owner }
 
 // A real temporary fabric DB, through independently constructed bindings. No host or VM effects.
@@ -28,11 +27,11 @@ test fn workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head() -
 
 fn workspace_storage_admission_cycle(first: FabricStorageBinding, second: FabricStorageBinding) -> Bool {
   let request = allocation_test_request(key: "durable-first" as NonEmptyStr)
-  match workspace_record_request(store: first, request: request) {
-    WorkspaceStoreWritten { allocation: _ } => match workspace_record_request(store: second, request: request) {
+  match workspace_record_request(store: workspace_allocation_store(binding: first), request: request) {
+    WorkspaceStoreWritten { allocation: _ } => match workspace_record_request(store: workspace_allocation_store(binding: second), request: request) {
       WorkspaceStoreWritten { allocation: replayed } => if replayed.request.idempotency_key != request.idempotency_key { false } else {
-        match workspace_record_request(store: second, request: allocation_test_request(key: "blocked-second" as NonEmptyStr)) {
-          WorkspaceStoreWriteRefused { reason: _ } => match workspace_read_owner(store: second, owner: allocation_test_owner(subject: "another-owner" as NonEmptyStr)) {
+        match workspace_record_request(store: workspace_allocation_store(binding: second), request: allocation_test_request(key: "blocked-second" as NonEmptyStr)) {
+          WorkspaceStoreWriteRefused { reason: _ } => match workspace_read_owner(store: workspace_allocation_store(binding: second), owner: allocation_test_owner(subject: "another-owner" as NonEmptyStr)) {
             WorkspaceStoreReadOk { snapshot: foreign } => if count(foreign.allocations) != 0 { false } else {
               workspace_storage_release_cycle(first: first, second: second)
             }
@@ -49,12 +48,12 @@ fn workspace_storage_admission_cycle(first: FabricStorageBinding, second: Fabric
 
 fn workspace_storage_release_cycle(first: FabricStorageBinding, second: FabricStorageBinding) -> Bool {
   let request = allocation_test_request(key: "durable-first" as NonEmptyStr)
-  match workspace_request_release(store: second, owner: request.owner, idempotency_key: request.idempotency_key, expected_generation: 0) {
+  match workspace_request_release(store: workspace_allocation_store(binding: second), owner: request.owner, idempotency_key: request.idempotency_key, expected_generation: 0) {
     WorkspaceStoreWritten { allocation: retired } => if retired.connection != "" { false } else {
-      match workspace_settle_unplanned_retirement(store: first, owner: request.owner, idempotency_key: request.idempotency_key, observed_at: "2026-09-27T12:30:00Z") {
+      match workspace_settle_unplanned_retirement(store: workspace_allocation_store(binding: first), owner: request.owner, idempotency_key: request.idempotency_key, observed_at: "2026-09-27T12:30:00Z") {
         WorkspaceStoreWritten { allocation: released } => if released.phase != WorkspaceReleased { false } else {
-          match workspace_record_request(store: second, request: allocation_test_request(key: "new-second" as NonEmptyStr)) {
-            WorkspaceStoreWritten { allocation: _ } => match workspace_record_request(store: first, request: request) {
+          match workspace_record_request(store: workspace_allocation_store(binding: second), request: allocation_test_request(key: "new-second" as NonEmptyStr)) {
+            WorkspaceStoreWritten { allocation: _ } => match workspace_record_request(store: workspace_allocation_store(binding: first), request: request) {
               WorkspaceStoreWritten { allocation: historical } => historical.phase == WorkspaceReleased
               other => false
             }

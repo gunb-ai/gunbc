@@ -12,7 +12,7 @@ import std.optional { Optional, optional_present }
 //
 // Two consumers read it. The generated import sweep (owned by the #14017 generator's owner) inserts the
 // home's import into every module the ambient-name census lists for the name; and the namespace-wave
-// binding diff (gunbc.instruments.namespace_wave_binding_diff) admits exactly the re-bindings a row
+// binding diff (retired) admitted exactly the re-bindings a row
 // names -- an occurrence of `name` that was ambient on base and binds the row's declaration on head -- and refuses
 // every other one. A row is added by the wave that moves its name, in that wave's own PR.
 //

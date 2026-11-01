@@ -48,14 +48,17 @@ import gunbc.auth.approval_device_wire {
 }
 import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-  file_compare_and_set, observe_cas_slot_state,
-  file_compare_and_set_windowed, observe_cas_slot_state_windowed, cas_generation_window, CasGenerationWindow,
-  CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
+  SlotStore, file_slot_store, slot_observe, slot_commit, slot_keys, slot_observe_windowed, slot_commit_windowed,
+  cas_generation_window, CasGenerationWindow, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, VerifiedCasAttempt,
 }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path }
+import gunbc.auth.oidc_id_token_verification { JwksCacheRoot, broker_jwks_cache_root }
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
   CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_count,
+  CasSlotObservation, CasOutcome,
 }
 
 // ── What this module is ──────────────────────────────────────────────────────────────────────
@@ -64,10 +67,24 @@ import std.durable_compare_and_set {
 // module is the MODEL; extdeps.apple.* and extdeps.google/android.* model the upstream interfaces.
 //
 // WHY A DEVICE SIGNATURE. The loopback deployment cannot attribute Tailscale-User-Login to the proxy
-// (gunbc.auth.approval_decision_store approval_identity_attribution_frontier), so a capability-only
-// redemption records the capability's bearer. A signature under an enrolled key the enclave (or
+// (gunbc.auth.approval_decision_store approval_identity_attribution_frontier), so a capability alone
+// could only ever have recorded its bearer. A signature under an enrolled key the enclave (or
 // Keystore) releases only on the operator's biometric attributes the decision to that enrolment
-// without trusting anything on the socket. On the device route the signature is REQUIRED.
+// without trusting anything on the socket.
+//
+// THIS IS THE ONE REDEMPTION ROUTE (ruling gunbc.design_ruling
+// one_approval_route_for_every_privileged_action). The bearer route that redeemed a capability
+// alone -- gunbc.auth.approval_broker redeem_capability behind POST /approve/{capability}, its link
+// delivered by ntfy -- was deleted in the device cutover, together with the ntfy publish and the
+// header arms that let a record name "the bearer of capability ...". The cutover's own frontiers
+// (gunbc.auth.approval_device_cutover_frontier, gunbc.auth.approval_device_routes_frontier) were
+// deleted with it and are replaced by the reading they demanded, taken in the Approve app on the
+// operator's phone: escalation
+// gcp-iam-bootstrap-delta-b6408304fcc2908fa37769be958b1b6555902f00244b91d0b7a25994fb14f1e3-run-40767618826-attempt-1,
+// decided_by brian@gunb.ai at 2026-10-28T21:30:31Z, read back from the decision store record
+// /var/lib/gunbc/approvals/<escalation_id>.2 on srv1. redeem_device_over_store is
+// the one-off approved access redemption authority: every admitted redemption names an enrolled
+// Google login, and a disclosed capability admits nothing without the enrolled device.
 //
 // ENROLMENT IS GOOGLE SIGN-IN (ruling gunbc.design_ruling approval_enrolment_is_google_sign_in):
 // the enrolment and the admission that mints it are gunbc.auth.approval_google_enrolment's, and this
@@ -137,11 +154,10 @@ fn push_outcome_of_apns(o: ApnsSendOutcome) -> PushProviderOutcome {
 }
 
 // ── Redemption admission ─────────────────────────────────────────────────────────────────────
-// THE DEVICE ROUTE'S FOLD, BESIDE redeem_over_store AND REUSING ITS PARTS: the same slot read
-// (observe_escalation), claims (claims_for), capability verification (verify_capability) and
-// generation-2 commit (commit_broker_decision). Nothing in the store or broker changes; this route
-// differs only in WHAT ADMITS -- a verified device signature and platform proof under a verified,
-// active enrolment of the expected operator -- and so in what decided_by names.
+// THE ONE REDEMPTION FOLD over the store's parts: the slot read (observe_escalation), claims
+// (claims_for), capability verification (verify_capability) and generation-2 commit
+// (commit_broker_decision). What ADMITS is a verified device signature and platform proof under a
+// verified, active enrolment of an approver, and decided_by names that enrolment's Google login.
 type DeviceRedemptionOutcome
   = DeviceRedeemed { decision: BrokerDecision }
   | DeviceAlreadyDecided { decision: BrokerDecision }
@@ -420,17 +436,57 @@ fn redeem_device_over_store(
 // Beside them, one create-once slot per approver email holds the Google subject pinned to it. Records
 // are owner-only, as the approval store's are. The parse that re-mints a stored enrolment lives in
 // approval_google_enrolment, the module its sole constructor is sealed to.
-data approval_device_store_root: NonEmptyStr = "/var/lib/gunbc/approval-devices"
+// THE BROKER'S HOST-SINGLETON STORES live under the host-state tree (gunbc.host_state_root), each at its own
+// member. One broker deployment, so each mint takes the tree and nothing else. A declaration carries only the
+// member: each directory row is a gunbc.managed_directory ManagedDirectory, whose mode is DERIVED from its
+// declared dependents, so a declared mode here would be a second authority for that fact.
+fn approval_broker_store_path(tree: HostStateTree, member: NonEmptyStr) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", member as String], "") as NonEmptyStr
+}
+
+// ── The device store ───────────────────────────────────────────────────────────────────────────
+// THE ONE DECLARATION OF THE DEVICE STORE (enrolments and subject pins share its slot namespace, told apart
+// by key prefix: they are two record kinds of one store, not two stores).
+type ApprovalDeviceStoreSlotsDeclaration { member: NonEmptyStr }
+
+data approval_device_store_slots: ApprovalDeviceStoreSlotsDeclaration = ApprovalDeviceStoreSlotsDeclaration {
+  member: "approval-devices" as NonEmptyStr,
+}
+
+// A SEALED VALUE MINTED FROM THAT DECLARATION, as gunbc.roadmap.roadmap_attempt_worktree_claim_root
+// WorktreeClaimStore is: sole_constructor, non-generic, never a variant arm, built only by
+// approval_device_store, which lists the derived directory and answers Ready only for a listed one. Every
+// enrolment, subject-pin, push-registration and windowed-slot operation below takes it (the windowed slots are
+// #15124's head-only facts: the push registration and gunbc.auth.approval_apns_publish's provider token); none
+// takes a root.
+type ApprovalDeviceStore sole_constructor {
+  slots: SlotStore
+}
+
+type ApprovalDeviceStoreReading
+  = ApprovalDeviceStoreReady { store: ApprovalDeviceStore }
+  | ApprovalDeviceStoreUnready { detail: String }
+
+fn approval_device_store(tree: HostStateTree) -> ApprovalDeviceStoreReading {
+  let root = approval_broker_store_path(tree: tree, member: approval_device_store_slots.member)
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ApprovalDeviceStoreUnready { detail: join(["the approval device store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => ApprovalDeviceStoreUnready { detail: join(["the approval device store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => ApprovalDeviceStoreReady { store: ApprovalDeviceStore { slots: file_slot_store(root: root) } }
+  }
+}
 
 // THE STORE DIRECTORY IS CONVERGED BY THE BROKER INSTALL (gunbc.live_deploy.emit
-// approval_broker_dark_install_release_steps). The owner is the operator's account, because the
-// verbs that read and write it (approval_device_routes) run as that account and nothing else needs
-// it, so the derived mode is owner-only. Ownership is Ensured, not Owned: the directory holds
-// enrolled devices, which must survive a retract of the deployment that created it.
+// approval_broker_dark_install_release_steps), at the path derived from the same declaration as the mint over
+// the production tree. The owner is the operator's account, because the verbs that read and write it
+// (approval_device_routes) run as that account and nothing else needs it, so the derived mode is owner-only.
+// Ownership is Ensured, not Owned: the directory holds enrolled devices, which must survive a retract of the
+// deployment that created it.
 fn approval_device_store_directory() -> ManagedDirectory {
   ManagedDirectory {
     member: "approval-device-store" as NonEmptyStr,
-    path: approval_device_store_root as String as FilePath,
+    path: approval_broker_store_path(tree: host_state_tree(), member: approval_device_store_slots.member) as String as FilePath,
     owner: fleet_posix_operator_user,
     group_principal: fleet_posix_operator_user,
     dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
@@ -439,15 +495,36 @@ fn approval_device_store_directory() -> ManagedDirectory {
   }
 }
 
-// THE BROKER'S OWN JWKS CACHE (ruling of clever-eagle-893, 2026-10-23): the cache of Google's signing
-// keys that gunbc.auth.oidc_id_token_verification reads, kept beside the device store so the broker
-// never reaches a dashboard instance's directory. Ensured for the same reason as the store.
-data approval_jwks_cache_root: NonEmptyStr = "/var/lib/gunbc/approval-jwks"
+// ── The broker's JWKS cache ──────────────────────────────────────────────────────────────────────
+// THE BROKER'S OWN JWKS CACHE (ruling of clever-eagle-893, 2026-10-23: no second fetch path): the cache of
+// Google's signing keys, kept beside the device store so the broker never reaches a dashboard instance's
+// directory. It wraps the one JWKS cache carrier (gunbc.auth.oidc_id_token_verification JwksCacheRoot) that
+// the verification code takes; its identity is this sealed type, distinct from the instance cache's
+// InstanceJwksCache, so neither stands where the other is required. Data only; construction is what is sealed.
+type BrokerJwksCache sole_constructor {
+  cache: JwksCacheRoot
+}
 
+type BrokerJwksCacheReading
+  = BrokerJwksCacheReady { cache: BrokerJwksCache }
+  | BrokerJwksCacheUnready { detail: String }
+
+fn broker_jwks_cache(tree: HostStateTree) -> BrokerJwksCacheReading {
+  let cache = broker_jwks_cache_root(tree: tree)
+  let listed = Filesystem.List(path: cache.root as String)
+  match filesystem_listing_observation(directory: cache.root as String, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => BrokerJwksCacheUnready { detail: join(["the broker JWKS cache's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => BrokerJwksCacheUnready { detail: join(["the broker JWKS cache's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => BrokerJwksCacheReady { cache: BrokerJwksCache { cache: cache } }
+  }
+}
+
+// Ensured for the same reason as the device store, at the path derived from the broker's member declaration
+// (gunbc.auth.oidc_id_token_verification broker_jwks_cache_slots, through broker_jwks_cache_root).
 fn approval_jwks_cache_directory() -> ManagedDirectory {
   ManagedDirectory {
     member: "approval-jwks-cache" as NonEmptyStr,
-    path: approval_jwks_cache_root as String as FilePath,
+    path: broker_jwks_cache_root(tree: host_state_tree()).root as String as FilePath,
     owner: fleet_posix_operator_user,
     group_principal: fleet_posix_operator_user,
     dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
@@ -461,11 +538,11 @@ type DeviceStoreWrite
   | DeviceStoreSlotOccupied
   | DeviceStoreRefused { detail: NonEmptyStr }
 
-fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected: CasExpectation, payload: NonEmptyStr) -> DeviceStoreWrite {
+fn device_store_write(devices: ApprovalDeviceStore, key: NonEmptyStr, expected: CasExpectation, payload: NonEmptyStr) -> DeviceStoreWrite {
   match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => DeviceStoreRefused { detail: "device store key is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
+      match slot_commit(store: devices.slots, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: _ } => DeviceStoreWritten
         CasPreconditionFailed { expected: _, observed: _ } => DeviceStoreSlotOccupied
         CasStoreRefused { cause: _ } => DeviceStoreRefused { detail: "device store refused the publication" }
@@ -473,8 +550,8 @@ fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected: CasExpectat
   }
 }
 
-fn observe_google_enrolment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> GoogleEnrolmentSlot {
-  match observe_cas_slot_state(root: root, key: enrollment_id) {
+fn observe_google_enrolment(devices: ApprovalDeviceStore, enrollment_id: NonEmptyStr) -> GoogleEnrolmentSlot {
+  match slot_observe(store: devices.slots, key: enrollment_id) {
     CasObservedUnreadable { cause: c } => GoogleEnrolmentUnreadable { detail: concat("enrolment slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => GoogleEnrolmentAbsent
@@ -485,15 +562,15 @@ fn observe_google_enrolment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> Go
 
 // THE ONLY ENROLMENT WRITE: creating the enrolment is one CAS expecting an absent slot, so a resent
 // POST that raced its twin lands on DeviceStoreSlotOccupied rather than overwriting.
-fn commit_google_enrolment(root: NonEmptyStr, enrollment: GoogleDeviceEnrollment) -> DeviceStoreWrite {
-  device_store_write(root: root, key: enrollment.enrollment_id, expected: ExpectSlotAbsent, payload: google_enrolment_json(e: enrollment) as NonEmptyStr)
+fn commit_google_enrolment(devices: ApprovalDeviceStore, enrollment: GoogleDeviceEnrollment) -> DeviceStoreWrite {
+  device_store_write(devices: devices, key: enrollment.enrollment_id, expected: ExpectSlotAbsent, payload: google_enrolment_json(e: enrollment) as NonEmptyStr)
 }
 
 // REVOCATION IS ONE CAS from generation 1 to 2, and lands only on a live enrolment.
-fn revoke_google_enrolment(root: NonEmptyStr, slot: GoogleEnrolmentSlot, revoked_at: Timestamp) -> DeviceStoreWrite {
+fn revoke_google_enrolment(devices: ApprovalDeviceStore, slot: GoogleEnrolmentSlot, revoked_at: Timestamp) -> DeviceStoreWrite {
   match slot {
     GoogleEnrolmentActive { enrollment: e } =>
-      device_store_write(root: root, key: e.enrollment_id, expected: ExpectSlotGeneration { generation: google_enrolment_record_kind_generation(k: GoogleEnrolledRecord) }, payload: google_revocation_json(e: e, revoked_at: revoked_at) as NonEmptyStr)
+      device_store_write(devices: devices, key: e.enrollment_id, expected: ExpectSlotGeneration { generation: google_enrolment_record_kind_generation(k: GoogleEnrolledRecord) }, payload: google_revocation_json(e: e, revoked_at: revoked_at) as NonEmptyStr)
     GoogleEnrolmentAbsent => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
     GoogleEnrolmentRevoked { enrollment: _, revoked_at: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
     GoogleEnrolmentUnreadable { detail: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
@@ -503,18 +580,19 @@ fn revoke_google_enrolment(root: NonEmptyStr, slot: GoogleEnrolmentSlot, revoked
 // THE SUBJECT PIN: attempt the create with the presented subject; on a lost CAS reread the slot.
 // The observation is the only thing the pin join reads, so two accounts racing under one address
 // cannot both reach an enrolment.
-fn create_or_read_subject_pin(root: NonEmptyStr, email: NonEmptyStr, subject: NonEmptyStr) -> SubjectPinCreateOrRead {
-  match device_store_write(root: root, key: subject_pin_key(email: email), expected: ExpectSlotAbsent, payload: subject_pin_json(email: email, subject: subject) as NonEmptyStr) {
+fn create_or_read_subject_pin(devices: ApprovalDeviceStore, email: NonEmptyStr, subject: NonEmptyStr) -> SubjectPinCreateOrRead {
+  match device_store_write(devices: devices, key: subject_pin_key(email: email), expected: ExpectSlotAbsent, payload: subject_pin_json(email: email, subject: subject) as NonEmptyStr) {
     DeviceStoreWritten => SubjectPinCreatedForPresented
     DeviceStoreRefused { detail: d } => SubjectPinUnreadable { detail: d }
-    DeviceStoreSlotOccupied =>
-      match observe_cas_slot_state(root: root, key: subject_pin_key(email: email)) {
+    DeviceStoreSlotOccupied => {
+      match slot_observe(store: devices.slots, key: subject_pin_key(email: email)) {
         CasObservedUnreadable { cause: c } => SubjectPinUnreadable { detail: concat("subject pin slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
         CasObservedReadable { readable: r } => match r {
           CasReadableAbsent => SubjectPinUnreadable { detail: "subject pin slot lost the create and then read absent" }
           CasReadablePresent { version: ver } => parse_subject_pin(text: ver.value as String, email: email)
         }
       }
+    }
   }
 }
 
@@ -536,12 +614,12 @@ type GoogleEnrolmentListing
   = GoogleEnrolmentsListed { slots: List<GoogleEnrolmentSlot> }
   | GoogleEnrolmentListingRefused { detail: NonEmptyStr }
 
-fn list_google_enrolments(root: NonEmptyStr) -> GoogleEnrolmentListing {
-  match cas_slot_keys(root: root) {
+fn list_google_enrolments(devices: ApprovalDeviceStore) -> GoogleEnrolmentListing {
+  match slot_keys(store: devices.slots) {
     CasSlotKeysListingRefused { root: _, detail: d } => GoogleEnrolmentListingRefused { detail: d as NonEmptyStr }
     CasSlotKeysSubjectRefused { root: r, cause: c } => GoogleEnrolmentListingRefused { detail: join(["store root ", r as String, " is not an admissible directory: ", c], "") as NonEmptyStr }
     CasSlotKeysListed { keys: keys } =>
-      GoogleEnrolmentsListed { slots: map(filter(keys, k => starts_with(s: k as String, prefix: "genr-")), k => observe_google_enrolment(root: root, enrollment_id: k)) }
+      GoogleEnrolmentsListed { slots: map(filter(keys, k => starts_with(s: k as String, prefix: "genr-")), k => observe_google_enrolment(devices: devices, enrollment_id: k)) }
   }
 }
 
@@ -549,9 +627,9 @@ fn list_google_enrolments(root: NonEmptyStr) -> GoogleEnrolmentListing {
 // A PUSH REGISTRATION IS A HEAD-ONLY FACT: the token the enrolled app last presented. Its history is
 // not an audit trail -- a rotated token is dead, and who decided is the enrolment's record, not this
 // one's -- so it is a WINDOWED compare-and-set slot in the device store (gunbc.durable_cas_file_store
-// file_compare_and_set_windowed), never a growing generation line and never a last-write-wins file.
+// slot_observe_windowed / slot_commit_windowed over ApprovalDeviceStore's slots), never a growing generation line and never a last-write-wins file.
 // It used to be the second: an owner-only create-new file under a root nothing ensured, so a ROTATED
-// token -- the frontier's own case (approval_device_routes_frontier: "a rotated APNs token to reach
+// token -- the device routes' own case ("a rotated APNs token to reach
 // the server without a new enrolment") -- refused on the existing file. The key is server-derived from
 // the verified enrolment's id, and its "push-" prefix keeps it out of list_google_enrolments.
 data approval_push_slot_window_k: Int = 2
@@ -578,11 +656,11 @@ fn push_slot_window() -> CasGenerationWindow? {
   }
 }
 
-fn observe_push_registration(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> PushRegistrationSlot {
+fn observe_push_registration(devices: ApprovalDeviceStore, enrollment_id: NonEmptyStr) -> PushRegistrationSlot {
   match push_slot_window() {
     Absent => PushRegistrationUnreadable { detail: "the push slot window is narrower than the store admits" }
     Present { value: w } =>
-      match observe_cas_slot_state_windowed(root: root, key: push_registration_key(enrollment_id: enrollment_id), window: w) {
+      match slot_observe_windowed(store: devices.slots, key: push_registration_key(enrollment_id: enrollment_id), window: w) {
         CasObservedUnreadable { cause: c } => PushRegistrationUnreadable { detail: concat("push registration slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
         CasObservedReadable { readable: r } => match r {
           CasReadableAbsent => PushRegistrationAbsent
@@ -598,31 +676,31 @@ fn observe_push_registration(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> P
 // THE PUT IS ONE CAS FROM WHAT WAS READ: absent expects absent, stored expects its generation, and
 // the same registration again writes nothing (the app re-presents its token on every launch). A lost
 // race is its own answer, so the route can say "retry" rather than "stored".
-fn commit_push_registration(root: NonEmptyStr, enrollment_id: NonEmptyStr, push: PushRegistration) -> PushRegistrationWrite
+fn commit_push_registration(devices: ApprovalDeviceStore, enrollment_id: NonEmptyStr, push: PushRegistration) -> PushRegistrationWrite
   admit_callers: [
     decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "device_push_update_response_at"),
   ]
 {
   let payload = push_update_json(p: push) as NonEmptyStr
-  match observe_push_registration(root: root, enrollment_id: enrollment_id) {
+  match observe_push_registration(devices: devices, enrollment_id: enrollment_id) {
     PushRegistrationUnreadable { detail: d } => PushRegistrationRefused { detail: d }
-    PushRegistrationAbsent => push_registration_cas(root: root, enrollment_id: enrollment_id, expected: ExpectSlotAbsent, payload: payload)
+    PushRegistrationAbsent => push_registration_cas(devices: devices, enrollment_id: enrollment_id, expected: ExpectSlotAbsent, payload: payload)
     PushRegistrationStored { registration: stored, generation: g } =>
       if push_update_json(p: stored) == (payload as String) { PushRegistrationUnchanged }
-      else { push_registration_cas(root: root, enrollment_id: enrollment_id, expected: ExpectSlotGeneration { generation: g }, payload: payload) }
+      else { push_registration_cas(devices: devices, enrollment_id: enrollment_id, expected: ExpectSlotGeneration { generation: g }, payload: payload) }
   }
 }
 
 // The window's reclamation of generations below the head is the store's: an incomplete one leaves
 // an extra generation that the next commit reclaims, and the head this answer reports is unaffected.
-fn push_registration_cas(root: NonEmptyStr, enrollment_id: NonEmptyStr, expected: CasExpectation, payload: NonEmptyStr) -> PushRegistrationWrite {
+fn push_registration_cas(devices: ApprovalDeviceStore, enrollment_id: NonEmptyStr, expected: CasExpectation, payload: NonEmptyStr) -> PushRegistrationWrite {
   match push_slot_window() {
     Absent => PushRegistrationRefused { detail: "the push slot window is narrower than the store admits" }
     Present { value: w } =>
       match admit_cas_attempt_for_derived_payload(key: push_registration_key(enrollment_id: enrollment_id), expected: expected, proposed: payload) {
         DerivedPayloadKeyNotSlotAddressable { key: _ } => PushRegistrationRefused { detail: "push registration key is not slot-addressable" }
         DerivedPayloadAdmitted { verified: v } =>
-          match file_compare_and_set_windowed(root: root, publication: OwnerOnlyCreateOnly, verified: v, window: w).outcome {
+          match slot_commit_windowed(store: devices.slots, publication: OwnerOnlyCreateOnly, verified: v, window: w).outcome {
             CasCommitted { committed: _ } => PushRegistrationWritten
             CasPreconditionFailed { expected: _, observed: _ } => PushRegistrationRaced
             CasStoreRefused { cause: _ } => PushRegistrationRefused { detail: "device store refused the push registration" }
@@ -631,11 +709,20 @@ fn push_registration_cas(root: NonEmptyStr, enrollment_id: NonEmptyStr, expected
   }
 }
 
-// ── Frontiers ────────────────────────────────────────────────────────────────────────────────
-data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution(
-  description: "gunbc.roadmap.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: POST approval_device_enrol_path decoding gunbc.auth.approval_device_wire GoogleEnrolmentRequest and enrolling through gunbc.auth.approval_google_enrolment as ONE CAS create; reads at approval_device_pending_path and at device_request_path(escalation_id) (suffix read back through decode_path_segment) authenticated by an App Attest assertion over device_read_client_data within approval_device_read_skew that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path decoding SignedRedemption, verifying its signature and platform_proof at the seams, and folding through redeem_device_over_store; GET device_enrollment_path(enrollment_id), its suffix read back through decode_path_segment, answering enrolment_readback_of(observe_google_enrolment(...)) and refusing when it is none, authenticated by an assertion over device_read_client_data; PUT approval_device_push_path decoding decode_push_update and storing the PushRegistration against the active enrolment, authenticated by an assertion over device_push_update_client_data; and file_and_notify's APNs publish rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_alert_title and approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled Google email, for an enrolment whose POST answer was lost to be read back instead of re-created, and for a rotated APNs token to reach the server without a new enrolment",
-)
+// ── The APNs provider-token slot ─────────────────────────────────────────────────────────────
+// gunbc.auth.approval_apns_publish caches its signed provider token as one more head-only windowed slot
+// in this store (its key and payload are that module's). The slot operations are this module's,
+// because ApprovalDeviceStore's operations live where it is declared and the publish module reads no
+// root and calls no store operation of gunbc.durable_cas_file_store.
+fn observe_device_windowed_slot(devices: ApprovalDeviceStore, key: NonEmptyStr, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr> {
+  slot_observe_windowed(store: devices.slots, key: key, window: window)
+}
 
+fn commit_device_windowed_slot(devices: ApprovalDeviceStore, verified: VerifiedCasAttempt, window: CasGenerationWindow) -> CasOutcome<NonEmptyStr> {
+  slot_commit_windowed(store: devices.slots, publication: OwnerOnlyCreateOnly, verified: verified, window: window).outcome
+}
+
+// ── Frontiers ────────────────────────────────────────────────────────────────────────────────
 data ecdsa_verification_realization_frontier: DissolutionCondition = unbound_dissolution(
   description: "THE VERIFIERS ARE .dag, NOT HOST PRIMITIVES (operator refusal of the host-Rust route on gunbc#11588/#11592; decision msg_54c92f2f 2026-09-21), and they are AUTHORED: extdeps.crypto.signature verify_signature binds nist_p256 through signature_verification_from_implementation, and extdeps.apple.app_attest verify_attestation / verify_assertion run Apple's steps over the CBOR, COSE, WebAuthn, DER/X.509/PEM readers, SHA-256/SHA-384 and the P-256/P-384 family fold, supplying attestation_verification_from_implementation and assertion_verification_from_implementation (gunbc#11970, #11975, #11981 and the verifier change beside them; Apple's real assertion signature verifies under the sample credential key by execution). WHAT REMAINS IS AN EXECUTION ROUTE: one interpreted P-256 verification costs what the roadmap row v1-interpreter-p256-verify-cost-shape's named instrument re-derives (gunbc#11645's cost shape) and a P-384 chain link is more, so the interpreted broker cannot run them per request; the folds bind as ONE natively emitted realization handler of the seams once MachineWidth<N> reification (gunbc#11819) lets the crypto closure emit, and the interpreter cost itself is the v1-performance row v1-interpreter-p256-verify-cost-shape, not this frontier's -- SUFFICIENT FOR the device routes to mint SignatureVerified, AttestationVerified and AssertionAuthentic from real bytes in usable time, AND FOR ONE NAMED PARAMETER FACT THAT VERIFICATION DOES NOT ESTABLISH: test.claim.p256_dag_ecdsa_witness the_base_point_has_order_n, or a native claim asserting exactly n*G == infinity for the published base point together with a discriminating control that (n-1)*G != infinity. That fact is named HERE rather than left inside the generic verifier statement because a passing signature vector does not imply the published base point has the declared order, so a frontier that only promised working verification would retire while the order fact stayed dead (DESIGN section 4b(3): a trigger naming less than the capability it restores is satisfied while the capability stays dead). It left the required floor because the scalar multiplication reached the 8000ms wall deadline before any verdict, which no declared eval-step drop may cover; its cheap conjunct, the_base_point_is_on_the_curve, stays on the floor",
 )
@@ -646,10 +733,6 @@ data ios_realization_frontier: DissolutionCondition = unbound_dissolution(
 
 data approval_target_frontier: DissolutionCondition = unbound_dissolution(
   description: "gunbc.auth.approval_decision_store StoredApprovalRequest gains a typed ApprovalTarget (authority, subject, operator sentence derived from the subject) rendered by stored_request_json, and carries the access lifetime (gunbc.auth.access_request AccessLifetime) distinct from the link's expires_at, landed after the Mt. Collins first boot releases the store -- SUFFICIENT FOR the app to show the host and what is granted for how long from the one stored record, never the link expiry in its place, and for the device signature to cover both",
-)
-
-data approval_device_cutover_frontier: DissolutionCondition = unbound_dissolution(
-  description: "one real approval decided on the enrolled phone reads back from the store with decided_by naming the login, after which ONE change routes file_and_notify to APNs, deletes the ntfy publish, the bearer-only /approve route and gunbc.auth.approval_broker IdentityAttribution's header arms together -- SUFFICIENT FOR no admitted redemption to lack an attributable principal and for a disclosed capability to admit nothing without the enrolled device",
 )
 
 data android_realization_frontier: DissolutionCondition = unbound_dissolution(

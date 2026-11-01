@@ -70,7 +70,7 @@ import gunbc.host.boot_console_observation {
   console_size_of_stat,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly,
+  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, BootOverrideClears, boot_override_clears_none_found, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly,
 }
 import gunbc.machine_intake.mtcollins1_boot_row {
   mtcollins1_boot_account_receipt, mtcollins1_boot_collection_member_bound, mtcollins1_boot_console_reading, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_row_value,
@@ -961,6 +961,7 @@ fn consumption_with(before: String, after: String, census_ended: Bool) -> BootOv
   megarac_boot_override_consumption(
     before: BootParam5Read { readback: before, at: "t0" },
     after: BootParam5Read { readback: after, at: "t1" },
+    clears: boot_override_clears_none_found(reason: "fixture: this row asks the pair, not the clear" as NonEmptyStr),
     selection: uefi_once_boot_selection(device: IpmiBootCdrom),
     booted_through_override_device: census_ended,
   )
@@ -996,7 +997,7 @@ test fn an_override_already_pending_before_the_attempt_is_not_attributed_to_it()
 }
 
 test fn consumption_without_a_read_is_never_minted() -> Bool {
-  match megarac_boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: uefi_once_boot_selection(device: IpmiBootCdrom), booted_through_override_device: true) {
+  match megarac_boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, clears: boot_override_clears_none_found(reason: "fixture: this row asks the pair, not the clear" as NonEmptyStr), selection: uefi_once_boot_selection(device: IpmiBootCdrom), booted_through_override_device: true) {
     OverrideConsumptionUnread { reason: _ } => true
     _ => false
   }

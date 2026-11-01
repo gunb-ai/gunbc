@@ -3,7 +3,7 @@ module gunbc.workspace_allocation_store
 
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
-import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageSlotMember }
 import std.types { String, NonEmptyStr, Bool, Int, List, Timestamp }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.decl_ref { decl_ref }
@@ -46,8 +46,25 @@ type WorkspaceStoreRead = WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapsho
 type WorkspaceStoreWrite = WorkspaceStoreWritten { allocation: WorkspaceAllocation } | WorkspaceStoreConflict | WorkspaceStoreWriteRefused { reason: String }
 type WorkspaceCreateDecision = WorkspaceCreateNew { allocation: WorkspaceAllocation } | WorkspaceCreateReplay { allocation: WorkspaceAllocation } | WorkspaceCreateRefused { reason: String }
 
+// THE ONE DECLARATION OF THE OWNER SLOT FAMILY: the member every owner key is spelled under in the fabric
+// DB. The key (workspace_owner_key) derives from it,
+// so the slot name has no second spelling. Byte-identical to the name the unsealed store wrote.
+data workspace_allocation_slots: FabricStorageSlotMember = FabricStorageSlotMember { member: "workspace-owner" as NonEmptyStr }
+
+// THE ALLOCATION STORE, A SEALED VALUE. WorkspaceAllocationStore is sole_constructor and workspace_allocation_store
+// is its one mint: it takes the fabric storage binding and never a path, and the member is derived from
+// workspace_allocation_slots. The binding is a field, not a variant arm (the seal does not reach those).
+// The binding itself is not sealed here (its LocalFiles arm is the declared residual
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). The mint is total:
+// the Served arm has no directory to list, so there is nothing to observe and no Unready arm.
+type WorkspaceAllocationStore sole_constructor { binding: FabricStorageBinding }
+
+fn workspace_allocation_store(binding: FabricStorageBinding) -> WorkspaceAllocationStore {
+  WorkspaceAllocationStore { binding: binding }
+}
+
 fn workspace_owner_key(owner: PrincipalRef) -> NonEmptyStr {
-  join(["workspace-owner-", serialize_content_hash(hash: content_hash_of_value(value: principal_ref_label(p: owner) as NonEmptyStr)) as String], "") as NonEmptyStr
+  join([workspace_allocation_slots.member as String, "-", serialize_content_hash(hash: content_hash_of_value(value: principal_ref_label(p: owner) as NonEmptyStr)) as String], "") as NonEmptyStr
 }
 
 fn workspace_phase_wire(phase: WorkspacePhase) -> String {
@@ -206,8 +223,8 @@ fn workspace_reservation_matches_plan(plan: WorkspaceReservationPlan?, reservati
   }
 }
 
-fn workspace_read_owner(store: FabricStorageBinding, owner: PrincipalRef) -> WorkspaceStoreRead {
-  match fabric_storage_observe_cas_slot(store: store, key: workspace_owner_key(owner: owner)) {
+fn workspace_read_owner(store: WorkspaceAllocationStore, owner: PrincipalRef) -> WorkspaceStoreRead {
+  match fabric_storage_observe_cas_slot(store: store.binding, key: workspace_owner_key(owner: owner)) {
     CasObservedUnreadable { cause: _ } => WorkspaceStoreUnreadable { reason: "allocation store could not be read" }
     CasObservedReadable { readable: CasReadableAbsent } => WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot { owner: owner, expected: ExpectSlotAbsent, allocations: [] } }
     CasObservedReadable { readable: CasReadablePresent { version: version } } => match parse_json_document(s: version.value as String) {
@@ -243,7 +260,7 @@ fn workspace_create_decision_at(snapshot: WorkspaceOwnerSnapshot, request: Works
 
 // Mutation consumes an observed generation. A concurrent release or observation wins or refuses;
 // callers reread and reapply their semantic transition rather than replaying a stale snapshot.
-fn workspace_write_allocation(store: FabricStorageBinding, snapshot: WorkspaceOwnerSnapshot, allocation: WorkspaceAllocation) -> WorkspaceStoreWrite
+fn workspace_write_allocation(store: WorkspaceAllocationStore, snapshot: WorkspaceOwnerSnapshot, allocation: WorkspaceAllocation) -> WorkspaceStoreWrite
   admit_callers: [
     decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_record_request_observed"),
     decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_request_release_at"),
@@ -267,7 +284,7 @@ fn workspace_write_allocation(store: FabricStorageBinding, snapshot: WorkspaceOw
   }
 }
 
-fn workspace_commit_owner_transition(store: FabricStorageBinding, snapshot: WorkspaceOwnerSnapshot, allocation: WorkspaceAllocation) -> WorkspaceStoreWrite
+fn workspace_commit_owner_transition(store: WorkspaceAllocationStore, snapshot: WorkspaceOwnerSnapshot, allocation: WorkspaceAllocation) -> WorkspaceStoreWrite
   admit_callers: [
     decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_write_allocation"),
     decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_settle_unelected_retirement"),
@@ -277,7 +294,7 @@ fn workspace_commit_owner_transition(store: FabricStorageBinding, snapshot: Work
     let proposed = serialize_json(v: json_array(elements: map(rows, a => workspace_allocation_json(allocation: a)))) as NonEmptyStr
     match admit_cas_attempt_for_derived_payload(key: workspace_owner_key(owner: snapshot.owner), expected: snapshot.expected, proposed: proposed) {
       DerivedPayloadKeyNotSlotAddressable { key: _ } => WorkspaceStoreWriteRefused { reason: "derived owner key is not addressable" }
-      DerivedPayloadAdmitted { verified: verified } => match fabric_storage_compare_and_set(store: store, verified: verified) {
+      DerivedPayloadAdmitted { verified: verified } => match fabric_storage_compare_and_set(store: store.binding, verified: verified) {
         CasCommitted { committed: _ } => WorkspaceStoreWritten { allocation: allocation }
         CasPreconditionFailed { expected: _, observed: _ } => WorkspaceStoreConflict
         CasStoreRefused { cause: _ } => WorkspaceStoreWriteRefused { reason: "allocation state publication refused" }
@@ -327,16 +344,16 @@ fn workspace_plan_transition_admits(prior: WorkspaceReservationPlan?, proposed: 
   }
 }
 
-fn workspace_record_request(store: FabricStorageBinding, request: WorkspaceRequest) -> WorkspaceStoreWrite {
+fn workspace_record_request(store: WorkspaceAllocationStore, request: WorkspaceRequest) -> WorkspaceStoreWrite {
   workspace_record_request_at(store: store, request: request, observed_at: "")
 }
 
-fn workspace_record_request_at(store: FabricStorageBinding, request: WorkspaceRequest, observed_at: Timestamp) -> WorkspaceStoreWrite {
+fn workspace_record_request_at(store: WorkspaceAllocationStore, request: WorkspaceRequest, observed_at: Timestamp) -> WorkspaceStoreWrite {
   if observed_at != "" && !utc_instant_is_canonical(t: observed_at) { WorkspaceStoreWriteRefused { reason: "request recording clock is not canonical UTC" } }
   else { workspace_record_request_observed(store: store, request: request, observed_at: observed_at) }
 }
 
-fn workspace_record_request_observed(store: FabricStorageBinding, request: WorkspaceRequest, observed_at: Timestamp) -> WorkspaceStoreWrite {
+fn workspace_record_request_observed(store: WorkspaceAllocationStore, request: WorkspaceRequest, observed_at: Timestamp) -> WorkspaceStoreWrite {
   match workspace_read_owner(store: store, owner: request.owner) {
     WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
     WorkspaceStoreReadOk { snapshot: snapshot } => match workspace_create_decision_at(snapshot: snapshot, request: request, observed_at: observed_at) {
@@ -366,11 +383,11 @@ fn workspace_retired_at(allocation: WorkspaceAllocation, reason: String, observe
   }
 }
 
-fn workspace_request_release(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, expected_generation: Int) -> WorkspaceStoreWrite {
+fn workspace_request_release(store: WorkspaceAllocationStore, owner: PrincipalRef, idempotency_key: NonEmptyStr, expected_generation: Int) -> WorkspaceStoreWrite {
   workspace_request_release_at(store: store, owner: owner, idempotency_key: idempotency_key, expected_generation: expected_generation, observed_at: "")
 }
 
-fn workspace_request_release_at(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, expected_generation: Int, observed_at: Timestamp) -> WorkspaceStoreWrite {
+fn workspace_request_release_at(store: WorkspaceAllocationStore, owner: PrincipalRef, idempotency_key: NonEmptyStr, expected_generation: Int, observed_at: Timestamp) -> WorkspaceStoreWrite {
   match workspace_read_owner(store: store, owner: owner) {
     WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
     WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == idempotency_key).first() {
@@ -391,7 +408,7 @@ fn workspace_request_release_at(store: FabricStorageBinding, owner: PrincipalRef
 
 // Called by the convergence apply receipt consumer, including recovery of a hold whose first
 // publication was lost. The original owner request must already exist and must match exactly.
-fn workspace_record_reservation(store: FabricStorageBinding, reservation: WorkspaceReservation, observed_at: Timestamp) -> WorkspaceStoreWrite {
+fn workspace_record_reservation(store: WorkspaceAllocationStore, reservation: WorkspaceReservation, observed_at: Timestamp) -> WorkspaceStoreWrite {
   match workspace_read_owner(store: store, owner: reservation.request.owner) {
     WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
     WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == reservation.request.idempotency_key).first() {
@@ -421,7 +438,7 @@ fn workspace_record_reservation(store: FabricStorageBinding, reservation: Worksp
 
 // Selection becomes durable before acquisition. Once published the plan cannot be changed or
 // removed; recovery addresses that same cell, even if release raced the first apply.
-fn workspace_record_plan(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> WorkspaceStoreWrite {
+fn workspace_record_plan(store: WorkspaceAllocationStore, plan: WorkspaceReservationPlan) -> WorkspaceStoreWrite {
   let request = workspace_reservation_plan_request(plan: plan)
   match workspace_read_owner(store: store, owner: request.owner) {
     WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
@@ -450,7 +467,7 @@ fn workspace_record_plan(store: FabricStorageBinding, plan: WorkspaceReservation
 
 // This CAS races safely with begin_acquisition: only one can consume the observed owner version.
 // No local free-slot read substitutes for the absence of a durable acquisition obligation.
-fn workspace_settle_unstarted_retirement(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
+fn workspace_settle_unstarted_retirement(store: WorkspaceAllocationStore, owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
   match workspace_read_owner(store: store, owner: owner) {
     WorkspaceStoreUnreadable { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
     WorkspaceStoreReadOk { snapshot: observed } => match filter(observed.allocations, a => a.request.idempotency_key == idempotency_key).first() {
@@ -472,7 +489,7 @@ fn workspace_settle_unstarted_retirement(store: FabricStorageBinding, owner: Pri
 // No acquisition can precede a committed plan, and a retired request cannot acquire a plan.
 // This CAS therefore settles a cancellation before placement without claiming any host cleanup.
 // A racing plan publication makes the CAS lose; the next pass observes that plan and recovers it.
-fn workspace_settle_unplanned_retirement(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
+fn workspace_settle_unplanned_retirement(store: WorkspaceAllocationStore, owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
   match workspace_read_owner(store: store, owner: owner) {
     WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
     WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == idempotency_key).first() {
@@ -499,7 +516,7 @@ fn workspace_settle_unplanned_retirement(store: FabricStorageBinding, owner: Pri
 
 // A waiting preparation is owner-visible without manufacturing a VM readiness observation.
 // Once another actor prepares, retires or acquires the request, this transition must lose.
-fn workspace_record_preparation_wait(store: FabricStorageBinding, request: WorkspaceRequest,
+fn workspace_record_preparation_wait(store: WorkspaceAllocationStore, request: WorkspaceRequest,
   reason: String) -> WorkspaceStoreWrite {
   match workspace_read_owner(store: store, owner: request.owner) {
     WorkspaceStoreUnreadable { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }

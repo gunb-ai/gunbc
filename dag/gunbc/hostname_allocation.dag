@@ -24,6 +24,8 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv16,
   operator_host_183527,
   operator_host_3dde7f,
+  operator_host_94c81d,
+  operator_host_6ce85c,
   operator_host_mtjade1,
   operator_host_srv9,
   operator_host_srv10,
@@ -161,6 +163,14 @@ fn hostname_allocation_admission(
 // opaque (gunbc.fleet.fleet_host_identity), so nothing about provider, architecture or role is read off a
 // spelling; their names were DRAWN by draw_human_name over the Gen Z naming scheme (gunbc.host_names.gen_z), with the entropy
 // recorded as the receipt of the draw.
+//
+// THE THIRD DRAWN ROW (operator, 2026-10-16, session royal-seal-46) is the ASRock Altra
+// ALTRAD8UD-1L2T-6 (opaque identity host-94c81d). The operator chose the Gen Z scheme for it, so the
+// name was DRAWN by draw_human_name over gunbc.host_names.gen_z: entropy 709187867323 indexes
+// host_name_first_parts to "owen", which no existing host answers to, so the shortest form (FirstOnly)
+// is allocated. The entropy is the recorded receipt of the draw;
+// test.claim.hostname_allocation_witness re-runs the allocator over it and reds if "owen" is not what
+// it yields.
 data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_srv1,
@@ -217,6 +227,20 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_srv16,
     name: LegacyHostname { label: "srv16" as DnsLabel },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_94c81d,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "owen" as DnsLabel },
+      draw: HumanNameDraw { entropy: 709187867323 },
+    },
+  },
+  // H11SSL unit 1 (2026-10-30): the host already answers as h11-a16 on the LAN and in its own hostname,
+  // and that is how the operator addresses it, so it keeps that spelling as a LEGACY name rather than a
+  // drawn one, the same treatment srv9-srv12 get below.
+  HostnameAllocation {
+    fleet_slot: operator_host_6ce85c,
+    name: LegacyHostname { label: "h11-a16" as DnsLabel },
   },
   // THE FIVE DRAWN ROWS (2026-10-27), drawn by the P2 model step of
   // gunbc.plans.fleet_naming_reach_access. srv9-srv12 keep their identity slot as a LEGACY spelling and

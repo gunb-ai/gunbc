@@ -4,29 +4,40 @@ import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.algebra { string_contains, list_map }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.scoped_authorization { AuthorizationRequest }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationScope }
 import extdeps.github.actions { Job, Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied }
 import gunbc.fleet.srv1_root_mutation_approval_run {
+  srv1_root_mutation_inheritance, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
+  microvm_controller_install_root_scopes, srv1_root_write_scope,
   srv1_root_mutation_request, srv1_root_mutation_escalation_id, srv1_root_mutation_after_gate,
   srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect, srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_receipt_path,
+  srv1_root_mutation_mode_env,
 }
-import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row }
+import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row, privileged_effect_census }
+import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
+import std.decl_ref { declaration_ref_display_key }
 import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job,
   fleet_converge_dashboard_deploy_selected_inputs, fleet_converge_microvm_controller_install_selected_inputs,
   fleet_converge_approval_broker_dark_install_selected_inputs,
+  fleet_converge_approval_ntfy_retire_job, fleet_converge_approval_ntfy_retire_selected_inputs,
+  fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation,
 }
 
 // THE srv1 ROOT-MUTATION GATE (gunbc.fleet.srv1_root_mutation_approval_run), witnessed at the gate
 // fold with SUPPLIED poll standings (DESIGN section 3, a witness discriminates at one interface), and
 // at the emitted jobs for the inhabitance half: the real jobs carry the gate before their root step.
 
-fn fixture_selected_request(job: String, attempt: String, plan_hash: String) -> AuthorizationRequest<Srv1RootMutationApproval> {
+// THE FIXTURE IS A MODE, NOT A STRING: the request builder takes the family coproduct, so a fixture
+// cannot name a mode the model does not have, and there is no unlisted arm left to invent a stand-in
+// authority for -- every claim below runs on a mode the product can actually dispatch.
+fn fixture_selected_request(mode: Srv1RootMutationMode, attempt: String, plan_hash: String) -> AuthorizationRequest<Srv1RootMutationApproval> {
+  let job = srv1_root_mutation_mode_job_id(mode: mode)
   srv1_root_mutation_request(
     job: job as NonEmptyStr,
     escalation_id: srv1_root_mutation_escalation_id(job: job as NonEmptyStr, run_id: "4242" as NonEmptyStr, run_attempt: attempt as NonEmptyStr),
@@ -35,34 +46,105 @@ fn fixture_selected_request(job: String, attempt: String, plan_hash: String) -> 
       Srv1RootMutationSelect { input: "plan_workflow_run_id" as NonEmptyStr, value: "100" },
       Srv1RootMutationSelect { input: "plan_artifact_hash" as NonEmptyStr, value: plan_hash },
     ],
+    mode: mode,
   )
 }
 
-fn fixture_request(job: String, attempt: String) -> AuthorizationRequest<Srv1RootMutationApproval> {
-  fixture_selected_request(job: job, attempt: attempt, plan_hash: "plan-a")
+fn fixture_request(mode: Srv1RootMutationMode, attempt: String) -> AuthorizationRequest<Srv1RootMutationApproval> {
+  fixture_selected_request(mode: mode, attempt: attempt, plan_hash: "plan-a")
+}
+
+// THE GENERATOR AND THE AUTHORITY SPEAK THE SAME WIRE AND THE SAME JOB NAME: the dispatch vocabulary
+// carries the family as ONE constructor and delegates both names to the family module, so the string a
+// dispatch carries is the string the request builder parses back. Enumerated from the family's own
+// list -- no mode is spelled by hand in this witness.
+test fn the_generator_delegates_the_family_wire_and_job_names() -> Bool {
+  all(srv1_root_mutation_modes, m =>
+    fleet_converge_workflow_mode_wire(mode: Srv1RootMutation(m)) == srv1_root_mutation_mode_wire(mode: m)
+      && (fleet_converge_mode_job_id(mode: Srv1RootMutation(m)) as String) == srv1_root_mutation_mode_job_id(mode: m))
+}
+
+// THE RED THE RULING ASKED FOR: the retirement tells the operator it IS destructive and names what it
+// takes off the host -- the account, the config directory, the state root and the binary. A sentence
+// that stops at "writes under /etc and /usr/local" over an uninstall is the defect this closes
+// (DESIGN section 5: no plausible output is fabricated, and the flag is the one thing the approver
+// reads about risk).
+test fn the_retirement_declares_itself_destructive_and_names_every_removal() -> Bool {
+  let retire = fixture_selected_request(mode: ApprovalNtfyRetire, attempt: "1", plan_hash: "plan-a")
+  retire.destructive
+    && string_contains(s: retire.purpose as String, pattern: "gunbc-ntfy ACCOUNT")
+    && string_contains(s: retire.purpose as String, pattern: "/etc/gunbc-ntfy")
+    && string_contains(s: retire.purpose as String, pattern: "/var/lib/gunbc-ntfy")
+    && string_contains(s: retire.purpose as String, pattern: "/usr/local/bin/ntfy")
+    && string_contains(s: retire.purpose as String, pattern: "not undone")
+}
+
+// THE CONTROL, so the flag keeps its meaning instead of becoming a constant nobody trusts: exactly one
+// mode in the family takes anything off the host, and it is the retirement. Enumerated over the
+// family's own list, so a flag flipped on an install -- or a new mode that quietly declares itself
+// destructive -- is red.
+test fn only_the_retirement_takes_anything_off_the_host() -> Bool {
+  all(srv1_root_mutation_modes, m => srv1_root_mutation_mode_authority(mode: m).destructive == (m == ApprovalNtfyRetire))
+}
+
+// A WIRE THE FAMILY DOES NOT HAVE HAS NO DESCRIPTION TO BORROW: the run's `mode` string is parsed
+// through the family's own wire fn, and a wire outside the family is refused -- the gate files nothing
+// rather than dressing an unclassified run in another mode's purpose. The second half is the
+// round-trip: every member of the family parses back to itself.
+test fn a_wire_outside_the_family_is_refused_and_every_member_round_trips() -> Bool {
+  (match srv1_root_mutation_mode_of_wire(wire: "some_new_root_mutation_mode") {
+    ModeRead { mode: _ } => false
+    ModeWireUnreadable { wire: w } => w == "some_new_root_mutation_mode"
+  })
+    && all(srv1_root_mutation_modes, m => match srv1_root_mutation_mode_of_wire(wire: srv1_root_mutation_mode_wire(mode: m)) {
+      ModeRead { mode: read } => read == m
+      ModeWireUnreadable { wire: _ } => false
+    })
+}
+
+// THE MODE REACHES EVERY STEP OF THE JOB AT JOB LEVEL: the gate step AND the inheriting steps rebuild
+// the same request from the run's variables, so a mode only one step could see would make the others
+// refuse mid-job, after the operator has already said yes.
+fn job_binds_its_mode_at_job_level(j: Job) -> Bool {
+  match j.env {
+    Absent => false
+    Present { value: kvs } => any(kvs, e => match e {
+      YamlKeyValue { key: k, value: YamlString { value: v } } => k == srv1_root_mutation_mode_env
+        && v == "${{ github.event.inputs.mode }}"
+      _ => false
+    })
+  }
+}
+
+test fn every_root_mutation_job_hands_its_mode_to_every_step() -> Bool {
+  job_binds_its_mode_at_job_level(j: fleet_converge_dashboard_deploy_job())
+    && job_binds_its_mode_at_job_level(j: fleet_converge_approval_broker_dark_install_job())
+    && job_binds_its_mode_at_job_level(j: fleet_converge_microvm_controller_install_job())
+    && job_binds_its_mode_at_job_level(j: fleet_converge_approval_ntfy_retire_job())
+    && !job_binds_its_mode_at_job_level(j: fleet_converge_printer_job())
 }
 
 // WHAT THE OPERATOR IS ASKED FOR IS WHAT THE INHERITING WRITES ARE ADMITTED AGAINST: one value, and
 // the census root's site is this module's gate.
 test fn the_request_asks_for_exactly_the_scopes_the_census_root_grants() -> Bool {
-  fixture_request(job: "dashboard_deploy", attempt: "1").scopes == srv1_root_mutation_approval_root.approved_scopes
+  fixture_request(mode: DashboardDeploy, attempt: "1").scopes == srv1_root_mutation_approval_root.approved_scopes
     && srv1_root_mutation_approved_scopes == srv1_root_mutation_approval_root.approved_scopes
     && (srv1_root_mutation_approval_row.site.module_path as String) == "gunbc.fleet.srv1_root_mutation_approval_run"
     && (srv1_root_mutation_approval_row.site.decl_name as String) == "srv1_root_mutation_after_gate"
 }
 
 test fn each_job_attempt_files_its_own_escalation() -> Bool {
-  let a = fixture_request(job: "dashboard_deploy", attempt: "1").escalation_id
-  let b = fixture_request(job: "dashboard_deploy", attempt: "2").escalation_id
-  let c = fixture_request(job: "microvm_controller_install", attempt: "1").escalation_id
-  a != b && a != c && b != c && string_contains(s: a as String, pattern: "dashboard_deploy")
+  let a = fixture_request(mode: DashboardDeploy, attempt: "1").escalation_id
+  let b = fixture_request(mode: DashboardDeploy, attempt: "2").escalation_id
+  let c = fixture_request(mode: MicrovmControllerInstall, attempt: "1").escalation_id
+  a != b && a != c && b != c && string_contains(s: a as String, pattern: srv1_root_mutation_mode_job_id(mode: DashboardDeploy))
 }
 
 // THE POSITIVE CONTROL AND ITS RED: the operator's approval of this job's request admits it, and the
 // same decision does not admit another job's request -- an approval is never spent on another job.
 test fn an_approval_admits_its_own_job_and_not_another() -> Bool {
-  let deploy = fixture_request(job: "dashboard_deploy", attempt: "1")
-  let install = fixture_request(job: "microvm_controller_install", attempt: "1")
+  let deploy = fixture_request(mode: DashboardDeploy, attempt: "1")
+  let install = fixture_request(mode: MicrovmControllerInstall, attempt: "1")
   let approved = PollApproved { revision: request_revision_of(request: deploy), decided_by: "fixture-operator", decided_at: "2026-10-26T12:00:00Z", execute_by: "2026-10-26T12:30:00Z" }
   (match approval_gate_from_poll(poll: approved, request: deploy, observed_at: "2026-10-26T12:01:00Z") {
     GateAdmitted { authorization: _ } => true
@@ -76,7 +158,7 @@ test fn an_approval_admits_its_own_job_and_not_another() -> Bool {
 
 // A DENIAL OR AN EXPIRY ENDS THE JOB, and the reason says no root step runs.
 test fn a_refused_gate_fails_the_step_before_any_root_step() -> Bool {
-  let deploy = fixture_request(job: "dashboard_deploy", attempt: "1")
+  let deploy = fixture_request(mode: DashboardDeploy, attempt: "1")
   let denied = approval_gate_from_poll(
     poll: PollDenied { revision: request_revision_of(request: deploy), decided_by: "fixture-operator", decided_at: "2026-10-26T12:00:00Z", reason: "not now" },
     request: deploy, observed_at: "2026-10-26T12:01:00Z",
@@ -114,6 +196,7 @@ test fn every_srv1_root_mutation_job_runs_the_gate_before_its_root_step() -> Boo
   gated_before(j: fleet_converge_dashboard_deploy_job(), root_step: "dashboard_deploy")
     && gated_before(j: fleet_converge_approval_broker_dark_install_job(), root_step: "approval_broker_dark_install")
     && gated_before(j: fleet_converge_microvm_controller_install_job(), root_step: "microvm_controller_install")
+    && gated_before(j: fleet_converge_approval_ntfy_retire_job(), root_step: "approval_ntfy_retire")
 }
 
 // THE STEP'S SHELL IS RENDERED FROM bash_build NODES: a rejected tree renders the refusal poison, so
@@ -141,8 +224,8 @@ test fn the_receipt_is_uploaded_from_where_it_is_written_outside_the_checkout() 
 // The operator's decision on plan A does not admit plan B, and the purpose the operator reads names
 // the plan it is approving.
 test fn a_decision_for_one_plan_does_not_admit_another_at_the_same_commit() -> Bool {
-  let plan_a = fixture_selected_request(job: "dashboard_deploy", attempt: "1", plan_hash: "plan-a")
-  let plan_b = fixture_selected_request(job: "dashboard_deploy", attempt: "1", plan_hash: "plan-b")
+  let plan_a = fixture_selected_request(mode: DashboardDeploy, attempt: "1", plan_hash: "plan-a")
+  let plan_b = fixture_selected_request(mode: DashboardDeploy, attempt: "1", plan_hash: "plan-b")
   let approved_a = PollApproved { revision: request_revision_of(request: plan_a), decided_by: "fixture-operator", decided_at: "2026-10-26T12:00:00Z", execute_by: "2026-10-26T12:30:00Z" }
   string_contains(s: plan_a.purpose as String, pattern: "plan_artifact_hash=plan-a")
     && (match approval_gate_from_poll(poll: approved_a, request: plan_a, observed_at: "2026-10-26T12:01:00Z") {
@@ -193,6 +276,7 @@ test fn every_input_a_root_step_consumes_is_in_the_approved_selection() -> Bool 
   later_inputs_are_selected(j: fleet_converge_dashboard_deploy_job(), selects: fleet_converge_dashboard_deploy_selected_inputs)
     && later_inputs_are_selected(j: fleet_converge_microvm_controller_install_job(), selects: fleet_converge_microvm_controller_install_selected_inputs)
     && later_inputs_are_selected(j: fleet_converge_approval_broker_dark_install_job(), selects: fleet_converge_approval_broker_dark_install_selected_inputs)
+    && later_inputs_are_selected(j: fleet_converge_approval_ntfy_retire_job(), selects: fleet_converge_approval_ntfy_retire_selected_inputs)
     && !later_inputs_are_selected(j: fleet_converge_dashboard_deploy_job(), selects: ["plan_workflow_run_id"])
 }
 
@@ -209,4 +293,77 @@ test fn a_non_srv1_dispatch_never_reaches_the_credential_steps() -> Bool {
   job_admits_srv1_only(j: fleet_converge_dashboard_deploy_job())
     && job_admits_srv1_only(j: fleet_converge_approval_broker_dark_install_job())
     && job_admits_srv1_only(j: fleet_converge_microvm_controller_install_job())
+    && job_admits_srv1_only(j: fleet_converge_approval_ntfy_retire_job())
+}
+
+// ── AN INHERITING STEP'S GRANT (srv1_root_mutation_inheritance), with supplied standings ────────────
+// The microVM controller install re-reads its job's decision and admits the install only when the
+// grant covers every scope the install exercises. Each claim supplies the poll standing and decides
+// with the same fold the install runs.
+
+fn inherit_with(poll_request: AuthorizationRequest<Srv1RootMutationApproval>, own: AuthorizationRequest<Srv1RootMutationApproval>, required: List<AuthorizationScope>) -> Bool {
+  let approved = PollApproved { revision: request_revision_of(request: poll_request), decided_by: "fixture-operator", decided_at: "2026-10-26T12:00:00Z", execute_by: "2026-10-26T12:30:00Z" }
+  match srv1_root_mutation_inheritance(
+    gate: approval_gate_from_poll(poll: approved, request: own, observed_at: "2026-10-26T12:01:00Z"),
+    request: own,
+    required: required,
+    observed_at: "2026-10-26T12:01:00Z",
+  ) {
+    Srv1InheritedGrantAdmitted { grant: _ } => true
+    Srv1InheritedGrantRefused { reason: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: the job's own approval admits the controller install's scopes.
+test fn the_job_approval_admits_the_controller_install_scopes() -> Bool {
+  let install = fixture_request(mode: MicrovmControllerInstall, attempt: "1")
+  inherit_with(poll_request: install, own: install, required: microvm_controller_install_root_scopes)
+}
+
+// THE REDS: another job's approval does not admit it, a scope outside the approved trees does not, and
+// a write that states no scope is not covered vacuously.
+test fn another_job_approval_an_unapproved_scope_and_an_empty_scope_list_refuse() -> Bool {
+  let install = fixture_request(mode: MicrovmControllerInstall, attempt: "1")
+  let deploy = fixture_request(mode: DashboardDeploy, attempt: "1")
+  !inherit_with(poll_request: deploy, own: install, required: microvm_controller_install_root_scopes)
+    && !inherit_with(poll_request: install, own: install, required: [srv1_root_write_scope(path: ["srv", "outside"])])
+    && !inherit_with(poll_request: install, own: install, required: [])
+}
+
+// THE CENSUS ROW AND THE INSTALL ASK FOR ONE VALUE: the controller install's row requires exactly the
+// scopes the install authorizes against.
+test fn the_census_row_requires_the_scopes_the_install_authorizes() -> Bool {
+  any(privileged_effect_census, row =>
+    declaration_ref_display_key(ref: row.site) == "gunbc.host.host_effect_realize::microvm_controller_staged_write_steps"
+      && match row.effect.witness_discharge {
+        EntailedByApprovedConvergence { root: _, required_scopes: r } => r == microvm_controller_install_root_scopes
+        _ => false
+      })
+}
+
+fn step_name_of(st: Step) -> String {
+  match st {
+    RunStep { name: Present { value: n }, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
+    UsesStep { name: Present { value: n }, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
+    _ => ""
+  }
+}
+
+fn is_key_step(st: Step) -> Bool { string_contains(s: step_name_of(st: st), pattern: "Materialize fleet key in-run") }
+fn is_key_cleanup_step(st: Step) -> Bool { string_contains(s: step_name_of(st: st), pattern: "kill the in-run ssh-agent") }
+
+// THE ADMINISTRATOR'S KEY EXISTS ONLY IN AN APPROVED RUN, read off the emitted job: the gate, then the
+// key, then the install, and the agent's teardown last. A key step before the gate leaves the fold
+// sticky at -1; a job with no key step, or no teardown after the install, never reaches 4.
+test fn the_controller_install_holds_the_fleet_key_only_after_its_approval() -> Bool {
+  let j = fleet_converge_microvm_controller_install_job()
+  let reached = fold(j.steps, init: 0, f: fn(at, st) {
+    if at < 0 { at }
+    else if step_id_of(st: st) == "srv1_root_mutation_approval" { if at == 0 { 1 } else { at } }
+    else if is_key_step(st: st) { if at == 1 { 2 } else { 0 - 1 } }
+    else if step_id_of(st: st) == "microvm_controller_install" { if at == 2 { 3 } else { 0 - 1 } }
+    else if is_key_cleanup_step(st: st) { if at == 3 { 4 } else { 0 - 1 } }
+    else { at }
+  })
+  reached == 4
 }

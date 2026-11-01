@@ -3005,9 +3005,21 @@ const REGEN_ROUND_COST_ENTRY_UNDER_ROOT: &str = "gunbc/regen_round_cost.dag";
 /// journal, the diff, and the emitter's population walk use; the base bootstrap spells it once.
 const STAGE0_SRC_REL: &str = "src/v1/stage0/src";
 
+/// Workspace-relative directory holding the WHOLE SEED CRATE — `src`, `tests`, `testdata`,
+/// `Cargo.toml`, `build.rs`. The round-1 bootstrap restores this, not the mirror directory alone:
+/// what cargo compiles is the crate, so what round 1 must pin is the crate. See
+/// `base_crate_population`.
+const STAGE0_CRATE_REL: &str = "src/v1/stage0";
+
 struct CargoBuildObservation {
     compiled_crates: u64,
     compiled_packages: Vec<String>,
+    /// cargo's own fingerprint log lines for this build (`CARGO_LOG=cargo::core::compiler::
+    /// fingerprint=info`), which say WHY each unit was rebuilt. The scope guard can otherwise only
+    /// name the packages it refused, not why they were dirty — the #14876 / #15310 / #15441 mtime
+    /// mechanism had to be INFERRED from the guard's package list because no fingerprint line was
+    /// ever captured. Kept in memory; surfaced only on a refusal.
+    fingerprint_reasons: Vec<String>,
 }
 
 const REGEN_CONVERGENCE_SCHEMA: &str = "gunbc.regen_convergence_transaction.v1";
@@ -3641,19 +3653,24 @@ fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String
     Ok(bytes_digest(&bytes))
 }
 
-fn restore_regen_convergence_journal(workspace: &Path) -> Result<(), String> {
+fn restore_regen_convergence_journal(workspace: &Path) -> Result<usize, String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
-    restore_regen_convergence_journal_for_subject(workspace, &subject)
+    restore_regen_convergence_journal_for_subject(workspace, &subject).map(|paths| paths.len())
 }
 
+/// Return every journalled path to the byte recorded before the round, and report WHICH were put
+/// back (workspace-relative). The paths are returned rather than re-derived by a caller so that the
+/// journal keeps exactly one reader (§3): a round that seeded the base snapshot prints what its
+/// rollback restored, and the partition-rebuild decision is fed the same list — the paths whose
+/// mtime this restore moved are exactly the ones cargo will see as changed.
 fn restore_regen_convergence_journal_for_subject(
     workspace: &Path,
     subject: &RegenConvergenceCheckpointSubject,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     let root = regen_convergence_journal_path(workspace);
     let manifest_path = root.join("journal.json");
     if !manifest_path.is_file() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let manifest: RegenConvergenceJournal = serde_json::from_slice(
         &fs::read(&manifest_path).map_err(|e| format!("read {}: {e}", manifest_path.display()))?,
@@ -3712,6 +3729,7 @@ fn restore_regen_convergence_journal_for_subject(
                 .map_err(|e| format!("prepare validated restore {}: {e}", backup.display()))?;
         }
     }
+    let mut restored: Vec<String> = Vec::new();
     for entry in &manifest.entries {
         let destination = workspace.join(&entry.relative_path);
         if matches!(
@@ -3719,6 +3737,14 @@ fn restore_regen_convergence_journal_for_subject(
             RegenPreStageState::PresentBeforeInstall { .. }
         ) {
             let prepared = restore_tmp.join(&entry.backup_name);
+            // SKIP A PATH THAT WAS NEVER MOVED. If the destination already holds the bytes the
+            // journal backed up, the rename is redundant work, and it bumps an mtime that cargo's
+            // path-dependency fingerprint reads as a change — the same defect the round-1 seed now
+            // avoids (#14876 specimen: an excluded crate recompiled because a restore rewrote a file
+            // whose bytes had never changed). DESIGN §2.
+            if destination_bytes_equal(&destination, &prepared)? {
+                continue;
+            }
             fs::rename(&prepared, &destination).map_err(|e| {
                 format!(
                     "rollback/restore refuses: atomic rename {} -> {}: {e}",
@@ -3726,6 +3752,7 @@ fn restore_regen_convergence_journal_for_subject(
                     destination.display()
                 )
             })?;
+            restored.push(entry.relative_path.clone());
         } else if destination.exists() {
             fs::remove_file(&destination).map_err(|e| {
                 format!(
@@ -3736,7 +3763,17 @@ fn restore_regen_convergence_journal_for_subject(
         }
     }
     fs::remove_dir_all(&root)
-        .map_err(|e| format!("remove restored journal {}: {e}", root.display()))
+        .map_err(|e| format!("remove restored journal {}: {e}", root.display()))?;
+    Ok(restored)
+}
+
+/// True when both paths exist and hold the same bytes. An unreadable side is NOT equal: the caller
+/// then writes, so a comparison failure can never turn into a skipped restore.
+fn destination_bytes_equal(destination: &Path, prepared: &Path) -> Result<bool, String> {
+    let (Ok(current), Ok(wanted)) = (fs::read(destination), fs::read(prepared)) else {
+        return Ok(false);
+    };
+    Ok(current == wanted)
 }
 
 fn journal_stage0_paths_for_subject(
@@ -3840,28 +3877,46 @@ fn journal_paths_for_subject(
     fs::write(&manifest_path, bytes).map_err(|e| format!("write {}: {e}", manifest_path.display()))
 }
 
-/// One file of the generated mirror population, as it sits in a commit.
-struct BaseMirrorFile {
-    path: String,
-    basename: String,
-}
-
-/// The generated-mirror population of `src/v1/stage0/src` AS COMMITTED IN `commit`: every top-level
-/// `.rs` file git tracks there, minus the hand-maintained roster. A directory (`bin`,
-/// `v1_claim_executable`) is not part of this population — those are hand-authored (DESIGN §6b)
-/// and a base checkout touching them could damage hand-written code.
-fn base_mirror_population(
+/// THE SEED CRATE'S OWN SOURCE POPULATION as committed in a base commit: every path git tracks
+/// under `src/v1/stage0`, keyed by its repo-relative path — mirrors at any depth, the
+/// hand-maintained files, and the hand-maintained directories.
+///
+/// There is deliberately NO filter here, and the two that used to be are the bug this replaces.
+/// `!rest.contains('/')` skipped every nested mirror (`cli_run/compile_clean.rs`,
+/// `bin/fixture_main.rs`), and the hand roster skip left every hand-maintained file at the head.
+/// Round 1 then compiled a CRATE THAT IS NEITHER BASE NOR HEAD: the head's hand-written caller
+/// against base's generated definitions, which refuses with its own E0599 while the head's `.dag`
+/// edit that would repair it sits in the tree, unreachable (`v1-stage0-std-core` includes those
+/// mirrors through `#[path = "../../stage0/src/<basename>.rs"]`, and `#[path]` recurses, so nested
+/// partitions compile too). Specimens: PR #15175 at `432809a3ed4b` (`variant `Dag` is
+/// constructed, but its only constructor \`MirrorRow::Dag\` lives in the head mirror the round never
+/// read`), PR #14876 (heal run 40739785316, 26 × E0308/E0282 in `v1-stage0-std-core`), heal run
+/// 40637527543 (the same shape with the nested file). See
+/// `gunbc.recurring_failure_mode.heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`.
+///
+/// "Always base, never a fallback" (root ruling) has a precise meaning: base is what the round
+/// COMPILES, and the head's authored `.dag`/`.rs` authorities are what it REGENERATES — round 2
+/// installs the regeneration over the whole base surface, so a base byte here is transient and can
+/// never be published. What a base checkout can no longer do is hand the round half of each.
+fn base_crate_population(
     workspace: &Path,
     commit: &str,
-) -> Result<BTreeMap<String, BaseMirrorFile>, String> {
+) -> Result<BTreeMap<String, String>, String> {
     let output = Command::new("git")
-        .args(["ls-tree", "-r", "--name-only", commit, "--", STAGE0_SRC_REL])
+        .args([
+            "ls-tree",
+            "-r",
+            "--name-only",
+            commit,
+            "--",
+            STAGE0_CRATE_REL,
+        ])
         .current_dir(workspace)
         .output()
         .map_err(|e| format!("git ls-tree {commit}: {e}"))?;
     if !output.status.success() {
         return Err(format!(
-            "BootstrapBaseMirrorUnreadable: git ls-tree {commit} -- {STAGE0_SRC_REL}: {}",
+            "BootstrapBaseMirrorUnreadable: git ls-tree {commit} -- {STAGE0_CRATE_REL}: {}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -3871,51 +3926,37 @@ fn base_mirror_population(
         if path.is_empty() {
             continue;
         }
-        let Some(basename) = path
-            .strip_prefix(&format!("{STAGE0_SRC_REL}/"))
-            .filter(|rest| !rest.contains('/') && rest.ends_with(".rs"))
-        else {
-            continue;
-        };
-        if is_hand_maintained_stage0_basename(basename) {
-            continue;
-        }
-        population.insert(
-            basename.to_string(),
-            BaseMirrorFile {
-                path: path.to_string(),
-                basename: basename.to_string(),
-            },
-        );
+        population.insert(path.to_string(), path.to_string());
     }
     Ok(population)
 }
 
-/// The generated-mirror population that CURRENTLY SITS in the worktree, top level only. Read from
-/// the filesystem rather than from git so an uncommitted generated edit is part of the subject.
-fn worktree_mirror_population(stage0_src: &Path) -> Result<BTreeSet<String>, String> {
+/// The same population as it CURRENTLY SITS in the worktree, recursively. Read from the filesystem
+/// rather than from git, so an uncommitted generated or hand edit is part of the subject: what the
+/// round overwrote is exactly what the journal must return.
+fn worktree_crate_population(stage0_crate: &Path) -> Result<BTreeSet<String>, String> {
     let mut present = BTreeSet::new();
-    for entry in fs::read_dir(stage0_src)
-        .map_err(|e| format!("enumerate stage0 src {}: {e}", stage0_src.display()))?
-    {
-        let entry = entry.map_err(|e| format!("read stage0 src entry: {e}"))?;
-        if !entry.path().is_file() {
-            continue;
+    let mut stack = vec![stage0_crate.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir)
+            .map_err(|e| format!("enumerate stage0 crate {}: {e}", dir.display()))?
+        {
+            let entry = entry.map_err(|e| format!("read stage0 crate entry: {e}"))?;
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let Ok(rest) = path.strip_prefix(stage0_crate) else {
+                continue;
+            };
+            let Some(text) = rest.to_str() else {
+                continue;
+            };
+            present.insert(format!("{STAGE0_CRATE_REL}/{text}"));
         }
-        let Some(basename) = entry.file_name().to_str().map(str::to_string) else {
-            continue;
-        };
-        if !basename.ends_with(".rs") || is_hand_maintained_stage0_basename(&basename) {
-            continue;
-        }
-        present.insert(basename);
     }
     Ok(present)
-}
-
-fn is_hand_maintained_stage0_basename(basename: &str) -> bool {
-    HAND_MAINTAINED_STAGE0_FILES.contains(&basename)
-        || EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES.contains(&basename)
 }
 
 /// What the round-1 bootstrap did, in the receipt's vocabulary.
@@ -3924,8 +3965,59 @@ struct BaseRestore {
     /// The base commit, exactly as the step named it. The receipt NAMES it (sleek-owl-397
     /// caution, RFM #14963).
     base_commit: String,
-    /// The generated mirrors whose bytes the round-1 seed actually built from the base commit.
-    basenames: Vec<String>,
+    /// How many crate paths the round-1 seed actually built from the base commit's bytes.
+    paths_restored: usize,
+    /// How many of those paths the seed actually wrote. A path whose base bytes already equal the
+    /// worktree's is NOT written (see `bootstrap_round_one_from_base_mirror`): rewriting identical
+    /// bytes bumps an mtime cargo reads as a change and drags excluded crates into the rebuild.
+    /// Zero is the shape of a PR that touches no stage0 file at all.
+    paths_rewritten: usize,
+    /// How many paths the HEAD tracks that base does not have at all: they stay at the head, are
+    /// journaled before the round touches them, and are counted rather than silent — a head-added
+    /// support file is exactly where a new hand-written call to a new generated method lives, and
+    /// the compile is still whole-crate base because the generated side of that call is base's.
+    paths_absent_at_base: usize,
+}
+
+/// The receipt's base-mirror arm, in the shape its renderer takes. Split out so the HOST half of
+/// the line — which commit and which two counts reach the renderer — is checkable without loading a
+/// corpus. The RENDERER's half (the line's text, and its absence for a round that was never asked
+/// to bootstrap) is asserted in `dag/test/claim/self_host_regen_round_cost_witness.dag`
+/// `a_bootstrapped_receipt_names_the_base_commit_after_the_header` and
+/// `a_non_bootstrapped_receipt_renders_no_base_mirror_line`, which reach a verdict on a required
+/// run. A Rust control that renders through the interpreter pays a whole corpus load per call —
+/// measured at about 50 minutes of libtest time on srv1 at `b339f6fa0e6f`, the same front-end cost
+/// this repository's native-execution lane exists to remove — so rendering does not belong here.
+fn base_mirror_receipt_authority(base: &BaseRestore) -> (String, usize, usize) {
+    (
+        base.base_commit.clone(),
+        base.paths_restored,
+        base.paths_absent_at_base,
+    )
+}
+
+/// The same arm, DERIVED READ-ONLY from the authority the bootstrap uses, for the image that renders
+/// the receipt without having seeded: the re-exec'd handoff child. Under the handoff rule the child
+/// seeds nothing, so `base_bootstrap` is `None` there, and passing that `None` to the renderer would
+/// select the `SeedBuiltFromHead` arm and print a receipt claiming round 1 built from the HEAD —
+/// fabricating a plausible output for the one run whose whole purpose is to say which bytes round 1
+/// compiled. So the child re-derives the commit and both counts from the same authority the parent
+/// used. No fallback and no `.ok()`: a base commit that cannot be named refuses the round with the
+/// typed `BootstrapBaseMirrorCommitUnresolved` diagnostic instead of dropping the line.
+fn round_one_receipt_base_authority(
+    workspace: &Path,
+    base_commit_env: Option<&str>,
+) -> Result<(String, usize, usize), String> {
+    let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_commit_env)?;
+    let in_worktree = worktree_crate_population(&workspace.join(STAGE0_CRATE_REL))?;
+    let seeded = from_base
+        .keys()
+        .filter(|path| in_worktree.contains(*path))
+        .count();
+    let head_added = in_worktree
+        .difference(&from_base.keys().cloned().collect())
+        .count();
+    Ok((base_commit, seeded, head_added))
 }
 
 /// THE HEAL ROUND'S BOOTSTRAP AUTHORITY — DESIGN §5, `gunbc.recurring_failure_mode`
@@ -3955,62 +4047,137 @@ struct BaseRestore {
 /// - Round 1's seed build ONLY. Rounds 2+ regenerate, install and re-measure from what the PR's own
 ///   `.dag` produces, so the transaction still converges to the PR seed's own fixed point and the
 ///   published candidate carries no base byte (`sleek-owl-397` caution, RFM #14963).
-/// - The GENERATED POPULATION ONLY. Hand-maintained files, the declared emitter-divergent row, and
-///   every directory (`bin`, `v1_claim_executable`, …) are left exactly as the head wrote them —
-///   restoring hand-authored code from base would damage the very change under repair.
-/// - Only mirrors present in BOTH base and the worktree get base bytes. A mirror the PR added has
-///   no base form and stays as written; one the PR deleted is absent on both sides. A population
-///   shape only one side has is a generation fact, not a refusal to repair, and the emitter's own
-///   population walk — which regenerates every mirror before anything is published — decides it.
-/// - Every mirror it overwrites is journalled FIRST, under the same checkpoint subject the install
+/// - THE WHOLE CRATE, NESTED INCLUDED. What cargo compiles is `src/v1/stage0` — `src/**` at every
+///   depth, `tests/**`, `testdata/**`, `Cargo.toml`, `build.rs` — so that is what round 1 pins.
+///   Restoring only top-level generated mirrors left a CRATE THAT IS NEITHER BASE NOR HEAD, and
+///   that chimera refuses with its own E0599/E0308 while the fix sits unreachable in the tree:
+///   `base_crate_population` names the specimens.
+/// - THE BASE SNAPSHOT EXISTS ONLY FOR THE COMPILE. `restore_regen_convergence_journal` — the round's
+///   own teardown, the one reader of the journal (§3) — puts the head's own bytes back as soon as
+///   round 1's seed build is no longer reading them.
+///   It is NOT enough to rely on regeneration: the generator regenerates GENERATED files, so the
+///   hand-maintained paths the whole-crate population now includes — `required_regen_host.rs`
+///   itself, `bin/**`, `tests/**`, `Cargo.toml`, `build.rs` — would keep base's bytes through a
+///   SUCCESSFUL round, and a green heal round would then publish a commit that reverts the pull
+///   request's own hand-written Rust (review 87490 on #15339; `gunbc.heal_candidate_stage0`
+///   `mirror_paths_of` filters by directory depth and suffix only, so such a file enters the
+///   candidate). Base is what round 1 COMPILES and nothing else.
+/// - Only a path whose bytes ACTUALLY DIFFER is written, and only those paths are journalled. A
+///   rewrite of identical bytes is not a no-op: it bumps the file's mtime, and cargo fingerprints a
+///   path dependency by mtime, so the seed build and the measured partition rebuild recompile crates
+///   the round's own derived scope had EXCLUDED, and the scope guard refuses a round that did nothing
+///   wrong. Specimens: PR #14876 (heal run 41061363628, job 124081920078 — a `.dag`-only PR, so all
+///   306 crate paths are byte-identical to base, and `compiled excluded packages
+///   ["v1-stage0-runtime"]` with `package_closure=[std-core, v1-infer, std-surface,
+///   extdeps-languages, v1-artifact, emit-core, v1-compiler]`) and PR #15310 (heal run 41098380134 —
+///   six excluded partition packages, `changed_mirrors=[v1_compiler_emit_rust.rs]`,
+///   `closure=[v1-compiler]`). The guard is right and is NOT widened; the writer was doing redundant
+///   work (DESIGN §2), and mtimes are not restored either — a restored mtime is a second lie on the
+///   same file. `a_stage0_untouched_pr_moves_no_mtime_in_the_seed_or_the_restore` controls both
+///   halves, with a discriminator so the mtime assertion cannot pass vacuously.
+/// - Every path it DOES overwrite is journalled FIRST, under the same checkpoint subject the install
 ///   path uses: the snapshot holds the tree's OWN bytes, so the transaction's single existing
 ///   restore returns the worktree to the head state on every exit path. This is the same rollback,
-///   not a second one beside it.
+///   not a second one beside it. A head-added path the seed never writes is journalled by the
+///   install that overwrites it, not twice over.
 ///
-/// Idempotent: the heal round step runs once per image (a seed-handoff re-exec re-runs it), and
-/// base bytes written over base bytes are the same bytes.
+/// Idempotent: the heal round step runs once per image (a seed-handoff re-exec re-runs it), and a
+/// re-run finds the bytes already equal to base's, so it writes nothing and moves no mtime.
 fn bootstrap_round_one_from_base_mirror(
     workspace: &Path,
-    stage0_src: &Path,
     base_commit_env: Option<&str>,
     subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<BaseRestore, String> {
     let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_commit_env)?;
-    let in_worktree = worktree_mirror_population(stage0_src)?;
-    let subjects: BTreeSet<String> = from_base
+    let stage0_crate = workspace.join(STAGE0_CRATE_REL);
+    let in_worktree = worktree_crate_population(&stage0_crate)?;
+    // RESTORE EVERYTHING BASE HAS THAT THE WORKTREE HAS; a path base has and the worktree lacks is a
+    // path the PR deleted (leaving it deleted is the head's authority), and one the worktree has and
+    // base lacks is a path the PR ADDED: it stays at the head, is still journalled, and is counted in
+    // the receipt rather than passed over silently — it is exactly where a new hand-written call to a
+    // new generated method lives, and the generated side of that call is still base's bytes.
+    let restore: BTreeSet<String> = from_base
         .keys()
-        .filter(|basename| in_worktree.contains(*basename))
+        .filter(|path| in_worktree.contains(*path))
         .cloned()
         .collect();
+    let paths_absent_at_base = in_worktree
+        .difference(&from_base.keys().cloned().collect())
+        .count();
+
+    // FETCH EVERY BASE BLOB ONCE AND WRITE ONLY THE PATHS WHOSE BYTES ACTUALLY DIFFER.
+    //
+    // A path whose base bytes already equal the worktree's needs no write, and writing it anyway is
+    // not harmless: it bumps that file's mtime, and cargo's fingerprint for a path dependency reads
+    // mtimes — so every crate that reads a rewritten file is rebuilt, including crates the round's
+    // derived scope had correctly EXCLUDED. That is the #14876 specimen of this failure mode
+    // (run 41061363628, job 124081920078): the PR touches no stage0 or runtime file, so all 306
+    // crate paths are byte-identical to base, the seed and the restore still rewrote all 306, and
+    // the round-2 rebuild recompiled `v1-stage0-runtime` — which the guard's own receipt had derived
+    // as out of scope (`changed_mirrors=[std_algebra.rs, v1_compiler_infer_{method,resolve,types}.rs]
+    // owning_packages=[v1-stage0-std-core, v1-stage0-v1-infer]`, closure = reverse deps, runtime not
+    // in it), so the scope guard refused a round that had done nothing wrong.
+    //
+    // The guard is right and stays exactly as it is; the writer is what was wrong. DESIGN §2: no
+    // redundant work. mtimes are not restored either — a restored mtime would be a second, stranger
+    // lie on the same file.
+    let mut base_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    let mut to_write: BTreeSet<String> = BTreeSet::new();
+    for path in &restore {
+        let output = Command::new("git")
+            .args(["show", &format!("{}:{}", base_commit, path)])
+            .current_dir(workspace)
+            .output()
+            .map_err(|e| format!("git show {}:{}: {e}", base_commit, path))?;
+        if !output.status.success() {
+            return Err(format!(
+                "BootstrapBaseMirrorUnreadable: git show {}:{}: {}",
+                base_commit,
+                path,
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        let current = fs::read(workspace.join(path)).ok();
+        base_bytes.insert(path.clone(), output.stdout.clone());
+        if current.as_deref() != Some(output.stdout.as_slice()) {
+            to_write.insert(path.clone());
+        }
+    }
 
     // JOURNAL THE TREE'S OWN BYTES BEFORE ANY WRITE, under THE SAME SUBJECT the install path uses.
     // One rollback, not a second one beside it: the pre-stage snapshot holds the head's bytes, and
     // the transaction's existing restore returns every path the bootstrap touched. A path the
     // install journals later keeps this first snapshot — the head's bytes, never base's.
-    let basenames = subjects.iter().cloned().collect::<Vec<_>>();
-    journal_stage0_paths_for_subject(workspace, stage0_src, &basenames, subject)?;
+    // ONLY THE PATHES THIS SEED ACTUALLY WRITES are journalled: a path the seed leaves alone has
+    // nothing to undo, and the round's own install journals whatever IT overwrites (head-added
+    // support files included), so journalling an untouched path would be redundant work and would
+    // make the journal's population stop meaning "what the seed moved".
+    let journal_paths: Vec<String> = to_write.iter().cloned().collect();
+    let entries = journal_paths
+        .iter()
+        .map(|path| (path.clone(), workspace.join(path)))
+        .collect::<Vec<_>>();
+    journal_paths_for_subject(workspace, &entries, subject).map_err(|e| {
+        format!("BootstrapBaseMirrorJournal: journal the head bytes before the base restore: {e}")
+    })?;
 
-    for basename in &subjects {
-        let file = &from_base[basename];
-        let output = Command::new("git")
-            .args(["show", &format!("{}:{}", base_commit, file.path)])
-            .current_dir(workspace)
-            .output()
-            .map_err(|e| format!("git show {}:{}: {e}", base_commit, file.path))?;
-        if !output.status.success() {
-            return Err(format!(
-                "BootstrapBaseMirrorUnreadable: git show {}:{}: {}",
-                base_commit,
-                file.path,
-                String::from_utf8_lossy(&output.stderr)
-            ));
+    for path in &to_write {
+        let destination = workspace.join(path);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
-        fs::write(stage0_src.join(basename), &output.stdout)
-            .map_err(|e| format!("write {}: {e}", basename))?;
+        fs::write(&destination, &base_bytes[path])
+            .map_err(|e| format!("write {}: {e}", destination.display()))?;
     }
     Ok(BaseRestore {
         base_commit,
-        basenames: subjects.into_iter().collect(),
+        // The population the round holds at base bytes — which for a PR that touches no stage0 file
+        // is the whole crate, even though nothing had to be written to get there.
+        paths_restored: restore.len(),
+        // How many of those the seed actually moved on disk. Zero means base's bytes and the head's
+        // were already the same bytes, which is the #14876 shape and the reason no mtime moved.
+        paths_rewritten: to_write.len(),
+        paths_absent_at_base,
     })
 }
 
@@ -4037,7 +4204,7 @@ fn bootstrap_round_one_from_base_mirror(
 fn resolve_base_mirror_authority(
     workspace: &Path,
     raw_commit: Option<&str>,
-) -> Result<(String, BTreeMap<String, BaseMirrorFile>), String> {
+) -> Result<(String, BTreeMap<String, String>), String> {
     let env = REGEN_ROUND_COST_BASE_MIRROR_ENV;
     let raw = match raw_commit {
         None => {
@@ -4093,7 +4260,7 @@ fn resolve_base_mirror_authority(
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let population = base_mirror_population(workspace, base_commit)?;
+    let population = base_crate_population(workspace, base_commit)?;
     if population.is_empty() {
         return Err(format!(
             "BootstrapBaseMirrorUnreadable: {env}={base_commit} carries no generated mirror \
@@ -4347,14 +4514,28 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
             "--bin",
             "claim_executor",
         ])
+        // Ask cargo WHY it rebuilt each unit. The guard below reads `Compiling` lines and can name
+        // the packages a scoped rebuild touched, but a refusal that names only them leaves the
+        // mechanism to be inferred: three heal refusals (#14876 job 124081920078, #15310 run
+        // 41098380134, #15441 run 41121984158) carried no evidence of WHY the excluded packages
+        // were dirty. Logging only — it changes no route and no decision (DESIGN section 5) — and
+        // the lines reach a refusal's text, never a digest.
+        .env("CARGO_LOG", "cargo::core::compiler::fingerprint=info")
         .current_dir(workspace)
         .output()
         .map_err(|e| format!("spawn cargo build ({label}): {e}"))?;
     v1_rt::trace_mark(format!("{label}.done"));
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {
-        let tail: Vec<&str> = stderr.lines().rev().take(40).collect::<Vec<_>>();
-        let tail: Vec<&str> = tail.into_iter().rev().collect();
+        // The fingerprint log is noise in a FAILURE tail: the compiler's own diagnostics must stay
+        // the last thing a reader sees, not a `Dirty` line (§5: a refusal names the error).
+        let kept: Vec<&str> = stderr
+            .lines()
+            .filter(|line| !line.contains("fingerprint"))
+            .rev()
+            .take(40)
+            .collect();
+        let tail: Vec<&str> = kept.into_iter().rev().collect();
         return Err(format!(
             "refusal: cargo build ({label}) failed with {} — last lines:\n{}",
             output.status,
@@ -4368,9 +4549,15 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
         .map(|name| name.to_string())
         .collect::<Vec<_>>();
     let compiled_crates = compiled_packages.len() as u64;
+    let fingerprint_reasons: Vec<String> = stderr
+        .lines()
+        .filter(|line| line.contains("fingerprint"))
+        .map(|line| line.trim().to_string())
+        .collect();
     Ok(CargoBuildObservation {
         compiled_crates,
         compiled_packages,
+        fingerprint_reasons,
     })
 }
 
@@ -4564,7 +4751,7 @@ fn render_round_cost_receipt(
     rebuild_packages: &[String],
     executable_digest: &str,
     second_generation_candidate_digest: &str,
-    base_mirror_authority: Option<(&str, usize)>,
+    base_mirror_authority: Option<(&str, usize, usize)>,
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
@@ -4693,12 +4880,16 @@ fn render_round_cost_receipt(
             (
                 ctx.sym("base_mirror_authority"),
                 match base_mirror_authority {
-                    Some((commit, files)) => Value::Variant {
+                    Some((commit, crate_paths, head_added_paths_kept)) => Value::Variant {
                         type_name: ctx.sym("RoundOneMirrorAuthority"),
                         variant_name: ctx.sym("FromBaseMirror"),
                         fields: Rc::new(vec![
                             (ctx.sym("commit"), str_value(commit)),
-                            (ctx.sym("mirror_files"), Value::Int(files as i64)),
+                            (ctx.sym("crate_paths"), Value::Int(crate_paths as i64)),
+                            (
+                                ctx.sym("head_added_paths_kept"),
+                                Value::Int(head_added_paths_kept as i64),
+                            ),
                         ]),
                     },
                     None => Value::Variant {
@@ -5084,9 +5275,33 @@ fn partitioned_rebuild_from_installed(
         .filter(|package| actuation.excluded_packages.contains(package))
         .collect::<Vec<_>>();
     if !widened.is_empty() {
+        // The guard names what it refused; cargo knows WHY it rebuilt it. Prefer the lines that
+        // mention a refused package, and fall back to the whole capture so a refusal of this shape
+        // never arrives without the reason attached.
+        let mut reasons: Vec<&String> = observation
+            .fingerprint_reasons
+            .iter()
+            .filter(|line| {
+                widened
+                    .iter()
+                    .any(|package| line.contains(package.as_str()))
+            })
+            .collect();
+        if reasons.is_empty() {
+            reasons = observation.fingerprint_reasons.iter().collect();
+        }
+        let shown: Vec<&str> = reasons
+            .iter()
+            .take(24)
+            .map(|reason| reason.as_str())
+            .collect();
         return Err(format!(
-            "StageSeedBuildRefused: compiled excluded packages {widened:?} -- {}",
-            actuation.decision_line
+            "StageSeedBuildRefused: compiled excluded packages {widened:?} -- {} — cargo fingerprint \
+             reasons for this build ({} captured, {} shown): [{}]",
+            actuation.decision_line,
+            observation.fingerprint_reasons.len(),
+            shown.len(),
+            shown.join(" | ")
         ));
     }
     Ok(observation)
@@ -5743,6 +5958,7 @@ fn install_convergence_stage(
     stage0_src: &Path,
     candidate_src: &Path,
     basenames: &[String],
+    base_rewritten_mirrors: &[String],
     admitted_manifest: &HashMap<String, RegenCandidateManifestSurface>,
     basename_to_module: &HashMap<String, String>,
     ordinal: usize,
@@ -5759,7 +5975,15 @@ fn install_convergence_stage(
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
     let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
-    let actuation = partition_rebuild_actuation(source_roots, basenames, &declared_shell_modules)?;
+    let changed_mirrors: Vec<String> = basenames
+        .iter()
+        .chain(base_rewritten_mirrors)
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let actuation =
+        partition_rebuild_actuation(source_roots, &changed_mirrors, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
         Some(admit_derived_partition_move(source_roots, workspace)?)
     } else {
@@ -6437,21 +6661,44 @@ pub fn run_regen_round_cost(
     let host = host_name();
     let exe_before = running_image_digest()?;
 
-    // Recover an interrupted transaction before attempting to build or observe a new subject.
-    restore_regen_convergence_journal(&workspace)?;
+    // READ ONCE, BEFORE ANYTHING TOUCHES THE TREE: this value decides whether this image owns the
+    // round-1 seeding at all (a carried tree means it does not), and it is the same value the
+    // handoff decision compares below, so the two questions cannot be answered from different
+    // observations.
+    let handoff_in = SeedHandoff::from_env().map_err(|cause| cause.to_string())?;
+
+    // THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29, #15339).
+    // The parent seeded the base snapshot, journaled the head's bytes, and compiled that tree; the
+    // child was exec'd to report on THAT build. Restoring the journal and seeding again is redundant
+    // work (§2), and it is what made the two images' populations disagree: the child restored every
+    // journaled path to the head's bytes and then re-seeded under ITS OWN rule, so a round whose
+    // parent and child disagree about the population leaves the child compiling a tree its parent
+    // never compiled, cargo rebuilds, the relink trips `ExecutableReplacedAfterHandoff`, and the
+    // refusal is correct — the measurement would otherwise describe bytes the emitting image never
+    // built. The child trusts the carried tree instead. `SourceChangedAcrossHandoff` is the guard
+    // that makes trusting safe: it compares this image's observation against the one the parent
+    // carried, so a child that found a different tree refuses rather than reporting on it.
+    if handoff_in.is_none() || !base_mirror {
+        // Recover an interrupted transaction before attempting to build or observe a new subject.
+        // THE BASE-MIRROR CHILD SKIPS THIS DELIBERATELY (manager ruling 2026-10-29, #15339): its
+        // parent journalled the head's bytes and then built the seed from the seeded tree, so a
+        // restore here would replace the very bytes the child was exec'd to report on, and the
+        // build below would compile something its parent never compiled. Every other round keeps
+        // the behaviour main has always had, including the recovery of an interrupted round.
+        restore_regen_convergence_journal(&workspace)?;
+    }
 
     // THE SUBJECT IS READ AFTER THE RESTORE, which is what that comment has always claimed and
-    // what the round-1 bootstrap makes load-bearing rather than incidental. A heal round WRITES
-    // the base mirror into the worktree (the journal holds the head's bytes, restored on every
-    // exit path), and the seed build may relink this image and re-exec: the second image compares
-    // the identity it observes against the one the first image carried (`SourceChangedAcrossHandoff`).
-    // Read before the restore, the first image would see the committed head and the second would
-    // see whatever the previous image had written, and the round would refuse for a defect in the
-    // observation order rather than in the source. Read here, every image of one round observes
-    // one tree: the committed state, journal recovered.
+    // what the round-1 bootstrap makes load-bearing rather than incidental. Read before the
+    // restore, the first image would see the committed head and the second would see whatever the
+    // previous image had written, and the round would refuse for a defect in the observation order
+    // rather than in the source.
+    //
+    // `tree` and `tree_dirty` describe the COMMITTED state and stay here: a heal round writes base's
+    // bytes into the worktree, and the round is still a round on one commit with the pull request's
+    // own diff, not on a dirty tree of someone else's bytes.
     let tree = git_head_sha(&workspace)?;
     let tree_dirty = git_tree_dirty(&workspace)?;
-    let source_identity = source_identity(&workspace, &tree)?;
 
     // THE ROUND-1 BOOTSTRAP (DESIGN §5, RFM #14963): when the caller is the heal round, the seed
     // build below compiles the BASE ref's committed mirror instead of the head's. Unconditional
@@ -6459,10 +6706,22 @@ pub fn run_regen_round_cost(
     // after the first seed build runs on bytes this PR's own `.dag` regenerates, and the journal
     // restore returns the head's bytes before any install or publication.
     //
-    // A round's identity keys on the committed source roots, so the restore below (worktree bytes
-    // under `src/v1/stage0/src/` only) cannot shift it; and the install's own checkpoint subject,
-    // read later through the same helper this bootstrap uses, agrees with this one by construction.
-    let base_bootstrap = if base_mirror {
+    // ONLY THE IMAGE THAT OWNS THE ROUND SEEDS (manager ruling 2026-10-29, #15339). The re-exec'd
+    // child reports on a build that consumed THIS tree; seeding again would restore the head's
+    // bytes and rewrite a population under the child's own rule, and when parent and child
+    // disagree about that population the child compiles bytes its parent never compiled, cargo
+    // rebuilds, and the relink trips `ExecutableReplacedAfterHandoff` — a refusal that is correct,
+    // because the measurement would otherwise describe a tree the emitting image never built.
+    // THE ROUND'S SUBJECT, READ ONCE. The bootstrap journals the head's bytes under it and the
+    // teardown returns them under it; `restore_regen_convergence_journal_for_subject` REFUSES on a
+    // subject mismatch, so a second read at teardown time would turn any mid-round drift into a new
+    // refusal instead of a rollback. One read, both ends.
+    let round_subject = if base_mirror {
+        Some(current_convergence_checkpoint_subject(&workspace)?)
+    } else {
+        None
+    };
+    let base_bootstrap = if base_mirror && handoff_in.is_none() {
         v1_rt::trace_mark("round.base_mirror_bootstrap.begin".to_string());
         // The ref is read HERE, from the environment, and passed as a value: a branch name is
         // pull-request-controlled text and the workflow admit gate refuses any argv word
@@ -6471,20 +6730,37 @@ pub fn run_regen_round_cost(
         let base_commit_env = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
         let restored = bootstrap_round_one_from_base_mirror(
             &workspace,
-            &stage0_src,
             base_commit_env.as_deref(),
-            &current_convergence_checkpoint_subject(&workspace)?,
+            round_subject
+                .as_ref()
+                .expect("the base-mirror round read its subject"),
         )?;
         v1_rt::trace_mark("round.base_mirror_bootstrap.done".to_string());
+        // THE RECEIPT NAMES ITS SOURCE (sleek-owl-397, RFM #14963): the commit, the population size,
+        // and the whole-crate scope, so a reader can tell WHICH bytes the round compiled and can
+        // distinguish a base byte from a head byte without re-running anything.
         println!(
-            "regen-round-cost: round 1 bootstraps from the base mirror commit={} files={}",
+            "regen-round-cost: round 1 builds the whole {STAGE0_CRATE_REL} crate from the base \
+             mirror commit={} paths={} paths_rewritten={} head_added_paths_kept={}",
             restored.base_commit,
-            restored.basenames.len()
+            restored.paths_restored,
+            restored.paths_rewritten,
+            restored.paths_absent_at_base
         );
         Some(restored)
     } else {
         None
     };
+
+    // THE SOURCE THE ROUND BUILT IS THE SEEDED TREE, NOT THE COMMITTED ONE, so the identity is read
+    // AFTER the bootstrap (manager ruling 2026-10-29, #15339). Read before it, the parent would
+    // carry the identity of a clean committed tree while the tree the seed build actually consumed
+    // holds base's bytes, and the child — which restores and seeds nothing, because it trusts what
+    // it was exec'd into — would observe the seeded tree and refuse with
+    // `SourceChangedAcrossHandoff`. Reading here makes the carried value name the bytes that were
+    // compiled, which is the only thing the guard can usefully compare: both images of one round
+    // observe the same bytes, and any third path that moves the tree between them still refuses.
+    let source_identity = source_identity(&workspace, &tree)?;
 
     v1_rt::trace_ledger_arm();
     let rustfmt_spawns_before = rustfmt_spawn_count();
@@ -6497,7 +6773,6 @@ pub fn run_regen_round_cost(
         _ => None,
     };
     let exe_after = current_exe_digest()?;
-    let handoff_in = SeedHandoff::from_env().map_err(|cause| cause.to_string())?;
     let seed_build_cost = SeedBuildCost {
         compiled_crates: seed_build.compiled_crates,
         wall_ms: seed_build_wall_ms,
@@ -6538,6 +6813,57 @@ pub fn run_regen_round_cost(
             .to_string());
         }
     }
+    // THE IMAGE THAT PROCEEDS ENDS THE BASE SNAPSHOT before anything is observed, published, or
+    // regenerated (review 87490 on #15339). Nothing downstream may see a base byte: the candidate
+    // population is read from the worktree right after this, the publisher takes whatever differs
+    // from the head, and `gunbc.heal_candidate_stage0` `mirror_paths_of` filters only by directory
+    // depth and suffix — so a hand-maintained file left at base's bytes would be published as one of
+    // the pull request's own edits, i.e. a bot commit REVERTING the change under review. This PR is
+    // the specimen: it edits the very file that implements the bootstrap.
+    //
+    // THE ROLLBACK IS THE AUTHORITY, not a second copy of it (`restore_regen_convergence_journal`
+    // is the one reader of `journal.json`, §3): it returns every journalled path to the byte
+    // recorded before the round and deletes the journal. On the pre-fix success path that call never
+    // happened — the journal was simply deleted at the end of the round, so base bytes survived into
+    // the candidate. Generated mirrors do not depend on this: the generator rewrites them anyway.
+    // Hand-maintained files, the crate manifest and the build script do, and the round-1 population
+    // now includes all three, which is why the whole-crate scope and this call are one change.
+    //
+    // It runs HERE, in the image that Proceeds, rather than before the handoff exec: the re-exec'd
+    // image is the seed this build produced FROM the base tree, so reverting before the exec would
+    // make that image's build differ from its parent's and relink — the refusal
+    // `ExecutableReplacedAfterHandoff` exists to raise. The base tree must survive the exec; it must
+    // not survive the round. The child reaches here with the parent's journal still on disk (the
+    // child restores nothing at startup, and only the end of a round deletes it), so one call
+    // unwinds what the parent seeded.
+    let base_rewritten_mirrors: Vec<String> = if let Some(subject) = round_subject.as_ref() {
+        v1_rt::trace_mark("round.base_snapshot_revert.begin".to_string());
+        let rewritten = restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        let reverted = rewritten.len();
+        v1_rt::trace_mark("round.base_snapshot_revert.done".to_string());
+        // THE RECEIPT NAMES WHAT IT PUT BACK, so a reader can tell a round that returned the head's
+        // bytes from one that quietly kept compiling base's into the candidate. The count is the
+        // paths the restore actually rewrote: a journalled path the seed never moved already holds
+        // the head's bytes, and rewriting it would be mtime churn cargo reads as a change.
+        println!(
+            "regen-round-cost: round 1 ended the base snapshot; {reverted} journalled paths were \
+             rewritten to the head's own bytes (the rest already held them)"
+        );
+        // THE CHANGED SET THE REBUILD DECISION READS INCLUDES THESE. Round 1 compiled base's
+        // bytes; this restore just moved the head's differing mirrors under the built artifacts, so
+        // cargo sees exactly these paths as changed in round 2. They are taken from the restore's own
+        // return, never inferred from mtimes (RFM
+        // `heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths`).
+        let src_prefix = format!("{STAGE0_CRATE_REL}/src/");
+        rewritten
+            .iter()
+            .filter(|path| path.starts_with(&src_prefix) && path.ends_with(".rs"))
+            .map(|path| emit_path_basename(path).to_string())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     // Pre-handoff cost joins this image's no-op rebuild: summed once, here, before the
     // ledger rows and the crate count reach the receipt.
     let carried_cost = handoff_in.as_ref().map(|h| h.cost.clone());
@@ -6774,6 +7100,7 @@ pub fn run_regen_round_cost(
             &stage0_src,
             &candidate_src,
             &install_set,
+            &base_rewritten_mirrors,
             &admitted_manifest,
             &basename_to_module,
             generation_ordinal + 1,
@@ -6961,6 +7288,24 @@ pub fn run_regen_round_cost(
     )
     .map_err(|cause| cause.to_string())?;
     let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+
+    // ONE AUTHORITY FOR THE RECEIPT'S BASE ARM, read by whichever image reports. The parent holds
+    // what its own seed did. The handoff child seeds nothing (the handoff rule), so it DERIVES the
+    // same arm from the same read-only authority; passing `None` there would select the renderer's
+    // `SeedBuiltFromHead` arm and print a receipt claiming round 1 compiled the HEAD — a fabricated
+    // output in the one run whose purpose is to record which bytes round 1 compiled. No `.ok()`
+    // anywhere: a base commit that cannot be named refuses the round with its typed
+    // `BootstrapBaseMirrorCommitUnresolved` diagnostic rather than dropping the line silently.
+    let receipt_base_authority: Option<(String, usize, usize)> = match base_bootstrap.as_ref() {
+        Some(restored) => Some(base_mirror_receipt_authority(restored)),
+        None if base_mirror => Some(round_one_receipt_base_authority(
+            &workspace,
+            std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
+                .ok()
+                .as_deref(),
+        )?),
+        None => None,
+    };
     let rendered = render_round_cost_receipt(
         source_roots,
         &host,
@@ -6977,9 +7322,9 @@ pub fn run_regen_round_cost(
         &rebuild_packages,
         &executable_digest,
         &second_generation_candidate_digest,
-        base_bootstrap
+        receipt_base_authority
             .as_ref()
-            .map(|b| (b.base_commit.as_str(), b.basenames.len())),
+            .map(|(commit, seeded, head_added)| (commit.as_str(), *seeded, *head_added)),
     )?;
     let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
     if let Some(parent) = receipt_path.parent() {
@@ -6991,7 +7336,15 @@ pub fn run_regen_round_cost(
         rendered,
         receipt_path,
         round_failures,
-        base_mirror_commit: base_bootstrap.map(|b| b.base_commit),
+        // THE RECEIPT NAMES ITS SOURCE IN EVERY IMAGE OF THE ROUND, not only in the one that did
+        // the seeding, and both readers of that fact read the SAME value: the rendered line and
+        // this field come from `receipt_base_authority`. Under the handoff rule the image that
+        // reports is the child, which seeds nothing; if the commit came only from `base_bootstrap`,
+        // this PR's own authority — "which bytes did round 1 compile" — would disappear from
+        // exactly the run that answers it, and the rendered receipt would claim the head instead.
+        base_mirror_commit: receipt_base_authority
+            .as_ref()
+            .map(|(commit, _, _)| commit.clone()),
     })
 }
 
@@ -7079,6 +7432,29 @@ mod heal_round_one_base_mirror_tests {
             "// base hand-maintained main\n",
         )
         .unwrap();
+        // A NESTED GENERATED PARTITION: the shape the old filter skipped. In the real repo this is
+        // `src/v1/stage0/src/cli_run/compile_clean.rs`, which `v1-stage0-std-core` compiles through
+        // a recursive `#[path]` include, so a base-skipped nested file is a base/head chimera in the
+        // very crate the seed build refuses in (PR #15175, PR #14876).
+        fs::create_dir_all(stage0.join("cli_run")).unwrap();
+        fs::write(
+            stage0.join("cli_run").join("fixture_partition.rs"),
+            "// base nested partition bytes -- defines MirrorRow::Dag\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join(STAGE0_CRATE_REL).join("build.rs"),
+            "// base build identity source\n",
+        )
+        .unwrap();
+        // The `.dag` sources are OUTSIDE the crate the authority owns: they are what the round
+        // regenerates FROM, so the pull request's edits there must survive the bootstrap.
+        fs::create_dir_all(root.join("dag")).unwrap();
+        fs::write(
+            root.join("dag").join("fixture_authority.dag"),
+            "// base .dag authority\n",
+        )
+        .unwrap();
         git(&["init", "-q", "--initial-branch=main"]);
         git(&["add", "-A"]);
         git(&["commit", "-qm", "base"]);
@@ -7106,6 +7482,27 @@ mod heal_round_one_base_mirror_tests {
             "// a mirror with no base form\n",
         )
         .unwrap();
+        // The head's damage in the NESTED partition: this is where the E0599 lived, because the
+        // round read the head's damaged nested file against base's top-level definitions.
+        fs::write(
+            stage0.join("cli_run").join("fixture_partition.rs"),
+            "// head nested partition bytes -- variant `Dag` constructed, constructor missing\n",
+        )
+        .unwrap();
+        // A HEAD-ADDED file in a hand-maintained directory: base has no form of it, and it is
+        // exactly where a new hand-written call to a new generated method would live.
+        fs::write(
+            stage0.join("bin").join("fixture_added_by_pr_main.rs"),
+            "// head-only hand-authored caller; base has no form of this path\n",
+        )
+        .unwrap();
+        // The PR's own repair, written in the authority the round regenerates from. If the bootstrap
+        // reached outside its crate it would revert this and the round would regenerate the damage.
+        fs::write(
+            root.join("dag").join("fixture_authority.dag"),
+            "// head .dag authority -- the repair this PR authored\n",
+        )
+        .unwrap();
         git(&["add", "-A"]);
         git(&["commit", "-qm", "head"]);
         (root, stage0, base_commit)
@@ -7127,6 +7524,341 @@ mod heal_round_one_base_mirror_tests {
         fs::read_to_string(path).unwrap_or_default()
     }
 
+    /// THE CONTROL THE MANAGER ASKED FOR, for the class that stranded PR #15175 (E0599
+    /// `variant ... does not exist`) and PR #14876 (26 E0308/E0282 in `v1-stage0-std-core`, heal run
+    /// 40739785316): a PR whose damage is in a NESTED partition and whose repair reaches a file in a
+    /// hand-maintained directory. Before the whole-crate authority, the restore population was the
+    /// top-level generated name list, so the nested partition kept its damaged head bytes while every
+    /// top-level file held base bytes — a base/head chimera — and the hand-authored call the PR added
+    /// was left beside definitions it was never written against. Both arms are asserted here: the
+    /// nested file and the hand file hold BASE bytes after the bootstrap (red before the fix, where
+    /// they held head bytes), and the journal covers both, so the rollback puts the PR's own bytes
+    /// back rather than stranding the working tree.
+    #[test]
+    fn the_whole_crate_authority_repairs_the_nested_and_hand_directory_chimera() {
+        let (root, stage0, base_commit) = base_mirror_fixture();
+        let nested = stage0.join("cli_run").join("fixture_partition.rs");
+        let hand_dir_file = stage0.join("bin").join("fixture_main.rs");
+        let head_added_bin = stage0.join("bin").join("fixture_added_by_pr_main.rs");
+        assert!(
+            read(&nested).contains("variant `Dag` constructed, constructor missing"),
+            "the fixture's head must be the damaged nested state the class started in"
+        );
+
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect("the round-1 bootstrap runs");
+        assert!(
+            read(&nested).contains("defines MirrorRow::Dag"),
+            "the nested partition kept the head's damaged bytes: {}",
+            read(&nested)
+        );
+        assert!(
+            read(&hand_dir_file).contains("base hand-maintained"),
+            "the nested-directory hand file was left at head: {}",
+            read(&hand_dir_file)
+        );
+        // The population the receipt names is every path the authority holds, not a top-level slice.
+        assert_eq!(
+            restored.paths_absent_at_base, 2,
+            "the receipt must count the paths only the head has"
+        );
+        assert!(
+            read(&head_added_bin).contains("head-only hand-authored caller"),
+            "a path base has never contained was reverted instead of kept"
+        );
+
+        // The rollback covers the same population: a round that fails returns the PR's bytes in the
+        // nested and hand-directory files too, so the working tree is never left on base.
+        restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+            .expect("the round rolls back");
+        assert!(
+            read(&nested).contains("variant `Dag` constructed"),
+            "the rollback left base bytes in the nested partition"
+        );
+        assert!(
+            read(&hand_dir_file).contains("head hand-maintained"),
+            "the rollback left base bytes in a hand-maintained file"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE SUCCESS PATH IS THE ONE THAT PUBLISHES, SO IT IS THE PATH THIS CONTROL OWNS (review 87490
+    /// on #15339). A round that SUCCEEDS never reaches a refusal path, and before this change no
+    /// refusal path ran either: the round deleted the convergence journal at the end and left every
+    /// seeded byte in place. `gunbc.heal_candidate_stage0` `mirror_paths_of` takes any top-level `.rs`
+    /// in the mirror directory, filtered by depth and suffix alone, so a hand-maintained file still
+    /// holding base's bytes entered the candidate and the bot commit reverted the pull request's own
+    /// Rust — on a green round. This PR is the specimen: `required_regen_host.rs`, the file that
+    /// implements the bootstrap, is itself in that population.
+    ///
+    /// The round's own teardown is the single authority that ends the snapshot (the rollback, not a
+    /// second journal reader), so the control drives exactly that call and asserts three things a
+    /// silent fallback cannot satisfy: it reports the number it put back, every file the head
+    /// rewrote reads the HEAD's bytes afterwards, and the journal is gone so no later round can
+    /// restore over the regeneration. Only paths the HEAD actually rewrote are asserted: a file
+    /// committed identically on both sides (the crate's build script) would pass either way.
+    #[test]
+    fn a_succeeded_round_leaves_no_base_byte_for_the_candidate_to_publish() {
+        let (root, stage0, base_commit) = base_mirror_fixture();
+        let hand_file = stage0.join("std_logic.rs");
+        let nested = stage0.join("cli_run").join("fixture_partition.rs");
+        let hand_dir_file = stage0.join("bin").join("fixture_main.rs");
+
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect("the round-1 bootstrap runs");
+        for (path, what) in [
+            (&hand_file, "hand-maintained file"),
+            (&hand_dir_file, "file inside a hand-maintained directory"),
+        ] {
+            assert!(
+                read(path).contains("base "),
+                "the fixture's bootstrap did not seed the {what}, so this control would pass \
+                 without exercising the hazard: {}",
+                read(path)
+            );
+        }
+
+        // What a SUCCEEDED round now does before anything observes or publishes the worktree.
+        let put_back_paths =
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the round ends its snapshot");
+        let put_back = put_back_paths.len();
+        // THE DECISION'S CHANGED SET IS THESE PATHS, NOT AN MTIME SCAN (RFM
+        // `heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths`): the restore
+        // names each file it moved under the built artifacts, workspace-relative, so the rebuild
+        // scope can list them. A count alone cannot feed it, and a path the restore skipped (equal
+        // bytes) must not appear.
+        assert!(
+            put_back_paths
+                .iter()
+                .any(|path| path.starts_with(STAGE0_CRATE_REL) && path.ends_with("/std_logic.rs")),
+            "the restore did not name the hand-maintained file it moved: {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths.iter().all(|path| !path.ends_with("/build.rs")),
+            "the restore named a path it never moved (its bytes were identical): {put_back_paths:?}"
+        );
+        // The journal covers exactly what the seed MOVED. A path whose base bytes already equal the
+        // head's is never written (a rewrite would bump an mtime cargo misreads as a change — the
+        // #14876 / #15310 specimen), so it is never journalled and has nothing to put back; a
+        // head-added path is journalled by the install that overwrites it, not by the seed. So the
+        // teardown's count is the seed's rewrite count, and the byte assertions below are what prove
+        // no base byte survives where the candidate reads.
+        assert_eq!(
+            put_back, restored.paths_rewritten,
+            "the teardown did not return every path the seed moved ({}), so a base byte is still on \
+             disk where the candidate reads",
+            restored.paths_rewritten
+        );
+        assert_eq!(
+            (restored.paths_restored, restored.paths_rewritten, restored.paths_absent_at_base),
+            (5, 4, 2),
+            "the fixture's population moved: base carries 5 paths under {STAGE0_CRATE_REL}, the head \
+             rewrites 4 of them (its build script is committed identically, so the seed must skip \
+             it), and the head adds 2 — this control's arithmetic reads those numbers"
+        );
+        assert!(put_back > 0, "the teardown reported restoring nothing");
+        for (path, needle, what) in [
+            (
+                hand_file.clone(),
+                "head hand-maintained",
+                "hand-maintained file",
+            ),
+            (
+                nested.clone(),
+                "variant `Dag` constructed",
+                "nested partition",
+            ),
+            (
+                hand_dir_file.clone(),
+                "head hand-maintained main",
+                "file inside a hand-maintained directory",
+            ),
+        ] {
+            assert!(
+                read(&path).contains(needle),
+                "a succeeded round left the {what} at base's bytes; the candidate would publish \
+                 a revert of the pull request's own edit: {}",
+                read(&path)
+            );
+        }
+        assert!(
+            !regen_convergence_journal_path(&root).exists(),
+            "the journal survived a succeeded round, so a later round could restore over the \
+             regeneration"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE HANDOFF CHILD IS NOT A SECOND OWNER OF THE TREE (manager ruling 2026-10-29).
+    ///
+    /// A re-exec'd image was exec'd to report on a build that consumed the tree it is handed. The
+    /// old behaviour was to restore the journal and seed again on arrival, and each half of that is
+    /// fatal in a way this control pins separately, with real bytes rather than with a flag:
+    ///
+    ///  * the restore puts the HEAD's bytes back, so the image reports on a tree its parent did not
+    ///    compile — cargo rebuilds, the relink trips `ExecutableReplacedAfterHandoff`, and the
+    ///    refusal is correct, because the measurement would otherwise describe bytes the emitting
+    ///    image never built;
+    ///  * the restore also DELETES the journal, so the round's teardown has nothing left to return
+    ///    the head's bytes from, and the base snapshot becomes unrecoverable — which is the
+    ///    publication hazard this PR fixes, reintroduced by a child that touched the tree.
+    ///
+    /// Both arms are asserted, then the child's actual (empty) arrival is run and the parent's tree
+    /// and journal are asserted intact: the two things the round depends on, still true at the
+    /// moment the child starts work.
+    #[test]
+    fn a_handoff_child_arrives_on_the_tree_it_was_exec_d_into() {
+        let (root, stage0, base_commit) = base_mirror_fixture();
+        let hand_file = stage0.join("std_logic.rs");
+        // A path the whole-crate population seeds that the generator never rewrites: the load-bearing
+        // assertion in the last arm, because a generated mirror would be rewritten anyway.
+        let build_script = root.join(STAGE0_CRATE_REL).join("build.rs");
+        let subject = fixture_subject(&root);
+
+        // The parent's act: seed the base snapshot, journal the head's bytes, build from that tree.
+        let restored = bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &subject)
+            .expect("the round-1 bootstrap runs");
+        assert!(
+            read(&hand_file).contains("base hand-maintained")
+                && read(&build_script).contains("base build identity source"),
+            "the parent did not seed the tree it would build from, so this control proves nothing"
+        );
+        let journal = regen_convergence_journal_path(&root);
+        assert!(journal.exists(), "the parent journalled nothing");
+
+        // ARM 1 — WHAT THE CHILD USED TO DO ON ARRIVAL. Restoring the journal is what made the two
+        // images' trees disagree, and it destroyed the record the teardown needs. If a future edit
+        // hands the startup restore back to the child, this arm is the one that goes red.
+        {
+            let (throwaway, throwaway_stage0, throwaway_base) = base_mirror_fixture();
+            let throwaway_hand = throwaway_stage0.join("std_logic.rs");
+            bootstrap_round_one_from_base_mirror(
+                &throwaway,
+                Some(&throwaway_base),
+                &fixture_subject(&throwaway),
+            )
+            .expect("the parent's bootstrap runs in the throwaway tree");
+            restore_regen_convergence_journal_for_subject(&throwaway, &fixture_subject(&throwaway))
+                .expect("the old child's startup restore runs");
+            assert!(
+                read(&throwaway_hand).contains("head hand-maintained"),
+                "the startup restore no longer moves the tree off what the parent compiled, so the \
+                 handoff rule below is dead code and should be deleted with this arm"
+            );
+            assert!(
+                !regen_convergence_journal_path(&throwaway).exists(),
+                "the startup restore leaves a journal behind, so the teardown hazard is gone and \
+                 the handoff rule below is guarding nothing"
+            );
+            let _ = fs::remove_dir_all(&throwaway);
+        }
+
+        // ARM 2 — WHAT THE CHILD DOES NOW: nothing. The carried tree and the journal the teardown
+        // reads are exactly what the parent left.
+        assert!(
+            read(&hand_file).contains("base hand-maintained")
+                && read(&build_script).contains("base build identity source"),
+            "the child's arrival moved the tree it was exec'd into"
+        );
+        assert!(
+            journal.exists(),
+            "the child's arrival destroyed the journal the round's teardown restores from"
+        );
+        // THE CHILD'S RECEIPT ARM MATCHES WHAT THE PARENT SEEDED. The child seeded nothing under the
+        // handoff rule, so its arm is DERIVED from the same authority; a `None`, or a different
+        // count, would send the renderer down its `SeedBuiltFromHead` arm and print a receipt
+        // claiming round 1 compiled the HEAD — the opposite of what the heal round records, in the
+        // one image that reports.
+        let child_arm = round_one_receipt_base_authority(&root, Some(base_commit.as_str()))
+            .expect("the child can ask the same read-only authority the parent used");
+        assert_eq!(
+            (child_arm.0.as_str(), child_arm.1, child_arm.2),
+            (
+                base_commit.as_str(),
+                restored.paths_restored,
+                restored.paths_absent_at_base
+            ),
+            "the child's receipt arm disagrees with what the parent seeded, so the receipt the \
+             child renders names the wrong bytes for round 1"
+        );
+        assert_eq!(
+            restore_regen_convergence_journal_for_subject(&root, &subject)
+                .expect("the round's teardown restores what the parent seeded")
+                .len(),
+            restored.paths_rewritten,
+            "the teardown did not return every path the parent seed moved ({}), so the child touched \
+             the tree or the journal",
+            restored.paths_rewritten
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE CHILD'S RECEIPT ARM HAS NO FALLBACK PATH. An unresolvable base commit refuses with the
+    /// typed diagnostic; it does not yield `None`, which is what let the rendered receipt fall to the
+    /// head arm and the struct field drop the commit (review 88497, second finding).
+    #[test]
+    fn the_childs_receipt_arm_refuses_rather_than_dropping_the_line() {
+        let (root, _stage0, _base_commit) = base_mirror_fixture();
+        let error = round_one_receipt_base_authority(&root, Some("   "))
+            .expect_err("a base commit that is not a commit id must refuse the round");
+        assert!(
+            error.starts_with("BootstrapBaseMirrorCommitUnresolved"),
+            "the child's receipt arm refused with an untyped diagnostic: {error}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE AUTHORITY IS NEVER A FALLBACK. If the journal cannot be written, the round refuses BEFORE
+    /// touching a file — a partial restore is what produced the 26-error `v1-stage0-std-core` refusal
+    /// in heal run 40739785316, where some files held base bytes and others held head bytes.
+    #[test]
+    fn a_refusal_before_the_bootstrap_moves_no_bytes() {
+        let (root, stage0, base_commit) = base_mirror_fixture();
+        // Make the per-subject journal unwritable: the directory the journal lives in is a plain
+        // file, so neither the directory nor the per-subject file can be created.
+        let journal_root = root
+            .join(REGEN_CONVERGENCE_JOURNAL_REL)
+            .parent()
+            .expect("the journal path has a parent")
+            .to_path_buf();
+        let _ = fs::remove_dir_all(&journal_root);
+        fs::create_dir_all(&journal_root).expect("journal root");
+        fs::write(
+            journal_root.join("regen-convergence-journal"),
+            "not a directory\n",
+        )
+        .expect("block the journal");
+        let error = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect_err("an unwritable journal must refuse the round, not half-seed it");
+        assert!(
+            error.starts_with("BootstrapBaseMirrorJournal"),
+            "journal refusal: {error}"
+        );
+        assert!(
+            read(&stage0.join("cli_run").join("fixture_partition.rs"))
+                .contains("variant `Dag` constructed"),
+            "a refusal still moved bytes"
+        );
+        assert!(
+            read(&stage0.join("fixture_emitted.rs")).contains("refused for 'Nat'"),
+            "a refusal still moved bytes"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
     /// THE DEFECT, DISCRIMINATED: at the PR head the mirror the seed compiles carries the
     /// refusal (that is the state run 40064940799 built), and after the bootstrap the same
     /// position holds the BASE commit's accepted bytes. Nothing else about the round moves.
@@ -7140,16 +7872,24 @@ mod heal_round_one_base_mirror_tests {
         );
         let restored = bootstrap_round_one_from_base_mirror(
             &root,
-            &stage0,
             Some(&base_commit),
             &fixture_subject(&root),
         )
         .expect("the round-1 bootstrap runs");
         assert_eq!(restored.base_commit, base_commit);
+        // THE WHOLE CRATE, NESTED INCLUDED: base's bytes for the top-level mirror AND for the
+        // nested partition. `paths_restored` counts every crate path base has that the worktree
+        // has: all five the fixture commits (src/fixture_emitted.rs, src/std_logic.rs,
+        // src/bin/fixture_main.rs, src/cli_run/fixture_partition.rs, build.rs) of the seven the
+        // worktree tracks — not the four top-level `src/*.rs` files the old population returned.
         assert_eq!(
-            restored.basenames,
-            vec!["fixture_emitted.rs".to_string()],
-            "the bootstrap claimed a different set of files than it seeded"
+            restored.paths_restored, 5,
+            "the bootstrap claimed a different number of crate paths than base committed"
+        );
+        assert_eq!(
+            restored.paths_absent_at_base, 2,
+            "the head-added paths (a new mirror, a new hand-authored bin) were not counted \
+             where a reader can see them"
         );
         assert!(
             read(&mirror).contains("base mirror bytes"),
@@ -7158,40 +7898,67 @@ mod heal_round_one_base_mirror_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// HAND-MAINTAINED CODE IS NEVER REVERTED, in a file or in a directory. It is what the PR came
-    /// to author; a base byte there would undo the repair under review.
+    /// THE AUTHORITY IS THE CRATE, NOT THE REPOSITORY AND NOT A HAND LIST. Round 1 builds base's
+    /// bytes for every path under `src/v1/stage0` — generated mirrors, NESTED partitions, and the
+    /// hand-maintained files inside the crate alike (root ruling: the whole crate, always base, never
+    /// a fallback), because a base mirror beside a head hand-file is the chimera that stranded
+    /// #15175 with E0599. What the authority does NOT reach is anything outside the crate: the
+    /// `.dag` sources and the host shell are what the round REGENERATES from, so the pull request's
+    /// own edits there survive the bootstrap untouched, and a path base never contained is kept.
     #[test]
     fn hand_maintained_files_and_directories_survive_the_bootstrap() {
         let (root, stage0, base_commit) = base_mirror_fixture();
-        bootstrap_round_one_from_base_mirror(
-            &root,
-            &stage0,
-            Some(&base_commit),
-            &fixture_subject(&root),
-        )
-        .expect("the round-1 bootstrap runs");
+        bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &fixture_subject(&root))
+            .expect("the round-1 bootstrap runs");
+        // Inside the crate, base is the only thing round 1 compiles — hand-maintained files
+        // included. The old filter left these at head, which is how a base mirror ended up beside a
+        // head consumer of a variant only head declared.
         assert!(
-            read(&stage0.join("std_logic.rs")).contains("head hand-maintained"),
-            "the bootstrap reverted a hand-maintained file to base"
+            read(&stage0.join("std_logic.rs")).contains("base hand-maintained"),
+            "a hand-maintained file inside the crate was left at head: {}",
+            read(&stage0.join("std_logic.rs"))
         );
         assert!(
-            read(&stage0.join("bin").join("fixture_main.rs")).contains("head hand-maintained"),
-            "the bootstrap reverted a hand-maintained directory to base"
+            read(&stage0.join("bin").join("fixture_main.rs")).contains("base hand-maintained main"),
+            "a hand-maintained file in a nested hand directory was left at head: {}",
+            read(&stage0.join("bin").join("fixture_main.rs"))
         );
+        // Outside the crate, the pull request's own bytes are the authority and are never touched.
+        assert!(
+            read(&root.join("dag").join("fixture_authority.dag")).contains("head .dag authority"),
+            "the bootstrap reached outside the crate it owns and reverted an authored authority"
+        );
+        // A path base has no form of is kept, not deleted: it is the PR's own new partition.
         assert!(
             read(&stage0.join("fixture_added_by_pr.rs")).contains("no base form"),
             "the bootstrap damaged a mirror the PR added"
         );
-        // …and it is not in the roster the bootstrap may write, because base has no bytes for it.
+        // The population is every path base committed under the crate, keyed repo-relative, with no
+        // hand-maintained exclusion and no depth filter.
         let (_, population) =
             resolve_base_mirror_authority(&root, Some(&base_commit)).expect("base resolves");
+        let expected: BTreeSet<String> = [
+            "src/v1/stage0/src/fixture_emitted.rs",
+            "src/v1/stage0/src/std_logic.rs",
+            "src/v1/stage0/src/bin/fixture_main.rs",
+            "src/v1/stage0/src/cli_run/fixture_partition.rs",
+            "src/v1/stage0/build.rs",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        assert_eq!(
+            population.keys().cloned().collect::<BTreeSet<_>>(),
+            expected,
+            "the base population is not the whole crate the round must compile"
+        );
         assert!(
-            !population.contains_key("fixture_added_by_pr.rs"),
+            !population.contains_key("src/v1/stage0/src/fixture_added_by_pr.rs"),
             "base reported a population it never committed"
         );
         assert!(
-            !population.contains_key("std_logic.rs"),
-            "base's population included a hand-maintained roster member"
+            !population.contains_key("src/v1/stage0/src/bin/fixture_added_by_pr_main.rs"),
+            "base reported a head-only path as its own"
         );
         let _ = fs::remove_dir_all(&root);
     }
@@ -7203,7 +7970,7 @@ mod heal_round_one_base_mirror_tests {
     fn the_one_journal_snapshots_head_and_returns_it_after_the_bootstrap() {
         let (root, stage0, base_commit) = base_mirror_fixture();
         let subject = fixture_subject(&root);
-        bootstrap_round_one_from_base_mirror(&root, &stage0, Some(&base_commit), &subject)
+        bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &subject)
             .expect("the round-1 bootstrap runs");
         assert!(read(&stage0.join("fixture_emitted.rs")).contains("base mirror bytes"));
         restore_regen_convergence_journal_for_subject(&root, &subject)
@@ -7245,7 +8012,7 @@ mod heal_round_one_base_mirror_tests {
             ),
         ];
         for (cause, value, refusal) in cases {
-            let error = bootstrap_round_one_from_base_mirror(&root, &stage0, value, &subject)
+            let error = bootstrap_round_one_from_base_mirror(&root, value, &subject)
                 .expect_err(format!("{cause} must refuse").as_str());
             assert!(
                 error.starts_with(refusal),
@@ -7262,9 +8029,9 @@ mod heal_round_one_base_mirror_tests {
             );
         }
         // UNSET and EMPTY are distinguishable, so a mis-wired step is not read as an empty string.
-        let unset = bootstrap_round_one_from_base_mirror(&root, &stage0, None, &subject)
-            .expect_err("unset refuses");
-        let empty = bootstrap_round_one_from_base_mirror(&root, &stage0, Some(""), &subject)
+        let unset =
+            bootstrap_round_one_from_base_mirror(&root, None, &subject).expect_err("unset refuses");
+        let empty = bootstrap_round_one_from_base_mirror(&root, Some(""), &subject)
             .expect_err("empty refuses");
         assert!(
             unset.contains("UNSET") && !empty.contains("UNSET") && empty.contains("EMPTY"),
@@ -7283,7 +8050,7 @@ mod heal_round_one_base_mirror_tests {
         let subject = fixture_subject(&root);
         // A real 40-hex id that this repository has never contained.
         let foreign = "0000000000000000000000000000000000000000";
-        let error = bootstrap_round_one_from_base_mirror(&root, &stage0, Some(foreign), &subject)
+        let error = bootstrap_round_one_from_base_mirror(&root, Some(foreign), &subject)
             .expect_err("an absent commit must refuse");
         assert!(
             error.starts_with("BootstrapBaseMirrorCommitUnreachable"),
@@ -7305,9 +8072,8 @@ mod heal_round_one_base_mirror_tests {
             "fixture branch: {}",
             String::from_utf8_lossy(&named.stderr)
         );
-        let error =
-            bootstrap_round_one_from_base_mirror(&root, &stage0, Some("stale-base"), &subject)
-                .expect_err("a name is never the authority, stale or not");
+        let error = bootstrap_round_one_from_base_mirror(&root, Some("stale-base"), &subject)
+            .expect_err("a name is never the authority, stale or not");
         assert!(
             error.starts_with("BootstrapBaseMirrorCommitMalformed"),
             "name-as-authority must be malformed: {error}"
@@ -7321,13 +8087,11 @@ mod heal_round_one_base_mirror_tests {
     fn a_second_bootstrap_is_the_same_authority_and_keeps_the_head_snapshot() {
         let (root, stage0, base_commit) = base_mirror_fixture();
         let subject = fixture_subject(&root);
-        let first =
-            bootstrap_round_one_from_base_mirror(&root, &stage0, Some(&base_commit), &subject)
-                .expect("first");
+        let first = bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &subject)
+            .expect("first");
         let seeded = read(&stage0.join("fixture_emitted.rs"));
-        let second =
-            bootstrap_round_one_from_base_mirror(&root, &stage0, Some(&base_commit), &subject)
-                .expect("second");
+        let second = bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &subject)
+            .expect("second");
         assert_eq!(first.base_commit, second.base_commit);
         assert_eq!(second.base_commit, base_commit);
         assert_eq!(read(&stage0.join("fixture_emitted.rs")), seeded);
@@ -7399,82 +8163,192 @@ mod heal_round_one_base_mirror_tests {
             "the fixture must have no base NAME to fall back to"
         );
         let subject = fixture_subject(&clone);
-        let restored = bootstrap_round_one_from_base_mirror(
-            &clone,
-            &cloned_stage0,
-            Some(&base_commit),
-            &subject,
-        )
-        .expect("the base COMMIT is enough; no name is consulted");
+        let restored = bootstrap_round_one_from_base_mirror(&clone, Some(&base_commit), &subject)
+            .expect("the base COMMIT is enough; no name is consulted");
         assert_eq!(restored.base_commit, base_commit);
         assert!(
             read(&cloned_stage0.join("fixture_emitted.rs")).contains("base mirror bytes"),
             "the head's damaged mirror survived a base-commit bootstrap"
         );
+        // THE NESTED FILE TOO: a head-only checkout is the CI shape, and the nested partition is
+        // where the #15175 chimera lived. If the population were still the top-level name list,
+        // this assert is the one that goes red.
+        assert!(
+            read(&cloned_stage0.join("cli_run").join("fixture_partition.rs"))
+                .contains("defines MirrorRow::Dag"),
+            "a head-only checkout left the nested partition at the head's damaged bytes"
+        );
         let _ = fs::remove_dir_all(&clone);
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// THE RECEIPT NAMES THE BASE COMMIT, and only a round that was asked to bootstrap has one.
-    /// A probe round renders NO base line: that absence is pinned, so a heal fact can never be
-    /// assumed into a receipt that has none.
+    /// THE RECEIPT'S HOST ARM CARRIES THE COMMIT AND BOTH COUNTS. This is the host half only, and
+    /// it is deliberately corpus-free: rendering the receipt here would resolve its `.dag` renderer
+    /// through the interpreter, which loads the whole corpus per call (about 50 minutes of libtest
+    /// time on srv1 at `b339f6fa0e6f`). The renderer's own arms — the line's text, and its absence
+    /// for a round never asked to bootstrap — are
+    /// `dag/test/claim/self_host_regen_round_cost_witness.dag`
+    /// `a_bootstrapped_receipt_names_the_base_commit_after_the_header` and
+    /// `a_non_bootstrapped_receipt_renders_no_base_mirror_line`.
     #[test]
-    fn the_receipt_names_the_base_commit_and_a_probe_round_has_no_such_line() {
-        // The renderer refuses when its entry is under no declared source root, so the fixture
-        // declares the same roots the round does.
-        let workspace = workspace_root();
-        let roots = vec![
-            workspace.join("dag").display().to_string(),
-            workspace.join("src/v2").display().to_string(),
-        ];
-        let healed = render_round_cost_receipt(
-            &roots,
-            "host",
-            "0000000000000000000000000000000000000000",
-            false,
-            3,
-            2,
-            0,
-            &[],
-            &["src/v1/stage0/src/fixture_emitted.rs".to_string()],
-            &[],
-            &[],
-            &[],
-            &["v1-compiler".to_string()],
-            "e",
-            "c",
-            Some(("2a11b317d2caf3c37d1d38a4421e8e0c06188925", 44)),
+    fn the_receipts_host_arm_carries_the_commit_and_both_counts() {
+        let (root, _stage0, base_commit) = base_mirror_fixture();
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
         )
-        .expect("a heal-round receipt renders");
-        assert!(
-            healed.contains(
-                "regen-round-cost: base_mirror_commit=2a11b317d2caf3c37d1d38a4421e8e0c06188925 files=44"
-            ),
-            "the receipt does not name the base commit round 1 seeded from:\n{healed}"
+        .expect("the bootstrap runs");
+        let (commit, seeded, head_added) = base_mirror_receipt_authority(&restored);
+        assert_eq!(
+            commit,
+            base_commit.as_str(),
+            "the receipt would name something other than the commit the step named, so the \
+             round's stated source is not the authority it actually used"
         );
-        let probe = render_round_cost_receipt(
-            &roots,
-            "host",
-            "0000000000000000000000000000000000000000",
-            false,
-            3,
-            2,
-            0,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &["v1-compiler".to_string()],
-            "e",
-            "c",
-            None,
+        assert_eq!(
+            (seeded, head_added),
+            (5, 2),
+            "the receipt's counts moved off the fixture's population, so the line it feeds no \
+             longer describes what the seed built"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+    /// Every mtime under the crate, for the control that asserts the seed and the restore leave an
+    /// untouched tree alone. `.git` is skipped: the round's own `git show` calls do not write there,
+    /// and a control that watched it would be measuring git, not the writer.
+    fn mtimes_under(dir: &Path) -> BTreeMap<PathBuf, std::time::SystemTime> {
+        let mut out = BTreeMap::new();
+        let mut walk = std::collections::VecDeque::new();
+        walk.push_back(dir.to_path_buf());
+        while let Some(dir) = walk.pop_front() {
+            for entry in
+                fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
+            {
+                let path = entry.unwrap().path();
+                if path.file_name() == Some(std::ffi::OsStr::new(".git")) {
+                    continue;
+                }
+                if path.is_dir() {
+                    walk.push_back(path);
+                } else {
+                    out.insert(
+                        path.clone(),
+                        fs::metadata(&path)
+                            .unwrap_or_else(|e| panic!("stat {}: {e}", path.display()))
+                            .modified()
+                            .unwrap_or_else(|e| panic!("mtime {}: {e}", path.display())),
+                    );
+                }
+            }
+        }
+        out
+    }
+
+    /// THE CONTROL FOR THE #14876 / #15310 SPECIMENS: a PR that touches no stage0 file must not move
+    /// a single mtime, in the seed or in the restore.
+    ///
+    /// Round 1 seeds base's bytes over the whole base crate population because it cannot know which
+    /// paths the PR edited — and for a `.dag`-only PR that population is 306 paths of byte-identical
+    /// content. Writing identical bytes is not a no-op: it bumps the mtime, and cargo fingerprints a
+    /// path dependency by mtime, so the seed build and then the measured partition rebuild recompile
+    /// crates the round's own derived scope had EXCLUDED. The scope guard refuses correctly; the
+    /// writer was doing redundant work (DESIGN §2). Heal run 41061363628 / job 124081920078 on #14876
+    /// (`compiled excluded packages ["v1-stage0-runtime"]`, closure `[std-core, v1-infer, std-surface,
+    /// extdeps-languages, v1-artifact, emit-core, v1-compiler]`) and run 41098380134 on #15310
+    /// (six excluded partition packages, `changed_mirrors=[v1_compiler_emit_rust.rs]`, closure
+    /// `[v1-compiler]`) are the two specimens.
+    ///
+    /// The second half is the DISCRIMINATOR: the same measurement on a tree that DOES differ must
+    /// show the differing paths' mtimes move and the identical path's stay put. Without it, a fixture
+    /// that never wrote anything, or a filesystem with a coarse clock, would pass the first half for
+    /// the wrong reason.
+    #[test]
+    fn a_stage0_untouched_pr_moves_no_mtime_in_the_seed_or_the_restore() {
+        // ARM 1 — THE CI SHAPE THAT WAS REFUSED: the PR edits only `.dag` authorities, so every crate
+        // path in the worktree already holds base's bytes.
+        let (root, _stage0, base_commit) = base_mirror_fixture();
+        let checkout = Command::new("git")
+            .args(["checkout", &base_commit, "--", STAGE0_CRATE_REL])
+            .current_dir(&root)
+            .output()
+            .expect("git checkout of the crate from base");
+        assert!(
+            checkout.status.success(),
+            "the fixture could not reset the crate to base's bytes: {}",
+            String::from_utf8_lossy(&checkout.stderr)
+        );
+        let crate_dir = root.join(STAGE0_CRATE_REL);
+        let before = mtimes_under(&crate_dir);
+        assert!(!before.is_empty(), "the fixture's crate is empty");
+
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
         )
-        .expect("a probe receipt renders");
-        assert!(
-            !probe.contains("base_mirror_commit"),
-            "a probe round claimed a base mirror it was never asked for:\n{probe}"
+        .expect("the round-1 bootstrap runs");
+        assert_eq!(
+            (restored.paths_restored, restored.paths_rewritten),
+            (5, 0),
+            "a tree identical to base must hold the whole population as base's bytes (5) while the \
+             seed writes NONE of them; the seed wrote {}, which is the mtime churn that drags \
+             excluded crates into the rebuild",
+            restored.paths_rewritten
         );
+        assert_eq!(
+            restored.paths_absent_at_base, 2,
+            "the head-added paths are still head-added, and the install journals them when it \
+             overwrites them — the seed must not journal them"
+        );
+        assert_eq!(
+            mtimes_under(&crate_dir),
+            before,
+            "the seed rewrote a path whose bytes already equalled base's"
+        );
+
+        // The restore of a journal that moved nothing must also touch nothing.
+        assert_eq!(
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the round's teardown runs")
+                .len(),
+            0,
+            "the teardown wrote back paths the seed never moved"
+        );
+        assert_eq!(
+            mtimes_under(&crate_dir),
+            before,
+            "the restore rewrote a path it had never moved"
+        );
+        let _ = fs::remove_dir_all(&root);
+
+        // ARM 2 — THE DISCRIMINATOR: on a tree that differs, the differing paths' mtimes MUST move
+        // and the one path committed identically on both sides (the crate's build script) must not.
+        let (root, stage0, base_commit) = base_mirror_fixture();
+        let crate_dir = root.join(STAGE0_CRATE_REL);
+        let build_script = crate_dir.join("build.rs");
+        let emitted = stage0.join("fixture_emitted.rs");
+        let before = mtimes_under(&crate_dir);
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect("the round-1 bootstrap runs on a differing tree");
+        assert_eq!(
+            restored.paths_rewritten, 4,
+            "the fixture's head edits 4 crate paths"
+        );
+        let after = mtimes_under(&crate_dir);
+        assert_ne!(
+            after[&emitted], before[&emitted],
+            "a path whose bytes differ was not rewritten, so arm 1 above proves nothing"
+        );
+        assert_eq!(
+            after[&build_script], before[&build_script],
+            "the seed rewrote the one crate path committed identically on both sides"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 }
 
