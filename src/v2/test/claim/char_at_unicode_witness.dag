@@ -1,4 +1,4 @@
-module test.claim.char_at_unicode_witness
+module v2.test.claim.char_at_unicode_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
