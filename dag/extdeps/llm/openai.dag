@@ -9,7 +9,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.llm.openai_contracts { openai_finish_reason_wire_contract }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
-import extdeps.languages.json.grammar { JsonNumberLexeme, json_number_lexeme }
+import extdeps.languages.json.grammar { JsonNumberLexeme }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -745,4 +745,238 @@ data openai_chat_completion_wire_frontier_rows: List<FrontierRow> = [
     reason: "no module reads one chunk payload yet; openai_compat_sse frames the events and this record describes their content, and the two are only joined by a reader",
     dissolution: unbound_dissolution(description: "feature:s3-streamed-answer-read - the serving path's streamed read named in the approved plan gunbc.plans.fabric_serving_router's S3 decisions forwards one payload of this shape and closes the usage record at stream end. It dissolves when that reader lands WITH a witness that decodes a recorded chat.completion.chunk -- the role-only first event, a content delta, and the finish_reason-only last event -- into this record"),
   ),
+]
+
+// ---------------------------------------------------------------------------------------
+// THE LEGACY TEXT COMPLETIONS ENDPOINT, /v1/completions. The chat endpoint above is the one most
+// callers reach for; this one is served alongside it by the engines the rented cards run, and the
+// model is not "chat minus messages" -- the prompt is a union of four shapes, three members exist
+// only here (suffix, echo, best_of), and a choice carries a string where a chat choice carries a
+// message or a delta. Its authority is its own anchor below: the two endpoints are documented and
+// versioned separately, and borrowing the chat anchor would let a change to one silently claim
+// authority over the other. Read 2026-11-01.
+data extdeps_completions_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "platform.openai.com/docs/api-reference/completions/create"
+  }
+}
+
+// Both this endpoint's answer shapes name themselves with this literal, streamed and not, and it is
+// NOT the chat chunk's literal: a reader that branches on `object` must not be able to confuse a
+// whole text-completion answer with one event of a streamed chat answer.
+data openai_text_completion_object_wire: String = "text_completion"
+
+// THE `object` MEMBER IS A CONSTANT IN THE SPEC, SO IT IS TYPED AS ONE, AND IT IS CONSTRUCTED ONLY BY
+// CHECKING. The two text-completion bodies used to type `object: String`, which made the endpoints
+// indistinguishable at the type: a `chat.completion`, a `chat.completion.chunk` and an error envelope
+// would each have type-checked as a text completion, and the constant above stood nowhere near the
+// fields it describes. It is now a carrier with a checked constructor, so a decoder can obtain the
+// value for one endpoint and refuse every other one:
+//
+//   extdeps.languages.json.grammar is the pattern: its `JsonNumberLexeme` carrier is declared as
+//   `String where brand("JsonNumberLexeme")` alongside `json_number_lexeme_valid`, the
+//   `json_number_lexeme_unchecked` coercion, and the checked constructor `json_number_lexeme` returning
+//   Optional. A where-BRAND carries nominal identity only -- `std.types`' `brand` yields a
+//   `WherePredicateMarker`, which is never evaluated as a refinement -- so no validation is claimed by
+//   the type: the check lives in the constructor, which is DESIGN section 4's ruling
+//   gunbc.design_ruling where_refinements_retire_for_checked_constructors -- "where-refinements are
+//   retired in favour of checked constructors returning `Optional`". That is why this is not spelled
+//   `String where openai_text_completion_object_is_documented`: `std.types`' `NonEmptyStr` is still
+//   spelled that way, but it is the legacy that ruling retires, not a pattern to copy, and DESIGN
+//   section 4 also refuses to lean on `gunbc.design_ruling`'s
+//   `literal_only_refinement_judgment_is_interim`, an explicitly interim judgment, for a value that
+//   arrives from a decoder rather than being written in source.
+//
+// The refusal is a refusal, not a default: no arm of this constructor yields a carrier for a value that
+// is not the documented constant, so a body from another endpoint cannot be laundered into a text
+// completion (§5). The consumer is executed in-repo today:
+// //test/claim/extdeps/openai_text_completion_wire_witness calls the constructor with the documented
+// value (Present) and with each chat endpoint's value (Absent), so a constant that drifted goes red.
+type OpenAiTextCompletionObject = String where brand("OpenAiTextCompletionObject")
+
+fn openai_text_completion_object_valid(s: String) -> Bool {
+  s == openai_text_completion_object_wire
+}
+
+// The coercion is spelled separately, following `json_number_lexeme_unchecked`, so that the checked
+// constructor below is the only thing in THIS REPOSITORY that produces a carrier. That is a claim about
+// call sites, not reachability: the language has no visibility modifier anywhere in `dag`, so nothing
+// hides this -- what a caller cannot do is substitute a raw String where the carrier is expected, because
+// that identity is exactly what the where-brand carries.
+fn openai_text_completion_object_unchecked(s: String) -> OpenAiTextCompletionObject {
+  s as OpenAiTextCompletionObject
+}
+
+// Present for "text_completion", Absent for anything else -- including "chat.completion" and
+// "chat.completion.chunk", which is what stops a chat answer or an error envelope from reading as a text
+// completion.
+fn openai_text_completion_object(s: String) -> OpenAiTextCompletionObject? {
+  if openai_text_completion_object_valid(s: s) {
+    Present { value: openai_text_completion_object_unchecked(s: s) }
+  } else {
+    Absent
+  }
+}
+
+// The prompt member as the endpoint gives it. Four arms, each cited to the one member's union in the
+// anchors at the top of this file: the docs page (member `completions-prompt`) for the meaning, and the
+// vendor's generated `CompletionCreateParams.prompt` for the shape --
+// `Union[str, Sequence[str], Iterable[int], Iterable[Iterable[int]], None]` -- which lists exactly these
+// four shapes and no others:
+//   PromptText       -- string             one prompt, one completion
+//   PromptTexts      -- array<string>      one completion per entry
+//   PromptTokens     -- array<int>         one prompt, already tokenized by the caller
+//   PromptTokenLists -- array<array<int>>  several tokenized prompts
+// A coproduct rather than a String field, because a String folds the four together and loses the
+// difference between one prompt containing a comma and two prompts -- which is the difference between
+// one completion and two, so it is not a detail a reader can recover. Tokens stay integers here: they
+// are already the engine's own vocabulary, and re-rendering them as text would make the tokenizer's
+// decision a routing fact.
+//
+// THE MEMBER IS REQUIRED, SO IT IS NOT AN OPTION HERE. The docs page lists `completions-prompt` as
+// required with no default, and the vendor's generated parameter says the same in code:
+// `prompt: Required[Union[str, SequenceNotStr[str], Iterable[int], Iterable[Iterable[int]], None]]` --
+// `SequenceNotStr` is upstream's own guard against reading a bare string as a list of characters, and it
+// is the reason `PromptTexts` is a list of strings and not a list of anything.. A request
+// record that typed this as `OpenAiCompletionPrompt?` would let a caller build a request the upstream
+// contract refuses -- for a REQUEST record, faithfulness means required members are not optional, and a
+// state that cannot legally occur is not a case this type should carry.
+//
+// The generated union also admits `None`, which is not the same thing as being absent: it is the member
+// present and holding null. That is deliberately not an arm here either. A null prompt asks for nothing to
+// complete, and the endpoint refuses it; four shapes are the four things a caller can actually ask for.
+type OpenAiCompletionPrompt
+  = PromptText { text: String }
+  | PromptTexts { texts: List<String> }
+  | PromptTokens { tokens: List<Int> }
+  | PromptTokenLists { token_lists: List<List<Int>> }
+
+// The sampling members are the same carrier as the chat request's, for the same reason: std.float has no
+// ruled literal or operator home, the carrier is `extdeps.languages.json.grammar`'s `JsonNumberLexeme`
+// built only through `json_number_lexeme`, and nothing here compares or range-checks them. `JsonNumber`
+// itself is a VARIANT of `extdeps.languages.json.emit`'s `JsonValue`, not a type a field may be typed as.
+// `openai_chat_completion_wire_frontier_rows` carries that frontier for both endpoints' requests; a ruled
+// float home dissolves one row, not one per endpoint.
+type OpenAiTextCompletionRequest {
+  model: String
+  prompt: OpenAiCompletionPrompt
+  suffix: String?
+  max_tokens: Int?
+  best_of: Int?
+  echo: Bool?
+  n: Int?
+  seed: Int?
+  stop: OpenAiCompletionStop?
+  // Optional here for the same reason it is optional on the chat request: the generated parameters carry
+  // it as two overloads, `Optional[Literal[False]]` and `Required[Literal[True]]`, so a client that never
+  // mentions `stream` is sending a valid request that a required `Bool` would make unrepresentable. Absent
+  // is read as "not streaming", which is upstream's meaning and is stated rather than defaulted.
+  stream: Bool?
+  stream_options: OpenAiStreamOptions?
+  temperature: JsonNumberLexeme?
+  top_p: JsonNumberLexeme?
+  presence_penalty: JsonNumberLexeme?
+  frequency_penalty: JsonNumberLexeme?
+}
+
+type OpenAiTextCompletionChoice {
+  index: Int
+  text: String
+  finish_reason: OpenAiFinishReason?
+}
+
+// `usage` is the chat record, reused. The two endpoint documents give that member the same shape and
+// the same members, so a second record with the same fields would put one fact in two places and let
+// them drift while both claimed to describe usage. `choices` is deliberately NOT shared: here a choice
+// is a string, there it is a message.
+type OpenAiTextCompletion200Body {
+  id: String
+  object: OpenAiTextCompletionObject
+  created: Int
+  model: String
+  choices: List<OpenAiTextCompletionChoice>
+  usage: OpenAiChatCompletion200Usage?
+  service_tier: String?
+  system_fingerprint: String?
+}
+
+// One event of a streamed answer from this endpoint. Two facts a reader needs and cannot infer from
+// the non-streaming shape: the final event carries a finish_reason and NO text, so `text` is optional
+// here while it is required above; and an engine may send a closing frame with usage and an empty
+// choices list, so `choices` is a list that may be empty rather than a non-empty one.
+type OpenAiTextCompletionChunkChoice {
+  index: Int
+  text: String?
+  finish_reason: OpenAiFinishReason?
+}
+
+type OpenAiTextCompletionChunkBody {
+  id: String
+  object: OpenAiTextCompletionObject
+  created: Int
+  model: String
+  choices: List<OpenAiTextCompletionChunkChoice>
+  usage: OpenAiChatCompletion200Usage?
+}
+
+data structural_coverage_gap_openai_text_completion_members: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiTextCompletionRequest" },
+      Missing { item: "logit_bias" },
+      Missing { item: "logprobs" },
+      Missing { item: "user" }
+    ],
+    trigger: "the first member a serving call must forward on this endpoint beyond sampling -- logprobs before the rest, since it is the one that cannot be recovered after the answer arrives"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiTextCompletionChoice" },
+      Missing { item: "logprobs_token_ranks" }
+    ],
+    trigger: "a reader that prices or explains a completion by token rank; the chat side's OpenAiChatCompletion200Logprobs is the shape to compare against before inventing a second one"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiTextCompletionChunkChoice" },
+      Missing { item: "logprobs_token_ranks" }
+    ],
+    trigger: "the streamed counterpart of the row above, which needs the accumulation rule for per-token logprobs across events"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiTextCompletionChoice" },
+      Missing { item: "finish_reason_is_the_chat_endpoint's_wider_set" }
+    ],
+    trigger: "a text-completion finish_reason of its own. The generated CompletionChoice documents exactly stop, length and content_filter for this endpoint, so typing the member with the chat coproduct OpenAiFinishReason admits values (tool_calls, and function_call once that gap closes) this endpoint never sends -- a superset, which is a reader's trap rather than a lie. A separate coproduct is blocked in this module by name, not by meaning: its unit arms would have to be Stop, Length and ContentFilter, and those three are already OpenAiFinishReason's arms, whose wire spelling comes from openai_finish_reason_wire_contract. The PR that gives this endpoint its own finish_reason either declares it in another module or gives both coproducts per-variant wire names"
+  }
+]
+
+// No module reads the text-completion shapes yet, and the consumer is named rather than assumed: the
+// same serving-path read that the approved plan gunbc.plans.fabric_serving_router puts in its S3
+// decisions, on whichever endpoint the client called. Tracked as debt (DESIGN section 3c) so an unread
+// model cannot be deleted quietly, and so its absence is visible rather than implied by the endpoint
+// existing.
+data openai_text_completion_wire_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiTextCompletionRequest"),
+    reason: "no module builds or reads this record yet: its only consumer is the naming of it in this module's own coverage rows",
+    dissolution: unbound_dissolution(description: "feature:s3-completions-request-read - the serving path's request read in the approved plan gunbc.plans.fabric_serving_router's S3 decisions, on the /v1/completions endpoint: it reads this record's model, stream, prompt shape and stop, and a client builds the record for the call it sends. It dissolves when that reader lands WITH a witness that builds a request of this shape and reads it back. The decisions about a request belong to that plan, not here"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiTextCompletion200Body"),
+    reason: "no module reads a non-streaming text-completion answer yet, and none refuses a body whose `object` member is not the documented constant",
+    dissolution: unbound_dissolution(description: "feature:s3-completions-answer-read - the serving path's read in the approved plan gunbc.plans.fabric_serving_router's S3 decisions closes a usage record from one body of this shape. It dissolves when that reader lands WITH a witness that decodes a recorded completions 200 body into this record and asserts its choices and usage, so a shape nobody has fed real bytes through is not carried as truth"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiTextCompletionChunkBody"),
+    reason: "no module reads one streamed text-completion event yet, and none refuses a payload whose `object` member is not the documented constant; openai_compat_sse frames such events but does not interpret their content",
+    dissolution: unbound_dissolution(description: "feature:s3-completions-chunk-read - the serving path's streamed read in the approved plan gunbc.plans.fabric_serving_router's S3 decisions forwards one payload of this shape and finishes the answer at the sentinel. It dissolves when that reader lands WITH a witness that decodes a recorded completions chunk into this record -- including the final event, which carries a finish_reason and no text"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "structural_coverage_gap_openai_text_completion_members"),
+    reason: "no module reads this coverage list; it is written by this module's own convention and read by nothing, as are its predecessors structural_coverage_gap_openai_chat_completion_200_residual and structural_coverage_gap_openai_chat_completion_request_members",
+    dissolution: unbound_dissolution(description: "feature:coverage-closure-rollup - a roll-up that reads each extdeps module's structural_coverage_gap_* lists into one census view retires this row together with the unread siblings it names, in this module and in the other extdeps modules written the same way. Checked rather than assumed: no consumer of extdeps.coverage's CoverageClosureEntry type exists in `dag` outside the declaring modules, and the seed's declaration_index roster names such a list only where its entries are cited-field debt"),
+  )
 ]
