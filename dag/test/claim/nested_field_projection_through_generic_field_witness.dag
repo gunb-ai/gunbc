@@ -1,0 +1,39 @@
+module test.claim.nested_field_projection_through_generic_field_witness
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A VALUE PROJECTION MAY WALK THROUGH A NON-GENERIC FIELD WHOSE DECLARATION HAS A GENERIC FIELD.
+// Once a declaration's fields resolve under its own type parameters, `r.demand.sites.head` crosses
+// Holder.demand (non-generic) -> Demand.sites (a generic type applied to a record) -> the generic's own
+// `head: T`. Heal run 41354242261 emitted `panic!("error type cascade")` for exactly this shape
+// (generated_provider_unavailable_diagnostics): `r.demand` read as the error type. The pair: the red is the
+// two-level projection emitting no cascade; the control is the same projection with one level removed.
+
+fn a_two_level_projection_through_a_generic_field_has_no_error_cascade() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_nested_projection\n\ntype ProbeSeq<T> {\n  head: T\n  tail: List<T>\n}\n\ntype ProbeSite {\n  line: Int\n}\n\ntype ProbeDemand {\n  tag: Int\n  sites: ProbeSeq<ProbeSite>\n}\n\ntype ProbeRefusal {\n  demand: ProbeDemand\n  cause: Int\n}\n\nfn probe_first_site(r: ProbeRefusal) -> ProbeSite {\n  r.demand.sites.head\n}\n\nfn probe_tag(r: ProbeRefusal) -> Int {\n  r.demand.tag\n}\n",
+    "src/probe_nested_projection.rs",
+    ["pub fn probe_first_site", "pub fn probe_tag"],
+    ["error type cascade", "compile_error"]
+  )
+}
+
+fn a_one_level_projection_through_a_generic_field_has_no_error_cascade() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_single_projection\n\ntype ProbeSeq<T> {\n  head: T\n  tail: List<T>\n}\n\ntype ProbeSite {\n  line: Int\n}\n\ntype ProbeDemand {\n  sites: ProbeSeq<ProbeSite>\n}\n\nfn probe_head_site(d: ProbeDemand) -> ProbeSite {\n  d.sites.head\n}\n",
+    "src/probe_single_projection.rs",
+    ["pub fn probe_head_site"],
+    ["error type cascade", "compile_error"]
+  )
+}
+
+test fn two_level_projection_has_no_error_cascade() -> Bool {
+  a_two_level_projection_through_a_generic_field_has_no_error_cascade()
+}
+
+test fn one_level_projection_has_no_error_cascade() -> Bool {
+  a_one_level_projection_through_a_generic_field_has_no_error_cascade()
+}
