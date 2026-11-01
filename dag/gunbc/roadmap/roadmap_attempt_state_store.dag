@@ -616,7 +616,41 @@ fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
   }
 }
 
+fn attempt_log_names_contain(names: List<String>, target: String) -> Bool {
+  match names {
+    Empty {} => false
+    Cons { head: h, tail: rest } => if h == target { true } else { attempt_log_names_contain(names: rest, target: target) }
+  }
+}
+
+// Mints the sealed store over a listing that was OBTAINED (never fabricated). An empty list here means the
+// directory was positively listed as having no relevant entries -- the caller never projects a refused listing
+// into an empty list (no-refusal-projected-to-empty is upheld by the caller's use of FilesystemDirectoryListed).
+fn attempt_append_log_mint_listing(store: AttemptState, node: String, attempt_key: String, name: String, member_dir: String, names: List<String>) -> AttemptAppendLogReading {
+  match attempt_append_log_census_row(name: name) {
+    Absent => AttemptAppendLogUnready { detail: join(["no census row for ", name], "") }
+    Present { value: row } => match append_log_census_slot(row: row) {
+      Absent => AttemptAppendLogUnready { detail: join(["census row is not a log row: ", name], "") }
+      Present { value: slot } => {
+        match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
+          AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: name as NonEmptyStr, directory: s.parent, slot: slot } }
+          AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
+          AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
+        }
+      }
+    }
+  }
+}
+
 // THE ONE SEAL MINT. Business key only; the path is derived from the sealed attempt-state record and read once.
+// The member directory is a SHARED PARENT (the attempt root also holds plain members and other stores' files),
+// so its presence is decided by a positive observation of the PARENT (the attempt root), never by reading the
+// member file: if the member directory is not an entry of the attempt-root listing, it is TYPED ABSENT and the
+// store mints Ready over a proven-empty listing (a directory that does not exist cannot hold a foreign
+// generation file). If the member directory IS present but its own listing is refused, the store is Unready
+// (a member is never treated as absent from a failed read). Shared-parent scoping means a plain member's file
+// in the member directory never makes the store Unready: append_log_listed_verdict judges only the member's own
+// namespace (a <member>.<digits> generation file, or the member name), ignoring all other entries.
 fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptLogMember) -> AttemptAppendLogReading {
   let name = attempt_append_log_member_name(member: member)
   if name == "" {
@@ -625,23 +659,25 @@ fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, 
     match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
       AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
       AttemptStateReady { store } => {
-        let member_dir = attempt_state_directory_path(store: store, directory: attempt_log_member_directory(member: member))
-        let listed = Filesystem.List(path: member_dir)
-        match filesystem_listing_observation(directory: member_dir, success: listed.success, entries: listed.entries, error: listed.error) {
-          FilesystemDirectorySubjectRefused { directory: _, cause: _ } => AttemptAppendLogUnready { detail: "the member directory subject was refused; the listing is never treated as empty" }
-          FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptAppendLogUnready { detail: join(["the member directory could not be listed; a member is never treated as absent from a failed read -- ", e], "") }
-          FilesystemDirectoryListed(lic) => match attempt_append_log_census_row(name: name) {
-            Absent => AttemptAppendLogUnready { detail: join(["no census row for ", name], "") }
-            Present { value: row } => match append_log_census_slot(row: row) {
-              Absent => AttemptAppendLogUnready { detail: join(["census row is not a log row: ", name], "") }
-              Present { value: slot } => {
-                let names = filesystem_listing_entry_names(listing: lic)
-                match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
-                  AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: name as NonEmptyStr, directory: s.parent, slot: slot } }
-                  AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
-                  AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
-                }
+        let member_directory = attempt_log_member_directory(member: member)
+        let dir_segment = attempt_state_directory_segment(directory: member_directory)
+        let member_dir = attempt_state_directory_path(store: store, directory: member_directory)
+        let root_dir = store.directory as String
+        let root_listed = Filesystem.List(path: root_dir)
+        match filesystem_listing_observation(directory: root_dir, success: root_listed.success, entries: root_listed.entries, error: root_listed.error) {
+          FilesystemDirectorySubjectRefused { directory: _, cause: _ } => AttemptAppendLogUnready { detail: "the attempt root subject was refused; the listing is never treated as empty" }
+          FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptAppendLogUnready { detail: join(["the attempt root could not be listed; a member directory is never treated as absent from a failed read -- ", e], "") }
+          FilesystemDirectoryListed(root_lic) => {
+            let root_names = filesystem_listing_entry_names(listing: root_lic)
+            if attempt_log_names_contain(names: root_names, target: dir_segment) {
+              let listed = Filesystem.List(path: member_dir)
+              match filesystem_listing_observation(directory: member_dir, success: listed.success, entries: listed.entries, error: listed.error) {
+                FilesystemDirectorySubjectRefused { directory: _, cause: _ } => AttemptAppendLogUnready { detail: "the member directory subject was refused; the listing is never treated as empty" }
+                FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptAppendLogUnready { detail: join(["the member directory could not be listed; a member is never treated as absent from a failed read -- ", e], "") }
+                FilesystemDirectoryListed(lic) => attempt_append_log_mint_listing(store: store, node: node, attempt_key: attempt_key, name: name, member_dir: member_dir, names: filesystem_listing_entry_names(listing: lic))
               }
+            } else {
+              attempt_append_log_mint_listing(store: store, node: node, attempt_key: attempt_key, name: name, member_dir: member_dir, names: [])
             }
           }
         }
