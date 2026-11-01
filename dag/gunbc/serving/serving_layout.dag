@@ -497,8 +497,9 @@ fn host_6ce85c_a16_device(bus: String) -> ServingDevice {
   }
 }
 
-// THE GRANT. RAM and the locked expert file are the observed row's; the six devices are the six buses whose
-// engines are in service (86 and c6 are disabled). The host overhead is an ALLOWANCE until a reading with
+// THE GRANT. RAM and the locked expert file are the observed row's; the five devices are the five buses whose
+// engines are in service (86, c6 and, by operator ruling 2026-11-01 "h11: A", c7 are disabled: five engines with room
+// to park beat six that skip every park). The host overhead is an ALLOWANCE until a reading with
 // every engine stopped replaces it.
 data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
   host: operator_host_6ce85c,
@@ -511,7 +512,7 @@ data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
   }],
   swap_bound: serving_engine_swap_bound,
   charging: ["shared expert pages are charged to strata-expert-lock, not the engines: 47,784 MiB of the 51.05 GiB file read unevictable in its cgroup on 2026-10-30T19:20Z, and engines start After= it from that date; the remaining ~3.3 GiB's charge is unread" as NonEmptyStr],
-  devices: [host_6ce85c_a16_device(bus: "85"), host_6ce85c_a16_device(bus: "87"), host_6ce85c_a16_device(bus: "88"), host_6ce85c_a16_device(bus: "c5"), host_6ce85c_a16_device(bus: "c7"), host_6ce85c_a16_device(bus: "c8")],
+  devices: [host_6ce85c_a16_device(bus: "85"), host_6ce85c_a16_device(bus: "87"), host_6ce85c_a16_device(bus: "88"), host_6ce85c_a16_device(bus: "c5"), host_6ce85c_a16_device(bus: "c8")],
 }
 
 // INDEPENDENT GROUPS FIRST: one replica per device.
@@ -520,7 +521,6 @@ data host_6ce85c_independent_groups: List<ServingDeviceGroup> = [
   ServingDeviceGroup { name: "h11-strata@87" as NonEmptyStr, devices: ["a16-87"] },
   ServingDeviceGroup { name: "h11-strata@88" as NonEmptyStr, devices: ["a16-88"] },
   ServingDeviceGroup { name: "h11-strata@c5" as NonEmptyStr, devices: ["a16-c5"] },
-  ServingDeviceGroup { name: "h11-strata@c7" as NonEmptyStr, devices: ["a16-c7"] },
   ServingDeviceGroup { name: "h11-strata@c8" as NonEmptyStr, devices: ["a16-c8"] },
 ]
 
@@ -535,9 +535,9 @@ data strata_iq3_s_a16_profile: ServingBackendProfile = ServingBackendProfile {
   backend: "strata 0.1.48 (44df8fd5) qwen3.8-flash-next-iq3_s" as NonEmptyStr,
   device_fixed_vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 6609)), provenance: "h11-a16 nvidia-smi memory.used 14544 MiB less the engine's expert_cache_mib 7935, 2026-10-30" as NonEmptyStr },
   device_min_elastic_vram: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)), reason: "least expert cache the engine is run with: a 2 GiB assumption until a run below it is read" as NonEmptyStr },
-  replica_base_ram: ServingMemoryRead { bytes: byte_size(count: 4703334400), provenance: "systemctl show h11-strata@c8 MemoryCurrent=4703334400, loaded, idle, 0 requests, nothing parked, 2026-10-30T17:10Z" as NonEmptyStr },
+  replica_base_ram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 5747)), provenance: "h11-strata@c7 memory.current 5747 MiB (anon 3405 + shmem 2224), loaded, idle for the whole window, nothing parked, read every 15 s 2026-10-31T20:05-21:06Z by ~/runs/cm-anon-sampler.sh on h11" as NonEmptyStr },
   active_slots: 1,
-  active_slot_ram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), reason: "RAM a request needs above the base, including snapshot capture and restore peaks: a 512 MiB assumption until h11-strata@c8 memory.peak is read through real turns" as NonEmptyStr },
+  active_slot_ram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 3328)), reason: "the LIVE conversation stays in host RAM after its turn: measured +2308 MiB anon on h11-strata@85 at 166,510 tokens (3289 -> 5597 MiB), +1608 MiB on c5 at 98,710 and +1033 MiB on 88 at 97,840, i.e. 10.8-17 KiB per token (sampler 2026-10-31T20:05-21:06Z). Extrapolated to the 229,376-token ceiling at the measured 14.2 KiB/token: 3328 MiB. An extrapolation, not a reading at the ceiling (the previous 512 MiB figure was 4-6x low)" as NonEmptyStr },
   retention: strata_iq3_s_snapshot_cost,
   park_free_floor: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), provenance: "h11-strata@c7 engine log: skip parking (physical RAM admission; need 1250 MiB plus 512 MiB floor, 1262 MiB available, source cgroup), 2026-10-30" as NonEmptyStr },
   max_devices_with_retention: 1,
