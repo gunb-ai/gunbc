@@ -3965,13 +3965,22 @@ fn equality_resolved_declaration_walk(rt: Node, peeled: Node, name: String, scop
   }
 }
 
+// WHETHER THE OPERAND REFERENCE APPLIES TYPE ARGUMENTS. A type reference carries its arguments as children; a
+// declaration node (the declaring module synthesizing its own derived equality passes the declaration as both
+// rt and peeled) carries its fields or variants there, which are not arguments. Reading the child count alone
+// marked every declaration with members generic, so no derived equality was synthesized for it while the call
+// side, whose operand is a reference, still lowered to a call of it.
+fn equality_reference_applies_arguments(peeled: Node) -> Bool {
+  peeled.connective != Conj && peeled.connective != Disj && (peeled.children |> count) > 0
+}
+
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
   if (rt.connective == Arrow) {
     equality_walk_refused(r: equality_refused(carrier: name, member: "function value", member_judged: true))
   } else if (rt.connective == Conj) {
-    equality_product_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0 || (peeled.children |> count) > 0, name: name, fields: rt.children, scope: scope, visited: visited, depth: depth)
+    equality_product_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0 || equality_reference_applies_arguments(peeled: peeled), name: name, fields: rt.children, scope: scope, visited: visited, depth: depth)
   } else if (rt.connective == Disj) {
-    equality_coproduct_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0 || (peeled.children |> count) > 0, name: name, variants: rt.children, scope: scope, visited: visited, depth: depth)
+    equality_coproduct_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0 || equality_reference_applies_arguments(peeled: peeled), name: name, variants: rt.children, scope: scope, visited: visited, depth: depth)
   } else if (rt.children |> count) > 0 || type_reference_identity(n: rt, source_indices: scope.type_env.source_indices) != type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices) {
     equality_operand_walk(n: rt, scope: scope, visited: visited, depth: depth + 1, at_root: at_root)
   } else {

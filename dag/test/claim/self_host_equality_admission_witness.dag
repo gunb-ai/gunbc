@@ -235,6 +235,19 @@ test fn node_occurrence_root_emits_the_declared_route_function() -> Bool {
   )
 }
 
+// A CALL LOWERED WITH NO DEFINITION IS THE DEFECT (gunbc#15175): the call side lowers a planned `==` to
+// equality_derived_<decl> and the declaring module must synthesize that function. The emitted module that
+// calls it must define it; measured red before the fix by cargo check, E0425 cannot find function
+// equality_derived_deq_route_wrap.
+test fn a_planned_equality_call_has_its_definition_in_the_emitted_module() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_route_node_probe\nimport v2.std.node { Node }\ntype DeqRouteWrap { n: Node }\nfn same(a: DeqRouteWrap, b: DeqRouteWrap) -> Bool { a == b }\n",
+    "src/test_claim_deq_route_node_probe.rs",
+    ["equality_derived_deq_route_wrap(a.clone(), b.clone())", "fn equality_derived_deq_route_wrap("],
+    []
+  )
+}
+
 test fn presence_test_stays_admitted() -> Bool {
   eq_census_clean(source: presence_test_green_source)
 }
