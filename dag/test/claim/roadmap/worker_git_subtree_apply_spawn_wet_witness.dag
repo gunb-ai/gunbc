@@ -184,23 +184,24 @@ fn wet_group_token() -> String {
 // derivation executed, as a pure derivation, so "the witness supplies its root" has not quietly become "nobody
 // derives it any more".
 fn wet_lab_local_instance(scratch_parent: String, repo: String) -> HostDashboardInstance {
+  // THE GUARD, AT THE ONE PLACE A WITNESS ROOT ENTERS THESE CLAIMS. A root the fixture refuses -- the live
+  // lab root, a child of it, the fleet's install root, or anything outside the declared scratch prefix -- is
+  // carried by a principal that cannot exist, so every claim that would have run at that target goes RED
+  // instead of writing there. That is the BROKEN run the PR body names: point the supplied root back at the
+  // live derivation and the claims refuse.
+  let principal =
+    if witness_supplied_root_is_refused(scratch_parent) || witness_supplied_root_is_refused(repo) {
+      wet_unnameable_principal()
+    } else {
+      wet_principal()
+    }
   witness_supplied_instance(
     // THE SCRATCH PARENT IS THE CLAIM'S OWN MKTEMP LEAF, and the repository is a tree beside it
     // (`<leaf>/source`), so the instance root -- `<leaf>/<lab id>` -- is never inside the repository the claims
     // run `git` in, and both trees are one leaf the claim can remove.
     scratch_parent: scratch_parent as FilePath,
     repo: repo as FilePath,
-    // THE GUARD, AT THE ONE PLACE A WITNESS ROOT ENTERS THESE CLAIMS. A root the fixture refuses -- the live
-    // lab root, a child of it, the fleet's install root, or anything outside the declared scratch prefix --
-    // is carried by a principal that cannot exist, so every claim that would have run at that target goes RED
-    // instead of writing there. That is the BROKEN run the PR body names: point the supplied root back at the
-    // live derivation and the claims refuse.
-    principal:
-      if witness_supplied_root_is_refused(scratch_parent) || witness_supplied_root_is_refused(repo) {
-        wet_unnameable_principal()
-      } else {
-        wet_principal()
-      },
+    principal: principal,
   )
 }
 

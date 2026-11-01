@@ -1,7 +1,7 @@
 module test.claim.roadmap.witness_supplied_instance
 
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
-import std.algebra { string_contains, trim }
+import std.algebra { starts_with, trim }
 import std.optional { Optional, Present, Absent }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.posix.identity { PosixOwnerNames }
@@ -177,8 +177,12 @@ fn witness_supplied_root_is_refused(candidate: String) -> Bool {
     || !is_under(text: candidate, root: witness_scratch_prefix as String)
 }
 
+// A PREFIX TEST, NOT A SUBSTRING TEST, and the direction matters twice over. A substring test would accept
+// `/var/tmp/gunbc-wet-witness-forged` as "under /tmp" (it contains "/tmp/"), which is a witness installing
+// outside its declared prefix; and it would accept `/opt/gunbc-labX` as refused while accepting a sibling that
+// merely shares a prefix with a production root. So: equal, or begins with the root followed by a separator.
 fn is_under(text: String, root: String) -> Bool {
-  text == root || string_contains(s: text, pattern: join([root, "/"], ""))
+  text == root || starts_with(s: text, prefix: join([root, "/"], ""))
 }
 
 // THE INSTANCE UNDER TEST, AT THE ROOT THE WITNESS SUPPLIED. Every field that is a function of the root is
