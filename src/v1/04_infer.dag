@@ -9597,7 +9597,7 @@ fn expected_type_is_keyed_collection(exp: Node, scope: InferScope) -> Bool {
     if node_is_keyed_collection(n: core, source_indices: si) {
       true
     } else {
-      container_spelling_is_algebra(name: last, algebra: "FinitelySupportedFunction") || ((core.children |> count) == 2 && container_spelling_is_algebra(name: core.name, algebra: "FinitelySupportedFunction"))
+      container_spelling_is_algebra(name: last, algebra: "FinitelySupportedFunction")
     }
   }
 }
@@ -9612,7 +9612,7 @@ fn expected_type_is_set_collection(exp: Node, scope: InferScope) -> Bool {
         if node_is_set_collection(n: core, source_indices: si) {
       true
     } else {
-      container_spelling_is_algebra(name: last, algebra: "FinitePowerSet") || ((core.children |> count) == 1 && container_spelling_is_algebra(name: core.name, algebra: "FinitePowerSet"))
+      container_spelling_is_algebra(name: last, algebra: "FinitePowerSet")
     }
   }
 }
