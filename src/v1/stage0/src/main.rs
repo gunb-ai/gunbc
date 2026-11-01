@@ -1762,8 +1762,10 @@ fn claim_run_execution_mode(
 
 #[cfg(test)]
 mod claim_run_mode_tests {
-    use super::claim_run_execution_mode;
-    use v1_compiler::v1_interpreter::ExecutionMode;
+    use super::{claim_run_execution_mode, run_one_function};
+    use std::rc::Rc;
+    use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
 
     // THE BOUNDARY (the red the route was): `--claim-run` alone must select Hermetic, so a mocked
     // effect with no bound mock refuses typed instead of dispatching live against the host. Today
@@ -1799,5 +1801,53 @@ mod claim_run_mode_tests {
             claim_run_execution_mode(true, true),
             ExecutionMode::Hermetic
         ));
+    }
+
+    // INHABITANCE: the refusal must actually fire on the claim-evaluation route, not merely be
+    // reachable in code. This drives the production selector `claim_run_execution_mode` and then
+    // the exact per-function evaluator `run_one_function` that `run_verb` calls (main.rs:1366), so
+    // the mode is the one the route selects rather than a hand-picked Hermetic. A MOCKED effect
+    // with no bound mock on the claim route must surface the typed `HostEffectRefused` as exit 2
+    // (NO OBSERVATION — the claim never got to speak), and must NEVER reach a live dispatch. Today
+    // (pre-fix) the route selected Wet and performed the real effect (the mocked journalctl ran
+    // live against srv1's journal). Host-free by construction: the refusal short-circuits before
+    // any transport, so this test never spawns anything.
+    #[test]
+    fn claim_run_route_refuses_an_unbound_mocked_effect_as_no_observation() {
+        // 1. The route decision comes from the production authority, not a literal.
+        let mode = claim_run_execution_mode(false, true);
+        assert!(
+            matches!(mode, ExecutionMode::Hermetic),
+            "`gunbc run --claim-run` without --dry-run must select Hermetic, not Wet"
+        );
+
+        // 2. A claim whose effect is MOCKED (declares a mockable operation) but carries NO
+        //    `mock_response` — an unbound mock on this route.
+        let sources = vec![Rc::new(SourceFile {
+            path: "fixture/claim_run_route.dag".to_string(),
+            content: "module fixture.claim_run_route\n\nservice fixture.ClaimRoute {\n  operation UnboundEffect {\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.ClaimRoute.UnboundEffect()\n  r.success\n}\n"
+                .to_string(),
+        })];
+        let resolved = compile_to_resolved(Rc::new(sources.into()));
+        let graph = resolved.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(graph, resolved.source_indices.clone(), mode);
+
+        // 3. Run it through the real claim evaluator. The refusal is a NO OBSERVATION (exit 2)
+        //    carrying the typed ground, never a PASS/FAIL verdict and never a live dispatch.
+        //    status 2 is the discriminator: run_one_function returns exit 2 ONLY for
+        //    `InterpError::HostEffectRefused` under a claim run — a Wet fall-through (pre-fix)
+        //    would dispatch, return a value, and NOT yield 2.
+        let verdict = run_one_function(&ctx, "witness", "f.dag", &[], true);
+        let message = verdict.message.clone().unwrap_or_default();
+        assert_eq!(
+            verdict.status, 2,
+            "an unbound mocked effect on the claim route must be NO OBSERVATION (exit 2), got \
+             status {} with message: {message}",
+            verdict.status
+        );
+        assert!(
+            message.contains("mock_response"),
+            "the refusal must be the typed NoMockResponse ground, got: {message}"
+        );
     }
 }
