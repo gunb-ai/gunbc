@@ -95,15 +95,16 @@ fn bmc_recovery_route_pairing_frontier_rows() -> List<FrontierRow> {
 // THE SUCCESS SIDE HAS NO CONSUMER, AND THAT IS AN OBLIGATION, NOT A SENTENCE. The proof arm
 // (InBandRecoveryOutcome's RecoveryRouteProofComplete) is what the route ends in, and its .bound join is
 // the fact the factory-login path would need. Today nothing takes it: git grep shows
-// gunbc.tools.bmc_onboard imports nothing from this route and matches nothing from it, and
+// gunbc.machine_intake.bmc_secure imports nothing from this route and matches nothing from it, and
 // gunbc.machine_intake.arrival_converge consumes only the route's REFUSAL (recovery_route_unavailability,
 // which maps the proof arm to `none`); no fold reads .bound. The module used to claim the arm "re-enters
 // onboarding" -- that text is deleted, and this row replaces it, because a deferral a fold reads is the
 // honest form (DESIGN §3c) while prose is not evidence that a machine claim holds (§4c).
 //
 // What satisfies it:
-//   1. a fold in gunbc.tools.bmc_onboard that takes the standing's proof arm and drives the factory login
-//      with bound.controller -- exercising the join, not ignoring it;
+//   1. a fold in gunbc.machine_intake.bmc_secure (the credential rotation's one authority since the
+//      legacy gunbc.tools.bmc_onboard rotation entries were deleted) that takes the standing's proof arm
+//      and drives the factory login with bound.controller -- exercising the join, not ignoring it;
 //   2. that path continuing into the BmcSecure standing / credential rotation the login unlocks, so the
 //      proof buys the unit something;
 //   3. a pairing control: the consumer refusing a standing whose bound join names a unit other than the
@@ -124,10 +125,10 @@ fn bmc_recovery_route_onboarding_consumer_frontier_rows() -> List<FrontierRow> {
         module_path: "gunbc.machine_intake.bmc_recovery_route",
         decl_name: "InBandRecoveryOutcome",
       ),
-      reason: "the route's success side has no production consumer: gunbc.tools.bmc_onboard imports nothing from the route and arrival_converge consumes only the refusals, so no fold exercises the proof arm's .bound join through factory login and rotation. The obligation is the consuming fold, declared here so the census counts the gap instead of the module asserting a re-entry it does not perform",
+      reason: "the route's success side has no production consumer: gunbc.machine_intake.bmc_secure imports nothing from the route and arrival_converge consumes only the refusals, so no fold exercises the proof arm's .bound join through factory login and rotation. The obligation is the consuming fold, declared here so the census counts the gap instead of the module asserting a re-entry it does not perform",
       dissolution: bound_dissolution(
         ref: decl_ref(
-          module_path: "gunbc.tools.bmc_onboard",
+          module_path: "gunbc.machine_intake.bmc_secure",
           decl_name: "factory_login_from_recovery_route_proof",
         ),
       ),

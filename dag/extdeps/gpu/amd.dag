@@ -6,8 +6,7 @@ import std.measure { bandwidth, watt, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.gpu.types {
   GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Rocm, RatedBoardPower,
-  PcieAddInBoard, ActiveThermalSolution,
-}
+  PcieAddInBoard, ActiveThermalSolution, SingleGpu }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { Gen5, PcieLink }
 import extdeps.vendor.amd { amd }
@@ -68,7 +67,7 @@ data amd_radeon_ai_pro_r9700_board_facts: GpuBoardCatalogFacts = GpuBoardCatalog
   vendor: amd,
   model: "Radeon AI PRO R9700",
   gpu: amd_radeon_ai_pro_r9700_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
   zero_power: none,

@@ -15,6 +15,7 @@ module test.claim.bmc.bmc_model_redfish_account_service_witness
 
 import std.types { Bool, String }
 import std.optional { Present, Absent }
+import std.content_hash { sha256_hex_of_text }
 import gunbc.bmc_model {
   BmcWorld, BmcPowerOn, BmcIpmiUser,
   bmc_world, bmc_with_ipmi_users, bmc_with_redfish_accounts, bmc_ipmi_user_accepts,
@@ -23,7 +24,7 @@ import gunbc.bmc_model {
   BmcRedfishFailedLoginCounted, BmcRedfishFailedLoginRefused, BmcRedfishPasswordChangeStep, BmcRedfishChangeCompleted, BmcRedfishChangeRefused,
   bmc_redfish_change_step_world, bmc_redfish_failed_login_step_world,
   bmc_redfish_authorize, bmc_redfish_change_password, bmc_redfish_note_failed_login, bmc_redfish_account,
-  bmc_redfish_surface, bmc_redfish_census,
+  bmc_redfish_surface, bmc_redfish_census, bmc_redfish_account_collection_body,
   RedfishAuthTransport, RedfishAuthAccepted, RedfishAuthUnauthorized, RedfishAuthForcedPasswordChange,
   RedfishAuthSurfaceUnmodeled, BmcRedfishChangeBlocked, BmcRedfishChangeSurfaceUnmodeled,
   BmcRedfishChangeNoSuchAccount, BmcRedfishChangeSharedUserAbsent,
@@ -31,21 +32,29 @@ import gunbc.bmc_model {
 }
 import extdeps.bmc.ipmi_channel { IpmiUserId }
 import extdeps.bmc.types { AccountRoleAdministrator, RedfishAccountRole }
-import extdeps.bmc.redfish { redfish_password_change_verdict, RedfishPasswordChangeRequired }
-import gunbc.machine_intake.bmc_secure_redfish_frontier {
-  bmc_secure_redfish_consumer_frontier_rows, bmc_secure_redfish_read_consumer_frontier_rows,
-  bmc_secure_redfish_write_consumer_frontier_rows, bmc_secure_redfish_extdeps_consumer_frontier_rows,
-  bmc_secure_redfish_trigger_module,
-  bmc_secure_redfish_read_realization, bmc_secure_redfish_write_realization,
+import extdeps.bmc.redfish {
+  redfish_password_change_verdict, RedfishPasswordChangeRequired,
+  redfish_manager_account_collection_from_json, RedfishAccountCollection, RedfishAccountCollectionUnreadable,
 }
+<<<<<<< HEAD
 import std.roster_frontier { FrontierRow, DeclSubject, PathSubject }
 import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
 import v2.std.decl_index { decl_facts }
+=======
+>>>>>>> 043de7d33afaa7eef28bd86df6d322cea4ee23b7
 
 data factory_password: String = "openbmc"
 data managed_password: String = "correct-horse-battery-staple"
 data wrong_password: String = "guess-that-will-not-work"
 data base_1_16_0: String = "Base.1.16.0.PasswordChangeRequired"
+
+// THE COMMITTED AccountService/Accounts capture (artifacts/bmc/srv13-first-contact-2026-10-07/
+// AccountService_Accounts.json), inlined BYTE FOR BYTE (320 bytes, LF separators, no trailing newline) and pinned
+// to the digest that directory's SHA256SUMS records. It is used only by the world renderer's inhabitance claim:
+// the bytes the real controller served must parse, through the SAME reader the dry census uses, to the same census
+// the simulated controller renders for the same account set.
+data srv13_accounts_collection_capture: String = "{\n  \"@odata.id\": \"/redfish/v1/AccountService/Accounts\",\n  \"@odata.type\": \"#ManagerAccountCollection.ManagerAccountCollection\",\n  \"Description\": \"BMC User Accounts\",\n  \"Members\": [\n    {\n      \"@odata.id\": \"/redfish/v1/AccountService/Accounts/root\"\n    }\n  ],\n  \"Members@odata.count\": 1,\n  \"Name\": \"Accounts Collection\"\n}"
+data srv13_accounts_capture_sha256: String = "533e714f76ac3392d2d3723214bf93769144c66d65ffb53c3e38652068057f4f"
 
 fn admin_role() -> RedfishAccountRole {
   AccountRoleAdministrator
@@ -289,6 +298,7 @@ test fn the_typed_surface_read_keeps_unmodeled_separate_from_serving_none() -> B
   unmodeled && serves_none && the_two_are_distinguishable && census_cannot_distinguish
 }
 
+<<<<<<< HEAD
 // THE §3c CONSUMER FRONTIERS (review 87749 + parent directive). The Redfish world surface's production
 // consumer is item 3's dry Redfish read/apply in gunbc.machine_intake.bmc_secure, which does not exist until
 // PR 1b-i lands. The rows are the contract; these tests read their subject and trigger against the live declaration facts.
@@ -350,6 +360,8 @@ test fn the_bmc_secure_redfish_consumers_are_rostered_as_pending_frontiers() -> 
   counts && every_row_disciplined && read_bound && write_bound && extdeps_bound
 }
 
+=======
+>>>>>>> 043de7d33afaa7eef28bd86df6d322cea4ee23b7
 // RED (review 87824): a SHARED account whose IPMI user is not in the table has nowhere to write. Applying the
 // Password PATCH there must NOT clear the forced flag or reset the counter -- the change is not completed and the
 // world is returned UNCHANGED. This is the fabricated-partial-state the pre-fix code built (it cleared the record
@@ -427,4 +439,31 @@ test fn a_failed_login_against_an_unmodeled_surface_or_unknown_account_is_refuse
     && bmc_redfish_failed_login_step_world(step: on_unknown) == modeled
     && !locked_now_of(step: on_unmodeled)
     && !locked_now_of(step: on_unknown)
+}
+
+// THE INHABITANCE CLAIM FOR THE RENDERED CENSUS (DESIGN §3: a supplied boundary owes one inhabitance claim
+// that the real producer emits the shape the model reads). The dry census parses bytes the simulated controller
+// renders with `bmc_redfish_account_collection_body` and reads back with `redfish_manager_account_collection_from_json`.
+// Those bytes are only honest if the REAL controller serves that shape. The ONE committed capture of that
+// collection (srv13 first contact) is the witness: it matches its own SHA256SUMS digest byte for byte, and it
+// parses -- through the same reader the census uses -- to the same member set the world renders for the same
+// account set (root). If the renderer drifted from what the controller serves, the two id lists would disagree.
+// (rung: supplied boundary -- the committed capture is one inhabitant of the reader's domain and the renderer's range)
+test fn the_committed_collection_capture_inhabits_the_world_rendering() -> Bool {
+  let capture = srv13_accounts_collection_capture
+  let digest_matches = sha256_hex_of_text(text: capture) == srv13_accounts_capture_sha256
+  let from_capture = redfish_manager_account_collection_from_json(body: capture)
+  let from_world = redfish_manager_account_collection_from_json(
+    body: bmc_redfish_account_collection_body(world: world_with([free_root(managed_password)])))
+  let capture_ids = match from_capture {
+    RedfishAccountCollection { member_odata_ids: ids, members_odata_count: _ } => ids
+    _ => []
+  }
+  let world_ids = match from_world {
+    RedfishAccountCollection { member_odata_ids: ids, members_odata_count: _ } => ids
+    _ => []
+  }
+  digest_matches
+    && capture_ids == ["/redfish/v1/AccountService/Accounts/root"]
+    && world_ids == capture_ids
 }
