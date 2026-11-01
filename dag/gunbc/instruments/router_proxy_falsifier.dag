@@ -15,7 +15,7 @@ import extdeps.proxy.openresty {
   ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
-import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, RetentionFrontier, router_dev_first_party_json, router_dev_first_party_upstreams, router_dev_retiring_name_conflict, no_effort_rules }
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, OwnedCap, RentedCapped, RentedUncapped, NoRetention, RetentionAdmitted, RetentionFrontier, EffortRewriteTo, router_dev_first_party_json, router_dev_first_party_upstreams, router_dev_retiring_name_conflict, no_effort_rules }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
 }
@@ -456,6 +456,16 @@ fn turns_from(n: Int, model: String, acc: String) -> String {
   if n <= 0 { acc } else { turns_from(n: n - 1, model: model, acc: concat(acc, dev_request(key: "ck-falsifier", session: concat("turn-", to_string(n)), body: model_body(model: model), path: "/v1/chat/completions"))) }
 }
 
+// The modeled vLLM rows carry the rule vLLM needs: it refuses "high" with a 400, so "high" must be rewritten to "xhigh".
+// The process case above feeds the proxy a fixture row, so it proves the mechanism; this one reads the SHIPPED rows.
+fn vllm_rows_rewrite_high_to_xhigh() -> Bool {
+  let vllm = filter(router_dev_first_party_upstreams(), u => u.model == "Qwen3.8-Flash-Next")
+  count(vllm) > 0 && all(vllm, u => any(u.effort_effects, r => r.client == "high" && match r.effect {
+    EffortRewriteTo { value: v } => v == "xhigh"
+    _ => false
+  }))
+}
+
 fn occurrences(s: String, needle: String) -> Int {
   if needle == "" { 0 } else { count(split(s: s, delimiter: needle)) - 1 }
 }
@@ -794,6 +804,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_refused_turns_are_stranded_demand_cleared_on_success", held: contains(s: pending_stats, p: "\"m-r\":\{") && contains(s: pending_stats, p: "\"m-s\":\{") && contains(s: pending_stats, p: "\"oldest_s\"") && contains(s: own_after, p: "\n200 exit=0") && !contains(s: cleared_stats, p: "\"m-s\":\{") && contains(s: cleared_stats, p: "\"m-r\":\{"), observed: one_line(s: pending_stats)),
     case_of(identity: "dev_rented_turns_are_metered_and_the_rented_pool_reported", held: contains(s: rented_stats, p: "\"usage_all\"") && contains(s: rented_stats, p: "\"billing\":\"rented\"") && contains(s: rented_stats, p: "\"unmeasured_requests\":11") && contains(s: rented_stats, p: "\"rented\":\{") && contains(s: rented_stats, p: "\"full\":"), observed: one_line(s: rented_stats)),
     case_of(identity: "dev_capped_overflow_row_refuses_at_its_cap", held: contains(s: overflow_contended, p: "HTTP/1.1 429") && contains(s: overflow_contended, p: "Retry-After") && occurrences(s: overflow_contended, needle: "auth=Bearer ko") == 1, observed: one_line(s: overflow_contended)),
+    case_of(identity: "dev_shipped_vllm_rows_rewrite_high_to_xhigh", held: vllm_rows_rewrite_high_to_xhigh(), observed: ""),
     case_of(identity: "dev_vllm_row_translates_high_to_xhigh", held: contains(s: effort_high, p: concat("upstream=a auth=Bearer kh body=", order_body(model: "m-h", kwargs: "\"reasoning_effort\": \"xhigh\", \"zeta\": 1"))), observed: one_line(s: effort_high)),
     case_of(identity: "dev_any_string_effort_is_reported_in_the_header", held: contains(s: effort_unmapped, p: "X-Gunbc-Reasoning-Effort: turbo") && contains(s: effort_unmapped, p: "\n200 exit=0"), observed: one_line(s: effort_unmapped)),
     case_of(identity: "dev_trim_bindings_is_key_checked_post_only_and_unbinds_past_retain", held: w9.success && lowered_r1.exit_code == 0 && reloaded_r1.exit_code == 0 && contains(s: reloaded_r1_models, p: "4322") && contains(s: trim_no_key, p: "\n401 exit=0") && contains(s: trim_get, p: "\n405 exit=0") && contains(s: trim_post, p: "\"unbound\":1") && contains(s: ret_1_after_trim, p: "\n429 exit=0"), observed: concat(one_line(s: trim_post), one_line(s: ret_1_after_trim))),
@@ -869,6 +880,7 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_refused_turns_are_stranded_demand_cleared_on_success",
     "dev_rented_turns_are_metered_and_the_rented_pool_reported",
     "dev_capped_overflow_row_refuses_at_its_cap",
+    "dev_shipped_vllm_rows_rewrite_high_to_xhigh",
     "dev_vllm_row_translates_high_to_xhigh",
     "dev_any_string_effort_is_reported_in_the_header",
     "dev_trim_bindings_is_key_checked_post_only_and_unbinds_past_retain",
