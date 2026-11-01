@@ -297,13 +297,6 @@ type RosterHomeClosure
   = RosterClosureRead { home: String, modules: List<String> }
   | RosterClosureUnread { home: String }
 
-fn roster_home_closures(root: String, scope: RosterHomeScope) -> List<RosterHomeClosure> {
-  let homes = fold_list(xs: roster_rows_for_scope(scope: scope), empty: [], cons: fn(acc, row) {
-    if roster_contains(xs: acc, name: roster_qn_text(qn: row.home)) { acc } else { list_snoc_item(xs: acc, item: roster_qn_text(qn: row.home)) }
-  })
-  roster_homes_closures_read(homes: homes, bindings: roster_repository_bindings(root: root))
-}
-
 fn roster_repository_bindings(root: String) -> List<SourceRootBinding> {
   [
     SourceRootBinding { tree: V2Tree, host_directory: roster_rooted(root: root, dir: repository_tree_directory(tree: V2Tree)) },
@@ -502,10 +495,11 @@ fn roster_rename_census_selected(paths_csv: String, scope: RosterHomeScope, call
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => exit_failure(reason: roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared))
     Accepted { value: prepared, diagnostics: _ } =>
-      let closures = roster_home_closures(root: "", scope: scope)
       let lex = dag_prepared_lex()
+      let walk = roster_run_walk(root: "", rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
+      let closures = walk.closures
       let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
-      let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
+      let companions = walk.companions
       exit_failure(reason: fold_list(
         xs: split(s: paths_csv, delimiter: ","),
         empty: "",
@@ -748,9 +742,10 @@ fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedL
 }
 
 fn roster_sweep_selected(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
-  let closures = roster_home_closures(root: "", scope: scope)
+  let walk = roster_run_walk(root: "", rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
+  let closures = walk.closures
   let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
-  let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
+  let companions = walk.companions
   fold_list(
     xs: split(s: paths_csv, delimiter: ","),
     empty: "",
@@ -977,9 +972,10 @@ fn roster_apply_locked(held: RosterHeldLock, paths_csv: String, scope: RosterHom
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared)
     Accepted { value: prepared, diagnostics: _ } => {
-      let closures = roster_home_closures(root: held.root, scope: scope)
+      let walk = roster_run_walk(root: held.root, rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: dag_prepared_lex())
+      let closures = walk.closures
       let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
-      let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: dag_prepared_lex())
+      let companions = walk.companions
       // ALL-OR-NOTHING (tidy-ant-251, 2026-10-31): every path is planned (read, swept, spliced) before any is written;
       // a refusal from PLANNING (path admission, read, sweep, splice) anywhere reports and writes nothing. A refusal during the COMMIT (lock lost, stale read, failed write) can follow earlier writes and leaves them: the apply is not atomic across files, and no control covers that phase.
       let plans = fold_list(
@@ -2922,7 +2918,7 @@ fn roster_rename_expect_text(companions: List<RosterCompanion>, name: String, be
 }
 
 // THE COMPANION IS DERIVED, NOT SUPPLIED: these controls read it from the real std.algebra and std.optional sources
-// (roster_rename_companions over the production map_get row) and require it to be exactly std.optional's two variants.
+// (roster_run_walk over the production map_get row) and require it to be exactly std.optional's two variants.
 fn roster_companion_derived_check(companions: List<RosterCompanion>) -> String {
   match companions {
     Cons { head: CompanionDerived { call: _, to: _, module: m, tags: ts, closure: _ }, tail: Empty } =>
@@ -3036,7 +3032,7 @@ fn roster_rename_controls_counted(prepared: PreparedGrammar, lex: PreparedLexRul
 }
 
 fn roster_rename_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
-  let companions = roster_rename_companions(rows: roster_rename_production_row(), prepared: prepared, lex: lex)
+  let companions = roster_run_walk(root: "", rows: roster_rename_production_row(), prepared: prepared, lex: lex).companions
   let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_get(m, k) {\n    Present { value: v } => match map_get(m, v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
   let after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => match map_lookup(m: m, key: v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
   let nested = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, Map<String, String>>, k: String) -> Optional<String> {\n  g(x: map_get(m, k), k: k)\n}\n"
@@ -3306,7 +3302,7 @@ fn roster_appended_callee_green() -> String {
 // AN UNDERIVABLE COMPANION REFUSES THE FILE IT WOULD GOVERN: a rename row whose callee the home does not declare.
 fn roster_companion_underivable_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let ghost = [RosterHeadRow { call: "map_get", key: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], appended: [] } }]
-  let companions = roster_rename_companions(rows: ghost, prepared: prepared, lex: lex)
+  let companions = roster_run_walk(root: "", rows: ghost, prepared: prepared, lex: lex).companions
   let text = "module c.rename\n\nimport std.algebra { Cons, no_such_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match no_such_lookup(m: m, key: k) {\n    Present { value: _ } => true\n    Absent => false\n  }\n}\n"
   match roster_sweep_text_rows(sides: roster_home_sides(rows: ghost), companions: companions, path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: ghost, closures: roster_control_closures()) {
     RosterRefused { reason: r } => if starts_with(s: roster_refusal_text(reason: r), prefix: "companion-underivable call=map_get") { "" } else { "CONTROL-FAIL companion-underivable: refused " + roster_refusal_text(reason: r) + "\n" }
@@ -4575,9 +4571,14 @@ fn roster_owner_modules(owners: List<RosterRenameOwner>) -> List<String> {
   }))
 }
 
-// ONCE PER RUN, one per RenameHead row; a KeepHead row has no companion and costs nothing. Every distinct module is read
-// once and every distinct owner's closure is acquired once, however many rows name them.
-fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterCompanion> {
+// ONCE PER RUN: the home closures and the rename companions come from ONE verified acquisition. A rename row's companion
+// owner is read off the home's own imports, so its closure is normally inside a home closure; either way the owner is an
+// entry of the same walk as the homes, each module is read and verified once, and each entry's closure is the acquirer's
+// own traversal (acquisition_reached) from it over that one member table. One companion per RenameHead row; a KeepHead
+// row has no companion and costs nothing. Every distinct module is read once however many rows name it.
+type RosterRunWalk { closures: List<RosterHomeClosure>, companions: List<RosterCompanion> }
+
+fn roster_run_walk(root: String, rows: List<RosterHeadRow>, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterRunWalk {
   let renames: List<RosterRename> = fold_list(xs: rows, empty: [], cons: fn(acc, r) {
     match roster_rename_target(r: r) {
       Present { value: t } => list_snoc_item(xs: acc, item: RosterRename { row: r, to: t })
@@ -4589,13 +4590,17 @@ fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar
   let owners: List<RosterRenameOwner> = list_map(xs: renames, f: fn(x) { RosterRenameOwner { rename: x, owner: roster_companion_owner(row: x.row, to: x.to, reads: home_reads) } })
   let owner_modules = roster_owner_modules(owners: owners)
   let reads = roster_modules_read_into(reads: home_reads, names: owner_modules, prepared: prepared, lex: lex)
-  let closures = roster_homes_closures_read(homes: owner_modules, bindings: roster_repository_bindings(root: ""))
-  list_map(xs: owners, f: fn(p) {
-    match p.owner {
-      OwnerUnderivable { companion: c } => c
-      OwnerDerived { owner: q } => roster_companion_from_owner(row: p.rename.row, to: p.rename.to, owner: q, reads: reads, closures: closures)
-    }
-  })
+  let homes = roster_distinct(xs: list_map(xs: rows, f: fn(r) { roster_qn_text(qn: r.home) }))
+  let walk = roster_homes_closures_read(homes: roster_distinct(xs: list_append(left: homes, right: owner_modules)), bindings: roster_repository_bindings(root: root))
+  RosterRunWalk {
+    closures: list_map(xs: homes, f: fn(h) { roster_closure_of_home(closures: walk, module: h) }),
+    companions: list_map(xs: owners, f: fn(p) {
+      match p.owner {
+        OwnerUnderivable { companion: c } => c
+        OwnerDerived { owner: q } => roster_companion_from_owner(row: p.rename.row, to: p.rename.to, owner: q, reads: reads, closures: walk)
+      }
+    })
+  }
 }
 
 type RosterRename { row: RosterHeadRow, to: String }
