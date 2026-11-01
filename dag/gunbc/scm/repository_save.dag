@@ -65,6 +65,7 @@ import gunbc.scm.repository_envelope {
   appended_shards_and_rows,
   repository_generation_of_content,
 }
+import std.algebra { map_lookup }
 
 // THE BYTE COUNT IS A MAGNITUDE, NOT A NUMBER, and it is carried as one. `ByteSize` is
 // `std.measure`'s `Measure<Memory, One, Nat>`, the single authority for a quantity of bytes, so

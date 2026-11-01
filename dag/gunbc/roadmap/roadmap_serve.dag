@@ -89,7 +89,7 @@ import gunbc.roadmap.roadmap_task_record { roadmap_task_encode }
 import gunbc.roadmap.roadmap_task_store { RuntimeTaskWrite, roadmap_task_create, RuntimeTaskCommitted, RuntimeTaskReplayed, RuntimeTaskConflict, RuntimeTaskStale, RuntimeTaskChainFull, RuntimeTaskRefused, roadmap_task_capacity, CapacityWithin, CapacityCompactionDue, CapacityFull }
 import std.algebra { trim }
 import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus, Timestamp }
-import extdeps.uri_path { PathParamBinding, path_param_value }
+import extdeps.uri_path { PathParamBinding, path_param_value, uri_query_param }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

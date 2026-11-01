@@ -37,6 +37,7 @@ import gunbc.serving.serving_benchmark_cell_plan { ServingBenchmarkCellPlan, Eng
 import gunbc.serving.serving_benchmark_run_receipt { ServingEngineBuild }
 import gunbc.fleet.fleet_job_principal { job_principal_reading, JobPrincipalAdmitted, JobPrincipalRefused }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_ada_pair_plan }
+import extdeps.http.client { http_client_probe_status_arguments }
 
 // ONE RUN OF serving-benchmark/1 ON ONE SERVING CELL (work item node://adhoc-ffb4b5c7-4a5).
 // `gunbc test //gunbc/instruments:serving-benchmark-run` emits this closure, builds it and runs it on a

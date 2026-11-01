@@ -1,6 +1,7 @@
 module gunbc.file_access
 
 import std.host_text { chars }
+import std.upsert_decision { ObservationVerdict, UpsertClassification, UpsertDecision, Noop, Apply, Refuse }
 
 
 type FileTreeScope {

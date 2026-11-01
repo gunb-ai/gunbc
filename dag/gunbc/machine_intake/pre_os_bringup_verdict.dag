@@ -1,6 +1,6 @@
 module gunbc.machine_intake.pre_os_bringup_verdict
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.measure { ByteSize }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash }
 import std.decl_ref { DeclarationRef }

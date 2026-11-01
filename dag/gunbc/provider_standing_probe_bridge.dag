@@ -1,6 +1,6 @@
 module gunbc.provider_standing_probe_bridge
 
-import std.types { String, NonEmptyStr, Bool, List }
+import std.types { String, NonEmptyStr, Bool, List, list_length }
 import gunbc.provider_standing {
   ProviderStandingBundle,
   ProviderInstallationStanding,

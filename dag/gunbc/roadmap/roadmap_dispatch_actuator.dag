@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_model {
   Dispatchable,
 }
 import gunbc.roadmap.roadmap_spawner { dispatch_brief_template }
-import gunbc.roadmap.roadmap_status { node_title }
+import gunbc.roadmap.roadmap_status { node_title, line_ticket }
 import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, attempt_origin_base_ref, continuation_brief_prefix,
@@ -215,6 +215,12 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_git_worker_subtree_walk_depth,
+  dashboard_ensure_git_shared_repository_posture,
+  dashboard_git_worker_entry_writes_files_in_place,
+  dashboard_git_worker_subtree_chgrp_command,
+  dashboard_git_worker_subtree_chmod_command,
+  dashboard_instance_worker_writable_group_adoption,
+  dashboard_instance_worker_writable_owner,
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
@@ -293,6 +299,7 @@ import gunbc.roadmap.roadmap_dispatch_destination {
   destination_is_this_spawn_tree,
   destination_not_this_spawn_tree_reason,
 }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }

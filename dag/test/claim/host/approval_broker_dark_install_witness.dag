@@ -42,7 +42,7 @@ import gunbc.host.host_effect_realize { RunArgvTransportOutcome, RunArgvTranspor
 import gunbc.host.host_effect { LocalShell, HostEffectTransport, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation }
 import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
-import std.algebra { list_map, non_empty_to_list, Cons, Empty }
+import std.algebra { list_map, non_empty_to_list, Cons, Empty, list_append }
 import std.types { list_length }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal, fleet_posix_operator_user }

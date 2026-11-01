@@ -73,7 +73,7 @@ import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric.fabric_witness_run { witnesses_lane_run_command, witnesses_lane_measurement_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
-import gunbc.required_lanes_gate { required_lanes_gate_stmts }
+import gunbc.required_lanes_gate { required_lanes_gate_stmts, required_lanes_gate_unrenderable_stmts }
 import gunbc.witness.witness_floor_lanes {
   floor_lane_job_id,
   build_lane_job_id,

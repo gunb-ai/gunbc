@@ -43,6 +43,7 @@ import gunbc.runner.runner_microvm_cell_readiness {
   CellReadinessStoreOwnership, StoreRootOwned, StoreNotRootOwned,
   CellReadinessWrite, CellReadinessWriteResult, WriteAccepted, apply_cell_readiness_write, record_of_write,
   record_cell,
+  write_cell,
 }
 
 data runner_microvm_cell_readiness_store_disposition: ConstructionMechanism = SingleAuthority

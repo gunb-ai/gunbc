@@ -27,6 +27,7 @@ import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_serving_unit_compatibility,
   HarnessUnitsIdentical, HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
 }
+import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 
 // A SERVING RECIPE IS ONE JOINT FACT: which model artifact, on which engine build, needs which
 // cards, how much disk, which cache tiers, started from where, answering at what rate. It was a
