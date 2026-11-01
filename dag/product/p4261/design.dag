@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Micrometer }
 import product.placement_supply { PhysicalAssetIdentity }
+import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.types { ElectronicComponentRow }
 import product.electrical.carrier_phase { CarrierPhaseObservation, CarrierTransitionObservation, SwitchPoleClosure }
 import extdeps.connector.amphenol_g97v22332hr { g97v22332hr }
@@ -11,7 +12,13 @@ import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalDe
 import product.electrical.source_draw { SourceDrawObservation }
 import product.electrical.bench_session { BenchRecord }
 import product.electrical.continuity { ContinuityObservation, DiodeModeObservation, EvidenceRef }
-import product.electrical.identification { InstalledComponent, names }
+import product.electrical.identification {
+  InstalledComponent,
+  names,
+  pad_terminal_name,
+  pin_terminal_name,
+  regulator_pins,
+}
 import product.electrical.investigation_hypothesis { InvestigationHypothesis }
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS OBSERVED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
@@ -268,3 +275,12 @@ type PhotographicSpan {
   tolerance_tenths_mm: Nat
   basis: EvidenceRef
 }
+
+data converter_pin_terminals: List<NonEmptyStr> = map(regulator_pins(row: mp2333cgtl), p => pin_terminal_name(number: p.number, name: p.name))
+
+// U100's leads as the operator counted them on 2026-10-23, the pin-1 dot's side to the right, each row
+// from the bottom up; the inductor's pads as they lay that day, left and right, which of the two is
+// nearer U4 unrecorded.
+data u100_lead_terminals: List<NonEmptyStr> = ["dot-side lead, bottom", "dot-side lead, second from bottom", "dot-side lead, third from bottom", "dot-side lead, top", "far-side lead, bottom", "far-side lead, second from bottom", "far-side lead, third from bottom", "far-side lead, top"]
+
+data footprint_pad_terminals: List<NonEmptyStr> = map(regulator_pins(row: mp2333cgtl), p => pad_terminal_name(number: p.number, name: p.name))

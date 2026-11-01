@@ -3,6 +3,7 @@ module product.p4261.report
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
+  ampere_count,
   Micrometer,
   micrometer,
   micrometer_count,
@@ -57,6 +58,7 @@ import extdeps.electronic_component.types {
   ShiftRegisterSpec,
   SupplyInput,
   SupplyOrReturn,
+  SwitchingRegulatorSpec,
   TemperatureSensorSpec,
   translator_pin_standing,
   TranslatorSupplyOrReturn,
@@ -90,10 +92,12 @@ import product.electrical.bench_session {
   pair_polarity_text,
   pair_range_standing,
   pair_range_text,
+  PartRemoved,
   ProbeAttachment,
   resistance_text,
   ResistanceObservation,
   thermal_interface_text,
+  ThermalInterfaceChanged,
   valued_ohms,
 }
 import product.electrical.continuity {
@@ -176,6 +180,7 @@ import product.p4261.e1 {
   e1_u5_2,
   e1_vector_all_on,
   p4261_enable_network_hypothesis,
+  p4261_near_4r7_converter_hypothesis,
 }
 import product.p4261.readings {
   AccessPointUnseparated,
@@ -419,11 +424,18 @@ fn j68_shape_text(layout: CarrierLayoutObservation) -> String {
 }
 
 fn alteration_text(a: AssetAlteration) -> String {
-  join([
-    a.key as String, ": ", component_text(c: a.part), " had ", thermal_interface_text(t: a.removed), " removed",
-    match a.applied { Present { value: t } => join([" and ", thermal_interface_text(t: t), " applied"], ""), Absent => ", and no refit is yet reported" },
-    " (", evidence_ref_text(e: a.evidence), ")",
-  ], "")
+  match a.change {
+    ThermalInterfaceChanged { removed, applied } => join([
+      a.key as String, ": ", component_text(c: a.part), " had ", thermal_interface_text(t: removed), " removed",
+      match applied { Present { value: t } => join([" and ", thermal_interface_text(t: t), " applied"], ""), Absent => ", and no refit is yet reported" },
+      " (", evidence_ref_text(e: a.evidence), ")",
+    ], "")
+    PartRemoved { refitted } => join([
+      a.key as String, ": ", component_text(c: a.part), " was lifted off the board",
+      if refitted { " and refitted" } else { " and not refitted, so its footprint is bare and readings there are of the board without it" },
+      " (", evidence_ref_text(e: a.evidence), ")",
+    ], "")
+  }
 }
 
 fn alterations_text(layout: CarrierLayoutObservation) -> String {
@@ -1007,7 +1019,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     ". ", j24_text(layout: layout),
     ". ", j68_shape_text(layout: layout),
     ". ", alterations_text(layout: layout),
-    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis),
+    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis), ". ", hypothesis_text(h: p4261_near_4r7_converter_hypothesis),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
 }
@@ -1051,6 +1063,7 @@ fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking:
     ProgrammableLogicSpec { logic: _ } => []
     RootOfTrustSpec { root_of_trust: _ } => []
     SerialFlashSpec { flash: _ } => []
+    SwitchingRegulatorSpec { regulator: _ } => []
   }
 }
 
@@ -1184,6 +1197,7 @@ fn family_spec_text(row: ElectronicComponentRow) -> String {
     ProgrammableLogicSpec { logic: _ } => ""
     RootOfTrustSpec { root_of_trust: _ } => ""
     SerialFlashSpec { flash: _ } => ""
+    SwitchingRegulatorSpec { regulator } => join([" (synchronous step-down converter, ", millivolt_text(n: millivolt_count(v: regulator.input.minimum)), " to ", millivolt_text(n: millivolt_count(v: regulator.input.maximum)), " in, ", to_string(ampere_count(a: regulator.continuous_output_current)), " A, ", to_string(count(regulator.pins)), " pins)"], "")
   }
 }
 

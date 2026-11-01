@@ -40,6 +40,7 @@ import extdeps.electronic_component.types {
   SerialFlashSpecification,
   ShiftRegisterSpec,
   ShiftRegisterSpecification,
+  SwitchingRegulatorSpec,
   TemperatureSensorSpec,
   ThresholdWindow,
   TvsDiodeSpec,
@@ -623,6 +624,7 @@ fn mosfet_of(c: InstalledComponent) -> MosfetSpecification? {
       ProgrammableLogicSpec { logic: _ } => Absent
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
+      SwitchingRegulatorSpec { regulator: _ } => Absent
     }
   }
 }
@@ -643,6 +645,7 @@ fn controller_of(c: InstalledComponent) -> HotSwapControllerSpecification? {
       ProgrammableLogicSpec { logic: _ } => Absent
       RootOfTrustSpec { root_of_trust: _ } => Absent
       SerialFlashSpec { flash: _ } => Absent
+      SwitchingRegulatorSpec { regulator: _ } => Absent
     }
   }
 }

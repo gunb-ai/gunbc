@@ -8,6 +8,8 @@ import extdeps.electronic_component.types {
   DrainSourceMaximum,
   ElectronicComponentRow,
   FuseInterruptRating,
+  RegulatorPin,
+  SwitchingRegulatorSpec,
   TvsReverseStandoff,
   voltage_withstand,
   VoltageWithstand,
@@ -114,6 +116,28 @@ fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
   }
+}
+
+// A converter pin's terminal is named from its row, so a reading and the row join on one spelling.
+fn pin_terminal_name(number: Nat, name: NonEmptyStr) -> NonEmptyStr {
+  join(["pin ", to_string(number), " (", name as String, ")"], "") as NonEmptyStr
+}
+
+fn regulator_pins(row: ElectronicComponentRow) -> List<RegulatorPin> {
+  match row.specification {
+    SwitchingRegulatorSpec { regulator } => regulator.pins
+    _ => []
+  }
+}
+
+// THE BARE FOOTPRINTS ARE THEIR OWN POINTS. A pad read with its part lifted is a different physical
+// state from the lead read with the part fitted, so each lifted converter's footprint is a component of
+// its own (FootprintUnpopulated), its pads named from the row's pin order like the leads were, and every
+// reading at it is ordered after the lift. Nothing in the record joins a pad to the lead that sat on it,
+// so no netlist combines the intact board's readings with the bare footprint's by terminal identity;
+// selecting readings by physical state is the follow-up change the split lane owns.
+fn pad_terminal_name(number: Nat, name: NonEmptyStr) -> NonEmptyStr {
+  join(["pad ", to_string(number), " (", name as String, ")"], "") as NonEmptyStr
 }
 
 fn identification_text(i: ComponentIdentification) -> String? {

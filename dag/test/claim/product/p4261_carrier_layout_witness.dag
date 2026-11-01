@@ -5,7 +5,8 @@ import std.nat { Nat }
 import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt, millivolt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
-import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap }
+import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin }
+import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
@@ -67,7 +68,12 @@ import product.electrical.bench_session {
   RangeUnrecorded,
   MeterRange,
   RangeFullScale,
+  AutoRanging,
   StabilityUnrecorded,
+  KeptMoving,
+  HeldSteady,
+  ThermalInterfaceChanged,
+  PartRemoved,
   VoltageValue,
   ReadAbout,
   ReadBelow,
@@ -125,6 +131,7 @@ import product.electrical.continuity {
   junction_between,
 }
 import product.electrical.identification {
+  FootprintUnpopulated,
   identification_text,
   IdentifiedByMarking,
   InstalledComponent,
@@ -132,6 +139,8 @@ import product.electrical.identification {
   MarkingReading,
   MarkingSharedByMakers,
   MarkingUnresolved,
+  pin_terminal_name,
+  regulator_pins,
   shared_withstand,
 }
 import product.p4261.design {
@@ -146,10 +155,12 @@ import product.p4261.design {
   MeasuredBoard,
   RowSide,
   SideUnrecorded,
+  u100_lead_terminals,
   WholeBoardPhotographed,
 }
 import product.p4261.bench { inductor_pad_far_u4, inductor_pad_near_u4, inductor_pad_unrecorded }
 import product.p4261.e1 {
+  e1_after_lift_rail_resistances,
   e1_after_short_resistances,
   e1_back_cluster,
   e1_beige_top,
@@ -158,6 +169,10 @@ import product.p4261.e1 {
   e1_bridge_incident,
   e1_c10,
   e1_c12,
+  e1_converter_lead_resistances,
+  e1_converter_near,
+  e1_converter_near_footprint,
+  e1_converter_pair_resistances,
   e1_d2,
   e1_d2_far,
   e1_d2_near,
@@ -172,6 +187,8 @@ import product.p4261.e1 {
   e1_f300,
   e1_f300_one,
   e1_f302_one,
+  e1_footprint_before_cleaning_resistances,
+  e1_footprint_resistances,
   e1_front_chain_resistances,
   e1_ground_pad,
   e1_ground_ref,
@@ -236,7 +253,9 @@ import product.p4261.e1 {
   e1_third_can,
   e1_transitions,
   e1_u100,
+  e1_u100_lead_resistances,
   e1_u104,
+  e1_u10p2_lift,
   e1_u1_p5,
   e1_u21,
   e1_u2_2,
@@ -269,11 +288,18 @@ import product.p4261.e1 {
   e1_w4_end,
   e1_y50,
   p4261_e1_layout,
+  p4261_near_4r7_converter_hypothesis,
 }
 import product.p4261.k1 {
   k1_200,
   k1_beige,
+  k1_converter_far,
+  k1_converter_lead_resistances,
+  k1_converter_near,
+  k1_converter_near_footprint,
+  k1_converter_pair_resistances,
   k1_design,
+  k1_footprint_resistances,
   k1_inductor_volts_at_40ma,
   k1_j30,
   k1_j30_volts_at_40ma,
@@ -282,14 +308,19 @@ import product.p4261.k1 {
   k1_l_2r2,
   k1_l_4r7_far,
   k1_l_4r7_near,
+  k1_l_4r7_near_pad_resistances,
   k1_l_4r7_near_resistance,
   k1_measured,
+  k1_near_converter_lead_resistances,
   k1_phases,
   k1_pin22_point,
   k1_resistances,
   k1_return,
   k1_ringed_via,
   k1_transitions,
+  k1_u100,
+  k1_u100_lead_resistances,
+  k1_u10p2_lift,
   k1_u1_p5,
   p4261_k1_layout,
 }
@@ -1688,6 +1719,20 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
 // end, and its far end joins the traced point near U2_P5 but only links, at about 2 kohm, beyond it.
 // The via on lead b's node carries its two energized readings, and its reported 0.0 to lead b joins
 // it only on the baselined copy. The K1 renders its own, and the K1 with nothing measured renders none.
+// Since the pair readings of 2026-10-31 and the checks of 2026-11-01, reading every reported zero as a
+// join makes the live E1 record contradict itself at exactly six readings, every one a non-zero reading
+// at a converter lead whose node a zero joins to the return: SW to the return at 20 ohm and VIN to the
+// return at 10 and about 15 ohm, where SW to its pad, VIN to SW, VIN to the pad and the pad to the
+// return all read 0; and BST to SW open plus BST to the return over range and 8.4 Mohm, where the first
+// sweep's BST read 0 to the return. That reading is the baselined copy's, not the live netlist's: the
+// live record has no baseline, so product.electrical.measured_netlist joins none of these zeros and holds
+// no contradiction among them. A seventh appears in the baselined copy only: the rail's about 1 ohm
+// after the converter's lift (e1_after_lift_rail_resistances) sits inside the node the pre-lift zeros make
+// of the inductor's pad and the return, a reading from another physical state combined by the copy's
+// asset-only selection, the case the state-selection follow-up separates. The converter hypothesis reads
+// the BST group as one first-sweep
+// reading every later one disagrees with and the other as near-zero figures beside true zeros, assigning
+// no cause; nothing here reconciles them.
 test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
   let live = board_netlist(b: e1_measured)
   let net = board_netlist(b: baselined_board(b: e1_measured))
@@ -1719,7 +1764,12 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && one_node(net: net, a: e1_q301_resistor_far, b: e1_route_near_u2) && !one_node(net: net, a: e1_q301_resistor_far, b: e1_route_toward_j1)
     && count(filter(e1_bench_record.voltages, o => terminal_ref_equal(a: o.at, b: e1_q301_b_via))) == 2
     && one_node(net: net, a: e1_q301_b_via, b: e1_q301_lead_b) && !one_node(net: live, a: e1_q301_b_via, b: e1_q301_lead_b)
-    && count(filter(net.links, l => !is_between(l: l))) == 0
+    && count(filter(net.links, l => !is_between(l: l))) == 7
+    && count(filter(net.links, l => !is_between(l: l) && after_key(o: link_reading(l: l), key: e1_u10p2_lift.key))) == 1
+    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(SW)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref) && match valued_ohms(o: link_reading(l: l)) { Present { value: v } => v == 20, Absent => false })) == 1
+    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref) && match valued_ohms(o: link_reading(l: l)) { Present { value: v } => v == 10 || v == 15, Absent => false })) == 2
+    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(BST)") && (link_reading(l: l).second.terminal as String).contains("(SW)"))) == 1
+    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(BST)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref))) == 2
     && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: unmeasured_k1()).contains("no board measured, so no measured netlist")
@@ -2230,7 +2280,9 @@ fn supplied_pin8_standing(rs: List<ResistanceObservation>) -> PairRangeStanding 
 // terminals and its marking unresolved, the bare footprint below it with two. Supplied on the pin 8
 // pair: 1000 and 1100 ohm on two ranges hold; 1000 and 2001 move, 1000 and 2000 do not (the factor is
 // two, exclusive); a value with its range unrecorded is not counted, so one valued range reads as one;
-// no readings read nothing. U55 is a sixteen-terminal MarkingCandidate for TI's SN74AVC4T774 (RSV): it
+// an auto-ranging value is a value with no range, so it neither counts as a range nor moves the extrema
+// (100 ohm on two recorded ranges beside 1000 ohm auto-ranging holds at 100), and a pair valued only
+// while auto-ranging has no reading on a recorded range; no readings read nothing. U55 is a sixteen-terminal MarkingCandidate for TI's SN74AVC4T774 (RSV): it
 // credits no identified row, and its pins read under the candidate pinout, said so: 13 VCCB and 16 DIR2
 // are supply and control, 7 OE control, 12 B1 and 1 A1 the two ends of channel 1, 17 no pin; U51
 // carries no translator row.
@@ -2264,6 +2316,10 @@ test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2001, range: twenty_k)])) == 0
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 2000, range: twenty_k)])) == 1
     && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: two_k), supplied_ranged(ohms: 9000, range: RangeUnrecorded)])) == 2
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 100, range: two_k), supplied_ranged(ohms: 100, range: twenty_k), supplied_ranged(ohms: 1000, range: AutoRanging)])) == 1
+    && range_bounds(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 100, range: two_k), supplied_ranged(ohms: 100, range: twenty_k), supplied_ranged(ohms: 1000, range: AutoRanging)])) == [100, 100]
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 100, range: two_k), supplied_ranged(ohms: 1000, range: AutoRanging)])) == 2
+    && range_arm(s: supplied_pin8_standing(rs: [supplied_ranged(ohms: 1000, range: AutoRanging), supplied_ranged(ohms: 5000, range: AutoRanging)])) == 3
     && range_arm(s: supplied_pin8_standing(rs: [])) == 3
 }
 
@@ -2366,8 +2422,12 @@ test fn u4_reads_as_a_cyclone_10_gx_fpga() -> Bool {
     && text.contains("U4 reads 10CX085YF672E6G: programmable logic, 85000 logic elements, its configuration volatile and loaded at every power-up over one of 4 schemes (active serial x1 from a EPCQ-L flash; active serial x4 from a EPCQ-L flash; Avalon streaming from a host; JTAG download); its user pins are weak pull-ups if its nIO_PULLUP strap enables them, else high impedance until it is configured, so whether it drives anything is read at CONF_DONE and user mode at INIT_DONE where enabled; its power-on reset also holds until VCCBAT is present")
     && u4_configuration_text(layout: without).contains("U4 is not a component of this carrier's observation")
     && carrier_input_reading(layout: p4261_e1_layout).contains("read at CONF_DONE")
-    && count(e1_measured.bench.alterations) == 1
-    && all(e1_measured.bench.alterations, a => match a.applied { Present { value: InterfaceUnstated } => true, _ => false })
+    && count(e1_measured.bench.alterations) == 2
+    && count(filter(e1_measured.bench.alterations, a => match a.change { ThermalInterfaceChanged { removed: _, applied: Present { value: InterfaceUnstated } } => true, _ => false })) == 1
+    && count(filter(e1_measured.bench.alterations, a => match a.change { PartRemoved { refitted } => !refitted && component_identity_eq(a: a.part, b: e1_converter_near), _ => false })) == 1
+    && count(k1_measured.bench.alterations) == 1
+    && all(k1_measured.bench.alterations, a => match a.change { PartRemoved { refitted } => !refitted && component_identity_eq(a: a.part, b: k1_converter_near), _ => false })
+    && alterations_text(layout: p4261_k1_layout).contains("2026-11-01 K1 U10_P2 converter lifted: 8-lead converter below the 4R7 nearest U4 (the U10_P2 silkscreen beside it, U100 above), marked BDFP 528 was lifted off the board and not refitted, so its footprint is bare")
     && alterations_text(layout: p4261_e1_layout).contains("2026-10-21 U4 heatsink lifted: U4 had a thermal pad removed and an interface the operator did not state applied")
     && alterations_text(layout: without).contains("U4 had a thermal pad removed")
 }
@@ -2583,10 +2643,129 @@ test fn the_inductor_short_is_an_incident_and_its_readings_follow_it() -> Bool {
     && count(e1_after_short_resistances) == 5 && all(e1_after_short_resistances, o => after_both_incidents(o: o))
     && count(filter(e1_after_short_resistances, o => reads_zero_to_return(o: o))) == 2
     && k1_ohms == 4000
-    && count(k1_measured.bench.resistances) == count(k1_resistances) + 1
+    && count(k1_measured.bench.resistances) == count(k1_resistances) + 1 + count(k1_l_4r7_near_pad_resistances) + count(k1_u100_lead_resistances) + count(k1_converter_lead_resistances) + count(k1_near_converter_lead_resistances) + count(k1_converter_pair_resistances) + count(k1_footprint_resistances)
     && carrier_input_reading(layout: p4261_e1_layout).contains("incident 2026-10-21 inductor short")
     && count(component_of(layout: p4261_e1_layout, c: e1_u21)) == 1 && count(component_of(layout: p4261_e1_layout, c: e1_u69)) == 1
     && all(concat(component_of(layout: p4261_e1_layout, c: e1_u21), component_of(layout: p4261_e1_layout, c: e1_u53)), c => match identified_row(c: c) { Present { value: r } => r.ordering_code == pca9617adp.ordering_code, Absent => false })
     && all(component_of(layout: p4261_e1_layout, c: e1_u100), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
     && count(component_of(layout: p4261_e1_layout, c: e1_u100)) == 1
+}
+
+// THE NEAR-4R7 CONVERTER IS IDENTIFIED ON THE K1, A CANDIDATE ON THE E1, AND READ PIN BY PIN AGAINST
+// ITS ROW. The K1's part reads 'BDFP 528', MPS's code for the MP2333CGTL, so its row is credited; the
+// E1's reads 'DFP 528' with the first glyph unread, so it is a candidate and credits nothing. The pins
+// read are an identity join against the row's pins, each with one reading to the board's return on the
+// auto-ranging meter and its first point typed as inferred (the operator's label stands for a pin
+// through the row's order): drop the SW reading and the join fails. The E1's SW reading kept moving and
+// is hedged, the K1's is a value, and the hypothesis the readings feed is rendered beside the others.
+fn converter_reads_at(rs: List<ResistanceObservation>, c: ComponentInstanceIdentity, p: RegulatorPin) -> List<ResistanceObservation> {
+  filter(rs, o => terminal_ref_equal(a: o.first, b: terminal_ref(component: c, terminal: pin_terminal_name(number: p.number, name: p.name) as TerminalIdentity)))
+}
+fn every_pin_read_once(rs: List<ResistanceObservation>, c: ComponentInstanceIdentity, ret: ElectricalTerminalRef) -> Bool {
+  let pins = regulator_pins(row: mp2333cgtl)
+  count(pins) == 8 && all(pins, p => count(converter_reads_at(rs: rs, c: c, p: p)) == 1
+    && all(converter_reads_at(rs: rs, c: c, p: p), o => terminal_ref_equal(a: o.second, b: ret)
+      && match o.range { AutoRanging => true, RangeFullScale { ohms: _ } => false, RangeUnrecorded => false }
+      && match o.record.first { PointInferred { basis: _ } => true, PointRecorded => false }
+      && match o.record.second { PointRecorded => true, PointInferred { basis: _ } => false }))
+}
+fn pin_reading(rs: List<ResistanceObservation>, name: NonEmptyStr) -> ResistanceObservation? {
+  (filter(rs, o => (o.first.terminal as String).contains(name as String))).first()
+}
+fn lead_read_once_to(rs: List<ResistanceObservation>, c: ComponentInstanceIdentity, t: NonEmptyStr, ret: ElectricalTerminalRef) -> Bool {
+  count(filter(rs, o => terminal_ref_equal(a: o.first, b: terminal_ref(component: c, terminal: t as TerminalIdentity)) && terminal_ref_equal(a: o.second, b: ret))) == 1
+}
+test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
+  let k1_part = component_of(layout: p4261_k1_layout, c: k1_converter_near)
+  let e1_part = component_of(layout: p4261_e1_layout, c: e1_converter_near)
+  let identified = count(k1_part) == 1 && all(k1_part, c => match identified_row(c: c) { Present { value: r } => r.ordering_code == mp2333cgtl.ordering_code, Absent => false })
+    && count(e1_part) == 1 && all(e1_part, c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+    && all(e1_part, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("CANDIDATE Monolithic Power Systems, Inc. MP2333CGTL from the marking 'DFP 528'") })
+    && all(k1_part, c => count(c.terminals) == count(regulator_pins(row: mp2333cgtl)))
+  let complete = every_pin_read_once(rs: e1_converter_lead_resistances, c: e1_converter_near, ret: e1_ground_ref)
+    && every_pin_read_once(rs: k1_converter_lead_resistances, c: k1_converter_far, ret: k1_return)
+    && every_pin_read_once(rs: k1_near_converter_lead_resistances, c: k1_converter_near, ret: k1_return)
+    && !every_pin_read_once(rs: k1_converter_lead_resistances, c: k1_converter_near, ret: k1_return)
+    && !every_pin_read_once(rs: k1_near_converter_lead_resistances, c: k1_converter_far, ret: k1_return)
+    && !every_pin_read_once(rs: filter(e1_converter_lead_resistances, o => !(o.first.terminal as String).contains("(SW)")), c: e1_converter_near, ret: e1_ground_ref)
+    && !every_pin_read_once(rs: e1_converter_lead_resistances, c: k1_converter_near, ret: e1_ground_ref)
+  let sw_e1 = match pin_reading(rs: e1_converter_lead_resistances, name: "(SW)") {
+    Absent => false
+    Present { value: o } => match o.stability { KeptMoving => true, HeldSteady => false, StabilityUnrecorded => false }
+      && match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false }
+      && match valued_ohms(o: o) { Present { value: v } => v == 20, Absent => false }
+      && after_both_incidents(o: o)
+  }
+  let sw_k1 = match pin_reading(rs: k1_converter_lead_resistances, name: "(SW)") {
+    Absent => false
+    Present { value: o } => match valued_ohms(o: o) { Present { value: v } => v == 8000, Absent => false }
+      && match o.order { BeforeIncidents { keys } => count(keys) == 0, AfterIncidents { keys: _ } => false, OrderUnrecorded { relative_to: _ } => false }
+  }
+  let bst = match pin_reading(rs: e1_converter_lead_resistances, name: "(BST)") { Absent => false, Present { value: o } => is_reported_zero(o: o) && !is_at_baseline(o: o) }
+    && match pin_reading(rs: k1_converter_lead_resistances, name: "(BST)") { Absent => false, Present { value: o } => match valued_ohms(o: o) { Present { value: v } => v == 134000, Absent => false } }
+    && match pin_reading(rs: k1_near_converter_lead_resistances, name: "(BST)") { Absent => false, Present { value: o } => match o.display { DisplayOverRange => true, DisplayValue { ohms: _, approximate: _ } => false, DisplayZeroWithoutBaseline { reported: _ } => false, DisplayAtProbeBaseline { shown: _, baseline: _ } => false, DisplayAboveBaseline => false } && match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false } }
+    && match pin_reading(rs: k1_near_converter_lead_resistances, name: "(SW)") { Absent => false, Present { value: o } => match valued_ohms(o: o) { Present { value: v } => v == 8000, Absent => false } }
+  let vin_sw = count(filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(VIN)") && (o.second.terminal as String).contains("(SW)") && is_reported_zero(o: o))) == 1
+    && count(filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(BST)") && (o.second.terminal as String).contains("(SW)") && match o.display { DisplayOverRange => true, DisplayValue { ohms: _, approximate: _ } => false, DisplayZeroWithoutBaseline { reported: _ } => false, DisplayAtProbeBaseline { shown: _, baseline: _ } => false, DisplayAboveBaseline => false })) == 1
+    && all(e1_converter_pair_resistances, o => after_both_incidents(o: o))
+    && count(k1_converter_pair_resistances) == 2
+    && count(filter(k1_converter_pair_resistances, o => is_reported_zero(o: o) && (o.first.terminal as String).contains("(SW)"))) == 1
+    && count(filter(k1_converter_pair_resistances, o => (o.first.terminal as String).contains("(VIN)") && (o.second.terminal as String).contains("(SW)") && match valued_ohms(o: o) { Present { value: v } => v == 13000, Absent => false })) == 1
+    && count(filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(BST)") && terminal_ref_equal(a: o.second, b: e1_ground_ref))) == 2
+    && p4261_near_4r7_converter_hypothesis.claim.contains("VIN reads 0 ohm to the switch node both ways, metallic, where the K1's same converter reads 13 kohm") && p4261_near_4r7_converter_hypothesis.claim.contains("two separate paths to the return")
+  let in_records = vin_sw
+    && count(filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near))) > count(e1_converter_lead_resistances)
+    && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_far))) == count(k1_converter_lead_resistances)
+    && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_near))) == count(k1_near_converter_lead_resistances) + count(k1_converter_pair_resistances)
+    && count(filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near))) == count(e1_converter_lead_resistances) + count(filter(e1_converter_pair_resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near)))
+    && count(component_of(layout: p4261_k1_layout, c: k1_converter_far)) == 1
+    && all(component_of(layout: p4261_k1_layout, c: k1_converter_far), c => match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+  let u100 = count(component_of(layout: p4261_k1_layout, c: k1_u100)) == 1
+    && all(component_of(layout: p4261_e1_layout, c: e1_u100), c => count(c.terminals) == count(u100_lead_terminals) && match identified_row(c: c) { Present { value: _ } => false, Absent => true })
+    && count(u100_lead_terminals) == 8
+    && all(u100_lead_terminals, t => lead_read_once_to(rs: e1_u100_lead_resistances, c: e1_u100, t: t, ret: e1_ground_ref) && lead_read_once_to(rs: k1_u100_lead_resistances, c: k1_u100, t: t, ret: k1_return))
+    && !all(u100_lead_terminals, t => lead_read_once_to(rs: e1_u100_lead_resistances, c: k1_u100, t: t, ret: e1_ground_ref))
+  let reported = carrier_input_reading(layout: p4261_e1_layout).contains("MP2333CGTL (marked BDFP 528), and cleaning its footprint cleared the VIN-SW short")
+    && p4261_near_4r7_converter_hypothesis.claim.contains("which of the two is not distinguished, the lifted part being unread")
+    && p4261_near_4r7_converter_hypothesis.claim.contains("replacing the converter alone has not been shown sufficient")
+    && p4261_near_4r7_converter_hypothesis.claim.contains("U100 is not on the switch node")
+    && any(p4261_near_4r7_converter_hypothesis.sources, x => (x as String).contains("BST 0 / over range"))
+  identified && complete && sw_e1 && sw_k1 && bst && in_records && u100 && reported
+}
+
+// A LIFTED PART'S FOOTPRINT IS ITS OWN STATE. The K1's and the E1's bare footprints are components of their
+// own with eight pad terminals, unpopulated, and every reading at them is ordered after that carrier's lift;
+// no footprint reading sits at a lead's identity, so the intact board's readings and the bare footprint's
+// never share a terminal. The K1's footprint reads VIN to SW at about VIN's and SW's paths to the return in
+// series, and EN's figures are hedged because their unit was inferred.
+fn after_key(o: ResistanceObservation, key: NonEmptyStr) -> Bool {
+  match o.order { AfterIncidents { keys } => any(keys, k => k == key), BeforeIncidents { keys: _ } => false, OrderUnrecorded { relative_to: _ } => false }
+}
+fn footprint_row(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> Bool {
+  count(component_of(layout: layout, c: c)) == 1
+    && all(component_of(layout: layout, c: c), x => count(x.terminals) == 8 && match x.identification { FootprintUnpopulated { evidence: _ } => true, _ => false })
+}
+test fn a_lifted_parts_footprint_is_its_own_state() -> Bool {
+  let k1_at_footprint = filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_near_footprint))
+  let e1_at_footprint = filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near_footprint))
+  let rows = footprint_row(layout: p4261_k1_layout, c: k1_converter_near_footprint) && footprint_row(layout: p4261_e1_layout, c: e1_converter_near_footprint)
+  let ordered = count(k1_at_footprint) == count(k1_footprint_resistances) && all(k1_at_footprint, o => after_key(o: o, key: k1_u10p2_lift.key))
+    && count(e1_at_footprint) == count(e1_footprint_resistances) + count(e1_footprint_before_cleaning_resistances) && all(e1_at_footprint, o => after_key(o: o, key: e1_u10p2_lift.key) && after_both_incidents(o: o))
+    && !any(k1_measured.bench.resistances, o => after_key(o: o, key: k1_u10p2_lift.key) && component_identity_eq(a: o.first.component, b: k1_converter_near))
+  let vin_sw = filter(k1_footprint_resistances, o => (o.first.terminal as String).contains("(VIN)") && (o.second.terminal as String).contains("(SW)"))
+  let figures = count(vin_sw) == 2 && all(vin_sw, o => match valued_ohms(o: o) { Present { value: v } => v == 13300, Absent => false })
+    && count(filter(k1_footprint_resistances, o => (o.first.terminal as String).contains("(EN)") && match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 2
+    && count(e1_footprint_before_cleaning_resistances) == 1 && all(e1_footprint_before_cleaning_resistances, o => is_reported_zero(o: o) && after_key(o: o, key: e1_u10p2_lift.key) && match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })
+    && count(filter(e1_footprint_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 1
+    && all(filter(e1_footprint_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false }), o => terminal_ref_equal(a: o.second, b: terminal_ref(component: e1_l_4r7_near, terminal: inductor_pad_near_u4 as TerminalIdentity)))
+  let e1_vin_lead = filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: o.second, b: e1_ground_ref))
+  let e1_vin_pad = filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: o.second, b: e1_ground_ref))
+  let k1_vin_pad = filter(k1_footprint_resistances, o => (o.first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: o.second, b: k1_return))
+  let separation = count(e1_vin_pad) == 1 && count(k1_vin_pad) == 1
+    && all(e1_vin_pad, o => match valued_ohms(o: o) { Present { value: v } => v >= 1000, Absent => false })
+    && all(e1_vin_lead, o => match valued_ohms(o: o) { Present { value: v } => v <= 30, Absent => false })
+    && count(e1_after_lift_rail_resistances) == 1 && all(e1_after_lift_rail_resistances, o => after_key(o: o, key: e1_u10p2_lift.key) && match valued_ohms(o: o) { Present { value: v } => v <= 10, Absent => false })
+    && count(filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(SW)") && is_reported_zero(o: o))) == 3
+    && count(filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(SW)") && terminal_ref_equal(a: o.second, b: terminal_ref(component: e1_l_4r7_near, terminal: inductor_pad_near_u4 as TerminalIdentity)) && is_reported_zero(o: o) && !is_at_baseline(o: o))) == 1
+  rows && ordered && figures && separation
 }
