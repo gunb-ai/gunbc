@@ -222,7 +222,7 @@ fn rehome_sole_fact(qualified_name: String, facts: List<DeclFact>) -> RehomeFact
 // normalized declaration (rehome_contract_of) and compared with every referenced name resolved to its identity. A
 // contract that cannot be established refuses typed; an incomplete projection is never read as equality.
 fn rehome_facts_verdict(from: DeclFact, to: DeclFact, row: RehomeRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomePairVerdict {
-  if !rehome_kinds_equal(a: from.kind, b: to.kind) {
+  if from.kind != to.kind {
     RehomePairRefused { reason: RehomeKindDiffers }
   } else {
     rehome_contracts_verdict(
@@ -365,45 +365,12 @@ fn rehome_identities(sites: List<ScopedReferenceSite>, home: String, imported: L
 // A DECLARED REPRESENTATION ADMITS A SHAPE DIFFERENCE, NEVER A KIND DIFFERENCE (review 83176): the content_hash comparison
 // is skipped, the kind comparison is not, so any kind mismatch refuses.
 fn rehome_kind_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
-  if rehome_kinds_equal(a: from.kind, b: to.kind) {
+  if from.kind == to.kind {
     RehomePairSame
   } else {
     RehomePairRefused { reason: RehomeKindDiffers }
   }
 }
-
-
-// ItemKind equality by constructor, exhaustive over the closed sum (review 83228).
-fn rehome_kinds_equal(a: ItemKind, b: ItemKind) -> Bool {
-  match a {
-    FnItem =>
-      match b {
-        FnItem => true
-        _ => false
-      }
-    TypeItem =>
-      match b {
-        TypeItem => true
-        _ => false
-      }
-    DataItem =>
-      match b {
-        DataItem => true
-        _ => false
-      }
-    ServiceItem =>
-      match b {
-        ServiceItem => true
-        _ => false
-      }
-    OtherItem =>
-      match b {
-        OtherItem => true
-        _ => false
-      }
-  }
-}
-
 
 // ---- one file: the splices ----------------------------------------------------------------------------------------------
 
