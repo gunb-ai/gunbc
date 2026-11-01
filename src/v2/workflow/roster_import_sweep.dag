@@ -4593,15 +4593,33 @@ fn roster_run_walk(root: String, rows: List<RosterHeadRow>, prepared: PreparedGr
   let reads = roster_modules_read_into(reads: home_reads, names: owner_modules, prepared: prepared, lex: lex)
   let homes = roster_distinct(xs: list_map(xs: rows, f: fn(r) { roster_qn_text(qn: r.home) }))
   let walk = roster_homes_closures_read(homes: roster_distinct(xs: list_append(left: homes, right: owner_modules)), bindings: roster_repository_bindings(root: root))
+  let home_closures = list_map(xs: homes, f: fn(h) { roster_closure_of_home(closures: walk, module: h) })
   RosterRunWalk {
-    closures: list_map(xs: homes, f: fn(h) { roster_closure_of_home(closures: walk, module: h) }),
+    closures: home_closures,
     companions: list_map(xs: owners, f: fn(p) {
       match p.owner {
         OwnerUnderivable { companion: c } => c
-        OwnerDerived { owner: q } => roster_companion_from_owner(row: p.rename.row, to: p.rename.to, owner: q, reads: reads, closures: walk)
+        OwnerDerived { owner: q } =>
+          // An owner is read off its home's own imports, so it is inside that home's closure by construction; one outside every
+          // home closure contradicts that, and refuses here rather than walking on.
+          if roster_in_any_closure(closures: home_closures, module: roster_dotted_init(q: q)) {
+            roster_companion_from_owner(row: p.rename.row, to: p.rename.to, owner: q, reads: reads, closures: walk)
+          } else {
+            CompanionUnderivable { call: p.rename.row.call, to: p.rename.to, detail: roster_dotted_init(q: q) + " is outside every home closure of the run" }
+          }
       }
     })
   }
+}
+
+fn roster_in_any_closure(closures: List<RosterHomeClosure>, module: String) -> Bool {
+  fold_list(xs: closures, empty: false, cons: fn(found, c) {
+    found || match c {
+      RosterClosureRead { home: _, modules: ms } => roster_contains(xs: ms, name: module)
+      // An unread closure is unknown, not outside: the companion carries it and the cycle check refuses it as unread.
+      RosterClosureUnread { home: _ } => true
+    }
+  })
 }
 
 type RosterRename { row: RosterHeadRow, to: String }
