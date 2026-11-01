@@ -20,8 +20,8 @@ import gunbc.fleet.fleet_intent { ComputeHost, fleet_intent_known_hosts }
 // DESIGN §3c (ruling gunbc.design_ruling dependencies_are_admitted_by_their_consumer): a dependency
 // is admitted by its consumer and everything else is not admitted. A board carries far more than a
 // host uses, and each enabled function is integration work whether or not anything uses it -- srv1's
-// BMC graphics link served nothing, and its link errors drove the board's firmware-first PCIe error
-// handler into hangs that took the host down. So admission is a match with no default arm: a new
+// BMC graphics link served nothing, and the host hung while the board's firmware-first PCIe error
+// handler was taking that link's errors. So admission is a match with no default arm: a new
 // BoardFunction does not compile until it is stated here, and the admitted arm cannot be written
 // without the declaration that consumes it. Admission is held board-wide here; a function only one
 // host uses (srv4's X550 port, say) is that host's exception, recorded with its consumer when the
@@ -39,7 +39,7 @@ fn board_function_admission(f: BoardFunction) -> BoardFunctionAdmission {
       reason: "No fleet consumer: automation reaches a host over SSH and the BMC's serial console, never its video. The KVM picture is an operator convenience, brought up by its own workflow when someone needs it, not a standing dependency of every host.",
     }
     PcieErrorFirmwareFirstHandling => FunctionNotAdmitted {
-      reason: "No fleet consumer needs the firmware to take PCIe errors before the OS. The OS's own AER reports them where the fleet can count and alert on them; firmware-first adds a handler the fleet cannot observe, and on srv1 that handler hung the host.",
+      reason: "No fleet consumer needs the firmware to take PCIe errors before the OS. The OS's own AER reports them where the fleet can count and alert on them; firmware-first adds a handler the fleet cannot observe. srv1's hangs occurred while that handler was taking link errors; whether the handler itself stalled is not established, and the reason to switch it off does not depend on it.",
     }
   }
 }
