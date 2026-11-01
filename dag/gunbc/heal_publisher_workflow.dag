@@ -31,7 +31,7 @@ import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
 import gunbc.ci.ci_materialization { step_display_name }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
-import gunbc.ci.repository_ci_profile { gunbc_heal_publisher_job, HealPublisherPolicy, gunbc_heal_job }
+import gunbc.ci.repository_ci_profile { HealPublisherPolicy, RepositoryCiProfile, repository_ci_profile_refusal }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.heal_workflow {
   heal_job_holds_publication_credential, step_uses_action, job_permissions_carry_write
@@ -433,18 +433,20 @@ fn publisher_job_executes_candidate_code(job: HealPublisherPolicy) -> Bool {
   any(heal_publisher_job(job: job).steps, s => checkout_step_names_another_subject(step: s))
 }
 
-// The candidate side of the boundary is the heal row of THIS repository's profile, read by matching: a
+// The candidate side of the boundary is the heal row OF THE ADMITTED PROFILE, read by matching: a
 // repository with no heal job has no candidate, and the boundary is then vacuous rather than assumed safe.
-fn publication_candidate_holds_publication_credential() -> Bool {
-  match gunbc_heal_job() {
+// It took the profile rather than the job because the candidate is the OTHER job in the same row - reading
+// gunbc's global heal row here would let the publisher admit one repository and boundary-check another.
+fn publication_candidate_holds_publication_credential(profile: RepositoryCiProfile) -> Bool {
+  match profile.heal {
     Absent => false
     Present { value: policy } => heal_job_holds_publication_credential(job: policy)
   }
 }
 
-fn heal_publication_phases_isolated(job: HealPublisherPolicy) -> Bool {
+fn heal_publication_phases_isolated(job: HealPublisherPolicy, profile: RepositoryCiProfile) -> Bool {
   phases_are_isolated(s: phase_isolation(
-    candidate_holds_publication_credential: publication_candidate_holds_publication_credential(),
+    candidate_holds_publication_credential: publication_candidate_holds_publication_credential(profile: profile),
     candidate_credential_detail: "the heal candidate job carries a write grant or federates to a cloud identity",
     publication_executes_candidate_code: publisher_job_executes_candidate_code(job: job),
     publication_execution_detail: "the publisher job checks out a ref or repository other than its own default-branch commit"
@@ -473,11 +475,18 @@ fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutc
 }
 
 fn heal_publisher_workflow_yml_for(profile: RepositoryCiProfile) -> HealPublisherWorkflowGenerationOutcome {
-  // THE ROW IS ADMITTED BEFORE A BYTE IS RENDERED: an emitter that rendered a job the row does not admit would commit a workflow the repository's own data refuses - a runner group no census declared, a heal with nothing to publish it, a duration that is not positive.
-  if gunbc_profile_is_refused() {
-    return HealPublisherWorkflowGenerationRefused { reason: gunbc_profile_refusal_reason() }
+  // THE ROW IT WAS HANDED IS ADMITTED BEFORE A BYTE IS RENDERED, and it is the SAME row the builders read:
+  // the publisher's job, its trigger check, its candidate artifact and the heal row the publication boundary
+  // inspects all come from this one profile, so an emitter that admitted one repository and rendered another
+  // could not be built. One match, on the parameter, at the entrypoint.
+  match repository_ci_profile_refusal(profile: profile) {
+    Present { value: reason } => HealPublisherWorkflowGenerationRefused { reason: reason as String }
+    Absent => heal_publisher_workflow_yml_of_admitted_row(profile: profile)
   }
+}
 
+// THE RENDER PATH, REACHABLE ONLY FOR AN ADMITTED ROW.
+fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> HealPublisherWorkflowGenerationOutcome {
   match profile.publisher {
     Absent => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_no_job_refusal_reason }
     Present { value: job } =>
@@ -489,7 +498,7 @@ fn heal_publisher_workflow_yml_for(profile: RepositoryCiProfile) -> HealPublishe
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       HealPublisherWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if !heal_publication_phases_isolated(job: job) {
+      if !heal_publication_phases_isolated(job: job, profile: profile) {
         HealPublisherWorkflowGenerationRefused { reason: heal_publisher_isolation_refusal_reason }
       } else if !heal_publisher_capability_closure_holds() {
         HealPublisherWorkflowGenerationRefused { reason: heal_publisher_capability_refusal_reason }

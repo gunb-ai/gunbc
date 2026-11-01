@@ -511,21 +511,123 @@ fn profile_runner_group_is_declared(target: CiRunnerTarget) -> Bool {
   }
 }
 
-// THE ADMISSION THE FOUR GUNBC EMITTERS CALL BEFORE THEY RENDER A BYTE. Two reads of the one check, so an
-// emitter's refusal carries the row's own reason instead of a second copy of the rules: a profile that
-// pins a job to a runner group no census declared, declares a heal job with no publisher to publish it,
-// gives a publisher a workflow that is not this repository's, or carries a duration that is not positive
-// is refused rather than rendered.
-fn gunbc_profile_is_refused() -> Bool {
-  match repository_ci_profile_refusal(profile: gunbc_repository_ci_profile()) {
-    Present { value: _ } => true
-    Absent => false
+// THE ADMISSION THE FOUR GUNBC EMITTERS CALL BEFORE THEY RENDER A BYTE is `repository_ci_profile_refusal`
+// applied to THE ROW THEY ARE ABOUT TO RENDER - not to a row rebuilt from this module's own global. An
+// earlier shape here read `gunbc_repository_ci_profile()` inside the emitters' admission while the builders
+// rendered the profile argument, so an emitter could refuse one repository and commit another's workflow:
+// the admission proved nothing about the bytes. Each emitter now matches the check once, at its entrypoint,
+// on the profile it was handed, and threads that same profile into every builder. So there is no
+// gunbc-shaped wrapper around the check to call by mistake, and the only way an emitter can render is to
+// have admitted the very row it renders.
+//
+// THE ROW UPDATERS A TEST USES TO BREAK ONE FIELD AT A TIME. A control that builds a whole invalid row
+// from scratch cannot tell "the emitter refused the undeclared runner group" from "the emitter refused
+// because the row had no heal job": the second refusal looks like the first. These four take a VALID row
+// - a repository's own, in the witness's case - and change only the runner of one declared job, so the
+// difference between the positive and the negative case is the fact under test. Each returns the row
+// unchanged when that job is not declared at all; the caller asks the row first, because a control that
+// silently mutated nothing would pass by proving nothing.
+fn profile_with_roster_runner(profile: RepositoryCiProfile, runner: CiRunnerTarget) -> RepositoryCiProfile {
+  RepositoryCiProfile {
+    repository: profile.repository,
+    default_branch: profile.default_branch,
+    roster: RosterGate {
+      workflow_file: profile.roster.workflow_file,
+      workflow_name: profile.roster.workflow_name,
+      job_id: profile.roster.job_id,
+      job_display_name: profile.roster.job_display_name,
+      required_context: profile.roster.required_context,
+      runner: runner,
+      timeout: profile.roster.timeout,
+      source_roots: profile.roster.source_roots,
+      schedule: profile.roster.schedule,
+      memory_budget: profile.roster.memory_budget,
+      route: profile.roster.route,
+      annotation: profile.roster.annotation
+    },
+    public_seed: profile.public_seed,
+    heal: profile.heal,
+    drift: profile.drift,
+    publisher: profile.publisher
   }
 }
 
-fn gunbc_profile_refusal_reason() -> String {
-  match repository_ci_profile_refusal(profile: gunbc_repository_ci_profile()) {
-    Present { value: reason } => reason as String
-    Absent => ""
+fn profile_with_heal_runner(profile: RepositoryCiProfile, runner: CiRunnerTarget) -> RepositoryCiProfile {
+  match profile.heal {
+    Absent => profile
+    Present { value: job } => RepositoryCiProfile {
+      repository: profile.repository,
+      default_branch: profile.default_branch,
+      roster: profile.roster,
+      public_seed: profile.public_seed,
+      heal: Present {
+        value: HealWorkflowPolicy {
+          workflow_file: job.workflow_file,
+          workflow_name: job.workflow_name,
+          job_id: job.job_id,
+          job_display_name: job.job_display_name,
+          runner: runner,
+          timeout: job.timeout
+        }
+      },
+      drift: profile.drift,
+      publisher: profile.publisher
+    }
+  }
+}
+
+fn profile_with_drift_runner(profile: RepositoryCiProfile, runner: CiRunnerTarget) -> RepositoryCiProfile {
+  match profile.drift {
+    Absent => profile
+    Present { value: job } => RepositoryCiProfile {
+      repository: profile.repository,
+      default_branch: profile.default_branch,
+      roster: profile.roster,
+      public_seed: profile.public_seed,
+      heal: profile.heal,
+      drift: Present {
+        value: ProjectionDrift {
+          workflow_file: job.workflow_file,
+          workflow_name: job.workflow_name,
+          job_id: job.job_id,
+          job_display_name: job.job_display_name,
+          runner: runner,
+          timeout: job.timeout,
+          cron: job.cron,
+          check: job.check,
+          seal: job.seal
+        }
+      },
+      publisher: profile.publisher
+    }
+  }
+}
+
+fn profile_with_publisher_runner(profile: RepositoryCiProfile, runner: CiRunnerTarget) -> RepositoryCiProfile {
+  match profile.publisher {
+    Absent => profile
+    Present { value: job } => RepositoryCiProfile {
+      repository: profile.repository,
+      default_branch: profile.default_branch,
+      roster: profile.roster,
+      public_seed: profile.public_seed,
+      heal: profile.heal,
+      drift: profile.drift,
+      publisher: Present {
+        value: HealPublisherPolicy {
+          workflow_file: job.workflow_file,
+          workflow_name: job.workflow_name,
+          job_id: job.job_id,
+          job_display_name: job.job_display_name,
+          runner: runner,
+          timeout: job.timeout,
+          trigger_workflow: job.trigger_workflow,
+          candidate_artifact: job.candidate_artifact,
+          admit: job.admit,
+          publish: job.publish,
+          compose: job.compose
+        }
+      }
+    }
   }
 }

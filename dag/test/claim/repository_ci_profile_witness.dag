@@ -18,6 +18,8 @@ import gunbc.ci.repository_ci_profile {
   DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal,
   fleet_runner_group_target,
   github_hosted_publisher_runner_target,
+  profile_with_roster_runner, profile_with_heal_runner, profile_with_drift_runner,
+  profile_with_publisher_runner,
 }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
@@ -947,50 +949,129 @@ test fn the_four_gunbc_emitters_admit_the_row_before_rendering() -> Bool {
     gate_emitter_admits()
 }
 
-fn unadmitted_row() -> RepositoryCiProfile {
-  mirror_profile_on_group(group: "group-no-census-declared")
+// THE FOUR ADMISSION CONTROLS, ONE PER GUNBC EMITTER.
+//
+// WHY EACH NEGATIVE IS GUNBC'S OWN VALID ROW WITH ONE FIELD BROKEN. A control that hands an emitter a
+// whole foreign row and accepts ANY refusal proves nothing: a mirror-shaped row with no heal job and no
+// cadence is refused for those reasons, and the claim stays green while the emitter admits nothing at all.
+// So each negative is `gunbc_repository_ci_profile()` - a row every one of these emitters renders - with
+// ONE fact changed by the profile module's own updater: the runner of the job that emitter is about to
+// render, pinned to a group no census declares. That is the only conjunct that can refuse these rows, the
+// claim requires the refusal to SAY so, and if the emitter's admission call is deleted the negative renders
+// a workflow and the claim goes red. The claim also asserts the job is declared at all, because an updater
+// on an absent arm changes nothing and a control that mutated nothing would pass by proving nothing.
+data emitter_group_refusal_phrase: String = "runner group that gunbc.runner.runner_group_restriction_ensure does not declare"
+
+fn undeclared_group_runner() -> CiRunnerTarget {
+  // A group name no ensure in gunbc.runner.runner_group_restriction_ensure declares - the same name the
+  // mirror-lane control uses, so one fabricated name is the lie in both controls.
+  fleet_runner_group_target(group: "group-no-census-declared")
+}
+
+fn gate_row_on_undeclared_group() -> RepositoryCiProfile {
+  profile_with_roster_runner(profile: gunbc_repository_ci_profile(), runner: undeclared_group_runner())
+}
+
+fn heal_row_on_undeclared_group() -> RepositoryCiProfile {
+  profile_with_heal_runner(profile: gunbc_repository_ci_profile(), runner: undeclared_group_runner())
+}
+
+fn drift_row_on_undeclared_group() -> RepositoryCiProfile {
+  profile_with_drift_runner(profile: gunbc_repository_ci_profile(), runner: undeclared_group_runner())
+}
+
+fn publisher_row_on_undeclared_group() -> RepositoryCiProfile {
+  profile_with_publisher_runner(profile: gunbc_repository_ci_profile(), runner: undeclared_group_runner())
+}
+
+// THE SHAPE ALL FOUR CONTROLS SHARE: the row is refused BY THE PROFILE CHECK for the group reason, the
+// emitter refuses too and reports the check's own words (not its own paraphrase, not a different
+// conjunct), and gunbc's untouched row still composes through the same emitter.
+fn emitter_refuses_where_the_row_is_refused(
+  row: RepositoryCiProfile,
+  emitter_refused: Bool,
+  emitter_reason: String,
+  emitter_composes_for_gunbc_row: Bool
+) -> Bool {
+  match repository_ci_profile_refusal(profile: row) {
+    Absent => false
+    Present { value: why } =>
+      string_contains(s: why as String, pattern: emitter_group_refusal_phrase) &&
+      emitter_refused &&
+      string_contains(s: emitter_reason, pattern: emitter_group_refusal_phrase) &&
+      string_contains(s: emitter_reason, pattern: why as String) &&
+      emitter_composes_for_gunbc_row
+  }
 }
 
 fn heal_emitter_admits() -> Bool {
-  match heal_workflow_yml_for(profile: unadmitted_row()) {
-    HealWorkflowGenerationRefused { reason: _ } => true
-    HealWorkflowGenerated { content: _ } => false
-  } &&
-    match heal_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
-      HealWorkflowGenerationRefused { reason: _ } => false
-      HealWorkflowGenerated { content: _ } => true
-    }
+  match gunbc_repository_ci_profile().heal {
+    Absent => false
+    Present { value: _ } =>
+      match heal_workflow_yml_for(profile: heal_row_on_undeclared_group()) {
+        HealWorkflowGenerationRefused { reason: r } => emitter_refuses_where_the_row_is_refused(
+          row: heal_row_on_undeclared_group(),
+          emitter_refused: true,
+          emitter_reason: r,
+          emitter_composes_for_gunbc_row: match heal_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
+            HealWorkflowGenerationRefused { reason: _ } => false
+            HealWorkflowGenerated { content: _ } => true
+          }
+        )
+        HealWorkflowGenerated { content: _ } => false
+      }
+  }
 }
 
 fn publisher_emitter_admits() -> Bool {
-  match heal_publisher_workflow_yml_for(profile: unadmitted_row()) {
-    HealPublisherWorkflowGenerationRefused { reason: _ } => true
-    HealPublisherWorkflowGenerated { content: _ } => false
-  } &&
-    match heal_publisher_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
-      HealPublisherWorkflowGenerationRefused { reason: r } => false
-      HealPublisherWorkflowGenerated { content: _ } => true
-    }
+  match gunbc_repository_ci_profile().publisher {
+    Absent => false
+    Present { value: _ } =>
+      match heal_publisher_workflow_yml_for(profile: publisher_row_on_undeclared_group()) {
+        HealPublisherWorkflowGenerationRefused { reason: r } => emitter_refuses_where_the_row_is_refused(
+          row: publisher_row_on_undeclared_group(),
+          emitter_refused: true,
+          emitter_reason: r,
+          emitter_composes_for_gunbc_row: match heal_publisher_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
+            HealPublisherWorkflowGenerationRefused { reason: _ } => false
+            HealPublisherWorkflowGenerated { content: _ } => true
+          }
+        )
+        HealPublisherWorkflowGenerated { content: _ } => false
+      }
+  }
 }
 
 fn drift_emitter_admits() -> Bool {
-  match drift_watch_workflow_yml_for(profile: unadmitted_row()) {
-    DriftWatchWorkflowGenerationRefused { reason: _ } => true
-    DriftWatchWorkflowGenerated { content: _ } => false
-  } &&
-    match drift_watch_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
-      DriftWatchWorkflowGenerationRefused { reason: _ } => false
-      DriftWatchWorkflowGenerated { content: _ } => true
-    }
+  match gunbc_repository_ci_profile().drift {
+    Absent => false
+    Present { value: _ } =>
+      match drift_watch_workflow_yml_for(profile: drift_row_on_undeclared_group()) {
+        DriftWatchWorkflowGenerationRefused { reason: r } => emitter_refuses_where_the_row_is_refused(
+          row: drift_row_on_undeclared_group(),
+          emitter_refused: true,
+          emitter_reason: r,
+          emitter_composes_for_gunbc_row: match drift_watch_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
+            DriftWatchWorkflowGenerationRefused { reason: _ } => false
+            DriftWatchWorkflowGenerated { content: _ } => true
+          }
+        )
+        DriftWatchWorkflowGenerated { content: _ } => false
+      }
+  }
 }
 
 fn gate_emitter_admits() -> Bool {
-  match compiler_gate_yml_for(profile: unadmitted_row()) {
-    WitnessFloorGenerationRefused { reason: _ } => true
+  match compiler_gate_yml_for(profile: gate_row_on_undeclared_group()) {
+    WitnessFloorGenerationRefused { reason: r } => emitter_refuses_where_the_row_is_refused(
+      row: gate_row_on_undeclared_group(),
+      emitter_refused: true,
+      emitter_reason: r,
+      emitter_composes_for_gunbc_row: match compiler_gate_yml_for(profile: gunbc_repository_ci_profile()) {
+        WitnessFloorGenerationRefused { reason: _ } => false
+        WitnessFloorGenerated { content: _ } => true
+      }
+    )
     WitnessFloorGenerated { content: _ } => false
-  } &&
-    match compiler_gate_yml_for(profile: gunbc_repository_ci_profile()) {
-      WitnessFloorGenerationRefused { reason: _ } => false
-      WitnessFloorGenerated { content: _ } => true
-    }
+  }
 }
