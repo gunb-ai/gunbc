@@ -42,7 +42,9 @@ data population_admission_compiled_into_the_comparator_refuses_a_first_time_arti
 
     "REACHED BY: PR #15598 (T7, the instrument-subject fork) adding the first committed wet-actuator artifact since that population acquired the join; five heal runs on the pull request, all identical, with v2-bootstrap green at every head.",
 
-    "TWO NOTES FOR THE NEXT AUTHOR. (a) DESIGN 'Building & checks' says heal repairs two generated populations, judges nothing, and is not a required context; in the workflow as shipped the heal job IS a required check on the pull request, so this class blocks merges -- say so rather than discovering it. (b) The refusal text for a genuinely dropped mirror and for a first-time artifact is the same string, so until the two are distinguished, 'committed mirror is no longer emitted' does not tell the author which way to move.",
+    "THE COST, STATED AT ITS REAL SIZE. `heal-generated-artifacts` is NOT a required status check: the main ruleset requires exactly one (`gh api repos/gunb-ai/gunbc/rules/branches/main` gives required_status_checks = [v2-bootstrap]), which is what DESIGN 'Building & checks' means when it says heal repairs two generated populations, judges nothing, and is not a required context. So this class does not block a merge. What it costs is a DECLARED EXCEPTION AT LANDING: a pull request adding the first committed member of a generated population arrives with heal refusing, the refusal is not this change's defect, and the landing rule that watches heal must be given the class and the receipt before the change lands -- which is the price an author pays, and the reason the mitigation is worth building.",
+
+    "THE REFUSAL TEXT DOES NOT SAY WHICH WAY TO MOVE. A genuinely dropped mirror and a first-time artifact produce the same string, so until the two are distinguished, 'committed mirror is no longer emitted' sends the author to restore an authority that already lists the file.",
   ],
 
   evidence: [
