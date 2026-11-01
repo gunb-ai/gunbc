@@ -1,0 +1,626 @@
+module gunbc.serving.serving_layout
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
+import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.content_hash { identity_frame }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv4 }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
+import gunbc.serving.serving_host_memory {
+  ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread,
+  ServingEngineMemory, ServingDedicatedHostMemory, ServingMemoryVerdict, ServingMemoryFits,
+  serving_host_memory_verdict, serving_reading_bytes_or_zero, serving_reading_assumption, serving_reading_missing,
+  ConversationSnapshotCost, conversation_snapshot_bytes, strata_iq3_s_snapshot_cost, serving_engine_swap_bound,
+  host_6ce85c_serving_memory_observed, srv4_serving_engine_memory, srv4_strata_snapshot_cost,
+}
+
+// HOW A SERVING HOST IS LAID OUT, DERIVED FROM WHAT IT HAS, HOW ITS DEVICES ARE GROUPED, AND WHAT THE ENGINE
+// NEEDS, AGAINST A REQUIREMENT. Three inputs that answer different questions and change for different reasons:
+//
+//   the GRANT     what the host has: usable RAM, the host's own overhead, artifacts resident once and shared
+//                 by every replica (each with the owner that keeps it resident), the swap bound, the devices;
+//   the TOPOLOGY  which devices serve together: one replica (one engine process) per group;
+//   the BACKEND   what one replica of this engine and model needs: per device, per process, per active
+//                 request, per retained conversation, and the largest group it can still retain on.
+//
+// THE REQUIREMENT IS A CEILING, NOT A GUESS. Every conversation a replica admits must stay retainable until it
+// reaches the maximum context, so admission is sized by the snapshot of a maximum-length conversation. How
+// long conversations usually are is a performance question (which topology, how many sessions to place), and
+// it is not an input here.
+//
+// THE RESULT IS A CONFIGURATION AND THREE SEPARATE STANDINGS: whether the budget fits under the assumptions
+// it names, whether the backend supports this topology, and whether this exact configuration has been
+// qualified live. They are different facts, and one is never read as another.
+//
+// UNAVOIDABLE DUPLICATION, named because each costs memory the operator might expect to share. Independent
+// replicas each hold their own dense weights and expert cache in their own device's VRAM (a device serves only
+// the replica it belongs to); each process holds its own base, including the pinned host copy of its
+// max-context KV (Strata: "KV streaming ... the K/V in 1.48 GiB of pinned RAM" per engine on h11), because a
+// replica's attention cache is its own. What is NOT duplicated is the routed-expert file: one locked
+// page-cache copy, owned by the host's strata-expert-lock service and mapped by every replica, counted once.
+
+// ---- THE GRANT
+
+type ServingDevice {
+  device: NonEmptyStr
+  board: DeclarationRef
+  vram: ServingMemoryReading
+}
+
+type ServingSharedArtifact {
+  name: NonEmptyStr
+  bytes: ByteSize
+  owner: NonEmptyStr
+}
+
+// charging: what the per-replica caps assume about which cgroup pays for shared pages. Linux charges a page to
+// the cgroup that first touches it, so a shared artifact counted once in the host budget is only absent from
+// each replica's cap if its owner faulted it in first; a stated, unverified ordering is an assumption.
+type ServingResourceGrant {
+  host: HostIdentity
+  usable_ram: HostUsableRam
+  overhead: HostFixedOverhead
+  shared: List<ServingSharedArtifact>
+  swap_bound: ByteSize
+  devices: List<ServingDevice>
+  charging: List<NonEmptyStr>
+}
+
+// ---- THE TOPOLOGY: one replica per group; a group of two or more devices is one replica across them.
+
+type ServingDeviceGroup {
+  name: NonEmptyStr
+  devices: List<NonEmptyStr>
+}
+
+// ---- THE BACKEND PROFILE
+
+type ServingBackendProfile {
+  backend: NonEmptyStr
+  // VRAM a device needs before its elastic expert cache, and the least expert cache the engine runs with.
+  device_fixed_vram: ServingMemoryReading
+  device_min_elastic_vram: ServingMemoryReading
+  // Host RAM one replica process holds loaded and idle, with nothing retained.
+  replica_base_ram: ServingMemoryReading
+  // Requests a replica serves at once, and the host RAM each needs above the base (including the transient
+  // peak of capturing or restoring a conversation snapshot).
+  active_slots: Nat
+  active_slot_ram: ServingMemoryReading
+  // What one retained conversation costs as a function of its context.
+  retention: ConversationSnapshotCost
+  // The free memory the engine requires inside its own cgroup beside a snapshot before it parks one: a cap
+  // without this headroom makes the engine skip parking (Strata: "skip parking (physical RAM admission; need
+  // N MiB plus F MiB floor ... source cgroup)"), so the retention budget is unusable without it.
+  park_free_floor: ServingMemoryReading
+  // The most devices a replica may span and still retain conversations.
+  max_devices_with_retention: Nat
+  // The longest context a replica is launched to serve.
+  max_context: TokenCount
+}
+
+type ServingRequirement {
+  max_context: TokenCount
+  min_retained_per_replica: Nat
+}
+
+// ---- THE RESULT
+
+type ServingReplicaConfig {
+  group: NonEmptyStr
+  devices: List<NonEmptyStr>
+  memory_max: ByteSize
+  swap_max: ByteSize
+  retention_budget: ByteSize
+  admitted_conversations: Nat
+  active_slots: Nat
+  max_context: TokenCount
+}
+
+type ServingBackendSupport
+  = ServingBackendSupportsTopology
+  | ServingBackendRefusesTopology { group: NonEmptyStr, reason: NonEmptyStr }
+
+// A live qualification is a receipt bound to the configuration it was taken on. Any change to an input that
+// changes the derived configuration leaves the receipt describing a configuration that no longer exists.
+type ServingLiveQualification
+  = ServingLiveUnqualified { obligation: NonEmptyStr }
+  | ServingLiveQualified { receipt: NonEmptyStr, configuration: String }
+
+type ServingLiveStanding
+  = ServingLiveStandingUnqualified { obligation: NonEmptyStr }
+  | ServingLiveStandingQualified { receipt: NonEmptyStr }
+  | ServingLiveRequalificationRequired { qualified: String, derived: String }
+
+type ServingLayoutEvidence {
+  // The configuration's identity: what a live receipt must have been taken on (serving_layout_identity).
+  configuration: String
+  budget: ServingMemoryVerdict
+  assumptions: List<NonEmptyStr>
+  backend: ServingBackendSupport
+  live: ServingLiveStanding
+}
+
+type ServingLayoutRefusal
+  = ServingLayoutInputsUnread { missing: List<NonEmptyStr> }
+  | ServingLayoutNoGroups
+  | ServingLayoutUnknownDevice { group: NonEmptyStr, device: NonEmptyStr }
+  | ServingLayoutDeviceInTwoGroups { device: NonEmptyStr }
+  | ServingLayoutEmptyGroup { group: NonEmptyStr }
+  | ServingLayoutDuplicateGroupName { group: NonEmptyStr }
+  | ServingLayoutContextAboveBackend { required: TokenCount, backend: TokenCount }
+  | ServingLayoutSnapshotCostNotPositive { context: TokenCount }
+  | ServingLayoutBackendCannotRetain { group: NonEmptyStr, devices: Nat, most: Nat }
+  | ServingLayoutDeviceTooSmall { device: NonEmptyStr, needed: ByteSize, has: ByteSize }
+  | ServingLayoutRamShort { needed: ByteSize, available: ByteSize }
+
+type ServingLayoutResult
+  = ServingLayoutConfigured { replicas: List<ServingReplicaConfig>, unallocated_ram: ByteSize, evidence: ServingLayoutEvidence }
+  | ServingLayoutRefused { refusal: ServingLayoutRefusal }
+
+// ---- THE DERIVATION
+
+// THE CAP GRANULE: every derived cap and retention budget is a whole number of these, because a cgroup's
+// MemoryMax is written in MiB. One fact; the rounding and the headroom it costs both read it.
+fn serving_cap_granule() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(count: 1)) }
+
+// HOW MANY TIMES ONE REPLICA'S FIGURES ARE ROUNDED UP to the granule: its retention budget, then its cap
+// (serving_replica_config). Each rounding adds less than one granule, so this many granules bounds the
+// headroom one replica can cost beyond its unrounded need, however many conversations it is dealt.
+fn serving_roundings_per_replica() -> Nat { 2 }
+
+fn serving_mib_ceil(b: Nat) -> ByteSize {
+  let g = byte_size_count(b: serving_cap_granule())
+  byte_size(count: ((b + g - 1) / g) * g)
+}
+
+fn serving_bytes_sum(xs: List<ByteSize>) -> Nat {
+  fold(xs, init: 0, f: (acc, x) => acc + byte_size_count(b: x))
+}
+
+fn serving_grant_ram(g: ServingResourceGrant) -> Nat {
+  match g.usable_ram {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => byte_size_count(b: b)
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b)
+    HostUsableRamUnmeasured { reason: _ } => 0
+  }
+}
+
+fn serving_grant_overhead(g: ServingResourceGrant) -> Nat {
+  match g.overhead {
+    HostFixedOverheadMeasured { bytes: b, provenance: _ } => byte_size_count(b: b)
+    HostFixedOverheadAllowance { bytes: b, reason: _ } => byte_size_count(b: b)
+    HostFixedOverheadUnmeasured { reason: _ } => 0
+  }
+}
+
+fn serving_profile_readings(b: ServingBackendProfile) -> List<ServingMemoryReading> {
+  [b.device_fixed_vram, b.device_min_elastic_vram, b.replica_base_ram, b.active_slot_ram, b.park_free_floor]
+}
+
+fn serving_layout_missing(g: ServingResourceGrant, b: ServingBackendProfile) -> List<NonEmptyStr> {
+  let ram = match g.usable_ram {
+    HostUsableRamUnmeasured { reason: r } => [r]
+    _ => [] as List<NonEmptyStr>
+  }
+  let overhead = match g.overhead {
+    HostFixedOverheadUnmeasured { reason: r } => [r]
+    _ => [] as List<NonEmptyStr>
+  }
+  let backend_figures = flat_map(serving_profile_readings(b: b), x => serving_reading_missing(r: x))
+  concat(ram, concat(overhead, concat(backend_figures, flat_map(g.devices, d => serving_reading_missing(r: d.vram)))))
+}
+
+// What a configuration rests on that no reading has shown at the requirement: allowances, and a retention cost
+// extrapolated past the longest conversation actually parked.
+fn serving_retention_extrapolated(b: ServingBackendProfile, r: ServingRequirement) -> List<NonEmptyStr> {
+  if token_count_value(t: r.max_context) > token_count_value(t: b.retention.observed_up_to) {
+    ["retention cost at the context ceiling is extrapolated: no conversation that long has been parked and read" as NonEmptyStr]
+  } else { [] as List<NonEmptyStr> }
+}
+
+fn serving_layout_assumptions(g: ServingResourceGrant, b: ServingBackendProfile) -> List<NonEmptyStr> {
+  let overhead = match g.overhead {
+    HostFixedOverheadAllowance { bytes: _, reason: r } => [r]
+    _ => [] as List<NonEmptyStr>
+  }
+  let backend_figures = flat_map(serving_profile_readings(b: b), x => serving_reading_assumption(r: x))
+  concat(overhead, concat(backend_figures, flat_map(g.devices, d => serving_reading_assumption(r: d.vram))))
+}
+
+fn serving_device_named(g: ServingResourceGrant, name: NonEmptyStr) -> ServingDevice? {
+  fold(g.devices, init: Absent, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if d.device == name { Present { value: d } } else { Absent }
+  })
+}
+
+fn serving_group_count_with(groups: List<ServingDeviceGroup>, device: NonEmptyStr) -> Nat {
+  fold(groups, init: 0, f: (acc, gr) => acc + filter(gr.devices, d => d == device).length())
+}
+
+// The first structural fault in the topology, in a fixed order: no groups, an empty group, a group name used
+// twice, a device the grant does not have, a device in two groups. Absent when the topology is a partition of
+// granted devices into uniquely named groups. A group name is a replica's name, so two groups under one name
+// would be two replicas one receipt or one binding could not tell apart.
+fn serving_topology_fault(g: ServingResourceGrant, groups: List<ServingDeviceGroup>) -> ServingLayoutRefusal? {
+  if groups.length() == 0 { Present { value: ServingLayoutNoGroups } } else {
+    fold(groups, init: Absent, f: (acc, gr) => match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if gr.devices.length() == 0 { Present { value: ServingLayoutEmptyGroup { group: gr.name } } } else if filter(groups, o => o.name == gr.name).length() > 1 { Present { value: ServingLayoutDuplicateGroupName { group: gr.name } } } else {
+          fold(gr.devices, init: Absent, f: (inner, d) => match inner {
+            Present { value: v } => Present { value: v }
+            Absent => match serving_device_named(g: g, name: d) {
+              Absent => Present { value: ServingLayoutUnknownDevice { group: gr.name, device: d } }
+              Present { value: _ } => if serving_group_count_with(groups: groups, device: d) > 1 { Present { value: ServingLayoutDeviceInTwoGroups { device: d } } } else { Absent }
+            }
+          })
+        }
+    })
+  }
+}
+
+// Per-device fit: every device must hold the backend's fixed VRAM plus the least elastic expert cache.
+fn serving_device_fault(g: ServingResourceGrant, b: ServingBackendProfile) -> ServingLayoutRefusal? {
+  let need = byte_size_count(b: serving_reading_bytes_or_zero(r: b.device_fixed_vram)) + byte_size_count(b: serving_reading_bytes_or_zero(r: b.device_min_elastic_vram))
+  fold(g.devices, init: Absent, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent =>
+      if byte_size_count(b: serving_reading_bytes_or_zero(r: d.vram)) < need {
+        Present { value: ServingLayoutDeviceTooSmall { device: d.device, needed: byte_size(count: need), has: serving_reading_bytes_or_zero(r: d.vram) } }
+      } else { Absent }
+  })
+}
+
+// The backend's retention limit binds every group, whatever the requirement's minimum: serving_allocate deals
+// RAM left over as retained conversations to every replica, so a minimum of zero still allocates retention
+// and is no licence to span more devices than the backend retains across.
+fn serving_retention_fault(groups: List<ServingDeviceGroup>, b: ServingBackendProfile) -> ServingLayoutRefusal? {
+  fold(groups, init: Absent, f: (acc, gr) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if gr.devices.length() > b.max_devices_with_retention { Present { value: ServingLayoutBackendCannotRetain { group: gr.name, devices: gr.devices.length(), most: b.max_devices_with_retention } } } else { Absent }
+  })
+}
+
+// What one replica needs beside its retention budget: its base, its active slots, and the free headroom the
+// engine demands before it will park.
+fn serving_replica_fixed_ram(b: ServingBackendProfile) -> Nat {
+  byte_size_count(b: serving_reading_bytes_or_zero(r: b.replica_base_ram)) + b.active_slots * byte_size_count(b: serving_reading_bytes_or_zero(r: b.active_slot_ram))
+    + byte_size_count(b: serving_reading_bytes_or_zero(r: b.park_free_floor))
+}
+
+fn serving_replica_config(gr: ServingDeviceGroup, b: ServingBackendProfile, r: ServingRequirement, swap: ByteSize, admitted: Nat) -> ServingReplicaConfig {
+  let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
+  let retention = serving_mib_ceil(b: admitted * snapshot)
+  ServingReplicaConfig {
+    group: gr.name, devices: gr.devices,
+    memory_max: serving_mib_ceil(b: serving_replica_fixed_ram(b: b) + byte_size_count(b: retention)),
+    swap_max: swap, retention_budget: retention, admitted_conversations: admitted,
+    active_slots: b.active_slots, max_context: r.max_context,
+  }
+}
+
+// The conversations replica `index` gets when `extra` are dealt one per replica in order after each has `base`.
+fn serving_dealt(index: Nat, replicas: Nat, base: Nat, extra: Nat) -> Nat {
+  let rounds = extra / replicas
+  let remainder = extra - rounds * replicas
+  if index < remainder { base + rounds + 1 } else { base + rounds }
+}
+
+// THE RAM ALLOCATION. The pool is what the host overhead and the shared artifacts leave. Every replica first
+// gets its fixed RAM, its minimum retention and the rounding headroom of its own caps; what remains becomes
+// whole additional max-context conversations, dealt one per replica in group order until none fits; the rest
+// is reported unallocated, not spread. Each replica's cap is then its own need rounded up to the cap granule,
+// which the headroom already covers, so a dealt conversation costs its snapshot and nothing more.
+fn serving_allocate(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutResult {
+  let n = groups.length()
+  let pool_total = serving_grant_ram(g: g)
+  let reserved = serving_grant_overhead(g: g) + serving_bytes_sum(xs: map(g.shared, a => a.bytes))
+  let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
+  let per_replica_min = serving_replica_fixed_ram(b: b) + r.min_retained_per_replica * snapshot + serving_roundings_per_replica() * byte_size_count(b: serving_cap_granule())
+  let needed = reserved + n * per_replica_min
+  if pool_total < needed {
+    ServingLayoutRefused { refusal: ServingLayoutRamShort { needed: byte_size(count: needed), available: byte_size(count: pool_total) } }
+  } else {
+    let extra = (pool_total - needed) / snapshot
+    let configs = fold(groups, init: [] as List<ServingReplicaConfig>, f: (acc, gr) =>
+      concat(acc, [serving_replica_config(gr: gr, b: b, r: r, swap: g.swap_bound, admitted: serving_dealt(index: acc.length(), replicas: n, base: r.min_retained_per_replica, extra: extra))]))
+    let committed = reserved + serving_bytes_sum(xs: map(configs, c => c.memory_max))
+    ServingLayoutConfigured {
+      replicas: configs,
+      unallocated_ram: byte_size(count: pool_total - committed),
+      evidence: ServingLayoutEvidence {
+        configuration: serving_layout_identity(g: g, b: b, replicas: configs),
+        budget: serving_host_memory_verdict(h: serving_layout_host_memory(g: g, b: b, configs: configs)),
+        assumptions: concat(serving_layout_assumptions(g: g, b: b), concat(serving_retention_extrapolated(b: b, r: r), g.charging)),
+        backend: ServingBackendSupportsTopology,
+        live: ServingLiveStandingUnqualified { obligation: "unqualified: no live receipt has been taken on this configuration" as NonEmptyStr },
+      },
+    }
+  }
+}
+
+// The derived configuration as the dedicated-host tree serving_host_memory already judges, so "the budget
+// fits" is the same verdict that refuses an over-committed layout, not a second arithmetic.
+fn serving_layout_host_memory(g: ServingResourceGrant, b: ServingBackendProfile, configs: List<ServingReplicaConfig>) -> ServingDedicatedHostMemory {
+  ServingDedicatedHostMemory {
+    host: g.host, usable_ram: g.usable_ram, overhead: g.overhead,
+    shared_resident: byte_size(count: serving_bytes_sum(xs: map(g.shared, a => a.bytes))),
+    swap_bound: g.swap_bound,
+    engines: map(configs, c => ServingEngineMemory {
+      name: c.group,
+      memory_cap: ServingMemoryRead { bytes: c.memory_max, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },
+      swap_cap: ServingMemoryRead { bytes: c.swap_max, provenance: "the grant's swap bound" as NonEmptyStr },
+      base: ServingMemoryAssumed { bytes: byte_size(count: serving_replica_fixed_ram(b: b)), reason: "base, active-slot RAM and park headroom from the backend profile" as NonEmptyStr },
+      conversation_cache: ServingMemoryRead { bytes: c.retention_budget, provenance: "derived by gunbc.serving.serving_layout serving_layout_derive" as NonEmptyStr },
+      conversation_slots: Present { value: c.admitted_conversations },
+    }),
+  }
+}
+
+// THE ARM ORDER IS THE CHECK ORDER: unread inputs, the topology's structure, the context ceiling, a positive
+// snapshot cost, the backend's retention limit, per-device fit, then RAM. The allocation divides the RAM it has
+// left by one conversation's snapshot, so a backend whose snapshot at the required context costs nothing has no
+// finite conversation count here: it refuses rather than divide by zero. A backend that genuinely retains no
+// host state needs its own capacity constraint, not this byte budget.
+fn serving_layout_derive(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutResult {
+  if serving_layout_missing(g: g, b: b).length() > 0 {
+    ServingLayoutRefused { refusal: ServingLayoutInputsUnread { missing: serving_layout_missing(g: g, b: b) } }
+  } else {
+    match serving_topology_fault(g: g, groups: groups) {
+      Present { value: f } => ServingLayoutRefused { refusal: f }
+      Absent =>
+        if token_count_value(t: r.max_context) > token_count_value(t: b.max_context) {
+          ServingLayoutRefused { refusal: ServingLayoutContextAboveBackend { required: r.max_context, backend: b.max_context } }
+        } else if byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context)) == 0 {
+          ServingLayoutRefused { refusal: ServingLayoutSnapshotCostNotPositive { context: r.max_context } }
+        } else {
+          match serving_retention_fault(groups: groups, b: b) {
+            Present { value: f } => ServingLayoutRefused { refusal: f }
+            Absent => match serving_device_fault(g: g, b: b) {
+              Present { value: f } => ServingLayoutRefused { refusal: f }
+              Absent => serving_allocate(g: g, groups: groups, b: b, r: r)
+            }
+          }
+        }
+    }
+  }
+}
+
+// ---- LIVE QUALIFICATION AND REDERIVATION
+
+// The configuration's identity as a receipt can bind it. Every component is length-framed through the
+// repository's one identity framing (std.content_hash identity_frame, as rented_replica_wire uses), so no
+// free-string name can impersonate a delimiter: ["a+b"] and ["a", "b"] are different identities. A replica's
+// identity is its group, each device, cap, swap, retention budget, admitted count, active slots and ceiling.
+fn serving_replica_identity(c: ServingReplicaConfig) -> String {
+  concat(identity_frame(label: "group", value: c.group as String),
+    concat(identity_frame(label: "devices", value: to_string(c.devices.length())),
+    concat(fold(c.devices, init: "", f: (acc, d) => concat(acc, identity_frame(label: "device", value: d as String))),
+    concat(identity_frame(label: "memory-max", value: to_string(byte_size_count(b: c.memory_max))),
+    concat(identity_frame(label: "swap-max", value: to_string(byte_size_count(b: c.swap_max))),
+    concat(identity_frame(label: "retention", value: to_string(byte_size_count(b: c.retention_budget))),
+    concat(identity_frame(label: "admitted", value: to_string(c.admitted_conversations)),
+    concat(identity_frame(label: "active-slots", value: to_string(c.active_slots)),
+      identity_frame(label: "max-context", value: to_string(token_count_value(t: c.max_context)))))))))))
+}
+
+fn serving_configuration_identity(replicas: List<ServingReplicaConfig>) -> String {
+  concat(identity_frame(label: "replicas", value: to_string(replicas.length())),
+    fold(replicas, init: "", f: (acc, c) => concat(acc, identity_frame(label: "replica", value: serving_replica_identity(c: c)))))
+}
+
+// The grant facts the derived caps stand on: usable RAM, overhead, each shared artifact, the charging
+// assumptions, and every selected device's board and VRAM. Two grants that derive equal caps from different
+// hardware are different configurations: a receipt taken on 15,356 MiB devices says nothing about 24,576 MiB
+// ones, nor about another board under the same device name. A board is framed by its STRUCTURAL identity
+// (module, declaration and field arm each tagged), never its display key: "m" + "b::c" and "m::b" + "c"
+// display alike and are different references.
+fn serving_grant_identity(g: ServingResourceGrant, replicas: List<ServingReplicaConfig>) -> String {
+  concat(identity_frame(label: "usable-ram", value: to_string(serving_grant_ram(g: g))),
+    concat(identity_frame(label: "overhead", value: to_string(serving_grant_overhead(g: g))),
+    concat(identity_frame(label: "shared", value: to_string(g.shared.length())),
+    concat(fold(g.shared, init: "", f: (acc, a) => concat(acc, concat(identity_frame(label: "artifact", value: a.name as String), concat(identity_frame(label: "artifact-bytes", value: to_string(byte_size_count(b: a.bytes))), identity_frame(label: "artifact-owner", value: a.owner as String))))),
+    concat(identity_frame(label: "charging", value: to_string(g.charging.length())),
+    concat(fold(g.charging, init: "", f: (acc, c) => concat(acc, identity_frame(label: "assumption", value: c as String))),
+      fold(replicas, init: "", f: (acc, c) => concat(acc, fold(c.devices, init: "", f: (inner, d) => concat(inner, match serving_device_named(g: g, name: d) {
+        Present { value: dv } => concat(identity_frame(label: "selected-device", value: d as String), concat(identity_frame(label: "board", value: declaration_ref_identity(reference: dv.board).digest), identity_frame(label: "vram", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: dv.vram))))))
+        Absent => identity_frame(label: "selected-device-ungranted", value: d as String)
+      }))))))))))
+}
+
+// THE WHOLE CONFIGURATION a receipt is bound to: the host, the grant facts the caps stand on, the backend (its release and model as the profile
+// names them, the snapshot cost its KV settings produce, its park headroom and launched ceiling) and every
+// replica. Two hosts, or two backends, deriving the same numbers are different configurations, so a receipt
+// taken on one never qualifies the other. The launch row's complete argv is not yet a carrier; it joins this
+// identity when the launch row renders from the layout (serving_layout_consumer_frontier).
+fn serving_layout_identity(g: ServingResourceGrant, b: ServingBackendProfile, replicas: List<ServingReplicaConfig>) -> String {
+  concat(identity_frame(label: "host", value: g.host as String),
+    concat(identity_frame(label: "grant", value: serving_grant_identity(g: g, replicas: replicas)),
+    concat(identity_frame(label: "backend", value: b.backend as String),
+    concat(identity_frame(label: "snapshot-fixed", value: to_string(byte_size_count(b: b.retention.fixed))),
+    concat(identity_frame(label: "snapshot-per-token", value: to_string(byte_size_count(b: b.retention.per_token))),
+    concat(identity_frame(label: "park-floor", value: to_string(byte_size_count(b: serving_reading_bytes_or_zero(r: b.park_free_floor)))),
+    concat(identity_frame(label: "backend-max-context", value: to_string(token_count_value(t: b.max_context))),
+      serving_configuration_identity(replicas: replicas))))))))
+}
+
+// A receipt qualifies the derived configuration only if it was taken on exactly this configuration. A changed
+// grant, topology, backend profile or requirement that changes the derivation leaves the old receipt naming a
+// configuration that is gone, and the standing says so rather than carrying the qualification forward.
+fn serving_layout_with_qualification(result: ServingLayoutResult, q: ServingLiveQualification) -> ServingLayoutResult {
+  match result {
+    ServingLayoutRefused { refusal: f } => ServingLayoutRefused { refusal: f }
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: e } =>
+      ServingLayoutConfigured { replicas: rs, unallocated_ram: u, evidence: ServingLayoutEvidence {
+        configuration: e.configuration, budget: e.budget, assumptions: e.assumptions, backend: e.backend,
+        live: match q {
+          ServingLiveUnqualified { obligation: o } => ServingLiveStandingUnqualified { obligation: o }
+          ServingLiveQualified { receipt: rc, configuration: c } =>
+            if c == e.configuration { ServingLiveStandingQualified { receipt: rc } } else { ServingLiveRequalificationRequired { qualified: c, derived: e.configuration } }
+        },
+      } }
+  }
+}
+
+// ---- ADMISSION ARITHMETIC: a replica admits a conversation only if every admitted conversation, this one
+// included, can still grow to the context ceiling within its retention budget. A refusal changes nothing: it
+// never evicts. THIS IS THE COUNT, NOT THE PROTOCOL: it takes the admitted count as given, so it cannot say which
+// conversations are counted, whether a request resumes one already admitted, or whether another admission ran
+// concurrently. The protocol (find or acquire this conversation's retention reservation, then its turn grant,
+// keyed by an authenticated conversation identity and joined to turn_admission's seat ledger) is
+// serving_admission_protocol_frontier.
+type ServingAdmission
+  = ServingAdmitted { now_admitted: Nat }
+  | ServingAdmissionRefused { admitted: Nat, capacity: Nat }
+
+fn serving_replica_admit(c: ServingReplicaConfig, admitted: Nat) -> ServingAdmission {
+  if admitted < c.admitted_conversations { ServingAdmitted { now_admitted: admitted + 1 } } else { ServingAdmissionRefused { admitted: admitted, capacity: c.admitted_conversations } }
+}
+
+// ---- h11 AS GRANTED, AND STRATA IQ3_S AS MEASURED ON IT
+
+fn host_6ce85c_a16_device(bus: String) -> ServingDevice {
+  ServingDevice {
+    device: ("a16-" + bus) as NonEmptyStr,
+    board: decl_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_catalog"),
+    vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 15356)), provenance: "nvidia-smi memory.total 15356 MiB, every A16 GPU on h11-a16, read 2026-10-30" as NonEmptyStr },
+  }
+}
+
+// THE GRANT. RAM and the locked expert file are the observed row's; the six devices are the six buses whose
+// engines are in service (86 and c6 are disabled). The host overhead is an ALLOWANCE until a reading with
+// every engine stopped replaces it.
+data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
+  host: operator_host_6ce85c,
+  usable_ram: host_6ce85c_serving_memory_observed.usable_ram,
+  overhead: HostFixedOverheadAllowance { bytes: gibibyte_to_byte_size(g: gibibyte(count: 6)), reason: "h11 host overhead: a 6 GiB allowance for the OS, sshd and the six server.py front ends until a reading with every engine stopped replaces it" as NonEmptyStr },
+  shared: [ServingSharedArtifact {
+    name: "Qwen3.8-Flash-Next IQ3_S routed-expert GGUF part 1" as NonEmptyStr,
+    bytes: host_6ce85c_serving_memory_observed.shared_resident,
+    owner: "strata-expert-lock.service (mlock, one page-cache copy mapped by every engine)" as NonEmptyStr,
+  }],
+  swap_bound: serving_engine_swap_bound,
+  charging: ["shared expert pages are charged to strata-expert-lock, not the engines: 47,784 MiB of the 51.05 GiB file read unevictable in its cgroup on 2026-10-30T19:20Z, and engines start After= it from that date; the remaining ~3.3 GiB's charge is unread" as NonEmptyStr],
+  devices: [host_6ce85c_a16_device(bus: "85"), host_6ce85c_a16_device(bus: "87"), host_6ce85c_a16_device(bus: "88"), host_6ce85c_a16_device(bus: "c5"), host_6ce85c_a16_device(bus: "c7"), host_6ce85c_a16_device(bus: "c8")],
+}
+
+// INDEPENDENT GROUPS FIRST: one replica per device.
+data host_6ce85c_independent_groups: List<ServingDeviceGroup> = [
+  ServingDeviceGroup { name: "h11-strata@85" as NonEmptyStr, devices: ["a16-85"] },
+  ServingDeviceGroup { name: "h11-strata@87" as NonEmptyStr, devices: ["a16-87"] },
+  ServingDeviceGroup { name: "h11-strata@88" as NonEmptyStr, devices: ["a16-88"] },
+  ServingDeviceGroup { name: "h11-strata@c5" as NonEmptyStr, devices: ["a16-c5"] },
+  ServingDeviceGroup { name: "h11-strata@c7" as NonEmptyStr, devices: ["a16-c7"] },
+  ServingDeviceGroup { name: "h11-strata@c8" as NonEmptyStr, devices: ["a16-c8"] },
+]
+
+// STRATA 0.1.48 (source 44df8fd5), Qwen3.8-Flash-Next IQ3_S, on one A16 GPU (h11-a16, 2026-10-30). Fixed VRAM is
+// what the engine used beside its expert cache (nvidia-smi memory.used 14544 MiB less the engine's reported
+// 7935 MiB expert cache). The least expert cache, the active-slot RAM and its snapshot peaks are ASSUMED until
+// read. One active slot (/props total_slots 1). THIS RELEASE rejects parking with a layer split (its
+// docs/DETAILS.md: "enabled parking with --layer-split is rejected before model loading"), so a replica
+// retains only on one device; srv4's later release parks across two (strata_srv4_layer_split_profile). The
+// base was read after load, so it includes the pinned host copy of the max-context KV.
+data strata_iq3_s_a16_profile: ServingBackendProfile = ServingBackendProfile {
+  backend: "strata 0.1.48 (44df8fd5) qwen3.8-flash-next-iq3_s" as NonEmptyStr,
+  device_fixed_vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 6609)), provenance: "h11-a16 nvidia-smi memory.used 14544 MiB less the engine's expert_cache_mib 7935, 2026-10-30" as NonEmptyStr },
+  device_min_elastic_vram: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)), reason: "least expert cache the engine is run with: a 2 GiB assumption until a run below it is read" as NonEmptyStr },
+  replica_base_ram: ServingMemoryRead { bytes: byte_size(count: 4703334400), provenance: "systemctl show h11-strata@c8 MemoryCurrent=4703334400, loaded, idle, 0 requests, nothing parked, 2026-10-30T17:10Z" as NonEmptyStr },
+  active_slots: 1,
+  active_slot_ram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), reason: "RAM a request needs above the base, including snapshot capture and restore peaks: a 512 MiB assumption until h11-strata@c8 memory.peak is read through real turns" as NonEmptyStr },
+  retention: strata_iq3_s_snapshot_cost,
+  park_free_floor: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), provenance: "h11-strata@c7 engine log: skip parking (physical RAM admission; need 1250 MiB plus 512 MiB floor, 1262 MiB available, source cgroup), 2026-10-30" as NonEmptyStr },
+  max_devices_with_retention: 1,
+  max_context: token_count(count: 229376),
+}
+
+// THE REQUIREMENT: the fleet's one serving context cap (ruling gunbc.design_ruling one_serving_context_cap), and
+// at least one conversation retained per replica. Each profile's max_context is a different fact: the ceiling
+// that engine is launched with, read from its argv, which the derivation checks against this requirement.
+data serving_context_ceiling_requirement: ServingRequirement = ServingRequirement { max_context: serving_fleet_context_cap, min_retained_per_replica: 1 }
+
+data host_6ce85c_layout: ServingLayoutResult = serving_layout_with_qualification(
+  result: serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement),
+  q: ServingLiveUnqualified { obligation: "h11 has not run this configuration: apply it, read each engine's memory.peak through real turns at the ceiling, and bind the receipt to this configuration's identity" as NonEmptyStr },
+)
+
+// ---- srv4 AS GRANTED: ONE REPLICA ACROSS TWO GPUs
+
+fn srv4_rtx_2000_ada_device(bus: String) -> ServingDevice {
+  ServingDevice {
+    device: ("rtx2000ada-" + bus) as NonEmptyStr,
+    board: decl_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_board_catalog"),
+    vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 16380)), provenance: "srv4 nvidia-smi memory.total 16380 MiB, both RTX 2000 Ada GPUs, read 2026-10-30" as NonEmptyStr },
+  }
+}
+
+// THE GRANT is the serving slice, not the host: srv4 also runs CI runners, so serving holds what
+// gunbc-srv4-daily.slice grants. Its MemoryHigh (96 GiB) is the grant, because above it the kernel throttles and
+// reclaims the engine; MemoryMax (120 GiB) is the hard edge beyond that. The engine service's own front end is
+// inside its measured base, and the TLS front runs outside the slice, so the overhead is a small allowance.
+// Nothing is shared: the routed experts are in the engine's own memory. The slice has no swap.
+data srv4_grant: ServingResourceGrant = ServingResourceGrant {
+  host: operator_host_srv4,
+  usable_ram: HostUsableRamConservativeLowerBound { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), basis: "gunbc-srv4-daily.slice MemoryHigh=103079215104 (MemoryMax 120 GiB), read 2026-10-30: the RAM serving is granted on a host it shares with CI runners" as NonEmptyStr },
+  overhead: HostFixedOverheadAllowance { bytes: mebibyte_to_byte_size(m: mebibyte(count: 256)), reason: "srv4 slice overhead: a 256 MiB allowance; the engine's front end is inside its base and the TLS front is outside the slice" as NonEmptyStr },
+  shared: [] as List<ServingSharedArtifact>,
+  swap_bound: byte_size(count: 0),
+  charging: [] as List<NonEmptyStr>,
+  devices: [srv4_rtx_2000_ada_device(bus: "0000-01"), srv4_rtx_2000_ada_device(bus: "0004-01")],
+}
+
+// ONE GROUP OF TWO: the engine splits its layers across both GPUs (--layer-split 24: CUDA0 runs layers 0-23,
+// CUDA1 24-47), so the two devices are one replica.
+data srv4_layer_split_groups: List<ServingDeviceGroup> = [
+  ServingDeviceGroup { name: "gunbc-srv4-daily-engine" as NonEmptyStr, devices: ["rtx2000ada-0000-01", "rtx2000ada-0004-01"] },
+]
+
+// STRATA RELEASE 406c9de18cef, Qwen3.8-Flash-Next IQ3_S, layer split across two RTX 2000 Ada GPUs (srv4,
+// 2026-10-30). Fixed VRAM per device is the larger of the two devices' use beside their expert caches: CUDA1
+// 15216 MiB less 10687 MiB of cache is 4529 MiB (CUDA0: 15548 less 12613 is 2935 MiB); the halves differ
+// because they hold different layers. The base is the engine service's memory.current loaded and idle and
+// includes the routed experts. This release PARKS across the split: its log reads "layer split across 2 GPUs"
+// and "parked=8". The park headroom is the engine's own conversation_cache_min_free_mib.
+data strata_srv4_layer_split_profile: ServingBackendProfile = ServingBackendProfile {
+  backend: "strata 406c9de18cef qwen3.8-flash-next-iq3_s, layer split 24" as NonEmptyStr,
+  device_fixed_vram: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 4529)), provenance: "srv4 nvidia-smi memory.used 15216 MiB on CUDA1 less its expert cache 10687 MiB (/metrics expert_cache_mib 23300 less expert_cache_primary_mib 12613), 2026-10-30" as NonEmptyStr },
+  device_min_elastic_vram: ServingMemoryAssumed { bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)), reason: "least expert cache srv4's engine is run with: a 2 GiB assumption until a run below it is read" as NonEmptyStr },
+  replica_base_ram: srv4_serving_engine_memory.base,
+  active_slots: 1,
+  active_slot_ram: ServingMemoryAssumed { bytes: mebibyte_to_byte_size(m: mebibyte(count: 512)), reason: "RAM a request needs above srv4's base, including snapshot capture and restore peaks: a 512 MiB assumption until memory.peak is read through real turns" as NonEmptyStr },
+  retention: srv4_strata_snapshot_cost,
+  park_free_floor: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 2560)), provenance: "srv4 Strata /metrics conversation_cache_min_free_mib 2560, 2026-10-30" as NonEmptyStr },
+  max_devices_with_retention: 2,
+  max_context: token_count(count: 229376),
+}
+
+data srv4_layout: ServingLayoutResult = serving_layout_with_qualification(
+  result: serving_layout_derive(g: srv4_grant, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement),
+  q: ServingLiveUnqualified { obligation: "srv4 has not run this configuration: its live cache is 32 GiB in 8 slots; apply the derived cap and cache, read memory.peak through real turns at the ceiling, and bind the receipt to this configuration's identity" as NonEmptyStr },
+)
+
+// CONSUMER, declared frontier (DESIGN section 3c): the h11 engine units' MemoryMax, MemorySwapMax,
+// --conversation-cache-mib and --conversation-cache-slots, and the router's per-replica admission, read this
+// configuration. Until a launch row renders them, the witnesses are the only readers and the values are
+// applied by hand from the derivation's output.
+data serving_admission_protocol_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete when the router's admission is one transaction per request: find or acquire the conversation's retention reservation (keyed by authenticated namespace and explicit conversation identity, never a content hash), then its active-turn grant through gunbc.serving.turn_admission, so that retries, concurrency, storage pressure and client disconnects can neither mint capacity nor erase a reservation; and serving_replica_admit's count is read from those reservations." as NonEmptyStr
+)
+
+// A DERIVED LAYOUT IS A TARGET FOR AN EMPTY DEPLOYMENT. serving_allocate deals the extra conversations in group
+// order and has no input describing current reservations, so applying it to an occupied fleet can shrink a
+// replica beneath conversations it already holds (the 2026-10-30 h11 case: the target gave 85 the second
+// conversation while 87 held two warm ones, and the operator chose 87 by hand).
+data serving_layout_transition_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete when a transition plan derives from the applied configuration, the current reservations and their retained-state locations, and the target layout: it keeps valid placements, never shrinks a replica beneath its outstanding reservations before they are discharged, never advertises capacity before its configuration is applied and read back, names every conversation that needs drain or explicit reconstruction, and refuses when no transition fits the grant." as NonEmptyStr
+)
+
+data serving_layout_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Delete when the h11 Strata launch row renders each engine's MemoryMax, MemorySwapMax and conversation-cache flags from host_6ce85c_layout, and router placement admits through serving_replica_admit." as NonEmptyStr
+)

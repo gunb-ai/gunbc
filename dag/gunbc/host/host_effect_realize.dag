@@ -559,7 +559,7 @@ import gunbc.executor_privileged_operation {
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_dropin_body, deploy_sudoers_install_argv }
 
 import gunbc.runner.runner_microvm_slot_unit {
-  microvm_controller_owner, microvm_controller_root, microvm_slot_controller_receipt_dir,
+  microvm_controller_owner, microvm_controller_root, microvm_receipt_store_path,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
   microvm_controller_slice_unit_file, microvm_controller_slice_unit_path,
   microvm_slot_unit_path, microvm_slot_reserve_unit_path,
@@ -614,7 +614,7 @@ import extdeps.tools.gnu_coreutils {
   mv_exact_destination_command,
 }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
 import extdeps.rust.cargo { cargo_default_release_dir }
 
@@ -10230,7 +10230,7 @@ fn microvm_controller_install_steps(
       },
       microvm_controller_argv_step(
         name: "vmm tarball extract",
-        command: tar_extract_command(archive: tarball, into_directory: stage, strip_components: 0),
+        command: tar_extract_command(archive: tarball, into_directory: stage, strip_components: 0, existing_directories: TarOverwriteDir),
       ),
       microvm_controller_argv_step(
         name: "vmm binary install",
@@ -10321,7 +10321,7 @@ fn microvm_controller_install_steps(
         // a failure says which store could not be made.
         microvm_controller_argv_step(
           name: "slot controller receipt dir",
-          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_slot_controller_receipt_dir)),
+          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_receipt_store_path(tree: host_state_tree()) as String)),
         ),
         microvm_controller_argv_step(
           name: "cell readiness store dir",

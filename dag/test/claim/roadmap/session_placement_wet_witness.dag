@@ -1,11 +1,28 @@
 module test.claim.roadmap.session_placement_wet_witness
 
-import gunbc.durable_cas_file_store { SlotStore }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, cas_file_slot_path }
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  ReplacedAttemptSlotsRoot, declare_replaced_attempt_slots_root, attempt_slots_carry, attempt_slots_census,
+  attempt_slots_carry_for_instance, attempt_slots_census_for_instance, replaced_attempt_slots_root_for,
+  ReplacedAttemptSlotsRootLookup, ReplacedAttemptSlotsRootFound,
+  AttemptSlotsCarry, AttemptSlotsCarryReported, AttemptSlotsCarryReport, AttemptSlotsCarryRowRefused,
+  AttemptSlotsCarryNoDeclaredRow, AttemptSlotsRowNamesAnotherInstance,
+  AttemptSlotsCarryOutcome, AttemptSlotsCarried, AttemptSlotsCarryAlreadyCarried, AttemptSlotsCarryRefused,
+  AttemptSlotsCensus, AttemptSlotsCensusOf, AttemptSlotsCensusRefused, AttemptSlotsCensusNoDeclaredRow,
+  AttemptSlotsCensusEntry, AttemptSlotsCensusCounts, attempt_slots_census_buckets_sum_to_total,
+  AttemptSlotsSlotReading, SlotRead, SlotAbsent, SlotUnreadable,
+  AttemptSlotsPayloadRelation, PayloadsIdentical, PayloadsDifferent, PayloadRelationUndecided,
+  attempt_slots_cutover_frontier_expiry, attempt_slots_cutover_seam_ref, attempt_slots_cutover_run_ref,
+}
+import std.roster_frontier { FrontierExpiryReport }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.spool_queue { SpoolAttemptExit, RolePending, spool_open, spool_role_path }
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_entry_parts, AttemptWorkerRole, attempt_exit_record_put_mkdir_name, attempt_exit_record_observe, attempt_exit_spool_prepare, AttemptExitRecordNone, AttemptExitRecordPutFailed }
+import extdeps.systemd.service_exec { exec_word_render, ExecWordRendered, ExecWordRefused }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_lab_dashboard_instance, srv1_dashboard_lab_id }
 import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_store, session_attempt_slots_path, session_attempt_slots_directory, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready }
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs, FilePath }
 import std.measure { kibibyte, kibibyte_count }
@@ -29,9 +46,9 @@ import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, AttemptUnitAbsent }
 import gunbc.owned_directory { owned_directory_path }
-import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -115,8 +132,17 @@ fn slot_store_at(dir: String) -> SlotStore? {
   }
 }
 
+// THE FIXTURE INSTANCE IS A COMPLETE ONE. A real instance has its exit spool's five stage directories;
+// the production reader lists them, and a missing stage is an UNREADABLE listing, not an empty spool --
+// which is exactly the difference between "no exit record for this attempt" and "I could not look". The
+// fixture prepares the spool through the production route, so a witness never settles a seat on the
+// strength of a directory it forgot to create.
 fn stores_at(dir: String) -> SessionPlacementStores? {
   let _made = shell.Mkdir.Parents(path: slots_dir(dir: dir) as FilePath)
+  let spool_ready = attempt_exit_spool_prepare(instance_root: dir)
+  if !spool_ready {
+    none
+  } else {
   match session_attempt_slots_store(instance: instance_at(dir: dir)) {
     SessionAttemptSlotsStoreUnready { detail: _ } => none
     SessionAttemptSlotsStoreReady { store } => Present { value: SessionPlacementStores {
@@ -125,6 +151,7 @@ fn stores_at(dir: String) -> SessionPlacementStores? {
       store: compute_capacity_store(subject: subject_at(dir: dir)),
       partition: subject_at(dir: dir).partition,
     } }
+  }
   }
 }
 
@@ -195,6 +222,12 @@ fn real_grant(dir: String, lease: LeaseGrant, slot: AttemptRecord, generation: C
 
 fn slot_a(opened: EpochSecs) -> AttemptRecord {
   session_attempt_record(node_id: node_a, attempt_key: key_a, unit: unit_a() as NonEmptyStr, granted: kibibyte(count: 8388608), now: opened)
+}
+
+// ONE REFERENCE, TWO ATTEMPTS. The slot is opened under unit_a() but belongs to a DIFFERENT attempt than
+// the old root's slot under that same reference -- the shape a reference-only carry cannot resolve.
+fn colliding_slot(opened: EpochSecs) -> AttemptRecord {
+  session_attempt_record(node_id: node_b, attempt_key: key_b, unit: unit_a() as NonEmptyStr, granted: kibibyte(count: 8388608), now: opened)
 }
 
 fn record_bytes(node_id: String, attempt_key: String) -> String {
@@ -271,6 +304,15 @@ fn kept(s: SessionSettlement) -> Bool {
   }
 }
 
+fn done_settlement(s: SessionSettlement) -> Bool {
+  match s {
+    SessionSettlementDone { unit: _, why: _ } => true
+    SessionSettlementKept { unit: _, why: _ } => false
+    SessionSettlementReleaseAttempted { unit: _, freed: _, detail: _ } => false
+    SessionSettlementRefused { unit: _, detail: _ } => false
+  }
+}
+
 fn slot_is_terminal(dir: String) -> Bool {
   match slot_store_at(dir: dir) {
     Absent => false
@@ -325,6 +367,13 @@ fn release_text(dir: String) -> String {
 // from the instance, and opens a slot through it: the slot lands in the directory setup created. The directory is
 // absent before setup, so a mint that read some other path is Unready and a write that went elsewhere is not
 // listed here: either leaves this control red.
+fn attempt_exit_inbox_dir(instance_root: String) -> String {
+  match spool_role_path(store: spool_open(kind: SpoolAttemptExit, instance_root: instance_root), role: RolePending) {
+    Present { value: d } => d
+    Absent => "<the spool declares no pending directory>"
+  }
+}
+
 test fn setup_and_the_first_lifecycle_write_address_the_same_store() -> Bool {
   let dir = fresh_dir(tag: "c0")
   let instance = instance_at(dir: dir)
@@ -553,5 +602,593 @@ test fn a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_cu
         }
       }
     }
+  }
+}
+
+
+// ── THE SRV1 2026-10-28 WEDGE: AN EXIT ARTIFACT WHOSE VARIABLES WERE NEVER SUBSTITUTED ──────────
+//
+// bright-moth-475's read-only report (msg_972744b7, evidence msg_b047eec6): attempt 6ea61c671002a6d4's
+// worker unit left NO expanded exit record. Its only worker artifact is a spool entry named by the
+// hook's own path with all four stop variables still spelled literally, which the drain refused as
+// undecodable; gunbc.roadmap.roadmap_session_placement read that refusal as "the holder's end is
+// unknown" and has held a 22 GiB seat since. These controls run the PRODUCTION pass
+// (session_placement_settle_pass_at: the real reader, the real spool listing, a real ledger charge) over
+// a Launching slot whose launch deadline has NOT expired, so nothing here ages out -- the only thing
+// that can free the seat is what the reader concludes about the holder.
+//
+// WHAT THE CONTROLS DO NOT DO: they do not read a systemd manager. The one fact the witness needs from
+// the manager is the unit's standing, and it seeds that through the production seam
+// (session_worker_unit_lifecycle_with_standing, loaded: AttemptUnitAbsent) instead of asking the host's
+// systemctl about a unit the fixture invented. Every path the pass touches -- slot store, ledger, spool
+// -- is derived from the fixture instance's root, which is a mktemp directory (fresh_dir). The pass that
+// DOES read the manager (session_worker_unit_lifecycle_for_instance, through session_placement_settle_pass)
+// is the production route; it is not what these controls run, and no unit is created, started or stopped
+// here.
+
+// A Launching slot whose launch deadline is still in the future: the pass cannot be reaching for age.
+fn launched_with_unexpired_deadline(dir: String) -> Bool {
+  match reserve_real(dir: dir) {
+    Absent => false
+    Present { value: _ } => {
+      let rec = slot_a(opened: 99999999999)
+      match slot_store_at(dir: dir) {
+        Absent => false
+        Present { value: slots } =>
+          match attempt_open(store: slots, record: rec) {
+            AttemptAdvanced { state: _, generation: g1 } =>
+              match attempt_begin_launch(store: slots, reference: rec.reference as NonEmptyStr, expected: g1) {
+                AttemptAdvanced { state: _, generation: _ } => true
+                AttemptLostRace { expected: _, observed: _ } => false
+                AttemptTransitionRefused { detail: _ } => false
+              }
+            AttemptLostRace { expected: _, observed: _ } => false
+            AttemptTransitionRefused { detail: _ } => false
+          }
+      }
+    }
+  }
+}
+
+// THE ARTIFACT IS SEEDED FROM THE RENDERER, not hand-written: it is the path the unit's ExecStopPost
+// would create, created as-is by something that never went through the manager's substitution.
+fn plant_unsubstituted_worker_exit_entry(instance_root: String) -> Bool {
+  match exec_word_render(parts: attempt_exit_entry_parts(inbox: attempt_exit_inbox_dir(instance_root: instance_root), node_id: node_a, attempt_key: key_a, role: AttemptWorkerRole)) {
+    ExecWordRefused { reason: _ } => false
+    ExecWordRendered { word } => shell.Mkdir.Parents(path: word as FilePath).success
+  }
+}
+
+// A spool entry planted by name, for the controls that need a specific one.
+fn plant_worker_exit_entry(instance_root: String, entry_name: String) -> Bool {
+  shell.Mkdir.Parents(path: join([attempt_exit_inbox_dir(instance_root: instance_root), "/", entry_name], "") as FilePath).success
+}
+
+// THE PASS RUNS FOR REAL -- slot store, records directory, ledger, matcher, spool listing -- with ONLY
+// the service manager's standing seeded. A unit is a fact of the manager, not a file: this floor may run
+// where no manager exists at all, and the condition the srv1 lease met (LoadState=not-found in the
+// manager that ran it) is planted here as AttemptUnitAbsent, which is what that read returns. The
+// clock is pinned to epoch 1 so no arm of the pass can be reading age: in Launching the trigger is the
+// observation alone, and the slot's declared deadline is a century ahead.
+fn settle_with_unit_absent(dir: String, stores: SessionPlacementStores) -> SessionSettlement {
+  let instance = instance_at(dir: dir)
+  settlement_of(p: session_placement_settle_pass_at(
+    stores: stores,
+    host: host,
+    lifecycle_of: u => session_worker_unit_lifecycle_with_standing(instance: instance, unit: u, loaded: AttemptUnitAbsent),
+    now: 1,
+  ))
+}
+
+// THE WEDGE, END TO END -- AND THE WEDGE IS STILL HERE, NOW NAMED. Before this change the artifact was
+// unreadable, so the reader said UnitLifecycleUnknown and every pass kept the seat without ever saying
+// why. Now the artifact is read as what it is -- a defect of its WRITER, with the variables and the
+// entries named -- and this arm still REFUSES: a broken writer is not a reading of the holder. The seat
+// is kept, the slot stays Launching, the ledger charge stays, and a second pass behaves the same way, so
+// the retention is a state and not an accident of ordering.
+//
+// WHY THAT IS THE HONEST ANSWER AT THIS HEAD: the only thing that frees a holder is a reading bound to
+// the holder's identity -- the manager that ran the unit, the boot, the InvocationID -- and this pass is
+// handed a bare not-found standing plus an artifact about somebody else's writer. Neither is proof. The
+// bound arms live in gunbc.systemd_unit_invocation_liveness and land with the run-identity carrier; the
+// settle-once behaviour belongs to rows that carry that proof, not to this one. The rfm row
+// hold_recovered_by_age_not_observed_holder_death SITE 5 states the admissible rule and its rung.
+test fn an_unsubstituted_exit_artifact_with_bare_manager_absence_keeps_the_seat_and_the_slot() -> Bool {
+  let dir = fresh_dir(tag: "unsub")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let launched = launched_with_unexpired_deadline(dir: dir)
+      let seeded = plant_unsubstituted_worker_exit_entry(instance_root: dir)
+      let first = settle_with_unit_absent(dir: dir, stores: stores)
+      let second = settle_with_unit_absent(dir: dir, stores: stores)
+      launched && seeded && kept(s: first) && kept(s: second)
+        && slot_is_launching(dir: dir) && ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// CONTROL, SEEDED THE SAME WAY: a substituted exit record settles the seat exactly as it did before
+// this change -- the new arm did not move the healthy path.
+test fn a_substituted_exit_record_still_settles_the_real_seat_as_it_did() -> Bool {
+  let dir = fresh_dir(tag: "subs")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let launched = launched_with_unexpired_deadline(dir: dir)
+      let seeded = plant_worker_exit_entry(instance_root: dir, entry_name: join([node_a, "+", key_a, "+worker+0123456789abcdef0123456789abcdef+exit-code+exited+0"], ""))
+      let first = settle_with_unit_absent(dir: dir, stores: stores)
+      launched && seeded && released_unit(s: first) == unit_a() && slot_is_terminal(dir: dir) && !ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// DISCRIMINATING RED: an undecodable artifact that does NOT spell a stop variable still keeps the seat,
+// and the slot stays Launching. The new arm is about an unsubstituted hook, not a blanket rule that any
+// malformed name means the holder is gone.
+test fn an_undecodable_artifact_that_is_not_an_unsubstituted_hook_still_keeps_the_seat() -> Bool {
+  let dir = fresh_dir(tag: "bogus")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let launched = launched_with_unexpired_deadline(dir: dir)
+      let seeded = plant_worker_exit_entry(instance_root: dir, entry_name: join([node_a, "+", key_a, "+worker+inv+exit-code+exited+BOGUS"], ""))
+      let first = settle_with_unit_absent(dir: dir, stores: stores)
+      launched && seeded && kept(s: first) && slot_is_launching(dir: dir) && ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// THE SPOOL REFUSES THE WRITER, NOT ONLY THE READER. The Oct-28 artifact reached the spool through a
+// path that carried the stop hook's `$` protected from the service manager's own expansion, and the put
+// route is where a modeled caller could do the same thing: it takes the entry name as TEXT (the belt's
+// vendor-pane route, a replay, a hand call). A name still carrying `${NAME}` is refused there and
+// nothing is created, so the artifact cannot be reproduced by any modeled route -- and the reader arm
+// (AttemptExitRecordWriterUnsubstituted) is what refuses to read one that already exists on a host.
+test fn the_spool_put_refuses_a_name_whose_stop_variables_were_never_substituted() -> Bool {
+  let dir = fresh_dir(tag: "putrefuse")
+  let inbox = attempt_exit_inbox_dir(instance_root: dir)
+  let made = attempt_exit_spool_prepare(instance_root: dir)
+  match exec_word_render(parts: attempt_exit_entry_parts(inbox: inbox, node_id: node_a, attempt_key: key_a, role: AttemptWorkerRole)) {
+    ExecWordRefused { reason: _ } => false
+    ExecWordRendered { word } =>
+      // The renderer's own word, with the inbox stripped: the entry name exactly as a stop hook would
+      // have created it, variables unexpanded.
+      match entry_name_under(inbox: inbox, word: word as String) {
+        Absent => false
+        Present { value: name } =>
+          made
+          && (match attempt_exit_record_put_mkdir_name(instance_root: dir, entry_name: name as String) {
+            AttemptExitRecordPutFailed { reason: _ } => true
+            AttemptExitRecordPutOk => false
+          })
+          && (match attempt_exit_record_observe(instance_root: dir, node_id: node_a, attempt_key: key_a, role: AttemptWorkerRole) {
+            AttemptExitRecordNone => true
+            _ => false
+          })
+      }
+  }
+}
+
+// The entry name the renderer produced, with the inbox directory it was rendered under removed. The
+// renderer emits "<inbox>/<name>", and the spool's put takes the name alone.
+fn entry_name_under(inbox: String, word: String) -> String? {
+  let prefix = join([inbox, "/"], "")
+  if starts_with(s: word, prefix: prefix) {
+    Present { value: substring(s: word, start: prefix.length(), end: word.length()) }
+  } else {
+    Absent
+  }
+}
+
+// ── B: A SLOT LEFT BEHIND BY A MOVED ROOT ──────────────────────────────────────────────────────
+// The Oct-14 leak is not a lifecycle question. Its slot sits under the root the WRE-1b re-root
+// (#14633) abandoned, and the settle pass enumerates the current declaration's store and nothing
+// else, so no pass can ever see it -- the charge is kept by invisibility, not by a decision. The
+// cutover module carries such a slot into the one store the pass reads; the pass then decides on the
+// evidence it ALREADY admits. Nothing here settles because a carry happened.
+//
+// The witness moves a root inside the directory it owns, so the row it CARRIES is its own. The host's
+// declared row is read too -- as data, by name, in the_declared_row_... test -- but no test runs the
+// carry against it: that row's old root is a real path on the host, and running it is the operator's
+// authorized step, not a witness's.
+fn old_slots_dir(dir: String) -> String { join([dir, "/orphan-state/session-attempts"], "") }
+
+fn old_store(dir: String) -> SlotStore? {
+  let _made = shell.Mkdir.Parents(path: old_slots_dir(dir: dir) as FilePath)
+  Present { value: file_slot_store(root: old_slots_dir(dir: dir) as NonEmptyStr) }
+}
+
+fn moved_row(dir: String) -> ReplacedAttemptSlotsRoot {
+  declare_replaced_attempt_slots_root(
+    instance_id: "session-wet" as NonEmptyStr,
+    old_slots_root: old_slots_dir(dir: dir) as NonEmptyStr,
+    moved_by: "witness: a root moved inside the directory the witness owns" as NonEmptyStr,
+  )
+}
+
+// A row whose INSTANCE is not the one the handed store answers for. Carrying another instance's
+// orphans into this instance's seats would use one instance's declaration as authority over another
+// instance's store, so the carry refuses at the row level and never reaches a reference.
+fn row_naming_another_instance(dir: String) -> ReplacedAttemptSlotsRoot {
+  declare_replaced_attempt_slots_root(
+    instance_id: "instance-the-store-is-not" as NonEmptyStr,
+    old_slots_root: old_slots_dir(dir: dir) as NonEmptyStr,
+    moved_by: "witness: a row whose instance is not the store's" as NonEmptyStr,
+  )
+}
+
+// AN UNREADABLE SEAT, PLANTED THE WAY THE STORE NAMES IT: the store's own file naming (key "."
+// generation), with content that is not an attempt record. This is how the census and the carry are
+// shown the case they must answer with a typed unreadable rather than with a default.
+fn plant_undecodable_slot(root: String, reference: String) -> Bool {
+  let _made = shell.Mkdir.Parents(path: root as FilePath)
+  Filesystem.Write(path: cas_file_slot_path(root: root as NonEmptyStr, key: reference as NonEmptyStr, generation: cas_generation_first()), content: "not an attempt record").success
+}
+
+fn carry_report_of(c: AttemptSlotsCarry) -> AttemptSlotsCarryReport? {
+  match c {
+    AttemptSlotsCarryReported { report: report } => Present { value: report }
+    _ => none
+  }
+}
+
+fn carried(c: AttemptSlotsCarry, reference: String) -> Bool {
+  match carry_report_of(c: c) {
+    Absent => false
+    Present { value: report } => any(report.outcomes, o => match o { AttemptSlotsCarried { reference: r, source_generation: _, target_generation: _ } => (r as String) == reference  _ => false })
+  }
+}
+
+fn already_carried(c: AttemptSlotsCarry, reference: String) -> Bool {
+  match carry_report_of(c: c) {
+    Absent => false
+    Present { value: report } => any(report.outcomes, o => match o { AttemptSlotsCarryAlreadyCarried { reference: r } => (r as String) == reference  _ => false })
+  }
+}
+
+fn carry_refused_at(c: AttemptSlotsCarry, reference: String) -> Bool {
+  match carry_report_of(c: c) {
+    Absent => false
+    Present { value: report } => any(report.outcomes, o => match o { AttemptSlotsCarryRefused { reference: r, detail: _ } => (r as String) == reference  _ => false })
+  }
+}
+
+// A ROW-LEVEL REFUSAL IS NOT AN OUTCOME ABOUT A REFERENCE. The carry never got as far as one, and
+// reporting it as if it had (an instance id in a reference field) would read as a seat decision.
+fn carry_row_names_another_instance(c: AttemptSlotsCarry) -> Bool {
+  match c {
+    AttemptSlotsCarryRowRefused { refusal: AttemptSlotsRowNamesAnotherInstance { row_instance: _, store_instance: _ } } => true
+    _ => false
+  }
+}
+
+fn census_entries(c: AttemptSlotsCensus) -> List<AttemptSlotsCensusEntry> {
+  match c {
+    AttemptSlotsCensusOf { old_root: _, entries: entries, counts: _ } => entries
+    _ => [] as List<AttemptSlotsCensusEntry>
+  }
+}
+
+fn census_counts(c: AttemptSlotsCensus) -> AttemptSlotsCensusCounts? {
+  match c {
+    AttemptSlotsCensusOf { old_root: _, entries: _, counts: counts } => Present { value: counts }
+    _ => none
+  }
+}
+
+fn census_names_reference(c: AttemptSlotsCensus, reference: String) -> Bool {
+  any(census_entries(c: c), e => (e.reference as String) == reference)
+}
+
+fn census_source_is_unreadable(c: AttemptSlotsCensus, reference: String) -> Bool {
+  any(census_entries(c: c), e => ((e.reference as String) == reference) && match e.source { SlotUnreadable { detail: _ } => true  _ => false })
+}
+
+fn census_target_is_unreadable(c: AttemptSlotsCensus, reference: String) -> Bool {
+  any(census_entries(c: c), e => ((e.reference as String) == reference) && match e.target { SlotUnreadable { detail: _ } => true  _ => false })
+}
+
+fn census_relation_is_undecided(c: AttemptSlotsCensus, reference: String) -> Bool {
+  any(census_entries(c: c), e => ((e.reference as String) == reference) && match e.payload_relation { PayloadRelationUndecided { reason: _ } => true  _ => false })
+}
+
+fn census_relation_is_different(c: AttemptSlotsCensus, reference: String) -> Bool {
+  any(census_entries(c: c), e => ((e.reference as String) == reference) && (e.payload_relation == PayloadsDifferent))
+}
+
+// THE CENSUS HAS NO UNCOUNTED CATEGORY. Every entry sits in exactly one bucket, so the buckets add back
+// up to the total. This is the property the four hand-written predicates used to leave unguaranteed.
+fn census_buckets_add_up(c: AttemptSlotsCensus) -> Bool {
+  match census_counts(c: c) {
+    Present { value: k } => attempt_slots_census_buckets_sum_to_total(counts: k)
+    Absent => false
+  }
+}
+
+// THE DEFAULT THAT USED TO BE HERE: an unreadable slot read as "generation 0". No line of this census
+// may report a generation it did not observe.
+fn census_reports_no_generation_zero(c: AttemptSlotsCensus) -> Bool {
+  !any(census_entries(c: c), e => match e.source { SlotRead { generation: g, state: _, payload_bytes: _ } => g == 0  _ => false })
+}
+
+// THE ORPHAN: opened and launched in the OLD store, exactly as the Oct-14 attempt was (its slot is
+// generation 2, state Launching, under the pre-re-root root).
+// THE ORPHAN, SEEDED THE WAY THE HOST HAS IT. The seat is held in the ledger the current store's subject
+// owns -- that IS the leak: an acquired reference with no release, 22 GiB, blocking placement -- and the
+// slot that could release it exists ONLY under the root the re-root abandoned. Nothing here writes a slot
+// into the current store: that is what the carry is for.
+fn orphan_launched(dir: String) -> Bool {
+  match reserve_real(dir: dir) {
+    Absent => false
+    Present { value: _ } =>
+      match old_store(dir: dir) {
+        Absent => false
+        Present { value: old } =>
+          match attempt_open(store: old, record: slot_a(opened: 99999999999)) {
+            AttemptAdvanced { state: _, generation: g } =>
+              match attempt_begin_launch(store: old, reference: unit_a() as NonEmptyStr, expected: g) {
+                AttemptAdvanced { state: _, generation: _ } => true
+                AttemptLostRace { expected: _, observed: _ } => false
+                AttemptTransitionRefused { detail: _ } => false
+              }
+            AttemptLostRace { expected: _, observed: _ } => false
+            AttemptTransitionRefused { detail: _ } => false
+          }
+      }
+  }
+}
+
+// THE ORPHANED LEASE, MADE VISIBLE AGAIN -- the Oct-14 shape. Its slot sits only under the root the
+// re-root abandoned, so no settle pass can ever see it: the pass enumerates the current store, and that
+// store is the whole authority (DESIGN 3). The carry moves the slot into that store in one modeled step
+// and decides nothing about the holder; the pass then settles it on the evidence it already admits (the
+// manager has no such unit and it left no exit record).
+//
+// THE CARRY IS IDEMPOTENT ACROSS THE PASS ADVANCING THE SLOT. After the release, the current store's copy
+// is terminal and the old root's copy is still Launching, so the two payloads differ BY CONSTRUCTION. The
+// second carry still reports AlreadyCarried, because both sides name the SAME attempt -- a byte comparison
+// would report a refusal on every future run of the frontier step, which reads as an unresolved problem
+// and asks the operator to decide something already decided. The census reports that difference as a fact
+// (in_both_different), which is also why nothing may read the old root again and why retiring it is a
+// separate step with its own authorization.
+test fn a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads() -> Bool {
+  let dir = fresh_dir(tag: "cutover")
+  let seeded = orphan_launched(dir: dir)
+  let census_before = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let counts_before = census_counts(c: census_before)
+  let carry_first = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let census_after_carry = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let counts_after_carry = census_counts(c: census_after_carry)
+  let settle_first = match stores_at(dir: dir) {
+    Absent => SessionSettlementRefused { unit: "", detail: "no store" }
+    Present { value: stores } => settle_with_unit_absent(dir: dir, stores: stores)
+  }
+  let carry_second = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let settle_second = match stores_at(dir: dir) {
+    Absent => SessionSettlementRefused { unit: "", detail: "no store" }
+    Present { value: stores } => settle_with_unit_absent(dir: dir, stores: stores)
+  }
+  let census_after = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let counts_after = census_counts(c: census_after)
+  seeded
+  && census_names_reference(c: census_before, reference: unit_a())
+  && match counts_before { Present { value: k } => (k.total == 1) && (k.only_in_old == 1) && (k.in_both_identical == 0) && (k.in_both_different == 0) && (k.either_side_unreadable == 0)  Absent => false }
+  && census_buckets_add_up(c: census_before)
+  && carried(c: carry_first, reference: unit_a())
+  // Right after the carry both stores hold the SAME bytes: the carry copied the slot, it did not rewrite
+  // it, and nothing has advanced either side yet.
+  && match counts_after_carry { Present { value: k } => (k.total == 1) && (k.only_in_old == 0) && (k.in_both_identical == 1) && (k.in_both_different == 0)  Absent => false }
+  && census_buckets_add_up(c: census_after_carry)
+  && released_unit(s: settle_first) == (unit_a() as String)
+  && slot_is_terminal(dir: dir)
+  && already_carried(c: carry_second, reference: unit_a())
+  && !carried(c: carry_second, reference: unit_a())
+  && done_settlement(s: settle_second)
+  // The pass advanced the copy in the store it owns; the abandoned root keeps the pre-settle payload.
+  && census_relation_is_different(c: census_after, reference: unit_a())
+  && match counts_after { Present { value: k } => (k.total == 1) && (k.only_in_old == 0) && (k.in_both_identical == 0) && (k.in_both_different == 1)  Absent => false }
+  && census_buckets_add_up(c: census_after)
+  && !ledger_still_holds(dir: dir)
+}
+
+// THE CENSUS IS WHAT THE OPERATOR READS BEFORE A CARRY. A slot it cannot read must appear as a slot it
+// cannot read -- not as generation 0, not as "absent", and not as "the two payloads differ". The counts
+// are typed data the census computed, so the operator's question ("how much is only in the old root?")
+// is answered by the instrument rather than by a number transcribed into a declaration.
+test fn the_census_reports_a_slot_it_cannot_read_as_unreadable_and_counts_it() -> Bool {
+  let dir = fresh_dir(tag: "censusunreadable")
+  let seeded = orphan_launched(dir: dir)
+  let planted_old = plant_undecodable_slot(root: old_slots_dir(dir: dir), reference: unit_b())
+  let planted_target = match slot_store_at(dir: dir) {
+    Absent => false
+    Present { value: slots } => plant_undecodable_slot(root: slots.root as String, reference: unit_b())
+  }
+  let census = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  seeded
+  && planted_old
+  && planted_target
+  && census_names_reference(c: census, reference: unit_b())
+  && census_source_is_unreadable(c: census, reference: unit_b())
+  && census_target_is_unreadable(c: census, reference: unit_b())
+  && census_relation_is_undecided(c: census, reference: unit_b())
+  && census_reports_no_generation_zero(c: census)
+  && census_buckets_add_up(c: census)
+  && match census_counts(c: census) {
+      Present { value: k } => (k.total == 2) && (k.either_side_unreadable == 1) && (k.in_both_different == 0) && (k.in_both_identical == 0) && (k.only_in_old == 1)
+      Absent => false
+    }
+}
+
+// THE CARRY IS A CUTOVER, NOT AN OVERWRITE. One reference carries one attempt, and the reference alone
+// never says which one it is: srv1 has attempts present under BOTH roots, and a reference that collides
+// with a DIFFERENT attempt is exactly where nothing may choose a winner. Here the current store's slot
+// under unit_a() belongs to node_b/key_b while the old root's slot under that same reference belongs to
+// node_a/key_a. The carry refuses, and the live slot is untouched.
+test fn the_carry_refuses_to_overwrite_a_different_attempt_under_the_same_reference() -> Bool {
+  let dir = fresh_dir(tag: "cutovercollide")
+  let seeded_old = orphan_launched(dir: dir)
+  let seeded_new = launched_ok(dir: dir, rec: colliding_slot(opened: 500))
+  let carry = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  seeded_old
+  && seeded_new
+  && carry_refused_at(c: carry, reference: unit_a())
+  && !carried(c: carry, reference: unit_a())
+  && match slot_store_at(dir: dir) {
+    Absent => false
+    Present { value: slots } =>
+      match attempt_slot_read(store: slots, reference: unit_a() as NonEmptyStr) {
+        // Untouched: still the current store's attempt, still Launching, still opened at 500.
+        AttemptSlotHeld { record, generation: _ } =>
+          (record.opened_at == 500)
+          && (record.identity == session_attempt_identity(node_id: node_b, attempt_key: key_b))
+          && match record.state { AttemptLaunching => true  _ => false }
+        AttemptSlotAbsent => false
+        AttemptSlotUnreadable { detail: _ } => false
+      }
+  }
+}
+
+// A SEAT THE CURRENT STORE CANNOT DECODE IS NOT AN EMPTY SEAT. Reading it as "no slot here" is what
+// would let a carry write beside it and destroy the only evidence of what occupies a live seat. The
+// census reports the same seat as unreadable on the target side, and the relation as undecided rather
+// than as "these two differ".
+test fn the_carry_refuses_to_write_over_a_seat_the_current_store_cannot_decode_and_writes_nothing() -> Bool {
+  let dir = fresh_dir(tag: "cutoverunreadable")
+  let seeded = orphan_launched(dir: dir)
+  let planted_target = match slot_store_at(dir: dir) {
+    Absent => false
+    Present { value: slots } => plant_undecodable_slot(root: slots.root as String, reference: unit_a())
+  }
+  let carry = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  seeded
+  && planted_target
+  && carry_refused_at(c: carry, reference: unit_a())
+  && !carried(c: carry, reference: unit_a())
+  && !already_carried(c: carry, reference: unit_a())
+  && match slot_store_at(dir: dir) {
+    Absent => false
+    Present { value: slots } => match attempt_slot_read(store: slots, reference: unit_a() as NonEmptyStr) {
+      AttemptSlotUnreadable { detail: _ } => true
+      AttemptSlotAbsent => false
+      AttemptSlotHeld { record: _, generation: _ } => false
+    }
+  }
+}
+
+// A ROW IS NOT A PATH THE CALLER CHOSE, AND IT IS NOT AUTHORITY OVER ANOTHER INSTANCE'S STORE. The
+// target of a carry is the live store the declaration mints; a row naming an instance that store does
+// not answer for is refused at the row level, before any reference is read.
+test fn a_row_naming_an_instance_the_store_is_not_is_refused_and_writes_nothing() -> Bool {
+  let dir = fresh_dir(tag: "cutoverrow")
+  let seeded = orphan_launched(dir: dir)
+  let carry = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: row_naming_another_instance(dir: dir))
+  }
+  seeded
+  && carry_row_names_another_instance(c: carry)
+  && match slot_store_at(dir: dir) {
+    Absent => false
+    Present { value: slots } => match attempt_slot_read(store: slots, reference: unit_a() as NonEmptyStr) {
+      AttemptSlotAbsent => true
+      AttemptSlotHeld { record: _, generation: _ } => false
+      AttemptSlotUnreadable { detail: _ } => false
+    }
+  }
+}
+
+// THE DECLARED ROW, MEETING A STORE IT DOES NOT ANSWER FOR. Same refusal as the row above, but reached
+// through the DECLARATION instead of a synthetic row: the instance id is the one the declaration carries,
+// and the store is a fixture store that answers for another instance. The refusal must arrive AT THE TOP
+// LEVEL -- a wrapper that folded it into a success report would hide a refusal inside a PASS, which is
+// exactly the bug this row holds shut. And because the row check runs before the old store is opened, the
+// declared root on srv1 is never touched by this test.
+test fn the_declared_row_meeting_a_store_of_another_instance_is_refused_at_the_top_level() -> Bool {
+  let dir = fresh_dir(tag: "cutoverdecl")
+  let lookup = replaced_attempt_slots_root_for(instance_id: srv1_dashboard_lab_id)
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let carry = attempt_slots_carry_for_instance(instance_id: srv1_dashboard_lab_id, target: stores.slots)
+      (match lookup { ReplacedAttemptSlotsRootFound { row: _ } => true  _ => false })
+        && carry_row_names_another_instance(c: carry)
+        && match carry {
+             AttemptSlotsCarryRowRefused { refusal: AttemptSlotsRowNamesAnotherInstance { row_instance: i, store_instance: _ } } => i == srv1_dashboard_lab_id
+             _ => false
+           }
+    }
+  }
+}
+
+// THE DECLARED ROWS ARE THE ONLY WAY IN. An instance with no row is refused BY NAME: the census and
+// the carry both answer which instance has no declaration, and neither goes looking for a root. This is
+// the arm that keeps the cutover from becoming a second authority that enumerates historical stores.
+test fn an_instance_with_no_declared_row_is_refused_by_name_and_reads_nothing() -> Bool {
+  let dir = fresh_dir(tag: "cutovernorow")
+  let seeded = orphan_launched(dir: dir)
+  let census = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census_for_instance(instance_id: "instance-with-no-row" as NonEmptyStr, target: stores.slots)
+  }
+  let carry = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry_for_instance(instance_id: "instance-with-no-row" as NonEmptyStr, target: stores.slots)
+  }
+  seeded
+  && match census { AttemptSlotsCensusNoDeclaredRow { instance_id: i } => (i as String) == "instance-with-no-row"  _ => false }
+  && match carry { AttemptSlotsCarryNoDeclaredRow { instance_id: i } => (i as String) == "instance-with-no-row"  _ => false }
+  && match slot_store_at(dir: dir) {
+      Absent => false
+      Present { value: slots } => match attempt_slot_read(store: slots, reference: unit_a() as NonEmptyStr) {
+        AttemptSlotAbsent => true
+        AttemptSlotHeld { record: _, generation: _ } => false
+        AttemptSlotUnreadable { detail: _ } => false
+      }
+    }
+}
+
+// THE HOST'S ROW IS READ AS DATA, NOT RUN. The declared srv1 row must name the instance the pass reads
+// and a root that is NOT the live one (a row that agreed with the live root would census a store against
+// itself). The frontier is read both ways: while the run instrument is absent the row reads Pending --
+// ahead of its cut, not dangling -- and once that declaration appears it reads fired-still-present, the
+// state that says the row itself still has to be retired. The fold reads the row's TRIGGER; the seam ref
+// is passed alongside so the present set is the one the row's own subject would resolve against.
+test fn the_declared_row_names_the_instance_the_pass_reads_and_the_root_it_left_behind() -> Bool {
+  let lookup = replaced_attempt_slots_root_for(instance_id: srv1_lab_dashboard_instance().instance_id)
+  let live_root = session_attempt_slots_path(instance: srv1_lab_dashboard_instance()) as String
+  let pending = attempt_slots_cutover_frontier_expiry(present_decls: [attempt_slots_cutover_seam_ref()])
+  let fired = attempt_slots_cutover_frontier_expiry(present_decls: [attempt_slots_cutover_seam_ref(), attempt_slots_cutover_run_ref()])
+  match lookup {
+    ReplacedAttemptSlotsRootFound { row: row } =>
+      (row.instance_id == srv1_lab_dashboard_instance().instance_id)
+      && ((row.old_slots_root as String) != live_root)
+      && match pending { FrontierExpiryReport { unbound_count: u1, pending_count: p, fired_still_present_count: f } => (u1 == 0) && (p == 1) && (f == 0) }
+      && match fired { FrontierExpiryReport { unbound_count: u2, pending_count: p, fired_still_present_count: f } => (u2 == 0) && (p == 0) && (f == 1) }
+    _ => false
   }
 }
