@@ -19,6 +19,33 @@ import extdeps.sudo.elevation { sudo_elevate_argv }
 // construction independently; a second spelling would be the §3 fork.
 data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a command intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the consuming step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
 
+// THE TOKEN IS OWNED HERE, AND THE FORK IS DECLARED HERE. This constant is the authority for the bash-fold
+// marker: a check that has to recognise a refusal out of GENERATED text derives its needle from this line
+// instead of re-typing the token -- gunbc.test.claim.host.fleet_keypair_mint_witness
+// ::bash_refusal_marker_token does, and it fails closed (refuses) when the derivation fails. The token is
+// not yet spelled only here: four other constants repeat it in their own prose --
+// ci_floor_build_verify_refused_poison in gunbc.ci.ci_spec,
+// fleet_converge_locked_apply_emit_refused_poison in gunbc.fleet.fleet_converge_plan,
+// bash_emit_program_sequence_refused_poison in v2.workflow.bash_emit, and ci_release_build_refused_poison
+// in v2.workflow.ci_release_build_emit -- so each is a second spelling of a fact this line owns (DESIGN
+// section 6b). It is a fork, not a parallel ledger: each is minted by its own seam's refusal, and nothing
+// reads any of them back today, which is what makes it tolerable and also what let a refused step sit
+// committed unnoticed. NEXT-RUNG TRIGGER, stated as a capability: the first check that has to read a
+// refusal marker out of generated text for one of THOSE seams -- the same derivation shape then applies, at
+// which point the token is one declared constant these literals spell and only their prose differs.
+// THE RUNG ABOVE THAT ONE is the reason this constant is a String at all: the seams that substitute it
+// return a plain String, so a refusal is indistinguishable from a command to everything downstream, and a
+// refused body can be installed as if it were a script. Those seams are
+// gunbc.repo.repo_self_build ::repo_self_build_env_preamble, v2.workflow.ci_release_build_emit
+// ::ci_release_build_emit_stmts, and shell_command_text_of_node / shell_command_text_of_stmts here, with
+// the join sites that splice a refused body into a larger script (in gunbc.repo.repo_self_build and
+// gunbc.witness.witness_floor_workflow). The repair is to carry a typed refusal Outcome through those
+// seams so the entry that emits a workflow refuses and no artifact is ever written carrying this token.
+// Other *_refused_poison constants mint DIFFERENT tokens (__GUNBC_ORCH_EMIT_REFUSED__,
+// __GUNBC_SOL_HOLD_RENDER_REFUSED__, __GUNBC_EFFECT_PLAN_BASH_REFUSED__, __GUNBC_INVOKE_EMIT_REFUSED__,
+// __GUNBC_OIDC_READBACK_REFUSED__, __GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__, __WITNESS_ORCH_EMIT_REFUSED__)
+// and are separate authorities, not arms of this one.
+
 // THE MARKER NAMES WHY THE SERIALIZER REFUSED. A refusal swallowed into a constant marker leaves the
 // operator holding "a command intent was rejected" with no reason, which is a located refusal turned
 // into an unlocated one (DESIGN section 5); the reasons ride behind the marker on its one line.

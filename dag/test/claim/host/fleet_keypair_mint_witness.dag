@@ -646,9 +646,9 @@ test fn where_the_fold_can_render_the_committed_body_is_the_builders_run_itself(
   // was disclosed as a crutch for an interpreter that predated the seed-build fold; that interpreter
   // is not the one that evaluates claims any more, so the branch had exactly one remaining effect:
   // turning a serialization refusal into a green. A refusal now reddens this claim, which is where it
-  // belongs -- the seam that mints the poison text is the next rung, named in
-  // gunbc.recurring_failure_mode.seed_sha256_is_runner_relative and repaired as typed refusal in the
-  // lane's follow-up (the seam candidate set is listed there and in this PR's description).
+  // belongs -- the seam that mints the poison text is the next rung, and the rung with its seam list is
+  // declared on the carrier that owns the token: gunbc.shell_command_text, beside
+  // shell_command_text_refused_poison.
   model == committed
 }
 
@@ -669,9 +669,9 @@ test fn where_the_fold_can_render_the_committed_body_is_the_builders_run_itself(
 // Other seams mint other tokens (__GUNBC_ORCH_EMIT_REFUSED__, as in helper_snapshot_readback_emit_refused_poison
 // in gunbc.live_deploy.emit; __GUNBC_SOL_HOLD_RENDER_REFUSED__ in gunbc.machine_intake.sol_hold;
 // __GUNBC_EFFECT_PLAN_BASH_REFUSED__; __GUNBC_INVOKE_EMIT_REFUSED__; and others), and this claim does not read
-// those. That each constant re-types the token in its own prose instead of spelling it from one declared token
-// is a fork; closing it is the follow-up named in this module's PR description, with its trigger: the next
-// claim that has to read a refusal marker out of generated text.
+// those. That each constant re-types the token in its own prose instead of spelling it from one declared
+// token is a fork, and it is declared where it lives: on gunbc.shell_command_text, beside
+// shell_command_text_refused_poison, with its next-rung trigger and the typed-refusal seam list.
 fn bash_refusal_marker_token() -> Optional<String> {
   return shell_command_text_refused_poison.split(delimiter: " ").first()
 }
