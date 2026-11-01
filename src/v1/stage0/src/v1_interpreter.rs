@@ -910,11 +910,7 @@ fn declared_optional_field(child: &Rc<Node>, value: Value, ctx: &InterpContext) 
     if child.return_cardinality != Cardinality::CardOptional {
         return value;
     }
-    match value {
-        Value::Null => optional_absent(ctx),
-        Value::Variant { ref type_name, .. } if ctx.sym_eq(*type_name, "Optional") => value,
-        other => optional_present(other, ctx),
-    }
+    declared_optional_field_value(value, ctx)
 }
 
 /// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract (a
