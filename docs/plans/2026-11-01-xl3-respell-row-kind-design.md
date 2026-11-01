@@ -29,6 +29,15 @@ Per batch (one touched module set): (1) the witness at BASE must hold on the unm
 
 Cost fact from r2: the native context for one wave witness was about 24 minutes wall at 13.9 GB cgroup peak, so a batch gate is a ledger job, not an inline step; batching by wave is cheaper than per-module runs only if several modules share one resolved tree (wave 2 imports wave 1's helpers for that reason).
 
+## Composition with KeepHead / RenameHead: one sweep, one pass
+
+The respell rows are a second row list on the SAME sweep input, not a second sweep. The sweep already reads each module once (the companion pass of stack/sweep-cost); it gains one more rewrite family applied in that pass:
+
+- Head rows (`KeepHead`, `RenameHead`) select call-head occurrences by `home`/`key`; respell rows select reference occurrences by `name` bound to `declaring`. The two select over disjoint occurrence kinds, so one occurrence is claimed by at most one family; an occurrence both families claim REFUSES (`RefusalOccurrenceClaimedTwice`), never first-wins.
+- Edits from both families are spliced into one text per module from the one occurrence read, so a batch emits one candidate text per touched module and the identity witness runs once per batch at base and at head, over that single result.
+- The import edit stays the head family's alone: respell rows carry none, so a wave using only respell rows leaves every import line byte-identical, which is what the witness's unchanged-resolution claim then checks.
+- Row selection (`EveryRowOfHome | OnlyCall | OnlyOccurrences`) applies to head rows as today; a respell row's site set is `OnlyOccurrences`-keyed or every bound site of the name in the module, and the choice is part of the row, so the batch reading is data.
+
 ## Consumers and the executing route
 
 The row kind's consumer is the existing generator entry (`roster_import_sweep` run over a `RosterHomeScope`), exercised by a control that respells a fixture and a RED that refuses a site binding to a wrong declaration. No new gate and no census.
