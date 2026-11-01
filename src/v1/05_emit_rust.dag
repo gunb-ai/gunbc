@@ -3105,7 +3105,22 @@ fn lookup_item_by_leaf(leaf: String, registry: Map<String, ItemInfo>, emit_info:
 // ItemLeafAmbiguous and the callers arms are reachable. The empty owner is gone entirely now: the
 // index answers the LeafAmbiguous arm of LeafOwner, so the shape that hid the case cannot be
 // written.
-fn lookup_item_for_value_ref(resolved_name: String, self_module: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemLookup {
+//
+// A LOCAL BINDING NAMES NO DECLARATION. infer_var_binding_kind decided, with the lexical scope in hand,
+// that this occurrence is a parameter, `let`, lambda parameter or match-arm binder; the registry is a
+// flat bare-leaf namespace over the whole closure, so consulting it for such an occurrence let a local
+// `tok` read as the ambiguous global leaf `tok` of two unrelated modules and emit a refusal expression
+// in place of the variable (rustc E0614). The scope's answer is consumed here, once, for both
+// value-reference emitters.
+fn lookup_item_for_value_ref(resolved_name: String, self_module: String, binding_kind: VarBindingKind?, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemLookup {
+  match binding_kind {
+    Present { value: LocalValueBinding } => ItemNotFound
+    Present { value: MatchBoundBinding } => ItemNotFound
+    _ => lookup_item_for_declared_value_ref(resolved_name: resolved_name, self_module: self_module, registry: registry, emit_info: emit_info)
+  }
+}
+
+fn lookup_item_for_declared_value_ref(resolved_name: String, self_module: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> ItemLookup {
   let qualifier = value_ref_qualifier_prefix(name: resolved_name)
   let leaf = value_ref_qualified_leaf(name: resolved_name)
   if qualifier != "" {
@@ -11757,7 +11772,7 @@ fn emit_value_ref_ident(name: String, self_module: String, registry: Map<String,
     let leaf = value_ref_qualified_leaf(name: name)
     let qualifier = value_ref_qualifier_prefix(name: name)
     if qualifier != "" {
-      match lookup_item_for_value_ref(resolved_name: name, self_module: self_module, registry: registry, emit_info: emit_info) {
+      match lookup_item_for_declared_value_ref(resolved_name: name, self_module: self_module, registry: registry, emit_info: emit_info) {
         ItemFound { info: info } =>
           emit_qualified_value_ref_crate_ident(leaf: leaf, info: info, registry: registry, emit_info: emit_info)
         ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
@@ -11829,7 +11844,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
           rust_shared_wrap_ctor(inner_expr: body)
         } else { body }
       Absent =>
-        match lookup_item_for_value_ref(resolved_name: resolved_name, self_module: module_name, registry: registry, emit_info: emit_info) {
+        match lookup_item_for_value_ref(resolved_name: resolved_name, self_module: module_name, binding_kind: binding_kind, registry: registry, emit_info: emit_info) {
           ItemLeafAmbiguous { leaf: ambiguous_leaf } => ambiguous_leaf_refusal(leaf: ambiguous_leaf)
           ItemFound { info: info } =>
             {
@@ -11899,6 +11914,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             match lookup_item_for_value_ref(
               resolved_name: resolved_name,
               self_module: scope.module_name,
+              binding_kind: binding_kind,
               registry: registry,
               emit_info: emit_info
             ) {
