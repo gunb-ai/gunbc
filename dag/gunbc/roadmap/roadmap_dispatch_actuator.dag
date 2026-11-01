@@ -3842,8 +3842,18 @@ type AttemptUnitObservation
 // a cycle, and the acyclicity law is the one structural rule the import graph has. The transport
 // indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
 // the host whose units it is reading, so the local manager IS the subject.
+// WHICH MANAGER RAN AN ATTEMPT UNIT, in the one place that knows it. The attempt units are created on
+// the SYSTEM manager (attempt_system_unit_launch goes through systemctl on the host), so a unit named
+// with the gunbc-attempt- prefix is read there and everything else is read through the user manager.
+// This is the test attempt_unit_property routes its read with, and the same test the settlement reads
+// its holder standing with: which manager a not-found reading came from is part of the holder's
+// identity, so it may not be spelled twice.
+fn attempt_unit_manager_is_system(unit: NonEmptyStr) -> Bool {
+  starts_with(s: unit as String, prefix: "gunbc-attempt-")
+}
+
 fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {
-  if starts_with(s: unit as String, prefix: "gunbc-attempt-") {
+  if attempt_unit_manager_is_system(unit: unit) {
     let read = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
     if read.success {
       AttemptUnitFinished { exit_status: trim(read.value) }

@@ -1,0 +1,196 @@
+module test.claim.sealed_createonce_stores_witness
+
+import extdeps.shell
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.process { ProcessExit }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.compute.host_capacity { compute_root }
+import gunbc.compute.work_class_grant { WorkClass, WorkClassCompile }
+import gunbc.compute.work_provider_local { grant_exceeded_record_is_this_attempts, compute_grant_exceeded_record, grant_exceeded_store_open, GrantExceededOpened, GrantExceededUnopened, compute_grant_exceeded_count, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable }
+import std.roster_frontier { DeclSubject, frontier_subject_eq }
+import std.decl_ref { decl_ref }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.durable_create_once { create_once_record, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
+import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_path }
+import gunbc.fleet.printer_start_evidence_store { start_evidence_path, start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready, start_evidence_record }
+import gunbc.runner.runner_microvm_slot_unit { microvm_receipt_store_path, microvm_receipt_store, MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_record, microvm_receipt_read, MicrovmReceiptRead, MicrovmReceiptUnreadable, ControllerReceipts, ReserveReceipts }
+
+// THE CREATE-ONCE RECORD STORES (cohort C-createonce) over throwaway host-state trees: a record is written once, a
+// second write for the same key refuses without touching the first, and bytes planted in the old layout read back.
+
+fn fresh_tree() -> HostStateTree? {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_createonce.XXXXXX").path
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  let made = [start_evidence_path(tree: tree) as String, microvm_receipt_store_path(tree: tree) as String]
+  if all(made, d => shell.Mkdir.Parents(path: d as FilePath).success) { Present { value: tree } } else { none }
+}
+
+test fn the_start_evidence_is_written_once_and_a_rerun_does_not_clobber() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => match start_evidence_store(tree: tree) {
+      StartEvidenceStoreUnready { detail: _ } => false
+      StartEvidenceStoreReady { store: s } => {
+        let key = "printer-attempt-k1" as NonEmptyStr
+        let first = match start_evidence_record(store: s, claim_key: key, read: 1, content: "first") { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
+        let second = match start_evidence_record(store: s, claim_key: key, read: 1, content: "second") { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => true CreateOnceRefused { path: _, cause: _ } => false }
+        let next = match start_evidence_record(store: s, claim_key: key, read: 2, content: "other") { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
+        let kept = Filesystem.Read(path: join([start_evidence_path(tree: tree) as String, "/printer-attempt-k1.after-start-1.json"], ""))
+        first && second && next && kept.success && kept.content == "first"
+      }
+    }
+  }
+}
+
+test fn a_legacy_after_start_entry_makes_the_evidence_mint_unready() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = Filesystem.WriteCreateNew(path: join([printer_starts_path(tree: tree) as String, "/printer-attempt-k1.claimed.after-start-1.json"], ""), content: "old").success
+      let _dir = shell.Mkdir.Parents(path: printer_starts_path(tree: tree) as String as FilePath)
+      planted && match start_evidence_store(tree: tree) { StartEvidenceStoreReady { store: _ } => false StartEvidenceStoreUnready { detail: _ } => true }
+    }
+  }
+}
+
+test fn a_controller_receipt_is_written_once_and_old_bytes_read_back() -> Bool {
+  match fresh_tree() {
+    Absent => false
+    Present { value: tree } => match microvm_receipt_store(tree: tree) {
+      MicrovmReceiptStoreUnready { detail: _ } => false
+      MicrovmReceiptStoreReady { store: s } => {
+        let inv = "inv-123" as NonEmptyStr
+        let writer = ControllerReceipts { instance: "slot1" }
+        let old = Filesystem.WriteCreateNew(path: join([microvm_receipt_store_path(tree: tree) as String, "/slot1-inv-123.txt"], ""), content: "exit 0")
+        let read_old = match microvm_receipt_read(store: s, writer: writer, invocation_id: inv) { MicrovmReceiptRead { path: _, text: t } => t == "exit 0" MicrovmReceiptUnreadable { path: _, detail: _ } => false }
+        let again = match microvm_receipt_record(store: s, writer: writer, invocation_id: inv, content: "new") { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => true CreateOnceRefused { path: _, cause: _ } => false }
+        let fresh = match microvm_receipt_record(store: s, writer: ReserveReceipts, invocation_id: inv, content: "r") { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
+        old.success && read_old && again && fresh
+      }
+    }
+  }
+}
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+data evidence_forged_source: String = "module probe_evidence_forged\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.printer_start_evidence_store { StartEvidenceStore }\nfn forge(dir: NonEmptyStr) -> StartEvidenceStore { StartEvidenceStore { root: dir } }\n"
+
+data microvm_forged_source: String = "module probe_microvm_forged\nimport std.types { NonEmptyStr }\nimport gunbc.runner.runner_microvm_slot_unit { MicrovmReceiptStore }\nfn forge(dir: NonEmptyStr) -> MicrovmReceiptStore { MicrovmReceiptStore { root: dir } }\n"
+
+data grant_forged_source: String = "module probe_grant_forged\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.work_provider_local { GrantExceededStore }\nfn forge(dir: NonEmptyStr, i: HostDashboardInstance) -> GrantExceededStore { GrantExceededStore { root: dir, instance: i } }\n"
+
+data evidence_twin_source: String = "module probe_evidence_twin\nimport std.types { NonEmptyStr }\nimport test.fixture.sealed_createonce_stores.unsealed_plain { StartEvidenceStore }\nfn forge(dir: NonEmptyStr) -> StartEvidenceStore { StartEvidenceStore { root: dir } }\n"
+
+data microvm_twin_source: String = "module probe_microvm_twin\nimport std.types { NonEmptyStr }\nimport test.fixture.sealed_createonce_stores.unsealed_plain { MicrovmReceiptStore }\nfn forge(dir: NonEmptyStr) -> MicrovmReceiptStore { MicrovmReceiptStore { root: dir } }\n"
+
+data grant_twin_source: String = "module probe_grant_twin\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport test.fixture.sealed_createonce_stores.unsealed { GrantExceededStore }\nfn forge(dir: NonEmptyStr, i: HostDashboardInstance) -> GrantExceededStore { GrantExceededStore { root: dir, instance: i } }\n"
+
+test fn a_forged_start_evidence_store_is_refused_at_compile() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: evidence_forged_source, subject: "StartEvidenceStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: total_blocking_census(source: evidence_twin_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: evidence_twin_source, subject: "StartEvidenceStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_microvm_receipt_store_is_refused_at_compile() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: microvm_forged_source, subject: "MicrovmReceiptStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: total_blocking_census(source: microvm_twin_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: microvm_twin_source, subject: "MicrovmReceiptStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_grant_exceeded_store_is_refused_at_compile() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: grant_forged_source, subject: "GrantExceededStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: seal_violations(source: grant_twin_source, subject: "GrantExceededStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+fn grant_instance(dir: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "createonce-wet" as NonEmptyStr),
+    instance_id: "createonce-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+// A grant-exceeded record written by the OLD code (a bare create-new file under grant-exceeded/<class>/<reference>) reads
+// back through the sealed store: it counts as one, bytes unchanged, a second record for that reference is AlreadyRecorded
+// and leaves the old bytes alone, and a new reference records.
+test fn an_old_grant_exceeded_record_reads_through_the_sealed_store() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_grantexceeded.XXXXXX").path
+  let instance = grant_instance(dir: dir)
+  let class_dir = join([compute_root(instance: instance) as String, "/grant-exceeded/compile"], "")
+  let made = shell.Mkdir.Parents(path: class_dir as FilePath).success
+  let old = Filesystem.WriteCreateNew(path: join([class_dir, "/ref-old"], ""), content: "old-code-bytes").success
+  match grant_exceeded_store_open(instance: instance) {
+    GrantExceededUnopened { detail: _ } => false
+    GrantExceededOpened { store: s } => {
+      let counted = match compute_grant_exceeded_count(store: s, class: WorkClassCompile) { GrantExceededCounted { count: n } => n == 1 GrantExceededNeverRecorded => false GrantExceededUnreadable { detail: _ } => false }
+      let again = match create_once_record(path: join([class_dir, "/ref-old"], ""), content: "new") { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => true CreateOnceRefused { path: _, cause: _ } => false }
+      let fresh = match create_once_record(path: join([class_dir, "/ref-new"], ""), content: "n") { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
+      let kept = Filesystem.Read(path: join([class_dir, "/ref-old"], ""))
+      made && old && counted && again && fresh && kept.success && kept.content == "old-code-bytes"
+    }
+  }
+}
+
+// A RECORD AT THE SAME PATH IS NOT AUTOMATICALLY THIS ATTEMPT'S. The retry counts AlreadyRecorded only when the existing
+// record's sample line names this class and this work identity; a foreign record (other identity, other class, empty,
+// undecodable) is refused. The effect itself (compute_ensure_dir is privileged) is not driven here; this is the decision.
+test fn a_foreign_grant_exceeded_record_at_the_same_reference_is_not_this_attempts() -> Bool {
+  let mine = "class: compile\ngrant: g\nsample: class=compile identity=abc host=h observed_at=1 peak_upper_kib=2 operation=o\n"
+  grant_exceeded_record_is_this_attempts(existing: mine, class: WorkClassCompile, identity: "abc")
+    && !grant_exceeded_record_is_this_attempts(existing: mine, class: WorkClassCompile, identity: "abd")
+    && !grant_exceeded_record_is_this_attempts(existing: "", class: WorkClassCompile, identity: "abc")
+    && !grant_exceeded_record_is_this_attempts(existing: "garbage", class: WorkClassCompile, identity: "abc")
+}
+
+test fn a_harness_wire_log_frontier_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.harness.harness_turn", decl_name: "harness_wire_log_path") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+test fn a_gcp_iam_bootstrap_journal_frontier_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_authority_record") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+// THE EFFECT PATH, DRIVEN. compute_grant_exceeded_record runs compute_ensure_dir (which execs /usr/bin/install -d from the
+// instance's repo_root, so the witness creates that workdir and the compute root; no privilege is involved) and then the create-once write. Under an isolated instance over a witness-made
+// root: a first record is Recorded, the same reference with the same identity is AlreadyRecorded, and the same reference
+// carrying ANOTHER identity (a foreign record at the path) is refused and the file is untouched.
+test fn a_grant_exceeded_retry_is_counted_only_over_its_own_record_through_the_store() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_grantexceeded.XXXXXX").path
+  let instance = grant_instance(dir: dir)
+  let workdir = shell.Mkdir.Parents(path: instance.repo_root).success
+  let compute = shell.Mkdir.Parents(path: compute_root(instance: instance) as String as FilePath).success
+  match grant_exceeded_store_open(instance: instance) {
+    GrantExceededUnopened { detail: _ } => false
+    GrantExceededOpened { store: s } => {
+      let line = "sample: class=compile identity=abc host=h observed_at=1 peak_upper_kib=2 operation=o\n"
+      let first = match compute_grant_exceeded_record(store: s, class: WorkClassCompile, reference: "ref-1" as NonEmptyStr, identity: "abc", content: line) { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
+      let retry = match compute_grant_exceeded_record(store: s, class: WorkClassCompile, reference: "ref-1" as NonEmptyStr, identity: "abc", content: line) { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => true CreateOnceRefused { path: _, cause: _ } => false }
+      let foreign = match compute_grant_exceeded_record(store: s, class: WorkClassCompile, reference: "ref-1" as NonEmptyStr, identity: "zzz", content: line) { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: c } => string_contains(s: c, pattern: "not this attempt's") }
+      workdir && compute && first && retry && foreign
+    }
+  }
+}

@@ -44,6 +44,7 @@ import gunbc.fleet.printer_actuation {
   printer_start_claim_listed, printer_start_claim_version,
 }
 import gunbc.fleet.printer_operator_approval { approve_and_print }
+import gunbc.fleet.printer_start_evidence_store { start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready }
 import gunbc.fleet.printer_execution_hold { printer_execution_hold_store, PrinterExecutionHoldStoreReady, PrinterExecutionHoldStoreUnready }
 import gunbc.fleet.printer_receipt { write_receipt }
 import gunbc.auth.access_token_source { AccessTokenSource }
@@ -174,6 +175,7 @@ fn converge_print(tree: HostStateTree, request: PrintRequest, pass_ref: PrintPas
   let requests = match print_request_store(tree: tree) { PrintRequestStoreReady { store: x } => x PrintRequestStoreUnready { detail: d } => return exit_failure(reason: concat("Print request records unavailable: ", d)) }
   let completions = match print_completion_store(tree: tree) { PrintCompletionStoreReady { store: x } => x PrintCompletionStoreUnready { detail: d } => return exit_failure(reason: concat("Print completion records unavailable: ", d)) }
   let claims = match printer_start_claims(tree: tree) { PrinterStartClaimsReady { store: x } => x PrinterStartClaimsUnready { detail: d } => return exit_failure(reason: concat("Printer start claims unavailable: ", d)) }
+  let start_evidence = match start_evidence_store(tree: tree) { StartEvidenceStoreReady { store: x } => x StartEvidenceStoreUnready { detail: d } => return exit_failure(reason: concat("Printer start evidence unavailable: ", d)) }
   let holds = match printer_execution_hold_store(tree: tree) { PrinterExecutionHoldStoreReady { store: x } => x PrinterExecutionHoldStoreUnready { detail: d } => return exit_failure(reason: concat("Printer execution hold unavailable: ", d)) }
   let route = print_pass_route(pass_ref: pass_ref, record: print_request_read(store: requests, request: request))
   let record = match route {
@@ -230,7 +232,7 @@ fn converge_print(tree: HostStateTree, request: PrintRequest, pass_ref: PrintPas
     RequestBedClearThenStart => {
       let path = join([print_run_directory(tree: tree) as String, "/", record.attempt_id as String, "-", run_id, ".3mf"], "")
       if !copy_verified(record: record, path: path) { return exit_failure(reason: "The recorded artifact is missing or no longer hashes to its recorded digest; prepare under a new request id") }
-      approve_and_print(printer: record.request.printer as String, hold_store: holds, claims: claims, path: path, digest: record.artifact_sha256.hex as String, version: version as String, attempt: record.attempt_id as String, token_source: token_source)
+      approve_and_print(printer: record.request.printer as String, hold_store: holds, claims: claims, evidence: start_evidence, path: path, digest: record.artifact_sha256.hex as String, version: version as String, attempt: record.attempt_id as String, token_source: token_source)
     }
   }
 }
