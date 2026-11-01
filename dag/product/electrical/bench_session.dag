@@ -194,13 +194,20 @@ type ThermalInterface
   | ThermalPaste
   | InterfaceUnstated
 
+// What an alteration did: a thermal interface changed under a part, or a part lifted off the board. A
+// lifted part's footprint is bare until a refit is reported, and readings at that footprint are of a
+// different physical state from readings at the part's leads, so the alteration carries whether the
+// refit has happened rather than assuming it.
+type AlterationChange
+  = ThermalInterfaceChanged { removed: ThermalInterface, applied: ThermalInterface? }
+  | PartRemoved { refitted: Bool }
+
 type AssetAlteration {
   key: NonEmptyStr
   asset: PhysicalAssetIdentity
   part: ComponentInstanceIdentity
   performed_on: NonEmptyStr
-  removed: ThermalInterface
-  applied: ThermalInterface?
+  change: AlterationChange
   evidence: EvidenceRef
 }
 

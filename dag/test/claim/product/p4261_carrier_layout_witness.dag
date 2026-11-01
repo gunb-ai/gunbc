@@ -72,6 +72,8 @@ import product.electrical.bench_session {
   StabilityUnrecorded,
   KeptMoving,
   HeldSteady,
+  ThermalInterfaceChanged,
+  PartRemoved,
   VoltageValue,
   ReadAbout,
   ReadBelow,
@@ -2341,7 +2343,10 @@ test fn u4_reads_as_a_cyclone_10_gx_fpga() -> Bool {
     && u4_configuration_text(layout: without).contains("U4 is not a component of this carrier's observation")
     && carrier_input_reading(layout: p4261_e1_layout).contains("read at CONF_DONE")
     && count(e1_measured.bench.alterations) == 1
-    && all(e1_measured.bench.alterations, a => match a.applied { Present { value: InterfaceUnstated } => true, _ => false })
+    && all(e1_measured.bench.alterations, a => match a.change { ThermalInterfaceChanged { removed: _, applied: Present { value: InterfaceUnstated } } => true, _ => false })
+    && count(k1_measured.bench.alterations) == 1
+    && all(k1_measured.bench.alterations, a => match a.change { PartRemoved { refitted } => !refitted && component_identity_eq(a: a.part, b: k1_converter_near), _ => false })
+    && alterations_text(layout: p4261_k1_layout).contains("2026-11-01 K1 U10_P2 converter lifted: 8-lead converter below the 4R7 nearest U4 (the U10_P2 silkscreen beside it, U100 above), marked BDFP 528 was lifted off the board and not refitted, so its footprint is bare")
     && alterations_text(layout: p4261_e1_layout).contains("2026-10-21 U4 heatsink lifted: U4 had a thermal pad removed and an interface the operator did not state applied")
     && alterations_text(layout: without).contains("U4 had a thermal pad removed")
 }

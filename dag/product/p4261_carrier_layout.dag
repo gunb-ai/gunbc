@@ -123,7 +123,7 @@ import product.electrical.source_draw {
   is_draw_contradicted,
 }
 import product.electrical.bench_session {
-  AssetAlteration, ThermalPad, InterfaceUnstated, thermal_interface_text,
+  AssetAlteration, AlterationChange, ThermalInterfaceChanged, PartRemoved, ThermalPad, InterfaceUnstated, thermal_interface_text,
   BenchRecord,
   ProbeAttachment,
   BenchIncident,
@@ -1231,11 +1231,18 @@ fn nat_min_of(vs: List<Nat>) -> Nat {
 }
 
 fn alteration_text(a: AssetAlteration) -> String {
-  join([
-    a.key as String, ": ", component_text(c: a.part), " had ", thermal_interface_text(t: a.removed), " removed",
-    match a.applied { Present { value: t } => join([" and ", thermal_interface_text(t: t), " applied"], ""), Absent => ", and no refit is yet reported" },
-    " (", evidence_ref_text(e: a.evidence), ")",
-  ], "")
+  match a.change {
+    ThermalInterfaceChanged { removed, applied } => join([
+      a.key as String, ": ", component_text(c: a.part), " had ", thermal_interface_text(t: removed), " removed",
+      match applied { Present { value: t } => join([" and ", thermal_interface_text(t: t), " applied"], ""), Absent => ", and no refit is yet reported" },
+      " (", evidence_ref_text(e: a.evidence), ")",
+    ], "")
+    PartRemoved { refitted } => join([
+      a.key as String, ": ", component_text(c: a.part), " was lifted off the board",
+      if refitted { " and refitted" } else { " and not refitted, so its footprint is bare and readings there are of the board without it" },
+      " (", evidence_ref_text(e: a.evidence), ")",
+    ], "")
+  }
 }
 
 fn alterations_text(layout: CarrierLayoutObservation) -> String {
@@ -2272,7 +2279,7 @@ data k1_measured: MeasuredBoard = MeasuredBoard {
   continuity: [],
   diode_readings: [],
   source_draws: [],
-  bench: BenchRecord { incidents: [], attachments: [], alterations: [], voltages: [], resistances: concat(concat(concat(concat(concat(concat(k1_resistances, [k1_l_4r7_near_resistance]), k1_l_4r7_near_pad_resistances), k1_u100_lead_resistances), k1_converter_lead_resistances), k1_near_converter_lead_resistances), k1_converter_pair_resistances) },
+  bench: BenchRecord { incidents: [], attachments: [], alterations: [k1_u10p2_lift], voltages: [], resistances: concat(concat(concat(concat(concat(concat(k1_resistances, [k1_l_4r7_near_resistance]), k1_l_4r7_near_pad_resistances), k1_u100_lead_resistances), k1_converter_lead_resistances), k1_near_converter_lead_resistances), k1_converter_pair_resistances) },
   phases: k1_phases,
   transitions: k1_transitions, pole_closures: [],
 }
@@ -3241,8 +3248,7 @@ data e1_u4_heatsink_alteration: AssetAlteration = AssetAlteration {
   asset: p4261_e1_b,
   part: e1_u4,
   performed_on: "2026-10-21",
-  removed: ThermalPad,
-  applied: Present { value: InterfaceUnstated },
+  change: ThermalInterfaceChanged { removed: ThermalPad, applied: Present { value: InterfaceUnstated } },
   evidence: e1_u4_heatsink_said,
 }
 // THE TRUSTED-BOOT ISLAND BELOW U4 (2026-10-21). U5_2 carries the Microchip logo over 'CEC1736 /
@@ -3788,6 +3794,21 @@ data k1_near_converter_lead_resistances: List<ResistanceObservation> = [
 data converter_said_1031_pairs: EvidenceRef = OperatorStatement { stated_on: "2026-10-31", verbatim: "1. 0ohm 2. 0ohm 3. 0ohm 4. open 5. 0ohm" }
 data e1_converter_lead_row_photos_1031: EvidenceRef = e1_photo(taken_on: "2026-10-31", locator: "two Andonstar frames at higher magnification, uploads 0b80e48e and 77dc6ca0 (the second with the operator's red line drawn along the row of inductor-side leads to the via at its right): the converter's body with its marking unreadable at this light, the four inductor-side leads with a small yellow ceramic above them and a large brown one above that, a round via with a white ring to the right of the leads and a white line down the chip's right side, both silkscreen print (the K1's chip shows them identically, k1_converter_lead_row_photo_1031); the line under the leads is what the operator feels")
 data k1_converter_lead_row_photo_1031: EvidenceRef = k1_photo(locator: "Andonstar frame at the same magnification, upload e59be0a7 (taken 2026-10-31, 'the k1, a bit cleaner'): the near-U4 converter's body with its marking legible, 'BDFP' over '528', the four inductor-side leads clean with distinct gaps between them, a small yellow ceramic above them, and the same white ring around the via and white line beside the chip as on the E1, so those are silkscreen")
+// THE K1'S NEAR-U4 CONVERTER WAS LIFTED (2026-11-01), by a slip of the plan rather than of the probe:
+// the operator, practising the lift with the iron, took U10_P2 off the K1 instead of the E1. The part is
+// kept and not refitted; the operator reports the site clean. The K1 loses nothing it was using (that
+// rail read 0 V at the K1's 40 mA state) and gains the one thing the E1 lift needed, a healthy board's
+// bare footprint to read as the control, with the known-good part (13 kohm VIN to SW before the lift)
+// to read on its own.
+data k1_u10p2_lift_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "i actually took that U100 piece off of the K1 board, not the E1 board - though, i think it would be pretty easy to put it back / its the BFD **** part (whatever it is - i didn't refit it but the site is fine/clean, i think thats the same part i have 5 of coming anyway, but i can replace this part if i need to / I tried to do it with a soldering iron" }
+data k1_u10p2_lift: AssetAlteration = AssetAlteration {
+  key: "2026-11-01 K1 U10_P2 converter lifted",
+  asset: p4261_k1_a,
+  part: k1_converter_near,
+  performed_on: "2026-11-01",
+  change: PartRemoved { refitted: false },
+  evidence: k1_u10p2_lift_said,
+}
 data converter_said_1101_checks: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "1. reversing the probes, I see 8.4Mohm instead of open 2. 0hm both ways 3. 0-30ohm a little jumpy 5. 13kohm" }
 data e1_fissure_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-31", verbatim: "I do kind of see/feel a fissure running along that side, from the empty pad to the right, under the four top pins- not sure if it's real, but I can feel it in certain areas" }
 data pair_list_basis: NonEmptyStr = "the lead is named by the numbered list the operator was given with the labelled photographs (pin labels drawn from the MP2333CGTL row's pin order), the same inference as the lead readings'"
@@ -3925,7 +3946,7 @@ data p4261_near_4r7_converter_hypothesis: InvestigationHypothesis = Investigatio
     "the device's 4.2 V to 18 V input range bounds the path feeding VIN (pin 2), which is unread; it says nothing about J20's voltage (p4261_j20_main_input_hypothesis)",
     "both sites cleaned and inspected under the Andonstar 2026-10-31 with nothing broken, cracked or singed (e1_inductor_short_incident); the carriers differ in population around the inductor (two 0603 parts under the E1's, four empty pads under the K1's; two large ceramics against one), so the K1 is a reference for the converter and not for every part on the rail",
   ],
-  decided_by: "No further photographs or readings of the assembled E1: the video of 2026-11-01 did not resolve the lead row further, the surface line is preserved and not scraped, by agreement with the second reviewer, and the lift shows the footprint under the leads. One deliberate separation with its before and after readings written first, the inductor left in place so the comparison is about the device alone: the device lifted with low-melt alloy once the SOT583 method is practiced, preferred because VIN and SW both read wrong and VIN reads 0 to the switch node both ways against the K1's 13 kohm; on the bare footprint VIN to the return, the OUT terminal to the return and VIN to SW, and the lifted part's VIN to SW on its own. Footprint clear and the part shorted names the part; footprint and part both clear names a path the lift removed, a bridge or dragged solder, so the part's leads and the footprint are inspected for solder before anything is fitted; VIN still low on the footprint names the input side; OUT still low names the rail's own parts or a load; VIN to SW still low on the footprint names a board path. The inductor lifted instead when that is the more controllable operation. No injection and no replacement before the separation is read, and the board is not powered with the device off or straight after a new one is fitted. Which loads the rail supplies waits on that."
+  decided_by: "No further photographs or readings of the assembled E1: the video of 2026-11-01 did not resolve the lead row further, the surface line is preserved and not scraped, by agreement with the second reviewer, and the lift shows the footprint under the leads. First the control the K1's lift of 2026-11-01 provides (k1_u10p2_lift): on its bare U10_P2 footprint, pad 2 (VIN) and pad 3 (SW) to the return, pad 2 to pad 3 both ways, pad 6 (EN) to pad 2 and to the return, and the lifted part's VIN to SW both ways, which is what a healthy footprint and a healthy part read. Then one deliberate separation on the E1 with its before and after readings written first, the inductor left in place so the comparison is about the device alone: the device lifted with low-melt alloy once the SOT583 method is practiced, preferred because VIN and SW both read wrong and VIN reads 0 to the switch node both ways against the K1's 13 kohm; on the bare footprint VIN to the return, the OUT terminal to the return and VIN to SW, and the lifted part's VIN to SW on its own. Footprint clear and the part shorted names the part; footprint and part both clear names a path the lift removed, a bridge or dragged solder, so the part's leads and the footprint are inspected for solder before anything is fitted; VIN still low on the footprint names the input side; OUT still low names the rail's own parts or a load; VIN to SW still low on the footprint names a board path. The inductor lifted instead when that is the more controllable operation. No injection and no replacement before the separation is read, and the board is not powered with the device off or straight after a new one is fitted. Which loads the rail supplies waits on that."
 }
 
 data e1_vector_unrecorded: List<SwitchPoleState> = [e1_pole(package: e1_s2, pole: 1, position: PolePositionUnrecorded), e1_pole(package: e1_s2, pole: 2, position: PolePositionUnrecorded), e1_pole(package: e1_s1, pole: 1, position: PolePositionUnrecorded), e1_pole(package: e1_s1, pole: 2, position: PolePositionUnrecorded)]
