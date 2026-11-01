@@ -31,8 +31,9 @@ import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import gunbc.machine_intake.bmc_credential_policy { RedfishBasicOrSession, IpmiLanplus, CredentialSurface, asrock_altrad8ud_openbmc_3_22_00_key }
+import std.algebra { string_contains }
 import gunbc.machine_intake.bmc_rotation_route {
-  BmcRotationRouteStanding, rotation_route_from_citation, redfish_account_password_write,
+  BmcRotationRouteStanding, rotation_route_from_citation, IpmiSetUserPassword,
 }
 import gunbc.machine_intake.bmc_secure {
   bmc_secure_convergence_approval,
@@ -208,12 +209,17 @@ test fn a_surface_the_policy_does_not_ground_refuses_the_derivation() -> Bool {
 
 data lab_route_citation: ExternalAuthority = ExternalAuthority { uri: uri_https(locator: "example.invalid/root-route-witness-citation" as NonEmptyStr) }
 
+// THE ROUTE ROOT ROTATES OVER: an IPMI Set User Password citation. The shared-store premise (03.22.00:
+// one password per account, IPMI lanplus and Redfish sharing root's store) lands the managed write through
+// the IPMI user table, so the route names that transport -- the request receipt then carries the request the
+// dispatch actually issued. A Redfish route here would have named a transport the IPMI-only world does not
+// serve; before the dispatch read the request, that mismatch was hidden by a hard-coded IPMI call.
 fn cited_root_route() -> BmcRotationRouteStanding
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "plan_root"),
   ]
 {
-  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: redfish_account_password_write(account: "root" as NonEmptyStr), citation: lab_route_citation)
+  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: root_user }, citation: lab_route_citation)
 }
 
 fn version_identity(version: String) -> SmResolvedVersionIdentity {
@@ -325,9 +331,19 @@ test fn the_root_rotation_applies_reads_back_and_converges() -> Bool {
               BmcSecurePhaseConverged { receipt: _ } => false
               BmcSecurePhaseRefused { cause: _ } => true
             }
+            && receipt_names_the_issued_ipmi_write(label: step.application.request_receipt.label as String)
         }
       }
   }
+}
+
+// The application's request receipt carries the transport the dispatch actually ISSUED, for THIS route:
+// the IPMI Set User Password command naming root's user id (the shared-store write). It never carries a
+// credential -- only the generation reference -- so neither the published nor the new secret bytes appear.
+fn receipt_names_the_issued_ipmi_write(label: String) -> Bool {
+  string_contains(s: label, pattern: "IPMI Set User Password (App 47h) user 1")
+    && !string_contains(s: label, pattern: generation_2)
+    && !string_contains(s: label, pattern: published_password)
 }
 
 // ── the derivation is bound to the board and build it was read on (review of gunbc#15317) ───────────
