@@ -3,6 +3,7 @@ module gunbc.recurring_failure_mode.instrument_subject_bound_twice_the_registry_
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.guarantee_rung { GuaranteeRung }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, RungStanding, FoundOnRung }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
@@ -11,10 +12,12 @@ data instrument_subject_bound_twice_the_registry_reads_the_unbound_copy: Recurri
   identity: "instrument_subject_bound_twice_the_registry_reads_the_unbound_copy" as NonEmptyStr,
 
   rung: RungRead {
-    found_at: FoundOnRung { rung: StructurallyGuaranteed },
-    standing: AtCeiling {
-      rung: StructurallyGuaranteed,
-      ceiling_reason: "the instrument table is now RENDERED from the model's binding rows by gunbc.instruments.instrument_registry_emit and joins the seed-build artifact population, so there is no second copy for the dispatch to read: an instrument whose binding row is lost loses its table entry and the seed stops compiling, and a committed table naming a subject the checkout lacks is refused at dispatch with a located cause at the instrument contract's exit 2. The ceiling is the table's subject identity only -- a NativeServeProbe and the native-claim deadline are read from gunbc.instrument_targets at spawn, and the measured-corpus rows key on a subject NAME the model states, so those pairings remain model-side by design rather than being guaranteed here.",
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the required build path compares a committed generated table with the model's own rendering of it and refuses the difference, so an instrument table that is behind its roster cannot reach a green build -- today the only reader of that difference is heal, which judges membership (it refuses a generated file that appears or disappears from the population, as it did to this very artifact on run 41301371545) but not staleness, is a non-required job, and refuses no merge",
     },
   },
 
@@ -23,7 +26,9 @@ data instrument_subject_bound_twice_the_registry_reads_the_unbound_copy: Recurri
 
     "OCCURRENCE, 2026-11-01, PR 15298 is the specimen the class was raised from: a label's row named a subject that was not the one `gunbc.instrument_targets` declared, and the dispatch ran what the row said. The same file carried the class a second way: six measured-corpus lists hand-listed beside the code that reads them, and one of the six (`emitted_crate_workspace_source_roots`) existed ONLY in the host, with no fact in the instrument's own module at all. At the time this row was filed the two copies agreed -- a mechanical comparison of all 62 rows found no content drift -- which is what makes the class dangerous rather than merely untidy: agreement is not enforcement, and the copy the dispatch read could have diverged with nothing the worse for it.",
 
-    "Climb note. The class was at `OutsideTheLadder` while the host authored its own rows, because no execution consulted the model at all. It moves to `StructurallyGuaranteed` for the table's subject identity by rendering the table from the roster and admitting the file to the population heal regenerates, which makes a stale table a compile failure or a heal refusal rather than a passing build. What is NOT climbed here, named rather than glossed: the roots rows are keyed by a subject name the model states (a name is not a subject), and the probe plan and deadline were already read from the model at spawn, so they were never part of this fork and are not claimed as fixed.",
+    "CLIMB NOTE, AND A WITHDRAWAL INSIDE IT. The class sat below the ladder while the host authored its own rows, because no execution consulted the model at all. This change moves it to `Mitigatable`, and the first revision of this row said `StructurallyGuaranteed`, which was rung inflation (§4b meta-obligation 1) and is withdrawn: it claimed that a stale table is 'a compile failure or a heal refusal rather than a passing build', and neither half is true. If the roster changes and nobody regenerates the table, the seed still compiles and keeps dispatching the old subject, and heal, which is the only thing that reads that difference, is a non-required job that refuses no merge (DESIGN.md, 'Building & checks'). Precise about what heal DOES refuse, because this PR learned it the hard way: heal's population join stops a generated file from appearing or disappearing without an owning declaration -- my artifact hit exactly that on run 41301371545 with 'committed mirror is no longer emitted' -- so a file cannot go unregistered, but a REGISTERED file can sit behind its roster indefinitely. What executed evidence DOES establish, and it is what `Mitigatable` means: the dispatch reads one copy, the rendered one, so the hand-written second copy is gone; a committed table naming a subject the checkout lacks is refused at dispatch with a located cause at the instrument contract's exit 2, executed red with a planted row; and the model's rendering reproduces the committed bytes, executed twice (a scratch run and an srv1 ledger run, byte-identical). What is NOT climbed here, named rather than glossed: the roots rows are keyed by a subject name the model states (a name is not a subject), and the probe plan and deadline were already read from the model at spawn, so they were never part of this fork and are not claimed as fixed.",
+
+    "WHY THE CEILING IS NOT REACHED, AND WHAT WOULD REACH IT. The fork this row names is a fact held twice with one reader; rendering closes the second COPY but leaves the rendered file as a second FACT, and a rendered fact that nothing on the required path compares with its authority can be stale in exactly the way the hand list was. The Rust unit test that does compare them -- `target_invocation_host` `registry_rows_identity_tests` `registry_matches_rows`, which folds `instrument_bindings` through the interpreter and joins it against `instrument_registry` by label, kind, entry and function in both directions -- is a `#[cfg(test)]` test, and no required lane runs this crate's unit tests, which is the same gap the instrument roster records for every other cfg(test) check. So the climb is one build step away, not one authority away, and `ClimbableButUnbuilt` is the blocker named for it.",
   ],
 
   evidence: [
