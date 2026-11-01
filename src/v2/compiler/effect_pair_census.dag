@@ -16,7 +16,7 @@ import v2.compiler.value_use_dependency {
 }
 import v2.std.operation_declaration { ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, PrimitiveExecutionSemantics, Pure, ReadsBoundInput, operation_declaration_for_path, operation_declaration_row_count_for, operation_declaration_ambiguous_row_count }
 import v2.compiler.activation_dependency { ActivationNotDerivedReason, BranchNotConditionThenElse, MatchScrutineeAbsent, MatchArmMalformed }
-import v2.compiler.dependency_demand_census { FactCallSite, FactCallee, FactStaticCall, FactFunctionValueCall, FactLexicalHead, FactParameterHead, FactBodySites, FactGroup, FactActivationGroup, FactRepeatedGroup, FactSpan, FactSpanRole, FactSelector, FactAlternative, FactUnroled, FactRepetition, LoopIteratedBody, LambdaInstantiationUnknown }
+import v2.compiler.dependency_demand_facts { FactCallSite, FactCallee, FactStaticCall, FactFunctionValueCall, FactLexicalHead, FactParameterHead, FactBodySites, FactGroup, FactActivationGroup, FactRepeatedGroup, FactSpan, FactSpanRole, FactSelector, FactAlternative, FactUnroled, FactRepetition, LoopIteratedBody, LambdaInstantiationUnknown }
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure, DemandDerived, DemandDidNotSettle, DemandUndecided, DependencyDemandRow, FunctionFact,
   FunctionValueCalled, OpaqueOperationCalled, OperationFact, RequiresNone, RequiresOpaque, RequiresResources,

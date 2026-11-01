@@ -22,11 +22,11 @@ import v2.compiler.source_root_eval {
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
-import v2.compiler.dependency_demand_census {
-  DemandCensusUnboundLocus,
+import v2.compiler.dependency_demand_facts {
+  DemandFactsUnboundLocus,
   UnboundNamed,
   UnboundShaped,
-  demand_census_unbound_site_text
+  demand_facts_unbound_site_text
 }
 import v2.compiler.native_test_vocabulary {
   FileRefusalAtLine,
@@ -237,7 +237,7 @@ fn census_row_field_eq(row: String, index: Int, expected: String) -> Bool {
 
 // THE LOCUS HALF OF THE ROW, re-derived in the claim from the carrier's OWN fields with the SAME two
 // renderers the producer prints through (census_file_refusal_at_text for the position,
-// demand_census_unbound_site_text for the reference the resolver located). The claim compares the
+// demand_facts_unbound_site_text for the reference the resolver located). The claim compares the
 // printed row against that re-derivation, so a row whose locus disagrees with the carrier it claims
 // to print -- or which was located by a different derivation -- fails here.
 fn census_first_refusal_row_cause(refusal: NativeCensusFirstRefusal) -> String {
@@ -245,7 +245,7 @@ fn census_first_refusal_row_cause(refusal: NativeCensusFirstRefusal) -> String {
 }
 
 fn census_first_refusal_row_locus(refusal: NativeCensusFirstRefusal) -> String {
-  concat(demand_census_unbound_site_text(u: refusal.unbound), concat(" ", census_file_refusal_at_text(at: refusal.at)))
+  concat(demand_facts_unbound_site_text(u: refusal.unbound), concat(" ", census_file_refusal_at_text(at: refusal.at)))
 }
 
 // THE ONE REAL-ROUTE PRODUCER. Assemble of the four planted files plus resolve and infer of the
@@ -282,7 +282,7 @@ test fn colliding_occurrence_ids_do_not_borrow_the_other_file_position_holds() -
 // refusal -- the reason symbol and the located site. The cause is not a stamp the row invents: it is
 // the fatal reason of the chain the walk stopped on, read through the same authority the
 // dependency-demand census reads (v2.std.diagnostic diagnostics_fatal_reason, beside
-// native_demand_census_unbound_standing), and the locus is the same occurrence located in the position
+// native_demand_facts_unbound_standing), and the locus is the same occurrence located in the position
 // table the walk itself built. `cl_first_unbound_a` is the first unbound name of the
 // depth-first walk (line 6); the fixture carries a SECOND one (line 10) so a row produced by a later
 // or differently-gathered refusal -- or by a second traversal -- fails here while a one-unbound

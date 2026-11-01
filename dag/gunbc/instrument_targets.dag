@@ -6,7 +6,7 @@ import gunbc.native_serve_probe_plan {
   NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
   native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
 }
-import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair }
+import gunbc.native_census_verb { CensusVerbDeclRef, CensusVerbEffectPair }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -619,16 +619,6 @@ fn self_host_frontier_binding() -> TargetBinding {
   TargetBinding { target: self_host_frontier_label() producer: SelfHostFrontierProducer {} }
 }
 
-// D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output, the emitted compiler's
-// `demand-census` verb): one row per fn that authors a `uses` clause, pairing the authored rows with
-// the demand derived over the whole closure and a verdict scoped to the audited vocabulary (Network).
-// Run by name, on no lane: its consumer is the D13 row-deletion change, which executes it at its own
-// head as part of its evidence rather than citing an earlier run.
-// `gunbc test //gunbc/instruments:dependency-demand-census`.
-fn dependency_demand_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "dependency-demand-census" } }
-}
-
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (v2.compiler.source_root_eval
 // native_decl_ref_census_output, the emitted compiler's `decl-ref-census` verb): resolves every
 // std.decl_ref DeclarationRef literal and every backtick symbol span in the recurring-failure-mode and
@@ -787,10 +777,6 @@ fn required_lane_resolution_census_target() -> BuildTarget {
 
 fn self_host_behavioral_equivalence_binding() -> TargetBinding {
   TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
-}
-
-fn dependency_demand_census_binding() -> TargetBinding {
-  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDemand } }
 }
 
 fn decl_ref_census_binding() -> TargetBinding {
@@ -1353,7 +1339,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    self_host_behavioral_equivalence_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
@@ -1376,7 +1362,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),

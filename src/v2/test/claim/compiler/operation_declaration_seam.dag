@@ -29,10 +29,10 @@ import v2.compiler.dependency_demand {
   demand_equal,
   resource_set_of
 }
-import v2.compiler.dependency_demand_census {
-  demand_census_declaration_is_host_seam,
-  demand_census_seam_operation_fact,
-  demand_census_seam_requirement
+import v2.compiler.dependency_demand_facts {
+  demand_facts_declaration_is_host_seam,
+  demand_facts_seam_operation_fact,
+  demand_facts_seam_requirement
 }
 import v2.compiler.effect_pair_census {
   ReachesDeclaredResource,
@@ -97,13 +97,13 @@ fn never_declared_key() -> DeclarationRef {
 }
 
 // THE CALLER THE CENSUS SETTLES: one transparent function whose only callee is the seam. The
-// operation table is built by the census's OWN D13 arm (demand_census_seam_operation_fact), so what
+// operation table is built by the census's OWN D13 arm (demand_facts_seam_operation_fact), so what
 // the caller settles at is exactly what the arm read out of the declaration row. An absent row is not
 // a settlement: the fold's seed is a cause no input can produce.
 fn caller_demand_over(callee: QualifiedName) -> DependencyDemand {
   let rows: List<DependencyDemandRow> = dependency_demand_of(
     functions: [FunctionFact { path: caller_path(), callees: [callee], calls_function_value: false }],
-    operations: [demand_census_seam_operation_fact(path: callee)]
+    operations: [demand_facts_seam_operation_fact(path: callee)]
   )
   fold_list(
     xs: rows,
@@ -113,7 +113,7 @@ fn caller_demand_over(callee: QualifiedName) -> DependencyDemand {
 }
 
 test fn the_seam_predicate_holds_on_a_real_projection_path_holds() -> Bool {
-  demand_census_declaration_is_host_seam(path: seam_path())
+  demand_facts_declaration_is_host_seam(path: seam_path())
 }
 
 // THE FIRST HALF OF THE PAIRING, AT THE FULL ROSTER: every OperationDeclaration's path is a projected
@@ -126,7 +126,7 @@ test fn every_declaration_row_is_a_projected_host_seam_holds() -> Bool {
     xs: operation_declaration_roster,
     empty: 0,
     cons: fn(n, row) {
-      if demand_census_declaration_is_host_seam(path: operation_declaration_path(declaration: row.declaration)) {
+      if demand_facts_declaration_is_host_seam(path: operation_declaration_path(declaration: row.declaration)) {
         n
       } else {
         n + 1
@@ -158,7 +158,7 @@ test fn every_host_realized_seam_carries_exactly_one_declaration_row_holds() -> 
     xs: operation_declaration_roster,
     empty: 0,
     cons: fn(n, row) {
-      if demand_census_declaration_is_host_seam(path: operation_declaration_path(declaration: row.declaration)) {
+      if demand_facts_declaration_is_host_seam(path: operation_declaration_path(declaration: row.declaration)) {
         n + 1
       } else {
         n
@@ -166,7 +166,7 @@ test fn every_host_realized_seam_carries_exactly_one_declaration_row_holds() -> 
     }
   ) == length(xs: operation_declaration_roster)
     && every_projected_host_seam_has_a_declaration_row()
-    && demand_census_declaration_is_host_seam(path: read_seam_path())
+    && demand_facts_declaration_is_host_seam(path: read_seam_path())
 }
 
 // THE DISPOSITION SPLIT THE ROSTER CARRIES, derived from the rows' dispositions: the population is
@@ -263,8 +263,8 @@ test fn every_blocked_host_operation_keeps_known_semantics_and_a_named_question_
 // requirement text exists nowhere but the row: an arm trusting a builtin table, or one walking the
 // seam's self-call body, could not produce RequiresResources{[std.resources.Filesystem]} from it.
 test fn the_walked_seam_is_matched_by_declaration_path_and_carries_the_rows_requirement_holds() -> Bool {
-  let seam = demand_census_seam_operation_fact(path: seam_path())
-  if demand_census_declaration_is_host_seam(path: seam_path()) {
+  let seam = demand_facts_seam_operation_fact(path: seam_path())
+  if demand_facts_declaration_is_host_seam(path: seam_path()) {
     seam.path == seam_path()
       && seam.requirement == RequiresResources { resources: [filesystem_resource()] }
   } else {
@@ -297,7 +297,7 @@ test fn a_transparent_caller_of_the_seam_settles_at_the_rows_filesystem_requirem
 }
 
 // THE SAME CALLER OVER THE READ AUTHORITY, the seam RED A deletes: the fact comes from
-// demand_census_seam_operation_fact on the path, so deleting filesystem_read's row leaves the caller
+// demand_facts_seam_operation_fact on the path, so deleting filesystem_read's row leaves the caller
 // DemandUndecided{UndeclaredOperationCalled} and this claim red.
 test fn a_transparent_caller_of_filesystem_read_settles_at_the_rows_filesystem_requirement_holds() -> Bool {
   demand_equal(
@@ -312,7 +312,7 @@ test fn a_transparent_caller_of_filesystem_read_settles_at_the_rows_filesystem_r
 // filesystem_read's declaration row reddens THIS claim too -- the reach reason becomes
 // ReachesUndeclaredOperation and the path joins the unclassified rows.
 test fn the_read_authority_reaches_by_its_declaration_in_the_b0_reach_table_holds() -> Bool {
-  let fact = demand_census_seam_operation_fact(path: read_seam_path())
+  let fact = demand_facts_seam_operation_fact(path: read_seam_path())
   let table = effect_reach_table(
     functions: [FunctionFact { path: caller_path(), callees: [read_seam_path()], calls_function_value: false }],
     operations: [fact]
@@ -360,7 +360,7 @@ test fn the_declaration_row_is_the_only_thing_between_the_seam_and_derived_empty
 // census with no declaration behind it, the semantics read answers Absent and the reason is the TYPED
 // ReachesExecutionSemanticsUnknown -- never Pure, never ReadEffect, never a host-observation reason.
 test fn an_operation_with_no_declaration_row_is_the_typed_undeclared_arm_holds() -> Bool {
-  match demand_census_seam_requirement(declaration: never_declared_key()) {
+  match demand_facts_seam_requirement(declaration: never_declared_key()) {
     RequiresUndeclared =>
       match reach_operation_semantics(op: OperationFact { path: never_declared_path(), requirement: RequiresNone }) {
         Absent =>
@@ -401,8 +401,8 @@ test fn the_missing_row_is_absent_from_the_keyed_read_and_carries_no_default_sem
 // census reads its semantics as the host observation, and its reason is ReachesDeclaredResource at its
 // real module-qualified path. Deleting the row reddens this through RequiresUndeclared + Absent.
 test fn the_read_authoritys_fact_carries_its_rows_identity_at_declaration_key_holds() -> Bool {
-  let fact = demand_census_seam_operation_fact(path: read_seam_path())
-  if demand_census_declaration_is_host_seam(path: read_seam_path()) {
+  let fact = demand_facts_seam_operation_fact(path: read_seam_path())
+  if demand_facts_declaration_is_host_seam(path: read_seam_path()) {
     fact.requirement == RequiresResources { resources: [filesystem_resource()] }
       && match reach_operation_semantics(op: fact) {
           Present { value: ObservesHost { operation_identity: identity } } =>

@@ -16,20 +16,18 @@ import std.algebra { fold_list }
 // A new census is a variant here, an arm in the dispatch (exhaustive, so a missing one refuses) and an
 // instrument_targets row naming it.
 type NativeCensusVerbWord
-  = CensusVerbDemand
-  | CensusVerbDeclRef
+  = CensusVerbDeclRef
   | CensusVerbEffectPair
 
 // The ONE spelling of each verb: the word on the emitted binary's command line.
 fn native_census_verb_word(v: NativeCensusVerbWord) -> String {
   match v {
-    CensusVerbDemand => "demand-census"
     CensusVerbDeclRef => "decl-ref-census"
     CensusVerbEffectPair => "effect-pair-census"
   }
 }
 
-data native_census_verbs: List<NativeCensusVerbWord> = [CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair]
+data native_census_verbs: List<NativeCensusVerbWord> = [CensusVerbDeclRef, CensusVerbEffectPair]
 
 fn native_census_verb_of_word(word: String) -> Optional<NativeCensusVerbWord> {
   fold_list(xs: native_census_verbs, empty: Absent, cons: fn(found, v) {

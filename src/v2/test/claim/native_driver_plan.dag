@@ -4,7 +4,7 @@ import std.types { List }
 import v2.std.text { String }
 import std.algebra { length, fold_list }
 import gunbc.instrument_targets { instrument_bindings }
-import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, native_census_verb_of_word, native_census_verbs }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDeclRef, native_census_verb_of_word, native_census_verbs }
 import gunbc.target_binding { TargetBinding, NativeCensusVerbProducer }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -204,7 +204,7 @@ test fn an_empty_command_line_refuses_with_the_usage_holds() -> Bool {
 
 test fn an_unknown_verb_refuses_and_names_the_word_holds() -> Bool {
   (refusal_detail(argv: ["adjudicat", "x"])
-    == "REFUSED: unknown mode adjudicat -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier, demand-census, decl-ref-census")
+    == "REFUSED: unknown mode adjudicat -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier, decl-ref-census")
   && plan_exit_is_misuse(argv: ["adjudicat", "x"])
 }
 
@@ -223,7 +223,7 @@ test fn a_refused_plan_names_no_roots_and_no_facts_path_holds() -> Bool {
 // refusal is reported.
 test fn a_later_word_cannot_repair_an_unknown_verb_holds() -> Bool {
   refusal_detail(argv: ["nonsense", "census"])
-    == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier, demand-census, decl-ref-census"
+    == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier, decl-ref-census"
 }
 
 // THE PATTERN OPTION: carried to the plan as the authority parsed it, and refused at the command
@@ -291,7 +291,7 @@ test fn the_flag_after_the_first_root_is_a_root_holds() -> Bool {
   && (planned_pattern_render(argv: ["adjudicate", "f.tsv", "dag", "--pattern"]) == render_target_pattern(pattern: native_route_default_pattern()))
 }
 
-fn parsed_verb_is_demand_census(argv: List<String>) -> Bool {
+fn parsed_verb_is_decl_ref_census(argv: List<String>) -> Bool {
   match native_driver_parse(argv: argv) {
     NativeDriverPlanRefused { reason: _, detail: _ } => false
     NativeDriverPlanned { verb: verb } =>
@@ -299,7 +299,7 @@ fn parsed_verb_is_demand_census(argv: List<String>) -> Bool {
         NativeDriverCensus { source_roots: _ } => false
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => false
-        NativeDriverCensusVerb { verb: v, source_roots: _ } => v == CensusVerbDemand
+        NativeDriverCensusVerb { verb: v, source_roots: _ } => v == CensusVerbDeclRef
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
         NativeDriverSelfHostFrontier { manifest_path: _, verdict_path: _, observed_path: _ } => false
@@ -307,20 +307,20 @@ fn parsed_verb_is_demand_census(argv: List<String>) -> Bool {
   }
 }
 
-// D13's dependency-demand census is its own verb over source roots (v2.compiler.compile
-// native_demand_census_report), so `demand-census` plans that verb with every following word a root.
-test fn demand_census_plans_its_own_verb_over_its_roots_holds() -> Bool {
-  parsed_verb_is_demand_census(argv: ["demand-census", "dag", "src/v2"])
-    && (planned_root_count(argv: ["demand-census", "dag", "src/v2"]) == 2)
-    && !parsed_verb_is_census_resolve(argv: ["demand-census", "dag"])
+// The declaration-reference census is its own verb over source roots, so `decl-ref-census` plans that
+// verb with every following word a root.
+test fn decl_ref_census_plans_its_own_verb_over_its_roots_holds() -> Bool {
+  parsed_verb_is_decl_ref_census(argv: ["decl-ref-census", "dag", "src/v2"])
+    && (planned_root_count(argv: ["decl-ref-census", "dag", "src/v2"]) == 2)
+    && !parsed_verb_is_census_resolve(argv: ["decl-ref-census", "dag"])
 }
 
 // THE PREDICATE KEYS ON THE VERB ROW, not on the plan arm: every census verb plans the one
-// NativeDriverCensusVerb arm, so demand-census and decl-ref-census are told apart only by the word
-// the row carries. An arm answering one constant for the whole row fails one side of this pair.
-test fn demand_census_is_not_another_census_verb_holds() -> Bool {
-  parsed_verb_is_demand_census(argv: ["demand-census", "dag"])
-    && !parsed_verb_is_demand_census(argv: ["decl-ref-census", "dag"])
+// NativeDriverCensusVerb arm, so the verbs are told apart only by the word the row carries. An arm
+// answering one constant for the whole row fails one side of this pair.
+test fn decl_ref_census_is_not_another_census_verb_holds() -> Bool {
+  parsed_verb_is_decl_ref_census(argv: ["decl-ref-census", "dag"])
+    && !parsed_verb_is_decl_ref_census(argv: ["effect-pair-census", "dag"])
 }
 
 // THE SCOPED VERB: its own word, a subject operand checked against the one label-to-module function

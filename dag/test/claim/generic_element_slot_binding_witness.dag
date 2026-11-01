@@ -179,7 +179,7 @@ test fn a_mapped_alias_element_module_without_the_undeclared_read_compiles_test(
   compile_dag_rust_emit_check(mapped_alias_undeclared_control_source(), "src/slotbind_mappednope.rs", ["digests"], ["compile_error"])
 }
 
-// THE BRANCH-JOIN SHAPE (the last corpus diagnostic). v2.compiler.dependency_demand_census.dag's
+// THE BRANCH-JOIN SHAPE (the last corpus diagnostic). The retired dependency-demand census module's
 // demand_census_add_example joins a branch that returns the list itself against a branch that rebuilds it
 // with list_snoc_item, with an equality fold over the same element type in the middle condition; with the
 // unguarded arm the else branch's element type arrives at the if-join mangled
