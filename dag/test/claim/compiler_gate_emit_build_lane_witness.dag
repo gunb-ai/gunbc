@@ -13,8 +13,12 @@ import gunbc.witness.compiler_gate_workflow {
   compiler_gate_emit_build_capability_closure_holds,
   compiler_gate_emit_build_notice_step,
   compiler_gate_emit_build_notice_lines,
-  compiler_gate_emit_build_step
+  compiler_gate_emit_build_step,
+  compiler_gate_v1_unit_test_compile_step,
+  compiler_gate_v1_unit_test_step_id,
+  compiler_gate_v1_unit_test_step_name
 }
+import gunbc.repo.repo_self_build { repo_self_test_compile_command }
 import gunbc.parse_verdict_publish {
   materialization_publish_if,
   parse_verdict_identity_blob_save_step,
@@ -619,4 +623,146 @@ test fn the_seed_build_step_run_block_is_the_folded_preamble_not_a_refusal_marke
         && string_contains(s: run, pattern: "GUNBC_MATERIALIZED_TREE_IDENTITY")
         && (string_contains(s: run, pattern: refused_marker) == false)
   }
+}
+
+// THE v1 UNIT-TEST HARNESS IS COMPILED ON THE REQUIRED JOB, AND THE STEP CANNOT PASS BY DECLINING.
+//
+// WHAT THIS OWNS, AND WHAT IT DOES NOT. The step compiles `#[cfg(test)]` code of the seed's own sources,
+// which `cargo build` never compiles; the history of the lane that used to run it is in gunbc.rung_drop
+// rust_unit_tests_off_the_merge_path. This claim is about the COMPILE obligation:
+// it asserts the harness is built with the one command the model owns, in the required job, at a point in
+// the job where a failure is a failure -- and it asserts NOTHING about any test's verdict, because
+// `--no-run` executes no test body. A claim that read this step as evidence a unit test passed would be
+// reading a compile for a verdict, which is the same mistake DESIGN section 5 lists as validation
+// standing where construction was available.
+//
+// WHY THE THREE PARTS ARE EACH NECESSARY. A step in the model that the job does not carry proves nothing,
+// so the obligation is read from the required job's own bound steps. A step that carries the command but
+// runs under a condition, or with `continue-on-error`, is a step that reports success while doing
+// nothing -- so the same predicate is applied to a mutated copy that adds both, and must return false
+// there. And the model can be right while the shipped file is stale, since heal regenerates this
+// workflow and judges nothing on a pull request, so the committed YAML is read as its own subject.
+test fn the_v1_unit_test_harness_is_compiled_on_the_required_job() -> Bool {
+  let names = map(xs: compiler_gate_emit_build_bound_steps(), f: b => b.step_name)
+  let subject_names = map(xs: emitted_subject_build_rows(), f: r => emitted_subject_build_step_name(row: r))
+  let run_text = step_run_text(step: compiler_gate_v1_unit_test_compile_step())
+  let order_code = names |> fold(init: 0, f: (s, n) => s + step_order_weight(s: s, n: n, subject: subject_names))
+  names_include(names: names, needle: compiler_gate_v1_unit_test_step_name)
+    && (order_code == 1)
+    && v1_unit_test_step_operates_unconditionally(step: compiler_gate_v1_unit_test_compile_step())
+    && string_contains(s: run_text, pattern: repo_self_test_compile_command())
+    && string_contains(s: run_text, pattern: "cargo test")
+    && string_contains(s: run_text, pattern: "--lib")
+    && string_contains(s: run_text, pattern: "--no-run")
+    && string_contains(s: run_text, pattern: "GUNBC_SEED_CHECKOUT=")
+}
+
+// WHERE THE UNIT-TEST STEP SITS IN THE JOB'S OWN STEP ORDER, IN ONE PASS OVER THE BOUND NAMES. The code
+// is the pair of facts as a number: bit 0 says the unit-test step's name has been passed, bit 1 says an
+// emitted-subject step was passed BEFORE it. So 0 is 'the step is not in this list', 1 is 'reached it, and
+// every emitted-subject step comes after it' -- the shape this lane is required to have, since the harness
+// must be compiled before any subject verdict is read from it -- 2 is 'a subject came first and the step
+// has not been reached', and 3 is 'a subject came first, step reached anyway'. 1 is therefore the only
+// accepting value, and it is also what pins the step's position: it cannot be pulled to the end of the job
+// without a subject step preceding it. The accumulator is a number rather than a sliced prefix because the
+// dialect has no take-while, and a hand-written index for the step would be a second authority for an
+// order the job already states.
+fn step_order_weight(s: Int, n: String, subject: List<String>) -> Int {
+  let passed_unit_test = s == 1 || s == 2 || s == 3
+  let already_found_subject_earlier = s == 2 || s == 3
+  let is_unit_test = n == compiler_gate_v1_unit_test_step_name
+  let is_subject_step = names_include(names: subject, needle: n)
+  let marks_unit_test = if !passed_unit_test && is_unit_test { 1 } else { 0 }
+  let marks_subject_before = if !passed_unit_test && is_subject_step && !is_unit_test { 2 } else { 0 }
+  if already_found_subject_earlier { 0 } else { marks_unit_test + marks_subject_before }
+}
+
+// A LIST OF NAMES CONTAINS A NAME, spelled with the fold the repo uses for membership rather than a
+// nested higher-order call, whose effect summary the checker cannot join inside a test body.
+fn names_include(names: List<String>, needle: String) -> Bool {
+  names |> fold(init: false, f: (acc, n) => acc || (n == needle))
+}
+
+// THE PREDICATE, ONE PLACE, SO THE MUTATION AND THE REAL STEP ARE MEASURED THE SAME WAY.
+fn v1_unit_test_step_operates_unconditionally(step: Step) -> Bool {
+  match step {
+    RunStep {
+      name: _,
+      id: ident,
+      run: text,
+      shell: _,
+      env: _,
+      working_directory: _,
+      if_condition: guard,
+      continue_on_error: blocking,
+      timeout_minutes: _,
+    } =>
+      (match ident { Present { value: i } => i == compiler_gate_v1_unit_test_step_id Absent => false })
+        && (match guard { Absent => true Present { value: _ } => false })
+        && (match blocking { Absent => true Present { value: t } => t == false })
+        && string_contains(s: text, pattern: repo_self_test_compile_command())
+    UsesStep {
+      name: _,
+      id: _,
+      uses: _,
+      with: _,
+      env: _,
+      if_condition: _,
+      continue_on_error: _,
+      timeout_minutes: _,
+    } => false
+  }
+}
+
+// THE MUTATED COPY: the same step, made a passenger -- fleet-conditioned and non-blocking. This is the
+// discriminating input; a predicate that cannot tell these apart is a predicate that is satisfied by a
+// declaration rather than by a lane.
+fn v1_unit_test_step_declining_copy(step: Step) -> Step {
+  match step {
+    RunStep {
+      name: n,
+      id: i,
+      run: r,
+      shell: sh,
+      env: e,
+      working_directory: w,
+      if_condition: _,
+      continue_on_error: _,
+      timeout_minutes: t,
+    } =>
+      RunStep {
+        name: n,
+        id: i,
+        run: r,
+        shell: sh,
+        env: e,
+        working_directory: w,
+        if_condition: Present { value: compiler_gate_fleet_job_condition },
+        continue_on_error: Present { value: true },
+        timeout_minutes: t,
+      }
+    UsesStep {
+      name: _,
+      id: _,
+      uses: _,
+      with: _,
+      env: _,
+      if_condition: _,
+      continue_on_error: _,
+      timeout_minutes: _,
+    } => step
+  }
+}
+
+test fn w_RED_a_conditioned_or_non_blocking_unit_test_step_is_not_a_lane() -> Bool {
+  (v1_unit_test_step_operates_unconditionally(
+    step: v1_unit_test_step_declining_copy(step: compiler_gate_v1_unit_test_compile_step())
+  ) == false)
+}
+
+test fn the_committed_witnesses_yml_compiles_the_v1_unit_test_harness() -> Bool {
+  let y = Filesystem.Read(path: ".github/workflows/witnesses.yml", expect: ExpectSuccess).content
+  string_contains(s: y, pattern: compiler_gate_v1_unit_test_step_name)
+    && string_contains(s: y, pattern: repo_self_test_compile_command())
+    && string_contains(s: y, pattern: compiler_gate_v1_unit_test_step_id)
 }

@@ -90,6 +90,7 @@ import gunbc.witness.witness_floor_workflow {
   witness_floor_workflow_name, witness_floor_triggers, witness_floor_concurrency_group,
   concurrency_of_policy, WitnessFloorConcurrencyPolicy, ReplaceExistingPending,
   SupersedeRunningForEvent, witness_floor_toolchain_step, witness_floor_build_step,
+  witness_floor_build_step_with_id,
   witness_toolchain_homes_isolated_guard_step, witness_toolchain_homes_isolated_guard_step_under, malloc_arena_max_env_key, malloc_arena_max_value,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
@@ -99,7 +100,7 @@ import gunbc.ci.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap
 // The fork clause is heal's authorship; the required job inherited the work it guarded.
 import gunbc.heal_workflow { heal_same_repository_clause }
 import extdeps.exec.command { shell_command_render }
-import gunbc.repo.repo_self_build { repo_self_build_command }
+import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_test_compile_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { ContextAccess, Github, Expression }
 import extdeps.github.log_annotations { emit_line_shell }
@@ -480,6 +481,62 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // THE LANE BUILDS `gunbc` IN ITS OWN CHECKOUT. `gunbc test` refuses a binary whose cargo dep-info it
 // cannot read inside this checkout (BinaryFreshnessUndecided, #13007), so a binary restored from
 // anywhere else is one the freshness guard rightly cannot judge.
+// THE v1 UNIT-TEST HARNESS IS COMPILED ON THE REQUIRED CONTEXT, AND ITS ASSERTIONS RUN NOWHERE HERE.
+//
+// `cargo build` never compiles `#[cfg(test)]` code, so a step like this is the only thing between a
+// broken `#[test]` module in `src/v1/stage0/src/` and a merge with the required context green. The
+// history of who ran it, and when that stopped, is carried by gunbc.rung_drop
+// rust_unit_tests_off_the_merge_path (the 2026-09-04 runner-capacity ruling) and its supersessor
+// gunbc.rung_drop.v1_required_lanes_withdrawn; which jobs exist is read from
+// gunbc.witness.witness_floor_workflow witness_floor_lane_jobs. This comment deliberately does not
+// restate the CI shape: the paragraph in gunbc.emitted_closure_compile_seed_growth that did has turned
+// over twice, and #9886 -- two red tests on `main` with every required check passing -- is what the
+// silence cost once.
+//
+// THIS BUYS THE COMPILE HALF AND ONLY THE COMPILE HALF. `--no-run` links the harness and runs no test
+// body: it cannot tell a passing test from a failing one, the execution of the `--lib` population stays
+// withdrawn, and that row's restoration trigger -- runner supply sufficient to EXECUTE the population on
+// the real acceptance path -- stays unmet. No claim in this repository may read this step as evidence
+// that a unit test passed. The command is the withdrawn lane's own command with one flag added, spelled
+// once in gunbc.repo.repo_self_build repo_self_test_compile_command; it is not a second argv.
+//
+// WHY IT IS AFFORDABLE, MEASURED -- ON THE STEP'S OWN ARGV, NOT A NEIGHBOUR'S. Both rows below ran
+// `cargo test --release -p v1-compiler --lib --no-run`, the argv this step runs, on srv1 (128 cores) at
+// main `2d47fc453472`, ledger unit `clever-crane-830-t5r`, unit memory.peak 4.77 GB.
+//   (A) COLD `CARGO_TARGET_DIR`: **11m10s wall, rc 0, max RSS 3.26 GB.** This is the ceiling-binding
+//       figure -- it is what a slot with no cache pays.
+//   (B) IN SITU, in the target directory the build step had just used (`cargo build --release -p
+//       v1-compiler --bin gunbc` took 9m36s in the same directory beforehand): **the step adds 6m03s,
+//       rc 0.** This is the step's real marginal cost inside the job, because the step shares the build
+//       step's profile and target directory through the same build-step preamble.
+// An earlier draft of this comment quoted a debug-profile figure (`cargo test -p v1-compiler --lib
+// --no-run`, 7m52s at `b5d77434fd80`) as if it described this step; it did not, and it is replaced
+// rather than kept alongside. THE CEILING IT WAS ADMITTED UNDER WAS 15 MINUTES, and it binds on the
+// ceiling-binding row: srv1 has far more cores than a fleet slot, so (A) could still exceed 15 minutes
+// on CI, and it is the CI row measured AFTER the step ships that decides the cost this lane actually
+// pays. If that first CI row is over the ceiling, the step comes out -- a CI row over the ceiling is a
+// finding to bring back, not a rounding error.
+//
+// WHY THIS IS NOT THE WITHDRAWN POPULATION THROUGH A SIDE DOOR. The 2026-09-04 ruling refused to let the
+// unit-test POPULATION be relocated onto an existing lane; a population is test bodies executing, and
+// none execute. It is also not an emitted-subject obligation row: it emits no subject and starts no
+// product, so it joins neither `emitted_subject_build_rows` nor the
+// `required_ci_emitted_subject_obligations` roster nor the contract epoch's hashed rows -- adding it
+// moves no digest and needs no stamp bump. It carries no memory envelope inputs because it runs cargo
+// directly rather than `gunbc test`, which is what reads those.
+data compiler_gate_v1_unit_test_step_id: String = "compile_v1_unit_tests"
+
+data compiler_gate_v1_unit_test_step_name: String =
+  "Compile the v1 unit-test harness (cfg(test) compiles on the required context; no assertion runs here)"
+
+fn compiler_gate_v1_unit_test_compile_step() -> Step {
+  witness_floor_build_step_with_id(
+    step_name: compiler_gate_v1_unit_test_step_name,
+    build_script: repo_self_test_compile_command(),
+    step_id: compiler_gate_v1_unit_test_step_id
+  )
+}
+
 fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep> {
   concat(compiler_gate_fleet_head_bound_steps(), [
     CompilerGateBoundStep {
@@ -499,6 +556,14 @@ fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep>
       step: witness_toolchain_homes_isolated_guard_step(),
       role: capability_neutral,
       step_name: "Require isolated toolchain homes",
+    },
+    // LAST OF THE PRELUDE, FIRST OF THE FAILURES. It runs on the pinned toolchain the prelude pins and
+    // after the seed build step, so it reuses that build's artifacts, and it precedes the subject steps
+    // so a harness that no longer compiles is reported before the emit-and-restore work burns a slot.
+    CompilerGateBoundStep {
+      step: compiler_gate_v1_unit_test_compile_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_v1_unit_test_step_name,
     },
   ])
 }
@@ -626,6 +691,7 @@ fn compiler_gate_emit_build_capability_closure_holds() -> Bool {
 // -- the seed build and one `gunbc test` per subject -- are an emission conjunct.
 fn compiler_gate_emit_build_scripts_are_renderable() -> Bool {
   wrap_command_is_renderable(command: repo_self_build_command(bins: compiler_gate_required_bins))
+    && wrap_command_is_renderable(command: repo_self_test_compile_command())
     && all(emitted_subject_build_rows(), row =>
       wrap_command_is_renderable(command: shell_command_render(command: emitted_subject_build_command(row: row))))
 }
