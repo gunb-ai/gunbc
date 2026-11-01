@@ -1772,7 +1772,7 @@ mod claim_run_mode_tests {
     // INHABITANCE (the route the `run` verb builds, not a hand-picked Hermetic): the mode comes from
     // the shared authority for a claim run, is fed to the real per-function evaluator `run_one_function`
     // that `run_verb` calls, and the unbound mocked effect surfaces the typed `HostEffectRefused` as
-    // exit 2 (NO OBSERVATION) carrying the `no mock_response` ground. status 2 is the discriminator:
+    // exit 2 (NO OBSERVATION) carrying the `NoMockResponse` ground. status 2 is the discriminator:
     // `run_one_function` returns it ONLY for `HostEffectRefused` under a claim run.
     #[test]
     fn claim_run_route_refuses_an_unbound_mocked_effect_as_no_observation() {
@@ -1799,15 +1799,17 @@ mod claim_run_mode_tests {
              status {} with message: {message}",
             verdict.status
         );
+        // `Verdict` carries only the rendered message, so the typed refusal is read from its
+        // Debug rendering: the variant AND its ground, never a looser substring.
         assert!(
-            message.contains("mock_response"),
+            message.contains("HostEffectRefused") && message.contains("ground: NoMockResponse"),
             "the refusal must be the typed NoMockResponse ground, got: {message}"
         );
     }
 
     // DISCRIMINATING CONTROL: the SAME claim and the SAME unbound mocked effect, evaluated under
     // WET, is DISPATCHED rather than refused — it does NOT take the typed-refusal (exit 2 /
-    // `no mock_response`) path. This proves the refusal above is produced by the Hermetic claim mode
+    // `NoMockResponse`) path. This proves the refusal above is produced by the Hermetic claim mode
     // the route selects, not by the fixture being non-dispatchable for some unrelated reason. Host-
     // safe: the argv is a nonexistent absolute path, so the Wet attempt fails at spawn and evaluates
     // to `success:false` (a FAIL verdict, exit 1), never performing a real effect.
@@ -1830,12 +1832,12 @@ mod claim_run_mode_tests {
         let message = verdict.message.clone().unwrap_or_default();
         // The discriminator is the typed refusal, not the exit code: under Wet the REAL transport is
         // attempted (the shell spawn at the nonexistent absolute path fails and evaluates to a normal
-        // dispatch outcome), so the run does NOT surface the `no mock_response` typed refusal that the
+        // dispatch outcome), so the run does NOT surface the `NoMockResponse` typed refusal that the
         // Hermetic claim route produces on the identical fixture. (The exit code is not asserted: a
         // dispatch failure may surface as a caught panic (exit 2) or a FAIL verdict (exit 1); either
         // way it is not the typed unbound-mock refusal — that is what this control pins.)
         assert!(
-            !message.contains("mock_response"),
+            !message.contains("NoMockResponse"),
             "the Wet route must DISPATCH the effect, not refuse it for an unbound mock (that \
              fail-closed refusal is produced only by the Hermetic claim mode); got: {message}"
         );
