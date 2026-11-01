@@ -326,8 +326,9 @@ fn roster_acquired_name(m: AcquiredModule) -> String {
 fn roster_homes_closures_read(homes: List<String>, bindings: List<SourceRootBinding>) -> List<RosterHomeClosure> {
   match acquire_import_verified(layout: repository_storage_layout(), bindings: bindings, entries: homes) {
     AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } =>
+      let members = acquisition_members_of(modules: modules)
       list_map(xs: homes, f: fn(home) {
-        let reached = acquisition_reached(entries: [home], modules: modules)
+        let reached = acquisition_reached_in(members: members, entries: [home])
         RosterClosureRead { home: home, modules: list_map(xs: fold_list(xs: modules, empty: [], cons: fn(acc, m) { if map_contains_key(m: reached, key: m.name) { list_snoc_item(xs: acc, item: m) } else { acc } }), f: fn(m) { roster_acquired_name(m: m) }) }
       })
     AcquisitionNotVerified { reason: _, cause: _ } => list_map(xs: homes, f: fn(home) { RosterClosureUnread { home: home } })
