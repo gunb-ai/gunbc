@@ -287,7 +287,6 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     // same work_default_build() operation and two captures. It shares the compute row, not the
     // whole-tree row (DESIGN §3 meaning fork).
     InstrumentDispatchMemoryDemand { label: compute_dependency_wrong_capture_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
-    InstrumentDispatchMemoryDemand { label: demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: self_host_frontier_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: decl_ref_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     // The effect-pair census walks the same whole corpus through the same shared D13 walk, so it is the
