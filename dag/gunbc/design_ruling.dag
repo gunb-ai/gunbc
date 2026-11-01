@@ -56,6 +56,13 @@ data vendored_strata_request_bound_save_patch_is_a_temporary_deviation: DesignRu
   provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-11-01 (gunbc#15344): the vendored local Strata patch, request-bound save on Strata 8183c6b6, is ADMITTED as a temporary deviation until it is upstreamed. Two conditions hold before merge. (1) The split lands: the patch has its own versioned extdeps module, extdeps.strata.request_bound_save; a stock Strata reply is a typed refusal naming the missing capability; and a dissolution row triggers on the upstream merge or a modeled build route. (2) An upstream pull request for the patch is opened and its link recorded on that dissolution row.",
 }
 
+data vendored_strata_patch_stays_unoffered_upstream: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "vendored_strata_patch_stays_unoffered_upstream"),
+  decided: "2026-11-01",
+  section: "6",
+  provenance: "Operator, relayed by calm-moth-166 to calm-crab-645 on 2026-11-01 (gunbc#15344). Supersedes only condition (2) of vendored_strata_request_bound_save_patch_is_a_temporary_deviation, which required an upstream pull request: the Strata request-bound-save patch stays VENDORED here for now, and no upstream issue or pull request is opened and nothing is posted to Niko1221/Strata. Condition (1) of that ruling still stands and is met by extdeps.strata.request_bound_save. The patch is standing as not yet offered upstream; it ends when the operator decides to offer it upstream or an upstream equivalent lands.",
+}
+
 data passive_card_adjacency_is_judged_per_slot_and_by_measurement: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "passive_card_adjacency_is_judged_per_slot_and_by_measurement"),
   decided: "2026-10-30",
@@ -663,6 +670,7 @@ fn design_rulings() -> List<DesignRuling> {
     one_serving_context_cap,
     installed_cards_converge_first,
     vendored_strata_request_bound_save_patch_is_a_temporary_deviation,
+    vendored_strata_patch_stays_unoffered_upstream,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
   ]
 }

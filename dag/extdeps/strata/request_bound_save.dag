@@ -28,13 +28,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // The vendored patch is gunbc-maintained Python with no .dag authority, applied by hand. That is an
 // out-of-band actuation carried as a scaffold. Operator admission of it is a separate obligation recorded
 // in the pull request, not claimed by this row.
-data request_bound_save_patch_build_route: DissolutionCondition = unbound_dissolution(description: "Under ruling gunbc.design_ruling vendored_strata_request_bound_save_patch_is_a_temporary_deviation. Upstream pull request link: not yet opened. Dissolves when the request-bound save patch is merged upstream in Strata, or when the engine build carrying it is produced by a modeled build route, so that no hand-applied vendored patch remains.")
+data request_bound_save_patch_build_route: DissolutionCondition = unbound_dissolution(description: "Standing: not yet offered upstream, under rulings gunbc.design_ruling vendored_strata_request_bound_save_patch_is_a_temporary_deviation and gunbc.design_ruling vendored_strata_patch_stays_unoffered_upstream (2026-11-01, no upstream issue or pull request). Dissolves when the operator decides to offer it upstream, or an upstream equivalent lands. Also dissolves when the engine build carrying the patch is produced by a modeled build route, so that no hand-applied vendored patch remains.")
 
 // bound_save_reply has no caller beyond its witness. The curl exchange layer that wraps it, the way
 // gunbc.serving.strata_checkpoint_transfer wraps slot_reply, was deleted rather than kept unconsumed.
 data request_bound_save_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when the serving router S3 conditional-save path (gunbc.plans.fabric_serving_router) calls bound_save_reply through a transport exchange in gunbc.serving.strata_checkpoint_transfer and a witness executes that exchange through a supplied transport.")
 
-// The vendored patch is an admitted temporary deviation: ruling gunbc.design_ruling vendored_strata_request_bound_save_patch_is_a_temporary_deviation, 2026-11-01. Its remaining condition is an upstream pull request, whose link is not yet recorded on request_bound_save_patch_build_route.
+// The vendored patch is an admitted temporary deviation: ruling gunbc.design_ruling vendored_strata_request_bound_save_patch_is_a_temporary_deviation, 2026-11-01. Ruling gunbc.design_ruling vendored_strata_patch_stays_unoffered_upstream (2026-11-01) supersedes its upstream-pull-request condition.
 
 // expected_request_id names one completed response in one engine process, never a logical turn or retry.
 type BoundSaveRequest {
