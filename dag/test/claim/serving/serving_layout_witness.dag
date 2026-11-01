@@ -68,6 +68,10 @@ fn sl_admitted_total(r: ServingLayoutResult) -> Nat {
   fold(sl_replicas(r: r), init: 0, f: (acc, c) => acc + c.admitted_conversations)
 }
 
+fn sl_cap_total(r: ServingLayoutResult) -> Nat {
+  fold(sl_replicas(r: r), init: 0, f: (acc, c) => acc + byte_size_count(b: c.memory_max))
+}
+
 fn sl_configuration(r: ServingLayoutResult) -> String {
   match r {
     ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => e.configuration
@@ -96,15 +100,15 @@ fn sl_all_grow_to_ceiling(r: ServingLayoutResult) -> Bool {
   sl_all_grow_to_ceiling_under(r: r, b: strata_iq3_s_a16_profile)
 }
 
-// h11 AS GRANTED: six independent replicas, seven conversations guaranteed to the ceiling (2,1,1,1,1,1), the
+// h11 AS GRANTED (A-prime): four independent replicas, five conversations guaranteed to the ceiling (2,1,1,1), the
 // budget verdict Fits with its five assumptions named (three allowances, the extrapolated ceiling snapshot, the page charging), the backend supports the topology, and nothing is
 // qualified live yet.
 test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool {
   match host_6ce85c_layout {
     ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: e } =>
-      rs.length() == 6
+      rs.length() == 4
         && rs.all(c => c.admitted_conversations >= 1 && c.active_slots == 1)
-        && sl_admitted_total(r: host_6ce85c_layout) == 7
+        && sl_admitted_total(r: host_6ce85c_layout) == 5
         && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
         && e.assumptions.length() == 5
         && (match e.backend { ServingBackendSupportsTopology => true  _ => false })
@@ -198,7 +202,10 @@ test fn witness_park_floor_is_charged_to_each_replica() -> Bool {
   let unfloored = serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups,
     b: sl_profile_with(b: strata_iq3_s_a16_profile, most: 1, floor: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "witness: no floor" as NonEmptyStr }),
     r: serving_context_ceiling_requirement)
-  sl_admitted_total(r: unfloored) > sl_admitted_total(r: host_6ce85c_layout)
+  // The four replicas' freed floors (2048 MiB) plus the 3754 MiB left after every minimum still buy one 2990 MiB
+  // snapshot and not two, so dropping the floor admits nothing more here; the charge shows in the caps, 512 MiB each.
+  sl_admitted_total(r: unfloored) == sl_admitted_total(r: host_6ce85c_layout)
+    && sl_cap_total(r: host_6ce85c_layout) == sl_cap_total(r: unfloored) + sl_replicas(r: host_6ce85c_layout).length() * byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 512)))
 }
 
 // srv4 AS GRANTED: one replica holding both GPUs, thirteen maximum-context conversations inside the slice's
@@ -344,5 +351,5 @@ test fn witness_a_zero_snapshot_cost_refuses_before_allocation() -> Bool {
   let one = serving_layout_derive(g: host_6ce85c_grant, groups: host_6ce85c_independent_groups,
     b: sl_profile_with_snapshot(b: strata_iq3_s_a16_profile, fixed: byte_size(count: 0), per_token: byte_size(count: 1)), r: serving_context_ceiling_requirement)
   (match sl_refusal(r: zero) { Present { value: ServingLayoutSnapshotCostNotPositive { context: _ } } => true  _ => false })
-    && sl_replicas(r: one).length() == 6
+    && sl_replicas(r: one).length() == 4
 }

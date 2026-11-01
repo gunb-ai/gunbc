@@ -1,0 +1,73 @@
+module gunbc.fleet.printer_start_evidence_store
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.algebra { string_contains }
+import gunbc.durable_create_once { create_once_record, CreateOnceRecording, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused, directory_admission, DirectoryAdmitted, DirectoryNotAdmitted }
+import gunbc.host_state_root { HostStateTree }
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DeclaredDirectoryMode }
+import gunbc.owned_directory { OwnedDirectoryTarget }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_member_path, printer_state_directory, printer_starts_legacy_scan, PrinterStartsClean, PrinterStartsLegacyEntries, PrinterStartsUnreadable }
+
+// THE POST-START EVIDENCE STORE, SEALED (cohort C-createonce). Each MQTT read after a printer start is
+// retained as <claim key>.after-start-<N>.json, one file per read, kept for a person to read later (no
+// program reads it). It was written beside the claim as <key>.claimed.after-start-<N>.json with an
+// overwriting Filesystem.Write; it now has a member of its own under printer-starts and is CREATE-ONCE: a
+// second record for the same claim key and N refuses with a cause, so a rerun can no longer clobber
+// retained evidence. No retention is added: evidence is never removed.
+//
+// The claim store (gunbc.fleet.printer_actuation) and its before-start / receipt writers are not this
+// store's. The layout changed, so the mint refuses permanently while the parent holds a legacy
+// after-start entry, and gunbc.fleet.printer_state_layout printer_state_move carries those entries here.
+type StartEvidenceDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data start_evidence_slots: StartEvidenceDeclaration = StartEvidenceDeclaration {
+  member: "start-evidence" as NonEmptyStr,
+  mode: DirectoryOwnerGroupWritableSetgid,
+}
+
+data start_evidence_legacy_marker: String = ".claimed.after-start-"
+
+fn start_evidence_path(tree: HostStateTree) -> NonEmptyStr { printer_starts_member_path(tree: tree, member: start_evidence_slots.member) }
+
+fn start_evidence_directory_target(tree: HostStateTree) -> OwnedDirectoryTarget {
+  printer_state_directory(member: start_evidence_slots.member as String, path: start_evidence_path(tree: tree), mode: start_evidence_slots.mode)
+}
+
+// The flat-layout entries this store owns: <key>.claimed.after-start-<N>.json.
+fn start_evidence_legacy_entry(name: String) -> Bool { string_contains(s: name, pattern: start_evidence_legacy_marker) }
+
+// The name an entry of the old layout takes in this store: the key, then after-start-<N>.json.
+fn start_evidence_name_from_legacy(name: String) -> String? {
+  let parts = split(s: name, delimiter: start_evidence_legacy_marker)
+  if count(parts) != 2 { return none }
+  match parts[0] {
+    Absent => none
+    Present { value: key } => match parts[1] {
+      Absent => none
+      Present { value: tail } => Present { value: join([key, ".after-start-", tail], "") }
+    }
+  }
+}
+
+type StartEvidenceStore sole_constructor { root: NonEmptyStr }
+
+type StartEvidenceStoreReading = StartEvidenceStoreReady { store: StartEvidenceStore } | StartEvidenceStoreUnready { detail: String }
+
+fn start_evidence_store(tree: HostStateTree) -> StartEvidenceStoreReading {
+  match printer_starts_legacy_scan(tree: tree, owns: n => start_evidence_legacy_entry(name: n)) {
+    PrinterStartsUnreadable { detail: d } => StartEvidenceStoreUnready { detail: d }
+    PrinterStartsLegacyEntries { names: n } => StartEvidenceStoreUnready { detail: join(["printer-starts still holds legacy after-start evidence (", join(n, ", "), "); gunbc.fleet.printer_state_layout moves it"], "") }
+    PrinterStartsClean => {
+      let root = start_evidence_path(tree: tree)
+      match directory_admission(directory: root as String, label: "start-evidence directory") {
+        DirectoryNotAdmitted { detail: d } => StartEvidenceStoreUnready { detail: d }
+        DirectoryAdmitted => StartEvidenceStoreReady { store: StartEvidenceStore { root: root } }
+      }
+    }
+  }
+}
+
+// CREATE-ONCE, keyed by the claim key and the read number; the readback runs here.
+fn start_evidence_record(store: StartEvidenceStore, claim_key: NonEmptyStr, read: Int, content: String) -> CreateOnceRecording {
+  create_once_record(path: join([store.root as String, "/", claim_key as String, ".after-start-", to_string(read), ".json"], ""), content: content)
+}
