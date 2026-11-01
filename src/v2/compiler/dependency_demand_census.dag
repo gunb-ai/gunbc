@@ -1295,11 +1295,11 @@ fn demand_census_row_line(r: DemandCensusRow) -> String {
     CensusUnobserved { reason: u } =>
       let reason_part = demand_census_text(parts: [head, " reason=", demand_census_unobserved_word(u: u)])
       match u {
-        UnobservedModuleResolveRefused { first_reason: r, first_unbound: u } =>
+        UnobservedModuleResolveRefused { first_reason: resolve_reason_sym, first_unbound: unbound_site } =>
           demand_census_text(parts: [
             reason_part,
-            " resolve_reason=", symbol_lexeme(sym: r),
-            " ", demand_census_unbound_site_text(u: u)
+            " resolve_reason=", symbol_lexeme(sym: resolve_reason_sym),
+            " ", demand_census_unbound_site_text(u: unbound_site)
           ])
         UnobservedImporteeRefused { importee_file: file, importee_cause: cause } =>
           demand_census_text(parts: [reason_part, " importee=", symbol_lexeme(sym: file), " importee_cause=", symbol_lexeme(sym: cause)])
@@ -1458,10 +1458,10 @@ fn demand_census_unbound_locus_eq(a: DemandCensusUnboundLocus, b: DemandCensusUn
           (ka == kb)
             && match pa {
               Absent => match pb { Absent => true Present { value: _ } => false }
-              Present { value: a } =>
+              Present { value: pa_value } =>
                 match pb {
                   Absent => false
-                  Present { value: b } => a == b
+                  Present { value: pb_value } => pa_value == pb_value
                 }
             }
       }
