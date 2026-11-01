@@ -2416,16 +2416,6 @@ fn run_compile_clean_diagnostic_census() -> InvocationOutcome {
             entry.distinct_positions,
         ));
     }
-    message.push_str(&format!(
-        "\n--- ROUTED_EQUALITY_RESIDUAL TSV (gunbc.rung_drop derived_equality_residual_field_equality) rows={} ---\nclass\tfile\tposition\tdeclaration\tsubject_type",
-        census.routed_equality_residual_rows.len()
-    ));
-    for row in &census.routed_equality_residual_rows {
-        message.push_str(&format!(
-            "\n{}\t{}\t{}\t{}\t{}",
-            row.class_name, row.file, row.position, row.declaration, row.subject_type,
-        ));
-    }
     if !census.unlisted_import_rows.is_empty() {
         let mut by_source: std::collections::BTreeMap<&'static str, usize> =
             std::collections::BTreeMap::new();

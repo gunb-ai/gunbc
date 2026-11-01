@@ -631,62 +631,6 @@ pub struct CompileCleanDiagnosticCensus {
     pub raw_diagnostics: usize,
     pub classes: Vec<RawDiagnosticClassObservation>,
     pub unlisted_import_rows: Vec<UnlistedImportCensusRow>,
-    /// The identity-grain population of `gunbc.rung_drop derived_equality_residual_field_equality`:
-    /// one row per `EqualityInstantiationBlindGenericSite` / `CollectionKeyReachesEqualityRoute`
-    /// diagnostic, in the declaration and at the locus the checker recorded.
-    pub routed_equality_residual_rows: Vec<RoutedEqualityResidualRow>,
-}
-
-/// One residual-equality census row: the class, where it sits, the declaration it sits in
-/// ("<module> <declaration>"), and the type the checker named (the generic operand's type variable or
-/// the collection key type).
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct RoutedEqualityResidualRow {
-    pub class_name: &'static str,
-    pub file: String,
-    pub position: i64,
-    pub declaration: String,
-    pub subject_type: String,
-}
-
-fn routed_equality_residual_rows_from_resolved(
-    result: &v1_compiler_compile::ResolvedPipelineResult,
-) -> Vec<RoutedEqualityResidualRow> {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let mut rows = Vec::new();
-    for d in result.diagnostics.iter() {
-        let (class_name, declaration, subject_type) = match d.diagnostic.as_ref() {
-            CompilerDiagnostic::EqualityInstantiationBlindGenericSite {
-                operand_type,
-                declaration,
-                ..
-            } => (
-                "EqualityInstantiationBlindGenericSite",
-                declaration.clone(),
-                operand_type.clone(),
-            ),
-            CompilerDiagnostic::CollectionKeyReachesEqualityRoute {
-                key_type,
-                declaration,
-                ..
-            } => (
-                "CollectionKeyReachesEqualityRoute",
-                declaration.clone(),
-                key_type.clone(),
-            ),
-            _ => continue,
-        };
-        rows.push(RoutedEqualityResidualRow {
-            class_name,
-            file: diagnostic_decl_file_for_census(d),
-            position: diagnostic_to_span(d.diagnostic.clone()).start,
-            declaration,
-            subject_type,
-        });
-    }
-    rows.sort();
-    rows.dedup();
-    rows
 }
 
 /// The census's typed refusal causes, one per way it can fail to be the authority it claims.
@@ -1400,7 +1344,6 @@ pub fn compile_clean_diagnostic_census(
         raw_diagnostics,
         classes,
         unlisted_import_rows,
-        routed_equality_residual_rows: routed_equality_residual_rows_from_resolved(&result),
     })
 }
 

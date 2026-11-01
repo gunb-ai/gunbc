@@ -14,20 +14,15 @@ import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 // emitted Node keeps that derived PartialEq, so its Eq/Hash contract is consistent; what is lost is
 // that these uses mean what the plan means.
 //
-// THE POPULATION IS RE-DERIVED, BY IDENTITY, OVER THE WHOLE CORPUS (ruling sleek-owl-397, tidy-ant-251,
-// 2026-10-25). The seed checker records each member where it already decides it, as a typed advisory
-// census row carrying its declaration and locus. EqualityInstantiationBlindGenericSite is a generic `==`
-// whose operand type is a type variable, admitted instantiation-blind with no plan; the site bounds every
-// instantiation at a Node-reaching type from above. CollectionKeyReachesEqualityRoute is a Map/Set key
-// type in a declared type that the equality walk finds reaching a routed declaration.
-// //gunbc/instruments:compile-clean-diagnostic-census compiles the whole-tree closure and prints them as
-// its ROUTED_EQUALITY_RESIDUAL TSV, so this row restates no member. The key census covers BOTH sides of
-// the type's appearance: the DECLARED positions (v1.compiler.infer equality_item_collection_key_rows --
-// fields, parameters, return, annotation) and the INFERRED ones (equality_body_collection_key_rows, which
-// walks the typed body and feeds every settled type through the same walker, so a Map/Set key that exists
-// only in an inferred local is counted too). Neither side is a hand-kept list, and the population is the
-// bound this row's subject states -- every emitted use, not only at checked == sites. Both census rows are
-// advisory and dissolve with this drop. The leading-edge measurement that motivated the drop (16 E0369
+// THE POPULATION IS BOUNDED BY ITS DECLARED SOURCE, NOT BY A COLLECTOR. The routed declarations are the closed table
+// v1.compiler.infer equality_route_declarations (Edge, Node, NodeOccurrence), and the checker reports each residual member
+// where it already decides it, as an advisory diagnostic (EqualityInstantiationBlindGenericSite: a generic `==` whose
+// operand type is a type variable, admitted instantiation-blind with no plan; CollectionKeyReachesEqualityRoute: a Map/Set
+// key type in a declared type that the equality walk finds reaching a routed declaration). Each class has a ceiling row in
+// gunbc.compile_clean_diagnostic_policy advisory_class_ceilings, which the compile-clean diagnostic census conservation
+// check requires of every raw diagnostic class. The key walk covers both the DECLARED positions
+// (v1.compiler.infer equality_item_collection_key_rows) and the INFERRED ones (equality_body_collection_key_rows). Both
+// advisory classes dissolve with this drop. The leading-edge measurement that motivated the drop (16 E0369
 // derived-PartialEq sites in v2-emitted-policy-unit-2 with the derive stripped) is recorded on the
 // follow-up work item adhoc-c0150380-08c.
 data derived_equality_residual_field_equality: RungDrop = RungDrop {
