@@ -9703,7 +9703,7 @@ fn expected_type_is_set_collection(exp: Node, scope: InferScope) -> Bool {
   } else {
     let si = scope.type_env.source_indices
     let last = qualified_last_segment(name: expected_type_spelling(exp: core, scope: scope))
-        if node_is_set_collection(n: core, source_indices: si) {
+    if node_is_set_collection(n: core, source_indices: si) {
       true
     } else {
       container_spelling_is_algebra(name: last, algebra: "FinitePowerSet")
