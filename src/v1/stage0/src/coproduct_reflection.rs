@@ -2166,6 +2166,8 @@ pub enum DeclFactsKeyedRefusal {
         derived_module: String,
         declared_module: String,
     },
+    /// The derived file exists but does not parse, so it can answer neither yes nor no for the key.
+    FileUnparsed { file: String },
     /// The derived file's directory could not be acquired (a legacy physical roster, an unreadable
     /// row file), refused as `acquire_dir_files` refuses it.
     AcquisitionRefused { file: String, cause: String },
@@ -2188,6 +2190,10 @@ impl std::fmt::Display for DeclFactsKeyedRefusal {
             } => write!(
                 f,
                 "decl_facts_at: {file} is where module {derived_module} is stored, but it declares module {declared_module:?}"
+            ),
+            DeclFactsKeyedRefusal::FileUnparsed { file } => write!(
+                f,
+                "decl_facts_at: {file} is the file an asked key derives, and it does not parse"
             ),
             DeclFactsKeyedRefusal::AcquisitionRefused { file, cause } => {
                 write!(f, "decl_facts_at: acquiring {file}: {cause}")
@@ -2293,8 +2299,9 @@ fn keyed_decl_facts(
             continue;
         };
         let mut facts = Vec::new();
+        // An unparseable derived file is not a miss: the key names it, so zero rows would hide it.
         let Some(declared) = decl_facts_of_file(file, &mut facts) else {
-            continue;
+            return Err(DeclFactsKeyedRefusal::FileUnparsed { file: rel });
         };
         layout_agrees(&rel, &module, &declared)?;
         let asked: Vec<DeclFactRaw> = facts
