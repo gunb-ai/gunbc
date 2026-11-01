@@ -7311,13 +7311,10 @@ mod compiler_tests {
                 let t = Instant::now();
                 let ownership = crate::v1_compiler_compile::extract_ownership_proofs(typed.clone());
                 let ownership_elapsed = t.elapsed();
-                let own_diags =
-                    crate::v1_compiler_compile::ownership_diagnostics(ownership.clone());
                 eprintln!(
-                    "  Ownership:                    {:>8.2?}  ({} proofs, {} diagnostics)",
+                    "  Ownership:                    {:>8.2?}  ({} proofs)",
                     ownership_elapsed,
-                    ownership.len(),
-                    own_diags.len()
+                    ownership.len()
                 );
 
                 // 6. Emit

@@ -3917,6 +3917,12 @@ type AttemptUnitStartStanding
 // (trigger: the next change to a WorkerProcessExited consumer's decision).
 fn attempt_unit_from_exit_record(unit: NonEmptyStr, record: AttemptExitRecordObservation, start: AttemptUnitStartStanding) -> AttemptUnitObservation {
   match record {
+    // The end is recorded (the hook ran) but its status was never substituted into the name, so the
+    // OUTCOME is unobserved. This names the record's WRITER as defective; it is not evidence about
+    // whether the process still runs -- that question is answered from the manager's standing, never
+    // from the shape of an artifact.
+    AttemptExitRecordWriterUnsubstituted { entries, variables } =>
+      AttemptUnitUnreadable { reason: join(["unit ", unit as String, " is not loaded and its exit record names the stop variables unexpanded (", join(variables, ", "), "), so its end is recorded but its status is not: ", join(entries, ", ")], "") }
     AttemptExitRecordUnreadable { reason } =>
       AttemptUnitUnreadable { reason: join(["unit ", unit as String, " is not loaded and its exit record could not be read: ", reason], "") }
     AttemptExitRecordFound { record: r } =>

@@ -17318,6 +17318,18 @@ pub fn type_has_fn_fields(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
     }
 }
 
+pub fn type_node_realizes_fn_field_record(
+    n: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (!crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone())
+        && type_has_fn_fields(
+            rust_fn_sig_leaf_name(source_indices.clone(), n.clone()),
+            emit_info,
+        ))
+}
+
 pub fn struct_needs_serde(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
     !type_has_fn_fields(name, emit_info)
 }
@@ -19882,14 +19894,12 @@ pub fn v1_call_site_static_forwarded_param_names(
                                     }
                                     __result
                                 });
-                                let callee_own_static = if type_has_fn_fields(
-                                    rust_fn_sig_leaf_name(
-                                        si.clone(),
-                                        crate::v1_compiler_infer_types::resolved_type(
-                                            callee_item.clone(),
-                                        ),
+                                let callee_own_static = if type_node_realizes_fn_field_record(
+                                    crate::v1_compiler_infer_types::resolved_type(
+                                        callee_item.clone(),
                                     ),
                                     emit_info.clone(),
+                                    si.clone(),
                                 ) {
                                     callee_generic_param_names.clone()
                                 } else {
@@ -20406,10 +20416,8 @@ pub fn emit_fn_def(
                 emit_info.type_decl_items.clone(),
                 si.clone(),
             );
-        let returns_fn_field_record = type_has_fn_fields(
-            rust_fn_sig_leaf_name(si.clone(), inferred.clone()),
-            emit_info.clone(),
-        );
+        let returns_fn_field_record =
+            type_node_realizes_fn_field_record(inferred.clone(), emit_info.clone(), si.clone());
         let returns_arrow_or_fn_field_record =
             (((inferred.params.clone().len() as i64) > 0) || returns_fn_field_record.clone());
         let call_forwarded_static_param_names = v1_call_forwarding_static_bound_param_names(
@@ -20420,6 +20428,40 @@ pub fn emit_fn_def(
             si.clone(),
             Rc::new(vec![]),
         );
+        let arrow_value_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in value_params.iter().cloned() {
+                    if rust_type_node_is_arrow(crate::v1_std_core::param_node_type_expr(p.clone()))
+                    {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(crate::v1_std_core::param_node_name_at(
+                    p.clone(),
+                    si.clone(),
+                ));
+            }
+            __result
+        });
+        let static_fn_param_names = if returns_arrow_or_fn_field_record.clone() {
+            arrow_value_param_names.clone()
+        } else {
+            v1_body_forwarded_static_fn_param_names(
+                arrow_value_param_names.clone(),
+                body.clone(),
+                emit_info.fn_decl_items.clone(),
+                emit_info.clone(),
+                si.clone(),
+                Rc::new(vec![]),
+            )
+        };
         let static_param_names = if returns_fn_field_record.clone() {
             generic_param_names.clone()
         } else {
@@ -20454,8 +20496,7 @@ pub fn emit_fn_def(
             emit_info.read_only_params.clone(),
             emit_info.variant_to_enum.clone(),
             scope.type_env.clone(),
-            (returns_arrow_or_fn_field_record.clone()
-                || ((call_forwarded_static_param_names.clone().len() as i64) > 0)),
+            static_fn_param_names,
         );
         let ret_str = emit_inferred(
             inferred.clone(),
@@ -21682,6 +21723,202 @@ pub fn emit_func_inferred(
     )
 }
 
+pub fn v1_body_forwarded_static_fn_param_names(
+    candidates: Rc<Vec<String>>,
+    body: Rc<Node>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((candidates.clone().len() as i64) == 0) {
+            return Rc::new(vec![]);
+        }
+        let here = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => v1_call_site_forwarded_static_fn_param_names(
+                body.clone(),
+                candidates.clone(),
+                fn_decl_items.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+                visited.clone(),
+            ),
+            _ => Rc::new(vec![]),
+        };
+        body.children.clone().iter().cloned().fold(
+            here.clone(),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                    acc,
+                    v1_body_forwarded_static_fn_param_names(
+                        candidates.clone(),
+                        child.clone(),
+                        fn_decl_items.clone(),
+                        emit_info.clone(),
+                        source_indices.clone(),
+                        visited.clone(),
+                    ),
+                )
+            },
+        )
+    })
+}
+
+pub fn v1_call_site_forwarded_static_fn_param_names(
+    call: Rc<Node>,
+    candidates: Rc<Vec<String>>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        let si = source_indices.clone();
+        let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
+        if {
+            let mut __found = false;
+            for v in visited.iter().cloned() {
+                if (v.clone() == callee_name.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            return Rc::new(vec![]);
+        }
+        match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(callee_item) => {
+                let callee_static = v1_item_static_fn_param_names(
+                    callee_item.clone(),
+                    fn_decl_items.clone(),
+                    emit_info,
+                    si.clone(),
+                    v1_rt::concat(visited.clone(), Rc::new(vec![callee_name.clone()])),
+                );
+                let arg_by_name =
+                    crate::v1_compiler_infer::call_args_by_name(call.clone(), si.clone());
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for cp in function_value_params(callee_item.params.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        __result.extend(
+                            (*{
+                                let cp_name =
+                                    crate::v1_std_core::param_node_name_at(cp.clone(), si.clone());
+                                if {
+                                    let mut __found = false;
+                                    for n in callee_static.iter().cloned() {
+                                        if (n.clone() == cp_name.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    match v1_rt::map_get(&arg_by_name, cp_name.clone()) {
+                                        Some(arg) => match (*arg.expr_data.clone()).clone() {
+                                            ExprData::ExprVar {
+                                                binding_kind: _, ..
+                                            } => {
+                                                let arg_name = crate::v1_std_core::expr_var_name_at(
+                                                    arg.clone(),
+                                                    si.clone(),
+                                                );
+                                                if {
+                                                    let mut __found = false;
+                                                    for c in candidates.iter().cloned() {
+                                                        if (c.clone() == arg_name.clone()) {
+                                                            __found = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                    __found
+                                                } {
+                                                    Rc::new(vec![arg_name.clone()])
+                                                } else {
+                                                    Rc::new(vec![])
+                                                }
+                                            }
+                                            _ => Rc::new(vec![]),
+                                        },
+                                        std::option::Option::None => Rc::new(vec![]),
+                                    }
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                })
+            }
+        }
+    }
+}
+
+pub fn v1_item_static_fn_param_names(
+    item: Rc<Node>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        let si = source_indices.clone();
+        let arrow_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in function_value_params(item.params.clone()).iter().cloned() {
+                    if rust_type_node_is_arrow(crate::v1_std_core::param_node_type_expr(p.clone()))
+                    {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(crate::v1_std_core::param_node_name_at(
+                    p.clone(),
+                    si.clone(),
+                ));
+            }
+            __result
+        });
+        let rt = crate::v1_compiler_infer_types::resolved_type(item.clone());
+        if ((arrow_names.clone().len() as i64) == 0) {
+            Rc::new(vec![])
+        } else {
+            if (((rt.params.clone().len() as i64) > 0)
+                || type_node_realizes_fn_field_record(rt.clone(), emit_info.clone(), si.clone()))
+            {
+                arrow_names.clone()
+            } else {
+                match item.body.clone() {
+                    std::option::Option::None => Rc::new(vec![]),
+                    Some(b) => v1_body_forwarded_static_fn_param_names(
+                        arrow_names.clone(),
+                        b.clone(),
+                        fn_decl_items,
+                        emit_info.clone(),
+                        si.clone(),
+                        visited,
+                    ),
+                }
+            }
+        }
+    }
+}
+
 pub fn emit_params(
     params: Rc<Vec<Rc<Node>>>,
     generic_param_names: Rc<Vec<String>>,
@@ -21690,7 +21927,7 @@ pub fn emit_params(
     read_only_params: Rc<BTreeSet<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-    fn_param_needs_static: bool,
+    static_fn_param_names: Rc<Vec<String>>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -21704,7 +21941,21 @@ pub fn emit_params(
                     read_only_params.clone(),
                     variant_to_enum.clone(),
                     env.clone(),
-                    fn_param_needs_static.clone(),
+                    {
+                        let mut __found = false;
+                        for n in static_fn_param_names.iter().cloned() {
+                            if (n.clone()
+                                == crate::v1_std_core::param_node_name_at(
+                                    p.clone(),
+                                    source_indices.clone(),
+                                ))
+                            {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    },
                 ));
             }
             __result
@@ -24558,32 +24809,37 @@ pub fn effective_variant_parent(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    {
-        let leaf_name = value_ref_qualified_leaf(name);
-        let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone()) {
-            Some(p) => {
-                if (p.clone() != "".to_string()) {
-                    Some(crate::v1_std_core::qualified_last_segment(p.clone()))
-                } else {
-                    std::option::Option::None
+    match binding_kind.clone().as_deref().cloned() {
+        Some(VarBindingKind::LocalValueBinding) => std::option::Option::None,
+        Some(VarBindingKind::MatchBoundBinding) => std::option::Option::None,
+        _ => {
+            let leaf_name = value_ref_qualified_leaf(name);
+            let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone())
+            {
+                Some(p) => {
+                    if (p.clone() != "".to_string()) {
+                        Some(crate::v1_std_core::qualified_last_segment(p.clone()))
+                    } else {
+                        std::option::Option::None
+                    }
                 }
+                std::option::Option::None => std::option::Option::None,
+            };
+            match cached.clone() {
+                Some(parent) => Some(parent.clone()),
+                std::option::Option::None => match resolved_type.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        effective_variant_parent_from_resolved(
+                            leaf_name.clone(),
+                            rt.clone(),
+                            binding_kind.clone(),
+                            emit_info.clone(),
+                            source_indices,
+                        )
+                    }
+                    _ => variant_parent_from_binding_kind(binding_kind.clone()),
+                },
             }
-            std::option::Option::None => std::option::Option::None,
-        };
-        match cached.clone() {
-            Some(parent) => Some(parent.clone()),
-            std::option::Option::None => match resolved_type.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    effective_variant_parent_from_resolved(
-                        leaf_name.clone(),
-                        rt.clone(),
-                        binding_kind.clone(),
-                        emit_info.clone(),
-                        source_indices,
-                    )
-                }
-                _ => variant_parent_from_binding_kind(binding_kind.clone()),
-            },
         }
     }
 }
