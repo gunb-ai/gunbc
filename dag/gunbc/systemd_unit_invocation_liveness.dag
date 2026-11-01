@@ -1,6 +1,6 @@
 module gunbc.systemd_unit_invocation_liveness
 
-import std.types { String, NonEmptyStr, Int, Bool, EpochSecs }
+import std.types { String, NonEmptyStr, Int, Bool, EpochSecs, Seconds }
 import std.optional { Present, Absent }
 import std.algebra { trim, list_at_optional }
 import std.types { list_length }
@@ -220,10 +220,10 @@ fn unit_boot_observation(boot_id_text: String, proc_stat_text: String) -> UnitBo
 type UnitBootOrder
   = BootStartsAfterAcquisition { boot_started_at: EpochSecs, acquired_at: EpochSecs }
   | BootStartsBeforeAcquisition { boot_started_at: EpochSecs, acquired_at: EpochSecs }
-  | BootOrderUndecided { boot_started_at: EpochSecs, acquired_at: EpochSecs, skew_bound_seconds: EpochSecs }
+  | BootOrderUndecided { boot_started_at: EpochSecs, acquired_at: EpochSecs, skew_bound_seconds: Seconds }
   | BootOrderUnreadable { cause: NonEmptyStr }
 
-fn unit_boot_order(boot: UnitBootObservation, acquired_at: EpochSecs, skew_bound_seconds: EpochSecs) -> UnitBootOrder {
+fn unit_boot_order(boot: UnitBootObservation, acquired_at: EpochSecs, skew_bound_seconds: Seconds) -> UnitBootOrder {
   match boot {
     BootUnreadable { cause: c } => BootOrderUnreadable { cause: c }
     BootObserved { boot_id: _, boot_started_at: started } =>
@@ -253,7 +253,7 @@ fn unit_reboot_holder_liveness(
   standing: UnitInvocationObservation,
   boot: UnitBootObservation,
   acquired_at: EpochSecs,
-  skew_bound_seconds: EpochSecs,
+  skew_bound_seconds: Seconds,
 ) -> DurableHoldHolderLiveness {
   match standing {
     UnitInvocationUnreadable { cause: c } =>

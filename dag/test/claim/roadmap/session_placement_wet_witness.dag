@@ -301,7 +301,7 @@ fn rec_name() -> String { session_placement_record_basename(node_id: node_a, att
 fn rel_name() -> String { session_placement_release_basename(node_id: node_a, attempt_key: key_a) }
 
 // ── THE PASS, WET ──────────────────────────────────────────────────────────────────────────────
-fn lifecycle_absent(u: NonEmptyStr) -> UnitLifecycle { UnitTerminatedCauseUnknown { detail: "the user manager has no such unit" } }
+fn lifecycle_absent(u: NonEmptyStr) -> UnitLifecycle { UnitTerminatedCauseUnknown { detail: "the system manager has no such unit" } }
 fn lifecycle_running(u: NonEmptyStr) -> UnitLifecycle { UnitStillRunning { detail: "the unit is active" } }
 
 fn settlement_of(p: SessionSettlePass) -> SessionSettlement {
@@ -878,8 +878,6 @@ test fn a_boot_too_close_to_the_acquisition_to_order_keeps_the_seat() -> Bool {
   }
 }
 
-// NO ACQUISITION IN THE LEDGER FOR THIS REFERENCE: the instant the hold was taken cannot be read, and a
-// missing instant is not an old one. The reading stays unbound and the seat is kept.
 // NO ACQUISITION IN THE LEDGER FOR THIS REFERENCE: the instant the hold was taken cannot be read, so the
 // not-found reading cannot be bound to the holder, and the seat is kept. A missing instant is not an old
 // one, and a pass that treated it as one would free any seat whose ledger term had been dropped.

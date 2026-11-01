@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_session_placement
 
-import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Seconds }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, millicore }
@@ -977,7 +977,7 @@ fn session_placement_observe_for_attempt(instance: HostDashboardInstance, node_i
 // acquired_at are both whole seconds of the host clock read at different moments, and a clock set from
 // the RTC before synchronization can put them apart by more than a second. This reader answers within
 // 120 seconds; anything closer is a typed refusal, never a rounding.
-data session_holder_boot_skew_bound_seconds: EpochSecs = 120
+data session_holder_boot_skew_bound_seconds: Seconds = 120
 
 // THE POOL THE SETTLEMENT FOLDS THE LEDGER UNDER, spelled once. The release route and the acquisition
 // read must address the SAME pool, so both take it from here rather than each naming a number. The
