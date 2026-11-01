@@ -35,11 +35,16 @@ import v2.extdeps.languages.bash_build {
 // written, not a red run (or a green one) later. That is the route this repository's own admitted CI shell
 // names as its successor (gunbc.ci.ci_spec gunbc_ci_fleet_key_agent_shell_emit_dissolution: "AVAILABLE
 // today"), and the reason the compose steps were moved onto it instead of being consolidated as strings
-// beside it. Two consequences are worth naming rather than hiding: the grammar has four word kinds (literal,
-// variable, concatenation, command substitution) and no parameter-default form, so `${RUNNER_TEMP:-/tmp}`
-// becomes two statements - an assignment from the variable and an `|| true` fallback to the row's
-// compose_root_env_default - and `set -u` is not imposed, because reading a possibly-unset variable is
-// exactly what that fallback does.
+// beside it. Two consequences are worth naming rather than hiding. The grammar has four word kinds
+// (literal, variable, concatenation, command substitution) and no parameter-default form, so a default is
+// not one `${VAR:-fallback}` word: runner_tmp_root_stmts spells it as five statements - open a `set +u`
+// window, assign from the possibly-unset variable, `test -n` it and assign the row's
+// compose_root_env_default when it is empty, prove the result non-empty, and close the window with
+// `set -u` again. And strict mode IS imposed (`set_strict_stmt`: `set -euo pipefail`); the `+u` window is
+// as wide as the one read that needs it and no wider, because a step that ran without `-u` would let any
+// LATER unset read fall through silently instead of failing. The two cache variables that may genuinely be
+// absent from the environment are cleared with `unset X || true` for the same reason: `set -e` must not
+// turn "it was not set" into a failed composition.
 //
 // WHY THE COPY IS A WALL AND NOT A CONVENIENCE, AND WHY THE TRIGGER RIDES ON THE ROW.
 // The overlay copy exists because gunbc refuses an extra --source-root whose directory lies outside

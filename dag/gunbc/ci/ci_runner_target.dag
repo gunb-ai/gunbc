@@ -6,7 +6,7 @@ import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow }
 import gunbc.ci.ci_fleet { gunbc_ci_fleet_offer }
 import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired }
 import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
-import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.runner.runner_spec_from_offer { runner_self_hosted_labels_from_offer }
 import std.measure { ByteSize }
 
 data ci_runner_target_mapping_note: String = "The single seam the 2026-07-11 ubicloud iteration window proved missing: 'which machine runs CI' was modeled as a label, so switching runners propagated nothing (CARGO_BUILD_JOBS stayed fleet-derived, the toolchain-image assumption stayed baked, the memory regime stayed invisible). This module makes the selection one fact with N projections: selected_ci_runner_target() is the authority; the runs-on spec and the memory regime PROJECT from it; a runner switch is a one-row edit here and every derivation follows (DESIGN 2, model-local/derive-global). Fleet labels stay DERIVED from the fleet offer (gunbc.runner.runner_spec_from_offer, unchanged authority); cloud rows carry the provider's cited runs-on token (extdeps catalog rows), not a re-derivation. Consumers migrate to the projections as they need them - ci_workflow read the spec projection and was deleted in the 2026-08-15 floor cut, whose replacement emitter (gunbc.witness.witness_floor_workflow) was wired to the pre-seam runner_spec_from_offer call and is now routed back through this projection; the floor budget's regime read (gunbc.ci.ci_floor_measurement live rows) is the declared convergence successor: once a completed fleet floor readback proves live == declared, the budget reads ci_runner_target_memory_regime and the live rows collapse (their own dissolve-on)."
@@ -36,9 +36,14 @@ type RunnerMemoryRegime
 
 fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
   match target {
-    FleetSelfHosted => runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+    FleetSelfHosted => SelfHosted { labels: runner_self_hosted_labels_from_offer(offer: gunbc_ci_fleet_offer) }
     FleetSelfHostedInDeclaredGroup { group: group } =>
-      with_declared_group_label(spec: runner_spec_from_offer(offer: gunbc_ci_fleet_offer), group: group)
+      SelfHosted {
+        labels: with_declared_group_label(
+          labels: runner_self_hosted_labels_from_offer(offer: gunbc_ci_fleet_offer),
+          group: group
+        )
+      }
     UbicloudRunner { row: row } => SelfHosted { labels: [row.runs_on_label] }
     GithubHostedRunner { row: row } => HostedRunner { label: row.runs_on_label }
   }
@@ -46,13 +51,14 @@ fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
 
 // THE GROUP LABEL IS ADDED TO THE FLEET LABELS, not substituted for them: the runner agent still applies
 // its default provenance, OS and architecture labels, and the group label only narrows who may take the
-// job. A hosted spec has no group to join, so the restricted shape keeps the fleet labels it came from
-// rather than publishing an unrestricted hosted job under a group-restricted selection.
-fn with_declared_group_label(spec: RunnerSpec, group: DeclaredRunnerGroup) -> RunnerSpec {
-  match spec {
-    SelfHosted { labels: labels } => SelfHosted { labels: concat(labels, [group.name as String]) }
-    _ => SelfHosted { labels: [group.name as String] }
-  }
+// job. This joins LABELS, not a RunnerSpec, so there is no arm to fall back on: the fleet offer's labels
+// are self-hosted by construction (gunbc.runner.runner_spec_from_offer
+// runner_self_hosted_labels_from_offer), which is the case an earlier version of this function met with a
+// `_ =>` arm that invented a spec carrying the group name and nothing else - a runs-on that matched
+// nothing the offer described, unreachable only because the offer happened never to be hosted. A dead arm
+// that fabricates is still a fabricated default (DESIGN 5), and it contradicted the comment above it.
+fn with_declared_group_label(labels: List<String>, group: DeclaredRunnerGroup) -> List<String> {
+  concat(labels, [group.name as String])
 }
 
 // Two serialization classes, per the actions grammar (extdeps.languages.yaml.gha_workflow
