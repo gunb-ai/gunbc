@@ -1,107 +1,395 @@
 module v2.test.claim.long.xl3_wave2_declaring_identity_witness
 
-import std.algebra { Empty }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, string_contains }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Optional, Present }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { List }
-import v2.compiler.name_resolve { Admission, ResolutionSubject, resolve_with_admission_policy }
-import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.source_root_eval { native_test_context_from_ingest, native_test_resolve_module }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
-import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.qualified_name { QualifiedName }
-import v2.std.resolution_policy { ImportScoped }
-import v2.test.claim.long.xl3_wave_declaring_identity_witness { ExpectedBinding, declaring_paths, read_of, table_holds }
-
-// Every read, table and resolution helper this witness needs comes from wave 1; the imports above carry
-// only the types and producers this file names. filesystem_read / DagSourceReadWitness / ResolvedTree sit
-// behind read_of and declaring_paths in v2.test.claim.long.xl3_wave_declaring_identity_witness.
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.test.claim.long.xl3_wave_declaring_identity_witness {
+  ExpectedBinding, declaring_paths, read_of, table_holds
+}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// XL-3 PER-WAVE IDENTITY WITNESS, wave 2 (UNRUN -- written, never executed; shape and rules come from
-// docs/plans/2026-11-01-xl3-identity-witness-shape.md on this branch, and the reference list with its
-// cited commands from docs/plans/2026-11-01-xl3-wave2-declaring-identity-references.md). The SHAPE IS
-// NOT FORKED: ExpectedBinding, read_of, declaring_paths and table_holds are IMPORTED from wave 1
-// (v2.test.claim.long.xl3_wave_declaring_identity_witness); this file adds only the wave-2 subjects,
-// their ingest, and their tables.
+// XL-3 WAVE 2, UNRUN -- written and pinned at origin/main 345d6077fc4a, never executed. The shape is
+// wave 1's (src/v2/test/claim/long/xl3_wave_declaring_identity_witness.dag on this branch): a pinned
+// table keyed by DECLARING PATH with an occurrence count, one native front end and one resolution per
+// subject module, and a wrong-declaration arm that must REFUSE. Wave 1 is the authority for the shape;
+// this file does not fork it -- it imports ExpectedBinding, read_of, declaring_paths and table_holds.
 //
-// WAVE 2 AS SCOPED = the importers of std.declaring_identity_spelling: `git grep -lw
-// declaring_identity_spelling 345d6077fc4a --` minus the declaring module itself gives 15 files, which
-// is the count the design note carries. READING THAT POPULATION (same doc) narrows what can be
-// respelled: only THREE of the fifteen carry a reference site to a declaring identity of that module --
-//   src/v2/compiler/declaring_identity_spelling_census.dag                          6 names, 15 sites
-//   src/v2/test/claim/declaring_identity_spelling/verdict_fold.dag                 12 names, 26 sites
-//   src/v2/test/claim/declaring_identity_spelling/production_ingest.dag             5 names,  7 sites
-// The other twelve match the grep because the token is part of their OWN module path (7 fixtures under
-// src/v2/test/fixture/declaring_identity_spelling/, the two claim-module names, the probe
-// dag/test/probe/declaring_identity_spelling_unresolvable_probe.dag, and
-// src/v2/workflow/floor_pure_producer_share.dag's own name) or a STRING (the two
-// dag/gunbc/source_layout_namespaces.dag rows name namespaces; dag/gunbc/compiler_frontend_program_status.dag:1272
-// carries "IdentityUnbound" inside a `why:` message, not as a name), and
-// artifacts/rung-drops/required_lanes_do_not_resolve_product_layer_modules_2026-09-20.txt is not a
-// module at all. A cut that respells names cannot touch those; they stay listed as the population and
-// the `wave2_matched_by_name_only_carries_no_declaring_identity` arm below pins that reading rather
-// than quietly dropping the twelve.
+// SCOPE (tidy-ant-251 ruling): wave 2 touches the importers of std.declaring_identity_spelling, and an
+// import edit can change what an UNCHANGED spelling resolves to. So each table below pins EVERY
+// reference in the touched module that an import row gives a home to -- not only the references to
+// std.declaring_identity_spelling. Same-module references, binder-bound positions and record field
+// labels are listed in docs/plans/2026-11-01-xl3-wave2-declaring-identity-references.md and are NOT
+// pinned here, with the reason stated there.
 //
-// THE CLAIM, per touched module: resolved through the production resolver (resolve_with_admission_policy
-// over the real filesystem read of the module and the union of its import providers -- 29 modules, every
-// one read from disk, no fixture source), the DECLARING PATH each named reference binds to is the pinned
-// table for that module, whatever the reference is SPELLED as. Run at base (bare, post-import spellings)
-// and at head (module-qualified spellings after XL3), the three tables must answer identically.
-//
-// The exports with NO site in these three modules: `authored_is_suffix_of_canonical` (its only mention
-// in the tree is inside its own declaring module, dag/std/declaring_identity_spelling.dag:80, which is
-// wave 1's subject, not wave 2's) and the dissolution row
-// `declaring_identity_spelling_declared_binding_frontier_dissolve_on` (a declaration, not a reference).
-// They are absent from the tables because a table row demands a site.
-//
-// WHAT THIS TABLE COVERS AND DOES NOT: the rows are keyed to the wave-defining module
-// std.declaring_identity_spelling, because that is what wave 2 is named for. XL3 will also respell the
-// OTHER unqualified references in these modules (their std.algebra, v2.std.diagnostic, v2.std.node
-// heads); those declaring paths are NOT pinned here. That is a scope gap, not a claim of completeness --
-// see the "unknowns" section of the wave-2 references doc.
-//
-// UNVERIFIED AGAINST THE RESOLVER, exactly as in wave 1: the counts are non-comment, non-import mentions
-// by the cited greps at 345d6077fc4a (import rows are excluded because the import row is a different cut);
-// the first run at the base may correct a count -- a record the resolver does not mint (an unread arm of a
-// record), or a VARIANT: the rows for IdentityAmbiguous / IdentityOwnerless / IdentityUnbound /
-// SpelledCanonically / SpelledShorter / ResolvedAuthoredNotOnCanonicalPath / ResolvedSpelling /
-// UnresolvableSpelling name type CASES, and it is not settled whether a case binds to its own declaring
-// path or to the declaring path of the enclosing type (std.declaring_identity_spelling.UnresolvableCause
-// vs .UnresolvableSpelling). The run answers that, and a corrected count is a correction of the table,
-// not of the cut.
+// COUNTS are non-comment, non-import mentions by `git grep -w` reading at 345d6077fc4a (commands,
+// population and unknowns in the note); they are UNVERIFIED against the resolver until the first run,
+// which may correct a count (an unread arm of a record, a mention the resolver does not mint). The
+// first run is EXPECTED to refuse before any count is read: production_ingest.dag:80 still calls the
+// unbound `filesystem_read`, and every subject's closure reaches src/v2/std/qualified_name.dag, which
+// calls the unbound `string_length` (line 304) until #15507 lands. Both are named in the note.
 
-// --- tables, keyed by declaring path, counts = cited mentions in that module -----------------------
-// Census module: sites at lines 64,68 / 69,116 / 70,117 / 71,118 / 96 / 97,104,112,135,150,160.
+// SUBJECT v2.compiler.declaring_identity_spelling_census  (src/v2/compiler/declaring_identity_spelling_census.dag): 36 import-row references, 47 occurrences,
+// read through 15 provider modules -- the modules its import rows name, one level deep.
+fn census_ingest() -> SourceRootIngest {
+Cons {
+    head: read_of(path: "src/v2/compiler/declaring_identity_spelling_census.dag", unit: ^xl3w2_c_subject, root: V2Tree),
+    tail: Cons {
+      head: read_of(path: "dag/std/algebra.dag", unit: ^xl3w2_c_p01, root: DagTree),
+      tail: Cons {
+        head: read_of(path: "dag/std/declaring_identity_spelling.dag", unit: ^xl3w2_c_p02, root: DagTree),
+        tail: Cons {
+          head: read_of(path: "dag/std/repair_input_origin.dag", unit: ^xl3w2_c_p03, root: DagTree),
+          tail: Cons {
+            head: read_of(path: "src/v2/compiler/normalized_tree.dag", unit: ^xl3w2_c_p04, root: V2Tree),
+            tail: Cons {
+              head: read_of(path: "src/v2/compiler/program_assembly.dag", unit: ^xl3w2_c_p05, root: V2Tree),
+              tail: Cons {
+                head: read_of(path: "src/v2/compiler/reference_site_collector.dag", unit: ^xl3w2_c_p06, root: V2Tree),
+                tail: Cons {
+                  head: read_of(path: "src/v2/compiler/repair_input_origin_roster.dag", unit: ^xl3w2_c_p07, root: V2Tree),
+                  tail: Cons {
+                    head: read_of(path: "src/v2/compiler/resolution_provenance.dag", unit: ^xl3w2_c_p08, root: V2Tree),
+                    tail: Cons {
+                      head: read_of(path: "src/v2/compiler/source_authority.dag", unit: ^xl3w2_c_p09, root: V2Tree),
+                      tail: Cons {
+                        head: read_of(path: "src/v2/compiler/symbol_index_fill.dag", unit: ^xl3w2_c_p10, root: V2Tree),
+                        tail: Cons {
+                          head: read_of(path: "src/v2/std/diagnostic.dag", unit: ^xl3w2_c_p11, root: V2Tree),
+                          tail: Cons {
+                            head: read_of(path: "src/v2/std/language_model.dag", unit: ^xl3w2_c_p12, root: V2Tree),
+                            tail: Cons {
+                              head: read_of(path: "src/v2/std/namespace_alias.dag", unit: ^xl3w2_c_p13, root: V2Tree),
+                              tail: Cons {
+                                head: read_of(path: "src/v2/std/node.dag", unit: ^xl3w2_c_p14, root: V2Tree),
+                                tail: Cons {
+                                  head: read_of(path: "src/v2/std/symbol_index.dag", unit: ^xl3w2_c_p15, root: V2Tree),
+                                  tail: Empty
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn census_subject() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "v2.compiler.declaring_identity_spelling_census")
+}
+
 fn census_table() -> List<ExpectedBinding> {
   [
+    ExpectedBinding { declaring: "std.algebra.Empty", occurrences: 1 },
+    ExpectedBinding { declaring: "std.algebra.FreeMonoid", occurrences: 3 },
+    ExpectedBinding { declaring: "std.algebra.fold_list", occurrences: 1 },
+    ExpectedBinding { declaring: "std.algebra.list_snoc_item", occurrences: 1 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.DeclaringIdentitySpelling", occurrences: 2 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.IdentityAmbiguous", occurrences: 2 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.IdentityOwnerless", occurrences: 2 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.IdentityUnbound", occurrences: 2 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.declaring_identity_spelling_resolved", occurrences: 1 },
-    ExpectedBinding { declaring: "std.declaring_identity_spelling.declaring_identity_spelling_unresolvable", occurrences: 6 }
+    ExpectedBinding { declaring: "std.declaring_identity_spelling.declaring_identity_spelling_unresolvable", occurrences: 6 },
+    ExpectedBinding { declaring: "std.repair_input_origin.RepairInputDeclared", occurrences: 1 },
+    ExpectedBinding { declaring: "std.repair_input_origin.RepairInputIdentityAbsent", occurrences: 1 },
+    ExpectedBinding { declaring: "std.repair_input_origin.RepairInputIdentityAmbiguous", occurrences: 1 },
+    ExpectedBinding { declaring: "std.repair_input_origin.RepairInputTargetWithoutDeclarationIdentity", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.normalized_tree.normalized_tree_roots_to_binding_sources", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.program_assembly.module_roots_from_source_root_ingest", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.reference_site_collector.UnreadableModuleRoot", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.reference_site_collector.collect_reference_sites", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.repair_input_origin_roster.carrier_provenance", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.ProvenanceAmbiguous", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.ProvenanceOwnerless", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.ProvenanceResolved", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.ProvenanceUnbound", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.ResolutionProvenance", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.answer_site", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.module_roster_from_roots", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.resolve_reference_sites", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.source_authority.SourceRootIngest", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.symbol_index_fill.symbol_index_fill_module_roots", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.diagnostic.Outcome", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.diagnostic.bind_outcome", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.diagnostic.outcome_accepted", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.language_model.LanguageModel", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.namespace_alias.ModuleBindingSource", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.namespace_alias.module_binding_source_roots", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.symbol_index.empty_symbol_index", occurrences: 1 },
   ]
 }
 
-// production_ingest module: sites at lines 105 / 94 / 116 / 46,58 / 51,63.
+// The wrong-declaration arm for this subject: `v2.std.logic.Bool` is a real declaration with the same
+// leaf as the `Bool` this module uses, reached through v2.std.logic's re-export of std.types.Bool.
+// A wave that rebound a bare `Bool` to the re-export instead of the declaring home would look like this
+// table holding; the resolution paths must refuse it. (tidy-ant-251: this shared-leaf shape is the one
+// that discriminates binding to a re-export from binding to the declaring home; no identity leaf has a
+// same-leaf twin at 345d6077fc4a, so a second arm per identity was not needed.)
+// CORRECTION to that last clause, found by reading: one identity leaf DOES have a same-leaf twin at
+// 345d6077fc4a -- IdentityAmbiguous is also a variant of RoadmapIdentityResolution in
+// dag/gunbc/roadmap/roadmap_identity.dag:132 (module gunbc.roadmap.roadmap_identity), which does NOT
+// import std.declaring_identity_spelling and so is outside wave 2's population. That twin is exactly the
+// shape option (ii) was meant to probe, so the arm below carries it as a second row: a wave that inserted
+// an import carrying the same leaf would re-point a bare IdentityAmbiguous to the roadmap variant, and the
+// resolution paths must refuse that table. The two rows are the same arm, not two arms.
+fn census_wrong_table() -> List<ExpectedBinding> {
+  [
+    ExpectedBinding { declaring: "v2.std.logic.Bool", occurrences: 1 },
+    ExpectedBinding { declaring: "gunbc.roadmap.roadmap_identity.IdentityAmbiguous", occurrences: 2 },
+  ]
+}
+
+fn census_paths() -> Optional<List<String>> {
+  match native_test_context_from_ingest(ingest: census_ingest()) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_resolve_module(context: context, module: census_subject()).resolved {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: tree, diagnostics: _ } => Present { value: declaring_paths(tree: tree) }
+      }
+  }
+}
+
+// GREEN: every pinned declaring path is bound exactly as often as the table says.
+// RED: the same paths refuse the wrong-declaration table, so the witness discriminates by declaration
+// identity and not by leaf name. Absent (a refusal) fails the test, so a run reports the refusal
+// rather than passing silently.
+test fn wave2_census_every_reference_binds_its_declaring_home_and_refuses_the_wrong_one_holds() -> Bool {
+  match census_paths() {
+    Present { value: paths } =>
+      table_holds(paths: paths, table: census_table())
+        && !table_holds(paths: paths, table: census_wrong_table())
+    Absent => false
+  }
+}
+
+// SUBJECT v2.test.claim.declaring_identity_spelling.production_ingest  (src/v2/test/claim/declaring_identity_spelling/production_ingest.dag): 51 import-row references, 169 occurrences,
+// read through 23 provider modules -- the modules its import rows name, one level deep.
+fn production_ingest_ingest() -> SourceRootIngest {
+Cons {
+    head: read_of(path: "src/v2/test/claim/declaring_identity_spelling/production_ingest.dag", unit: ^xl3w2_pi_subject, root: V2Tree),
+    tail: Cons {
+      head: read_of(path: "dag/extdeps/communication/medium.dag", unit: ^xl3w2_pi_p01, root: DagTree),
+      tail: Cons {
+        head: read_of(path: "dag/extdeps/filesystem/filesystem_io.dag", unit: ^xl3w2_pi_p02, root: DagTree),
+        tail: Cons {
+          head: read_of(path: "dag/std/algebra.dag", unit: ^xl3w2_pi_p03, root: DagTree),
+          tail: Cons {
+            head: read_of(path: "dag/std/declaring_identity_spelling.dag", unit: ^xl3w2_pi_p04, root: DagTree),
+            tail: Cons {
+              head: read_of(path: "dag/std/live_tree.dag", unit: ^xl3w2_pi_p05, root: DagTree),
+              tail: Cons {
+                head: read_of(path: "dag/std/optional.dag", unit: ^xl3w2_pi_p06, root: DagTree),
+                tail: Cons {
+                  head: read_of(path: "dag/std/types.dag", unit: ^xl3w2_pi_p07, root: DagTree),
+                  tail: Cons {
+                    head: read_of(path: "src/v2/compiler/declaring_identity_spelling_census.dag", unit: ^xl3w2_pi_p08, root: V2Tree),
+                    tail: Cons {
+                      head: read_of(path: "src/v2/compiler/normalized_tree.dag", unit: ^xl3w2_pi_p09, root: V2Tree),
+                      tail: Cons {
+                        head: read_of(path: "src/v2/compiler/program_assembly.dag", unit: ^xl3w2_pi_p10, root: V2Tree),
+                        tail: Cons {
+                          head: read_of(path: "src/v2/compiler/reference_site_collector.dag", unit: ^xl3w2_pi_p11, root: V2Tree),
+                          tail: Cons {
+                            head: read_of(path: "src/v2/compiler/resolution_provenance.dag", unit: ^xl3w2_pi_p12, root: V2Tree),
+                            tail: Cons {
+                              head: read_of(path: "src/v2/compiler/source_authority.dag", unit: ^xl3w2_pi_p13, root: V2Tree),
+                              tail: Cons {
+                                head: read_of(path: "src/v2/compiler/symbol_index_fill.dag", unit: ^xl3w2_pi_p14, root: V2Tree),
+                                tail: Cons {
+                                  head: read_of(path: "src/v2/extdeps/languages/dag.dag", unit: ^xl3w2_pi_p15, root: V2Tree),
+                                  tail: Cons {
+                                    head: read_of(path: "src/v2/std/artifact.dag", unit: ^xl3w2_pi_p16, root: V2Tree),
+                                    tail: Cons {
+                                      head: read_of(path: "src/v2/std/cross_tree/import_model.dag", unit: ^xl3w2_pi_p17, root: V2Tree),
+                                      tail: Cons {
+                                        head: read_of(path: "src/v2/std/diagnostic.dag", unit: ^xl3w2_pi_p18, root: V2Tree),
+                                        tail: Cons {
+                                          head: read_of(path: "src/v2/std/namespace_alias.dag", unit: ^xl3w2_pi_p19, root: V2Tree),
+                                          tail: Cons {
+                                            head: read_of(path: "src/v2/std/node.dag", unit: ^xl3w2_pi_p20, root: V2Tree),
+                                            tail: Cons {
+                                              head: read_of(path: "src/v2/std/qualified_name.dag", unit: ^xl3w2_pi_p21, root: V2Tree),
+                                              tail: Cons {
+                                                head: read_of(path: "src/v2/std/symbol_index.dag", unit: ^xl3w2_pi_p22, root: V2Tree),
+                                                tail: Cons {
+                                                  head: read_of(path: "src/v2/test/claim/provenance/cross_file_provenance.dag", unit: ^xl3w2_pi_p23, root: V2Tree),
+                                                  tail: Empty
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn production_ingest_subject() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "v2.test.claim.declaring_identity_spelling.production_ingest")
+}
+
 fn production_ingest_table() -> List<ExpectedBinding> {
   [
+    ExpectedBinding { declaring: "extdeps.communication.medium.Lossless", occurrences: 1 },
+    ExpectedBinding { declaring: "extdeps.communication.medium.Medium", occurrences: 1 },
+    ExpectedBinding { declaring: "std.algebra.Cons", occurrences: 12 },
+    ExpectedBinding { declaring: "std.algebra.Empty", occurrences: 4 },
+    ExpectedBinding { declaring: "std.algebra.FreeMonoid", occurrences: 3 },
+    ExpectedBinding { declaring: "std.algebra.fold_list", occurrences: 5 },
+    ExpectedBinding { declaring: "std.algebra.is_empty", occurrences: 1 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.IdentityAmbiguous", occurrences: 1 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.IdentityOwnerless", occurrences: 1 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.IdentityUnbound", occurrences: 1 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.ResolvedSpelling", occurrences: 2 },
-    ExpectedBinding { declaring: "std.declaring_identity_spelling.UnresolvableSpelling", occurrences: 2 }
+    ExpectedBinding { declaring: "std.declaring_identity_spelling.UnresolvableSpelling", occurrences: 2 },
+    ExpectedBinding { declaring: "std.live_tree.LiveTreeDisposition", occurrences: 1 },
+    ExpectedBinding { declaring: "std.live_tree.ReadsLiveTree", occurrences: 1 },
+    ExpectedBinding { declaring: "std.optional.Absent", occurrences: 32 },
+    ExpectedBinding { declaring: "std.optional.Optional", occurrences: 10 },
+    ExpectedBinding { declaring: "std.optional.Present", occurrences: 28 },
+    ExpectedBinding { declaring: "std.optional.optional_absent", occurrences: 2 },
+    ExpectedBinding { declaring: "std.optional.optional_present", occurrences: 1 },
+    ExpectedBinding { declaring: "std.types.List", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.declaring_identity_spelling_census.DeclaringIdentitySpellingCensus", occurrences: 11 },
+    ExpectedBinding { declaring: "v2.compiler.declaring_identity_spelling_census.spelling_census_from_ingest", occurrences: 2 },
+    ExpectedBinding { declaring: "v2.compiler.normalized_tree.normalized_tree_roots_to_binding_sources", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.program_assembly.module_roots_from_source_root_ingest", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.reference_site_collector.collect_reference_sites", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.ProvenanceAmbiguous", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.ProvenanceOwnerless", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.ProvenanceResolved", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.ProvenanceUnbound", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.reference_site_scope_path", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.resolution_provenance.resolve_reference_provenance", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.compiler.source_authority.DagSourceReadWitness", occurrences: 4 },
+    ExpectedBinding { declaring: "v2.compiler.source_authority.SourceRootIngest", occurrences: 3 },
+    ExpectedBinding { declaring: "v2.compiler.symbol_index_fill.symbol_index_fill_module_roots", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.extdeps.languages.dag.dag_language_model", occurrences: 3 },
+    ExpectedBinding { declaring: "v2.std.artifact.Artifact", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.artifact.SourceFile", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.cross_tree.import_model.V2Tree", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.diagnostic.Accepted", occurrences: 3 },
+    ExpectedBinding { declaring: "v2.std.diagnostic.Rejected", occurrences: 3 },
+    ExpectedBinding { declaring: "v2.std.namespace_alias.ModuleBindingSource", occurrences: 3 },
+    ExpectedBinding { declaring: "v2.std.namespace_alias.module_binding_source_roots", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.node.Symbol", occurrences: 2 },
+    ExpectedBinding { declaring: "v2.std.qualified_name.qualified_name_last_segment", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.qualified_name.qualified_name_snoc", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.qualified_name.qualified_name_to_dotted_string", occurrences: 4 },
+    ExpectedBinding { declaring: "v2.std.symbol_index.empty_symbol_index", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.symbol_index.symbol_index_lookup", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.test.claim.provenance.cross_file_provenance.cfp_index", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.test.claim.provenance.cross_file_provenance.cfp_own_module_site", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.test.claim.provenance.cross_file_provenance.cfp_roster", occurrences: 1 },
   ]
 }
 
-// verdict_fold module: sites at lines 17 / 47 / 56 / 52,61 / 27,36,40,45 / 22,31,35,44 / 23,32,37,46 /
-// 21,34,43 / 24,38,48 / 20,26 / 29 / 33.
+// The wrong-declaration arm for this subject: `v2.std.logic.Bool` is a real declaration with the same
+// leaf as the `Bool` this module uses, reached through v2.std.logic's re-export of std.types.Bool.
+// A wave that rebound a bare `Bool` to the re-export instead of the declaring home would look like this
+// table holding; the resolution paths must refuse it. (tidy-ant-251: this shared-leaf shape is the one
+// that discriminates binding to a re-export from binding to the declaring home; no identity leaf has a
+// same-leaf twin at 345d6077fc4a, so a second arm per identity was not needed.)
+// CORRECTION to that last clause, found by reading: one identity leaf DOES have a same-leaf twin at
+// 345d6077fc4a -- IdentityAmbiguous is also a variant of RoadmapIdentityResolution in
+// dag/gunbc/roadmap/roadmap_identity.dag:132 (module gunbc.roadmap.roadmap_identity), which does NOT
+// import std.declaring_identity_spelling and so is outside wave 2's population. That twin is exactly the
+// shape option (ii) was meant to probe, so the arm below carries it as a second row: a wave that inserted
+// an import carrying the same leaf would re-point a bare IdentityAmbiguous to the roadmap variant, and the
+// resolution paths must refuse that table. The two rows are the same arm, not two arms.
+fn production_ingest_wrong_table() -> List<ExpectedBinding> {
+  [
+    ExpectedBinding { declaring: "v2.std.logic.Bool", occurrences: 1 },
+    ExpectedBinding { declaring: "gunbc.roadmap.roadmap_identity.IdentityAmbiguous", occurrences: 1 },
+  ]
+}
+
+fn production_ingest_paths() -> Optional<List<String>> {
+  match native_test_context_from_ingest(ingest: production_ingest_ingest()) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_resolve_module(context: context, module: production_ingest_subject()).resolved {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: tree, diagnostics: _ } => Present { value: declaring_paths(tree: tree) }
+      }
+  }
+}
+
+// GREEN: every pinned declaring path is bound exactly as often as the table says.
+// RED: the same paths refuse the wrong-declaration table, so the witness discriminates by declaration
+// identity and not by leaf name. Absent (a refusal) fails the test, so a run reports the refusal
+// rather than passing silently.
+test fn wave2_production_ingest_every_reference_binds_its_declaring_home_and_refuses_the_wrong_one_holds() -> Bool {
+  match production_ingest_paths() {
+    Present { value: paths } =>
+      table_holds(paths: paths, table: production_ingest_table())
+        && !table_holds(paths: paths, table: production_ingest_wrong_table())
+    Absent => false
+  }
+}
+
+// SUBJECT v2.test.claim.declaring_identity_spelling.verdict_fold  (src/v2/test/claim/declaring_identity_spelling/verdict_fold.dag): 18 import-row references, 41 occurrences,
+// read through 4 provider modules -- the modules its import rows name, one level deep.
+fn verdict_fold_ingest() -> SourceRootIngest {
+Cons {
+    head: read_of(path: "src/v2/test/claim/declaring_identity_spelling/verdict_fold.dag", unit: ^xl3w2_vf_subject, root: V2Tree),
+    tail: Cons {
+      head: read_of(path: "dag/std/decl_ref.dag", unit: ^xl3w2_vf_p01, root: DagTree),
+      tail: Cons {
+        head: read_of(path: "dag/std/declaring_identity_spelling.dag", unit: ^xl3w2_vf_p02, root: DagTree),
+        tail: Cons {
+          head: read_of(path: "dag/std/live_tree.dag", unit: ^xl3w2_vf_p03, root: DagTree),
+          tail: Cons {
+            head: read_of(path: "src/v2/std/qualified_name.dag", unit: ^xl3w2_vf_p04, root: V2Tree),
+            tail: Empty
+          }
+        }
+      }
+    }
+  }
+}
+
+fn verdict_fold_subject() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "v2.test.claim.declaring_identity_spelling.verdict_fold")
+}
+
 fn verdict_fold_table() -> List<ExpectedBinding> {
   [
+    ExpectedBinding { declaring: "std.decl_ref.DeclarationRef", occurrences: 1 },
+    ExpectedBinding { declaring: "std.decl_ref.decl_ref", occurrences: 1 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.DeclaringIdentitySpelling", occurrences: 1 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.IdentityAmbiguous", occurrences: 1 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.IdentityOwnerless", occurrences: 1 },
@@ -113,149 +401,88 @@ fn verdict_fold_table() -> List<ExpectedBinding> {
     ExpectedBinding { declaring: "std.declaring_identity_spelling.UnresolvableSpelling", occurrences: 3 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.declaring_identity_spelling_resolved", occurrences: 1 },
     ExpectedBinding { declaring: "std.declaring_identity_spelling.declaring_identity_spelling_unresolvable", occurrences: 1 },
-    ExpectedBinding { declaring: "std.declaring_identity_spelling.resolved_path_verdict", occurrences: 2 }
+    ExpectedBinding { declaring: "std.declaring_identity_spelling.resolved_path_verdict", occurrences: 2 },
+    ExpectedBinding { declaring: "std.live_tree.LiveTreeDisposition", occurrences: 1 },
+    ExpectedBinding { declaring: "std.live_tree.SubstrateInputsOnly", occurrences: 1 },
+    ExpectedBinding { declaring: "v2.std.qualified_name.QualifiedName", occurrences: 5 },
+    ExpectedBinding { declaring: "v2.std.qualified_name.qualified_name_from_dotted_string", occurrences: 5 },
   ]
 }
 
-// The real filesystem read of every module in the wave: the four modules of the wave itself (the
-// declaring module plus the three touched importers) and the union of their import rows -- 29 modules,
-// each path checked to exist at 1696954b82e. Transitive providers beyond a module's own import row are
-// NOT ingested; wave 1 makes the same choice, and if the resolver needs them the first run says so.
-fn wave2_reads() -> SourceRootIngest {
+// The wrong-declaration arm for this subject: `v2.std.logic.Bool` is a real declaration with the same
+// leaf as the `Bool` this module uses, reached through v2.std.logic's re-export of std.types.Bool.
+// A wave that rebound a bare `Bool` to the re-export instead of the declaring home would look like this
+// table holding; the resolution paths must refuse it. (tidy-ant-251: this shared-leaf shape is the one
+// that discriminates binding to a re-export from binding to the declaring home; no identity leaf has a
+// same-leaf twin at 345d6077fc4a, so a second arm per identity was not needed.)
+// CORRECTION to that last clause, found by reading: one identity leaf DOES have a same-leaf twin at
+// 345d6077fc4a -- IdentityAmbiguous is also a variant of RoadmapIdentityResolution in
+// dag/gunbc/roadmap/roadmap_identity.dag:132 (module gunbc.roadmap.roadmap_identity), which does NOT
+// import std.declaring_identity_spelling and so is outside wave 2's population. That twin is exactly the
+// shape option (ii) was meant to probe, so the arm below carries it as a second row: a wave that inserted
+// an import carrying the same leaf would re-point a bare IdentityAmbiguous to the roadmap variant, and the
+// resolution paths must refuse that table. The two rows are the same arm, not two arms.
+fn verdict_fold_wrong_table() -> List<ExpectedBinding> {
   [
-    read_of(path: "dag/std/declaring_identity_spelling.dag", unit: ^xl3w2_std_declaring_identity_spelling, root: DagTree),
-    read_of(path: "src/v2/compiler/declaring_identity_spelling_census.dag", unit: ^xl3w2_census, root: V2Tree),
-    read_of(path: "src/v2/test/claim/declaring_identity_spelling/production_ingest.dag", unit: ^xl3w2_production_ingest, root: V2Tree),
-    read_of(path: "src/v2/test/claim/declaring_identity_spelling/verdict_fold.dag", unit: ^xl3w2_verdict_fold, root: V2Tree),
-    read_of(path: "dag/extdeps/communication/medium.dag", unit: ^xl3w2_extdeps_communication_medium, root: DagTree),
-    read_of(path: "dag/extdeps/filesystem/filesystem_io.dag", unit: ^xl3w2_extdeps_filesystem_io, root: DagTree),
-    read_of(path: "dag/std/algebra.dag", unit: ^xl3w2_std_algebra, root: DagTree),
-    read_of(path: "dag/std/decl_ref.dag", unit: ^xl3w2_std_decl_ref, root: DagTree),
-    read_of(path: "dag/std/live_tree.dag", unit: ^xl3w2_std_live_tree, root: DagTree),
-    read_of(path: "dag/std/optional.dag", unit: ^xl3w2_std_optional, root: DagTree),
-    read_of(path: "dag/std/repair_input_origin.dag", unit: ^xl3w2_std_repair_input_origin, root: DagTree),
-    read_of(path: "dag/std/types.dag", unit: ^xl3w2_std_types, root: DagTree),
-    read_of(path: "src/v2/compiler/normalized_tree.dag", unit: ^xl3w2_v2_normalized_tree, root: V2Tree),
-    read_of(path: "src/v2/compiler/program_assembly.dag", unit: ^xl3w2_v2_program_assembly, root: V2Tree),
-    read_of(path: "src/v2/compiler/reference_site_collector.dag", unit: ^xl3w2_v2_reference_site_collector, root: V2Tree),
-    read_of(path: "src/v2/compiler/repair_input_origin_roster.dag", unit: ^xl3w2_v2_repair_input_origin_roster, root: V2Tree),
-    read_of(path: "src/v2/compiler/resolution_provenance.dag", unit: ^xl3w2_v2_resolution_provenance, root: V2Tree),
-    read_of(path: "src/v2/compiler/source_authority.dag", unit: ^xl3w2_v2_source_authority, root: V2Tree),
-    read_of(path: "src/v2/compiler/symbol_index_fill.dag", unit: ^xl3w2_v2_symbol_index_fill, root: V2Tree),
-    read_of(path: "src/v2/extdeps/languages/dag.dag", unit: ^xl3w2_v2_extdeps_languages_dag, root: V2Tree),
-    read_of(path: "src/v2/std/artifact.dag", unit: ^xl3w2_v2_std_artifact, root: V2Tree),
-    read_of(path: "src/v2/std/cross_tree/import_model.dag", unit: ^xl3w2_v2_std_cross_tree_import_model, root: V2Tree),
-    read_of(path: "src/v2/std/diagnostic.dag", unit: ^xl3w2_v2_std_diagnostic, root: V2Tree),
-    read_of(path: "src/v2/std/language_model.dag", unit: ^xl3w2_v2_std_language_model, root: V2Tree),
-    read_of(path: "src/v2/std/namespace_alias.dag", unit: ^xl3w2_v2_std_namespace_alias, root: V2Tree),
-    read_of(path: "src/v2/std/node.dag", unit: ^xl3w2_v2_std_node, root: V2Tree),
-    read_of(path: "src/v2/std/qualified_name.dag", unit: ^xl3w2_v2_std_qualified_name, root: V2Tree),
-    read_of(path: "src/v2/std/symbol_index.dag", unit: ^xl3w2_v2_std_symbol_index, root: V2Tree),
-    read_of(path: "src/v2/test/claim/provenance/cross_file_provenance.dag", unit: ^xl3w2_claim_cross_file_provenance, root: V2Tree)
+    ExpectedBinding { declaring: "v2.std.logic.Bool", occurrences: 1 },
+    ExpectedBinding { declaring: "gunbc.roadmap.roadmap_identity.IdentityAmbiguous", occurrences: 1 },
   ]
 }
 
-// SourceRootIngest IS a FreeMonoid of the reads (src/v2/compiler/source_authority.dag:58), so the read
-// list is the ingest; the live-tree disposition is declared above the way wave 1 declares it.
-fn wave2_ingest() -> SourceRootIngest {
-  wave2_reads()
-}
-
-// QualifiedName is FreeMonoid<Symbol> (src/v2/std/qualified_name.dag:32), so the subject name is a list
-// literal of symbol atoms, the way wave 1 spells it with Cons.
-fn census_name() -> QualifiedName {
-  [^v2, ^compiler, ^declaring_identity_spelling_census]
-}
-
-fn production_ingest_name() -> QualifiedName {
-  [^v2, ^test, ^claim, ^declaring_identity_spelling, ^production_ingest]
-}
-
-fn verdict_fold_name() -> QualifiedName {
-  [^v2, ^test, ^claim, ^declaring_identity_spelling, ^verdict_fold]
-}
-
-fn probe_name() -> QualifiedName {
-  [^test, ^probe, ^declaring_identity_spelling_unresolvable_probe]
-}
-
-fn admission_of(subject: QualifiedName) -> Admission {
-  Admission { subject: ResolutionSubject { name: subject }, imports: Empty }
-}
-
-// Same producer path as wave 1's resolved_paths(), with the subject as a parameter so the three touched
-// modules can each be admitted without forking the read or the table machinery.
-fn resolved_paths_of(subject: QualifiedName) -> Optional<List<String>> {
-  match module_roots_from_source_root_ingest(ingest: wave2_ingest(), lm: dag_language_model()) {
+fn verdict_fold_paths() -> Optional<List<String>> {
+  match native_test_context_from_ingest(ingest: verdict_fold_ingest()) {
     Rejected { diagnostics: _ } => Absent
-    Accepted { value: roots, diagnostics: _ } =>
-      match resolve_with_admission_policy(
-        lm: dag_language_model(),
-        roots: roots,
-        admission: admission_of(subject: subject),
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: ImportScoped
-      ) {
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_resolve_module(context: context, module: verdict_fold_subject()).resolved {
         Rejected { diagnostics: _ } => Absent
         Accepted { value: tree, diagnostics: _ } => Present { value: declaring_paths(tree: tree) }
       }
   }
 }
 
-// GREEN arms: one per touched module -- every pinned declaring path is bound exactly as often as its
-// table says.
-test fn wave2_census_binds_its_declaring_identities_holds() -> Bool {
-  match resolved_paths_of(subject: census_name()) {
-    Present { value: paths } => table_holds(paths: paths, table: census_table())
+// GREEN: every pinned declaring path is bound exactly as often as the table says.
+// RED: the same paths refuse the wrong-declaration table, so the witness discriminates by declaration
+// identity and not by leaf name. Absent (a refusal) fails the test, so a run reports the refusal
+// rather than passing silently.
+test fn wave2_verdict_fold_every_reference_binds_its_declaring_home_and_refuses_the_wrong_one_holds() -> Bool {
+  match verdict_fold_paths() {
+    Present { value: paths } =>
+      table_holds(paths: paths, table: verdict_fold_table())
+        && !table_holds(paths: paths, table: verdict_fold_wrong_table())
     Absent => false
   }
 }
 
-test fn wave2_production_ingest_binds_its_declaring_identities_holds() -> Bool {
-  match resolved_paths_of(subject: production_ingest_name()) {
-    Present { value: paths } => table_holds(paths: paths, table: production_ingest_table())
-    Absent => false
-  }
+// THE REST OF THE POPULATION: files that mention `declaring_identity_spelling` but carry NO import row
+// for it -- string literals, comments, field labels and layout/roster entries. Wave 2's edit is an edit
+// to import rows and to unqualified heads; with no import row there is no edge for it to move, so these
+// files carry no occurrence to witness. The test asserts the property that puts them outside the wave,
+// read off the real bytes: no file in this list contains an import row for the wave-defining module.
+data name_only_files: List<String> = [
+  "artifacts/rung-drops/required_lanes_do_not_resolve_product_layer_modules_2026-09-20.txt",
+  "dag/gunbc/compiler_frontend_program_status.dag",
+  "dag/gunbc/source_layout_namespaces.dag",
+  "dag/test/probe/declaring_identity_spelling_unresolvable_probe.dag",
+  "src/v2/test/fixture/declaring_identity_spelling/call_only.dag",
+  "src/v2/test/fixture/declaring_identity_spelling/cross_consumer.dag",
+  "src/v2/test/fixture/declaring_identity_spelling/cross_provider.dag",
+  "src/v2/test/fixture/declaring_identity_spelling/field_vs_parameter.dag",
+  "src/v2/test/fixture/declaring_identity_spelling/matched_type_vs_value.dag",
+  "src/v2/test/fixture/declaring_identity_spelling/shorter.dag",
+  "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+  "src/v2/workflow/floor_pure_producer_share.dag"
+]
+
+fn no_import_row_of(content: String) -> Bool {
+  !string_contains(s: content, pattern: "import std.declaring_identity_spelling")
 }
 
-test fn wave2_verdict_fold_binds_its_declaring_identities_holds() -> Bool {
-  match resolved_paths_of(subject: verdict_fold_name()) {
-    Present { value: paths } => table_holds(paths: paths, table: verdict_fold_table())
-    Absent => false
-  }
-}
-
-// RED arm (wrong declaration), same shape as wave 1's. `Bool` is the only leaf this wave mentions that
-// has a SECOND in-tree spelling of the same name: it is DECLARED at std.types (dag/std/types.dag:4) and
-// re-exported by v2.std.logic (src/v2/std/logic.dag:4 `import std.types { Bool, True, False }`). No
-// module declares a second copy of any export of std.declaring_identity_spelling -- `git grep -nE
-// "^(fn|type|data) <leaf>" 345d6077fc4a --` returns exactly one path for each of the fifteen names --
-// so a wrong PATH for a shared leaf is the wrong-declaration shape this wave can express. Keying a real
-// leaf at the module that only re-exports it must answer refused; had the respelling bound `Bool` there,
-// the count would match and this arm would have gone green, which is the discrimination it exists for.
-fn wrong_declaration_table() -> List<ExpectedBinding> {
-  [ExpectedBinding { declaring: "v2.std.logic.Bool", occurrences: 1 }]
-}
-
-test fn wave2_wrong_declaration_table_is_refused_holds() -> Bool {
-  match resolved_paths_of(subject: verdict_fold_name()) {
-    Present { value: paths } => !table_holds(paths: paths, table: wrong_declaration_table())
-    Absent => false
-  }
-}
-
-// Population arm: the twelve name-only matches carry no reference site, so a table that DEMANDS one of
-// this wave's declaring paths must not hold for them. This pins the reading that the grep population is
-// wider than the respellable population, instead of leaving that as prose. Run at base; if the probe
-// module does not resolve in this harness the arm reports false and the first run tells us why.
-fn demanded_row_for_a_name_only_module() -> List<ExpectedBinding> {
-  [ExpectedBinding { declaring: "std.declaring_identity_spelling.DeclaringIdentitySpelling", occurrences: 1 }]
-}
-
-test fn wave2_matched_by_name_only_carries_no_declaring_identity_holds() -> Bool {
-  match resolved_paths_of(subject: probe_name()) {
-    Present { value: paths } => !table_holds(paths: paths, table: demanded_row_for_a_name_only_module())
-    Absent => false
-  }
+test fn wave2_name_only_files_carry_no_import_edge_for_the_wave_module_holds() -> Bool {
+  fold_list(
+    xs: name_only_files,
+    empty: true,
+    cons: fn(acc, path) {
+      acc && no_import_row_of(content: Filesystem.Read(path: path).content)
+    }
+  )
 }
