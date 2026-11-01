@@ -32,6 +32,7 @@ data a_self_recursive_call_without_a_descending_argument_is_accepted: RecurringF
     "CLASS RUNG: the minimum across the in-scope paths is the native path (infinite loop / stacker panic), which is not a guarantee and not a typed refusal, so the class is FOUND BELOW THE LADDER; the interpreter's Mitigatable is recorded per-path but does not raise the class rung.",
     "CEILING: structurally guaranteed -- DESIGN 4/4b say the substrate should refuse a recursive call whose argument does not strictly descend, so the acceptance path is the earliest unjustified boundary for this class.",
     "NEXT TRIGGER: an acceptance-path refusal on NonIncreasing/DescentUnknown for self-recursive calls. Cite std.termination (the DescentEvidence fail-closed bottom) and the existing grounding claim gunbc complexity_contract_subject's DescentGroundedSccAnalysis as what is NOT yet that refusal: the former defines the fail-closed evidence, the latter grounds complexity, and neither refuses a non-descending self-recursive call on the acceptance path. Do not build the check in this PR.",
+    "RESIDUAL, OUT OF SCOPE of the self-call repair (SelfCallWithoutDescent): mutual recursion (a calls b calls a) with no strictly-descending argument is the same acceptance-path gap, but it is NOT judged by the self-call advisory and stays below the ladder. Next trigger: a descent judgment over each call-graph cycle (the meet of DescentEvidence around the cycle), consuming std.termination DescentEvidence.",
   ],
   evidence: [],
 }
