@@ -14,7 +14,7 @@ import std.target_representation { VariantParentIdentity, VariantParentIdentifie
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
-  KernelGroundingView, PeanoGroundingView, SignedGroundingView, KernelGroundingArm,
+  KernelGroundingView, WidthGroundingView, PeanoGroundingView, SignedGroundingView, KernelGroundingArm,
   GroundedConstructorShape, GroundedFieldShape, FieldAtGroundedNatural, FieldNotAtGroundedNatural,
   GroundedDeclaredForm, DeclaredCoproduct, DeclaredNotACoproduct,
   SignedViewDisagreement, SignedViewAgrees, SignedViewDisagrees, signed_view_reading, signed_view_disagreement_message,
@@ -18700,6 +18700,7 @@ type GroundedPattern {
 // fold and is not a refusal: its realization is already the kernel value at every occurrence.
 fn grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> GroundedCarrierState {
   match row.view {
+    WidthGroundingView { signedness: _ } => GroundedCarrierDeclaresNoConstructors
     PeanoGroundingView => peano_grounded_carrier_state(row: row, decl: decl, env: env)
     SignedGroundingView { nonnegative: nn, negative: ng } => signed_grounded_carrier_state(row: row, decl: decl, nonnegative: nn, negative: ng, env: env)
   }

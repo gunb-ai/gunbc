@@ -1,5 +1,6 @@
 module extdeps.languages.rust.primitives
 
+import std.optional { Present, Absent }
 import std.algebra { OrderedRing, Semiring, BooleanAlgebra }
 import std.bit { Bit, Byte }
 import extdeps.external_authority { ExternalAuthority }
@@ -213,5 +214,18 @@ fn rust_float_binding_for_representation(representation: RustRepresentation) -> 
   match representation {
     RustF64 => Present { value: rust_f64_binding }
     _ => none
+  }
+}
+
+// Width of the existing target carrier; source bindings consume this target-owned fact.
+fn rust_integer_carrier_width(carrier: TargetCarrier) -> Int? {
+  match carrier {
+    BitCarrier => Present { value: 1 }
+    ByteCarrier => Present { value: 8 }
+    Word16Carrier => Present { value: 16 }
+    Word32Carrier => Present { value: 32 }
+    Word64Carrier => Present { value: 64 }
+    Word128Carrier => Present { value: 128 }
+    TerminalCarrier => Absent
   }
 }

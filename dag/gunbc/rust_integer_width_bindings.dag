@@ -1,0 +1,80 @@
+module gunbc.rust_integer_width_bindings
+
+import std.integer_interval { integer_standard_type_from_width, integer_standard_integer_type_interval_spec, BoundedIntegerInterval, integer_bound_decimal_spelling }
+import std.types { Int, Bool, String }
+import std.decl_ref { DeclarationRef }
+import std.optional { Present, Absent }
+import std.integer { Signedness, Signed, Unsigned }
+import std.target_representation { SourceTypeTargetBinding }
+import extdeps.languages.rust.primitives {
+  RustPrimitive, IntegerPrimitive, NonIntegerPrimitive,
+  TargetCarrier, BitCarrier, ByteCarrier, Word16Carrier, Word32Carrier,
+  Word64Carrier, Word128Carrier, TerminalCarrier,
+  OrderedRingAlgebra, SemiringAlgebra, rust_grounding_primitives, rust_integer_carrier_width
+}
+import std.integer_interval {
+  StandardIntegerType, Int8, Int16, Int32, Int64, Int128,
+  UInt8, UInt16, UInt32, UInt64, UInt128, integer_standard_integer_type_roster,
+  integer_standard_integer_type_signedness, integer_standard_integer_type_width_bits
+}
+
+// Parametric-width companion to gunbc.rust_source_type_bindings. Reuses its generic binding
+// carrier, but the target representation IS the existing primitive row, not a second integer
+// catalog or an extension of the spelling-only checkpoint table. Bounds/overflow spellings are
+// never recopied. Source arithmetic policy remains v2.std.integer's contract;
+// a primitive's machine wrap fact does not authorize implicit source wrapping.
+fn rust_integer_primitive_matches_width(primitive: RustPrimitive, width: StandardIntegerType) -> Bool {
+  match primitive {
+    NonIntegerPrimitive { target_name: _, algebra: _, carrier: _, is_copy: _ } => false
+    IntegerPrimitive { target_name: _, algebra: a, carrier: c, range_min_inclusive: lo, range_max_inclusive: hi, is_copy: _, overflow: _ } =>
+      match rust_integer_carrier_width(carrier: c) {
+        Absent => false
+        Present { value: bits } =>
+          bits == integer_standard_integer_type_width_bits(standard_integer_type: width)
+          && rust_integer_range_matches_width(width: width, lower: lo, upper: hi)
+          && (match integer_standard_integer_type_signedness(standard_integer_type: width) {
+            Signed => match a {
+              OrderedRingAlgebra => true
+              SemiringAlgebra => false
+            }
+            Unsigned => match a {
+              OrderedRingAlgebra => false
+              SemiringAlgebra => true
+            }
+          })
+      }
+  }
+}
+
+// Missing or competing target facts refuse; `first` alone would silently choose a realization.
+fn rust_integer_width_primitive(width: StandardIntegerType) -> RustPrimitive? {
+  let matches = filter(rust_grounding_primitives, p => rust_integer_primitive_matches_width(primitive: p, width: width))
+  if count(matches) == 1 { first(matches) } else { Absent }
+}
+
+// A resolved source reading supplies identity, signedness and bits. In particular,
+// alias names are not an independently maintained authority for the source type.
+fn rust_integer_width_source_binding(source: DeclarationRef, signedness: Signedness, bits: Int) -> SourceTypeTargetBinding<RustPrimitive>? {
+  match integer_standard_type_from_width(signedness: signedness, bits: bits) {
+    Absent => Absent
+    Present { value: width } => match rust_integer_width_primitive(width: width) {
+      Absent => Absent
+      Present { value: primitive } => Present { value: SourceTypeTargetBinding { source: source, representation: primitive } }
+    }
+  }
+}
+
+// Check the primitive row's actual range against the source domain as well as
+// its carrier/algebra. A row with stale bounds must not acquire a width binding.
+fn rust_integer_range_matches_width(width: StandardIntegerType, lower: String, upper: String) -> Bool {
+  match integer_standard_integer_type_interval_spec(standard_integer_type: width) {
+    BoundedIntegerInterval { inclusive_min: lo, inclusive_max: hi } => match integer_bound_decimal_spelling(bound: lo) {
+      Absent => false
+      Present { value: expected_lo } => match integer_bound_decimal_spelling(bound: hi) {
+        Absent => false
+        Present { value: expected_hi } => lower == expected_lo && upper == expected_hi
+      }
+    }
+    _ => false
+  }
+}

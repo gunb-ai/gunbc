@@ -1,0 +1,127 @@
+module test.claim.integer_width_carrier_model_witness
+
+import std.types { Bool, String, Int }
+import std.integer { Signedness, Signed, Unsigned }
+import std.integer_interval { StandardIntegerType, Int8, Int16, Int64, Int128, UInt8, UInt16, UInt64, UInt128, integer_standard_type_from_width, integer_extent_admits, uint8_interval_spec, uint64_interval_spec, int128_interval_spec, uint128_interval_spec, BoundedIntegerInterval, integer_width_host_realization, WidthValueFitsHostInt, WidthValueNeedsExactRealization }
+import std.literal_elaboration { KernelGrounding, kernel_grounding_crossing, kernel_grounding_pair_crossing, integer_width_grounding, carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CrossingTotalWidening, CrossingRefused }
+import gunbc.structural_realization_bindings { kernel_grounding_rows }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.optional { Present, Absent }
+import extdeps.languages.rust.primitives { IntegerPrimitive, NonIntegerPrimitive }
+import v2.std.integer { Trapping, integer_width_default_overflow }
+import gunbc.rust_integer_width_bindings { rust_integer_width_primitive, rust_integer_width_source_binding, rust_integer_primitive_matches_width }
+
+fn primitive_named(width: StandardIntegerType, expected: String) -> Bool {
+  match rust_integer_width_primitive(width: width) {
+    Absent => false
+    Present { value: p } => match p {
+      IntegerPrimitive { target_name: name, algebra: _, carrier: _, range_min_inclusive: _, range_max_inclusive: _, is_copy: _, overflow: _ } => name == expected
+      NonIntegerPrimitive { target_name: _, algebra: _, carrier: _, is_copy: _ } => false
+    }
+  }
+}
+
+// RED: delete or duplicate u8's primitive row; selection refuses. Not executed.
+test fn signed_and_unsigned_widths_select_existing_target_rows() -> Bool {
+  primitive_named(width: Int8, expected: "i8") && primitive_named(width: UInt8, expected: "u8")
+    && primitive_named(width: Int64, expected: "i64") && primitive_named(width: UInt64, expected: "u64")
+    && primitive_named(width: Int128, expected: "i128") && primitive_named(width: UInt128, expected: "u128")
+}
+
+fn width_reading(signedness: Signedness, bits: Int) -> KernelGrounding {
+  integer_width_grounding(source: decl_ref(module_path: "std.machine_constraints", decl_name: "Compose"), signedness: signedness, bits: bits)
+}
+
+fn pair_admits(source: KernelGrounding, target: KernelGrounding) -> Bool {
+  match kernel_grounding_pair_crossing(source: source, target: target) {
+    CrossingTotalWidening => true
+    CrossingRefused { cause: _ } => false
+  }
+}
+
+// RED: remove sign policy or reverse inclusion. Readings deliberately have the
+// same Compose head, so keying the pair by head alone cannot discriminate. Unrun.
+test fn only_same_signedness_widening_is_implicit() -> Bool {
+  pair_admits(source: width_reading(signedness: Unsigned, bits: 8), target: width_reading(signedness: Unsigned, bits: 16))
+    && pair_admits(source: width_reading(signedness: Signed, bits: 8), target: width_reading(signedness: Signed, bits: 16))
+    && !pair_admits(source: width_reading(signedness: Unsigned, bits: 16), target: width_reading(signedness: Unsigned, bits: 8))
+    && !pair_admits(source: width_reading(signedness: Unsigned, bits: 8), target: width_reading(signedness: Signed, bits: 16))
+    && !pair_admits(source: width_reading(signedness: Signed, bits: 8), target: width_reading(signedness: Unsigned, bits: 16))
+}
+
+fn binding_preserves_source(source: DeclarationRef) -> Bool {
+  match rust_integer_width_source_binding(source: source, signedness: Unsigned, bits: 8) {
+    Absent => false
+    Present { value: binding } => declaration_ref_eq(a: binding.source, b: source)
+  }
+}
+
+// RED: rewrite the supplied identity to a canonical alias. These are supplied
+// resolved readings, NOT evidence of resolver acceptance of arbitrary aliases.
+test fn target_binding_preserves_each_resolved_source_identity() -> Bool {
+  binding_preserves_source(source: decl_ref(module_path: "std.integer", decl_name: "UInt8"))
+    && binding_preserves_source(source: decl_ref(module_path: "v2.std.integer", decl_name: "UInt8"))
+}
+
+// RED: change Trapping to Wrapping. Not executed.
+test fn width_arithmetic_does_not_inherit_target_wrapping() -> Bool {
+  match integer_width_default_overflow() { Trapping => true _ => false }
+}
+
+// RED: select by bits alone or choose the first standard width on no match.
+test fn standard_width_selection_reads_signedness_and_refuses_unknown_widths() -> Bool {
+  (match integer_standard_type_from_width(signedness: Signed, bits: 8) { Present { value: Int8 } => true _ => false })
+    && (match integer_standard_type_from_width(signedness: Unsigned, bits: 8) { Present { value: UInt8 } => true _ => false })
+    && (match integer_standard_type_from_width(signedness: Unsigned, bits: 7) { Absent => true _ => false })
+}
+
+// RED: make membership unconditional. Not executed.
+test fn literal_membership_reads_the_shared_exact_interval() -> Bool {
+  integer_extent_admits(extent: uint8_interval_spec, value: 255)
+    && !integer_extent_admits(extent: uint8_interval_spec, value: 300)
+    && !integer_extent_admits(extent: uint8_interval_spec, value: -1)
+}
+
+// RED: remove inclusion/sign policy or ground kernel Int as structural Int.
+test fn mixed_crossings_and_existing_unbounded_crossings_use_one_rule() -> Bool {
+  let nat = decl_ref(module_path: "std.nat", decl_name: "Nat")
+  let integer = decl_ref(module_path: "std.integer", decl_name: "Int")
+  match carrier_grounding(rows: kernel_grounding_rows, carrier: nat) {
+    CarrierGroundingRefused { cause: _ } => false
+    CarrierGroundingFound { row: n } => match carrier_grounding(rows: kernel_grounding_rows, carrier: integer) {
+      CarrierGroundingRefused { cause: _ } => false
+      CarrierGroundingFound { row: i } =>
+        pair_admits(source: width_reading(signedness: Unsigned, bits: 8), target: n)
+        && pair_admits(source: width_reading(signedness: Signed, bits: 32), target: i)
+        && !pair_admits(source: n, target: width_reading(signedness: Unsigned, bits: 64))
+        && (match kernel_grounding_crossing(rows: kernel_grounding_rows, from: nat, to: integer) { CrossingTotalWidening => true _ => false })
+        && (match kernel_grounding_crossing(rows: kernel_grounding_rows, from: integer, to: nat) { CrossingRefused { cause: _ } => true _ => false })
+        && (match kernel_grounding_crossing(rows: kernel_grounding_rows, from: nat, to: decl_ref(module_path: "std.types", decl_name: "Int")) { CrossingRefused { cause: _ } => true _ => false })
+    }
+  }
+}
+
+// A planted target row retains its real algebra/carrier but changes its range.
+// RED: remove the range agreement check; this planted row then matches. Unrun.
+test fn target_range_disagreement_refuses_even_with_the_right_carrier() -> Bool {
+  match rust_integer_width_primitive(width: UInt8) {
+    Absent => false
+    Present { value: p } => match p {
+      IntegerPrimitive { target_name: name, algebra: a, carrier: c, range_min_inclusive: lo, range_max_inclusive: _, is_copy: copy, overflow: overflow } =>
+        !rust_integer_primitive_matches_width(width: UInt8, primitive: IntegerPrimitive { target_name: name, algebra: a, carrier: c, range_min_inclusive: lo, range_max_inclusive: "254", is_copy: copy, overflow: overflow })
+      _ => false
+    }
+  }
+}
+
+// RED: admit every exact decimal endpoint as a host Int. No endpoint is parsed
+// through i64; full-width endpoints must retain the explicit refusal. Unrun.
+test fn wider_than_host_endpoints_require_an_exact_realization() -> Bool {
+  all([uint64_interval_spec, int128_interval_spec, uint128_interval_spec], extent => match extent {
+    BoundedIntegerInterval { inclusive_min: _, inclusive_max: hi } => match integer_width_host_realization(value: hi) {
+      WidthValueNeedsExactRealization => true
+      WidthValueFitsHostInt => false
+    }
+    _ => false
+  })
+}

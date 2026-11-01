@@ -76,4 +76,28 @@ data machine_width_literal_roster_frontier: DissolutionCondition = unbound_disso
   description: "Per-kind literal admissibility at a kinded type-argument position. A Nat literal is admitted by a language-level rule rather than by the kind's declared arms, so MachineWidth cannot express WHICH literals it admits and a nonsensical width typechecks exactly as a real one does. DISSOLVES ON a kind being able to declare its admissible literal domain -- SUFFICIENT FOR the wall to refuse a literal outside it at the same position and with the same located diagnostic it already gives a named non-inhabitant, so the literal and named halves reach one rung. Five carriers were tried and enumerated at this module's header; each fails because a literal is not a name, so admitting one needs a compiler-held convention mapping literals to an arm -- the stringly proxy this kind exists to remove. Not dissolved by adding an arm, and not by widening the wall to refuse every literal, which would refuse the four live MachineWidth sites the corpus writes as bare integers." as NonEmptyStr
 )
 
+// TEMPORARY DECLARATION, not the intended integer-width meaning. The operator ruling
+// gunbc.design_ruling.machine_width_composition_has_an_intersection_carrier (2026-11-01)
+// gives Int/UInt intersected with MachineWidth an inhabited, range-restricted carrier.
+// The Phantom realization remains only until integer_width_carrier_realization_frontier below
+// is discharged. Do not make Compose universally transparent: unrelated algebras are unchanged,
+// and integer-width composition must stay folded so the existing literal wall sees its width.
 type Compose<Algebra, MachineConstraint> = Phantom
+
+// Construction is a compiler-enforced checked conversion, not a record whose callers may forge
+// its value. A literal is checked by the existing located literal wall; a nonliteral narrowing or
+// signedness crossing needs a named Optional-returning conversion. The conversion checks the
+// mathematical value BEFORE the target cast. No unsafe `as` is a constructor. Wider-than-host
+// values require the existing exact decimal interval representation, not an i64 approximation.
+// UInt8Ready remains Int until this route is enforced. PointerWidth needs a resolved target width;
+// it does not inherit a host width by default and is outside the ten fixed-width bindings below.
+data integer_width_carrier_realization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Consumer: the seed Rust type realization and source conversion/arithmetic admission, after the 2026-11-01 CARRIER model lands. Trigger: Compose's declaration stops being Phantom for integer algebras while unrelated Compose applications remain unchanged; integer-width Compose remains folded and has a checked construction route enforcing the shared std.integer_interval extent through v2.std.integer.integer_width_domain for literals AND nonliteral values; std.literal_elaboration.kernel_grounding_pair_crossing is the one inclusion/sign decision, reached by kernel_grounding_crossing after declaration lookup and by resolved generic-width readings directly; std.integer_width_construction.IntegerWidthConstruction declares Optional-returning checked_int_width and checked_uint_width, whose bodies land with this frontier; named checked arithmetic and the source trapping/refusal disposition govern overflow. Admission consumer: keen-heron-809/calm-ibex-725 reads v2.compiler.infer.infer_machine_width_of (WidthReadable signedness and bits) into std.literal_elaboration.integer_width_grounding and kernel_grounding_pair_crossing. Its seed adapter is the v1 realization of that same resolved-type reader; it does not introduce alias-name or algebra-name rosters. Emitter consumer: bold-dove-340 feeds that reading and the resolved source DeclarationRef to gunbc.rust_integer_width_bindings.rust_integer_width_source_binding, which consumes integer_standard_type_from_width; never a UInt8 branch or provenance_host_numeric_alias. The raw Compose head is not a unique key for its differently parameterized instances. WidthValueNeedsExactRealization from std.integer_interval.integer_width_host_realization refuses values outside i64 until an exact runtime carrier lands; exact interval bounds retain IntegerBoundSign and DecimalNonZeroMagnitude without converting through host Int. Controls: UInt8 255 admits/300 refuses at the existing located literal wall; runtime 300 refuses the named mint; signedness change is named; same-sign widening is exact; 255+1 refuses while explicitly named wrapping yields zero; Int and unrelated Compose unchanged. Preserve current literal walls throughout. Model rows alone discharge none of these execution obligations." as NonEmptyStr
+)
+
+
+// usize/isize must not be catalogued as ordinary Word64Carrier rows: pointer
+// width is a target-dependent constraint, not the fixed UInt64/Int64 identity.
+data pointer_width_integer_carrier_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Trigger: a Rust usize/isize primitive is added. Consumer: Rust source-to-target width binding must give PointerWidth its own target-dependent carrier and resolved target-width input before those rows participate; do not make a fixed UInt64/Int64 binding ambiguous by adding them as Word64Carrier. Control: adding a pointer-sized row cannot select or displace a fixed-width row." as NonEmptyStr
+)
