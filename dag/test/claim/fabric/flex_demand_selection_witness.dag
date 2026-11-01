@@ -1,0 +1,317 @@
+module test.claim.fabric.flex_demand_selection_witness
+
+// WITNESSES FOR THE PASS'S DEMAND AND SELECTION ROUTE (gunbc.fleet.flex_pass_run).
+//
+// THE DEMAND HERE IS SUPPLIED, NOT OBSERVED. The producer does not exist yet: the fabric front door's
+// admission callout (front_door_admit_on_store, proud-bear-756's S3) is owed, and the frontier row
+// product.fabric.flex_vast_loop flex_demand_producer_frontier carries that fact and its trigger. So the
+// demand below is minted the way a binding mints one -- product.fabric.demand admit_command over an
+// attested principal -- and decided by product.fabric.arbitration decide_demand_command. What these
+// claims establish is the CONSUMER half of the interface: which directive leads to which typed stop, and
+// which refusal reaches the receipt. What they do NOT establish is the pairing with a live front door;
+// that claim is named unverified on the row and in the PR, and no witness here can make it true until
+// the callout exists (DESIGN 3: a witness discriminates at one interface).
+import std.types { NonEmptyStr, Bool }
+import std.decl_ref { decl_ref }
+import std.measure { money_amount_micro }
+import extdeps.currency.currency { Usd }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+import product.fabric.demand {
+  Demand, DemandPopulation, DemandCommand, AdmissionTerms, BuyTerms, SatisfactionRequirement, SubmitDemand,
+  CommandAttestation, CoreCommand, admission_terms, admit_command, CommandAdmitted, CommandAdmissionRefused,
+  attest_command_principal, empty_demand_population, NoTerminalReceipt, debt_payoff_objective,
+}
+import product.fabric.arbitration { decide_demand_command, DemandAdmitted }
+import product.fabric.flex_vast_shadow { flex_trial_policy, ShadowEntryEstablished }
+import product.fabric.serving_recipe { SelectionQuoteEstablished }
+import extdeps.cloud.vast_ai { VastAiOffer, vast_ai_quote_currency }
+import std.decimal { ExactDecimal }
+import test.claim.fabric.fabric_terminal_contract_witness { fixture_requirements, owned_offer }
+import test.claim.fabric.selected_offer_fixture { bound }
+import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_demand_for, fixture_work_for }
+import gunbc.fleet.flex_pass_run {
+  FlexDemandStanding, FlexDemandRead, FlexDemandUnread, FlexPassSelection, FlexSelectionUnreadDemand,
+  FlexSelectionRequirementsUnread, FlexSelectionNotSeeking, FlexSelectionDemandRefused,
+  flex_pass_select, flex_rank_candidates, flex_demand_standing, flex_demand_word, flex_selection_wire,
+  FlexSelectionNoOffer,
+}
+
+fn work_of(principal: NonEmptyStr, key: WorkKey) -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: principal, key: key }
+}
+
+fn demand_id(principal: NonEmptyStr, key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: principal, key: key }
+}
+
+fn terms() -> AdmissionTerms {
+  admission_terms(
+    buy: BuyTerms {
+      budget_account: "fleet-ci",
+      currency: Usd,
+      reservation_price: money_amount_micro(count: 100000),
+      maximum_buy_order: money_amount_micro(count: 200000),
+    },
+    deadline: none,
+    objective: debt_payoff_objective,
+  )
+}
+
+fn attesting(principal: NonEmptyStr) -> CommandAttestation<NonEmptyStr> {
+  attest_command_principal(
+    principal: principal,
+    evidence: "flex-lane-auth-1",
+    verification_authority: decl_ref(
+      module_path: "test.claim.fabric.flex_demand_selection_witness",
+      decl_name: "attesting",
+    ),
+  )
+}
+
+// A DEMAND THAT ASKS FOR A NEW ATTEMPT: this is the shape a refused or queued admission at the front door
+// turns into, and the only shape under which the flex pass is allowed to go looking for a card.
+fn seeking_demand() -> Demand<NonEmptyStr> {
+  Demand {
+    id: demand_id(principal: "flex-lane", key: "demand-flex-1"),
+    work: work_of(principal: "flex-lane", key: "work-flex-1"),
+    origin: "observation-flex-1",
+    submitted_at: "2026-10-30T00:00:00Z",
+    admission: terms(),
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: true,
+      step_reuse_permitted: false,
+    },
+  }
+}
+
+// A DEMAND THAT ATTACHES TO AN EXISTING EXECUTION: the same work, but the demand does not ask for a new
+// attempt, so the fold's directive is not to buy anything.
+fn attaching_demand() -> Demand<NonEmptyStr> {
+  Demand {
+    id: demand_id(principal: "flex-lane", key: "demand-flex-attach"),
+    work: work_of(principal: "flex-lane", key: "work-flex-attach"),
+    origin: "observation-flex-1",
+    submitted_at: "2026-10-30T00:00:00Z",
+    admission: terms(),
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+// THE ADMITTED CORE COMMAND, or nothing when the witness cannot attest its own command -- which would be
+// a bug in this file, not a result about the pass.
+fn admitted(command: DemandCommand<NonEmptyStr>) -> CoreCommand<NonEmptyStr>? {
+  match admit_command(attestation: attesting(principal: "flex-lane"), command: command) {
+    CommandAdmitted { core: c } => Present { value: c }
+    CommandAdmissionRefused { refusal: _ } => none
+  }
+}
+
+// THE POPULATION THE FRONT DOOR WOULD HAND THE PASS: the demand admitted once, read back out of the
+// fold's own effect rather than assembled by hand, so the pass is tested against a population the
+// authority itself produced.
+fn population_after_submit(demand: Demand<NonEmptyStr>) -> DemandPopulation<NonEmptyStr> {
+  match admitted(command: SubmitDemand { demand: demand }) {
+    Present { value: core } =>
+      match decide_demand_command(registry: empty_demand_population(), grants: [], terminal: NoTerminalReceipt, core: core) {
+        DemandAdmitted { population: p, directive: _ } => p
+        _ => empty_demand_population()
+      }
+    Absent => empty_demand_population()
+  }
+}
+
+// 1. AN UNREAD DEMAND STOPS THE SELECTION BEFORE ANY OFFER IS TOUCHED. The pass does not fall through to
+// a ranking of its own, and it does not report "no offers": it reports that it was never asked.
+test fn an_unread_demand_stops_the_selection_before_any_offer_is_touched() -> Bool {
+  let stop = flex_pass_select(
+    demand: FlexDemandUnread { reason: "no producer in this test" as NonEmptyStr },
+    screened: [],
+  )
+  match stop {
+    FlexSelectionUnreadDemand { reason: r } =>
+      r == "no producer in this test" && string_contains(s: flex_selection_wire(s: stop), pattern: "unread-demand: no producer")
+    _ => false
+  }
+}
+
+// 2. AN ADMITTED DEMAND THAT REQUIRES A NEW ATTEMPT REACHES THE REQUIREMENTS GATE. The population is the
+// EMPTY one here on purpose: the core command being decided is the submit that puts this demand into the
+// population, so deciding it against a population that already holds it would be a duplicate and the fold
+// would refuse -- which is test 4, not this one. The fold said buy;
+// the pass still cannot, because nothing turns the flex serving recipe into the fabric's
+// ExecutionRequirements. That gap is reported as a typed stop naming the producer owed -- it is NOT papered
+// over with a shape invented at the call site, which is the whole discipline of this route.
+test fn an_admitted_demand_that_requires_a_new_attempt_stops_at_the_requirements_gate() -> Bool {
+  let core = admitted(command: SubmitDemand { demand: seeking_demand() })
+  match core {
+    Present { value: c } =>
+      match flex_pass_select(
+        demand: FlexDemandRead { population: empty_demand_population(), core: c },
+        screened: [],
+      ) {
+        FlexSelectionRequirementsUnread { reason: r } =>
+          string_contains(s: r, pattern: "ExecutionRequirements")
+            && string_contains(s: flex_selection_wire(s: flex_pass_select(
+                 demand: FlexDemandRead { population: empty_demand_population(), core: c },
+                 screened: [],
+               )), pattern: "requirements-unread")
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// 3. AN ADMITTED DEMAND THAT DOES NOT REQUIRE A NEW ATTEMPT SEEKS NO OFFER. Same authority, same route,
+// opposite directive: the receipt says await-admission, and no candidate is ever bound. This is the claim
+// that makes test 2 mean something -- the pass is not simply always-stopped, it is stopped BY THE FOLD.
+test fn an_admitted_demand_that_does_not_require_a_new_attempt_seeks_no_offer() -> Bool {
+  let core = admitted(command: SubmitDemand { demand: attaching_demand() })
+  match core {
+    Present { value: c } =>
+      match flex_pass_select(
+        demand: FlexDemandRead { population: empty_demand_population(), core: c },
+        screened: [],
+      ) {
+        FlexSelectionNotSeeking { directive: _ } =>
+          string_contains(s: flex_selection_wire(s: flex_pass_select(
+            demand: FlexDemandRead { population: empty_demand_population(), core: c },
+            screened: [],
+          )), pattern: "directive=")
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// 4. A DEMAND THE FOLD REFUSES REACHES THE RECEIPT AS THAT REFUSAL, not as an absent demand. The
+// vocabulary is the fabric's own (product.fabric.demand's DemandRefusal); a duplicate submit over a
+// population that already holds the demand is the cheapest way to make the fold refuse, and the word the
+// receipt prints names the demand the refusal is about.
+test fn a_demand_the_fold_refuses_reaches_the_receipt_as_that_refusal() -> Bool {
+  let held = population_after_submit(demand: seeking_demand())
+  let again = admitted(command: SubmitDemand { demand: seeking_demand() })
+  match again {
+    Present { value: c } =>
+      match flex_pass_select(
+        demand: FlexDemandRead { population: held, core: c },
+        screened: [],
+      ) {
+        FlexSelectionDemandRefused { refusal: _ } =>
+          string_contains(s: flex_selection_wire(s: flex_pass_select(
+            demand: FlexDemandRead { population: held, core: c },
+            screened: [],
+          )), pattern: "demand-refused: duplicate-demand demand-flex-1")
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// 6. THE SELECTION ITSELF RUNS BY EXECUTION. Given requirements (supplied here from the fabric's own
+// fixture, not invented in this file) and no bindable candidates, the route reaches
+// THE SELECTION ROUTE CARRIES THE AUTHORITY'S OWN ANSWER, POSITIVELY. The one candidate is bound
+// IN THIS FILE by product.fabric.selection bind_candidate (through test.claim.fabric.selected_offer_fixture
+// bound and test.claim.fabric.provider_use_fixture's admitted-for-use permit) over the offer
+// test.claim.fabric.fabric_terminal_contract_witness already owns - a SupplierOffer of the fabric's own
+// types, whose shape, capabilities, trust domain and isolation are exactly fixture_requirements'. So the
+// authority must SELECT it: FlexSelectionOffer with the offer's key and considered=1. Nothing else in
+// this file can name that key or report that count - flex_rank_candidates has no arm of its own, and the
+// hand-written no-offer arms a reviewer found in an earlier draft all reported considered=0. Replace the
+// select_supply call with a constant, or change the horizon, the buy order, the tie-break or the
+// requirements, and this goes red.
+//
+// The values are SUPPLIED, not imported from a heavyweight provider witness: the claim's cost must not
+// move when its assertions do not (DESIGN 3). What is owed, and stays carried by
+// product.fabric.flex_vast_loop flex_select_supply_consumer_frontier, is the PAIRING: no producer emits
+// this shape for a live Vast search offer, because the search response carries none of the six facts a
+// candidacy needs (start cost, transition, opportunity cost, readiness, cited region, use permit), so no
+// live pass reaches this call at all. That is the frontier, not something this claim pretends to close.
+// A LIVE-SHAPED VAST SEARCH OFFER: exactly the fields the search-offers response carries
+// (docs.vast.ai/api-reference/search/search-offers), with the values a real row would have. It is
+// SUPPLIED here rather than fetched, and it is deliberately not a candidate: the response carries none
+// of the six facts a candidacy needs, so the shadow authority refuses it. That refusal is what this
+// claim executes THROUGH THE PASS ARM, which is what makes part (b) of
+// product.fabric.flex_vast_loop flex_select_supply_consumer_frontier an executed statement rather than
+// an inference from types.
+fn w_search_offer() -> VastAiOffer {
+  VastAiOffer {
+    id: 4417, machine_id: 11806, gpu_name: "RTX 4090", num_gpus: 1, compute_cap: 89,
+    gpu_arch: Absent, verification: "verified", geolocation: "US-TX",
+    rentable: true, rented: false, is_bid: Present { value: true },
+    min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
+    dph_total: ExactDecimal { units: 1, fraction_digits: 0 },
+    storage_cost: ExactDecimal { units: 0, fraction_digits: 2 },
+    inet_up_cost: ExactDecimal { units: 0, fraction_digits: 2 },
+    inet_down_cost: ExactDecimal { units: 0, fraction_digits: 2 },
+    gpu_ram: 24576,
+    driver_version: Absent,
+  }
+}
+
+fn w_screened_search_offer() -> List<FlexScreenedOffer> {
+  [FlexScreenedOffer {
+    offer: w_search_offer(),
+    entry: ShadowEntryEstablished,
+    quote: SelectionQuoteEstablished { amount: money_amount_micro(count: 1000000), currency: vast_ai_quote_currency },
+  }]
+}
+
+// THE PASS REFUSES A LIVE-SHAPED SEARCH OFFER AS A CANDIDACY, AND SAYS WHICH FIELDS ARE MISSING. The
+// demand is admitted and requires a new attempt, so the fold authorizes a purchase; the offer is a real
+// search row; the pass still cannot rank it, and the answer names the offer and the missing facts.
+// Replace the shadow's binding verdict with a permissive one and this goes red, as does dropping the
+// missing-field list. This is the arm's stop on live data; the empty-population spelling (test 2) is the
+// requirements stop, and no LIVE pass reaches either one, because its demand standing is unread.
+test fn the_pass_refuses_a_live_shaped_search_offer_as_a_candidacy_and_names_the_fields() -> Bool {
+  let core = admitted(command: SubmitDemand { demand: seeking_demand() })
+  match core {
+    Present { value: c } =>
+      match flex_pass_select(
+        demand: FlexDemandRead { population: empty_demand_population(), core: c },
+        screened: w_screened_search_offer(),
+      ) {
+        FlexSelectionCandidatesUnestablished { offer_key: k, missing: m } =>
+          // The receipt line is the pass's own words: the offer it refused, and the fields the search
+          // response does not carry. Both must be present, and the missing list must not be empty.
+          length(m) > 0
+            && string_contains(s: flex_selection_wire(s: flex_pass_select(
+                 demand: FlexDemandRead { population: empty_demand_population(), core: c },
+                 screened: w_screened_search_offer(),
+               )), pattern: "candidates-unestablished offer=")
+            && string_contains(s: flex_selection_wire(s: flex_pass_select(
+                 demand: FlexDemandRead { population: empty_demand_population(), core: c },
+                 screened: w_screened_search_offer(),
+               )), pattern: "4417")
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn the_selection_route_carries_the_authoritys_selected_offer() -> Bool {
+  flex_rank_candidates(
+    policy: flex_trial_policy,
+    requirements: fixture_requirements,
+    cap: money_amount_micro(count: 200000),
+    candidates: bound(
+      offer: owned_offer,
+      admission: fixture_admitted_for_offer(route: owned_offer.route, offer: owned_offer.id),
+      demand: fixture_demand_for(offer: owned_offer.id),
+      work: fixture_work_for(offer: owned_offer.id),
+    ),
+  ) == FlexSelectionOffer { chosen_key: "offer-srv3-slot", considered: 1 }
+}
+
+test fn the_pass_reports_its_own_demand_as_unread_and_names_the_producer_it_waits_for() -> Bool {
+  match flex_demand_standing() {
+    FlexDemandUnread { reason: _ } =>
+      string_contains(s: flex_demand_word(d: flex_demand_standing()), pattern: "flex_demand_producer_frontier")
+        && string_contains(s: flex_demand_word(d: flex_demand_standing()), pattern: "unread")
+    FlexDemandRead { population: _, core: _ } => false
+  }
+}
