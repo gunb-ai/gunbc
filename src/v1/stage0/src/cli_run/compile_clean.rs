@@ -945,7 +945,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         DeclaredTypeNotInhabited { position: s(), expected: s(), got: s(), span: no_span() },
         DeclaredTypeInhabitanceUndecided { position: s(), reason: s(), span: no_span() },
         DeclaredTypeInhabitanceUnmodeled { position: s(), span: no_span() },
-        ArithmeticWithoutCarrier { operation: s(), span: no_span() },
+        ArithmeticWithoutCarrier { operation: s(), operands: istrings(), span: no_span() },
         ArithmeticAmbiguousCarrier { operation: s(), candidates: istrings(), span: no_span() },
         UnlistedImportUse { name: s(), span: no_span() },
         ReferenceDerivedImportProviderUnknown { name: s(), referencing_module: s(), span: no_span() },

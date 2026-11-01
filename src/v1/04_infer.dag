@@ -120,7 +120,7 @@ import v1.compiler.infer_types {
   is_product_type,
   node_type_deps,
   method_receiver_element_node,
-  infer_literal_node, infer_binop_type_node, infer_arithmetic_binop_type_node, infer_neg_type_node, arithmetic_requirement, arithmetic_carrier_selection, ArithmeticRequirement,
+  infer_literal_node, infer_binop_type_node, infer_arithmetic_binop_type_node, infer_neg_type_node, arithmetic_requirement, operand_carrier_ref, arithmetic_carrier_selection, ArithmeticRequirement,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node, is_type_expr_annotation,
   emit_map_has,
@@ -1165,6 +1165,18 @@ fn relocated_algebra_evidence_diags(diags: List<ErrorNode>, span: SourceSpan, mo
       make_error_node(diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: span }, module_name: module_name)
     _ => d
   })
+}
+
+// THE OPERAND AS THE CARRIER SELECTION SAW IT: its rendered type and the carrier declaration
+// operand_carrier_ref resolved for it (or that it resolved none), so a no-carrier refusal names what it
+// refused rather than only the operation.
+fn arithmetic_operand_label(n: Node, scope: InferScope) -> String {
+  let t = resolved_type(n: n)
+  let shape = node_type_shape(n: t, source_indices: scope.type_env.source_indices)
+  match operand_carrier_ref(n: t, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+    Present { value: d } => concat(shape, " @ ", d.module_path as String, ".", d.decl_name as String)
+    Absent => concat(shape, " @ no carrier")
+  }
 }
 
 fn inference_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
@@ -11162,7 +11174,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 module_name: scope.module_name)]
             Present { value: ArithmeticNoCarrier } =>
               [make_error_node(
-                diagnostic: ArithmeticWithoutCarrier { operation: req.field, span: span },
+                diagnostic: ArithmeticWithoutCarrier { operation: req.field, operands: [arithmetic_operand_label(n: left_typed, scope: scope), arithmetic_operand_label(n: right_typed, scope: scope)], span: span },
                 module_name: scope.module_name)]
             _ => []
           }
@@ -11187,7 +11199,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Not => []
         Neg =>
           match arithmetic_carrier_selection(requirement: ArithmeticRequirement { field: "negate", preserved: [] }, left_type: resolved_type(n: operand_typed), right_type: none, source_indices: scope.type_env.source_indices, env: scope.type_env) {
-            Present { value: ArithmeticNoCarrier } => [make_error_node(diagnostic: ArithmeticWithoutCarrier { operation: "negate", span: span }, module_name: scope.module_name)]
+            Present { value: ArithmeticNoCarrier } => [make_error_node(diagnostic: ArithmeticWithoutCarrier { operation: "negate", operands: [arithmetic_operand_label(n: operand_typed, scope: scope)], span: span }, module_name: scope.module_name)]
             Present { value: ArithmeticCarrierAmbiguous { candidates: cs } } => [make_error_node(diagnostic: ArithmeticAmbiguousCarrier { operation: "negate", candidates: cs |> map(c => c.decl_name), span: span }, module_name: scope.module_name)]
             _ => []
           }
