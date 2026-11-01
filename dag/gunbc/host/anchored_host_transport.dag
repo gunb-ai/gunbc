@@ -228,7 +228,7 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "per_boot_console_marker"),
-    reason: "the console-line grammar (GUNBC-HOST-KEY boot_id=<id> ssh-ed25519 <base64> SHA256:<fingerprint>) now has a producer, the runner-medium stages host-key-gen, host-key-line and host-key-sshd, but the pairing obligation is open: the witness renders the stage scripts and parses a SUPPLIED line, and no execution of the rendered stage on a real or emulated boot has shown it emits exactly this shape; the fleet public key is also not yet seeded as authorized_keys",
+    reason: "the console-line grammar (GUNBC-HOST-KEY boot_id=<id> ssh-ed25519 <base64> SHA256:<fingerprint>) now has a producer, the runner-medium stages host-key-privsep, host-key-gen, host-key-pub, host-key-fingerprint and host-key-sshd, but the pairing obligation is open: the witness renders the stage commands and composes the line from SUPPLIED section bodies, and no execution of the rendered stage on a real or emulated boot has shown it emits exactly this shape; the fleet public key is also not yet seeded as authorized_keys",
     dissolution: unbound_dissolution(
       description: "dissolves when a claim executes the rendered host-key stages on a real or emulated boot of the medium and the captured line parses through per_boot_pin_from_console_line, and an authorized_keys seed for the fleet public key is declared on the medium; the line shape in this module is then derived from that stage, not retyped"
     )
