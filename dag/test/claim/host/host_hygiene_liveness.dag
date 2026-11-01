@@ -124,14 +124,8 @@ data liveness_test_journal_stdout: String = concat(
 test fn typed_liveness_matches_only_listening_lines_and_keeps_order() -> Bool {
   let matches = host_hygiene_journal_matching_lines(stdout: liveness_test_journal_stdout)
   matches.length() == 2
-    && match matches.first() {
-      Absent => false
-      Present { value: item } => string_contains(s: item, pattern: "1734000000")
-    }
-    && match matches.skip(n: 1).first() {
-      Absent => false
-      Present { value: item } => string_contains(s: item, pattern: "1734000900")
-    }
+    && (match matches.first() { Present { value: m } => string_contains(s: m, pattern: "1734000000") Absent => false })
+    && (match matches.skip(n: 1).first() { Present { value: m } => string_contains(s: m, pattern: "1734000900") Absent => false })
 }
 
 test fn typed_liveness_epoch_field_strips_fractional_part_like_the_deleted_script_did() -> Bool {

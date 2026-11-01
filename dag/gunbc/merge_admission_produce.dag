@@ -222,7 +222,7 @@ fn wire_pr_number_from_lines(lines: List<String>) -> Int? {
   if length(lines) >= 5 {
     match lines.skip(n: 4).first() {
       Absent => none
-      Present { value: line } => parse_int(s: line)
+      Present { value: pr_wire } => parse_int(s: pr_wire)
     }
   } else {
     none

@@ -169,10 +169,9 @@ fn between(text: String, open: String, close: String) -> String? {
   else {
     match after.skip(n: 1).first() {
       Absent => none
-      Present { value: segment } => {
-        let tail = split(s: segment, delimiter: close)
+      Present { value: rest } =>
+        let tail = split(s: rest, delimiter: close)
         if tail.length() < 2 { none } else { tail.first() }
-      }
     }
   }
 }
@@ -193,11 +192,11 @@ fn parse_kv_recommendation_bytes(text: String, occurrence: Nat) -> Nat? {
   else {
     match parts.skip(n: occurrence).first() {
       Absent => none
-      Present { value: segment } =>
-        match split(s: segment, delimiter: "`").first() {
+      Present { value: rest } =>
+        match split(s: rest, delimiter: "`").first() {
           Absent => none
-          Present { value: figure } =>
-            match parse_int(s: figure) {
+          Present { value: bytes_wire } =>
+            match parse_int(s: bytes_wire) {
               Absent => none
               Present { value: b } => if b < 0 { none } else { Present { value: b } }
             }
