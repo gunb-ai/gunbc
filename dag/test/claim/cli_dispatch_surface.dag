@@ -122,10 +122,12 @@ test fn generated_dispatch_executor_name_is_bounded_deterministic_and_duplicate_
     && fresh_rust_value_binding_name(blocked: [next, base], prefix: prefix) == Present { value: third }
 }
 
-// REGRESSION CONTROL: the interpreter used to return the raw element or Null for terminal `first`
-// while emitted Rust returns Optional<T>. The interpreter now returns the modeled optional, so this
-// discriminator must hold; it stays enrolled as an ordinary claim, not on the expected-red roster.
-// Standing: this file did not resolve under claim-run on either binary (type mismatch at the CommitSha line, pre-existing), so this claim has no executed receipt; the interpreter route of `first` is executed by test.claim.interpreter_list_read_optional_witness (srv2, head 8941390fdf37, 16/0 after vs 5/10 before).
+// KNOWN-RED, stays on the v2.workflow.floor_expected_red roster: the interpreter used to return the
+// raw element or Null for terminal `first` while emitted Rust returns Optional<T>. The interpreter
+// route now returns the modeled optional (executed by test.claim.interpreter_list_read_optional_witness,
+// srv2, head 8941390fdf37, 16/0 after vs 5/10 before), but THIS claim is not executed true: this file
+// did not resolve under claim-run on either binary (type mismatch at the CommitSha line, pre-existing).
+// The roster row is deleted by the PR that executes this claim true; the claim remains as the control.
 test fn interpreter_first_returns_the_modeled_optional() -> Bool {
   (["x"] |> filter(n => true) |> first) == Present { value: "x" }
 }
