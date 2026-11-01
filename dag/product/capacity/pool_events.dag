@@ -3,7 +3,7 @@ module product.capacity.pool_events
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { Measure, measure_count }
+import std.measure { Measure, measure_count, Quantity, Scale }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int }
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty, member_nat }
 import product.capacity.pool {
@@ -136,7 +136,7 @@ fn pool_event_decode(text: String) -> EventDecode<PoolEvent> {
   chain_event_decode(text: text, schema: pool_event_schema, kind_decode: fn(doc, word) { pool_event_kind_decode(doc: doc, word: word) })
 }
 
-fn pool_apply_event<Q, S>(pool: Pool<Q, S>, env: ChainEnvelope<PoolEvent>) -> PoolOutcome<Q, S> {
+fn pool_apply_event<Q: Quantity, S: Scale>(pool: Pool<Q, S>, env: ChainEnvelope<PoolEvent>) -> PoolOutcome<Q, S> {
   pool_apply_payload(pool: pool, payload: env.event.payload, at: env.event.recorded_at, identity: env.id as String as NonEmptyStr)
 }
 
@@ -146,7 +146,7 @@ fn pool_apply_event<Q, S>(pool: Pool<Q, S>, env: ChainEnvelope<PoolEvent>) -> Po
 // asking it could commit a transition no later fold can apply, which makes the whole partition
 // unfoldable. The identity names the event -- its id at replay, the head it was decided against
 // before append -- and is what a transition that mints its own hold (an upstream reading) is keyed by.
-fn pool_apply_payload<Q, S>(pool: Pool<Q, S>, payload: PoolEvent, at: EpochSecs, identity: NonEmptyStr) -> PoolOutcome<Q, S> {
+fn pool_apply_payload<Q: Quantity, S: Scale>(pool: Pool<Q, S>, payload: PoolEvent, at: EpochSecs, identity: NonEmptyStr) -> PoolOutcome<Q, S> {
   match payload {
     PoolAcquired { reference: r, amount: a, term_seconds: t } => pool_replay_acquire(pool: pool, reference: r, amount: Measure { count: a }, at: at, term_seconds: t)
     PoolSettled { reference: r, actual: a } => pool_settle(pool: pool, reference: r, actual: Measure { count: a }, at: at)
@@ -157,17 +157,17 @@ fn pool_apply_payload<Q, S>(pool: Pool<Q, S>, payload: PoolEvent, at: EpochSecs,
   }
 }
 
-type PoolFold<Q, S>
+type PoolFold<Q: Quantity, S: Scale>
   = PoolFolded { pool: Pool<Q, S>, generation: Nat }
   | PoolFoldRefused { at_event: EventId, wire: String }
 
-type FoldAcc<Q, S> {
+type FoldAcc<Q: Quantity, S: Scale> {
   pool: Pool<Q, S>
   generation: Nat
   refused: PoolFold<Q, S>?
 }
 
-fn pool_fold<Q, S>(root: Pool<Q, S>, oldest_first: List<ChainEnvelope<PoolEvent>>) -> PoolFold<Q, S> {
+fn pool_fold<Q: Quantity, S: Scale>(root: Pool<Q, S>, oldest_first: List<ChainEnvelope<PoolEvent>>) -> PoolFold<Q, S> {
   let acc = fold(oldest_first, init: FoldAcc { pool: root, generation: 0, refused: none }, f: (st, env) =>
     match st.refused {
       Present { value: _ } => st
@@ -205,7 +205,7 @@ fn pool_fold<Q, S>(root: Pool<Q, S>, oldest_first: List<ChainEnvelope<PoolEvent>
 // parameters -- minted here from a Measure the pool typed, and re-minted at replay by
 // pool_apply_event into the Pool<Q, S> being folded. A JSON integer carrying a magnitude whose unit
 // the surrounding type fixes is a serialization, not a second model of the unit.
-type SeatRequest<Q, S> {
+type SeatRequest<Q: Quantity, S: Scale> {
   reference: NonEmptyStr
   amount: Measure<Q, S, Nat>
   at: EpochSecs
@@ -232,7 +232,7 @@ type SeatProposal
 // classification, or the first one that must branch on a refusal this row cannot name.
 data pool_full_wire: String = "pool-full"
 
-fn seat_refusal_wire<Q, S>(r: PoolRefusal<Q, S>) -> String {
+fn seat_refusal_wire<Q: Quantity, S: Scale>(r: PoolRefusal<Q, S>) -> String {
   match r {
     LedgerRefusal { refusal: lr } =>
       match lr {
@@ -250,7 +250,7 @@ fn seat_refusal_wire<Q, S>(r: PoolRefusal<Q, S>) -> String {
   }
 }
 
-fn propose_acquire<Q, S>(pool: Pool<Q, S>, generation: Nat, head: HeadExpectation, partition: PartitionId, actor: NonEmptyStr, request: SeatRequest<Q, S>) -> SeatProposal {
+fn propose_acquire<Q: Quantity, S: Scale>(pool: Pool<Q, S>, generation: Nat, head: HeadExpectation, partition: PartitionId, actor: NonEmptyStr, request: SeatRequest<Q, S>) -> SeatProposal {
   match pool_acquire(pool: pool, reference: request.reference, amount: request.amount, at: request.at, term_seconds: request.term_seconds) {
     PoolRefused { refusal: r } => SeatRefused { wire: seat_refusal_wire(r: r) }
     PoolAdvanced { pool: _ } => SeatProposed {
@@ -268,7 +268,7 @@ fn propose_acquire<Q, S>(pool: Pool<Q, S>, generation: Nat, head: HeadExpectatio
 
 // THE GRANT IS MINTED FROM THE ADMISSION, never from the proposal: a proposal that lost the
 // compare-and-set mints nothing.
-fn grant_from_admission<Q, S>(request: SeatRequest<Q, S>, admission: AppendDecision, policy: LeasePolicy) -> LeaseGrant? {
+fn grant_from_admission<Q: Quantity, S: Scale>(request: SeatRequest<Q, S>, admission: AppendDecision, policy: LeasePolicy) -> LeaseGrant? {
   match admission {
     AppendStale { expected: _, observed: _ } => none
     AppendAdmitted { new_head: h, generation: g } =>

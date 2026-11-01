@@ -10,6 +10,7 @@ import std.measure {
   Second, Millisecond,
   byte_size, byte_size_count, watt, time_measure, measure_count,
   second_count, millisecond_count
+  Scale
 }
 import std.content_hash { ContentHash }
 import std.content_hash {
@@ -75,7 +76,7 @@ type CostAxis<M>
 // reads. The seed function the work touches is v1.compiler.infer_patterns
 // expand_scrut_type_for_variant_lookup, named as a starting point and NOT as the trigger.
 
-type CostTimeAxis<S>
+type CostTimeAxis<S: Scale>
   = CostTimeMeasured { value: Measure<Time, S, Nat> }
   | CostTimePredicted { value: Measure<Time, S, Nat> }
   | CostTimeUnestablished
@@ -89,7 +90,7 @@ data cost_time_axis_fork_disposition: Disposition = Scaffold {
   }
 }
 
-type CostAccount<S> {
+type CostAccount<S: Scale> {
   time: CostTimeAxis<S>
   space: CostAxis<ByteSize>
   power: CostAxis<Watt>
@@ -97,7 +98,7 @@ type CostAccount<S> {
 
 // A DECLARED PREDICTION OF ZERO, which is a different fact from an unmeasured axis: this is the
 // identity element folds start from, and it asserts zero rather than confessing ignorance.
-fn cost_account_predicted_zero<S>() -> CostAccount<S> {
+fn cost_account_predicted_zero<S: Scale>() -> CostAccount<S> {
   CostAccount {
     time: CostTimePredicted { value: time_measure(count: 0) }
     space: CostAxisPredicted { value: byte_size(count: 0) }
@@ -105,7 +106,7 @@ fn cost_account_predicted_zero<S>() -> CostAccount<S> {
   }
 }
 
-fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
+fn cost_account_measured<S: Scale>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   CostAccount {
     time: CostTimeMeasured { value: time }
     space: CostAxisUnestablished
@@ -117,7 +118,7 @@ fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
 // coproduct to answer "the established value, or nothing" is two authorities for one projection of
 // a carrier this change introduces, and that the second author would have re-minted it. It lives
 // beside the type; cost_account_time_count and std.cache_interface both consume it.
-fn cost_time_axis_established<S>(axis: CostTimeAxis<S>) -> Measure<Time, S, Nat>? {
+fn cost_time_axis_established<S: Scale>(axis: CostTimeAxis<S>) -> Measure<Time, S, Nat>? {
   match axis {
     CostTimeMeasured { value: t } => Present { value: t }
     CostTimePredicted { value: t } => Present { value: t }
@@ -125,7 +126,7 @@ fn cost_time_axis_established<S>(axis: CostTimeAxis<S>) -> Measure<Time, S, Nat>
   }
 }
 
-fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat? {
+fn cost_account_time_count<S: Scale>(account: CostAccount<S>) -> Nat? {
   match cost_time_axis_established(axis: account.time) {
     Present { value: t } => Present { value: measure_count(m: t) }
     Absent => none
@@ -616,7 +617,7 @@ type WalkPopulationBudgetRefusal {
 
 type Schedule = List<List<Runnable>>
 
-type RealizationPlan<S> {
+type RealizationPlan<S: Scale> {
   target: ContentHash
   schedule: Schedule
 
@@ -637,7 +638,7 @@ fn schedule_batch_contains_label(batch: List<Runnable>, target: String) -> Bool 
   })
 }
 
-fn schedule_generates_same_batch_count<S>(left: RealizationPlan<S>, right: RealizationPlan<S>) -> Bool {
+fn schedule_generates_same_batch_count<S: Scale>(left: RealizationPlan<S>, right: RealizationPlan<S>) -> Bool {
   left.schedule.count() == right.schedule.count()
 }
 
@@ -747,6 +748,6 @@ fn schedule_eq(left: Schedule, right: Schedule) -> Bool {
   }
 }
 
-fn schedule_generates_identical_schedule<S>(plan: RealizationPlan<S>, schedule: Schedule) -> Bool {
+fn schedule_generates_identical_schedule<S: Scale>(plan: RealizationPlan<S>, schedule: Schedule) -> Bool {
   schedule_eq(left: plan.schedule, right: schedule)
 }
