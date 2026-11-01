@@ -5,7 +5,7 @@ import gunbc.principal_projection { PrincipalRef }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
-import product.fabric.work { identity_frame }
+import std.content_hash { identity_frame }
 import product.fabric.supply { SupplierOffer }
 import std.measure { MoneyPerHour }
 import extdeps.network.endpoint { SocketAddress, render_uri_host }

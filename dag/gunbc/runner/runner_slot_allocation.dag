@@ -14,7 +14,8 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_peak }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.session_reservation_policy { SessionReservationBytesResolution, ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished, session_reservation_bytes }
-import gunbc.host.host_memory_observation { HostUsableRam, HostFixedOverhead, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured, gunbc_ci_host_memory_observation_for, oomd_actuation_floor }
+import gunbc.host.host_memory_observation { gunbc_ci_host_memory_observation_for, oomd_actuation_floor }
+import gunbc.host.host_memory_carrier { HostUsableRam, HostFixedOverhead, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import gunbc.fabric.fabric_control_plane_charge { HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured, host_fabric_control_plane_claim }
 import gunbc.live_deploy.served_slice_charge { HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured, host_served_deployment_claim }
 import gunbc.ci.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
