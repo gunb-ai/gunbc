@@ -363,37 +363,15 @@ fn rehome_identities(sites: List<ScopedReferenceSite>, home: String, imported: L
 }
 
 // A DECLARED REPRESENTATION ADMITS A SHAPE DIFFERENCE, NEVER A KIND DIFFERENCE (review 83176): the content_hash comparison
-// is skipped, the kind comparison is not. INTERIM, BOUNDED TO THE ALIAS GAP: v2.std.decl_index reads an aliased type
-// declaration (v2.std.integer.Int = GroupCompletion<Nat>) as OtherItem, so a kind pair with OtherItem on either side is
-// the gap, not a real kind difference, and is admitted here only under a declared representation. TRIGGER: when
-// adhoc-0f4309c5-074 lands (aliased type declarations read TypeItem), delete the OtherItem arm, so any kind mismatch refuses.
+// is skipped, the kind comparison is not, so any kind mismatch refuses.
 fn rehome_kind_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
   if rehome_kinds_equal(a: from.kind, b: to.kind) {
-    RehomePairSame
-  } else if rehome_is_alias_gap_pair(a: from.kind, b: to.kind) {
     RehomePairSame
   } else {
     RehomePairRefused { reason: RehomeKindDiffers }
   }
 }
 
-// Exactly the gap's pair, in either order: an aliased type read OtherItem against a TypeItem (review 83179). A match on the
-// closed ItemKind constructors (review 83228), so the arm's dissolution is deleting this function and its one call.
-fn rehome_is_alias_gap_pair(a: ItemKind, b: ItemKind) -> Bool {
-  match a {
-    OtherItem =>
-      match b {
-        TypeItem => true
-        _ => false
-      }
-    TypeItem =>
-      match b {
-        OtherItem => true
-        _ => false
-      }
-    _ => false
-  }
-}
 
 // ItemKind equality by constructor, exhaustive over the closed sum (review 83228).
 fn rehome_kinds_equal(a: ItemKind, b: ItemKind) -> Bool {
@@ -1117,18 +1095,18 @@ fn rehome_control_representation(prepared: PreparedGrammar, lex: PreparedLexRule
 }
 
 // A declared representation still refuses a real kind difference (reviews 83176, 83179): fn against type and an OtherItem
-// against fn both refuse; only the alias gap's own pair (OtherItem against TypeItem) is admitted.
+// against fn both refuse, and so does OtherItem against TypeItem: the alias gap closed with #14584, so no kind change is admitted.
 fn rehome_facts_kind_control() -> String {
   rehome_kind_case(name: "fn-to-type", from: FnItem, to: TypeItem, admitted: false)
     + rehome_kind_case(name: "other-to-fn", from: OtherItem, to: FnItem, admitted: false)
-    + rehome_kind_case(name: "other-to-type", from: OtherItem, to: TypeItem, admitted: true)
+    + rehome_kind_case(name: "other-to-type", from: OtherItem, to: TypeItem, admitted: false)
 }
 
 fn rehome_kind_case(name: String, from: ItemKind, to: ItemKind, admitted: Bool) -> String {
   let verdict = rehome_kind_verdict(from: DeclFact { qualified_name: "c.old.Token", name: "Token", kind: from, node: rehome_control_node(), rel_path: "c/old.dag" }, to: DeclFact { qualified_name: "c.new.Token", name: "Token", kind: to, node: rehome_control_node(), rel_path: "c/new.dag" })
   match verdict {
     RehomePairSame => if admitted { "" } else { "CONTROL-FAIL rehome kind " + name + ": a declared representation admitted a kind change\n" }
-    RehomePairRefused { reason: RehomeKindDiffers } => if admitted { "CONTROL-FAIL rehome kind " + name + ": the alias gap's pair was refused\n" } else { "" }
+    RehomePairRefused { reason: RehomeKindDiffers } => if admitted { "CONTROL-FAIL rehome kind " + name + ": an admitted pair was refused\n" } else { "" }
     RehomePairRefused { reason: r } => "CONTROL-FAIL rehome kind " + name + ": refused " + rehome_refusal_text(r: r) + "\n"
   }
 }
