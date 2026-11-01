@@ -766,14 +766,31 @@ test fn a_wall_with_no_expected_refusal_text_is_refused_at_admission() -> Bool {
 // THE DRIFT ENTRYPOINT CONSUMES THE ADMITTED PROFILE (side-chat finding 4): a repository whose profile is
 // invalid - here, a runner group no census declared - does not get YAML.
 test fn the_drift_entrypoint_refuses_a_repository_whose_runner_group_is_never_declared() -> Bool {
+  drift_entrypoint_refuses(profile: mirror_profile_on_group(group: "group-no-census-declared")) &&
+  drift_entrypoint_composes_for_a_declared_group()
+}
+
+fn drift_entrypoint_refuses(profile: RepositoryCiProfile) -> Bool {
   match expected_projection_drift_workflow_yml(
     profile: mirror_profile_on_group(group: "group-no-census-declared"),
     seed: fixture_seed(),
     overlay: fixture_overlay(),
     program: mirror_drift_program()
   ) {
-    ProjectionDriftWorkflowGenerationRefused { reason: reason } => count(reason) > 0
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => true
     ProjectionDriftWorkflowGenerated { content: _ } => false
+  }
+}
+
+fn drift_entrypoint_composes_for_a_declared_group() -> Bool {
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile(seal: true, publish: true),
+    seed: fixture_seed(),
+    overlay: fixture_overlay(),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+    ProjectionDriftWorkflowGenerated { content: text } => count(text) > 0
   }
 }
 
