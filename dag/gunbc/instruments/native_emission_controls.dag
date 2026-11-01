@@ -1,11 +1,13 @@
 module gunbc.instruments.native_emission_controls
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, Set, String }
-import std.algebra { length }
+import std.algebra { length, FinitePowerSet }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_from_dotted_string }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import gunbc.instruments.native_emission_controls_alias { ControlWords, control_words_of }
 import std.list { duplicated_by_key }
+import gunbc.instruments.native_emission_controls_leaf_a { control_leaf_a_probe }
+import gunbc.instruments.native_emission_controls_leaf_b { control_leaf_b_probe }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import std.resource_contract { Observation, Read }
 import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
@@ -117,6 +119,55 @@ fn same_leaf_declaration_cases() -> List<NativeEmissionCase> {
       identity: "same_leaf_one_param_declaration_red_value_differs",
       held: !narrow_slots_equal(left: "n", right: "m")
     }
+  ]
+}
+
+// RULE: a bare name that infer bound to a LOCAL (parameter, lambda parameter, match-arm binder) never
+// consults the closure-wide declaration registry (v1.compiler.emit_rust lookup_item_for_value_ref).
+// control_shadowed_leaf is declared by BOTH native_emission_controls_leaf_a and _leaf_b and imported
+// from neither, so a registry lookup of the leaf is ambiguous; the emitter used to print a refusal
+// expression in place of the local, and rustc refused the crate (E0614). The probes are read so both
+// declarers are in the closure.
+fn control_shadow_match_arm(found: Bool?) -> Int {
+  match found {
+    Present { value: control_shadowed_leaf } =>
+      match control_shadowed_leaf {
+        true => 5
+        false => 3
+      }
+    Absent => 0
+  }
+}
+
+fn control_shadow_lambda(flags: List<Bool>) -> Int {
+  flags |> fold(init: 0, f: (acc, control_shadowed_leaf) => match control_shadowed_leaf {
+    true => acc + 2
+    false => acc
+  })
+}
+
+// A top-level data declaration is a reference to a declaration, not a binder: it is emitted as a call
+// (`control_shadow_table()`) even beside a local binder in the same fn. Classifying it as a local
+// dropped the parens and rustc refused the iteration (E0599 on a fn item).
+data control_shadow_table: List<Int> = [1, 2, 3]
+
+fn control_shadow_table_beside_binder(found: Bool?) -> Int {
+  match found {
+    Present { value: control_shadowed_leaf } =>
+      match control_shadowed_leaf {
+        true => control_shadow_table |> fold(init: 0, f: (acc, n) => acc + n)
+        false => 0
+      }
+    Absent => 0
+  }
+}
+
+fn local_binder_shadow_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_match_arm", held: control_shadow_match_arm(found: Present { value: true }) == 5 },
+    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_lambda_parameter", held: control_shadow_lambda(flags: [true, false, true]) == 4 },
+    NativeEmissionCase { identity: "top_level_data_reference_beside_a_local_binder_is_a_call", held: control_shadow_table_beside_binder(found: Present { value: true }) == 6 },
+    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_red_not_the_global", held: control_shadow_match_arm(found: Present { value: false }) == 3 && control_leaf_a_probe() == 101 && control_leaf_b_probe() == 201 }
   ]
 }
 
@@ -606,6 +657,41 @@ fn fold_accumulator_formals_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: A DUAL-FORM FREE-MONOID ARGUMENT IS TYPED BY ITS OWN SHAPE, never by the name of the
+// operation: std.algebra `ReceiverElementOrSelf`, judged in v1.compiler.infer_types `unify_template`
+// by the ONE predicate the Rust realization also reads at the lowered call seam (v1.compiler
+// .emit_rust `type_node_is_ordered_element_run`), which is the type-level reading of what
+// v1_interpreter's `method_call.concat` arm asks of the value. THE SHAPE IS
+// `gunbc.guarantee_measurement` `distinct_string_count`: a fold seeded with the empty list, so the
+// accumulator is declared NOWHERE and the step body is its only evidence, whose step deduplicates by
+// `append(acc, [v])` -- a whole run landing at the dual position. The algebra row claimed
+// `ReceiverElement`, so inference read the appended list as ONE ELEMENT and the fold's `acc` printed
+// as `Rc<Vec<Rc<Vec<String>>>>`; rustc refused the emitted module twice over at that single
+// annotation, E0308 comparing a run with a `String` at `e == v` and E0308 at the `rc_list_concat` of
+// `acc` with the run `[v]`. The append LOWERING was right throughout -- list ++ list, as the
+// interpreter's own arm does -- which is why the fix is the claim about the argument and not the
+// bridge. `control_positive_flags` is the sibling the rule must also answer rather than a second
+// special case: there the accumulator's element is not the receiver's element either, and the run the
+// step appends is again the only place that element type is written down.
+fn control_distinct_string_count(values: List<String>) -> Int {
+  count(fold(values, init: [], f: fn(acc, v) { if any(acc, e => e == v) { acc } else { append(acc, [v]) } }))
+}
+
+fn control_positive_flags(values: List<Int>) -> List<Bool> {
+  fold(values, init: [], f: fn(acc, v) { append(acc, [v > 0]) })
+}
+
+fn dual_form_append_accumulator_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "dual_form_append_accumulator_counts_distinct_values", held: control_distinct_string_count(values: ["a", "b", "a", "c", "b"]) == 3 },
+    NativeEmissionCase { identity: "dual_form_append_accumulator_red_repeats_are_not_counted_twice", held: control_distinct_string_count(values: ["a", "b", "a", "c", "b"]) != 5 },
+    NativeEmissionCase { identity: "dual_form_append_accumulator_repeats_collapse_to_one", held: control_distinct_string_count(values: ["a", "a", "a"]) == 1 },
+    NativeEmissionCase { identity: "dual_form_append_accumulator_empty_input_keeps_the_empty_seed", held: control_distinct_string_count(values: []) == 0 },
+    NativeEmissionCase { identity: "dual_form_append_accumulator_takes_its_element_from_the_appended_run", held: control_positive_flags(values: [1, 0 - 1, 3]) == [true, false, true] },
+    NativeEmissionCase { identity: "dual_form_append_accumulator_red_is_not_the_sign_of_the_sum", held: control_positive_flags(values: [1, 0 - 1, 3]) != [true, true, true] }
+  ]
+}
+
 // RULE: a variant literal of a generic owner takes the expected application of that owner
 // (v1.compiler.infer variant_literal_expected_application). Seeded with a bare constructor in result
 // position, the fold's accumulator used to type as the uninstantiated declaration, so the payload
@@ -642,6 +728,71 @@ fn control_first_over_or(xs: List<Int>, floor: Int) -> Int {
     Present { value: v } => v
     Absent => 0 - 1
   }
+}
+
+// RULE: a List<K> payload of a generic enum is the FreeMonoid carrier whatever its spelling
+// (v1.compiler.trait_derive_emit v1_type_expr_is_free_monoid_carrier). std.observation_completeness
+// ObservationCompleteness<K> is this shape: derive(Debug, PartialEq) over `keys: Rc<Vec<K>>` bounds
+// only `K: Debug`, while im::Vector<K> needs `K: Clone`, so the emitted crate failed rustc (E0277 at the
+// variant field) for every native closure reaching std.decision. The routing read the literal spelling
+// "FreeMonoid" and so never saw `List`. ControlMissing<K> keeps the payload and control_missing_keys
+// filters it with a closure that takes K by value, as the real fold does.
+type ControlMissing<K>
+  = ControlNoneMissing
+  | ControlSomeMissing { keys: List<K> }
+
+fn control_missing_keys<K>(expected: List<K>, observed: List<K>, key_eq: fn(K, K) -> Bool) -> ControlMissing<K> {
+  let missing = expected |> filter(k => !(observed |> any(o => key_eq(o, k))))
+  if (missing |> count) > 0 { ControlSomeMissing { keys: missing } } else { ControlNoneMissing }
+}
+
+fn control_int_eq(a: Int, b: Int) -> Bool { a == b }
+
+fn list_payload_enum_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "list_payload_enum_all_answered_is_none_missing", held: control_missing_keys(expected: [1, 2], observed: [2, 1], key_eq: control_int_eq) == ControlNoneMissing },
+    NativeEmissionCase { identity: "list_payload_enum_red_unanswered_key_is_named", held: control_missing_keys(expected: [1, 2, 3], observed: [2], key_eq: control_int_eq) == ControlSomeMissing { keys: [1, 3] } },
+    NativeEmissionCase { identity: "list_payload_enum_red_unanswered_is_not_none", held: !(control_missing_keys(expected: [1], observed: [], key_eq: control_int_eq) == ControlNoneMissing) }
+  ]
+}
+
+// RULE: the Set carrier is recognised by the algebra roster too (v1_type_expr_is_finite_power_set_carrier):
+// a direct Set<K> payload beside a List<K> field needs the FreeMonoid impls to keep K: Ord, on the struct
+// and the enum route alike. A FinitePowerSet<K> spelling lowers to the std.algebra record, not an OrdSet,
+// and is not exercised here.
+type ControlMixedSetEnum<K> = ControlMixedSetNone | ControlMixedSetPresent { sequence: List<K>, members: Set<K> }
+type ControlMixedSetRecord<K> { sequence: List<K> members: Set<K> }
+
+type ControlOnlySetRecord<K> { members: Set<K> }
+
+// The canonical FinitePowerSet<K> spelling renders the structural record, not an OrdSet, so a fn over it
+// owes its element no Ord. ControlOpaqueElement holds a callable and has none; the body is emitted and
+// type-checked by rustc even though no case runs it, which is the control (K: Ord on the fn would refuse
+// at the ControlOpaqueElement call).
+type ControlOpaqueElement { run: fn(Int) -> Int }
+
+fn control_forward_power<K>(value: FinitePowerSet<K>) -> FinitePowerSet<K> {
+  value
+}
+
+fn control_forward_power_over_opaque(value: FinitePowerSet<ControlOpaqueElement>) -> Bool {
+  let forwarded = control_forward_power(value: value)
+  true
+}
+
+fn control_int_set(xs: List<Int>) -> Set<Int> {
+  xs |> fold(init: empty_set(), f: (acc, n) => set_insert(acc, n))
+}
+
+fn mixed_set_carrier_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "mixed_set_enum_equal_members_in_another_order", held: ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [2, 1]) } },
+    NativeEmissionCase { identity: "mixed_set_enum_red_member_differs", held: !(ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 3]) }) },
+    NativeEmissionCase { identity: "mixed_set_record_equal_members_in_another_order", held: ControlMixedSetRecord { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetRecord { sequence: [1], members: control_int_set(xs: [2, 1]) } },
+    NativeEmissionCase { identity: "only_set_record_equal_members_in_another_order", held: ControlOnlySetRecord { members: control_int_set(xs: [1, 2]) } == ControlOnlySetRecord { members: control_int_set(xs: [2, 1]) } },
+    NativeEmissionCase { identity: "only_set_record_red_member_differs", held: !(ControlOnlySetRecord { members: control_int_set(xs: [1, 2]) } == ControlOnlySetRecord { members: control_int_set(xs: [1, 3]) }) },
+    NativeEmissionCase { identity: "mixed_set_record_red_sequence_differs", held: !(ControlMixedSetRecord { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetRecord { sequence: [2], members: control_int_set(xs: [1, 2]) }) },
+  ]
 }
 
 fn bare_variant_fold_init_cases() -> List<NativeEmissionCase> {
@@ -724,6 +875,10 @@ data native_emission_expected_identities: List<String> = [
   "same_leaf_two_param_declaration_red_second_field_differs",
   "same_leaf_one_param_declaration_round_trips",
   "same_leaf_one_param_declaration_red_value_differs",
+  "local_binder_shadows_ambiguous_global_leaf_match_arm",
+  "local_binder_shadows_ambiguous_global_leaf_lambda_parameter",
+  "local_binder_shadows_ambiguous_global_leaf_red_not_the_global",
+  "top_level_data_reference_beside_a_local_binder_is_a_call",
   "fn_value_stored_generic_fn_answers",
   "fn_value_red_stored_generic_fn_is_not_another_answer",
   "fn_value_passed_fn_answers_beside_it",
@@ -757,6 +912,12 @@ data native_emission_expected_identities: List<String> = [
   "fold_constructor_init_sums_all_nonnegative",
   "fold_constructor_init_red_negative_switches_arm",
   "fold_constructor_init_red_empty_keeps_init",
+  "dual_form_append_accumulator_counts_distinct_values",
+  "dual_form_append_accumulator_red_repeats_are_not_counted_twice",
+  "dual_form_append_accumulator_repeats_collapse_to_one",
+  "dual_form_append_accumulator_empty_input_keeps_the_empty_seed",
+  "dual_form_append_accumulator_takes_its_element_from_the_appended_run",
+  "dual_form_append_accumulator_red_is_not_the_sign_of_the_sum",
   "list_index_in_range_yields_the_element",
   "list_index_red_in_range_is_not_another_element",
   "list_index_red_in_range_is_not_absent",
@@ -792,7 +953,16 @@ data native_emission_expected_identities: List<String> = [
   "alias_empty_map_seed_typed_control_agrees",
   "bare_init_fold_keeps_the_first_match",
   "bare_init_fold_red_is_not_the_last_match",
-  "bare_init_fold_without_a_match_stays_absent"
+  "bare_init_fold_without_a_match_stays_absent",
+  "list_payload_enum_all_answered_is_none_missing",
+  "list_payload_enum_red_unanswered_key_is_named",
+  "list_payload_enum_red_unanswered_is_not_none",
+  "mixed_set_enum_equal_members_in_another_order",
+  "mixed_set_enum_red_member_differs",
+  "mixed_set_record_equal_members_in_another_order",
+  "only_set_record_equal_members_in_another_order",
+  "only_set_record_red_member_differs",
+  "mixed_set_record_red_sequence_differs",
 ]
 
 // RULE: a match whose only coverage of an outer variant is nested two levels deep is emitted
@@ -924,7 +1094,7 @@ fn empty_list_cast_cases() -> List<NativeEmissionCase> {
 }
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), bare_variant_fold_init_cases())))
+  concat(local_binder_shadow_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), mixed_set_carrier_cases())))))))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
