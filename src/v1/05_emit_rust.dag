@@ -12346,7 +12346,7 @@ fn rust_by_ref_bridge_argument(value: Node, base: String, shared_types: Set<Stri
     ExprMethodCall { method_semantics: _ } => rust_node_carrier_decl(value: value, shared_types: shared_types, source_indices: source_indices)
     _ => ""
   }
-  if declared == "" || !rust_by_ref_carrier_is_named(carrier: declared) {
+  if declared == "" {
     concat("&", base)
   } else {
     // A block, so the binding cannot escape the borrow it was made for: it shadows nothing outside,
@@ -12360,25 +12360,44 @@ fn rust_by_ref_bridge_argument(value: Node, base: String, shared_types: Set<Stri
   }
 }
 
-// IS THIS CARRIER A NAME? An annotation exists to hand rustc the type arguments the borrow was the only
-// evidence for, so a rendering that still contains an inference hole (`im::HashMap<String, _>`) names
-// nothing: rustc unifies the hole with the initializer instead, and what was meant to pin inference
-// becomes a constraint it cannot satisfy. Measured, not hypothetical -- the seed rebuild of run
-// 41299024017 failed with `expected im::HashMap<_, _>, found Rc<im::HashMap<_, bool>>` on exactly such
-// an annotation in the `std.types` mirror. An uninferable annotation is not a carrier this rule is
-// entitled to write, so the caller keeps the plain `&<expr>` it emitted before this change existed.
-fn rust_by_ref_carrier_is_named(carrier: String) -> Bool {
-  !string_contains(s: carrier, pattern: "<_,") && !string_contains(s: carrier, pattern: "<_>") && !string_contains(s: carrier, pattern: ", _>")
+// IS THIS TYPE FULLY RESOLVED? Read off the NODE, not off the rendering -- DESIGN.md §4: "in a closed
+// system a heuristic is never necessary: the richer source always exists or can be written". Whether an
+// inferred type still has an unresolved variable is a structural fact about the tree the checker built:
+// the outer node can be `Resolved` while a type argument below it is still a `TypeVariable`, and that is
+// exactly what the seed rebuild of run 41299024017 showed, where the emitted annotation came out
+// `im::HashMap<_, _>` against an initializer of `Rc<im::HashMap<_, bool>>` in the `std.types` mirror. An
+// annotation with a hole pins nothing -- rustc unifies the hole with the initializer instead, so the
+// statement meant to hand over the type arguments becomes a constraint it cannot satisfy.
+//
+// Testing the rendered text instead would have been a second, weaker reading of one fact, and a false
+// one: it misses `(_, i64)`, `Fn(_) -> i64` and `Vec<(i64, _)>`, and it silently tracks whatever spacing
+// or path style `render_node_type` happens to use. A self-recursive node is refused rather than walked,
+// so the check terminates: its carrier is spelled by the alias, which is a case this rule does not need.
+fn rust_type_node_is_fully_resolved(node: Node) -> Bool {
+  if node.is_self_recursive {
+    false
+  } else {
+    match node.inferred {
+      Present { value: Resolved { node: inner } } => rust_type_node_is_fully_resolved(node: inner) && all(node.children, child => rust_type_node_is_fully_resolved(node: child)),
+      _ => false
+    }
+  }
 }
 
 // THE ONE AUTHORITY FOR "declare a local at this value's carrier": the same `Node.inferred` the
 // checker resolved, rendered by `render_node_type`, the same call every other type position in the
 // emitted program goes through. An argument whose inference is a TypeVariable, a CompilerError or
-// Divergent has no carrier to name, and this returns the empty string so the caller keeps today's
-// `&<expr>` instead of inventing a type.
+// Divergent has no carrier to name, and neither has one whose resolution still contains a hole below a
+// resolved outer node (`rust_type_node_is_fully_resolved`); in every such case this returns the empty
+// string so the caller keeps today's `&<expr>` instead of inventing a type.
 fn rust_node_carrier_decl(value: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match value.inferred {
-    Present { value: Resolved { node: type_node } } => render_node_type(n: type_node, target: Rust, shared_types: shared_types, source_indices: source_indices)
+    Present { value: Resolved { node: type_node } } =>
+      if rust_type_node_is_fully_resolved(node: type_node) {
+        render_node_type(n: type_node, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      } else {
+        ""
+      }
     _ => ""
   }
 }
