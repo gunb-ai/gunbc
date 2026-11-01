@@ -18,7 +18,7 @@ import std.dissolution {
   DissolutionCondition, DissolutionStatus, DissolutionFired, DissolutionPending, DissolutionUnbound,
   dissolution_status, unbound_dissolution, retires_dissolution,
 }
-import std.human_intervention { HumanIntervention, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly }
+import std.human_intervention { HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly }
 import gunbc.spark.bootstrap_provision {
   fleet_cloud_principal_standing,
   CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
@@ -43,6 +43,7 @@ import gunbc.auth.branch_dispatch_federation {
   boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
+import gunbc.auth.fleet_workload_identity { convergence_principal }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
@@ -247,18 +248,6 @@ fn site_verdict(row: PrivilegedEffectSite) -> SiteVerdict {
 // ── Shared characteristics ───────────────────────────────────────────────────────────────────
 fn site(module_path: String, decl_name: String) -> DeclarationRef {
   decl_ref(module_path: module_path, decl_name: decl_name)
-}
-
-// THE MEMBER IS RESOLVED FROM THE STANDING, never spelled: an unallocated principal is an
-// unbindable identity, which is the truthful input to the selection rather than a member string
-// that cannot exist (the same refusal gunbc.auth.gcp_secret_access makes before writing a policy).
-fn convergence_principal() -> WorkloadIdentityStanding {
-  match fleet_cloud_principal_standing() {
-    CloudPrincipalAllocated { principal: _, member: m, readback: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
-    CloudPrincipalReported { principal: _, reported_member: m, source: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
-    CloudPrincipalUnallocated { principal: _ } =>
-      WorkloadIdentityUnbindable { cause: "no allocated member is recorded for the fleet cloud principal" as NonEmptyStr }
-  }
 }
 
 // THE GRANT ADMINISTRATOR IS UNBINDABLE BY CONSTRUCTION, not by omission: a principal that can both
