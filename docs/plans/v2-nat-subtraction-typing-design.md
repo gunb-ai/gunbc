@@ -62,6 +62,8 @@ is the inhabitance (as `dag_int_algebra_inhabitance` cites `v2.std.integer.int_o
 A literal operand has no declared carrier of its own: it takes the other operand's (it elaborates there, `infer_operand_literal_elaborates_at`), so `n - 1` with
 `n: Nat` is `Nat - Nat : Int`, and `n + 1` is Nat. Comparisons, `||`, `&&`, `==` keep the one-type unify (out of scope: `Nat < Int` is not decided here).
 
+**One roster, checked (keen-heron-809's ask).** v1 `std.algebra algebra_carriers` on `q1e-on-pr-q2d` already has `Nat` with `OrderedSemiringProfile` (and `Int` with `OrderedRingProfile`). So the Nat semiring row is NOT missing from the repository, only from v2's `dag_algebra_inhabitance_decls`. The implementing PR must derive v2's Nat row from that profile (or make v2's definers read it), never hand-copy a second Nat roster; which of the two is the reader is the open reconciliation below.
+
 **A section 3 fork to name, not hide.** "Which carriers define a field" is answered in v1/Q1e by `std.algebra algebra_carriers` (profiles) and in v2 by the
 language-model rows; the repository already records the two-representations debt (`gunbc.recurring_failure_mode
 algebra_structure_has_two_representations_with_no_declared_mapping`). This design reads v2's own rows for `definers` and the shared conversion row for
