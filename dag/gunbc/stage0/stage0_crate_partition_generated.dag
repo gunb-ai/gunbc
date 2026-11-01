@@ -81,6 +81,8 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_source_annotation",
         "std_kernel_type_name",
         "std_target_representation",
+        "std_integer_interval",
+        "std_integer_width_construction",
         "std_literal_elaboration",
         "std_operator_realization",
         "std_import_statement",
