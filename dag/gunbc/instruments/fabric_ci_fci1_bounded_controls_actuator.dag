@@ -261,7 +261,7 @@ type Fci1ControlRow {
 // The refusal cause a negative row must name, not merely a nonzero status: a row that fails for an
 // unrelated reason (host, binary, corpus) is a red for the wrong cause and must not pass.
 data fci1_wrong_cwd_needles: List<String> = ["workspace root", "process_workspace_root"]
-data fci1_unbounded_needles: List<String> = ["UncappedSystemSlice"]
+data fci1_unbounded_needles: List<String> = ["UncappedEnclosingCgroup"]
 
 // The quantity stays a FiniteByteSize through the row model; it is lowered to text only where a
 // systemd property value or a child argv word is built.
@@ -285,7 +285,7 @@ fn fci1_rows(context: Fci1BoundedExecutionContext, checkout_root: String) -> Lis
       expectation: ExpectRefusalNamed { needles: fci1_wrong_cwd_needles, cause: "the workspace-root refusal" } },
     Fci1ControlRow { name: "driver-unbounded", unit: "fci1-driver-unbounded-control.service" as NonEmptyStr, working_directory: checkout_root, bound: Fci1UnitUnbounded,
       function: "fci1_bounded_envelope_child", arguments: positive_args,
-      expectation: ExpectRefusalNamed { needles: fci1_unbounded_needles, cause: "UncappedSystemSlice" } },
+      expectation: ExpectRefusalNamed { needles: fci1_unbounded_needles, cause: "UncappedEnclosingCgroup" } },
     Fci1ControlRow { name: "submitter-positive", unit: "fci1-submitter-positive-control.service" as NonEmptyStr, working_directory: checkout_root, bound: bounded,
       function: "fci1_bounded_envelope_child", arguments: positive_args, expectation: ExpectSuccess },
     Fci1ControlRow { name: "submitter-wrong-cwd", unit: "fci1-submitter-wrong-cwd-control.service" as NonEmptyStr, working_directory: "/tmp", bound: bounded,
@@ -293,7 +293,7 @@ fn fci1_rows(context: Fci1BoundedExecutionContext, checkout_root: String) -> Lis
       expectation: ExpectRefusalNamed { needles: fci1_wrong_cwd_needles, cause: "the workspace-root refusal" } },
     Fci1ControlRow { name: "submitter-unbounded", unit: "fci1-submitter-unbounded-control.service" as NonEmptyStr, working_directory: checkout_root, bound: Fci1UnitUnbounded,
       function: "fci1_bounded_envelope_child", arguments: positive_args,
-      expectation: ExpectRefusalNamed { needles: fci1_unbounded_needles, cause: "UncappedSystemSlice" } },
+      expectation: ExpectRefusalNamed { needles: fci1_unbounded_needles, cause: "UncappedEnclosingCgroup" } },
     Fci1ControlRow { name: "exact-status-86", unit: "fci1-exact-status-control.service" as NonEmptyStr, working_directory: checkout_root, bound: bounded,
       function: "fci1_bounded_exact_status_child", arguments: [], expectation: ExpectExactStatus { code: fci1_exact_status_code } },
   ]

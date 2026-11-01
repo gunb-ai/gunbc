@@ -150,30 +150,51 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // WHEN THE SEED TRAMPOLINE WRAPS. Observations are supplied (cgroup text, env presence, probe);
 // this fold is the only policy. Seed cannot eval it at wrap time; it mirrors the arms and the
 // cited env/cgroup needles. Join: the_seed_trampoline_mirrors_the_declared_wrap_standing.
-// UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
-// unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
-// in a declared slot cgroup, not because the user manager is missing.
-// ExemptSystemUnit skips only when a cgroup path segment is a recognized slice
-// AND that slice's live memory.max is finite (live_modeled_slice_standing), carrying
-// the local bound. recognized_system_slice is a name census: sessions.slice plus
-// units whose declared memory_max is positive (modeled_system_slice_memory_max).
-// Those declared magnitudes are not the skip bound; skip vs UncappedSystemSlice
-// is only the live memory.max. Unreadable, unbounded, or zero live memory.max
-// refuses UncappedSystemSlice.
-// sessions.slice is recognized by name (gunbc_oomd_sessions_slice) and still refuses
-// without a local finite cap. Wrapping that path into gunbc-user-work.slice when a
-// user manager is reachable is not a fallback: the enclosing slice is already a
-// named memory policy (oomd), so an unread/unbounded local max is UncappedSystemSlice,
-// not UserManagerOwed. WrapIntoUserWorkSlice would hide that deficit behind a second
-// envelope (review 80751). A namespaced-root container is ExemptBoundedContainer only from a live
-// finite memory.max. An observed unbounded or zero root memory.max refuses
-// BoundedContainerUncapped even when a BuildBuddy run id is present (review 80587).
-// ExternallyBoundedExecutor only when root memory.max is absent/unreadable AND
-// BUILDBUDDY_RUN_ID is non-empty. That env is an observed executor identity, not a
-// bound: admitted under the sleek-owl-397 ruling of 2026-10-15 (external boundary).
-// A named .service under an unmodeled slice refuses UncappedSystemSlice { unit, slice }.
-// A session cgroup with no modeled cap and no user manager refuses
-// UserSessionAbsent. Path from /proc/self/cgroup; User= is never consulted.
+//
+// TWO KINDS OF ARM, and the difference is what every exemption may rest on.
+//
+// BOUND-PREMISED -- InCiRunnerEnvironment, InRunnerSlotCgroup, AlreadyInDeclaredUserWorkSlice,
+// UnderModeledSlice, UnderUnmodeledSystemUnit. Each claims "an enclosing bound already exists", so
+// each is discharged by ONE check, `live_enclosing_bound`, called once by `user_work_scope_standing`:
+// a live finite enclosing memory.max on the cgroup chain this process actually sits in. The premise
+// only says WHICH claim fired (it rides along on the standing, for the diagnostic). A premise without
+// an observed bound refuses `UncappedEnclosingCgroup`, naming the cgroup consulted and what its
+// memory.max said (unreadable / 0 / no finite max / swap still allowed). Unreadable, zero and max all
+// refuse; none of them skips.
+//
+//   That every one of them now goes through the same check is the point of this cut. The rule was
+//   written at the arm the receipt named and not at its siblings: GITHUB_ACTIONS alone skipped
+//   (srv1 cap deploy run 38865847078: CiExempt, then HostBudgetUnreadable at resolve -- nothing bound
+//   the process), a path substring skipped the slot arm, a substring skipped the slice arm, and only
+//   the modeled-slice arm (PR #14093) demanded a live finite memory.max. The class is
+//   `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling`; the shape now cannot be
+//   re-broken per arm, because there is no per-arm version left to break.
+//
+//   recognized_system_slice is a name census (sessions.slice plus units whose declared memory_max is
+//   positive via modeled_system_slice_memory_max) used only to CLASSIFY a slice as modeled. Declared
+//   magnitudes never skip: only the live reading does. sessions.slice is recognized by name
+//   (gunbc_oomd_sessions_slice) and still refuses without a local finite cap -- wrapping it into
+//   gunbc-user-work.slice when a user manager is reachable is not a fallback, because the enclosing
+//   slice is already a named memory policy (oomd) and a wrap would hide the deficit behind a second
+//   envelope (review 80751). The same holds whatever the slice is: the refusal is
+//   `UncappedEnclosingCgroup`, not UserManagerOwed.
+//
+// NOT BOUND-PREMISED -- documented, and deliberately outside `live_enclosing_bound`:
+//   * UnitTestExempt: the seed's own #[cfg(test)] cargo-test binary. It claims no enclosing bound; it
+//     claims the process is a test harness. Checked by the cfg(test) gate, and wrapping it would need
+//     a user manager cargo test does not have and would cap the harness, not the work.
+//   * ExternallyBoundedExecutor: the executor's identity (BUILDBUDDY_RUN_ID) with no local
+//     memory.max, i.e. the bound lives outside this host and this fold cannot read it -- admitted
+//     under the sleek-owl-397 ruling of 2026-10-15 (external boundary).
+//   * The namespaced-root pair (ExemptBoundedContainer / BoundedContainerUncapped /
+//     BoundedContainerUnreadable): already live-bound, but its subject is the CONTAINER ROOT's
+//     /sys/fs/cgroup/memory.max, not a slice or slot cgroup, so it reads root_memory, not the chain.
+//     An observed unbounded or zero root memory.max refuses BoundedContainerUncapped even with a
+//     BuildBuddy run id present (review 80587).
+//
+// UserManagerOwed wraps; UserSessionAbsent refuses -- a host that owes the bound and has no user
+// manager must not run unbounded (review 80042). A session cgroup with no premise and no user manager
+// refuses UserSessionAbsent. Path from /proc/self/cgroup; User= is never consulted.
 //
 // THIS REFUSAL IS OUTSIDE DECIDE-BEFORE-MUTATE. compose_host_script drops Mutate only when a
 // Decide fragment is HostScriptRefused. slice-control is Mutate with HostScriptProceed; the
@@ -206,16 +227,12 @@ type UserWorkScopeCgroupRead
 // are supplied, so the fold is the only policy; the seed trampoline performs the walk and mirrors
 // this decision (the_seed_trampoline_mirrors_the_declared_wrap_standing, and its own fixture tests).
 //
-// RunnerSlotExempt could later dissolve into this arm (an Actions runner slot unit carries its own
-// MemoryMax= and MemorySwapMax=0); this cut does not widen to do it.
+// InRunnerSlotCgroup could later dissolve into this arm entirely (an Actions runner slot unit carries
+// its own MemoryMax= and MemorySwapMax=0, so the chain reading already covers it); this cut does not
+// widen to do it -- the premise stays, but it no longer skips on its own.
 type CgroupBoundObservation
   = CgroupChainRead { levels: List<CgroupMemoryLevel>, swap_max: List<CgroupMemoryLimitValue> }
   | CgroupChainUnread { detail: String }
-
-type CgroupBound
-  = CgroupBoundedBy { cgroup: String, memory_max: ByteSize }
-  | CgroupChainUnbounded
-  | CgroupChainNotObserved { detail: String }
 
 fn swap_forbidden_on_chain(swap_max: List<CgroupMemoryLimitValue>) -> Bool {
   count(filter(swap_max, v => match v {
@@ -225,25 +242,14 @@ fn swap_forbidden_on_chain(swap_max: List<CgroupMemoryLimitValue>) -> Bool {
   })) > 0
 }
 
-fn observed_cgroup_bound(observation: CgroupBoundObservation) -> CgroupBound {
-  match observation {
-    CgroupChainUnread { detail: d } => CgroupChainNotObserved { detail: d }
-    CgroupChainRead { levels: l, swap_max: w } => match cgroup_tightest_hard_memory_limit(levels: l) {
-      CgroupNoHardLimit => CgroupChainUnbounded
-      CgroupHardLimitBinds { dir: d, bytes: b } =>
-        if byte_size_count(b: b) > 0 && swap_forbidden_on_chain(swap_max: w) { CgroupBoundedBy { cgroup: d as String, memory_max: b } } else { CgroupChainUnbounded }
-    }
-  }
-}
-
 // WHY THE OBSERVED-BOUND ARM DID NOT ADMIT, named on the wrap's or the refusal's diagnostic so a
 // guest that unexpectedly lost its MemoryMax= reads as "chain unbounded, wrapped" or "refused", not
 // silence. Rendered once here; the seed trampoline prints the same two words.
-fn cgroup_bound_fallthrough_wire(bound: CgroupBound) -> String {
+fn cgroup_bound_fallthrough_wire(bound: EnclosingBoundObservation) -> String {
   match bound {
-    CgroupBoundedBy { cgroup: _, memory_max: _ } => "chain-bounded"
-    CgroupChainUnbounded => "chain-unbounded"
-    CgroupChainNotObserved { detail: _ } => "chain-unread"
+    LiveEnclosingBound { cgroup: _, memory_max: _ } => "chain-bounded"
+    NoLiveEnclosingBound { cgroup: _, cause: ChainUnreadable { detail: _ } } => "chain-unread"
+    NoLiveEnclosingBound { cgroup: _, cause: _ } => "chain-unbounded"
   }
 }
 
@@ -251,14 +257,49 @@ type SystemServiceCgroup
   = SystemServiceNamed { unit: String, slice: String }
   | NotSystemService
 
+// WHICH PREMISE ASKED TO BE SPARED THE WRAP. Every arm here claims the SAME thing -- an enclosing
+// bound already exists -- and so every one of them is discharged by the SAME check below
+// (`live_enclosing_bound`), never by a per-arm version of it. That the claim used to be discharged
+// five different ways (GITHUB_ACTIONS presence alone for the CI arm, a path substring for the runner
+// slot, a substring for the user-work slice, one slice's memory.max read for the modeled slice, and
+// nothing at all for an unmodeled system unit) is the recurring failure mode
+// `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling`: the live-finite-bound rule
+// was written at the arm the srv1 receipt named and left out of its siblings, so a GITHUB_ACTIONS
+// process with NO memory.max anywhere above it skipped the wrap and died at resolve with
+// HostBudgetUnreadable (srv1 cap deploy run 38865847078; srv1-03 re-read, plan run 38967145061,
+// where the unit IS bounded at 22 GiB by drop-ins -- which proves the skipped process was not
+// sitting in the cgroup the drop-ins bind, exactly the thing this shape cannot get wrong: an
+// exemption without an OBSERVED finite limit refuses, and names the cgroup it looked in).
+// The premise is kept as a FIELD of the standing so the diagnostic still says WHICH claim fired.
+type WrapExemptionPremise
+  = InCiRunnerEnvironment
+  | InRunnerSlotCgroup
+  | AlreadyInDeclaredUserWorkSlice
+  | UnderModeledSlice { unit: String, slice: String }
+  | UnderUnmodeledSystemUnit { unit: String, slice: String }
+
+// THE ONE ANSWER OF THE ONE CHECK, for every premise above: either a live finite enclosing
+// memory.max was observed (name it, and the wrap is spared), or it was not (name the cgroup that was
+// looked in and the shape of why, and the wrap is refused). The why is TYPED, not a rendered string,
+// so no arm can paraphrase it into a softer word.
+type EnclosingBoundCause
+  = ChainUnreadable { detail: String }
+  | NoFiniteMemoryMax
+  | MemoryMaxZero { dir: String }
+  | SwapNotForbidden { dir: String, bytes: ByteSize }
+
+type EnclosingBoundObservation
+  = LiveEnclosingBound { cgroup: String, memory_max: ByteSize }
+  | NoLiveEnclosingBound { cgroup: String, cause: EnclosingBoundCause }
+
+// THE ONE SKIP ARM: an exempt premise (or none -- a session cgroup that simply happens to sit under a
+// finite bound, the arm BoundedByObservedCgroup used to be) PLUS the observed live finite enclosing
+// memory.max that earned it. The premise rides along for the diagnostic; it can never carry the skip
+// alone, because it is not what this arm is evidence of -- `memory_max` is.
 type UserWorkScopeStanding
-  = AlreadyInSlice
-  | BoundedByObservedCgroup { cgroup: String, memory_max: ByteSize }
-  | RunnerSlotExempt
-  | CiExempt
+  = ExemptUnderObservedBound { premise: WrapExemptionPremise?, cgroup: String, memory_max: ByteSize }
+  | UncappedEnclosingCgroup { premise: WrapExemptionPremise, cgroup: String, cause: EnclosingBoundCause }
   | UnitTestExempt
-  | ExemptSystemUnit { unit: String, slice: String, bound: ByteSize }
-  | UncappedSystemSlice { unit: String, slice: String }
   | UserSessionAbsent
   | UserManagerOwed
   | CgroupUnreadable
@@ -334,30 +375,92 @@ type RootCgroupMemoryRead
   | RootMemoryUnbounded
   | RootMemoryUnreadable
 
-fn live_modeled_slice_standing(unit: String, slice: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding {
-  match slice_memory {
-    RootMemoryCapped { bytes } =>
-      if byte_size_count(b: bytes) == 0 {
-        UncappedSystemSlice { unit: unit, slice: slice }
-      } else {
-        ExemptSystemUnit { unit: unit, slice: slice, bound: bytes }
-      }
-    RootMemoryUnbounded => UncappedSystemSlice { unit: unit, slice: slice }
-    RootMemoryUnreadable => UncappedSystemSlice { unit: unit, slice: slice }
+// THE ONE CHECK FOR EVERY BOUND-PREMISED EXEMPTION: a process is spared the user-work wrap only when
+// a LIVE finite enclosing memory.max is OBSERVED on the cgroup chain it actually sits in. Not when a
+// path substring looks like a slot, not when an environment variable is set, not when a row declares
+// a cap the host may not be enforcing. ONE fold, called once by the fold below; no arm gets its own
+// version of it (that is the failure mode this cut removes). Its three negative answers are named
+// separately -- unreadable, zero (systemd reads 0 as no limit), and swap-still-allowed -- and each
+// names the cgroup that was consulted, because the srv1 receipt was a refusal that said nothing about
+// where it had looked (plan run 38967145061).
+fn live_enclosing_bound(bound: CgroupBoundObservation, cgroup_text: String) -> EnclosingBoundObservation {
+  match bound {
+    CgroupChainUnread { detail: d } =>
+      NoLiveEnclosingBound { cgroup: enclosing_cgroup_label(text: cgroup_text), cause: ChainUnreadable { detail: d } }
+    CgroupChainRead { levels: l, swap_max: w } => match cgroup_tightest_hard_memory_limit(levels: l) {
+      CgroupNoHardLimit =>
+        NoLiveEnclosingBound { cgroup: enclosing_cgroup_label(text: cgroup_text), cause: NoFiniteMemoryMax }
+      CgroupHardLimitBinds { dir: d, bytes: b } =>
+        if byte_size_count(b: b) == 0 {
+          NoLiveEnclosingBound { cgroup: d as String, cause: MemoryMaxZero { dir: d as String } }
+        } else if swap_forbidden_on_chain(swap_max: w) == false {
+          NoLiveEnclosingBound { cgroup: d as String, cause: SwapNotForbidden { dir: d as String, bytes: b } }
+        } else {
+          LiveEnclosingBound { cgroup: d as String, memory_max: b }
+        }
+    }
   }
 }
 
-fn modeled_slice_standing_from_cgroup(text: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding? {
-  match innermost_modeled_capped_slice(text: text) {
-    Absent => none
-    Present { value: slice } =>
-      Present {
-        value: live_modeled_slice_standing(
-          unit: cgroup_leaf_unit(text: text),
-          slice: slice,
-          slice_memory: slice_memory,
-        ),
+// WHY THE SKIP WAS NOT EARNED, as one located line: what the memory.max of the cgroup consulted
+// said. Printed with `UncappedEnclosingCgroup`'s cgroup field on the refusal, and with the skip's own
+// cgroup + magnitude on the skip, so one log line answers "which cgroup, and what did it read".
+fn enclosing_bound_cause_text(cause: EnclosingBoundCause) -> String {
+  match cause {
+    ChainUnreadable { detail: d } => join(["memory.max unreadable: ", d, "; no level of the chain yielded a reading", ""], "")
+    NoFiniteMemoryMax => "no finite memory.max: every memory.max on the chain reads max"
+    MemoryMaxZero { dir: d } => join(["memory.max is 0 at ", d, ", which systemd reads as no limit", ""], "")
+    SwapNotForbidden { dir: d, bytes: b } =>
+      join(["tightest memory.max ", to_string(value: byte_size_count(b: b)), " at ", d, " is not binding: no level on the chain sets memory.swap.max to 0", ""], "")
+  }
+}
+
+// THE CGROUP A REFUSAL NAMES WHEN NO LEVEL COULD BE READ AT ALL: the path read from
+// /proc/self/cgroup, flattened to one line.
+fn enclosing_cgroup_label(text: String) -> String {
+  trim(s: text.replace(from: "\n", to: " "))
+}
+
+// WHICH PREMISE ASKED TO BE SPARED THE WRAP, or none. This fold only CLASSIFIES the claim; it never
+// discharges it -- discharge is `live_enclosing_bound`, which every one of these goes through.
+fn wrap_exemption_premise(github_actions: Bool, text: String) -> WrapExemptionPremise? {
+  if string_contains(s: text, pattern: user_work_slice_unit_name as String) {
+    Present { value: AlreadyInDeclaredUserWorkSlice }
+  } else if string_contains(s: text, pattern: runner_unit_prefix) {
+    Present { value: InRunnerSlotCgroup }
+  } else if github_actions {
+    Present { value: InCiRunnerEnvironment }
+  } else {
+    match innermost_modeled_capped_slice(text: text) {
+      Present { value: slice } =>
+        Present { value: UnderModeledSlice { unit: cgroup_leaf_unit(text: text), slice: slice } }
+      Absent => match system_service_unit_from_cgroup(text: text) {
+        NotSystemService => none
+        SystemServiceNamed { unit, slice } =>
+          if recognized_system_slice(unit: slice) {
+            Present { value: UnderModeledSlice { unit: unit, slice: slice } }
+          } else {
+            Present { value: UnderUnmodeledSystemUnit { unit: unit, slice: slice } }
+          }
       }
+    }
+  }
+}
+
+fn optional_premise_wire(premise: WrapExemptionPremise?) -> String {
+  match premise {
+    Present { value: p } => wrap_exemption_premise_wire(premise: p)
+    Absent => "no-premise"
+  }
+}
+
+fn wrap_exemption_premise_wire(premise: WrapExemptionPremise) -> String {
+  match premise {
+    InCiRunnerEnvironment => "ci-runner-environment"
+    InRunnerSlotCgroup => "runner-slot-cgroup"
+    AlreadyInDeclaredUserWorkSlice => "already-in-user-work-slice"
+    UnderModeledSlice { unit, slice } => join(["modeled-slice:", slice, ":", unit], "")
+    UnderUnmodeledSystemUnit { unit, slice } => join(["unmodeled-system-unit:", slice, ":", unit], "")
   }
 }
 
@@ -373,20 +476,6 @@ fn system_service_unit_from_cgroup(text: String) -> SystemServiceCgroup {
           Present { value: slice } => SystemServiceNamed { unit: unit, slice: slice }
         }
     }
-  }
-}
-
-fn system_unit_standing_from_cgroup(text: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding? {
-  match system_service_unit_from_cgroup(text: text) {
-    NotSystemService => none
-    SystemServiceNamed { unit, slice } =>
-      if recognized_system_slice(unit: slice) {
-        Present {
-          value: live_modeled_slice_standing(unit: unit, slice: slice, slice_memory: slice_memory),
-        }
-      } else {
-        Present { value: UncappedSystemSlice { unit: unit, slice: slice } }
-      }
   }
 }
 
@@ -453,6 +542,17 @@ fn user_work_host_facility_standing(host: UserWorkHostFacility, github_actions: 
   }
 }
 
+
+// UNIT_TEST_EXEMPT IS THE ONE EXEMPT ARM THAT DOES NOT CLAIM AN ENCLOSING BOUND, so it does not go
+// through `live_enclosing_bound`. It fires only inside the seed's own `#[cfg(test)]` build
+// (cli_run::user_work_scope): the process is a cargo test binary, not a host process sitting in a
+// declared slot, and it holds no memory.max anywhere -- wrapping it in the user-work slice would
+// require a user manager that cargo test does not have and would cap the harness, not the work. The
+// claim it makes ("this is a test harness, nothing here runs unbounded for real") is checked by the
+// cfg(test) gate itself, not by an enclosing limit. ExternallyBoundedExecutor is exempt on the same
+// footing (2026-10-15 ruling: the executor identity, a remote boundary this process cannot read), and
+// the namespaced-root pair keeps its own /sys/fs/cgroup/memory.max reading because its subject is the
+// container root, not a slice or slot cgroup.
 fn user_work_scope_standing_with_root_memory(
   unit_test: Bool,
   github_actions: Bool,
@@ -462,7 +562,6 @@ fn user_work_scope_standing_with_root_memory(
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
   root_memory: RootCgroupMemoryRead,
-  slice_memory: RootCgroupMemoryRead,
   buildbuddy_run_id: BuildBuddyRunIdRead,
 ) -> UserWorkScopeStanding {
   if unit_test {
@@ -477,11 +576,13 @@ fn user_work_scope_standing_with_root_memory(
       bound: bound,
       user_manager_reachable: user_manager_reachable,
       xdg_runtime_dir: xdg_runtime_dir,
-      slice_memory: slice_memory,
     )
   }
 }
 
+// THE WRAP-EXEMPTION FOLD. A premise (any of the exempt arms, including a set GITHUB_ACTIONS) never
+// skips on its own: it names the claim, then `live_enclosing_bound` -- called exactly once, here --
+// decides, and only a live finite enclosing memory.max skips. No premise has a private fast path.
 fn user_work_scope_standing(
   unit_test: Bool,
   github_actions: Bool,
@@ -489,54 +590,44 @@ fn user_work_scope_standing(
   bound: CgroupBoundObservation,
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
-  slice_memory: RootCgroupMemoryRead,
 ) -> UserWorkScopeStanding {
   if unit_test {
     UnitTestExempt
-  } else if github_actions {
-    CiExempt
   } else {
     match cgroup {
       CgroupReadFailed => CgroupUnreadable
-      CgroupText { text } =>
-        if string_contains(s: text, pattern: user_work_slice_unit_name as String) {
-          AlreadyInSlice
-        } else if string_contains(s: text, pattern: runner_unit_prefix) {
-          RunnerSlotExempt
-        } else {
-          match modeled_slice_standing_from_cgroup(text: text, slice_memory: slice_memory) {
-            Present { value: s } => s
-            Absent => match observed_cgroup_bound(observation: bound) {
-              CgroupBoundedBy { cgroup: g, memory_max: m } => BoundedByObservedCgroup { cgroup: g, memory_max: m }
-              _ =>
-                match system_unit_standing_from_cgroup(text: text, slice_memory: slice_memory) {
-                  Present { value: s } => s
-                  Absent =>
-                    if user_manager_reachable {
-                      UserManagerOwed
-                    } else if xdg_runtime_dir {
-                      UserManagerProbeFailed
-                    } else {
-                      UserSessionAbsent
-                    }
-                }
-            }
+      CgroupText { text } => {
+        let premise = wrap_exemption_premise(github_actions: github_actions, text: text)
+        match live_enclosing_bound(bound: bound, cgroup_text: text) {
+          // ONE skip for every premise: the bound is what admits, and the premise only says who asked.
+          LiveEnclosingBound { cgroup: g, memory_max: m } =>
+            ExemptUnderObservedBound { premise: premise, cgroup: g, memory_max: m }
+          // No bound observed: a premise that claimed one refuses, located. With no premise at all the
+          // process is ordinary user work, and the user-manager arms decide (wrap, or refuse).
+          NoLiveEnclosingBound { cgroup: g, cause: c } => match premise {
+            Present { value: p } => UncappedEnclosingCgroup { premise: p, cgroup: g, cause: c }
+            Absent =>
+              if user_manager_reachable {
+                UserManagerOwed
+              } else if xdg_runtime_dir {
+                UserManagerProbeFailed
+              } else {
+                UserSessionAbsent
+              }
           }
         }
+      }
     }
   }
 }
 
 fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
   match s {
-    AlreadyInSlice => "AlreadyInSlice"
-    BoundedByObservedCgroup { cgroup: _, memory_max: _ } => "BoundedByObservedCgroup"
-    RunnerSlotExempt => "RunnerSlotExempt"
-    CiExempt => "CiExempt"
+    ExemptUnderObservedBound { premise, cgroup, memory_max } =>
+      join(["ExemptUnderObservedBound:", optional_premise_wire(premise: premise), ":", cgroup, ":", to_string(value: byte_size_count(b: memory_max))], "")
+    UncappedEnclosingCgroup { premise, cgroup, cause } =>
+      join(["UncappedEnclosingCgroup:", wrap_exemption_premise_wire(premise: premise), " @ ", cgroup, ": ", enclosing_bound_cause_text(cause: cause)], "")
     UnitTestExempt => "UnitTestExempt"
-    ExemptSystemUnit { unit, slice, bound } =>
-      join(["ExemptSystemUnit:", slice, ":", unit, ":", to_string(value: byte_size_count(b: bound))], "")
-    UncappedSystemSlice { unit, slice } => join(["UncappedSystemSlice:", slice, ":", unit], "")
     UserSessionAbsent => "UserSessionAbsent"
     UserManagerOwed => "UserManagerOwed"
     CgroupUnreadable => "CgroupUnreadable"
@@ -556,15 +647,11 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
 fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeStandingEffect {
   match s {
     UserManagerOwed => WrapIntoUserWorkSlice
-    AlreadyInSlice => SkipUserWorkScope { standing: AlreadyInSlice }
-    BoundedByObservedCgroup { cgroup: g, memory_max: m } => SkipUserWorkScope { standing: BoundedByObservedCgroup { cgroup: g, memory_max: m } }
+    ExemptUnderObservedBound { premise, cgroup, memory_max } =>
+      SkipUserWorkScope { standing: ExemptUnderObservedBound { premise: premise, cgroup: cgroup, memory_max: memory_max } }
     UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
-    RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
-    CiExempt => SkipUserWorkScope { standing: CiExempt }
-    ExemptSystemUnit { unit, slice, bound } =>
-      SkipUserWorkScope { standing: ExemptSystemUnit { unit: unit, slice: slice, bound: bound } }
-    UncappedSystemSlice { unit, slice } =>
-      RefuseUserWorkScope { standing: UncappedSystemSlice { unit: unit, slice: slice } }
+    UncappedEnclosingCgroup { premise, cgroup, cause } =>
+      RefuseUserWorkScope { standing: UncappedEnclosingCgroup { premise: premise, cgroup: cgroup, cause: cause } }
     CgroupUnreadable => RefuseUserWorkScope { standing: CgroupUnreadable }
     UserManagerProbeFailed => RefuseUserWorkScope { standing: UserManagerProbeFailed }
     UserSessionAbsent => RefuseUserWorkScope { standing: UserSessionAbsent }
