@@ -37,10 +37,8 @@ import product.electrical.connectivity {
   TerminalIdentity,
 }
 import product.electrical.bench_session {
-  AfterIncidents,
   AssetAlteration,
   AutoRanging,
-  BeforeIncidents,
   BenchRecord,
   DisplayAboveBaseline,
   DisplayOverRange,
@@ -62,6 +60,8 @@ import product.electrical.bench_session {
   StatementCertainty,
 }
 import product.electrical.continuity {
+  AfterIncidents,
+  BeforeIncidents,
   BenchConditions,
   both_points_inferred,
   both_points_recorded,
@@ -91,6 +91,7 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.p4261.carrier {
+  AnalysisSelection,
   AssemblyLabel,
   BackplaneConnectorObservation,
   beige_part_discriminator,
@@ -215,7 +216,7 @@ fn k1_u1_pin(pin: NonEmptyStr) -> ElectricalTerminalRef {
 fn k1_read(first: ElectricalTerminalRef, second: ElectricalTerminalRef, record: ProbeRecord, display: ResistanceDisplay, certainty: StatementCertainty, evidence: List<EvidenceRef>) -> ResistanceObservation {
   ResistanceObservation {
     asset: p4261_k1_a, first: first, second: second, record: record, conditions: k1_bench, polarity: PolarityUnrecorded,
-    range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: certainty, order: BeforeIncidents { keys: [] }, evidence: evidence,
+    range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: certainty, order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: evidence,
   }
 }
 
@@ -366,6 +367,7 @@ data k1_transitions: List<CarrierTransitionObservation> = [
 
 data k1_measured: MeasuredBoard = MeasuredBoard {
   asset: p4261_k1_a,
+  analysis: AnalysisSelection { after: [], module: ModuleUnrecorded },
   continuity: [],
   diode_readings: [],
   source_draws: [],
@@ -443,7 +445,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
 data k1_l_4r7_near_resistance: ResistanceObservation = ResistanceObservation {
   asset: p4261_k1_a, first: terminal_ref(component: k1_l_4r7_near, terminal: inductor_pad_unrecorded as TerminalIdentity), second: k1_return, record: both_points_recorded,
   conditions: k1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: 4000, approximate: true }, stability: StabilityUnrecorded,
-  certainty: StatedHedged { verbatim: "~4k ohms" }, order: BeforeIncidents { keys: [] }, evidence: [e1_short_after_said],
+  certainty: StatedHedged { verbatim: "~4k ohms" }, order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [e1_short_after_said],
 }
 
 data converter_said_1023_k1: EvidenceRef = OperatorStatement { stated_on: "2026-10-23", verbatim: "The right side is still ground, but the left side is 6k, 6k, 10k 10k from the bottom up - the baseline is 0" }
@@ -477,7 +479,7 @@ fn converter_lead_read_k1(number: Nat, name: NonEmptyStr, basis: NonEmptyStr, di
     asset: p4261_k1_a, first: terminal_ref(component: k1_converter_far, terminal: pin_terminal_name(number: number, name: name) as TerminalIdentity), second: k1_return,
     record: ProbeRecord { first: PointInferred { basis: join([basis as String, "; ", k1_far_site_basis as String], "") as NonEmptyStr }, second: PointRecorded },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] },
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] },
     evidence: [converter_said_1031, k1_converter_area_photo_1031, k1_two_4r7_photo_1031],
   }
 }
@@ -487,7 +489,7 @@ fn near_converter_lead_read_k1(number: Nat, name: NonEmptyStr, display: Resistan
     asset: p4261_k1_a, first: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: number, name: name) as TerminalIdentity), second: k1_return,
     record: ProbeRecord { first: PointInferred { basis: k1_near_site_basis }, second: PointRecorded },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: certainty,
-    order: BeforeIncidents { keys: [] },
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] },
     evidence: [converter_said_1031_near, k1_two_4r7_photo_1031],
   }
 }
@@ -496,7 +498,7 @@ fn u100_lead_read_k1(lead: NonEmptyStr, second: ElectricalTerminalRef, record: P
   ResistanceObservation {
     asset: p4261_k1_a, first: terminal_ref(component: k1_u100, terminal: lead as TerminalIdentity), second: second, record: record,
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] },
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] },
     evidence: evidence,
   }
 }
@@ -589,14 +591,14 @@ data k1_converter_pair_resistances: List<ResistanceObservation> = [
     asset: p4261_k1_a, first: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: 3, name: "SW") as TerminalIdentity), second: k1_pad_1023(name: inductor_pad_far_u4),
     record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointInferred { basis: converter_side_terminal_basis } },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayZeroWithoutBaseline { reported: "0ohm" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1031_pairs, k1_two_4r7_photo_1031],
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [converter_said_1031_pairs, k1_two_4r7_photo_1031],
   },
   // The K1's in-circuit figure for VIN to SW before the lift (2026-11-01): 13 kohm on U10_P2, red on VIN.
   ResistanceObservation {
     asset: p4261_k1_a, first: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: 2, name: "VIN") as TerminalIdentity), second: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: 3, name: "SW") as TerminalIdentity),
     record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointInferred { basis: pair_list_basis } },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayValue { ohms: 13000, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1101_checks],
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [converter_said_1101_checks],
   },
 ]
 
@@ -632,11 +634,11 @@ data k1_l_4r7_near_pad_resistances: List<ResistanceObservation> = [
   ResistanceObservation {
     asset: p4261_k1_a, first: k1_pad_1023(name: inductor_pad_near_u4), second: k1_return, record: ProbeRecord { first: PointInferred { basis: k1_u100_inductor_basis }, second: PointRecorded },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayValue { ohms: 8300, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1024],
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [converter_said_1024],
   },
   ResistanceObservation {
     asset: p4261_k1_a, first: k1_pad_1023(name: inductor_pad_far_u4), second: k1_return, record: ProbeRecord { first: PointInferred { basis: k1_u100_inductor_basis }, second: PointRecorded },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayValue { ohms: 8300, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1024],
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [converter_said_1024],
   },
 ]

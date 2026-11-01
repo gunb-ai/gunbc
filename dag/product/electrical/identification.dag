@@ -118,6 +118,24 @@ fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
   }
 }
 
+// WHETHER AN IDENTIFICATION ESTABLISHES WHAT THE PART IS, decided on its arm and never on its text. A
+// candidate stays a candidate however well it reads: its text exists to say what would settle it, and
+// a finding that asked "is there text?" took that explanation for the identification (the
+// candidate-as-identified defect). A marking several makers share names the part's rows and leaves only
+// the maker open, so it identifies the part. A printed rating or a resistor code is the value the
+// part carries, read off its body. An unresolved marking and a bare footprint identify nothing.
+fn identification_established(i: ComponentIdentification) -> Bool {
+  match i {
+    IdentifiedByMarking { row: _, marking: _ } => true
+    MarkingSharedByMakers { rows: _, marking: _ } => true
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => false
+    RatingPrintedOnBody { rating: _, marking: _ } => true
+    ResistanceCodeRead { milliohms: _, marking: _ } => true
+    MarkingUnresolved { marking: _, discriminator: _ } => false
+    FootprintUnpopulated { evidence: _ } => false
+  }
+}
+
 // A converter pin's terminal is named from its row, so a reading and the row join on one spelling.
 fn pin_terminal_name(number: Nat, name: NonEmptyStr) -> NonEmptyStr {
   join(["pin ", to_string(number), " (", name as String, ")"], "") as NonEmptyStr
@@ -134,8 +152,9 @@ fn regulator_pins(row: ElectronicComponentRow) -> List<RegulatorPin> {
 // state from the lead read with the part fitted, so each lifted converter's footprint is a component of
 // its own (FootprintUnpopulated), its pads named from the row's pin order like the leads were, and every
 // reading at it is ordered after the lift. Nothing in the record joins a pad to the lead that sat on it,
-// so no netlist combines the intact board's readings with the bare footprint's by terminal identity;
-// selecting readings by physical state is the follow-up change the split lane owns.
+// so no netlist combines the intact board's readings with the bare footprint's by terminal identity,
+// and a netlist reads one physical state of the board in any case (product.electrical.bench_session
+// SpecimenState): the lift is a boundary, and the footprint's readings are of the state after it.
 fn pad_terminal_name(number: Nat, name: NonEmptyStr) -> NonEmptyStr {
   join(["pad ", to_string(number), " (", name as String, ")"], "") as NonEmptyStr
 }

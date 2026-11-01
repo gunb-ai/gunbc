@@ -9,7 +9,7 @@ import std.measure {
   Volt,
   volt_count,
 }
-import product.placement_supply { PhysicalAssetIdentity }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import extdeps.electronic_component.types {
   CapacitorSpec,
   ConnectorSpec,
@@ -73,6 +73,15 @@ import product.electrical.source_draw {
 }
 import product.electrical.bench_session {
   DisplayOverRange,
+  EventUnresolved,
+  intact_state,
+  OrderUncovered,
+  PlacedAfter,
+  reading_placement,
+  SpecimenState,
+  state_after,
+  state_readings,
+  StateReadings,
   is_at_baseline,
   is_read_value,
   is_reported_zero,
@@ -88,7 +97,11 @@ import product.electrical.bench_session {
   valued_ohms,
 }
 import product.electrical.continuity {
+  BenchConditions,
   ContinuityObservation,
+  Energized,
+  ModuleState,
+  Unpowered,
   evidence_grade,
   EvidenceGrade,
   EvidenceRef,
@@ -145,6 +158,7 @@ type PolarityGap
   = SidesUnrecorded
   | NoMeasuredBoard
   | InputUnmapped
+  | BeepsNotOfOneState
   | FusedSideNotReached
   | ReturnSideNotJoined
   | IsolationUnread
@@ -174,14 +188,76 @@ fn side_terminals(h: ConnectorHousing, side: RowSide) -> List<ElectricalTerminal
   map(filter(h.positions, p => row_side_code(s: p.side) == row_side_code(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
 }
 
-fn board_graph(b: MeasuredBoard) -> ReachabilityGraph {
-  reachability_graph(observations: b.continuity, asset: b.asset)
+// ONE BOARD IN ONE PHYSICAL STATE AND MODULE CONFIGURATION. Every fold over a board's readings reads
+// one state of it, chosen before the fold (product.electrical.bench_session SpecimenState): the intact
+// board, or the board after named dividing events such as a bridge, a short or a part lifted off it,
+// each with the module removed, seated or unrecorded. The state is minted from the board itself, so it
+// cannot name another asset's state, and a state naming an event the board's record does not hold as
+// a dividing event is refused rather than selecting nothing.
+type BoardState sole_constructor {
+  board: MeasuredBoard
+  state: SpecimenState
 }
 
-// The board as measured: its beep classes joined by its baseline resistance readings into nodes, and
-// every other resistance reading a link between them (product.electrical.measured_netlist).
-fn board_netlist(b: MeasuredBoard) -> MeasuredNetlist {
-  measured_netlist(graph: board_graph(b: b), resistances: b.bench.resistances)
+fn board_intact(b: MeasuredBoard, module: ModuleState) -> BoardState {
+  BoardState { board: b, state: intact_state(asset: b.asset, module: module) }
+}
+
+fn board_after(b: MeasuredBoard, keys: List<NonEmptyStr>, module: ModuleState) -> BoardState? {
+  match state_after(r: b.bench, asset: b.asset, keys: keys, module: module) {
+    Absent => Absent
+    Present { value: s } => Present { value: BoardState { board: b, state: s } }
+  }
+}
+
+// The state the board's pin, switch and attachment derivations read (product.p4261.carrier
+// AnalysisSelection), or Absent when the board's own selection names no state of its record.
+fn analysis_state(b: MeasuredBoard) -> BoardState? {
+  board_after(b: b, keys: b.analysis.after, module: b.analysis.module)
+}
+
+// The one state every beep on the board was read in, or Absent when the beeps are unplaced, span more
+// than one state or configuration, or there are none: the reachability derivations (polarity,
+// placement across the input) fold beeps of one state or none.
+fn beeps_state(b: MeasuredBoard) -> BoardState? {
+  match b.continuity.first() {
+    Absent => Absent
+    Present { value: first } => match reading_placement(r: b.bench, o: first.order) {
+      PlacedAfter { after } => match board_after(b: b, keys: after, module: first.conditions.module) {
+        Absent => Absent
+        Present { value: s } => if count(board_readings(s: s).continuity) == count(filter(b.continuity, o => physical_asset_identity_eq(a: o.asset, b: b.asset))) { Present { value: s } } else { Absent }
+      }
+      OrderUncovered => Absent
+      EventUnresolved { keys: _ } => Absent
+    }
+  }
+}
+
+fn board_readings(s: BoardState) -> StateReadings {
+  state_readings(r: s.board.bench, continuity: s.board.continuity, s: s.state)
+}
+
+fn board_graph(s: BoardState) -> ReachabilityGraph {
+  reachability_graph(observations: board_readings(s: s).continuity, asset: s.board.asset)
+}
+
+// The board as measured in one state: its beep classes joined by its baseline resistance readings into
+// nodes, and every other resistance reading a link between them (product.electrical.measured_netlist).
+// Only unpowered readings are folded: a resistance or a beep read on an energized board is of another
+// configuration, and stays recorded.
+fn board_netlist(s: BoardState) -> MeasuredNetlist {
+  let rs = board_readings(s: s)
+  measured_netlist(
+    graph: reachability_graph(observations: filter(rs.continuity, o => is_unpowered(c: o.conditions)), asset: s.board.asset),
+    resistances: filter(rs.resistances, o => is_unpowered(c: o.conditions)),
+  )
+}
+
+fn is_unpowered(c: BenchConditions) -> Bool {
+  match c.power {
+    Unpowered => true
+    Energized => false
+  }
 }
 
 fn standings_to(g: ReachabilityGraph, ts: List<ElectricalTerminalRef>, target: ElectricalTerminalRef) -> List<ReachabilityStanding> {
@@ -263,7 +339,10 @@ fn input_polarity(layout: CarrierLayoutObservation) -> InputPolarity {
     Absent => PolarityUnestablished { gaps: [NoMeasuredBoard] }
     Present { value: b } => match layout.input {
       Absent => PolarityUnestablished { gaps: [InputUnmapped] }
-      Present { value: input } => measured_polarity(g: board_graph(b: b), input: input)
+      Present { value: input } => match beeps_state(b: b) {
+        Absent => PolarityUnestablished { gaps: [BeepsNotOfOneState] }
+        Present { value: s } => measured_polarity(g: board_graph(s: s), input: input)
+      }
     }
   }
 }
@@ -352,13 +431,16 @@ fn placement_basis(layout: CarrierLayoutObservation) -> PlacementBasis {
     Absent => NoPlacementBasis
     Present { value: b } => match layout.input {
       Absent => NoPlacementBasis
-      Present { value: input } => {
-        let g = board_graph(b: b)
-        match measured_polarity(g: g, input: input) {
-          PolarityEstablished { fused_side, return_side, fused, returns, isolation } =>
-            PlacementOnPolarity { graph: g, input: input, fused: fused_side, ret: return_side, readings: concat(concat(fused, returns), isolation) }
-          PolarityContradicted { readings: _ } => NoPlacementBasis
-          PolarityUnestablished { gaps: _ } => NoPlacementBasis
+      Present { value: input } => match beeps_state(b: b) {
+        Absent => NoPlacementBasis
+        Present { value: st } => {
+          let g = board_graph(s: st)
+          match measured_polarity(g: g, input: input) {
+            PolarityEstablished { fused_side, return_side, fused, returns, isolation } =>
+              PlacementOnPolarity { graph: g, input: input, fused: fused_side, ret: return_side, readings: concat(concat(fused, returns), isolation) }
+            PolarityContradicted { readings: _ } => NoPlacementBasis
+            PolarityUnestablished { gaps: _ } => NoPlacementBasis
+          }
         }
       }
     }
@@ -589,10 +671,17 @@ type ControllerPinStanding
   | PinAboveThreshold { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, maximum: Millivolt }
   | PinThresholdUnestablished { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, gap: PinReadingGap }
 
+// The voltage readings of the board's analysis state (product.p4261.carrier AnalysisSelection): the
+// controller-pin and switch derivations read one physical state in one configuration, never readings
+// of another state, of unstated order, or of another module configuration. A board whose selection
+// names no state of its record gives them nothing to read.
 fn bench_of(layout: CarrierLayoutObservation) -> List<NodeVoltageObservation> {
   match layout.measured {
     Absent => []
-    Present { value: b } => b.bench.voltages
+    Present { value: b } => match analysis_state(b: b) {
+      Absent => []
+      Present { value: s } => board_readings(s: s).voltages
+    }
   }
 }
 
@@ -915,10 +1004,14 @@ fn threshold_from(c: InstalledComponent, window: ThresholdWindow, readings: List
   }
 }
 
+// The resistance readings of the board's analysis state, for the same reason as bench_of.
 fn resistances_of(layout: CarrierLayoutObservation) -> List<ResistanceObservation> {
   match layout.measured {
     Absent => []
-    Present { value: b } => b.bench.resistances
+    Present { value: b } => match analysis_state(b: b) {
+      Absent => []
+      Present { value: s } => board_readings(s: s).resistances
+    }
   }
 }
 
