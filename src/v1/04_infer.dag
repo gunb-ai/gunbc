@@ -1727,7 +1727,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
-  else if application_pair(declared: declared, produced: produced, source_indices: si) {
+  else if application_pair(declared: declared, produced: produced, scope: scope) {
     declared_type_obligation_diags(
       obligation: DeclaredTypeObligation {
         position: position, subject: subject, declared: declared, produced: produced, span: span
@@ -3197,11 +3197,37 @@ fn type_carries_optional_layer(n: Node, source_indices: Map<String, NewlineIndex
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)) == "Optional"
 }
 
+// ARMS THAT ARE ONE TEMPLATE APPLIED TO DISAGREEING CONCRETE ARGUMENTS DO NOT JOIN. A match whose arms
+// type as Res<RA> (a nullary arm that took RA from the expected type) and Res<RB> elected Res<RA> and
+// judged the other arm only for optionality and proven-disjoint heads, so the concrete disagreement RA
+// vs RB passed and the elected type then satisfied the declared return. The arm is judged by the one
+// per-argument fold Q2 put in declared_type_inhabitance (application_arguments_inhabitance): a concrete
+// refusal at any argument refuses; an argument still holding an unsolved variable is Undecidable and
+// does not refuse, so an under-determined arm joins and never licenses a wrong sibling.
+fn arm_application_argument_refused(unified_arm_type: Node, arm_type: Node, scope: InferScope) -> Bool {
+  if application_pair(declared: unified_arm_type, produced: arm_type, scope: scope) {
+    match application_arguments_inhabitance(declared: unified_arm_type, produced: arm_type, scope: scope) {
+      InhabitanceRefused { reason: _ } => true
+      _ => false
+    }
+  } else { false }
+}
+
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
   if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
   } else if !match_arm_body_is_present_payload_binding(arm: arm, scope: scope)
     && match_arm_mixes_bare_and_optional(unified_arm_type: unified_arm_type, arm_type: arm.body_type, scope: scope) {
+    [make_error_node(
+      diagnostic: DeclaredTypeNotInhabited {
+        position: "match arm",
+        expected: node_type_shape(n: unified_arm_type, source_indices: scope.type_env.source_indices),
+        got: node_type_shape(n: arm.body_type, source_indices: scope.type_env.source_indices),
+        span: arm_body(n: arm.typed_arm).span
+      },
+      module_name: scope.module_name
+    )]
+  } else if arm_application_argument_refused(unified_arm_type: unified_arm_type, arm_type: arm.body_type, scope: scope) {
     [make_error_node(
       diagnostic: DeclaredTypeNotInhabited {
         position: "match arm",
@@ -4622,12 +4648,37 @@ fn produced_is_kernel_grounded_carrier_or_its_alias(declared_name: String, produ
 // one child per step.
 // application_pair is the whole precondition: two collections of one canonical template and one arity at one
 // cardinality. Any other pair is not an application pair and is judged by the arms it always was.
-fn application_pair(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+// A collection pair keeps its algebra-keyed template test; any OTHER pair is two applications of ONE
+// DECLARATION (a user generic such as Res<T> or Outcome<T>), decided by the heads' resolved declarations,
+// never by spelling: a.Foo<Int> and b.Foo<Int> are two templates and judging only their arguments would
+// admit one as the other. Q2 admitted collections only, so a user-generic application was compared by
+// head and a wrong argument passed (the record-mismatch specimen, wla_inferred_with).
+fn application_pair(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  declared.return_cardinality == produced.return_cardinality
+    && (declared.children |> count) > 0
+    && (declared.children |> count) == (produced.children |> count)
+    && (collection_application_pair(declared: declared, produced: produced, scope: scope)
+      || declared_template_application_pair(declared: declared, produced: produced, scope: scope))
+}
+
+fn collection_application_pair(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   node_is_collection(n: declared, source_indices: source_indices)
     && node_is_collection(n: produced, source_indices: source_indices)
-    && declared.return_cardinality == produced.return_cardinality
     && canonical_template_name(n: declared, source_indices: source_indices) == canonical_template_name(n: produced, source_indices: source_indices)
-    && (declared.children |> count) == (produced.children |> count)
+}
+
+fn declared_template_application_pair(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  declared.connective == NoConnective
+    && produced.connective == NoConnective
+    && match type_reference_declaration_ref(n: declared, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+      Absent => false
+      Present { value: d } =>
+        match type_reference_declaration_ref(n: produced, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+          Absent => false
+          Present { value: p } => declaration_ref_eq(a: d, b: p)
+        }
+    }
 }
 
 fn application_argument_is_opaque(n: Node) -> Bool {
@@ -4732,7 +4783,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
-  } else if application_pair(declared: declared, produced: produced, source_indices: source_indices) {
+  } else if application_pair(declared: declared, produced: produced, scope: scope) {
     application_arguments_inhabitance(declared: declared, produced: produced, scope: scope)
   } else if alias_identity_in_judgment(
       left: declared, right: produced, source_indices: source_indices,
@@ -12964,7 +13015,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             span: ar_typed.span,
             module_name: scope.module_name
           )]
-        } else if application_pair(declared: expected_node, produced: got_node, source_indices: scope.type_env.source_indices) {
+        } else if application_pair(declared: expected_node, produced: got_node, scope: scope) {
           declared_type_obligation_diags(
             obligation: DeclaredTypeObligation {
               position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_node, span: ar_typed.span

@@ -1,0 +1,58 @@
+module test.claim.match_arm_application_witness
+
+// A match whose arms are ONE generic template applied to disagreeing concrete arguments does not join:
+// v1.compiler.infer arm_application_argument_refused judges each arm through Q2's per-argument fold
+// (application_arguments_inhabitance), now reached by user-generic applications too (application_pair
+// widened from collections to two applications of one resolved declaration). Each RED was ACCEPTED
+// before the change (srv2 kh-recprobe2, gunbc 7ccccac4…): a bare nullary arm took its argument from the
+// expected type, became the elected arm type, and hid the concrete wrong sibling. Controls: agreeing
+// arms and an under-determined arm beside a lawful rebuild still join; direct mismatches already refused.
+
+import std.types { String, Bool, Int }
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_blocking_rows_of_class, census_total_count }
+
+data maw_arm_var: String = "module probe_maw_arm_var\ntype RA { x: Int }\ntype RB { x: Int, y: Int }\ntype Res<T> = Got { value: T } | Lost\nfn mk(b: RB) -> Res<RB> { Got { value: b } }\nfn f(r: Res<RB>, s: Res<RB>) -> Res<RA> {\n  match r {\n    Lost => Lost\n    Got { value: _ } => s\n  }\n}\n"
+data maw_arm_call: String = "module probe_maw_arm_call\ntype RA { x: Int }\ntype RB { x: Int, y: Int }\ntype Res<T> = Got { value: T } | Lost\nfn mk(b: RB) -> Res<RB> { Got { value: b } }\nfn f(r: Res<RB>, b: RB) -> Res<RA> {\n  match r {\n    Lost => Lost\n    Got { value: _ } => mk(b: b)\n  }\n}\n"
+data maw_agree: String = "module probe_maw_agree\ntype RA { x: Int }\ntype RB { x: Int, y: Int }\ntype Res<T> = Got { value: T } | Lost\nfn f(r: Res<RA>, s: Res<RA>) -> Res<RA> {\n  match r {\n    Lost => Lost\n    Got { value: _ } => s\n  }\n}\n"
+data maw_rebuild: String = "module probe_maw_rebuild\ntype RA { x: Int }\ntype RB { x: Int, y: Int }\ntype Res<T> = Got { value: T } | Lost\nfn f(r: Res<RB>) -> Res<RA> {\n  match r {\n    Lost => Lost\n    Got { value: b } => Got { value: RA { x: b.x } }\n  }\n}\n"
+data maw_direct: String = "module probe_maw_direct\ntype RA { x: Int }\ntype RB { x: Int, y: Int }\ntype Res<T> = Got { value: T } | Lost\nfn f(r: Res<RB>) -> Res<RA> { r }\n"
+data maw_bare: String = "module probe_maw_bare\ntype RA { x: Int }\ntype RB { x: Int, y: Int }\ntype Res<T> = Got { value: T } | Lost\nfn f(b: RB) -> RA { b }\n"
+
+fn maw_blocking(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn maw_class(source: String, class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn an_under_determined_arm_does_not_license_a_wrong_sibling_variable_refuses() -> Bool {
+  maw_class(source: maw_arm_var, class: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn an_under_determined_arm_does_not_license_a_wrong_sibling_call_refuses() -> Bool {
+  maw_class(source: maw_arm_call, class: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn agreeing_arms_join() -> Bool {
+  maw_blocking(source: maw_agree) == 0
+}
+
+test fn an_under_determined_arm_beside_a_rebuilt_value_joins() -> Bool {
+  maw_blocking(source: maw_rebuild) == 0
+}
+
+test fn a_mismatched_application_returned_directly_still_refuses() -> Bool {
+  maw_blocking(source: maw_direct) >= 1
+}
+
+test fn a_mismatched_record_returned_directly_still_refuses() -> Bool {
+  maw_blocking(source: maw_bare) >= 1
+}
+
