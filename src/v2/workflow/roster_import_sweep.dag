@@ -4137,7 +4137,7 @@ fn roster_control_census_knows_the_homes() -> String {
     + (if !roster_home_side_is_value(side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: type_row.home), import_name: type_row.import_name)) { "" } else { "; " + type_row.import_name + " @ " + roster_qn_text(qn: type_row.home) + " ALSO reads a VALUE declaration" })
     + (if roster_home_side_is_value(side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: data_row.home), import_name: data_row.import_name)) { "" } else { "; data home " + roster_qn_text(qn: data_row.home) + "." + data_row.import_name + " reads no value declaration (a typed `data` constant is a value)" })
     + (if !roster_home_side_is_type(side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: data_row.home), import_name: data_row.import_name)) { "" } else { "; data home " + roster_qn_text(qn: data_row.home) + "." + data_row.import_name + " reads a TYPE declaration" })
-  if wrong == "" { "" } else { "CONTROL-FAIL census-homes: " + wrong + " (v2.std.decl_index decl_facts_at over the home directories " + roster_home_pool_roots_text(home: roster_qn_text(qn: type_row.home)) + roster_home_pool_roots_text(home: roster_qn_text(qn: value_row.home)) + roster_home_pool_roots_text(home: roster_qn_text(qn: data_row.home)) + ")\n" }
+  if wrong == "" { "" } else { "CONTROL-FAIL census-homes: " + wrong + " (v2.std.decl_index decl_facts_at over the governed trees, home files " + roster_home_pool_roots_text(home: roster_qn_text(qn: type_row.home)) + roster_home_pool_roots_text(home: roster_qn_text(qn: value_row.home)) + roster_home_pool_roots_text(home: roster_qn_text(qn: data_row.home)) + ")\n" }
 }
 
 // WAVE 2'S HOMES ARE TYPES TO THE CENSUS. std.types List/Map/Set are ALIASED type declarations

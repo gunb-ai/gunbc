@@ -206,7 +206,7 @@ pub mod namespace_baseline;
 mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
-mod source_layout_lookup;
+pub(crate) mod source_layout_lookup;
 pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
@@ -11008,6 +11008,7 @@ pub enum WitnessRuntimeCause {
     StringRealizationStraddle,
     VariantRealizationRefused,
     PoolRootContributesNothing,
+    DeclFactsKeyedReadRefused,
     PatternMatchFailure,
     /// A REST response value did not inhabit its declared coproduct (see
     /// `v1_interpreter::RestResponseDecodeRefusal`).
@@ -11053,6 +11054,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
+            WitnessRuntimeCause::DeclFactsKeyedReadRefused => "decl-facts-keyed-read-refused",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
             WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
             WitnessRuntimeCause::DivisionByZero => "division-by-zero",
@@ -11093,6 +11095,7 @@ impl WitnessRuntimeCause {
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
             E::VariantRealizationRefused { .. } => WitnessRuntimeCause::VariantRealizationRefused,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
+            E::DeclFactsKeyedReadRefused { .. } => WitnessRuntimeCause::DeclFactsKeyedReadRefused,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
             // A non-Bool guard is a type error at a located site; the variant carries the location,
             // the cause token classifies it with its kind.
