@@ -1,5 +1,6 @@
 module test.claim.runner.runner_unit_file_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.types { Bool, String, NonEmptyStr, Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression, UbuntuLatest }
@@ -271,7 +272,7 @@ test fn an_unread_uid_refuses_depriv_docker_host() -> Bool {
 }
 
 test fn the_fragment_for_a_host_pins_that_host_and_still_leaves_root_to_depriv() -> Bool {
-  match gunbc_runner_unit_fragment_from_deploy(deploy: wt_srv3_deploy(), host: operator_host_srv3) {
+  match gunbc_runner_unit_fragment_from_deploy(deploy: wt_srv3_deploy(), host: operator_host_srv3, receipt: ReceiptAbsent) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: t } =>
       string_contains(s: t, pattern: "srv3")
@@ -293,7 +294,7 @@ test fn the_fragment_from_deploy_uses_the_passed_row_not_a_second_lookup() -> Bo
     app: wt_srv1_deploy().app,
     runner_count: wt_srv1_deploy().runner_count,
   }
-  match gunbc_runner_unit_fragment_from_deploy(deploy: poisoned, host: operator_host_srv3) {
+  match gunbc_runner_unit_fragment_from_deploy(deploy: poisoned, host: operator_host_srv3, receipt: ReceiptAbsent) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: t } =>
       string_contains(s: t, pattern: "\nUser=fixture-runner\n")

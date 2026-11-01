@@ -65,9 +65,9 @@ fn fixture_broker_caps() -> SliceControlCaps {
   SliceControlCaps { unit: "gunbc-approval-broker.slice" as NonEmptyStr, memory_max: byte_size(17179869184), memory_high: byte_size(15032385536) }
 }
 
-// The CPU set-property follows MemoryHigh inside the one revert, at the supplied share (32 threads
-// -> 3200%); an uncapped unit carries none.
-test fn the_sessions_cpu_cap_is_set_after_the_single_revert() -> Bool {
+// The CPU set-property follows MemoryHigh in the one sequence, after the residue removal and the
+// reload, at the supplied share (32 threads -> 3200%); an uncapped unit carries none.
+test fn the_sessions_cpu_cap_is_set_with_the_memory_caps() -> Bool {
   let text = shell_command_text_of_stmts(stmts: slice_control_converge_stmts_for_unit(u: SessionsSliceControl { caps: fixture_sessions_caps(), cpu_quota: hardware_thread_count(count: 32) }))
   string_contains(s: text, pattern: "CPUQuota=3200%")
     && string_contains(s: text, pattern: "MemoryHigh=")

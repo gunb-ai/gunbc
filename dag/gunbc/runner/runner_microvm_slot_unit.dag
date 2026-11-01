@@ -17,7 +17,7 @@ import extdeps.systemd.unit_file {
   slice_memory_max, slice_memory_high, slice_memory_swap_max,
   systemd_instance_name_specifier,
   serialize_systemd_unit_file,
-  RemainAfterExit, ExecStartPre, ExecStartPost, ExecStop, ExecStopPost, ExecStopPostIgnoringFailure, ServiceStandardOutput, ServiceStandardError, EnvironmentFile, EnvironmentFileIfPresent, ServiceGroup, ServiceNice, ServiceIoSchedulingClass, TimeoutStartSec, RestartSec, ServiceTasksMax,
+  RemainAfterExit, ExecStartPre, ExecStartPost, ExecStop, ExecStopPost, ExecStopPostIgnoringFailure, ServiceStandardOutput, ServiceStandardError, EnvironmentFile, EnvironmentFileIfPresent, ServiceGroup, ServiceNice, ServiceIoSchedulingClass, TimeoutStartSec, RestartSec, ServiceTasksMax, ServiceUMask,
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner.runner_slot_allocation { microvm_controller_slice_memory_max }
@@ -335,6 +335,7 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
         ServiceTasksMax { count: _ } => false
         ServiceResourceControl { directive: _ } => false
         TimeoutStopSec { duration: _ } => false
+        ServiceUMask { mask: _ } => false
       })
     TimerUnitFile { unit: _, timer: _, install: _ } => false
     SliceUnitFile { unit: _, slice: _, install: _ } => false

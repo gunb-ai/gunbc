@@ -1,0 +1,58 @@
+module gunbc.recurring_failure_mode.an_authored_gate_reached_by_no_execution_route
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+// A CONTROL THAT NOTHING RUNS. The gate is not missing, not wrong, and not weak: it reads every
+// committed generated artifact, generates each one once, compares, and reports a located finding
+// (gunbc.instruments.generated_artifact_gate run_generated_artifact_drift_gate). What it does not
+// have is a caller. Its roster (gunbc.ci.ci_spec gunbc_ci_gates) is consumed by
+// gunbc.instruments.ci_gates run_ci_gates_all, and run_ci_gates_all is called by nothing -- no
+// workflow, no .dag program, no Rust entry point. The gate's own main() exists so a human can run
+// it, which is precisely the difference between a control and a control that is wired: the check
+// that would have caught the drift is a command someone must remember to type.
+//
+// HOW IT BITES HERE. #15235 (486127ca2c87, 2026-10-28) changed a producer so that its output could
+// no longer be emitted at all; the fold refused and substituted its marker. Seven committed
+// workflow artifacts went stale that day and stayed stale for three days, and the PRs that needed
+// one of them took only their own hunks of the regenerated file, recording in the commit message
+// that the emitter refused. Nothing went red. The one executed thing that regenerates these
+// artifacts is an #[ignore]d deliberate-red falsifier
+// (src/v1/stage0/tests/interpreter_dispatch_bijection_real_roster_red.rs), and it asserts only that
+// regen EXITS ZERO -- which a marker-substituted regen does -- so even that falsifier cannot see
+// this drift.
+//
+// THE FAMILY, AND IT IS NOT THIS GATE. Any check whose result nobody consumes has the same
+// standing as a deleted check, and it is worse than a deleted check because the corpus reads as
+// though the property is enforced: an author changing a producer reasonably assumes the drift gate
+// will tell them, and reasonably does not go looking for its caller. The same shape covers a claim
+// enrolled in a roster no lane selects, a scheduled cadence whose schedule was dropped with the
+// machinery it belonged to, and a gate kept "for now" after the CI program that dispatched it was
+// cut. Spot it by reading the CONSUMER edge, never the gate: grep the gate's entry symbol and its
+// roster's symbol, and if the only hits are the gate's own file, its header comments, and a test
+// that runs it by hand, the control is decorative.
+//
+// WHAT ENDS IT. A gate needs an execution route that fails something, stated in the corpus as a
+// route rather than as a habit: a workflow step, a lane in the floor fold, or a scheduled cadence,
+// each of which is checkable by grep. Re-enrolling a dropped roster is a separate decision from
+// writing the gate, and DESIGN section 5's rule about silent wrongness applies to the difference:
+// an unrunnable check reports nothing, which is the same signal a passing check reports.
+data an_authored_gate_reached_by_no_execution_route: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_authored_gate_reached_by_no_execution_route" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "a gate that reads its subject correctly and reports a located finding, reached by no workflow, no .dag program, and no binary entry point: its red is unreachable, so the property it states is enforced by nobody",
+    "the corpus still reads as though the property is enforced, so the next author to change a producer does not go looking for the gate's caller -- and does not find one",
+    "spot it on the consumer edge, not the gate: grep the gate's entry symbol and its roster's symbol; if the only hits are the gate's own file, header comments, and hand-run tests, the control is decorative",
+    "an #[ignore]d falsifier that regenerates and asserts only exit-zero does not cover it either: a marker-substituted emission exits zero, so the drift is invisible to the one thing that does run the producer",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "run_generated_artifact_drift_gate"),
+    decl_ref(module_path: "gunbc.instruments.ci_gates", decl_name: "run_ci_gates_all"),
+    decl_ref(module_path: "gunbc.ci.ci_spec", decl_name: "gunbc_ci_gates"),
+  ],
+}
