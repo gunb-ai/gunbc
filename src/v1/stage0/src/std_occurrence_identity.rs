@@ -9,7 +9,7 @@ use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
 use self::ReferencePosition::*;
-pub use crate::std_algebra::{collection_concat_shape, FreeMonoid};
+pub use crate::std_algebra::{collection_concat_shape, is_prefix_of, FreeMonoid};
 pub use crate::std_content_hash::Fnv1a64Structural;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
@@ -547,64 +547,14 @@ pub fn occurrence_containment_ancestors_as_list(
     ))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct OccurrenceIdListPrefixAcc {
-    pub path_remaining: Rc<Vec<OccurrenceId>>,
-    pub ok: bool,
-}
-
-pub fn occurrence_id_list_is_prefix_of(
-    prefix: Rc<Vec<OccurrenceId>>,
-    path: Rc<Vec<OccurrenceId>>,
-) -> bool {
-    prefix
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(OccurrenceIdListPrefixAcc {
-                path_remaining: path.clone(),
-                ok: true,
-            }),
-            |acc: Rc<OccurrenceIdListPrefixAcc>, expected: OccurrenceId| {
-                if !acc.ok.clone() {
-                    acc.clone()
-                } else {
-                    match acc.path_remaining.clone().first().cloned() {
-                        std::option::Option::None => Rc::new(OccurrenceIdListPrefixAcc {
-                            path_remaining: Rc::new(vec![]),
-                            ok: false,
-                        }),
-                        Some(head) => {
-                            if occurrence_id_eq(head.clone(), expected.clone()) {
-                                Rc::new(OccurrenceIdListPrefixAcc {
-                                    path_remaining: Rc::new(v1_rt::list_skip(
-                                        &acc.path_remaining.clone(),
-                                        1,
-                                    )),
-                                    ok: true,
-                                })
-                            } else {
-                                Rc::new(OccurrenceIdListPrefixAcc {
-                                    path_remaining: acc.path_remaining.clone(),
-                                    ok: false,
-                                })
-                            }
-                        }
-                    }
-                }
-            },
-        )
-        .ok
-        .clone()
-}
-
 pub fn occurrence_containment_ancestors_are_prefix_of(
     prefix_ancestors: Rc<Vec<OccurrenceId>>,
     path_ancestors: Rc<Vec<OccurrenceId>>,
 ) -> bool {
-    occurrence_id_list_is_prefix_of(
+    crate::std_algebra::is_prefix_of(
         occurrence_containment_ancestors_as_list(prefix_ancestors),
         occurrence_containment_ancestors_as_list(path_ancestors),
+        |a, b| occurrence_id_eq(a, b),
     )
 }
 
