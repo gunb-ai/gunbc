@@ -36,7 +36,7 @@ import std.primitive_projection {
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
   primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
-  primitive_list_push, primitive_chars, primitive_string_contains, primitive_machine_word_native_operate,
+  primitive_list_push, primitive_chars, primitive_char_at, primitive_string_contains, primitive_machine_word_native_operate,
   primitive_sha256_hex_of_text, primitive_compile_dag_diagnostic_census,
 }
 
@@ -1264,6 +1264,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "to_string",
   "string_contains",
   "chars",
+  "char_at",
   "machine_word_native_operate",
   "sha256_hex_of_text",
   "compile_dag_diagnostic_census",
@@ -1660,6 +1661,8 @@ data primitive_machine_word_native_operate_traversal: PrimitiveTraversalOrderFac
 
 data primitive_chars_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_chars, order: SourcePreservingOrder }
 
+data primitive_char_at_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_char_at, order: OrderFreeResult }
+
 data primitive_list_push_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_list_push, order: SourcePreservingOrder }
 
 // sha256_hex_of_text digests its text's octets in text order (the digest of a reordering is a
@@ -1705,6 +1708,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_string_contains_traversal,
   primitive_machine_word_native_operate_traversal,
   primitive_chars_traversal,
+  primitive_char_at_traversal,
   primitive_list_push_traversal,
   primitive_sha256_hex_of_text_traversal,
   primitive_compile_dag_diagnostic_census_traversal,
