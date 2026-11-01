@@ -394,13 +394,6 @@ fn smbios_session_disagrees(attested: BmcControllerEndpoint?, accessed: BmcContr
   }
 }
 
-fn smbios_controller_of(attested: BmcControllerEndpoint?) -> BmcControllerEndpoint {
-  match attested {
-    Present { value: c } => c
-    Absent => BmcControllerEndpoint { host: "unattested" as NonEmptyStr }
-  }
-}
-
 fn classify_board_serial_agreement(
   unit: StepSubjectKey,
   accessed: BmcControllerEndpoint,
@@ -415,7 +408,13 @@ fn classify_board_serial_agreement(
   } else if (smbios_subject as String) != ((unit as NonEmptyStr) as String) {
     Present { value: SmbiosObservedForAnotherUnit { subject: smbios_subject } }
   } else if smbios_session_disagrees(attested: smbios_controller, accessed: accessed) {
-    Present { value: SmbiosSessionForAnotherController { attested: smbios_controller_of(smbios_controller), accessed: accessed } }
+    // The guard is true only for a Present attestation naming another host, so the refusal names the
+    // endpoint the session was actually attested to. There is no endpoint invented for an unattested
+    // session (DESIGN §5: a value that looks real makes a false fact writable).
+    match smbios_controller {
+      Present { value: c } => Present { value: SmbiosSessionForAnotherController { attested: c, accessed: accessed } }
+      Absent => none
+    }
   } else if (fru_serial as String) != (smbios_serial as String) {
     Present { value: BoardSerialsDisagree { fru: fru_serial, smbios: smbios_serial } }
   } else {
