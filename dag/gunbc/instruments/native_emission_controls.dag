@@ -808,6 +808,9 @@ fn rc_match_clone_cases() -> List<NativeEmissionCase> {
 }
 
 data native_emission_expected_identities: List<String> = [
+  "catchall_guard_restores_shared_carrier",
+  "catchall_guard_fallthrough_preserves_value",
+  "catchall_tco_guard_and_body_restore_shared_carrier",
   "catchall_enum_payload_restores_shared_carrier",
   "explicit_enum_payload_keeps_its_value",
   "catchall_recursive_payload_restores_shared_carrier",
@@ -1071,6 +1074,52 @@ fn control_recursive_lookup_wrap(value: ControlRecursiveLookup) -> ControlRecurs
   }
 }
 
+// Passing the catch-all to another function in a guard requires its source Rc carrier.
+// A false guard must leave the original value available to the following arm.
+fn control_recursive_guard(value: ControlRecursiveLookup, remaining: Int) -> Bool {
+  remaining > 0 && (match value { ControlRecursiveEnd => false _ => true })
+}
+
+fn control_recursive_guard_wrap(value: ControlRecursiveLookup, remaining: Int) -> ControlRecursiveLookupOutcome {
+  match value {
+    other if control_recursive_guard(value: other, remaining: remaining) => ControlRecursiveLookupRefused { cause: other }
+    other => ControlRecursiveLookupRefused { cause: other }
+  }
+}
+
+fn control_recursive_tco_guard_wrap(value: ControlRecursiveLookup, remaining: Int) -> ControlRecursiveLookupOutcome {
+  match value {
+    other if control_recursive_guard(value: other, remaining: remaining) => control_recursive_tco_guard_wrap(value: other, remaining: remaining - 1)
+    other => ControlRecursiveLookupRefused { cause: other }
+  }
+}
+
+fn catchall_guard_carrier_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "catchall_guard_restores_shared_carrier",
+      held: match control_recursive_guard_wrap(value: ControlRecursiveNext { next: ControlRecursiveEnd }, remaining: 1) {
+        ControlRecursiveLookupRefused { cause: ControlRecursiveNext { next: ControlRecursiveEnd } } => true
+        _ => false
+      },
+    },
+    NativeEmissionCase {
+      identity: "catchall_guard_fallthrough_preserves_value",
+      held: match control_recursive_guard_wrap(value: ControlRecursiveNext { next: ControlRecursiveEnd }, remaining: 0) {
+        ControlRecursiveLookupRefused { cause: ControlRecursiveNext { next: ControlRecursiveEnd } } => true
+        _ => false
+      },
+    },
+    NativeEmissionCase {
+      identity: "catchall_tco_guard_and_body_restore_shared_carrier",
+      held: match control_recursive_tco_guard_wrap(value: ControlRecursiveNext { next: ControlRecursiveEnd }, remaining: 3) {
+        ControlRecursiveLookupRefused { cause: ControlRecursiveNext { next: ControlRecursiveEnd } } => true
+        _ => false
+      },
+    },
+  ]
+}
+
 fn nested_payload_catchall_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase {
@@ -1098,7 +1147,7 @@ fn nested_payload_catchall_cases() -> List<NativeEmissionCase> {
 }
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(nested_payload_catchall_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), mixed_set_carrier_cases())))))))
+  concat(catchall_guard_carrier_cases(), concat(nested_payload_catchall_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), mixed_set_carrier_cases()))))))))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

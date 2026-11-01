@@ -15383,11 +15383,11 @@ fn emit_rc_deeper_inner_arm_strs(members: List<RcGroupedArmEntry>, field: String
   // would fold those into one inner match without it (E0004 over CoreEdgeLabel in v2.std.node
   // resolved_reference_kind_of_label); the ordinary lowering likewise skips grouping then.
   if posed |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a))) {
-    posed |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+    posed |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, scrutinee_unwrapped: false, present_binding: false))
   } else {
   rc_grouped_match_arm_strs(arms: posed, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: "", allow_deeper: true,
     emit_group: (inner_members, inner_plan) => emit_rc_grouped_match_arm(members: inner_members, plan: inner_plan, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
-    emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+    emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, scrutinee_unwrapped: false, present_binding: false))
   }
 }
 
@@ -15400,18 +15400,18 @@ fn emit_rc_deeper_inner_arm_strs(members: List<RcGroupedArmEntry>, field: String
 // re-emission -- and the interpreter's eval_match read that predicate and decide nothing of their
 // own, so the typing, the emitted pattern and the interpreted arm cannot disagree about which arm
 // sees the payload. The earlier `None` arm keeps the `Some(..)` arms exhaustive.
-fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node) -> List<String> {
+fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node, scrutinee_unwrapped: Bool) -> List<String> {
   let has_irrefutable = arms |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
   if has_irrefutable {
     let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
     arms |> enumerate |> map(pair =>
-      emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false,
+      emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, scrutinee_unwrapped: scrutinee_unwrapped,
         present_binding: optional_match_arm_sees_present_value(scrutinee_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
     )
   } else {
     rc_grouped_match_arm_strs(arms: arms, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, allow_deeper: true,
       emit_group: (members, rep) => emit_rc_grouped_match_arm(members: members, plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
-      emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+      emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, scrutinee_unwrapped: scrutinee_unwrapped, present_binding: false))
   }
 }
 
@@ -15465,7 +15465,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     Present { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
     Absent => type_variable_node(id: "match_result")
   }
-  let arm_strs = emit_typed_match_arm_strs(arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, scrut_rt: resolved_type(n: scrutinee))
+  let arm_strs = emit_typed_match_arm_strs(arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, scrut_rt: resolved_type(n: scrutinee), scrutinee_unwrapped: rc_match.needs_deref)
   let arms_str = arm_strs |> join(separator: "\n")
 
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
@@ -15481,7 +15481,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else if needs_string_from {
     let sf_absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
-    let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true,
+    let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true, scrutinee_unwrapped: false,
       present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)))
     let sf_arms_str = sf_arm_strs |> join(separator: "\n")
     concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
@@ -15505,7 +15505,24 @@ fn emit_typed_match_arm_body_str(arm: Node, registry: Map<String, ItemInfo>, sco
   }
 }
 
-fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, string_from_mode: Bool, present_binding: Bool) -> String {
+// A root catch-all binds the UNWRAPPED enum when match lowering used deref_clone.
+// Restore the source carrier at the binding boundary, not at each payload consumer. Ordinary
+// and TCO bodies and authored guards all use this one rule. Guard restoration clones because
+// a failed guard must leave the matched value available to later arms. Optional and nested-field
+// paths that did not unwrap this scrutinee are unchanged; neither is guessed from the name.
+fn rust_match_binding_restore(pattern: MatchPattern, scrutinee_unwrapped: Bool, expression: String) -> String {
+  if scrutinee_unwrapped {
+    match pattern {
+      Bind { declaration: declaration } => {
+        let name = emit_ident(name: declaration.name, target: Rust)
+        concat("{ let ", name, " = ", rust_shared_wrap_ctor(inner_expr: concat(name, ".clone()")), "; ", expression, " }")
+      }
+      _ => expression
+    }
+  } else { expression }
+}
+
+fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, string_from_mode: Bool, present_binding: Bool, scrutinee_unwrapped: Bool) -> String {
   let arm_pat = arm_pattern(n: arm)
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
@@ -15537,12 +15554,13 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     collect_pattern_rc_variant_guards(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
   } else { "" }
   let arm_guard_str = match arm_g {
-    Present { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    Present { value: g } => rust_match_binding_restore(pattern: arm_pat, scrutinee_unwrapped: scrutinee_unwrapped, expression: emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
     Absent => ""
   }
   let guard_parts = [field_guards, rc_variant_guards, arm_guard_str] |> filter(g => g != "")
   let guard_str = if guard_parts |> count == 0 { "" } else { concat(" if ", guard_parts |> join(separator: " && ")) }
-  let body_str = emit_typed_match_arm_body_str(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type)
+  let body_raw = emit_typed_match_arm_body_str(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type)
+  let body_str = rust_match_binding_restore(pattern: arm_pat, scrutinee_unwrapped: scrutinee_unwrapped, expression: body_raw)
   if rc_analysis.needs_rc_pattern {
     let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
@@ -17628,13 +17646,13 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       let has_irrefutable = arm_list |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
       let arm_strs = if has_irrefutable {
         arm_list |> enumerate |> map(pair =>
-          emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+          emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type, scrutinee_unwrapped: rc_match.needs_deref,
             present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       } else {
         rc_grouped_match_arm_strs(arms: arm_list, scope: frame.scope, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type, allow_deeper: false,
           emit_group: (members, rep) => emit_rc_grouped_tco_match_arm(members: members, plan: rep, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info),
           emit_single: (index, arm) =>
-          emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+          emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type, scrutinee_unwrapped: rc_match.needs_deref,
             present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: arm), arm_index: index, absent_arm_index: absent_arm_index)))
       }
       let arms_str = arm_strs |> join(separator: "\n")
@@ -17730,7 +17748,7 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registr
     emit_default_return: frame => emit_rust_tco_default_return(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info))
 }
 
-fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, present_binding: Bool) -> String {
+fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, present_binding: Bool, scrutinee_unwrapped: Bool) -> String {
   let arm_pat = arm_pattern(n: arm)
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
@@ -17750,12 +17768,13 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
     collect_pattern_rc_variant_guards(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
   } else { "" }
   let arm_guard_str = match arm_g {
-    Present { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    Present { value: g } => rust_match_binding_restore(pattern: arm_pat, scrutinee_unwrapped: scrutinee_unwrapped, expression: emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
     Absent => ""
   }
   let guard_parts = [field_guards, rc_variant_guards, arm_guard_str] |> filter(g => g != "")
   let guard_str = if guard_parts |> count == 0 { "" } else { concat(" if ", guard_parts |> join(separator: " && ")) }
-  let body_str = emit_typed_tco_expr(texpr: arm_b, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let body_raw = emit_typed_tco_expr(texpr: arm_b, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let body_str = rust_match_binding_restore(pattern: arm_pat, scrutinee_unwrapped: scrutinee_unwrapped, expression: body_raw)
   if rc_analysis.needs_rc_pattern {
     let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
