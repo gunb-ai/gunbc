@@ -1058,7 +1058,7 @@ fn census_buckets_add_up(c: AttemptSlotsCensus) -> Bool {
 // THE DEFAULT THAT USED TO BE HERE: an unreadable slot read as "generation 0". No line of this census
 // may report a generation it did not observe.
 fn census_reports_no_generation_zero(c: AttemptSlotsCensus) -> Bool {
-  !any(census_entries(c: c), e => match e.source { SlotRead { generation: g, state: _, payload_bytes: _ } => g == 0  _ => false })
+  !any(census_entries(c: c), e => match e.source { SlotRead { generation: g, state: _, payload: _ } => g == 0  _ => false })
 }
 
 // THE ORPHAN: opened and launched in the OLD store, exactly as the Oct-14 attempt was (its slot is
