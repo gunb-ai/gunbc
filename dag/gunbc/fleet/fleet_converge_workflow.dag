@@ -150,7 +150,7 @@ import gunbc.host.host_boot_attempt_admission { boot_attempt_receipt_env_name, b
 import gunbc.runner.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
 import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_job, qualification_floor_job_id, qualification_attempt_subject_env_name, qualification_attempt_artifact_glob }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_emit_build_timeout_minutes }
-import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_step_timeout_minutes, srv1_root_mutation_select_name_env, srv1_root_mutation_select_value_env }
+import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_step_timeout_minutes, srv1_root_mutation_select_name_env, srv1_root_mutation_select_value_env, srv1_root_mutation_mode_env }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
 import gunbc.ci.ci_spec {
   site_pxe_edge_converge_receipt_path,
@@ -4365,6 +4365,17 @@ fn fleet_converge_srv1_root_mutation_approval_steps(selects: List<String>) -> Li
   ]
 }
 
+// THE MODE, HANDED TO EVERY STEP OF A ROOT-MUTATION JOB AT JOB LEVEL (not step level): the gate step
+// AND every inheriting step rebuild the same request from the run's own variables, and the request
+// reads the mode's row for its destructiveness and its purpose sentence -- so a variable only one step
+// can see would make the other steps' rebuild refuse mid-job. The value is the dispatch's own `mode`
+// input, so the job never re-spells its mode and no rule keys on the job-name spelling; the roster of
+// what each mode does lives in gunbc.fleet.srv1_root_mutation_approval_run
+// srv1_root_mutation_mode_authorities, and a mode with no row there files nothing.
+fn fleet_converge_srv1_root_mutation_job_env() -> List<YamlKeyValue> {
+  [kv(key: srv1_root_mutation_mode_env, value: yaml_string(s: "${{ github.event.inputs.mode }}"))]
+}
+
 fn fleet_converge_dashboard_deploy_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: DashboardDeploy) as String,
@@ -4405,7 +4416,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
       ]
     ),
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: DashboardDeploy)),
-    env: none,
+    env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
     if_condition: Present { value: fleet_converge_dashboard_deploy_step_if },
     timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },
@@ -4549,7 +4560,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
       ]
     ),
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall)),
-    env: none,
+    env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
     if_condition: Present { value: fleet_converge_microvm_controller_install_step_if },
     timeout_minutes: Present { value: gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes() },
@@ -4583,7 +4594,7 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
       ]
     ),
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: ApprovalBrokerDarkInstall)),
-    env: none,
+    env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
     if_condition: Present { value: fleet_converge_approval_broker_dark_install_step_if },
     timeout_minutes: Present { value: minute_count(gunbc_ci_approval_broker_dark_install_job_backstop_timeout()) },
@@ -4649,7 +4660,7 @@ fn fleet_converge_approval_ntfy_retire_job() -> Job {
       ]
     ),
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: ApprovalNtfyRetire)),
-    env: none,
+    env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
     if_condition: Present { value: fleet_converge_approval_ntfy_retire_step_if },
     timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },

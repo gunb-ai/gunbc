@@ -1072,7 +1072,7 @@ data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
 data srv1_root_mutation_approval_row: PrivilegedEffectSite = PrivilegedEffectSite {
   site: decl_ref(module_path: "gunbc.fleet.srv1_root_mutation_approval_run", decl_name: "srv1_root_mutation_after_gate"),
   effect: PrivilegedEffect {
-    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), the job files one access request with the approval broker and proceeds only on the operator's device-redeemed approval" as NonEmptyStr,
+    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install, ntfy retirement), the job files one access request with the approval broker and proceeds only on the operator's device-redeemed approval" as NonEmptyStr,
     frequency: EveryOperatorRequest,
     reversibility: ReversibleByReapply,
     surface: ApiSurface,
