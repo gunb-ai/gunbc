@@ -17,7 +17,7 @@ import gunbc.spool_queue {
   SpoolRole, SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, EntryStanding, EntryAmbiguous, RolePending, RoleClaimed, RoleHandedOff, RoleRefused,
   ClaimEligible, ClaimRoleUndeclared, ClaimNotRealized, SpoolPublication, SpoolEntryDirectory, SpoolEntryFile, SpoolOutcomeRefused, spool_role_dir, spool_declaration, CompleteNotClaimed, ClaimAlreadyClaimed, ClaimRefused, ClaimAbsent, ClaimTerminal,
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
-  ClaimantObservedDead, ClaimantUnobservable, spool_entry_key, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
+  ClaimantObservedDead, ClaimantUnobservable, spool_entry_key, spool_entry_key_of_name, spool_entry_wire_name, spool_entry_key_of_wire_name, SpoolKeyMinted, SpoolKeyRefused,
 }
 
 // THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue) IS A MODEL; ITS EFFECT LAYER IS NOT
@@ -423,5 +423,23 @@ test fn the_writers_column_names_no_writer_for_an_undeclared_role() -> ProcessEx
     ExitSuccess
   } else {
     exit_failure(reason: "the writers column answers for an undeclared role, or omits a declared one")
+  }
+}
+
+// The publication spool's entry is a file: its wire name carries the declared suffix, a bare name is foreign, and a
+// directory spool's wire name is its key name unchanged.
+test fn the_wire_name_carries_the_declared_entry_kind() -> ProcessExit {
+  match spool_entry_key_of_wire_name(kind: SpoolPublication, wire_name: "abc.json") {
+    SpoolKeyMinted { key: k } =>
+      match spool_entry_key_of_wire_name(kind: SpoolPublication, wire_name: "abc") {
+        SpoolKeyMinted { key: _ } => exit_failure(reason: "a file entry name without the suffix was admitted")
+        SpoolKeyRefused { detail: _ } =>
+          if spool_entry_wire_name(key: k) == "abc.json" {
+            ExitSuccess
+          } else {
+            exit_failure(reason: "the wire name does not round-trip")
+          }
+      }
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
   }
 }

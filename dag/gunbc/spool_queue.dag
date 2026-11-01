@@ -1,7 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, path_segment_is_safe }
-import std.algebra { unique, zip_map, skip, list_append }
+import std.algebra { unique, zip_map, skip, list_append, string_concat_join }
 import std.optional { Optional, Present, Absent, optional_is_absent }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
@@ -232,6 +232,37 @@ fn spool_entry_key(kind: SpoolKind, parts: List<String>) -> SpoolKeyMint {
 // re-minting its parts. A foreign name (wrong count, empty or unsafe part) is SpoolKeyRefused, never a key.
 fn spool_entry_key_of_name(kind: SpoolKind, name: String) -> SpoolKeyMint {
   spool_entry_key(kind: kind, parts: name.split(delimiter: spool_declaration(kind: kind).key_separator))
+}
+
+// THE WIRE NAME: the file or directory name an entry carries on disk. A directory entry is its key name; a file
+// entry is its key name plus the suffix its entry kind declares (the one place wire_suffix is read).
+fn spool_entry_wire_name(key: SpoolEntryKey) -> String {
+  match spool_declaration(kind: key.kind).entry_kind {
+    SpoolEntryDirectory => key.name as String
+    SpoolEntryFile { wire_suffix: suffix } => string_concat_join(fields: [key.name as String, suffix as String], separator: "")
+  }
+}
+
+// THE DECODE OF A WIRE NAME: a file name must carry the declared suffix, else it is foreign and refused; the key is
+// the name before it.
+fn spool_entry_key_of_wire_name(kind: SpoolKind, wire_name: String) -> SpoolKeyMint {
+  match spool_declaration(kind: kind).entry_kind {
+    SpoolEntryDirectory => spool_entry_key_of_name(kind: kind, name: wire_name)
+    SpoolEntryFile { wire_suffix: suffix } =>
+      match wire_name.split(delimiter: suffix as String) |> first() {
+        Absent => SpoolKeyRefused { detail: "a file entry name is empty" }
+        Present { value: stem } =>
+          match spool_entry_key_of_name(kind: kind, name: stem) {
+            SpoolKeyRefused { detail: d } => SpoolKeyRefused { detail: d }
+            SpoolKeyMinted { key: k } =>
+              if spool_entry_wire_name(key: k) == wire_name {
+                SpoolKeyMinted { key: k }
+              } else {
+                SpoolKeyRefused { detail: "a file entry name does not carry the declared wire suffix exactly once" }
+              }
+          }
+      }
+  }
 }
 
 fn spool_entry_key_parts(key: SpoolEntryKey) -> List<String> {
