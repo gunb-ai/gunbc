@@ -566,10 +566,8 @@ fn v1_freemonoid_element_params(
   // serde bound and in the hand-written Debug and PartialEq impl headers, and the generic enum carrying
   // that struct in a variant payload derives with serde's DEFAULT bound, so the emitted crate refused:
   // 5x E0277 plus 1x E0369 in v2-emitted-policy-unit-4 of
-  // gunbc.auth.approval_device_crypto_serve at main 70e952cbfbc8. The heap-reference arm further down is
-  // a SEPARATE rule for the case where the source itself writes the reference -- `List<Rc<X>>` -- and it
-  // is exercised by that case alone, pinned by ControlHeapOwedRow and ControlHeapOwedCarrier in
-  // gunbc.instruments.native_emission_controls.
+  // gunbc.auth.approval_device_crypto_serve at main 70e952cbfbc8. Nothing here involves a heap reference:
+  // the element is what the source declares, and the Rc the emitted Rust shows is added afterwards.
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
       v1_type_expr_is_free_monoid_carrier(type_expr: te, source_indices: source_indices)
