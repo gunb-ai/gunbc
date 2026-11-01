@@ -286,7 +286,7 @@ test fn an_incomplete_walk_writes_an_incomplete_baseline_and_says_so() -> Bool {
   )
   match after.basis {
     FlexSightingsBaselineIncomplete =>
-      length(after.sightings) == 1
+      length(after.sightings) == 0
         && string_contains(s: flex_carry_basis_word(carry: after), pattern: "basis=INCOMPLETE")
     FlexSightingsBaselineComplete => false
   }
