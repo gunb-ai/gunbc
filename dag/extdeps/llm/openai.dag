@@ -1,6 +1,6 @@
 module extdeps.llm.openai
 
-import std.types { NonEmptyStr, brand }
+import std.types { NonEmptyStr, string_non_empty, brand }
 import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -9,12 +9,27 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.llm.openai_contracts { openai_finish_reason_wire_contract }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
-import extdeps.languages.json.emit { JsonNumber }
+import extdeps.languages.json.grammar { JsonNumberLexeme }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "platform.openai.com/docs/api-reference/chat/create"
+  }
+}
+
+// THE SECOND ANCHOR, AND WHY THERE IS ONE. platform.openai.com answers 403 to a programmatic fetch,
+// so a claim made "from the docs, read today" cannot be re-checked by anyone who tries. The
+// openai-python client's types are GENERATED from OpenAI's OpenAPI spec by that vendor, so they are
+// the docs' own machine-readable form and a reader can fetch the same bytes: the tree below is pinned
+// to a commit, and the package version at that commit is 3.42.0. Where this section cites a member's
+// name, optionality or enumerated values, it is read off these generated types; where the prose
+// explains a meaning, it is the docs anchor. DESIGN section 3 -- cite the source, keep its real names,
+// declare its version.
+data extdeps_generated_sdk_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openai/openai-python/tree/0dcd904bc2fed26c737d9740bca5f6b0ecc4cb7f/src/openai/types"
   }
 }
 
@@ -390,106 +405,167 @@ type OpenAiResponses200Body {
 // OpenAiChatCompletionChunkBody payloads, one JSON object per event. This module does not own the
 // event framing -- extdeps.llm.openai_compat_sse owns the `data: ` line, the `[DONE]` sentinel,
 // an error that arrives as a data line, and a stream that ends without the sentinel -- and it
-// lists no products, engines or endpoints: the authority is the ExternalAuthority anchor at the
-// top of this file, read 2026-11-01, whose member list is what the coverage rows below declare
-// unmodelled rather than absent (DESIGN section 3, external upstream decomposition).
+// lists no products, engines or endpoints: the authority is the pair of ExternalAuthority anchors at
+// the top of this file -- the docs page for meaning, and the vendor's generated types pinned to a
+// commit and version for names, optionality and enumerated values -- whose member lists are what the
+// coverage rows below declare unmodelled rather than absent (DESIGN section 3, external upstream
+// decomposition).
 //
-// WHY A SAMPLING PARAMETER IS CARRIED AS THE PARSER'S OWN JsonNumber, AND NEVER AS TEXT.
+// WHY A SAMPLING PARAMETER IS AN UN-EVALUATED NUMBER LEXEME, AND NEVER A FLOAT AND NEVER TEXT.
 // std.float declares Float as a name with no operators and no ruled literal home -- its comment
-// records that v2 refuses a float literal with infer_reason_float_literal_home_unruled -- and the
-// json parser keeps a number as JsonNumber { lexeme } without ever evaluating it. So a request
-// read that produced a Float for `temperature` would be inventing a numeric home the language has
-// not ruled, and a caller that compared `temperature` as TEXT would be validating a string
-// standing in for a number. The carrier is therefore the parser's own JsonNumber: a typed JSON
-// number lexeme with its standing, no range check, no comparison, and nothing here re-encodes a
-// body -- a forwarder that re-emits the lexeme it read sends the client's bytes back out
-// unchanged. openai_chat_completion_wire_frontier_rows names the one trigger that turns these
-// into values: a ruled Float literal and operator home in std.float.
+// records that v2 refuses a float literal with infer_reason_float_literal_home_unruled -- so a request
+// read that produced a Float for `temperature` would be inventing a numeric home the language has not
+// ruled, and a caller that compared `temperature` as TEXT would be validating a string standing in for
+// a number. The carrier is therefore `extdeps.languages.json.grammar`'s `JsonNumberLexeme`, which is
+// obtained only through its checked constructor `json_number_lexeme`: a typed JSON number lexeme with
+// its standing, no range check, no comparison, and nothing here re-encodes a body -- a forwarder that
+// re-emits the lexeme it read sends the client's bytes back out unchanged.
+//
+// `JsonNumber` IS NOT THAT CARRIER AND IS NOT A TYPE A FIELD MAY BE TYPED AS: in
+// `extdeps.languages.json.emit` it is one VARIANT of `JsonValue` (`JsonNumber { lexeme:
+// JsonNumberLexeme }`), so `temperature: JsonNumber` would name a variant where a type is required and
+// would not resolve. The lexeme is the declaration; the variant is what the parser wraps around it.
 type OpenAiCompletionStop
   = StopAtString { text: String }
   | StopAtStrings { texts: List<String> }
 
+// Both members are optional upstream -- the generated `ChatCompletionStreamOptionsParam` is a
+// total=False TypedDict -- so each is its own option rather than defaulting a client's silence.
 type OpenAiStreamOptions {
-  include_usage: Bool
+  // If set, an extra chunk arrives before the `[DONE]` sentinel carrying the whole request's usage,
+  // with `choices` empty; other chunks carry `usage` with a null value.
+  include_usage: Bool?
+  // Upstream's own member: when true, streamed deltas carry an `obfuscation` field of random
+  // characters that normalizes payload size as a side-channel mitigation. It is ON BY DEFAULT, so
+  // omitting it is not the same as turning it off, and a forwarder that dropped it would change what
+  // the server sends.
+  include_obfuscation: Bool?
 }
 
-// `max_tokens` is the member the anchor documents for this endpoint. The Responses API's
-// `max_output_tokens` is a different endpoint's member and is not borrowed in here.
+// `max_tokens` and `max_completion_tokens` are BOTH on this endpoint's request today: the generated
+// types carry `max_tokens` (the older name, deprecated upstream but still accepted) and
+// `max_completion_tokens`, so a read that wants "how many tokens may I get" must look at both, and
+// which one a client sent is a fact the caller keeps. The Responses API's `max_output_tokens` is a
+// different endpoint's member and is not borrowed in here.
+//
+// `stream` IS OPTIONAL, and absent is not false in the model -- it is absent. The generated types carry
+// it as two overloads, `Optional[Literal[False]]` for the non-streaming call and
+// `Required[Literal[True]]` for the streaming one, so a client that never mentions `stream` is sending a
+// perfectly valid request that would not inhabit a record whose `stream` were a bare `Bool`. A reader
+// that needs a Bool reads `Absent` as "not streaming": that is the upstream meaning, stated here rather
+// than defaulted silently inside a type.
 type OpenAiChatCompletionRequest {
   model: String
   messages: List<OpenAiChatMessage>
   max_tokens: Int?
+  max_completion_tokens: Int?
   n: Int?
   seed: Int?
   stop: OpenAiCompletionStop?
-  stream: Bool
+  stream: Bool?
   stream_options: OpenAiStreamOptions?
   reasoning_effort: OpenAiReasoningEffort?
-  temperature: JsonNumber?
-  top_p: JsonNumber?
-  presence_penalty: JsonNumber?
-  frequency_penalty: JsonNumber?
+  temperature: JsonNumberLexeme?
+  top_p: JsonNumberLexeme?
+  presence_penalty: JsonNumberLexeme?
+  frequency_penalty: JsonNumberLexeme?
 }
 
-// WHY THIS IS THE SIXTH COPY OF A PAIR AND IS NOT YET GENERALIZED (§6b). Five members of this file
-// already carry the same construction -- a wire-name table, a chain that reads it, an arm that keeps
-// an unknown name whole, and a match that re-emits (OpenAiToolCallType, OpenAiResponsesOutputContentType,
-// OpenAiResponsesOutputItemType, OpenAiResponsesStatus, OpenAiResponsesOutputItemStatus). §6b rejects a
-// repeated pattern until the author answers why it should not be generalized. The answer here is: it
-// SHOULD be, and not now, for two reasons that are facts rather than convenience. (1) Generalizing means
-// rewriting five members this PR does not own, three of them the Responses API shapes, and changing what
-// a parse returns for an undocumented wire name is a behavioural change on readers this PR has not read;
-// the honest unit of that change is one PR per upstream surface, with its readers. (2) The generic shape
-// is not yet determined by evidence: the six copies differ in whether an unknown name is kept, refused,
-// or folded into a status, and a table written now would be guessed rather than read off the last copy.
-// The follow-up is declared, not assumed: openai_chat_completion_wire_frontier_rows carries the row, whose
-// trigger is the seventh member or the first migration, and whose carrier is a wire-name table over a type
-// parameter (the language has parametric declarations: std.algebra Magma<T>, std.affine_space
-// SpatialResult<T>) with the unknown-name and empty-name arms supplied per member.
+// WHY THIS IS THE SIXTH COPY OF A PAIR, WHAT IS GENERALIZED NOW, AND WHAT IS NOT (DESIGN section 6b).
+// Five members of this file already carry the construction -- a wire-name table, a chain that reads it,
+// an arm that keeps an unknown name whole, and a match that re-emits it: `OpenAiToolCallType`,
+// `OpenAiResponsesOutputContentType`, `OpenAiResponsesOutputItemType`, `OpenAiResponsesStatus` and
+// `OpenAiResponsesOutputItemStatus`. Read them rather than guessing: all five have the SAME unknown-name
+// arm, `Other { raw: NonEmptyStr }`, and all five fill it straight from a `String`, so all five can put an
+// empty runtime name behind a type whose name promises otherwise. That is the same defect this member had;
+// my first cut patched it at this site alone, which was the wrong answer to a repeated pattern. Nor is the
+// idiom local to this module: `extdeps.cloud.gcp.errors`' `GcpRpcCodeOther` and
+// `extdeps.container.oci.types`' `OciMediaTypeOther` are written the same way, outside this file.
 //
-// An enumerated member: wire name in, variant out. A request that names a fifth effort is not
-// silently read as one of the four, and it is not refused here either -- the endpoint owns the
-// answer to an effort it does not know; this model only reports the shape.
+// Section 6b's trigger is the second local implementation, so the generalization is overdue, and part of
+// it is taken HERE: what the six genuinely share is the CHECK, and the check is now one declaration,
+// `openai_documented_wire_name`, which this member routes through and which any migration should adopt.
+// What is not folded together is the documented-name TABLES, and the reason holds rather than being
+// convenient: they are six different upstream enumerations from three different endpoints, each with its
+// own source, so they are not six copies of one fact -- one table over a type parameter (the parametric
+// precedents are `std.algebra`'s `Magma` and `std.affine_space`'s `SpatialResult`) would still need six
+// row-sets supplied per member and its unknown-name behaviour, and that shape is not yet read off a
+// second use. Migrating them is also not a local edit: a parse's return type is reader-visible, and all
+// five are called by `test/claim/extdeps_llm_type_grounding_witness`, which has to be carried member by
+// member. So the follow-up is declared with its trigger in `openai_chat_completion_wire_frontier_rows`,
+// not assumed away.
 //
-// THE EMPTY NAME IS REFUSED, NOT CARRIED. `raw` is a `NonEmptyStr`, which is
-// `String where string_non_empty`, and that predicate is enforced at LITERAL sites only until
-// compile-time evaluation lands (std.types, feature:where-refinement-predicate-declaration-authority).
-// So routing an empty name into that field would put an empty string behind a type whose name
-// promises otherwise, and nothing would say so -- the type would be doing the lying. The refusal is
-// its own arm rather than a Bool parameter or a sanitizing default, because an absent name and an
-// undocumented name are three different facts the caller may need to tell apart, and §5 refuses
-// silently widening a failure arm. This is a fact about THIS endpoint's wire, not a general string
-// law; the general law, if one is ever needed, is std.types' predicate and stays there.
+// THE DOCUMENTED SET IS SEVEN VALUES, NOT FOUR: none, minimal, low, medium, high, xhigh, max. The four-arm
+// version of this type could not represent a valid request that asks for `xhigh`, which is the same class
+// of defect as making an optional request member required -- a real caller's message had no inhabitant. The
+// names are the upstream ones, read off the generated `ReasoningEffort` alias under the anchor at the top of
+// this file; `extdeps.openrouter` already carries all seven, so this is not a set invented here either.
+//
+// AN UNDOCUMENTED NAME STAYS WHOLE, AND AN EMPTY NAME REFUSES THE PARSE. A name outside the seven is the
+// endpoint's knowledge, not this module's, so it is kept rather than folded into a nearest guess -- but it
+// is kept through the checked constructor, so `""` yields Absent instead of a carrier whose type promises
+// non-empty. That refusal belongs to this endpoint's wire, and the general law stays `std.types`'
+// `string_non_empty`, which the constructor calls.
 type OpenAiReasoningEffort
-  = EffortMinimal
-  | EffortLow
-  | EffortMedium
-  | EffortHigh
-  | UndocumentedEffortName { raw: NonEmptyStr }
-  | EmptyEffortName
+  = OpenAiReasoningEffortNone
+  | OpenAiReasoningEffortMinimal
+  | OpenAiReasoningEffortLow
+  | OpenAiReasoningEffortMedium
+  | OpenAiReasoningEffortHigh
+  | OpenAiReasoningEffortXHigh
+  | OpenAiReasoningEffortMax
+  | OpenAiReasoningEffortUndocumented { raw: NonEmptyStr }
 
+data openai_reasoning_effort_none_wire: String = "none"
 data openai_reasoning_effort_minimal_wire: String = "minimal"
 data openai_reasoning_effort_low_wire: String = "low"
 data openai_reasoning_effort_medium_wire: String = "medium"
 data openai_reasoning_effort_high_wire: String = "high"
+data openai_reasoning_effort_xhigh_wire: String = "xhigh"
+data openai_reasoning_effort_max_wire: String = "max"
 
-fn parse_openai_reasoning_effort(raw: String) -> OpenAiReasoningEffort {
-  if raw == openai_reasoning_effort_minimal_wire { EffortMinimal }
-  else if raw == openai_reasoning_effort_low_wire { EffortLow }
-  else if raw == openai_reasoning_effort_medium_wire { EffortMedium }
-  else if raw == openai_reasoning_effort_high_wire { EffortHigh }
-  else if raw == "" { EmptyEffortName }
-  else { UndocumentedEffortName { raw: raw } }
+// THE ONE CHECK THE SIX COPIES SHARE. A wire name is carried as `NonEmptyStr`, and that predicate is
+// enforced at literal sites only until compile-time evaluation of where-predicates lands, so assigning a
+// runtime `String` into the field -- which is what all five older copies do -- checks nothing. One checked
+// constructor owns the decision instead: Present when the name has a character, Absent when it does not,
+// with no default and no sanitizing. `std.types`' `string_non_empty` is the law; this is the call site.
+fn openai_documented_wire_name(raw: String) -> NonEmptyStr? {
+  if string_non_empty(value: raw) {
+    Present { value: raw as NonEmptyStr }
+  } else {
+    Absent
+  }
+}
+
+// Wire name in, variant out -- or Absent, for a name with no characters in it. A request that names an
+// eighth effort is not silently read as one of the seven, and it is not refused here either: the endpoint
+// owns the answer to an effort it does not know, and this model reports the shape.
+fn parse_openai_reasoning_effort(raw: String) -> OpenAiReasoningEffort? {
+  if raw == openai_reasoning_effort_none_wire { Present { value: OpenAiReasoningEffortNone } }
+  else if raw == openai_reasoning_effort_minimal_wire { Present { value: OpenAiReasoningEffortMinimal } }
+  else if raw == openai_reasoning_effort_low_wire { Present { value: OpenAiReasoningEffortLow } }
+  else if raw == openai_reasoning_effort_medium_wire { Present { value: OpenAiReasoningEffortMedium } }
+  else if raw == openai_reasoning_effort_high_wire { Present { value: OpenAiReasoningEffortHigh } }
+  else if raw == openai_reasoning_effort_xhigh_wire { Present { value: OpenAiReasoningEffortXHigh } }
+  else if raw == openai_reasoning_effort_max_wire { Present { value: OpenAiReasoningEffortMax } }
+  else {
+    match openai_documented_wire_name(raw: raw) {
+      Present { value: name } => Present { value: OpenAiReasoningEffortUndocumented { raw: name } }
+      Absent => Absent
+    }
+  }
 }
 
 fn openai_reasoning_effort_wire(effort: OpenAiReasoningEffort) -> String {
   match effort {
-    EffortMinimal => openai_reasoning_effort_minimal_wire
-    EffortLow => openai_reasoning_effort_low_wire
-    EffortMedium => openai_reasoning_effort_medium_wire
-    EffortHigh => openai_reasoning_effort_high_wire
-    UndocumentedEffortName { raw: r } => r
-    EmptyEffortName => ""
+    OpenAiReasoningEffortNone => openai_reasoning_effort_none_wire
+    OpenAiReasoningEffortMinimal => openai_reasoning_effort_minimal_wire
+    OpenAiReasoningEffortLow => openai_reasoning_effort_low_wire
+    OpenAiReasoningEffortMedium => openai_reasoning_effort_medium_wire
+    OpenAiReasoningEffortHigh => openai_reasoning_effort_high_wire
+    OpenAiReasoningEffortXHigh => openai_reasoning_effort_xhigh_wire
+    OpenAiReasoningEffortMax => openai_reasoning_effort_max_wire
+    OpenAiReasoningEffortUndocumented { raw: r } => r
   }
 }
 
@@ -499,6 +575,39 @@ fn openai_reasoning_effort_wire(effort: OpenAiReasoningEffort) -> String {
 // not empty -- an empty `content` is a token that is the empty string, which is a different fact
 // from a chunk that sent no content member at all.
 data openai_chat_completion_chunk_object_wire: String = "chat.completion.chunk"
+
+// THE CHUNK'S `object` IS A CONSTANT IN THE SPEC, SO IT IS TYPED AS ONE AND BUILT ONLY BY CHECKING --
+// the same shape as `OpenAiTextCompletionObject`, and for the same reason: the chat answer, the chunk and
+// a text completion all carry an `object` member, and while its member type was `String` a reader could
+// hand a `text_completion` or an error envelope to anything expecting a chunk. A nominal carrier plus a
+// constructor that yields Present for the documented value and Absent for everything else is DESIGN
+// section 4's `gunbc.design_ruling` where_refinements_retire_for_checked_constructors; the where-BRAND
+// carries identity only (the atom yields a `WherePredicateMarker`, never evaluated as a refinement), so
+// the type claims nothing the compiler cannot hold. Pattern: `extdeps.languages.json.grammar`'s
+// `JsonNumberLexeme` with `json_number_lexeme_valid`, `json_number_lexeme_unchecked` and the constructor
+// `json_number_lexeme`.
+type OpenAiChatCompletionChunkObject = String where brand("OpenAiChatCompletionChunkObject")
+
+fn openai_chat_completion_chunk_object_valid(s: String) -> Bool {
+  s == openai_chat_completion_chunk_object_wire
+}
+
+// The coercion is separate so the checked constructor stays the only producer of a carrier in this
+// repository. That is a claim about call sites, not reachability: `dag` has no visibility modifier, so
+// nothing hides this, and what the brand does prevent is a raw String standing in for the carrier.
+fn openai_chat_completion_chunk_object_unchecked(s: String) -> OpenAiChatCompletionChunkObject {
+  s as OpenAiChatCompletionChunkObject
+}
+
+// Present for "chat.completion.chunk", Absent for everything else -- including "text_completion", the
+// chat answer's "chat.completion" and any error envelope.
+fn openai_chat_completion_chunk_object(s: String) -> OpenAiChatCompletionChunkObject? {
+  if openai_chat_completion_chunk_object_valid(s: s) {
+    Present { value: openai_chat_completion_chunk_object_unchecked(s: s) }
+  } else {
+    Absent
+  }
+}
 
 type OpenAiChatCompletionChunkDelta {
   role: OpenAiChatMessageRole?
@@ -515,7 +624,7 @@ type OpenAiChatCompletionChunkChoice {
 
 type OpenAiChatCompletionChunkBody {
   id: String
-  object: String
+  object: OpenAiChatCompletionChunkObject
   created: Int
   model: String
   choices: List<OpenAiChatCompletionChunkChoice>
@@ -535,9 +644,40 @@ data structural_coverage_gap_openai_chat_chunk_tool_call_deltas: List<CoverageCl
     facts: [
       Subject { path: "OpenAiChatCompletionChunkDelta" },
       Missing { item: "tool_call_delta_with_index_and_argument_fragment" },
-      Missing { item: "function_call_delta" }
+      Missing { item: "function_call_delta" },
+      Missing { item: "audio_delta" },
+      Missing { item: "refusal_delta_annotation" }
     ],
     trigger: "a named home for a partial tool call held across events, with its accumulation rule"
+  }
+  {
+    facts: [
+      Subject { path: "OpenAiChatCompletionChunkBody" },
+      Missing { item: "obfuscation" },
+      Missing { item: "moderation" }
+    ],
+    trigger: "the first reader that must forward or act on what a chunk carries beyond content and usage -- obfuscation is sent by default whenever stream_options.include_obfuscation is not turned off, and moderation appears when the endpoint's moderation pass runs"
+  }
+]
+
+// `OpenAiFinishReason` carries stop, length, tool_calls and content_filter. The generated `Choice` for
+// this endpoint documents FIVE values, the fifth being the legacy `function_call`, so a response from a
+// call that used the deprecated `functions` parameter has no inhabitant today. The gap is declared rather
+// than closed here for a specific reason: the arms of this coproduct are top-level names in this module, so
+// `FunctionCall` is taken by the record that holds a tool call's name and arguments, and the wire spelling
+// is not free either -- `extdeps.llm.openai_contracts`' `openai_finish_reason_wire_contract` encodes this
+// coproduct by `CoproductWireContract` with `StringVariant { naming: SnakeCase }`, so an arm named anything
+// but `FunctionCall` would re-emit the wrong string, and `extdeps.llm.openai_rest` decodes the member
+// through that contract today. Closing it means giving the member an explicit-name contract or renaming the
+// colliding record, which is that contract's change to make with its readers, not this wire model's to
+// guess at.
+data structural_coverage_gap_openai_chat_finish_reason_function_call: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiFinishReason" },
+      Missing { item: "function_call" }
+    ],
+    trigger: "the PR that gives openai_finish_reason_wire_contract per-variant wire names, or renames the FunctionCall record out of the collision, and carries extdeps.llm.openai_rest's decode of the member"
   }
 ]
 
@@ -557,12 +697,16 @@ data structural_coverage_gap_openai_chat_completion_request_members: List<Covera
       Missing { item: "audio" },
       Missing { item: "modalities" },
       Missing { item: "prediction" },
-      Missing { item: "max_completion_tokens" },
       Missing { item: "service_tier" },
       Missing { item: "store_and_metadata" },
       Missing { item: "safety_identifier_and_user" },
       Missing { item: "web_search_options" },
-      Missing { item: "prompt_cache_key" }
+      Missing { item: "prompt_cache_key" },
+      Missing { item: "prompt_cache_options" },
+      Missing { item: "prompt_cache_retention" },
+      Missing { item: "verbosity" },
+      Missing { item: "moderation" },
+      Missing { item: "ttl_and_metadata" }
     ],
     trigger: "the first member a serving call must read or forward beyond sampling -- tools and response_format before the rest"
   }
@@ -574,7 +718,7 @@ data structural_coverage_gap_openai_chat_completion_request_members: List<Covera
 data openai_chat_completion_wire_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiChatCompletionRequest"),
-    reason: "temperature, top_p, presence_penalty and frequency_penalty are carried as the json parser's JsonNumber lexeme, because std.float declares Float as a name with no operators and no ruled literal home (v2 refuses a float literal: infer_reason_float_literal_home_unruled), and the json parser never evaluates a number's lexeme. Nothing here range-checks or orders them: that would be validation on text standing in for a number",
+    reason: "temperature, top_p, presence_penalty and frequency_penalty are carried as extdeps.languages.json.grammar's JsonNumberLexeme, built only through its checked constructor json_number_lexeme, because std.float declares Float as a name with no operators and no ruled literal home (v2 refuses a float literal: infer_reason_float_literal_home_unruled), and the json parser never evaluates a number's lexeme. Nothing here range-checks or orders them: that would be validation on text standing in for a number",
     dissolution: unbound_dissolution(description: "feature:std-float-literal-and-operator-home - std.float rules a float literal home and the comparison operators for it, and extdeps.languages.json reads a lexeme into that value; then these four members are typed as that value, a read that rejects an out-of-range sampling parameter becomes meaningful and is placed at the caller that owns the range, and this row deletes. The lexeme path stays for a forwarder that must re-emit the client's bytes unchanged"),
   ),
   // The request record has no reader yet. Its consumer is named rather than assumed: the request
@@ -591,8 +735,8 @@ data openai_chat_completion_wire_frontier_rows: List<FrontierRow> = [
   // in a comment: §6b allows deferring a generalization only with a stated reason and trigger.
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiReasoningEffort"),
-    reason: "the wire-name pair (table, read chain, unknown-keeping arm, re-emitting match) is written out by hand for the sixth time in this module; DESIGN section 6b makes the second local implementation the trigger to generalize, and the reason it is deferred here is in the comment above OpenAiReasoningEffort: rewriting five members this change does not own -- three of them Responses API shapes -- would change what an undocumented wire name reads to for readers this change has not read",
-    dissolution: unbound_dissolution(description: "feature:openai-wire-name-table-generalization - the seventh enumerated member of this module, or the first migration of an existing five, whichever comes first: one wire-name table over a type parameter (parametric declarations exist: std.algebra Magma<T>, std.affine_space SpatialResult<T>) taking the member's rows plus the unknown-name and empty-name arms, so adding a variant means adding a row and the pair is written once. The migrating PR must carry the readers of each member it converts, member by member"),
+    reason: "the wire-name pair (table, read chain, unknown-keeping arm, re-emitting match) is written out by hand for the sixth time in this module, and the five older copies are the same shape -- Other { raw: NonEmptyStr } filled straight from a String, which is why the empty-name check now lives in one shared checked constructor, openai_documented_wire_name, instead of a hand-written guard per member. What is still six copies is the documented-name TABLE, and DESIGN section 6b's trigger for generalizing that was the second local implementation, so it is overdue: the reason it is deferred, and the fact that the idiom also stands in extdeps.cloud.gcp.errors and extdeps.container.oci.types, is in the comment above OpenAiReasoningEffort",
+    dissolution: unbound_dissolution(description: "feature:openai-wire-name-table-generalization - one wire-name table over a type parameter (parametric declarations exist: std.algebra's Magma and std.affine_space's SpatialResult) taking each member's rows plus its unknown-name behaviour, adopted by all six members of this module and then by the same idiom in extdeps.cloud.gcp.errors and extdeps.container.oci.types. The migrating PR carries the readers with it member by member, which is where the cost really is: the five older parse functions are called by test/claim/extdeps_llm_type_grounding_witness, and a parse's return type is reader-visible"),
   ),
   // Same for the streamed payload: the framing is already read by extdeps.llm.openai_compat_sse,
   // but nothing yet reads what one of those events carries.
@@ -675,9 +819,11 @@ fn openai_text_completion_object(s: String) -> OpenAiTextCompletionObject? {
   }
 }
 
-// The prompt member as the endpoint document gives it. Four arms, each cited to the one member's union
-// in the anchor above (platform.openai.com/docs/api-reference/completions/create, member
-// `completions-prompt`, read 2026-11-01), which lists exactly these four shapes and no others:
+// The prompt member as the endpoint gives it. Four arms, each cited to the one member's union in the
+// anchors at the top of this file: the docs page (member `completions-prompt`) for the meaning, and the
+// vendor's generated `CompletionCreateParams.prompt` for the shape --
+// `Union[str, Sequence[str], Iterable[int], Iterable[Iterable[int]], None]` -- which lists exactly these
+// four shapes and no others:
 //   PromptText       -- string             one prompt, one completion
 //   PromptTexts      -- array<string>      one completion per entry
 //   PromptTokens     -- array<int>         one prompt, already tokenized by the caller
@@ -687,19 +833,34 @@ fn openai_text_completion_object(s: String) -> OpenAiTextCompletionObject? {
 // one completion and two, so it is not a detail a reader can recover. Tokens stay integers here: they
 // are already the engine's own vocabulary, and re-rendering them as text would make the tokenizer's
 // decision a routing fact.
+//
+// THE MEMBER IS REQUIRED, SO IT IS NOT AN OPTION HERE. The docs page lists `completions-prompt` as
+// required with no default, and the vendor's generated parameter says the same in code:
+// `prompt: Required[Union[str, SequenceNotStr[str], Iterable[int], Iterable[Iterable[int]], None]]` --
+// `SequenceNotStr` is upstream's own guard against reading a bare string as a list of characters, and it
+// is the reason `PromptTexts` is a list of strings and not a list of anything.. A request
+// record that typed this as `OpenAiCompletionPrompt?` would let a caller build a request the upstream
+// contract refuses -- for a REQUEST record, faithfulness means required members are not optional, and a
+// state that cannot legally occur is not a case this type should carry.
+//
+// The generated union also admits `None`, which is not the same thing as being absent: it is the member
+// present and holding null. That is deliberately not an arm here either. A null prompt asks for nothing to
+// complete, and the endpoint refuses it; four shapes are the four things a caller can actually ask for.
 type OpenAiCompletionPrompt
   = PromptText { text: String }
   | PromptTexts { texts: List<String> }
   | PromptTokens { tokens: List<Int> }
   | PromptTokenLists { token_lists: List<List<Int>> }
 
-// The sampling members are the same carrier as the chat request's, for the same reason: std.float has
-// no ruled literal or operator home, the json parser keeps a number as an un-evaluated lexeme, and
-// nothing here compares or range-checks them. `openai_chat_completion_wire_frontier_rows` carries that
-// frontier for both endpoints' requests; a ruled float home dissolves one, not one per endpoint.
+// The sampling members are the same carrier as the chat request's, for the same reason: std.float has no
+// ruled literal or operator home, the carrier is `extdeps.languages.json.grammar`'s `JsonNumberLexeme`
+// built only through `json_number_lexeme`, and nothing here compares or range-checks them. `JsonNumber`
+// itself is a VARIANT of `extdeps.languages.json.emit`'s `JsonValue`, not a type a field may be typed as.
+// `openai_chat_completion_wire_frontier_rows` carries that frontier for both endpoints' requests; a ruled
+// float home dissolves one row, not one per endpoint.
 type OpenAiTextCompletionRequest {
   model: String
-  prompt: OpenAiCompletionPrompt?
+  prompt: OpenAiCompletionPrompt
   suffix: String?
   max_tokens: Int?
   best_of: Int?
@@ -707,12 +868,16 @@ type OpenAiTextCompletionRequest {
   n: Int?
   seed: Int?
   stop: OpenAiCompletionStop?
-  stream: Bool
+  // Optional here for the same reason it is optional on the chat request: the generated parameters carry
+  // it as two overloads, `Optional[Literal[False]]` and `Required[Literal[True]]`, so a client that never
+  // mentions `stream` is sending a valid request that a required `Bool` would make unrepresentable. Absent
+  // is read as "not streaming", which is upstream's meaning and is stated rather than defaulted.
+  stream: Bool?
   stream_options: OpenAiStreamOptions?
-  temperature: JsonNumber?
-  top_p: JsonNumber?
-  presence_penalty: JsonNumber?
-  frequency_penalty: JsonNumber?
+  temperature: JsonNumberLexeme?
+  top_p: JsonNumberLexeme?
+  presence_penalty: JsonNumberLexeme?
+  frequency_penalty: JsonNumberLexeme?
 }
 
 type OpenAiTextCompletionChoice {
@@ -778,6 +943,13 @@ data structural_coverage_gap_openai_text_completion_members: List<CoverageClosur
       Missing { item: "logprobs_token_ranks" }
     ],
     trigger: "the streamed counterpart of the row above, which needs the accumulation rule for per-token logprobs across events"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiTextCompletionChoice" },
+      Missing { item: "finish_reason_is_the_chat_endpoint's_wider_set" }
+    ],
+    trigger: "a text-completion finish_reason of its own. The generated CompletionChoice documents exactly stop, length and content_filter for this endpoint, so typing the member with the chat coproduct OpenAiFinishReason admits values (tool_calls, and function_call once that gap closes) this endpoint never sends -- a superset, which is a reader's trap rather than a lie. A separate coproduct is blocked in this module by name, not by meaning: its unit arms would have to be Stop, Length and ContentFilter, and those three are already OpenAiFinishReason's arms, whose wire spelling comes from openai_finish_reason_wire_contract. The PR that gives this endpoint its own finish_reason either declares it in another module or gives both coproducts per-variant wire names"
   }
 ]
 
