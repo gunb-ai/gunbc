@@ -1415,15 +1415,19 @@ fn access_forced_change_pending(key: StepInstanceKey, forced: PublishedCredentia
 // converge_arrival_forced_through_bmc_secure and admit_forced_first_rotation_precedes_prior_life above, and
 // the fold that consults them. What is missing is the PRODUCTION MINT of the pending on the AccessDiscover
 // route: minting it needs the unauthenticated service-root read plus the build's measured 403 from the SAME
-// run, and on a forced build the authenticated read that follows the write comes from the redfish_accounts
-// BmcAccountStateObservation -- which is still IPMI-modeled on main. The named later change is crisp-gull-572's
-// dry Redfish observation in gunbc.machine_intake.bmc_secure (item 3, PR #15370), the faithful read surface for
-// ASRock ALTRAD8UD 03.22.00; when it lands, the AccessDiscover route mints the pending from that run's own 403
+// run. The authenticated read that follows the write is now available on the faithful surface -- main's
+// PR #15370 made gunbc.machine_intake.bmc_secure dry_read_bmc_account_state derive the AccountService census
+// from the world's served redfish_accounts, which is what the witness's post-write reading uses -- so what
+// remains is the unauthenticated service-root read plus the route that calls this driver, and the producer
+// that realizes the admitted forced write (gunbc.machine_intake.bmc_rotation_route
+// forced_first_rotation_apply_frontier). The read surface for ASRock ALTRAD8UD 03.22.00 is the one PR #15370
+// landed; when the unauthenticated service-root read and the executing route land, the AccessDiscover route
+// mints the pending from that run's own 403
 // and calls the forced driver, and the witnesses below become the regression pair rather than the only route.
 // Until then the forced path is realized only under test.claim.machine_intake.machine_intake_arrival_converge_witness,
 // which declares every minter it uses.
 data forced_change_arrival_route_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a production route in gunbc.machine_intake mints AccessForcedChangePending from the run's own unauthenticated service-root read and measured 403 on the AccessDiscover step and calls converge_arrival_forced_through_bmc_secure -- reached by crisp-gull-572's dry Redfish observation in gunbc.machine_intake.bmc_secure (item 3, PR #15370) replacing the IPMI-modeled redfish_accounts read at 03.22.00; NOT satisfied by a witness minting the pending itself" as NonEmptyStr,
+  description: "dissolves when a production route in gunbc.machine_intake mints AccessForcedChangePending from the run's own unauthenticated service-root read and measured 403 on the AccessDiscover step and calls converge_arrival_forced_through_bmc_secure, with the forced write realized by a producer consuming AdmittedForcedFirstRotation (gunbc.machine_intake.bmc_rotation_route forced_first_rotation_apply_frontier) and the post-write read taken by gunbc.machine_intake.bmc_secure dry_read_bmc_account_state over the world's served redfish_accounts (PR #15370, merged); NOT satisfied by a witness minting the pending itself, nor by a witness calling the write transport directly" as NonEmptyStr,
 )
 
 // THE ROW ADMISSION -- THE SINGLE AUTHORITY FOR TAKING THE DIVERGENCE.
