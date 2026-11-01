@@ -4,9 +4,6 @@ import std.optional { Present }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
 import std.algebra { trim }
 import std.filesystem { path_parent_directory }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { bound_dissolution }
-import std.decl_ref { decl_ref }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.gnu_coreutils {
   mktemp_file_command,
@@ -40,9 +37,9 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 //   4. rm -f    -- removes the staging name on every arm, success included.
 // The payload crosses only as stdin, so no byte of it is shell-parsed or an argv element.
 //
-// DECLARED FRONTIER (DESIGN §3c), enrolled as dashboard_target_write_consumer_frontier_rows: the consumer
-// is #15413 B1, DashboardMoveAttemptStateEntries, which replaces its inline `sh -c 'set -C; printf ...'`
-// with this function. That inline is on #15413's branch, not main.
+// CONSUMED (DESIGN §3c): DashboardMoveAttemptStateEntries (gunbc.roadmap.roadmap_dashboard_instance_apply)
+// writes every moved attempt-state entry through this function and removes the flat entry only on
+// CreateNewWritten. The declared frontier row this function carried is discharged by that consumer.
 //
 // MID-WRITE FAILURE has no enrolled claim: exercising it needs RLIMIT_FSIZE applied around the run, and no
 // instrument row or claim runner can carry a resource limit. It was shown once by hand (write of ~272 KiB under
@@ -67,14 +64,6 @@ type DashboardCreateNewOutcome
   | CreateNewRefused { exit_code: Int, stderr: String }
   | CreateNewNotDispatched { reason: String }
   | CreateNewStagingResidue { stage: String, landed: Bool, stderr: String }
-
-data dashboard_target_write_consumer_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.roadmap.roadmap_dashboard_target_write", decl_name: "dashboard_target_write_create_new"),
-    reason: "no production caller on main: the consumer is #15413 B1, DashboardMoveAttemptStateEntries (gunbc.roadmap.roadmap_dashboard_instance_apply), which writes each moved attempt-state entry as a create-only hold slot through this function instead of its inline sh redirect",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_state_layout_move", decl_name: "move_plan"))
-  )
-]
 
 // One argv, one dispatch. Not a mint of any outcome: it only runs a modelled command on the target.
 fn dashboard_target_run_command(instance: HostDashboardInstance, command: ArgvCommand, mode: DashboardTargetRunMode) -> DashboardTargetRan {
