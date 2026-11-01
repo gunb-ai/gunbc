@@ -1,5 +1,6 @@
 module gunbc.compute.work_provider_local
 
+import gunbc.durable_create_once { create_once_record, CreateOnceRecording, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused, directory_admission, DirectoryAdmitted, DirectoryNotAdmitted }
 import gunbc.compute.compute_attempt_slots_root {
   compute_attempt_slots, ComputeSeat, ComputeFlatSeat, compute_seat_of, compute_seat_directory, compute_seat_holder_line,
   ComputeSeatStore, compute_seat_store, ComputeSeatStoreReady, ComputeSeatStoreUnready,
@@ -17,7 +18,7 @@ import std.algebra { trim }
 import std.measure { byte_size_count }
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_listing_names_entry, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
-  filesystem_listing_observation, filesystem_listing_entry_names,
+  filesystem_listing_observation, filesystem_listing_entry_names, filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
 }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.git_diff_change_window { gunbc_diff_window_path_env }
@@ -1305,25 +1306,70 @@ fn compute_open_attempt(instance: HostDashboardInstance, identity: String, refer
 // ONE AUTHORITY FOR WHERE EXCEEDANCES LIVE. Both the writer and the reader call these two, keyed by
 // the compute root, so the reader cannot list a path nothing writes (review 69829: the reader had
 // re-spelled the join, and a drift would have read as a silent zero).
-data compute_grant_exceeded_dirname: String = "grant-exceeded"
+//
+// THE STORE IS SEALED (sealed-store lane, row S56f70574). One declaration (the member under the compute root), one
+// sealed record, one mint; the per-class directory and the record path derive inside this module and no caller
+// names a root. The layout is unchanged: <compute root>/grant-exceeded/<class>/<reference>, one create-once file per
+// reference, so a record written by the old code reads through this store byte for byte.
+type GrantExceededDeclaration { member: NonEmptyStr }
 
-fn compute_grant_exceeded_parent(root: String) -> String {
-  join([root, "/", compute_grant_exceeded_dirname], "")
+data compute_grant_exceeded_slots: GrantExceededDeclaration = GrantExceededDeclaration { member: "grant-exceeded" as NonEmptyStr }
+
+type GrantExceededStore sole_constructor {
+  root: NonEmptyStr
+  instance: HostDashboardInstance
 }
 
-fn compute_grant_exceeded_dir(root: String, class: WorkClass) -> String {
-  join([compute_grant_exceeded_parent(root: root), "/", work_class_wire(c: class)], "")
+type GrantExceededOpening
+  = GrantExceededOpened { store: GrantExceededStore }
+  | GrantExceededUnopened { detail: String }
+
+// THE ONE MINT. It takes the instance and never a path; the compute root is derived from the instance and must
+// list through the real read (filesystem_listing_observation), so a host whose root cannot be read has no store.
+fn grant_exceeded_store_open(instance: HostDashboardInstance) -> GrantExceededOpening {
+  let root = compute_root(instance: instance)
+  match directory_admission(directory: root as String, label: "compute root") {
+    DirectoryNotAdmitted { detail: d } => GrantExceededUnopened { detail: d }
+    DirectoryAdmitted => GrantExceededOpened { store: GrantExceededStore { root: root, instance: instance } }
+  }
 }
 
-fn compute_grant_exceeded_record(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, grant: WorkClassGrant, attempt: ComputeAttempt, reference: NonEmptyStr) -> Bool {
-  let dir = compute_grant_exceeded_dir(root: layout.root, class: work_class_of(op: op))
-  if !compute_ensure_dir(instance: instance, path: dir) {
-    false
+fn grant_exceeded_parent(store: GrantExceededStore) -> String {
+  join([store.root as String, "/", compute_grant_exceeded_slots.member as String], "")
+}
+
+fn grant_exceeded_class_dir(store: GrantExceededStore, class: WorkClass) -> String {
+  join([grant_exceeded_parent(store: store), "/", work_class_wire(c: class)], "")
+}
+
+// CREATE-ONCE, THEN READ BACK. Recorded only when the file reads back carrying exactly the bytes committed. A reference
+// already on disk is AlreadyRecorded only when the existing record is READ and is this attempt's: its sample line names this
+// class and this work identity (occupancy alone proves nothing, a foreign record at the path would otherwise count). An
+// unreadable or disagreeing record refuses with its cause, and the existing file is never overwritten.
+fn grant_exceeded_record_is_this_attempts(existing: String, class: WorkClass, identity: String) -> Bool {
+  let wanted = join(["sample: class=", work_class_wire(c: class), " identity=", identity, " "], "")
+  split(s: existing, delimiter: "\n").any(fn(l) { starts_with(s: l, prefix: wanted) })
+}
+
+fn compute_grant_exceeded_record(store: GrantExceededStore, class: WorkClass, reference: NonEmptyStr, identity: String, content: String) -> CreateOnceRecording {
+  let dir = grant_exceeded_class_dir(store: store, class: class)
+  if !compute_ensure_dir(instance: store.instance, path: dir) {
+    CreateOnceRefused { path: dir, cause: join(["cannot ensure ", dir], "") }
   } else {
-    Filesystem.WriteCreateNew(
-      path: join([dir, "/", reference as String], ""),
-      content: compute_peak_sample_wire(instance: instance, identity: work_outcome_identity(o: attempt.outcome), op: op, grant: grant, summary: attempt.summary),
-    ).success
+    let path = join([dir, "/", reference as String], "")
+    match create_once_record(path: path, content: content) {
+      CreateOnceAlreadyRecorded { path: p } => {
+        let back = Filesystem.Read(path: p)
+        if !back.success {
+          CreateOnceRefused { path: p, cause: "the existing exceedance record is unreadable, so it cannot be shown to be this attempt's" }
+        } else if grant_exceeded_record_is_this_attempts(existing: back.content, class: class, identity: identity) {
+          CreateOnceAlreadyRecorded { path: p }
+        } else {
+          CreateOnceRefused { path: p, cause: "the existing exceedance record at this reference is not this attempt's (class or work identity differs)" }
+        }
+      }
+      other => other
+    }
   }
 }
 
@@ -1361,7 +1407,7 @@ fn grant_exceeded_count_decide(root: ComputeListing, parent: ComputeListing, cla
     } else {
       GrantExceededCounted { count: 0 }
     }
-  } else if root.listed && !filesystem_listing_names_entry(listing: root.entries, name: compute_grant_exceeded_dirname) {
+  } else if root.listed && !filesystem_listing_names_entry(listing: root.entries, name: compute_grant_exceeded_slots.member as String) {
     GrantExceededNeverRecorded
   } else {
     GrantExceededUnreadable { detail: if root.listed { parent.error } else { root.error } }
@@ -1373,18 +1419,21 @@ fn compute_list(path: String) -> ComputeListing {
   ComputeListing { listed: l.success, entries: l.entries, error: l.error }
 }
 
-fn compute_grant_exceeded_count(instance: HostDashboardInstance, class: WorkClass) -> GrantExceededCount {
-  let root = compute_root(instance: instance) as String
+fn compute_grant_exceeded_count(store: GrantExceededStore, class: WorkClass) -> GrantExceededCount {
   grant_exceeded_count_decide(
-    root: compute_list(path: root),
-    parent: compute_list(path: compute_grant_exceeded_parent(root: root)),
-    class_dir: compute_list(path: compute_grant_exceeded_dir(root: root, class: class)),
+    root: compute_list(path: store.root as String),
+    parent: compute_list(path: grant_exceeded_parent(store: store)),
+    class_dir: compute_list(path: grant_exceeded_class_dir(store: store, class: class)),
     class: class,
   )
 }
 
 fn compute_grant_exceeded_count_wire(instance: HostDashboardInstance, class: WorkClass) -> String {
-  match compute_grant_exceeded_count(instance: instance, class: class) {
+  let count = match grant_exceeded_store_open(instance: instance) {
+    GrantExceededUnopened { detail: d } => GrantExceededUnreadable { detail: d }
+    GrantExceededOpened { store: s } => compute_grant_exceeded_count(store: s, class: class)
+  }
+  match count {
     GrantExceededCounted { count } => to_string(value: count)
     GrantExceededNeverRecorded => "0 (no exceedance has ever been recorded on this host)"
     GrantExceededUnreadable { detail } => join(["UNREADABLE (", detail, ")"], "")
@@ -1420,7 +1469,18 @@ fn compute_run_opened(
   if !compute_attempt_retries_at_ceiling(grant: grant, attempt: attempt) {
     compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
   } else {
-    let counted = compute_grant_exceeded_record(instance: instance, layout: layout, op: op, grant: grant, attempt: attempt, reference: reference)
+    let recorded = match grant_exceeded_store_open(instance: instance) {
+      GrantExceededUnopened { detail: d } => CreateOnceRefused { path: "", cause: d }
+      GrantExceededOpened { store: store } => compute_grant_exceeded_record(
+        store: store, class: work_class_of(op: op), reference: reference, identity: work_outcome_identity(o: attempt.outcome),
+        content: compute_peak_sample_wire(instance: instance, identity: work_outcome_identity(o: attempt.outcome), op: op, grant: grant, summary: attempt.summary),
+      )
+    }
+    let counted = match recorded {
+      CreateOnceRecorded { path: _ } => true
+      CreateOnceAlreadyRecorded { path: _ } => true
+      CreateOnceRefused { path: _, cause: _ } => false
+    }
     let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: attempt.outcome))
     let returned = if counted && unit_termination_frees_capacity(t: termination) {
       compute_release(reservation: reservation, reason: join(["grant of ", to_string(value: kibibyte_count(k: granted)), " KiB exceeded (oom-kill); retrying this attempt at the ceiling"], "") as NonEmptyStr)
