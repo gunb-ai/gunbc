@@ -523,11 +523,13 @@ test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool 
   let oom = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: reading(queried: true, value: "oom-kill"), pop: empty)
   let running = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "active"), result: reading(queried: true, value: "success"), pop: unknown_pop)
   // THE COLLECTED UNIT, TWO WAYS. A transient --collect unit really is removed once its process ends, so
-  // not-found CAN be an ending -- but it is equally the state of a unit whose manager restarted. The
-  // reading that tells them apart is the record the manager's own stop hook wrote, so the ended arm is
-  // issued only beside it: without the record the fold says unknown and the seat stays charged (RED --
-  // this is the reading srv1's ledger kept two 22 GiB charges on), with the record it says ended and says
-  // where the cause went (CONTROL).
+  // not-found CAN be an ending -- but it is equally the state of a unit whose manager RESTARTED, or of a
+  // unit that was never spawned at all. LoadState alone does not distinguish them, and the two have
+  // opposite consequences for a charged seat. The reading that does is the record the unit's OWN stop hook
+  // wrote into the per-uid spool, so the ended arm is issued only beside it: without the record the fold
+  // says unknown and the seat stays charged (RED -- this is the reading srv1's ledger kept two 22 GiB
+  // charges on, and ENDED IS NOW FALSE THERE), with the record it says ended and says where the cause
+  // went (CONTROL).
   let collected = lifecycle_of(load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: unknown_pop)
   let collected_recorded = lifecycle_of_record(
     record: SeatStopRecordFound { invocation_id: "0123456789abcdef0123456789abcdef", end: "exit(0)" },
@@ -558,7 +560,8 @@ test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool 
 
     && unit_lifecycle_ended(u: succeeded)
     && unit_lifecycle_ended(u: failed)
-    && unit_lifecycle_ended(u: collected)
+    && !unit_lifecycle_ended(u: collected)
+    && unit_lifecycle_ended(u: collected_recorded)
     && !unit_lifecycle_ended(u: running)
     && !unit_lifecycle_ended(u: occupied_but_forgotten)
     && !unit_lifecycle_ended(u: no_manager)
