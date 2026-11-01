@@ -55,6 +55,6 @@ data gh200_dv5_b: PhysicalAssetIdentity = "gh200-dv5-b" as PhysicalAssetIdentity
 data p4261_k1_a: PhysicalAssetIdentity = "p4261-k1-a" as PhysicalAssetIdentity
 // The second carrier, allocated 2026-10-15 when bench readings were first taken on it: the operator
 // reads its model label as revision E1 and believes it is the baseboard bought from Central Valley.
-// Its sticker, read 2026-10-16, carries S/N 1583323120274 (product.p4261_carrier_layout
+// Its sticker, read 2026-10-16, carries S/N 1583323120274 (product.p4261.e1_b
 // p4261_e1_layout); the asset keeps this identity, and the serial is the reading that names the board.
 data p4261_e1_b: PhysicalAssetIdentity = "p4261-e1-b" as PhysicalAssetIdentity

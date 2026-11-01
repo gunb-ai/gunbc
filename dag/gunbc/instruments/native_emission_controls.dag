@@ -1,5 +1,8 @@
 module gunbc.instruments.native_emission_controls
 
+import gunbc.instruments.native_emission_controls_enum_alias_a { enum_identity_foreign_a }
+import gunbc.instruments.native_emission_controls_enum_alias_b { enum_identity_foreign_b }
+
 import std.types { Bool, Int, List, Map, NonEmptyStr, Set, String }
 import std.algebra { length, FinitePowerSet }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_from_dotted_string }
@@ -1079,7 +1082,34 @@ fn rc_match_clone_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// Reduced candidate for #15571's self-host failure at 383c6aa (CI 41268951168).
+// The local enum arm is NOT either imported module's type alias. Both providers
+// stay in the closure through real calls. Main is expected to refuse in the
+// trait-bound signature walk; this reduced expectation has not yet executed.
+// CONTROL: rename only the two foreign Shared aliases, retaining this enum,
+// these calls, and every expected result. Run that mutation in a separate tree:
+// putting both alias populations in one emitted closure would contaminate it.
+type EnumMemberIdentity = Shared | Other
+
+fn enum_member_identity_value(value: EnumMemberIdentity) -> Int {
+  match value {
+    Shared => enum_identity_foreign_a()
+    Other => enum_identity_foreign_b()
+  }
+}
+
+fn enum_member_identity_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "enum_member_identity_shared_uses_its_local_arm", held: enum_member_identity_value(value: Shared) == 17 },
+    NativeEmissionCase { identity: "enum_member_identity_other_uses_its_local_arm", held: enum_member_identity_value(value: Other) == 29 },
+    NativeEmissionCase { identity: "enum_member_identity_shared_is_not_the_other_arm", held: enum_member_identity_value(value: Shared) != 29 }
+  ]
+}
+
 data native_emission_expected_identities: List<String> = [
+  "enum_member_identity_shared_uses_its_local_arm",
+  "enum_member_identity_other_uses_its_local_arm",
+  "enum_member_identity_shared_is_not_the_other_arm",
   "nat_as_int_inclusion_is_the_operand",
   "nat_as_int_inclusion_seconds_per_day",
   "nat_as_int_inclusion_utc_text",
@@ -1341,7 +1371,7 @@ fn empty_list_cast_cases() -> List<NativeEmissionCase> {
 }
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(imported_result_capture_cases(), concat(local_binder_shadow_cases(), concat(local_binder_shadows_coproduct_arm_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), concat(concat(mixed_set_carrier_cases(), canonical_set_carrier_cases()), heap_reference_carrier_cases()))))))))))
+  concat(enum_member_identity_cases(), concat(imported_result_capture_cases(), concat(local_binder_shadow_cases(), concat(local_binder_shadows_coproduct_arm_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), concat(concat(mixed_set_carrier_cases(), canonical_set_carrier_cases()), heap_reference_carrier_cases())))))))))))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

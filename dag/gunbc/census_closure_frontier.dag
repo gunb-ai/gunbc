@@ -100,6 +100,8 @@ import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_r
 import gunbc.realization_census_sheet { realization_census_sheet_frontier_rows }
 import product.printed_chassis.prepared_bundle_store { prepared_bundle_retirement_frontier_rows }
 import gunbc.fleet.printer_state_layout { printer_state_move_frontier_rows }
+import gunbc.roadmap.roadmap_attempt_state_store { attempt_directory_wire_frontier_rows }
+import gunbc.auth.gcp_iam_bootstrap { gcp_iam_bootstrap_journal_frontier_rows }
 import gunbc.network_boot_manifest_broker { network_boot_manifest_broker_frontier_rows }
 import gunbc.github_app_acquisition {
   github_app_human_step_frontier_rows,
@@ -204,6 +206,8 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     attempt_state_move_frontier_rows,
     prepared_bundle_retirement_frontier_rows,
     printer_state_move_frontier_rows,
+    attempt_directory_wire_frontier_rows,
+    gcp_iam_bootstrap_journal_frontier_rows,
   ]
 }
 
