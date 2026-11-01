@@ -733,7 +733,7 @@ fn dag_nested_let_match_subject() -> String {
 //
 // THE SUBJECT IS acquisition_test_markers: which declarations of one member carry the authored `test`
 // marker, asked of a member whether or not it can be lowered. The paired control is the member read above:
-// a service declaration whose realization is set aside refuses ordinary normalization, so the same text
+// a type declaring one variant twice refuses ordinary normalization, so the same text
 // that member_read_of refuses is the text whose markers are still read here -- the route is asserted, not
 // only the answer. And the refusal arm is the other half: a file that does not parse is a refusal, never
 // an empty list, because an unread file read as unmarked is the absent-reads-as-false class the channel
@@ -777,11 +777,9 @@ fn first_content_named(declarations: List<AcquisitionMarkedDeclaration>, name: S
   }
 }
 
-fn service_with_a_marked_claim() -> String {
+fn unnormalizable_with_a_marked_claim() -> String {
   concat(
-    "module v2.test.subject\nservice s.Svc {\n  operation Op {\n    requires none\n    input { n: Int }\n",
-    "    output { ok: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n",
-    "    exit {\n      0 => Unit\n      nonzero => String \"failed\"\n    }\n  }\n}\n",
+    "module v2.test.subject\ntype T = A | A\n",
     "test fn a_claim() -> Bool { true }\n"
   )
 }
@@ -799,8 +797,8 @@ test fn a_member_that_does_not_parse_is_refused_not_read_as_unmarked() -> Bool {
 }
 
 test fn a_member_ordinary_normalization_refuses_still_has_its_markers_read() -> Bool {
-  starts_with(s: member_read_of(content: service_with_a_marked_claim()), prefix: refused_member_prefix())
-    && markers_of(content: service_with_a_marked_claim()) == "read|a_claim"
+  starts_with(s: member_read_of(content: unnormalizable_with_a_marked_claim()), prefix: refused_member_prefix())
+    && markers_of(content: unnormalizable_with_a_marked_claim()) == "read|a_claim"
 }
 
 // ---- the marked declaration's content, paired beside its name ----------------------------------------------
