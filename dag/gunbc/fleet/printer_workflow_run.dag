@@ -23,6 +23,7 @@ import gunbc.actions_run_binding { actions_variable_trimmed }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused}
 import gunbc.fleet.printer_receipt {write_receipt}
+import gunbc.host_state_root {host_state_tree}
 import gunbc.fleet.print_converge {converge_print, print_pass_ref, ReviewedMainRef, OffReviewedMainRef}
 import gunbc.fleet.print_request {PrintRequest}
 import gunbc.fleet.printer_execution_hold {printer_hold_release_request,printer_hold_release_request_detail,HoldReleaseCardFiled,HoldReleaseCardOnFile,HoldReleaseNothingHeld,HoldReleaseRefused}
@@ -69,7 +70,7 @@ fn run() -> ProcessExit {
         // it runs only from reviewed main: a branch run has no business asking a human to free a real
         // printer, and the card it would file would come from unreviewed code.
         else if operation == "hold-release-request" { match print_pass_ref(github_ref: actions_variable_trimmed(name: "GITHUB_REF")) {
-          ReviewedMainRef => match printer_hold_release_request() {
+          ReviewedMainRef => match printer_hold_release_request(tree: host_state_tree()) {
             // The receipt is what the operator and the next dispatch read, so it says WHICH of these
             // happened. A card filed and a card already on file both leave the hold held; only the
             // first says the operator has something new to decide.
@@ -89,6 +90,7 @@ fn run() -> ProcessExit {
           if request_id == "" || root == "" || recipe == "" || revision == "" {
             exit_failure(reason: "Converge requires request_id, root and recipe, and an attributed revision")
           } else { converge_print(
+            tree: host_state_tree(),
             request: PrintRequest { request_id: request_id as NonEmptyStr, root: root as NonEmptyStr, recipe: recipe as NonEmptyStr, printer: printer },
             pass_ref: print_pass_ref(github_ref: actions_variable_trimmed(name: "GITHUB_REF")),
             source_revision: revision as NonEmptyStr, run_id: run_id, token_source: WorkloadIdentityToken) }
