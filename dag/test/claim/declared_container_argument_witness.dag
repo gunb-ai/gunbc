@@ -3,10 +3,10 @@ module test.claim.declared_container_argument_witness
 // THE CLASS THIS FILE HOLDS OPEN (gunbc.recurring_failure_mode a_declared_container_type_is_checked_by_head_only).
 // v1.compiler.infer declared_type_conformance_diags_core judged a declared container application by its head:
 // its ground test admitted only element collections whose first element was a kernel scalar, keyed collections
-// fell to an empty diagnostic list, and v1.compiler.types node_type_compatible compared the first child only. So
+// fell to an empty diagnostic list, and v1.compiler.infer_types node_type_compatible compared the first child only. So
 // `let q: Map<Bool, Bool> = m` over a Map<String, Int> compiled, and the emitted Rust dropped the annotation
-// (`let q = m.clone();`), leaving rustc nothing to refuse. The repair is v1.compiler.types
-// application_arguments_verdict: every argument position, compared pairwise and recursively, three-valued so an
+// (`let q = m.clone();`), leaving rustc nothing to refuse. The repair is
+// v1.compiler.infer application_arguments_inhabitance: every argument position, compared pairwise and recursively, three-valued so an
 // opaque position (an unsolved variable) never hides a concrete disagreement at a sibling position.
 //
 // ONE RED PER DECLARED POSITION (let, declared return, record field, call argument), a key-only and a
