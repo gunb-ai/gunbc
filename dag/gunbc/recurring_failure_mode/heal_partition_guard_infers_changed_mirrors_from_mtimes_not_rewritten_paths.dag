@@ -19,7 +19,9 @@ data heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths
 
     "CEILING: structurally guaranteed -- derive the decision's changed set from the journalled rewritten paths (or preserve their mtimes on restore) rather than from filesystem timestamps.",
 
-    "NEXT TRIGGER (can climb now, unbuilt): the heal-instrument owner feeds `stage0_partition_rebuild_decision` the round-1 rewritten path list. Workaround for an affected branch, not a fix: commit the converged mirrors so round 1 rewrites nothing.",
+    "CLOSED: `restore_regen_convergence_journal_for_subject` now returns the workspace-relative paths it moved, and `install_convergence_stage` feeds their stage0 mirror basenames, unioned with the installed surfaces, to `partition_rebuild_actuation`. The decision's changed set is the journalled rewritten paths, not mtimes. Control: the `required_regen_host` fixture asserts the restore names the moved hand file and omits the identical-bytes path.",
+
+    "WAS, NEXT TRIGGER (now built): the heal-instrument owner feeds `stage0_partition_rebuild_decision` the round-1 rewritten path list. Workaround for an affected branch, not a fix: commit the converged mirrors so round 1 rewrites nothing.",
   ],
 
   evidence: [],
