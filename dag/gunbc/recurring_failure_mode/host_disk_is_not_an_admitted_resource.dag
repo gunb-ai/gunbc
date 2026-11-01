@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.host_disk_is_not_an_admitted_resource
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, BelowCeiling }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data host_disk_is_not_an_admitted_resource: RecurringFailureMode = RecurringFailureMode {
+  identity: "host_disk_is_not_an_admitted_resource" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "disk is a capacity dimension of the admission model (product.capacity and the runner slot shape gunbc.runner.runner_slot_desired), consumed by the runner slot and by the ad-hoc job queue, so admission refuses a job whose declared disk need exceeds the filesystem's free bytes minus a declared reserve",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a build or job is admitted onto a host with memory and CPU bounds (gunbc.runner.runner_slot_desired, gunbc.host.memory_envelope) but with NO disk reservation against a filesystem shared by every other admitted job. Nothing declares a job's disk need, nothing reads free bytes at admission, and nothing refuses. HARM: ENOSPC across every lane and session on the host at once, and silent loss of session tool output (the tools' own writes fail), so the failure is not attributable to the job that tipped it.",
+    "RECEIPT 2026-10-31 ~06:45Z, srv1: the root LV (/dev/mapper/ubuntu--vg-ubuntu--lv, 1.8T) reached 0 bytes available when three concurrent cargo builds from calm-crab-645's ~/runs queue landed on a disk already ~98% full. Every session container on srv1 shares that LV (/, /tmp, /cargo-target and /session-home mounts), so session tools lost output and all srv1 builds failed with ENOSPC. Five queued verification runs were invalidated. Recovery was manual: calm-crab-645 removed only its own finished worktrees (35G freed). Consumers: /home/briansrls about 1.1T across many lanes' run dirs.",
+    "DISTINGUISHING FACTS: (1) one LV is shared by the host and all session containers, so the resource's blast radius is the host, unlike memory where a slot cgroup bounds one runner. (2) Per-queue serialization does not compose: calm-crab-645's queue, CI runner slots and other lanes' ad-hoc runs each serialize only themselves, so the aggregate is unbounded even when every queue is individually well behaved. (3) The disk was already ~98% full before the burst, so the trigger was the last straw, not the cause; the class is the missing bound, not that one queue.",
+    "RUNG: found BELOW the ladder -- nothing bounded it. Mitigation now (recorded as such, NOT a climb): calm-crab-645's queue runs serially, deletes each worktree when its job finishes, and holds below 20G free. That is one queue's discipline; it does not bind any other queue, CI slot or session, so the class stays at the rung it was found at. CEILING: structurally guaranteed -- the quantity (declared disk need, filesystem free bytes, reserve) is decidable and observable at admission, so an Accepted admission cannot contain a job exceeding free minus reserve. RECOGNITION RULE: a resource admission model that bounds memory/CPU and is silent on a shared filesystem; 'each queue runs one at a time' offered as the bound is the tell.",
+    "NEXT TRIGGER (capability restored, not a date): disk as a capacity dimension on the admission model, consumed by the runner slot and the ad-hoc job queue, refusing a job whose declared disk need exceeds free minus reserve. Not built in this row's PR; it is the modeling obligation of DESIGN section 3b Fabric/compute (product.capacity is the shared authority)."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.runner.runner_slot_desired", decl_name: "gunbc_runner_slot_desired", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host.memory_envelope", decl_name: "memory_envelope_verdict", field: WholeDeclaration },
+  ],
+}

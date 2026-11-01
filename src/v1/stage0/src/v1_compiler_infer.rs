@@ -276,9 +276,9 @@ pub use crate::v1_compiler_infer_patterns::{
 };
 pub use crate::v1_compiler_infer_resolve::{
     expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
-    is_user_generic_use_site, preserve_nominal_brand_on_resolve, reference_with_declaration,
-    resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
-    ItemResolveResult, NodeResolveResult,
+    is_user_generic_use_site, node_with_declaration, preserve_nominal_brand_on_resolve,
+    reference_with_declaration, resolve_generic_use_decl, resolve_item_types, resolve_node,
+    resolve_node_bounded, ItemResolveResult, NodeResolveResult,
 };
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
     ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
@@ -28518,6 +28518,7 @@ pub fn build_module_interface(
 
 pub fn local_binding_for_item(
     item: Rc<Node>,
+    module_path: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<TypeBinding>> {
     if is_namespace_alias_item(item.clone(), source_indices.clone()) {
@@ -28527,12 +28528,43 @@ pub fn local_binding_for_item(
             let has_structure = (item.connective.clone() != Connective::NoConnective);
             if has_structure.clone() {
                 {
+                    let declared_members = match item.connective.clone() {
+                        Connective::Conj => true,
+                        Connective::Disj => true,
+                        _ => false,
+                    };
+                    let children = if declared_members.clone() {
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for member in item.children.clone().iter().cloned() {
+                                __result.push(
+                                    crate::v1_compiler_infer_resolve::node_with_declaration(
+                                        member.clone(),
+                                        crate::std_decl_ref::decl_field_ref(
+                                            module_path.clone(),
+                                            crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                item.clone(),
+                                            ),
+                                            crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                member.clone(),
+                                            ),
+                                        ),
+                                    ),
+                                );
+                            }
+                            __result
+                        })
+                    } else {
+                        item.children.clone()
+                    };
                     let type_node = Rc::new(Node {
                         occurrence_identity: item.occurrence_identity.clone(),
                         name: item.name.clone(),
                         span: item.span.clone(),
                         ident_span: item.ident_span.clone(),
-                        children: item.children.clone(),
+                        children: children.clone(),
                         connective: item.connective.clone(),
                         params: item.params.clone(),
                         inferred: std::option::Option::None,
@@ -28807,7 +28839,8 @@ pub fn symbol_index_insert_item(
                 },
             }
         } else {
-            match local_binding_for_item(item.clone(), source_indices.clone()) {
+            match local_binding_for_item(item.clone(), module_path.clone(), source_indices.clone())
+            {
                 std::option::Option::None => index.clone(),
                 Some(binding) => crate::v1_compiler_infer_env::symbol_index_insert_decl(
                     index.clone(),
@@ -31194,7 +31227,11 @@ pub fn build_type_env(
                             }
                         }
                     } else {
-                        match local_binding_for_item(item.clone(), source_indices.clone()) {
+                        match local_binding_for_item(
+                            item.clone(),
+                            module_name_str.clone(),
+                            source_indices.clone(),
+                        ) {
                             Some(binding) => v1_rt::rc_map_insert(
                                 acc.clone(),
                                 crate::v1_std_core::intern(
