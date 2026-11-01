@@ -177,7 +177,7 @@ fn wrong_capture_build(
     // (gunbc.instruments.compute_run_unit_cold) and nothing here would read them. The parameter is
     // required; omitting it fails at dispatch resolve rather than at compile, which is why the corpus
     // that imports this module (test/claim/target_invocation_witness) is the check that catches it.
-    stop_observation: [] as List<ComputeUnitStopObservation>,
+    stop_observations: [] as List<ComputeUnitStopObservation>,
     path_virtualization: NoPathVirtualization,
   ) {
     ComputeUnitRunRefused { cause: _ } => "unit launch refused"

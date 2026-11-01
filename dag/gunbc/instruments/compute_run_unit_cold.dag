@@ -378,7 +378,7 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
         launcher_env: user_session_launcher_env(runtime_dir: runtime_dir),
         granted: kibibyte_from_byte_size_floor(b: gibibyte_to_byte_size(g: gibibyte(count: 1))),
         user_runtime_dir: runtime_dir,
-        stop_observation: [] as List<ComputeUnitStopObservation>,
+        stop_observations: [] as List<ComputeUnitStopObservation>,
         path_virtualization: NoPathVirtualization,
       ) {
         ComputeUnitRunRefused { cause: _ } => UnitPrintenvRefused { reason: "unit launch refused", text: "" }
@@ -433,8 +433,8 @@ fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
 }
 
 
-fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, stop_observation: List<ComputeUnitStopObservation>) -> CliWireResponse {
-  cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: frame, identity: to_string(value: frame), checkout_at: none, target_at: none, stable_at: none, stop_observation: stop_observation)
+fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, stop_observations: List<ComputeUnitStopObservation>) -> CliWireResponse {
+  cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: frame, identity: to_string(value: frame), checkout_at: none, target_at: none, stable_at: none, stop_observations: stop_observations)
 }
 
 // The layout with its checkout placed at a caller-chosen absolute path; every other piece (target,
@@ -514,7 +514,7 @@ fn arm_rust_misses_readable(text: String) -> Bool {
   }
 }
 
-fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String, checkout_at: String?, target_at: String?, stable_at: String?, stop_observation: List<ComputeUnitStopObservation>) -> CliWireResponse {
+fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String, checkout_at: String?, target_at: String?, stable_at: String?, stop_observations: List<ComputeUnitStopObservation>) -> CliWireResponse {
       let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
       let workspace = observe_workspace(instance: probe)
       if workspace == "" {
@@ -599,13 +599,21 @@ fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchain
                     launcher_env: user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: compute_run_unit_cold_unit_grant(),
                     user_runtime_dir: runtime_dir,
-                    stop_observation: stop_observation,
+                    stop_observations: stop_observations,
                     path_virtualization: virtualization,
                   ) {
                     ComputeUnitRunRefused { cause: _ } =>
                       CliWirePrintable {
                         bytes: "compute-run-unit-cold: systemd-run option words refused",
                         exit: ExitFailure { code: 1, reason: "unit launch refused" },
+                      }
+                    // A stop observation that cannot be rendered refuses the LAUNCH, and the instrument says
+                    // so distinctly: a seat started without its stop hook would leave a charge no one can
+                    // witness the end of, which is a different failure than malformed option words.
+                    ComputeUnitStopObservationRefused { cause: cause } =>
+                      CliWirePrintable {
+                        bytes: join(["compute-run-unit-cold: stop observation refused: ", cause], ""),
+                        exit: ExitFailure { code: 1, reason: "stop observation refused" },
                       }
                     ComputeUnitRunExecuted { run: unit_run } => {
                       let invoked = unit_was_invoked(summary: unit_run.summary)
@@ -739,14 +747,14 @@ fn sccache_reading_wire(label: String, r: SccacheUnitReading) -> String {
 // Two identities back to back in ONE dispatch: same slot, uid and cache directory. Only the second
 // unit carries SccacheStatsAtStop, so its reading is that unit's own server's whole counters, not a difference.
 fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, first_frame: Int) -> CliWireResponse {
-  let first = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: first_frame, stop_observation: NoStopObservation)
+  let first = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: first_frame, stop_observations: [NoStopObservation])
   if !cold_run_succeeded(r: first) {
     first
   } else {
     match observe_run_frame() {
       Absent => no_observation(bytes: cold_run_bytes(r: first), reason: "second run frame unreadable")
       Present { value: second_frame } => {
-        let second = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: second_frame, stop_observation: [SccacheStatsAtStop])
+        let second = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: second_frame, stop_observations: [SccacheStatsAtStop])
                 let reading_2 = sccache_reading_from(text: cold_run_bytes(r: second))
         let bytes = join([
           cold_run_bytes(r: first), "\n=== second identity ===\n", cold_run_bytes(r: second), "\n",
@@ -865,12 +873,12 @@ fn stable_path_arms(runtime_dir: FilePath, homes: IsolatedJobToolchainHomes, sta
   match observe_run_frame() {
     Absent => StableArmsNoFrame { text: "stable arms: no run frame for F1" }
     Present { value: frame_f1 } => {
-      let f1 = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_f1, identity: to_string(value: frame_f1), checkout_at: none, target_at: none, stable_at: Present { value: stable_root }, stop_observation: [SccacheStatsAtStop])
+      let f1 = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_f1, identity: to_string(value: frame_f1), checkout_at: none, target_at: none, stable_at: Present { value: stable_root }, stop_observations: [SccacheStatsAtStop])
       let reset_f1 = drop_checkout(toolchain_homes: homes, frame: frame_f1, path: checkout_path_of(toolchain_homes: homes, frame: frame_f1, identity: to_string(value: frame_f1)))
       match observe_run_frame() {
         Absent => StableArmsNoFrame { text: "stable arms: no run frame for F2" }
         Present { value: frame_f2 } => {
-          let f2 = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_f2, identity: to_string(value: frame_f2), checkout_at: none, target_at: none, stable_at: Present { value: stable_root }, stop_observation: [SccacheStatsAtStop])
+          let f2 = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_f2, identity: to_string(value: frame_f2), checkout_at: none, target_at: none, stable_at: Present { value: stable_root }, stop_observations: [SccacheStatsAtStop])
           let reset_f2 = drop_checkout(toolchain_homes: homes, frame: frame_f2, path: checkout_path_of(toolchain_homes: homes, frame: frame_f2, identity: to_string(value: frame_f2)))
           let t1 = cold_run_bytes(r: f1)
           let t2 = cold_run_bytes(r: f2)
@@ -940,7 +948,7 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
               let id_a = to_string(value: frame_a)
               let path_a = checkout_path_of(toolchain_homes: homes, frame: frame_a, identity: id_a)
               let target_a = target_path_of(toolchain_homes: homes, frame: frame_a, identity: id_a)
-              let a1 = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_a, stop_observation: [SccacheStatsAtStop])
+              let a1 = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_a, stop_observations: [SccacheStatsAtStop])
               if !cold_run_succeeded(r: a1) {
                 a1
               } else {
@@ -949,22 +957,22 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                 if reset_a != "" || aside_a != "" {
                   arm_failed(bytes: join([cold_run_bytes(r: a1), "\nreset after A1 failed: ", reset_a, aside_a], ""), reason: "reset after A1 failed")
                 } else {
-                  let a2 = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_a, stop_observation: [SccacheStatsAtStop])
+                  let a2 = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_a, stop_observations: [SccacheStatsAtStop])
                   let reset_a2 = drop_checkout(toolchain_homes: homes, frame: frame_a, path: path_a)
                   match observe_run_frame() {
                     Absent => no_observation(bytes: cold_run_bytes(r: a2), reason: "arm B frame unreadable")
                     Present { value: frame_b } => {
-                      let b = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_b, identity: to_string(value: frame_b), checkout_at: Present { value: path_a }, target_at: none, stable_at: none, stop_observation: [SccacheStatsAtStop])
+                      let b = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_b, identity: to_string(value: frame_b), checkout_at: Present { value: path_a }, target_at: none, stable_at: none, stop_observations: [SccacheStatsAtStop])
                       let reset_b = drop_checkout(toolchain_homes: homes, frame: frame_b, path: path_a)
                       match observe_run_frame() {
                         Absent => no_observation(bytes: cold_run_bytes(r: b), reason: "arm C frame unreadable")
                         Present { value: frame_c } => {
-                          let c = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_c, identity: id_a, checkout_at: none, target_at: none, stable_at: none, stop_observation: [SccacheStatsAtStop])
+                          let c = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_c, identity: id_a, checkout_at: none, target_at: none, stable_at: none, stop_observations: [SccacheStatsAtStop])
                           let aside_d = same_path_target_aside(toolchain_homes: homes, frame: frame_a, suffix: ".run2")
                           match observe_run_frame() {
                             Absent => no_observation(bytes: cold_run_bytes(r: c), reason: "arm D frame unreadable")
                             Present { value: frame_d } => {
-                          let d = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_d, identity: to_string(value: frame_d), checkout_at: Present { value: path_a }, target_at: Present { value: target_a }, stable_at: none, stop_observation: [SccacheStatsAtStop])
+                          let d = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_d, identity: to_string(value: frame_d), checkout_at: Present { value: path_a }, target_at: Present { value: target_a }, stable_at: none, stop_observations: [SccacheStatsAtStop])
                           let reset_d = drop_checkout(toolchain_homes: homes, frame: frame_d, path: path_a)
                           let path_c = checkout_path_of(toolchain_homes: homes, frame: frame_c, identity: id_a)
                           let reset_c = drop_checkout(toolchain_homes: homes, frame: frame_c, path: path_c)
@@ -972,7 +980,7 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                           match observe_run_frame() {
                             Absent => no_observation(bytes: cold_run_bytes(r: d), reason: "arm E frame unreadable")
                             Present { value: frame_e } => {
-                          let e = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_e, identity: id_a, checkout_at: Present { value: path_c }, target_at: Present { value: target_a }, stable_at: none, stop_observation: [SccacheStatsAtStop])
+                          let e = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_e, identity: id_a, checkout_at: Present { value: path_c }, target_at: Present { value: target_a }, stable_at: none, stop_observations: [SccacheStatsAtStop])
                           let reset_e = drop_checkout(toolchain_homes: homes, frame: frame_e, path: path_c)
                           let ta1 = cold_run_bytes(r: a1)
                           let ta2 = cold_run_bytes(r: a2)

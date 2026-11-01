@@ -19,18 +19,17 @@ import extdeps.systemd.systemd_run { SystemdRunProperty }
 import std.types { String, FilePath }
 import std.measure { kibibyte }
 fn forged(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {
-  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, path_virtualization: NoPathVirtualization, stop_observations: [SystemdRunProperty { property: MemoryMax, value: \"infinity\" }])
+  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, path_virtualization: NoPathVirtualization, stop_observations: [NamedUnitSetting { property: MemoryMax, value: \"infinity\" }])
 }
 "
 
 data accepted_closed_observation_source: String = "module probe_accepted_closed_observation
 import gunbc.compute.work_provider_local { compute_run_unit, ComputeUnitRunReading, ComputeLayout, SccacheStatsAtStop, AttemptExitRecordAtStop, NoPathVirtualization }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.owned_directory { PosixOwnerNames }
 import std.types { String, FilePath }
 import std.measure { kibibyte }
 fn accepted(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {
-  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, path_virtualization: NoPathVirtualization, stop_observations: [SccacheStatsAtStop, AttemptExitRecordAtStop { done_dir: dir, identity: \"abc\", record_owner: PosixOwnerNames { owner: \"gunbc-srv1-compute\", owner_group: \"gunbc-srv1-compute\" } }])
+  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, path_virtualization: NoPathVirtualization, stop_observations: [SccacheStatsAtStop, AttemptExitRecordAtStop { done_dir: dir, identity: \"abc\", record_owner: instance.directory_owner }])
 }
 "
 
