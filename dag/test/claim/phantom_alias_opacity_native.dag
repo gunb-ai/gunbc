@@ -75,8 +75,8 @@ fn opacity_seed_holds(generic: Bool, through_alias: Bool, canonical_phantom: Boo
   let params = if generic { [opacity_parameter(name: "A"), opacity_parameter(name: "B")] } else { [] }
   let args = if generic { opacity_args() } else { [] }
   let marker = opacity_binding(name: marker_name, params: params, rhs: opacity_ref(module_path: phantom_module, name: "Phantom", args: []))
-  let alias = opacity_binding(name: "Alias", params: [], rhs: opacity_ref(module_path: "test.opacity", name: marker_name, args: args))
-  let env = opacity_env(bindings: [marker, alias])
+  let alias_binding = opacity_binding(name: "Alias", params: [], rhs: opacity_ref(module_path: "test.opacity", name: marker_name, args: args))
+  let env = opacity_env(bindings: [marker, alias_binding])
   let subject = if through_alias { opacity_ref(module_path: "test.opacity", name: "Alias", args: []) } else { opacity_ref(module_path: "test.opacity", name: marker_name, args: args) }
   match settled_type(n: subject, source_indices: env.source_indices, env: env, fuel: 16) {
     Absent => false
