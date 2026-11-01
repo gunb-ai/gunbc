@@ -337,34 +337,14 @@ fn attempt_exit_spool_root(instance_root: String) -> String {
   join([instance_root, "/attempt-exit-spool"], "")
 }
 
-fn attempt_exit_inbox_dir(instance_root: String) -> String {
-  join([attempt_exit_spool_root(instance_root: instance_root), "/inbox"], "")
-}
-
-fn attempt_exit_queued_dir(instance_root: String) -> String {
-  join([attempt_exit_spool_root(instance_root: instance_root), "/queued"], "")
-}
-
 // `running` holds the entries a live obligation run has CLAIMED (queued -> running is the claim, taken
 // before the run's first observation) and that its receipt has not yet settled to `done`. Keeping a claim
 // out of `queued` is what lets the path unit watch `queued` as a LEVEL -- non-empty means an exit no run
 // has claimed -- without re-firing for the whole length of a long run.
-fn attempt_exit_running_dir(instance_root: String) -> String {
-  join([attempt_exit_spool_root(instance_root: instance_root), "/running"], "")
-}
-
-fn attempt_exit_done_dir(instance_root: String) -> String {
-  join([attempt_exit_spool_root(instance_root: instance_root), "/done"], "")
-}
-
 // `refused` holds an entry the drain could not hand to an obligation -- a name that is not a record,
 // or a record whose obligation unit the manager would not start -- moved out of the inbox so the path
 // unit does not re-fire on it forever, and kept, because a refused hand-off is still an exit that
 // happened and the observer still reads it.
-fn attempt_exit_refused_dir(instance_root: String) -> String {
-  join([attempt_exit_spool_root(instance_root: instance_root), "/refused"], "")
-}
-
 // `stalled` holds the drain's stall record (attempt_exit_stall_record_path): the typed, countable terminal
 // of an exit spool whose head entry cannot leave. It is a sibling of the stages and is never a stage: the
 // path unit watches inbox and queued, and the belt-exit service is skipped while this directory is non-empty
@@ -390,14 +370,6 @@ fn attempt_unit_spool_root(instance_root: String) -> String {
 
 fn attempt_unit_spool_staging_dir(instance_root: String) -> String {
   join([attempt_unit_spool_root(instance_root: instance_root), "/requests-staging"], "")
-}
-
-fn attempt_unit_spool_request_dir(instance_root: String) -> String {
-  join([attempt_unit_spool_root(instance_root: instance_root), "/requests"], "")
-}
-
-fn attempt_unit_spool_claimed_dir(instance_root: String) -> String {
-  join([attempt_unit_spool_root(instance_root: instance_root), "/claimed"], "")
 }
 
 fn attempt_unit_spool_answer_dir(instance_root: String) -> String {
@@ -438,10 +410,6 @@ fn publication_spool_root(instance_root: String) -> String {
   join([instance_root, "/publication-spool"], "")
 }
 
-fn publication_request_dir(instance_root: String) -> String {
-  join([publication_spool_root(instance_root: instance_root), "/requests"], "")
-}
-
 fn publication_answer_dir(instance_root: String) -> String {
   join([publication_spool_root(instance_root: instance_root), "/answers"], "")
 }
@@ -462,10 +430,6 @@ fn publication_answer_dir(instance_root: String) -> String {
 // So the bytes move sideways into a directory only the publication principal holds, where they stay
 // readable for the analysis the stopped line demands. The requester is not told anything, which is
 // correct: its question was never understood, and its own gate re-asks while the question is open.
-fn publication_refused_dir(instance_root: String) -> String {
-  join([publication_spool_root(instance_root: instance_root), "/requests-refused"], "")
-}
-
 // THE HELPER KEEPS ITS OWN BARE MIRROR UNDER THE SPOOL ROOT. A fresh mktemp mirror packs the whole
 // reachable history on every publish; this path persists so a later fetch is a delta. The spool
 // root is installed owned by the publication principal (apply_publication_spool_steps); the helper
