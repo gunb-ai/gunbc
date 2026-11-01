@@ -359,6 +359,13 @@ fn dev_upstreams_json_h1_retain_0_pool_zero() -> String {
   dev_upstreams_json_rented(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4325"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1c", extra: ",\"retiring_names\":[\"h1b\"],\"retain\":0"), o1: dev_o1_row(cap: "0"), u1: dev_u1_row(in_service: "false"))
 }
 
+// The renamed-again rows (mark 4326) WITH the predecessor still configured, drained: h1b stays in the file out of
+// service, h1c retiring it. Admission allows this (a drained row's name may be retired by another row), and the
+// binding h-1 stored against h1b must still be owned by h1c.
+fn dev_upstreams_json_h1_renamed_predecessor_drained() -> String {
+  dev_upstreams_json_rented(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4326"), r1: dev_r1_row(retain: "1"), h1: dev_h1_row(name: "h1c", extra: ",\"retiring_names\":[\"h1b\"],\"retain\":1") + dev_h1_row(name: "h1b", extra: ",\"in_service\":false"), o1: dev_o1_row(cap: "0"), u1: dev_u1_row(in_service: "true"))
+}
+
 fn dev_r1_row(retain: String) -> String {
   "\{\"name\":\"r1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kr\",\"model\":\"m-r\",\"cap\":4,\"retain\":" + retain + "},"
 }
@@ -398,7 +405,8 @@ fn dev_upstreams_json_rented(f1: String, r1: String, h1: String, o1: String, u1:
     + h1
     + "\{\"name\":\"s1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"ks1\",\"model\":\"m-s\",\"cap\":1},"
     + "\{\"name\":\"s2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"ks2\",\"model\":\"m-s\",\"cap\":1},"
-    + "\{\"name\":\"g1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19108,\"key\":\"kg\",\"model\":\"m-g\",\"cap\":1,\"in_service\":false}]"
+    + "\{\"name\":\"g1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19108,\"key\":\"kg\",\"model\":\"m-g\",\"cap\":1,\"in_service\":false},"
+    + "\{\"name\":\"q1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"kq\",\"model\":\"Qwen3.8-Flash-Next\",\"cap\":4}]"
 }
 
 fn dev_request(key: String, session: String, body: String, path: String) -> String {
@@ -688,6 +696,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let dev_ready = curl(arguments: ["-k", "-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "30", "--retry-delay", "1", "--retry-connrefused", "https://127.0.0.1:18445/ready"])
   let dev_no_key = dev_request(key: "wrong", session: "s0", body: model_body(model: "m-a"), path: "/v1/chat/completions")
   let dev_models = dev_get(key: "ck-falsifier", path: "/v1/models")
+  let priced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-1", "-d", model_body(model: "Qwen3.8-Flash-Next"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
+  let unpriced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-2", "-d", model_body(model: "m-a"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
   let dev_a = dev_request(key: "ck-falsifier", session: "s1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
   let dev_b = dev_request(key: "ck-falsifier", session: "s2", body: model_body(model: "m-b"), path: "/v1/chat/completions")
   let dev_d = dev_request(key: "ck-falsifier", session: "s3", body: model_body(model: "m-d"), path: "/v1/chat/completions")
@@ -794,6 +804,13 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let retired_other_model = dev_request(key: "ck-falsifier", session: "h-1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
   let renamed_new_session = dev_request(key: "ck-falsifier", session: "h-new2", body: model_body(model: "m-h"), path: "/v1/chat/completions")
   let mixed_pool_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // 9b'. THE PREDECESSOR STAYS CONFIGURED, DRAINED (mark 4326): h-1 is still stored against h1b, which h1c retires.
+  let w13 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-h1-predecessor-drained.json", content: dev_upstreams_json_h1_renamed_predecessor_drained())
+  let drained_copy = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-h1-predecessor-drained.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded_drained = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_drained_models = await_models(mark: "4326", n: 20)
+  let drained_other_model = dev_request(key: "ck-falsifier", session: "h-1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let drained_new_session = dev_request(key: "ck-falsifier", session: "h-new3", body: model_body(model: "m-h"), path: "/v1/chat/completions")
   // 9c. TRIM counts old-name bindings under their owner, and a pool of only a cap-0 row is full.
   let w12 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-h1-retain-0-pool-zero.json", content: dev_upstreams_json_h1_retain_0_pool_zero())
   let lowered_again = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-h1-retain-0-pool-zero.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
@@ -902,7 +919,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_rented_pool_full_keeps_capped_zero_and_uncapped_distinct", held: contains(s: mixed_pool_stats, p: "\"full\":false") && contains(s: zero_pool_stats, p: "\"full\":true"), observed: concat(one_line(s: mixed_pool_stats), one_line(s: zero_pool_stats))),
     case_of(identity: "shipped_rows_render_the_derived_retain_cap_and_effort_values", held: shipped_h11_05_renders_derived_retain_and_cap() && shipped_pool_row_renders_its_cap() && shipped_row_effort_rule_is(name: "srv1-vllm", client: "high", to: "xhigh"), observed: ""),
     case_of(identity: "an_underivable_retention_is_refused_at_the_row_boundary", held: underivable_retention_is_refused_and_shipped_rows_are_not(), observed: ""),
-    case_of(identity: "comparison_rows_carry_the_cited_quote_values_and_the_live_shape", held: contains(s: dev_text(), p: "input_micro=150000") && contains(s: dev_text(), p: "input=150000/1000000") && contains(s: dev_text(), p: "output=470000/1000000") && contains(s: dev_text(), p: "as_of='2026-10-26'") && contains(s: dev_text(), p: "read_on='2026-10-26'") && contains(s: dev_text(), p: "estimated=true"), observed: ""),
+    case_of(identity: "comparison_rows_carry_the_cited_quote_values_and_the_live_shape", held: contains(s: dev_models, p: "\"input_micro\":150000") && contains(s: dev_models, p: "\"input\":0.15") && contains(s: dev_models, p: "\"cached\":0.016") && contains(s: dev_models, p: "\"output\":0.47") && contains(s: dev_models, p: "\"as_of\":\"2026-10-26\"") && contains(s: dev_models, p: "\"read_on\":\"2026-10-26\"") && contains(s: dev_models, p: "\"estimated\":true") && contains(s: priced_turn, p: "X-Gunbc-Comparison-Input-Per-M: 0.15") && contains(s: priced_turn, p: "X-Gunbc-Comparison-Cached-Per-M: 0.016") && contains(s: priced_turn, p: "X-Gunbc-Comparison-Output-Per-M: 0.47") && contains(s: priced_turn, p: "X-Gunbc-Comparison-Estimated: true") && contains(s: priced_turn, p: "X-Gunbc-Comparison-Read-On: 2026-10-26") && !contains(s: unpriced_turn, p: "X-Gunbc-Comparison-Output-Per-M"), observed: concat(one_line(s: priced_turn), one_line(s: unpriced_turn))),
+    case_of(identity: "dev_drained_predecessor_does_not_reclaim_a_retired_binding", held: contains(s: drained_other_model, p: "409") && contains(s: drained_new_session, p: "429"), observed: concat(one_line(s: drained_other_model), one_line(s: drained_new_session))),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
 }
@@ -984,6 +1002,7 @@ fn falsifier_expected_identities() -> List<String> {
     "shipped_rows_render_the_derived_retain_cap_and_effort_values",
     "an_underivable_retention_is_refused_at_the_row_boundary",
     "comparison_rows_carry_the_cited_quote_values_and_the_live_shape",
+    "dev_drained_predecessor_does_not_reclaim_a_retired_binding",
     "world_is_removed",
   ]
 }

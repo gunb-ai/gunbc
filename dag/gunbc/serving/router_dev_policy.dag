@@ -220,8 +220,8 @@ fn router_dev_models_lines() -> List<String> {
 fn router_dev_row_lines() -> List<String> {
   [
     "local owner_of = \{}",
-    "for _, u in ipairs(ROUTER_UPSTREAMS) do for _, old in ipairs(u.retiring_names or \{}) do owner_of[old] = u.name end end",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do owner_of[u.name] = u.name end",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do for _, old in ipairs(u.retiring_names or \{}) do owner_of[old] = u.name end end",
     "local function active(u) local st = ngx.shared.router_state local n = st:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n = n + (st:get('active:' .. old) or 0) end return n end",
   ]
 }
@@ -696,19 +696,23 @@ fn router_dev_stats_lines() -> List<String> {
     // A capped row is full at its cap (0 included: no turns); an uncapped rented row admits without a ceiling,
     // so it is never full while it is in service and not ejected. Active counts read as admission reads them.
     "local rented = \{active = 0, cap = 0, uncapped = 0}",
+    "local capped_active = 0",
     "local any_rented = false",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  if u.overflow and u.in_service ~= false then",
     "    any_rented = true",
     "    if u.cap == nil then",
     "      if not state:get('unavailable:' .. u.name) then rented.uncapped = rented.uncapped + 1 end",
-    "    else",
     "      rented.active = rented.active + active(u)",
+    "    else",
+    "      local n = active(u)",
+    "      rented.active = rented.active + n",
+    "      capped_active = capped_active + n",
     "      rented.cap = rented.cap + u.cap",
     "    end",
     "  end",
     "end",
-    "rented.full = any_rented and rented.uncapped == 0 and rented.active >= rented.cap",
+    "rented.full = any_rented and rented.uncapped == 0 and capped_active >= rented.cap",
     "out.rented = rented",
     "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
     "ngx.header['Content-Type'] = 'application/json'",
