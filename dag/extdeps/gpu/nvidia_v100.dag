@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.measure { hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
-import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower, SxmModule }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, GpuComputeCapability, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower, SingleGpu, SxmModule, cuda_legacy_gpus_page_authority }
 import extdeps.memory.types { MemoryFacts, Hbm }
 import extdeps.pci.identity { PciDeviceId }
 import extdeps.vendor.nvidia { nvidia }
@@ -17,7 +17,7 @@ import extdeps.uri { Uri, Https }
 // V100S PCIe: 32 GB HBM2, 1134 GB/sec, PCIe Gen3, 250 W. All passive. No link width is stated, so PCIe
 // links are Absent. Each memory configuration is its own SKU, so its own device row and board; the
 // driver's names (Tesla V100-PCIE-32GB 1db6, -PCIE-16GB 1db4, -SXM2-32GB 1db5, -SXM2-16GB 1db1,
-// V100S-PCIE-32GB 1df6) name them.
+// V100S-PCIE-32GB 1df6) name them. Compute capability 7.0 is the Legacy CUDA GPUs page's ("NVIDIA V100").
 
 data v100_datasheet_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -42,7 +42,7 @@ data nvidia_tesla_v100_pcie_32gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)), memory_kind: Hbm },
   memory_bandwidth: Present { value: bandwidth(count: 900000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 7, minor: 0 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -51,6 +51,7 @@ data nvidia_tesla_v100_pcie_32gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_32gb_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -59,7 +60,7 @@ data nvidia_tesla_v100_pcie_32gb_board_facts: GpuBoardCatalogFacts = GpuBoardCat
   vendor: nvidia,
   model: "Tesla V100 PCIe 32GB",
   gpu: nvidia_tesla_v100_pcie_32gb_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 250) } },
   zero_power: none,
@@ -84,7 +85,7 @@ data nvidia_tesla_v100_pcie_16gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Hbm },
   memory_bandwidth: Present { value: bandwidth(count: 900000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 7, minor: 0 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -93,6 +94,7 @@ data nvidia_tesla_v100_pcie_16gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_pcie_16gb_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -101,7 +103,7 @@ data nvidia_tesla_v100_pcie_16gb_board_facts: GpuBoardCatalogFacts = GpuBoardCat
   vendor: nvidia,
   model: "Tesla V100 PCIe 16GB",
   gpu: nvidia_tesla_v100_pcie_16gb_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 250) } },
   zero_power: none,
@@ -126,7 +128,7 @@ data nvidia_tesla_v100_sxm2_32gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)), memory_kind: Hbm },
   memory_bandwidth: Present { value: bandwidth(count: 900000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 7, minor: 0 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -135,6 +137,7 @@ data nvidia_tesla_v100_sxm2_32gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_32gb_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -143,7 +146,7 @@ data nvidia_tesla_v100_sxm2_32gb_board_facts: GpuBoardCatalogFacts = GpuBoardCat
   vendor: nvidia,
   model: "Tesla V100 SXM2 32GB",
   gpu: nvidia_tesla_v100_sxm2_32gb_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: SxmModule,
   board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
   zero_power: none,
@@ -169,7 +172,7 @@ data nvidia_tesla_v100_sxm2_16gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Hbm },
   memory_bandwidth: Present { value: bandwidth(count: 900000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 7, minor: 0 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -178,6 +181,7 @@ data nvidia_tesla_v100_sxm2_16gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100_sxm2_16gb_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -186,7 +190,7 @@ data nvidia_tesla_v100_sxm2_16gb_board_facts: GpuBoardCatalogFacts = GpuBoardCat
   vendor: nvidia,
   model: "Tesla V100 SXM2 16GB",
   gpu: nvidia_tesla_v100_sxm2_16gb_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: SxmModule,
   board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
   zero_power: none,
@@ -212,7 +216,7 @@ data nvidia_tesla_v100s_pcie_32gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalo
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)), memory_kind: Hbm },
   memory_bandwidth: Present { value: bandwidth(count: 1134000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 7, minor: 0 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -221,6 +225,7 @@ data nvidia_tesla_v100s_pcie_32gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalo
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_catalog", field_name: "memory_bandwidth"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_catalog", field_name: "execution_lane_count"), authority: v100_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_catalog", field_name: "microarchitecture"), authority: v100_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_v100", decl_name: "nvidia_tesla_v100s_pcie_32gb_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -229,7 +234,7 @@ data nvidia_tesla_v100s_pcie_32gb_board_facts: GpuBoardCatalogFacts = GpuBoardCa
   vendor: nvidia,
   model: "Tesla V100S PCIe 32GB",
   gpu: nvidia_tesla_v100s_pcie_32gb_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 250) } },
   zero_power: none,
