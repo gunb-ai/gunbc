@@ -89,10 +89,7 @@ fn container_template_algebra(name: String) -> String? {
 // Whether one authored spelling resolves to the named carrier algebra through the roster, so a
 // consumer asks the algebra ("FreeMonoid", "FinitePowerSet") and never a spelling ("List", "Set").
 fn container_spelling_is_algebra(name: String, algebra: String) -> Bool {
-  match container_template_algebra(name: name) {
-    Present { value: found } => found == algebra
-    Absent => false
-  }
+  container_template_algebra(name: name) == Present { value: algebra }
 }
 
 fn container_template_alias_algebra(name: String) -> String? {
