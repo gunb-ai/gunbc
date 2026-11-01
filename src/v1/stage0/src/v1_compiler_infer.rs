@@ -1788,7 +1788,11 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
                     if local_is_service_root_binding(scope.clone(), name.clone(), binding.clone()) {
                         Rc::new(VarBindingKind::ServiceValueBinding)
                     } else {
-                        Rc::new(VarBindingKind::LocalValueBinding)
+                        if v1_rt::map_has(&scope.body_locals.clone(), name.clone()) {
+                            Rc::new(VarBindingKind::LocalValueBinding)
+                        } else {
+                            Rc::new(VarBindingKind::FunctionValueBinding)
+                        }
                     }
                 }
             }
