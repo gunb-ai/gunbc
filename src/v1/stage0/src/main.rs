@@ -1329,13 +1329,17 @@ fn run_verb(
         };
     }
 
-    // Exactly the deleted handler's selection: `--dry-run` means Hermetic, which REFUSES
-    // host operations rather than mocking them silently, and absence means Wet.
-    let execution_mode = if dry_run {
-        v1_compiler::v1_interpreter::ExecutionMode::Hermetic
-    } else {
-        v1_compiler::v1_interpreter::ExecutionMode::Wet
-    };
+    // CLAIM RUNS ARE VERIFICATION, NOT EXECUTION. A `test fn` is evaluated against its declared
+    // mocks and MUST NOT perform a real host effect. `--dry-run` already means Hermetic, which
+    // REFUSES host operations rather than mocking them silently; a `--claim-run` must mean the SAME
+    // fail-closed mode, because a claim is not the operator's authority to run a host effect. Before
+    // this, `--claim-run` fell to Wet whenever `--dry-run` was absent, so a claim whose mocked effect
+    // had no mock bound on this route silently dispatched the REAL effect against the host (a DESIGN
+    // §5 fail-open with a live side effect: the mocked journalctl ran live against srv1's journal).
+    // Hermetic mode owns the fail-closed rule: a mocked effect with no bound mock refuses typed
+    // (`no mock_response ... refusing`), and a bound mock still serves. The mode is decided by one
+    // tested authority, `claim_run_execution_mode`.
+    let execution_mode = claim_run_execution_mode(dry_run, claim_run);
     let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
 
     let to_run = match functions_to_run(functions, claim_run, entry_file, graph.as_ref()) {
@@ -1733,5 +1737,67 @@ mod exit_status_tests {
             "main",
         );
         assert_eq!(message.as_deref(), Some("drift: docs/plans/x.md"));
+    }
+}
+
+/// The single authority for the `run` verb's execution mode.
+///
+/// A `--claim-run` (verifying a `test fn` against its declared mocks) and a `--dry-run` BOTH mean
+/// Hermetic: a host operation is REFUSED rather than silently performed. Only an ordinary run
+/// (neither flag) is Wet. This is kept a pure function so the boundary between *verification* and
+/// *execution* is directly testable and the fail-closed rule for claim runs cannot regress into a
+/// live host dispatch (DESIGN §5): before this, `--claim-run` selected Wet whenever `--dry-run` was
+/// absent, so a claim whose mocked effect had no mock bound on the entry route dispatched the REAL
+/// effect against the host instead of refusing.
+fn claim_run_execution_mode(
+    dry_run: bool,
+    claim_run: bool,
+) -> v1_compiler::v1_interpreter::ExecutionMode {
+    if dry_run || claim_run {
+        v1_compiler::v1_interpreter::ExecutionMode::Hermetic
+    } else {
+        v1_compiler::v1_interpreter::ExecutionMode::Wet
+    }
+}
+
+#[cfg(test)]
+mod claim_run_mode_tests {
+    use super::claim_run_execution_mode;
+    use v1_compiler::v1_interpreter::ExecutionMode;
+
+    // THE BOUNDARY (the red the route was): `--claim-run` alone must select Hermetic, so a mocked
+    // effect with no bound mock refuses typed instead of dispatching live against the host. Today
+    // `--claim-run` without `--dry-run` selected Wet and ran the real effect (the mocked journalctl
+    // executed live against srv1's journal). This is the claim that goes green only with the fix.
+    #[test]
+    fn claim_run_without_dry_run_selects_hermetic() {
+        assert!(matches!(
+            claim_run_execution_mode(false, true),
+            ExecutionMode::Hermetic
+        ));
+    }
+
+    // DISCRIMINATING CONTROL against an over-broad repair: an ordinary run (neither flag) stays Wet,
+    // so genuine wet execution (witnesses, the required-floor runner) is NOT refused by the
+    // claim-run fix. If the repair wrongly forced Hermetic for all runs, this goes red.
+    #[test]
+    fn ordinary_run_neither_flag_stays_wet() {
+        assert!(matches!(
+            claim_run_execution_mode(false, false),
+            ExecutionMode::Wet
+        ));
+    }
+
+    // `--dry-run` keeps its incumbent meaning regardless of `--claim-run`.
+    #[test]
+    fn dry_run_selects_hermetic_regardless_of_claim_run() {
+        assert!(matches!(
+            claim_run_execution_mode(true, false),
+            ExecutionMode::Hermetic
+        ));
+        assert!(matches!(
+            claim_run_execution_mode(true, true),
+            ExecutionMode::Hermetic
+        ));
     }
 }
