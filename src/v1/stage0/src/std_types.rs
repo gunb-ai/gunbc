@@ -154,10 +154,6 @@ pub fn container_template_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_algebra_rows(), name.clone())
 }
 
-pub fn container_spelling_is_algebra(name: String, algebra: String) -> bool {
-    (container_template_algebra(name).as_deref() == Some(algebra.clone()).as_deref())
-}
-
 pub fn container_template_alias_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_alias_rows(), name.clone())
 }
@@ -190,7 +186,7 @@ pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
 
-pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
+pub type Set<Element> = Rc<BTreeSet<Element>>;
 
 pub type Map<Key, Value> = Rc<HashMap<Key, Value>>;
 
