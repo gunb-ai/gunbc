@@ -198,7 +198,9 @@ import gunbc.host.host_layout { belt_spawn_workdir_env_var, publication_answer_d
 // re-arm. This is recorded as an observation for that cut, not as an obligation on this one — no
 // trigger is declared here, because there is no event that would discharge it.
 //
-import gunbc.spool_queue { SpoolAttemptExit, SpoolPublication, SpoolRole, RolePending, RoleRefused, spool_open, spool_role_path, SpoolKind }
+import gunbc.spool_queue { SpoolAttemptExit, SpoolAttemptUnit, SpoolPublication, SpoolRole, RolePending, RoleRefused, spool_open, spool_role_path, SpoolKind, spool_role_dirs, spool_watched_roles, spool_declared_roles }
+import gunbc.live_deploy.apply_legs { ApplyLegCommand, DeployApplyLeg, deploy_apply_attempt_spool_legs, deploy_apply_publication_legs, deploy_apply_belt_legs }
+import gunbc.live_deploy.emit { live_deploy_publication_path_unit_file, live_deploy_attempt_unit_drain_path_unit_file }
 
 fn live_spec() -> DeploymentSpec {
   deployment_spec_srv1()
@@ -1133,4 +1135,39 @@ fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) ->
     Present { value: d } => d
     Absent => "<the spool declares no directory for this role>"
   }
+}
+
+// THE DECLARATION CONTROL FOR THE WRITERS-COLUMN READER ROUTE (gunbc.spool_queue spool_role_dirs /
+// spool_watched_roles / spool_declared_roles). Each READER of the declared directory set is executed here and
+// named: (1) gunbc.live_deploy.emit path units -- DirectoryNotEmpty= for every watched role of each spool;
+// (2) gunbc.live_deploy.apply_legs -- an install leg whose argv carries every declared role's directory;
+// (3) gunbc.roadmap.dispatch_worker_unit_confinement -- the exit spool's pending directory is a writable root of the
+// confined unit (its own witness). Every declared role has exactly ONE directory, so no reader can drop one.
+fn spool_leg_mentions(legs: List<DeployApplyLeg>, dir: String) -> Bool {
+  any(legs, l => match l {
+    ApplyLegCommand { step: _, command: c } => any(c.arguments, a => a == dir)
+    _ => false
+  })
+}
+
+fn spool_every_declared_role_has_exactly_one_directory(kind: SpoolKind, root: String) -> Bool {
+  all(spool_declared_roles(kind: kind), r => count(spool_role_dirs(kind: kind, instance_root: root, roles: [r])) == 1)
+}
+
+test fn the_writers_column_directories_reach_every_reader_exactly_once() -> Bool {
+  let spec = live_spec()
+  let root = spec.service.instance_root as String
+  let apply = concat(concat(deploy_apply_attempt_spool_legs(spec: spec), deploy_apply_publication_legs(spec: spec, path: "/usr/bin" as NonEmptyStr)), deploy_apply_belt_legs(spec: spec, path: "/usr/bin" as NonEmptyStr))
+  let exit_unit = live_deploy_belt_exit_path_unit_file(spec: spec)
+  let unit_unit = live_deploy_attempt_unit_drain_path_unit_file(spec: spec)
+  let pub_unit = live_deploy_publication_path_unit_file(spec: spec)
+  spool_every_declared_role_has_exactly_one_directory(kind: SpoolAttemptExit, root: root)
+    && spool_every_declared_role_has_exactly_one_directory(kind: SpoolAttemptUnit, root: root)
+    && spool_every_declared_role_has_exactly_one_directory(kind: SpoolPublication, root: root)
+    && all(spool_role_dirs(kind: SpoolAttemptExit, instance_root: root, roles: spool_watched_roles(kind: SpoolAttemptExit)), d => path_has_line(file: exit_unit, line: join(["DirectoryNotEmpty=", d], "")))
+    && all(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: root, roles: spool_watched_roles(kind: SpoolAttemptUnit)), d => path_has_line(file: unit_unit, line: join(["DirectoryNotEmpty=", d], "")))
+    && all(spool_role_dirs(kind: SpoolPublication, instance_root: root, roles: spool_watched_roles(kind: SpoolPublication)), d => path_has_line(file: pub_unit, line: join(["DirectoryNotEmpty=", d], "")))
+    && all(spool_declared_roles(kind: SpoolAttemptExit), r => all(spool_role_dirs(kind: SpoolAttemptExit, instance_root: root, roles: [r]), d => spool_leg_mentions(legs: apply, dir: d)))
+    && all(spool_declared_roles(kind: SpoolAttemptUnit), r => all(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: root, roles: [r]), d => spool_leg_mentions(legs: apply, dir: d)))
+    && all(spool_declared_roles(kind: SpoolPublication), r => all(spool_role_dirs(kind: SpoolPublication, instance_root: root, roles: [r]), d => spool_leg_mentions(legs: apply, dir: d)))
 }

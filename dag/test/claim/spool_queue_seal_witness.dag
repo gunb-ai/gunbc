@@ -228,15 +228,15 @@ test fn the_instance_keyed_open_resolves() -> ProcessExit {
 }
 
 test fn the_unit_spool_claimed_dir_is_gone() -> ProcessExit {
-  census_exit(blocking_delta(hostile: raw_unit_claimed_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+  census_exit(census_verdict(census: blocking_subject_census(source: raw_unit_claimed_source, wanted_class: "MissingExport", wanted_subject: "attempt_unit_spool_claimed_dir"), holds: fn(n) { n == 1 }))
 }
 
 test fn the_exit_spool_stage_dir_is_gone() -> ProcessExit {
-  census_exit(blocking_delta(hostile: raw_exit_stage_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+  census_exit(census_verdict(census: blocking_subject_census(source: raw_exit_stage_source, wanted_class: "MissingExport", wanted_subject: "attempt_exit_spool_stage_dir"), holds: fn(n) { n == 1 }))
 }
 
 test fn the_publication_request_dir_is_gone() -> ProcessExit {
-  census_exit(blocking_delta(hostile: raw_publication_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+  census_exit(census_verdict(census: blocking_subject_census(source: raw_publication_source, wanted_class: "MissingExport", wanted_subject: "publication_request_dir"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_pending_exit_entry_advances_to_handed_off_not_claimed() -> ProcessExit {
@@ -346,5 +346,5 @@ test fn the_stale_stop_effect_resolves() -> ProcessExit {
 // gunbc.roadmap.spool_stall, gunbc.roadmap.roadmap_attempt_exit_spool, gunbc.roadmap.roadmap_belt_actuate,
 // gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). Flips to MissingExport.
 test fn the_host_spool_stage_enum_is_gone() -> ProcessExit {
-  census_exit(blocking_delta(hostile: raw_host_spool_stage_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+  census_exit(census_verdict(census: blocking_subject_census(source: raw_host_spool_stage_source, wanted_class: "MissingExport", wanted_subject: "HostSpoolStage"), holds: fn(n) { n == 1 }))
 }
