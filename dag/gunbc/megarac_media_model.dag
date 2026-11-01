@@ -6,10 +6,20 @@ import std.algebra { list_snoc_item }
 import extdeps.bmc.megarac { megarac_no_redirection_session_index }
 import gunbc.machine_intake.megarac_media_row_reading { megarac_cleared_cd_wire_status_at_the_build_this_repository_read }
 
-// THE BMC's VIRTUAL-MEDIA SUBSYSTEM (AMI MegaRAC SP-X, firmware 0.32): the same controller as
-// gunbc.bmc_model, held as its own record because its state -- web sessions, the NFS share binding,
-// the image listing and the presented CD -- moves independently of power and IPMI. Pure transitions
-// with time as an input; the wire shapes are extdeps.bmc.megarac and extdeps.bmc.megarac_observed_output.
+// THE BMC's VIRTUAL-MEDIA SUBSYSTEM (AMI MegaRAC SP-X): the same controller as gunbc.bmc_model, held as its
+// own record because its state -- web sessions, the NFS share binding, the image listing and the presented CD
+// -- moves independently of power and IPMI. Pure transitions with time as an input; the wire shapes are
+// extdeps.bmc.megarac and extdeps.bmc.megarac_observed_output.
+//
+// WHICH BUILD THIS WORLD RENDERS, because it is not release-agnostic. A CD that is not presenting reaches the
+// wire as a DIFFERENT status per release (the 2026-09-05 probe saw 0 at 0.32; boot runs 40258937016 and
+// 40264233543 saw 16 beside session_index 255 at the build the committed ipmitool hpm check reads), and this
+// module holds a reading for ONE of them: the build this repository currently reads. Its cleared-row wire
+// comes from that read (megarac_cleared_cd_at_the_current_build, sourced from
+// gunbc.machine_intake.megarac_media_row_reading), never from a typed literal. A world at another release
+// would need that release's cleared-row reading, and nothing here supplies one --
+// w_the_media_model_world_renders_the_build_its_cleared_row_was_read_on keeps that asymmetry visible by
+// showing this row refused by the 0.32 table.
 //
 // SESSIONS. POST /api/session opens a session the client holds through its cookie jar and a CSRF
 // token; every other route needs both. DELETE /api/session closes it, after which the same cookie and
@@ -26,9 +36,12 @@ type MegaRacShare {
   share_type: String
 }
 
-// THE PRESENTED CD, as one configurations row. redirection_status on this firmware: 0 stopped, 100
-// connecting, 1 started (extdeps.bmc.megarac). A start moves the row to connecting and, after the
-// readiness delay, to started with a bound session index; session index 255 means no session.
+// THE PRESENTED CD, as one configurations row. The statuses the controller has been seen to report: 100
+// connecting and 1 started (read at 0.32 in 2026-09-27 and again at this build by the boot runs), and for a
+// row that is NOT presenting 0 at 0.32 versus 16 beside session_index 255 at this build -- the divergence
+// this module's cleared row now carries. extdeps.bmc.megarac is the table of what each release answers. A
+// start moves the row to connecting and, after the readiness delay, to started with a bound session index;
+// session index 255 means no session.
 // ready_at is when a connecting row becomes started.
 type MegaRacCdRow {
   image_name: String
@@ -78,13 +91,6 @@ fn megarac_cleared_cd_at_the_current_build() -> MegaRacCdRow {
   }
 }
 
-// THE CLEARED CD ROW AS THE 2026-09-05 PROBE SAW IT, AT 0.32: redirection_status 0 with no session. Kept
-// because 0 is what that release reported and claims that model that build need it; it is NOT what the build
-// this repository now reads reports for a drive that is not presenting (see
-// megarac_cleared_cd_at_the_current_build), and at this build status 0 is an unread code.
-fn megarac_cleared_cd() -> MegaRacCdRow {
-  MegaRacCdRow { image_name: "", redirection_status: 0, media_index: 0, session_index: 255, ready_at: none }
-}
 
 fn megarac_session_valid(world: MegaRacMediaWorld, cookie_jar: String, csrf_token: String) -> Bool {
   !all(world.sessions, s => !(s.open && s.cookie_jar == cookie_jar && s.csrf_token == csrf_token))
