@@ -506,7 +506,7 @@ fn host_6ce85c_a16_device(bus: String) -> ServingDevice {
 data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
   host: operator_host_6ce85c,
   usable_ram: host_6ce85c_serving_memory_observed.usable_ram,
-  overhead: HostFixedOverheadAllowance { bytes: gibibyte_to_byte_size(g: gibibyte(count: 6)), reason: "h11 host overhead: a 6 GiB allowance for the OS, sshd and the six server.py front ends until a reading with every engine stopped replaces it" as NonEmptyStr },
+  overhead: HostFixedOverheadAllowance { bytes: gibibyte_to_byte_size(g: gibibyte(count: 6)), reason: "h11 host overhead: a 6 GiB allowance for the OS, sshd and the server.py front ends until a reading with every engine stopped replaces it" as NonEmptyStr },
   shared: [ServingSharedArtifact {
     name: "Qwen3.8-Flash-Next IQ3_S routed-expert GGUF part 1" as NonEmptyStr,
     bytes: host_6ce85c_serving_memory_observed.shared_resident,
