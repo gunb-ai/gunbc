@@ -4182,6 +4182,20 @@ pub fn coproduct_decl_ref_decl_name(
     }
 }
 
+pub fn coproduct_decl_ref_module_path(
+    body: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match field_value_by_name(body, "coproduct".to_string(), source_indices.clone()) {
+        Some(decl_ref_node) => record_string_field(
+            decl_ref_node.clone(),
+            "module_path".to_string(),
+            source_indices.clone(),
+        ),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn optional_string_record_field(
     record: Rc<Node>,
     field_name: String,
@@ -4678,12 +4692,21 @@ pub fn variant_encoding_is_string_variant(
 
 pub fn coproduct_wire_contract_targets(
     contract_item: Rc<Node>,
+    target_module: String,
     coproduct_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match contract_item.body.clone() {
-        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
-            Some(target_name) => (target_name.clone() == coproduct_name.clone()),
+        Some(body) => match coproduct_decl_ref_module_path(body.clone(), source_indices.clone()) {
+            Some(target_module_path) => {
+                match coproduct_decl_ref_decl_name(body.clone(), source_indices.clone()) {
+                    Some(target_name) => {
+                        ((target_module_path.clone() == target_module.clone())
+                            && (target_name.clone() == coproduct_name.clone()))
+                    }
+                    std::option::Option::None => false,
+                }
+            }
             std::option::Option::None => false,
         },
         std::option::Option::None => false,
@@ -4824,45 +4847,34 @@ pub fn is_coproduct_wire_contract_row(
 
 pub fn emit_coproduct_wire_contract_target_validation(
     contract_item: Rc<Node>,
+    target_module: String,
     local_coproduct_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match contract_item.body.clone() {
-        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
-            Some(target_name) => {
-                if {
-                    let mut __found = false;
-                    for name in local_coproduct_names.iter().cloned() {
-                        if (name.clone() == target_name.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } {
-                    "".to_string()
-                } else {
-                    emit_rust_compile_error_item(v1_rt::concat(
-                        "CoproductWireContract target does not name a local coproduct: "
-                            .to_string(),
-                        target_name.clone(),
-                    ))
-                }
-            }
-            std::option::Option::None => emit_rust_compile_error_item(
-                "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name"
-                    .to_string(),
-            ),
+    Some(body) => match coproduct_decl_ref_module_path(body.clone(), source_indices.clone()) {
+    Some(claimed_module) => if (claimed_module.clone() != target_module.clone()) {
+        "".to_string()
+    } else {
+        match coproduct_decl_ref_decl_name(body.clone(), source_indices.clone()) {
+    Some(target_name) => if { let mut __found = false; for name in local_coproduct_names.iter().cloned() { if (name.clone() == target_name.clone()) { __found = true; break; } } __found } {
+            "".to_string()
+        } else {
+            emit_rust_compile_error_item(v1_rt::concat("CoproductWireContract target does not name a local coproduct: ".to_string(), target_name.clone()))
         },
-        std::option::Option::None => emit_rust_compile_error_item(
-            "CoproductWireContract row missing initializer body".to_string(),
-        ),
-    }
+    std::option::Option::None => emit_rust_compile_error_item("CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name".to_string()),
+}
+    },
+    std::option::Option::None => emit_rust_compile_error_item("CoproductWireContract.coproduct must be a DeclarationRef with a string module_path".to_string()),
+},
+    std::option::Option::None => emit_rust_compile_error_item("CoproductWireContract row missing initializer body".to_string()),
+}
 }
 
 pub fn emit_coproduct_wire_contract_validations(
     module_items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
+    target_module: String,
     local_coproduct_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -4892,6 +4904,7 @@ pub fn emit_coproduct_wire_contract_validations(
                 {
                     __result.push(emit_coproduct_wire_contract_target_validation(
                         item.clone(),
+                        target_module.clone(),
                         local_coproduct_names.clone(),
                         source_indices.clone(),
                     ));
@@ -4913,6 +4926,7 @@ pub fn emit_coproduct_wire_contract_validations(
 
 pub fn resolve_local_coproduct_wire_policy(
     coproduct_name: String,
+    emitting_module: String,
     all_unit_variants: bool,
     module_items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
@@ -4929,6 +4943,7 @@ pub fn resolve_local_coproduct_wire_policy(
                     source_indices.clone(),
                 ) && coproduct_wire_contract_targets(
                     item.clone(),
+                    emitting_module.clone(),
                     coproduct_name.clone(),
                     source_indices.clone(),
                 )) {
@@ -4979,6 +4994,7 @@ pub fn resolve_local_coproduct_wire_policy(
 
 pub fn resolve_emission_coproduct_wire_policy(
     coproduct_name: String,
+    emitting_module: String,
     item: Rc<Node>,
     wire_items: Rc<Vec<Rc<Node>>>,
     wire_imports: Rc<Vec<Rc<Node>>>,
@@ -4999,6 +5015,7 @@ pub fn resolve_emission_coproduct_wire_policy(
         };
         match resolve_local_coproduct_wire_policy(
             coproduct_name,
+            emitting_module,
             all_unit_variants.clone(),
             wire_items,
             wire_imports,
@@ -5235,6 +5252,7 @@ pub fn build_data_variant_wire_spellings(
                         crate::v1_std_core::authored_name_at(si.clone(), item.clone());
                     let policy = resolve_emission_coproduct_wire_policy(
                         coproduct_name.clone(),
+                        module_name.clone(),
                         item.clone(),
                         wire_items.clone(),
                         wire_imports.clone(),
@@ -11045,6 +11063,7 @@ pub fn emit_module_full(
         let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
             wire_context_items.clone(),
             wire_context_imports.clone(),
+            this_module_name.clone(),
             local_coproduct_names,
             scope.type_env.source_indices.clone(),
         );
@@ -17044,6 +17063,7 @@ pub fn emit_type_def_from_connective(
                         {
                             let serde_policy = resolve_emission_coproduct_wire_policy(
                                 item_text.clone(),
+                                env.module_path.clone(),
                                 item.clone(),
                                 module_items,
                                 imports,
