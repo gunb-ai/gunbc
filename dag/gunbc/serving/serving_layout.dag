@@ -497,9 +497,11 @@ fn host_6ce85c_a16_device(bus: String) -> ServingDevice {
   }
 }
 
-// THE GRANT. RAM and the locked expert file are the observed row's; the five devices are the five buses whose
-// engines are in service (86, c6 and, by operator ruling 2026-11-01 "h11: A", c7 are disabled: five engines with room
-// to park beat six that skip every park). The host overhead is an ALLOWANCE until a reading with
+// THE GRANT. RAM and the locked expert file are the observed row's; the four devices are the four buses whose
+// engines are in service. 86 and c6 were already disabled; c5 and c7 are disabled by operator ruling 2026-11-01 (A-prime):
+// at the 229,376-token ceiling this profile needs ~14 GiB per engine, and five engines needed 127 GB against ~118 GB
+// available (the derivation refused ServingLayoutRamShort), so four engines that each park one conversation beat six that
+// skip every park. c7 served nothing in the measured window and c5 the least. The host overhead is an ALLOWANCE until a reading with
 // every engine stopped replaces it.
 data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
   host: operator_host_6ce85c,
@@ -512,7 +514,7 @@ data host_6ce85c_grant: ServingResourceGrant = ServingResourceGrant {
   }],
   swap_bound: serving_engine_swap_bound,
   charging: ["shared expert pages are charged to strata-expert-lock, not the engines: 47,784 MiB of the 51.05 GiB file read unevictable in its cgroup on 2026-10-30T19:20Z, and engines start After= it from that date; the remaining ~3.3 GiB's charge is unread" as NonEmptyStr],
-  devices: [host_6ce85c_a16_device(bus: "85"), host_6ce85c_a16_device(bus: "87"), host_6ce85c_a16_device(bus: "88"), host_6ce85c_a16_device(bus: "c5"), host_6ce85c_a16_device(bus: "c8")],
+  devices: [host_6ce85c_a16_device(bus: "85"), host_6ce85c_a16_device(bus: "87"), host_6ce85c_a16_device(bus: "88"), host_6ce85c_a16_device(bus: "c8")],
 }
 
 // INDEPENDENT GROUPS FIRST: one replica per device.
@@ -520,7 +522,6 @@ data host_6ce85c_independent_groups: List<ServingDeviceGroup> = [
   ServingDeviceGroup { name: "h11-strata@85" as NonEmptyStr, devices: ["a16-85"] },
   ServingDeviceGroup { name: "h11-strata@87" as NonEmptyStr, devices: ["a16-87"] },
   ServingDeviceGroup { name: "h11-strata@88" as NonEmptyStr, devices: ["a16-88"] },
-  ServingDeviceGroup { name: "h11-strata@c5" as NonEmptyStr, devices: ["a16-c5"] },
   ServingDeviceGroup { name: "h11-strata@c8" as NonEmptyStr, devices: ["a16-c8"] },
 ]
 
