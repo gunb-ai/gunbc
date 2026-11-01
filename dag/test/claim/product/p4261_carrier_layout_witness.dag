@@ -1643,12 +1643,14 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
 // end, and its far end joins the traced point near U2_P5 but only links, at about 2 kohm, beyond it.
 // The via on lead b's node carries its two energized readings, and its reported 0.0 to lead b joins
 // it only on the baselined copy. The K1 renders its own, and the K1 with nothing measured renders none.
-// Since the pair readings of 2026-10-31, reading every reported zero as a join makes the live E1 record
-// contradict itself at exactly three readings, all from the first lead sweep on the converter's 0.5 mm
-// leads: SW to the return at 20 ohm and VIN to the return at 10 ohm, where SW to its pad, VIN to SW
-// and the pad to the return all read 0; and BST to SW open, where BST to the return read 0. The record
-// keeps them as contradictions (product.electrical.measured_netlist), and the converter hypothesis
-// names them as the readings to re-take held steady; nothing here reconciles them.
+// Since the pair readings of 2026-10-31 and the checks of 2026-11-01, reading every reported zero as a
+// join makes the live E1 record contradict itself at exactly six readings, every one a non-zero reading
+// at a converter lead whose node a zero joins to the return: SW to the return at 20 ohm and VIN to the
+// return at 10 and about 15 ohm, where SW to its pad, VIN to SW, VIN to the pad and the pad to the
+// return all read 0; and BST to SW open plus BST to the return over range and 8.4 Mohm, where the first
+// sweep's BST read 0 to the return. The record keeps them as contradictions
+// (product.electrical.measured_netlist); the converter hypothesis reads the BST group as one retired
+// first-sweep reading and the other group as near-zero figures on 0.5 mm leads; nothing here reconciles them.
 test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
   let live = board_netlist(b: e1_measured)
   let net = board_netlist(b: baselined_board(b: e1_measured))
@@ -1680,10 +1682,11 @@ test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
     && one_node(net: net, a: e1_q301_resistor_far, b: e1_route_near_u2) && !one_node(net: net, a: e1_q301_resistor_far, b: e1_route_toward_j1)
     && count(filter(e1_bench_record.voltages, o => terminal_ref_equal(a: o.at, b: e1_q301_b_via))) == 2
     && one_node(net: net, a: e1_q301_b_via, b: e1_q301_lead_b) && !one_node(net: live, a: e1_q301_b_via, b: e1_q301_lead_b)
-    && count(filter(net.links, l => !is_between(l: l))) == 3
+    && count(filter(net.links, l => !is_between(l: l))) == 6
     && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(SW)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref) && match valued_ohms(o: link_reading(l: l)) { Present { value: v } => v == 20, Absent => false })) == 1
-    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref) && match valued_ohms(o: link_reading(l: l)) { Present { value: v } => v == 10, Absent => false })) == 1
+    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref) && match valued_ohms(o: link_reading(l: l)) { Present { value: v } => v == 10 || v == 15, Absent => false })) == 2
     && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(BST)") && (link_reading(l: l).second.terminal as String).contains("(SW)"))) == 1
+    && count(filter(net.links, l => !is_between(l: l) && (link_reading(l: l).first.terminal as String).contains("(BST)") && terminal_ref_equal(a: link_reading(l: l).second, b: e1_ground_ref))) == 2
     && carrier_input_reading(layout: p4261_e1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: p4261_k1_layout).contains("measured netlist (a node is points joined by a beep or at the shorted-probe baseline")
     && carrier_input_reading(layout: unmeasured_k1()).contains("no board measured, so no measured netlist")
@@ -2618,8 +2621,11 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
   let vin_sw = count(filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(VIN)") && (o.second.terminal as String).contains("(SW)") && is_reported_zero(o: o))) == 1
     && count(filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(BST)") && (o.second.terminal as String).contains("(SW)") && match o.display { DisplayOverRange => true, DisplayValue { ohms: _, approximate: _ } => false, DisplayZeroWithoutBaseline { reported: _ } => false, DisplayAtProbeBaseline { shown: _, baseline: _ } => false, DisplayAboveBaseline => false })) == 1
     && all(e1_converter_pair_resistances, o => after_both_incidents(o: o))
-    && count(k1_converter_pair_resistances) == 1 && all(k1_converter_pair_resistances, o => is_reported_zero(o: o) && (o.first.terminal as String).contains("(SW)"))
-    && p4261_near_4r7_converter_hypothesis.claim.contains("VIN and SW leads read 0 ohm to each other") && p4261_near_4r7_converter_hypothesis.claim.contains("two separate paths to the return")
+    && count(k1_converter_pair_resistances) == 2
+    && count(filter(k1_converter_pair_resistances, o => is_reported_zero(o: o) && (o.first.terminal as String).contains("(SW)"))) == 1
+    && count(filter(k1_converter_pair_resistances, o => (o.first.terminal as String).contains("(VIN)") && (o.second.terminal as String).contains("(SW)") && match valued_ohms(o: o) { Present { value: v } => v == 13000, Absent => false })) == 1
+    && count(filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(BST)") && terminal_ref_equal(a: o.second, b: e1_ground_ref))) == 2
+    && p4261_near_4r7_converter_hypothesis.claim.contains("VIN reads 0 ohm to the switch node both ways, metallic, where the K1's same converter reads 13 kohm") && p4261_near_4r7_converter_hypothesis.claim.contains("two separate paths to the return")
   let in_records = vin_sw
     && count(filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near))) > count(e1_converter_lead_resistances)
     && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_far))) == count(k1_converter_lead_resistances)
