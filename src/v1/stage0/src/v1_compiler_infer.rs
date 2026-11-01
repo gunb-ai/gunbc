@@ -6098,6 +6098,12 @@ pub fn equality_resolved_declaration_walk(
     }
 }
 
+pub fn equality_reference_applies_arguments(peeled: Rc<Node>) -> bool {
+    (((peeled.connective.clone() != Connective::Conj)
+        && (peeled.connective.clone() != Connective::Disj))
+        && ((peeled.children.clone().len() as i64) > 0))
+}
+
 pub fn equality_resolved_declaration_structure(
     rt: Rc<Node>,
     peeled: Rc<Node>,
@@ -6120,7 +6126,7 @@ pub fn equality_resolved_declaration_structure(
                 identity.clone(),
                 equality_structure_reference(rt.clone(), peeled.clone(), scope.clone()),
                 (((rt.params.clone().len() as i64) > 0)
-                    || ((peeled.children.clone().len() as i64) > 0)),
+                    || equality_reference_applies_arguments(peeled.clone())),
                 name.clone(),
                 rt.children.clone(),
                 scope.clone(),
@@ -6133,7 +6139,7 @@ pub fn equality_resolved_declaration_structure(
                     identity.clone(),
                     equality_structure_reference(rt.clone(), peeled.clone(), scope.clone()),
                     (((rt.params.clone().len() as i64) > 0)
-                        || ((peeled.children.clone().len() as i64) > 0)),
+                        || equality_reference_applies_arguments(peeled.clone())),
                     name.clone(),
                     rt.children.clone(),
                     scope.clone(),
