@@ -4,6 +4,6 @@ import std.types { Int }
 
 // A second foreign type declarer makes the unstamped leaf lookup ambiguous.
 // Renamed-alias control changes ONLY this declaration's name, not its carrier.
-type Shared = Int
+type ForeignSharedB = Int
 
 fn enum_identity_foreign_b() -> Int { 29 }

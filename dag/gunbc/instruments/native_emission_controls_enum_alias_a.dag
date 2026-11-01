@@ -4,6 +4,6 @@ import std.types { Int }
 
 // Foreign type declaration whose leaf collides with a different module's enum arm.
 // Renamed-alias control changes ONLY this declaration's name, not its carrier.
-type Shared = Int
+type ForeignSharedA = Int
 
 fn enum_identity_foreign_a() -> Int { 17 }
