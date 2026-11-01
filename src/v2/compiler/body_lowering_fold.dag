@@ -149,7 +149,13 @@ import v2.std.compilers.lowered_shape {
 }
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, application_actual_edges, declared_signature, signature_order_edge }
-import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
+import v2.std.compilers.sugar {
+  sugar_deep_unwrap_optional,
+  sugar_field_init_is_string_keyed,
+  sugar_is_pass_through_emitted,
+  sugar_list_literal_items_capture_optional,
+  sugar_node_is_token,
+  sugar_unwrap_surface_shell, SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.diagnostic {
   Accepted,
@@ -888,18 +894,6 @@ fn body_term_erase_tree(n: Node) -> Node
   }
 }
 
-fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
-  (emitted == ^dag_surface_expr)
-    || (emitted == ^dag_surface_binary_expr)
-    || (emitted == ^dag_surface_unary_expr)
-    || (emitted == ^dag_surface_postfix_expr)
-    || (emitted == ^dag_surface_block_expr)
-    || (emitted == ^dag_surface_stmt)
-    || (emitted == ^dag_surface_lambda_let_stmt)
-    || (emitted == ^dag_surface_stmt_seq)
-    || (emitted == ^dag_surface_arg)
-}
-
 fn body_lower_is_identity_projection_edge(edge: Edge) -> Bool {
   match edge.label {
     StructuralLabel { label: _ } => false
@@ -1112,7 +1106,7 @@ type WherePredicateArgument
   | WhereArgumentPositional { value: Node }
 
 fn body_lower_where_argument(item: Node) -> Outcome<WherePredicateArgument> {
-  let raw = body_lower_deep_unwrap_optional(node: item)
+  let raw = sugar_deep_unwrap_optional(node: item)
   match sugar_sequence_pair_optional(node: raw) {
     Absent =>
       match body_lower_where_leaf_atom_optional(node: raw) {
@@ -1123,7 +1117,7 @@ fn body_lower_where_argument(item: Node) -> Outcome<WherePredicateArgument> {
       match body_lower_where_leaf_atom_optional(node: pair.left) {
         Absent => outcome_rejected(d: body_lower_where_unread(n: item))
         Present { value: name } =>
-          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.right)) {
+          match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: pair.right)) {
             Absent => outcome_accepted(value: WhereArgumentPositional { value: name })
             Present { value: colon_value } =>
               match body_lower_where_leaf_atom_optional(node: colon_value.right) {
@@ -1158,14 +1152,14 @@ fn body_lower_where_arguments(items: List<Node>) -> Outcome<List<WherePredicateA
 
 // `(` args `)` or nothing: the optional suffix after the predicate name.
 fn body_lower_where_argument_items(suffix: Node) -> Outcome<List<Node>> {
-  let inner = body_lower_deep_unwrap_optional(node: suffix)
+  let inner = sugar_deep_unwrap_optional(node: suffix)
   if is_empty_conj_root(n: inner) {
     outcome_accepted(value: Empty)
   } else {
     match sugar_sequence_pair_optional(node: inner) {
       Absent => outcome_rejected(d: body_lower_where_unread(n: suffix))
       Present { value: paren_rest } =>
-        match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: paren_rest.right)) {
+        match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: paren_rest.right)) {
           Absent => outcome_rejected(d: body_lower_where_unread(n: suffix))
           Present { value: list_close } =>
             body_lower_comma_list_items(
@@ -1409,7 +1403,7 @@ fn body_lower_binder_type_carrying_optional_where(base: Node, clause: Optional<N
 // record (BodyLowerTypedParam): the binder atom keeps its token's occurrence, and the field Edge is the
 // record's projection.
 fn body_lower_field_decl_optional(item: Node) -> Optional<BodyLowerTypedParam> {
-  body_lower_field_decl_head_optional(capture: body_lower_deep_unwrap_optional(node: item))
+  body_lower_field_decl_head_optional(capture: sugar_deep_unwrap_optional(node: item))
 }
 
 // Every field item of a list, each read as its field and its `[from "key"] [= default]` tail, or
@@ -1566,7 +1560,7 @@ type VariantPayloadShell
   | VariantPayloadUnrecognized
 
 fn body_lower_variant_payload_shell(suffix: Node) -> VariantPayloadShell {
-  let stripped = body_lower_deep_unwrap_optional(node: suffix)
+  let stripped = sugar_deep_unwrap_optional(node: suffix)
   if is_empty_conj_root(n: stripped) {
     VariantPayloadAbsent
   } else {
@@ -1648,7 +1642,7 @@ fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
             Present { value: suffixes } =>
               match body_lower_variant_payload_shell(suffix: suffixes.right) {
                 VariantPayloadCarries { shell: payload_shell } =>
-                  if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: suffixes.left)) {
+                  if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: suffixes.left)) {
                     body_lower_fielded_type_variant(shell: shell, head: pair.left, payload_shell: payload_shell)
                   } else {
                     outcome_rejected(
@@ -1922,19 +1916,19 @@ fn body_lower_symbol_literal_at_caret(caret: Node, name: Node) -> Node {
 
 fn body_lower_caret_symbol_literal_optional(captured: Node) -> Optional<Node> {
   match sugar_sequence_pair_optional(
-    node: body_lower_unwrap_surface_shell(node: captured)
+    node: sugar_unwrap_surface_shell(node: captured)
   ) {
     Absent => Absent
     Present { value: pair } =>
       match node_atom_identity_optional(
-        node: body_lower_deep_unwrap_optional(node: pair.left)
+        node: sugar_deep_unwrap_optional(node: pair.left)
       ) {
         Present { value: id } =>
           if id == ^dag_token_caret {
             optional_present(
               value: body_lower_symbol_literal_at_caret(
-                caret: body_lower_deep_unwrap_optional(node: pair.left),
-                name: body_lower_deep_unwrap_optional(node: pair.right)
+                caret: sugar_deep_unwrap_optional(node: pair.left),
+                name: sugar_deep_unwrap_optional(node: pair.right)
               )
             )
           } else {
@@ -1947,12 +1941,12 @@ fn body_lower_caret_symbol_literal_optional(captured: Node) -> Optional<Node> {
 
 fn body_lower_sequence_left_is_lbrace(captured: Node) -> Bool {
   match sugar_sequence_pair_optional(
-    node: body_lower_unwrap_surface_shell(node: captured)
+    node: sugar_unwrap_surface_shell(node: captured)
   ) {
     Absent => false
     Present { value: pair } =>
       match node_atom_identity_optional(
-        node: body_lower_deep_unwrap_optional(node: pair.left)
+        node: sugar_deep_unwrap_optional(node: pair.left)
       ) {
         Present { value: id } => id == ^dag_token_lbrace
         Absent => false
@@ -2089,7 +2083,7 @@ fn body_lower_operator_token_optional(node: Node, binary: Bool) -> Optional<Node
 // optional matched nothing (a postfix expression with no suffix) captures sequence(head, empty), and
 // the operand it denotes is the head.
 fn body_lower_strip_empty_tails(node: Node) -> Node {
-  let stripped = body_lower_unwrap_surface_shell(node: node)
+  let stripped = sugar_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Present { value: pair } =>
       if is_empty_conj_root(n: pair.right) {
@@ -2352,7 +2346,7 @@ fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
           Present { value: captured } => body_lower_try_fold_loop(node: captured)
           Absent => outcome_accepted(value: optional_absent())
         }
-      } else if body_lower_is_pass_through_emitted(emitted: id) {
+      } else if sugar_is_pass_through_emitted(emitted: id) {
         match parse_production_captured_child_optional(node: node) {
           Present { value: captured } => body_lower_try_fold_loop(node: captured)
           Absent => outcome_accepted(value: optional_absent())
@@ -2484,21 +2478,6 @@ fn body_lower_type_atom_from_expr(node: Node) -> Optional<Node> {
           }
       }
       }
-  }
-}
-
-fn body_lower_unwrap_surface_shell(node: Node) -> Node {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: emitted } =>
-      if body_lower_is_pass_through_emitted(emitted: emitted) {
-        match parse_production_captured_child_optional(node: node) {
-          Present { value: captured } => body_lower_unwrap_surface_shell(node: captured)
-          Absent => node
-        }
-      } else {
-        node
-      }
-    Absent => node
   }
 }
 
@@ -2707,13 +2686,13 @@ fn body_lower_binder_name_behind_shell_optional(node: Node) -> Optional<Node> {
   match parse_production_captured_child_optional(node: node) {
     Present { value: inner } => body_lower_param_binding_atom_optional(node: inner)
     Absent =>
-      let peeled = body_lower_deep_unwrap_optional(node: node)
+      let peeled = sugar_deep_unwrap_optional(node: node)
       if !node_same_occurrence(a: peeled, b: node) {
         body_lower_param_binding_atom_optional(node: peeled)
       } else {
         match sugar_sequence_pair_optional(node: node) {
           Present { value: pair } =>
-            if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+            if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
               body_lower_param_binding_atom_optional(node: pair.left)
             } else {
               optional_absent()
@@ -2829,19 +2808,11 @@ fn body_lower_binder_edge_read(param: BodyLowerTypedParam, default: Optional<Nod
   )
 }
 
-fn body_lower_deep_unwrap_optional(node: Node) -> Node {
-  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
-    Accepted { value: child, diagnostics: _ } =>
-      body_lower_deep_unwrap_optional(node: child)
-    Rejected { diagnostics: _ } => node
-  }
-}
-
 fn body_lower_deep_unwrap_for_int_literal(node: Node) -> Node {
   match parse_production_captured_child_optional(node: node) {
     Present { value: captured } =>
       body_lower_deep_unwrap_for_int_literal(node: captured)
-    Absent => body_lower_deep_unwrap_optional(node: node)
+    Absent => sugar_deep_unwrap_optional(node: node)
   }
 }
 
@@ -2861,7 +2832,7 @@ fn body_lower_unwrap_optional_element(node: Node) -> Node {
 // (v2.std.node_query DeclaredField.cardinality, decoded once at declared_field_cardinality_of_target). Before this reader a param or field typed
 // `List<Int>` or `Int?` lowered to the bare head atom, silently.
 fn body_lower_type_generic_args_optional(generic_capture: Node) -> Optional<List<Node>> {
-  let stripped = body_lower_deep_unwrap_optional(node: generic_capture)
+  let stripped = sugar_deep_unwrap_optional(node: generic_capture)
   if is_empty_conj_root(n: stripped) {
     optional_present(value: Empty)
   } else {
@@ -2921,7 +2892,7 @@ fn body_lower_type_wrap_instantiation_image(head: Node, args: List<Node>, source
 }
 
 fn body_lower_type_wrap_occupancy(base: Node, question_capture: Node, source: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: question_capture)
+  let stripped = sugar_deep_unwrap_optional(node: question_capture)
   if is_empty_conj_root(n: stripped) {
     optional_present(value: base)
   } else {
@@ -3194,7 +3165,7 @@ fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
 // on this one; `nfbcp_hazard_specimen_parses_holds` beside it separates "no hazard" from
 // "specimen does not parse", so the red cannot go green by the specimen ceasing to compile.
 fn body_lower_fn_decl_spine_right(node: Node) -> Optional<Node> {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: node)) {
     Present { value: pair } => optional_present(value: pair.right)
     Absent => optional_absent()
   }
@@ -3214,7 +3185,7 @@ fn body_lower_fn_decl_return_clause_optional(captured: Node) -> Optional<Node> {
                 Absent => optional_absent()
                 Present { value: after_params } =>
                   match sugar_sequence_pair_optional(
-                    node: body_lower_deep_unwrap_optional(node: after_params)
+                    node: sugar_deep_unwrap_optional(node: after_params)
                   ) {
                     Absent => optional_absent()
                     Present { value: pair } =>
@@ -3240,7 +3211,7 @@ fn body_lower_decl_generic_params_slot_optional(captured: Node) -> Optional<Node
       match body_lower_fn_decl_spine_right(node: after_kw_fn) {
         Absent => optional_absent()
         Present { value: after_name } =>
-          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: after_name)) {
+          match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: after_name)) {
             Absent => optional_absent()
             Present { value: pair } => optional_present(value: pair.left)
           }
@@ -3265,10 +3236,10 @@ type BodyLowerGenericBinder {
 
 // generic_param is seq(name, optional(seq(`:`, kind))); an absent kind captures as the empty Conj.
 fn body_lower_generic_param_binder_optional(item: Node) -> Optional<BodyLowerGenericBinder> {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: item)) {
     Absent => optional_absent()
     Present { value: name_then_kind } =>
-      let suffix = body_lower_deep_unwrap_optional(node: name_then_kind.right)
+      let suffix = sugar_deep_unwrap_optional(node: name_then_kind.right)
       if is_empty_conj_root(n: suffix) {
         body_lower_generic_param_named_optional(item: item, name_node: name_then_kind.left, kind: optional_absent())
       } else {
@@ -3285,7 +3256,7 @@ fn body_lower_generic_param_binder_optional(item: Node) -> Optional<BodyLowerGen
 }
 
 fn body_lower_generic_param_named_optional(item: Node, name_node: Node, kind: Optional<Node>) -> Optional<BodyLowerGenericBinder> {
-  match body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: name_node)) {
+  match body_lower_param_binding_atom_optional(node: sugar_deep_unwrap_optional(node: name_node)) {
     Absent => optional_absent()
     Present { value: binder } =>
       match node_atom_identity_optional(node: binder) {
@@ -3575,7 +3546,7 @@ fn body_lower_reduce_emitted_non_leaf(folded: Node, emitted: Symbol) -> Outcome<
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_postfix_expr(shell: folded), shape: LoweredPostfix), folded: folded)
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_primary_expr(shell: folded), shape: LoweredPrimary), folded: folded)
-  } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+  } else if sugar_is_pass_through_emitted(emitted: emitted) {
     body_lower_reduce_passthrough(folded: folded)
   } else if emitted == ^dag_surface_fn_decl {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lowering_refuse_retained(o: body_lower_fn_decl_to_arrow(shell: folded)), shape: LoweredFnDeclaration), folded: folded)
@@ -3628,7 +3599,7 @@ fn body_lower_fold_children(node: Node) -> Outcome<Node> {
 
 fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
   if body_lower_match_capture_heads_spine(
-    spine: body_lower_unwrap_surface_shell(node: node)
+    spine: sugar_unwrap_surface_shell(node: node)
   ) {
     match body_lower_try_match_from_captured(captured: node) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -4061,7 +4032,7 @@ fn body_lower_body_subtree_lower_from_primary(captured: Node) -> Outcome<Optiona
             OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
             OperandRefAbsent =>
               body_lower_try_body_lowered(
-                node: body_lower_unwrap_surface_shell(node: captured)
+                node: sugar_unwrap_surface_shell(node: captured)
               )
           }
       }
@@ -4163,7 +4134,7 @@ fn body_lower_is_control_form_emitted(id: Symbol) -> Bool {
 }
 
 fn body_lower_node_is_delimiter_atom(n: Node, opening: Bool) -> Bool {
-  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: n)) {
+  match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: n)) {
     Present { value: id } =>
       if opening { (id == ^dag_token_lparen) || (id == ^dag_token_lbrace) } else { (id == ^dag_token_rparen) || (id == ^dag_token_rbrace) }
     Absent => false
@@ -4188,7 +4159,7 @@ fn body_lower_find_control_form_optional(root: Node) -> Optional<ControlFormFoun
       match sugar_sequence_pair_optional(node: root) {
         Absent => optional_absent()
         Present { value: pair } =>
-          if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+          if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
             body_lower_find_control_form_optional(root: pair.left)
           } else if body_lower_node_is_delimiter_atom(n: pair.right, opening: false) {
             body_lower_find_control_form_optional(root: pair.left)
@@ -4230,7 +4201,7 @@ fn body_lower_body_subtree_lower_rest(captured: Node) -> Outcome<Optional<Node>>
 }
 
 fn body_lower_node_is_eq_token(n: Node) -> Bool {
-  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: n)) {
+  match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: n)) {
     Present { value: id } => id == ^dag_token_eq
     Absent => false
   }
@@ -4529,7 +4500,7 @@ fn body_lower_fn_decl_exit_refusal_optional(captured: Node) -> Optional<Outcome<
 // what it wrote (body_lowering_reason_pattern_form_not_admitted) and never lowers as a fn. The head
 // is told apart by its token: `fn` is the keyword token, `pattern` a literal identifier.
 fn body_lower_pattern_form_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: captured)) {
     Absent => optional_absent()
     Present { value: head_rest } =>
       if body_lower_token_is(node: head_rest.left, token: ^dag_token_kw_fn) {
@@ -4999,13 +4970,13 @@ fn body_lower_admit_roster_node(clause: Node) -> Optional<Node> {
   match parse_production_captured_child_optional(node: clause) {
     Absent => optional_absent()
     Present { value: captured } =>
-      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+      match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: captured)) {
         Absent => optional_absent()
         Present { value: head_pair } =>
-          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: head_pair.right)) {
+          match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: head_pair.right)) {
             Absent => optional_absent()
             Present { value: colon_pair } =>
-              match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: colon_pair.right)) {
+              match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: colon_pair.right)) {
                 Absent => optional_absent()
                 Present { value: bracket_pair } =>
                   match body_lower_comma_list_items_optional(list_capture: bracket_pair.right) {
@@ -5285,7 +5256,7 @@ fn body_lower_whole_inner_optional(node: Node) -> Optional<Node> {
     Absent =>
       match sugar_sequence_pair_optional(node: node) {
         Present { value: pair } =>
-          if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+          if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
             optional_present(value: pair.left)
           } else {
             optional_absent()
@@ -5296,7 +5267,7 @@ fn body_lower_whole_inner_optional(node: Node) -> Optional<Node> {
 }
 
 fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
-  let unwrapped = body_lower_deep_unwrap_optional(node: node)
+  let unwrapped = sugar_deep_unwrap_optional(node: node)
   match node_atom_identity_optional(node: unwrapped) {
     Present { value: id } =>
       if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
@@ -5316,7 +5287,7 @@ fn body_lower_literal_int_atom_optional(node: Node) -> Optional<Node> {
   match body_lower_int_literal_with_magnitude_optional(node: node) {
     Present { value: lit } => Present { value: lit }
     Absent =>
-      match body_lower_whole_inner_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+      match body_lower_whole_inner_optional(node: sugar_deep_unwrap_optional(node: node)) {
         Present { value: inner } => body_lower_literal_int_atom_optional(node: inner)
         Absent => optional_absent()
       }
@@ -5577,7 +5548,7 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_lowered_behind_shells_read(node: node) {
     OperandRefLowered { lowered: lowered } => outcome_accepted(value: optional_present(value: lowered))
     OperandRefAbsent =>
-      let raw = body_lower_deep_unwrap_optional(node: node)
+      let raw = sugar_deep_unwrap_optional(node: node)
       if body_lower_is_block_value(node: raw) {
         body_lower_block_value_lowered(raw: raw)
       } else {
@@ -5613,7 +5584,7 @@ fn body_lower_is_block_value(node: Node) -> Bool {
       Present { value: _ } =>
         match parse_production_captured_child_optional(node: node) {
           Absent => false
-          Present { value: captured } => body_lower_is_block_value(node: body_lower_deep_unwrap_optional(node: captured))
+          Present { value: captured } => body_lower_is_block_value(node: sugar_deep_unwrap_optional(node: captured))
         }
     }
   }
@@ -5653,7 +5624,7 @@ fn body_lower_block_value_lowered(raw: Node) -> Outcome<Optional<Node>> {
 // the spine). Both are peeled to the lowered node first; a spine with a non-empty right
 // projection is an unlowered operator tail and is not peeled.
 fn body_lower_lowered_behind_shells_read(node: Node) -> OperandRefRead {
-  let stripped = body_lower_deep_unwrap_optional(node: node)
+  let stripped = sugar_deep_unwrap_optional(node: node)
   match body_term_of(node: stripped) {
     Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
     Accepted { value: Lowered { node: lowered, shape: _ }, diagnostics: _ } => OperandRefLowered { lowered: lowered }
@@ -5677,7 +5648,7 @@ fn body_lower_raw_behind_shells_read(stripped: Node) -> OperandRefRead {
         match sugar_sequence_pair_optional(node: stripped) {
           Absent => OperandRefAbsent
           Present { value: pair } =>
-            if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+            if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
               body_lower_lowered_behind_shells_read(node: pair.left)
             } else {
               OperandRefAbsent
@@ -5738,7 +5709,7 @@ type FunctionValueCapture {
 }
 
 fn body_lower_function_value_captured_optional(node: Node) -> Optional<FunctionValueCapture> {
-  let stripped = body_lower_unwrap_surface_shell(node: body_lower_deep_unwrap_optional(node: node))
+  let stripped = sugar_unwrap_surface_shell(node: sugar_deep_unwrap_optional(node: node))
   match parse_production_emitted_identity_optional(node: stripped) {
     Present { value: id } =>
       match function_value_kind_of(emitted: id) {
@@ -5754,7 +5725,7 @@ fn body_lower_function_value_captured_optional(node: Node) -> Optional<FunctionV
 }
 
 fn body_lower_lambda_token_is(node: Node, token: Symbol) -> Bool {
-  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+  match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: node)) {
     Present { value: id } => id == token
     Absent => false
   }
@@ -5769,7 +5740,7 @@ type FunctionValueCodomain
 // opt(seq(`->`, type_expr)), the return clause v2.compiler.fold_lowering function_value_parts_optional
 // reads (a lambda's is the empty conj). Present-but-unreadable is Absent, and refuses.
 fn body_lower_function_value_codomain_optional(ret: Node) -> Optional<FunctionValueCodomain> {
-  let r = body_lower_deep_unwrap_optional(node: ret)
+  let r = sugar_deep_unwrap_optional(node: ret)
   if is_empty_conj_root(n: r) {
     optional_present(value: CodomainElided)
   } else {
@@ -5798,7 +5769,7 @@ fn body_lower_function_value_codomain_optional(ret: Node) -> Optional<FunctionVa
 // (gunbc.recurring_failure_mode producer_reenters_a_general_subtree_walker).
 fn body_lower_function_value_body(body: FunctionLiteralBody) -> Outcome<Optional<Node>> {
   match body {
-    FunctionLiteralExprBody { expr: e } => body_lower_function_value_lowered_whole(o: body_lower_fold(node: body_lower_deep_unwrap_optional(node: e)))
+    FunctionLiteralExprBody { expr: e } => body_lower_function_value_lowered_whole(o: body_lower_fold(node: sugar_deep_unwrap_optional(node: e)))
     FunctionLiteralBlockBody { fn_body: b } =>
       match body_lower_exit_outside_tail_optional(node: b, tail: true) {
         Present { value: refused } => body_lower_function_value_lowered_whole(o: refused)
@@ -5827,7 +5798,7 @@ fn body_lower_function_value_lowered_whole(o: Outcome<Node>) -> Outcome<Optional
 // fn_body's captured child is seq(`{`, seq(stmt_seq, `}`)); the stmt_seq production is the LEFT of
 // its right projection.
 fn body_lower_fn_body_stmt_seq_optional(fn_body: Node) -> Optional<Node> {
-  match parse_production_captured_child_optional(node: body_lower_deep_unwrap_optional(node: fn_body)) {
+  match parse_production_captured_child_optional(node: sugar_deep_unwrap_optional(node: fn_body)) {
     Absent => optional_absent()
     Present { value: captured } =>
       match sugar_sequence_pair_optional(node: captured) {
@@ -5835,7 +5806,7 @@ fn body_lower_fn_body_stmt_seq_optional(fn_body: Node) -> Optional<Node> {
         Present { value: brace_rest } =>
           match sugar_sequence_pair_optional(node: brace_rest.right) {
             Absent => optional_absent()
-            Present { value: seq_close } => optional_present(value: body_lower_deep_unwrap_optional(node: seq_close.left))
+            Present { value: seq_close } => optional_present(value: sugar_deep_unwrap_optional(node: seq_close.left))
           }
       }
   }
@@ -6240,7 +6211,7 @@ fn body_lower_call_arg_edge(arg_capture: Node) -> Outcome<Edge> {
 fn body_lower_comma_list_child(list: Node, name: Symbol, shape_refusal: Symbol) -> Outcome<Node> {
   match find_named_child(root: list, name: name) {
     Accepted { value: child, diagnostics: _ } =>
-      outcome_accepted(value: body_lower_deep_unwrap_optional(node: child))
+      outcome_accepted(value: sugar_deep_unwrap_optional(node: child))
     Rejected { diagnostics: _ } =>
       outcome_rejected(d: body_lower_diagnostic(reason: shape_refusal, n: list))
   }
@@ -6273,7 +6244,7 @@ fn body_lower_comma_list_repeat_items(repeat_capture: Node, shape_refusal: Symbo
 }
 
 fn body_lower_comma_list_items(list_capture: Node, shape_refusal: Symbol) -> Outcome<List<Node>> {
-  let list = body_lower_deep_unwrap_optional(node: list_capture)
+  let list = sugar_deep_unwrap_optional(node: list_capture)
   if is_empty_conj_root(n: list) {
     outcome_accepted(value: Empty)
   } else {
@@ -6303,7 +6274,7 @@ fn body_lower_comma_list_items(list_capture: Node, shape_refusal: Symbol) -> Out
 // Whether that trailing comma was written is a fact of the capture the items read does not carry; a
 // consumer for which `[a,]` is not `[a]` -- an index suffix -- asks it here.
 fn body_lower_comma_list_has_trailing_comma(list_capture: Node) -> Bool {
-  let list = body_lower_deep_unwrap_optional(node: list_capture)
+  let list = sugar_deep_unwrap_optional(node: list_capture)
   if is_empty_conj_root(n: list) {
     false
   } else {
@@ -6313,7 +6284,7 @@ fn body_lower_comma_list_has_trailing_comma(list_capture: Node) -> Bool {
         match sugar_sequence_pair_optional(node: head_and_rest.right) {
           Absent => false
           Present { value: repeat_and_trailing } =>
-            is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: repeat_and_trailing.right)) == false
+            is_empty_conj_root(n: sugar_deep_unwrap_optional(node: repeat_and_trailing.right)) == false
         }
     }
   }
@@ -6393,7 +6364,7 @@ fn body_lower_call_args_from_capture(args_capture: Node) -> Outcome<List<Edge>> 
 }
 
 fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: root)
+  let stripped = sugar_deep_unwrap_optional(node: root)
   match body_lower_postfix_call_suffix_args(call_suffix: stripped) {
     Present { value: _ } => optional_present(value: stripped)
     Absent =>
@@ -6407,7 +6378,7 @@ fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
 }
 
 fn body_lower_call_sequence_node(node: Node) -> Node {
-  let stripped = body_lower_unwrap_surface_shell(node: node)
+  let stripped = sugar_unwrap_surface_shell(node: node)
   match parse_production_emitted_identity_optional(node: stripped) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_primary_expr {
@@ -6517,7 +6488,7 @@ fn body_lower_postfix_projection_step_name(repeat_elem: Node) -> Optional<Symbol
 }
 
 fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  let stripped = sugar_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
     Present { value: pair } =>
@@ -6852,7 +6823,7 @@ fn body_lower_qualified_name_spine_node(segments: List<Node>, source: Node) -> N
 }
 
 fn body_lower_postfix_chain_read(node: Node) -> PostfixChainRead {
-  let stripped = body_lower_unwrap_surface_shell(node: node)
+  let stripped = sugar_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => PostfixChainNotThisShape
     Present { value: pair } =>
@@ -6911,7 +6882,7 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
 }
 
 fn body_lower_postfix_chain_head_or_self(node: Node) -> Node {
-  let stripped = body_lower_unwrap_surface_shell(node: node)
+  let stripped = sugar_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => stripped
     Present { value: pair } => pair.left
@@ -7408,7 +7379,7 @@ fn body_lower_postfix_optional_unwrap(node: Node) -> Node {
 }
 
 fn body_lower_postfix_method_suffix_optional(repeat_elem: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
+  let stripped = sugar_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => optional_absent()
     Present { value: pair } =>
@@ -7589,7 +7560,7 @@ fn body_lower_string_literal_value_optional(node: Node) -> Optional<Node> {
 // reader's contract (the pattern claims of v2.test.claim.body_lowering.single_arm_match and
 // v2.test.claim.manual.body_lowering_match go red without it).
 fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: node)
+  let stripped = sugar_deep_unwrap_optional(node: node)
   match body_lower_atom_node_lowered_optional(stripped: stripped) {
     Present { value: atom } => optional_present(value: atom)
     Absent =>
@@ -7628,7 +7599,7 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
 // literal `{ "k": v }` with its `{` token and a qualified constructor `a.b.T { f: v }` with `a`
 // (gunbc.recurring_failure_mode unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering).
 fn body_lower_value_sole_atom_optional(node: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: node)
+  let stripped = sugar_deep_unwrap_optional(node: node)
   match body_lower_atom_node_lowered_optional(stripped: stripped) {
     Present { value: atom } => optional_present(value: atom)
     Absent =>
@@ -7637,7 +7608,7 @@ fn body_lower_value_sole_atom_optional(node: Node) -> Optional<Node> {
         Absent =>
           match sugar_sequence_pair_optional(node: stripped) {
             Present { value: pair } =>
-              if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+              if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
                 body_lower_value_sole_atom_optional(node: pair.left)
               } else {
                 optional_absent()
@@ -7689,7 +7660,7 @@ fn body_lower_match_arm_body_capture_optional(stripped: Node) -> Optional<Node> 
       match body_lower_match_spine_left(spine: after_pattern) {
         Absent => optional_absent()
         Present { value: arrow_node } =>
-          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: arrow_node)) {
+          match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: arrow_node)) {
             Absent => optional_absent()
             Present { value: arrow } =>
               if arrow == ^dag_token_fat_arrow {
@@ -7725,7 +7696,7 @@ fn body_lower_pattern_reject<T>(pattern_capture: Node) -> Outcome<T> {
 // dag_grammar_field_pattern_expr, left-factored): an empty suffix is the pun `name`, which binds the
 // field to the binder of the same name.
 fn body_lower_field_pattern_edge(item: Node) -> Outcome<Edge> {
-  let stripped = body_lower_deep_unwrap_optional(node: item)
+  let stripped = sugar_deep_unwrap_optional(node: item)
   let captured = match parse_production_captured_child_optional(node: stripped) {
     Present { value: c } => c
     Absent => stripped
@@ -7736,7 +7707,7 @@ fn body_lower_field_pattern_edge(item: Node) -> Outcome<Edge> {
       match body_lower_param_binding_optional(node: pair.left) {
         Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: item))
         Present { value: field_name } =>
-          let suffix = body_lower_deep_unwrap_optional(node: pair.right)
+          let suffix = sugar_deep_unwrap_optional(node: pair.right)
           if is_empty_conj_root(n: suffix) {
             outcome_accepted(
               value: Edge {
@@ -7871,7 +7842,7 @@ fn body_lower_pattern_suffix_lowered(head: Node, suffix: Node, pattern_capture: 
 }
 
 fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: pattern_capture)
+  let stripped = sugar_deep_unwrap_optional(node: pattern_capture)
   let captured = match parse_production_emitted_identity_optional(node: stripped) {
     Present { value: id } =>
       if id == ^dag_surface_pattern {
@@ -7886,7 +7857,7 @@ fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
   }
   match sugar_sequence_pair_optional(node: captured) {
     Present { value: pair } =>
-      if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+      if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
         match body_lower_pattern_qualified_reference_optional(head: pair.left) {
           Present { value: reference } => outcome_accepted(value: reference)
           Absent =>
@@ -7898,7 +7869,7 @@ fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
       } else {
         body_lower_pattern_suffix_lowered(
           head: pair.left,
-          suffix: body_lower_deep_unwrap_optional(node: pair.right),
+          suffix: sugar_deep_unwrap_optional(node: pair.right),
           pattern_capture: pattern_capture
         )
       }
@@ -7946,7 +7917,7 @@ fn body_lower_pattern_atom_form(atom: Node) -> Node {
 // another refuses located. An expression body sits under its own expr production and is read by the
 // value reader, as before.
 fn body_lower_match_arm_statement_spine_optional(body_capture: Node) -> Optional<Node> {
-  let shell = body_lower_deep_unwrap_optional(node: body_capture)
+  let shell = sugar_deep_unwrap_optional(node: body_capture)
   match parse_production_emitted_identity_optional(node: shell) {
     Absent => optional_absent()
     Present { value: emitted } =>
@@ -7961,7 +7932,7 @@ fn body_lower_match_arm_statement_spine_optional(body_capture: Node) -> Optional
 // AN EMPTY ARM BODY HAS NO STATEMENT (v2.extdeps.languages.dag dag_grammar_empty_block_body_expr), so
 // it refuses as an empty block's spine always has: headless, at the body.
 fn body_lower_match_arm_empty_body_optional(body_capture: Node) -> Optional<Node> {
-  let shell = body_lower_deep_unwrap_optional(node: body_capture)
+  let shell = sugar_deep_unwrap_optional(node: body_capture)
   match parse_production_emitted_identity_optional(node: shell) {
     Present { value: emitted } => if emitted == ^dag_surface_empty_block_body { optional_present(value: shell) } else { optional_absent() }
     Absent => optional_absent()
@@ -8057,11 +8028,11 @@ fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
 fn body_lower_is_match_arm_navigate_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_pattern)
     || (emitted == ^dag_surface_primary_expr)
-    || body_lower_is_pass_through_emitted(emitted: emitted)
+    || sugar_is_pass_through_emitted(emitted: emitted)
 }
 
 fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: arm_capture)
+  let stripped = sugar_deep_unwrap_optional(node: arm_capture)
   match parse_production_emitted_identity_optional(node: stripped) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_match_arm {
@@ -8281,7 +8252,7 @@ fn body_lower_if_expr_capture_optional(spine: Node) -> Optional<Node> {
           Present { value: left } =>
             match body_lower_match_spine_right(spine: spine) {
               Present { value: right } =>
-                match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+                match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
                   Present { value: id } =>
                     match (id == ^dag_token_kw_if) || (id == ^dag_token_kw_then) || (id == ^dag_token_kw_else) {
                       true => body_lower_if_expr_capture_optional(spine: right)
@@ -8330,7 +8301,7 @@ type IfRowArms {
 }
 
 fn body_lower_if_row_arms_optional(captured: Node) -> Optional<IfRowArms> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match body_lower_if_row_slot_after_token(seq: spine, token: ^dag_token_kw_if) {
     Absent => optional_absent()
     Present { value: after_if } =>
@@ -8362,7 +8333,7 @@ fn body_lower_if_row_arms_optional(captured: Node) -> Optional<IfRowArms> {
                       match body_lower_match_spine_left(spine: after_if) {
                         Absent => optional_absent()
                         Present { value: condition } =>
-                          if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: else_slot)) {
+                          if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: else_slot)) {
                             optional_present(value: IfRowArms {
                               condition: condition,
                               then_slot: then_body,
@@ -8399,7 +8370,7 @@ fn body_lower_if_row_slot_after_token(seq: Node, token: Symbol) -> Optional<Node
   match body_lower_match_spine_left(spine: seq) {
     Absent => optional_absent()
     Present { value: left } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+      match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
         Present { value: id } =>
           if id == token { body_lower_match_spine_right(spine: seq) } else { optional_absent() }
         Absent => optional_absent()
@@ -8409,7 +8380,7 @@ fn body_lower_if_row_slot_after_token(seq: Node, token: Symbol) -> Optional<Node
 
 // An arm slot holds one production (fn_body or expr); the arm readers answer its captured child.
 fn body_lower_if_row_captured(node: Node) -> Node {
-  let shell = body_lower_deep_unwrap_optional(node: node)
+  let shell = sugar_deep_unwrap_optional(node: node)
   match parse_production_captured_child_optional(node: shell) {
     Present { value: captured } => captured
     Absent => shell
@@ -8475,7 +8446,7 @@ fn body_lower_if_row_else_part_optional(slot: IfRowElse) -> Optional<Node> {
 // handing back a LOWERED node where a capture is owed (and forgetting any refusal the operand reader
 // made); the lowering belongs to the one value reader downstream, so that branch is deleted.
 fn body_lower_if_condition_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match is_empty_conj_root(n: spine) {
     true => Absent
     false =>
@@ -8483,7 +8454,7 @@ fn body_lower_if_condition_optional(captured: Node) -> Optional<Node> {
       Present { value: left } =>
         match body_lower_match_spine_right(spine: spine) {
           Present { value: right } =>
-            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+            match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
               Present { value: id } =>
                 match id == ^dag_token_kw_if {
                   true => body_lower_if_expr_capture_optional(spine: right)
@@ -8556,7 +8527,7 @@ type BodyLowerLetSugar {
 // node form's head is required NOT to be `let`, so `let x: T = e` is never read as sugar (its
 // annotation would otherwise be taken for the value).
 fn body_lower_let_sugar_optional(captured: Node) -> Optional<BodyLowerLetSugar> {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: body_lower_unwrap_surface_shell(node: captured))) {
+  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: sugar_unwrap_surface_shell(node: captured))) {
     Absent => optional_absent()
     Present { value: head } =>
       match body_lower_let_sugar_after_name(name: head.left, rest: head.right, colon_admitted: false) {
@@ -8565,7 +8536,7 @@ fn body_lower_let_sugar_optional(captured: Node) -> Optional<BodyLowerLetSugar> 
           if body_lower_token_is(node: head.left, token: ^dag_token_kw_let) {
             optional_absent()
           } else {
-            match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: head.right)) {
+            match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: head.right)) {
               Absent => optional_absent()
               Present { value: name_rest } => body_lower_let_sugar_after_name(name: name_rest.left, rest: name_rest.right, colon_admitted: true)
             }
@@ -8575,7 +8546,7 @@ fn body_lower_let_sugar_optional(captured: Node) -> Optional<BodyLowerLetSugar> 
 }
 
 fn body_lower_token_is(node: Node, token: Symbol) -> Bool {
-  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+  match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: node)) {
     Present { value: id } => id == token
     Absent => false
   }
@@ -8583,14 +8554,14 @@ fn body_lower_token_is(node: Node, token: Symbol) -> Bool {
 
 // seq(separator, expr) after the name: `=` always, `:` only in the `node` form.
 fn body_lower_let_sugar_after_name(name: Node, rest: Node, colon_admitted: Bool) -> Optional<BodyLowerLetSugar> {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: rest)) {
+  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: rest)) {
     Absent => optional_absent()
     Present { value: sep_value } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: sep_value.left)) {
+      match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: sep_value.left)) {
         Absent => optional_absent()
         Present { value: sep } =>
           if (sep == ^dag_token_eq) || (colon_admitted && (sep == ^dag_token_colon)) {
-            match body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: name)) {
+            match body_lower_param_binding_atom_optional(node: sugar_deep_unwrap_optional(node: name)) {
               Absent => optional_absent()
               Present { value: _ } => optional_present(value: BodyLowerLetSugar { name: name, value: sep_value.right })
             }
@@ -8605,18 +8576,18 @@ fn body_lower_let_sugar_after_name(name: Node, rest: Node, colon_admitted: Bool)
 // the token it was read from so it keeps its minted occurrence (v2.compiler.occurrence_role reads it).
 fn body_lower_let_in_key_binding_atom_optional(captured: Node) -> Optional<Node> {
   match body_lower_let_sugar_optional(captured: captured) {
-    Present { value: sugar } => body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: sugar.name))
+    Present { value: sugar } => body_lower_param_binding_atom_optional(node: sugar_deep_unwrap_optional(node: sugar.name))
     Absent => body_lower_let_keyword_key_binding_atom_optional(captured: captured)
   }
 }
 
 fn body_lower_let_keyword_key_binding_atom_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
       match body_lower_match_spine_right(spine: spine) {
         Present { value: right } =>
-          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+          match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
             Present { value: id } =>
               if id == ^dag_token_kw_let {
                 match body_lower_param_binding_atom_optional(node: body_lower_let_name_position(after_let: right)) {
@@ -8677,7 +8648,7 @@ fn body_lower_try_loop_expr_from_node(node: Node) -> Outcome<Optional<Node>> {
             body_lower_try_loop_expr_from_captured(captured: captured)
           Absent => outcome_accepted(value: optional_absent())
         }
-      } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+      } else if sugar_is_pass_through_emitted(emitted: emitted) {
         match body_lower_unwrap_captured(shell: node) {
           Present { value: captured } => body_lower_try_loop_expr_from_node(node: captured)
           Absent => outcome_accepted(value: optional_absent())
@@ -8756,19 +8727,19 @@ fn body_lower_let_annotation_optional(captured: Node) -> Optional<Node> {
 }
 
 fn body_lower_let_keyword_annotation_optional(captured: Node) -> Optional<Node> {
-  match body_lower_fn_decl_spine_right(node: body_lower_unwrap_surface_shell(node: captured)) {
+  match body_lower_fn_decl_spine_right(node: sugar_unwrap_surface_shell(node: captured)) {
     Absent => optional_absent()
     Present { value: after_let } =>
       match body_lower_fn_decl_spine_right(node: after_let) {
         Absent => optional_absent()
         Present { value: after_name } =>
-          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: after_name)) {
+          match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: after_name)) {
             Absent => optional_absent()
             Present { value: pair } =>
-              match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+              match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: pair.left)) {
                 Present { value: id } =>
                   if id == ^dag_token_colon {
-                    match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.right)) {
+                    match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: pair.right)) {
                       Present { value: type_rest } => optional_present(value: type_rest.left)
                       Absent => optional_present(value: pair.right)
                     }
@@ -8896,14 +8867,14 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 }
 
 fn body_lower_let_keyword_statement_value_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Absent => optional_absent()
     Present { value: left } =>
       match body_lower_match_spine_right(spine: spine) {
         Absent => optional_absent()
         Present { value: right } =>
-          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+          match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
             Present { value: id } =>
               if id == ^dag_token_eq {
                 optional_present(value: right)
@@ -8972,7 +8943,7 @@ fn body_lower_whole_match_shell_optional(node: Node) -> Optional<Node> {
     Present { value: id } =>
       if id == ^dag_surface_match_expr {
         optional_present(value: node)
-      } else if body_lower_is_pass_through_emitted(emitted: id) || (id == ^dag_surface_primary_expr) {
+      } else if sugar_is_pass_through_emitted(emitted: id) || (id == ^dag_surface_primary_expr) {
         match parse_production_captured_child_optional(node: node) {
           Present { value: child } => body_lower_whole_match_shell_optional(node: child)
           Absent => optional_absent()
@@ -8981,13 +8952,13 @@ fn body_lower_whole_match_shell_optional(node: Node) -> Optional<Node> {
         optional_absent()
       }
     Absent =>
-      let peeled = body_lower_deep_unwrap_optional(node: node)
+      let peeled = sugar_deep_unwrap_optional(node: node)
       if !node_same_occurrence(a: peeled, b: node) {
         body_lower_whole_match_shell_optional(node: peeled)
       } else {
         match sugar_sequence_pair_optional(node: node) {
           Present { value: pair } =>
-            if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+            if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
               body_lower_whole_match_shell_optional(node: pair.left)
             } else {
               optional_absent()
@@ -9028,7 +8999,7 @@ fn body_lower_let_match_exit_plan_optional(value: Node) -> Optional<BodyLowerLet
           match body_lower_match_scrutinee_raw_optional(captured: captured) {
             Absent => optional_absent()
             Present { value: scrutinee } =>
-              match body_lower_match_arm_items_after_lbrace_optional(spine: body_lower_unwrap_surface_shell(node: captured)) {
+              match body_lower_match_arm_items_after_lbrace_optional(spine: sugar_unwrap_surface_shell(node: captured)) {
                 Rejected { diagnostics: _ } => optional_absent()
                 Accepted { value: Absent, diagnostics: _ } => optional_absent()
                 Accepted { value: Present { value: items }, diagnostics: _ } =>
@@ -9036,7 +9007,7 @@ fn body_lower_let_match_exit_plan_optional(value: Node) -> Optional<BodyLowerLet
                     match acc {
                       Absent => acc
                       Present { value: arms } =>
-                        match body_lower_match_arm_body_capture_optional(stripped: body_lower_match_arm_stripped(arm: body_lower_deep_unwrap_optional(node: item))) {
+                        match body_lower_match_arm_body_capture_optional(stripped: body_lower_match_arm_stripped(arm: sugar_deep_unwrap_optional(node: item))) {
                           Absent => optional_absent()
                           Present { value: body } =>
                             optional_present(value: list_snoc_item(xs: arms, item: BodyLowerLetMatchArm {
@@ -9343,12 +9314,12 @@ fn body_lower_stmt_seq(shell: Node) -> Outcome<Node> {
 }
 
 fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional<Node>> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
       match body_lower_match_spine_right(spine: spine) {
         Present { value: right } =>
-          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+          match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
             Present { value: id } =>
               if id == ^dag_token_kw_loop {
                 match body_lower_materialize_int_literal_operand_optional(node: right) {
@@ -9471,7 +9442,7 @@ fn body_lower_try_loop_keyword_from_node(node: Node) -> Outcome<Optional<Node>> 
             body_lower_try_loop_keyword_from_captured(captured: captured)
           Absent => outcome_accepted(value: optional_absent())
         }
-      } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+      } else if sugar_is_pass_through_emitted(emitted: emitted) {
         match body_lower_unwrap_captured(shell: node) {
           Present { value: captured } => body_lower_try_loop_keyword_from_node(node: captured)
           Absent => outcome_accepted(value: optional_absent())
@@ -9719,11 +9690,11 @@ fn body_lower_match_scrutinee_optional(captured: Node) -> Outcome<Optional<Node>
 // The scrutinee's raw parse, at its grammar position; the lowering reads it as a value above, and
 // the exit wall walks it as a non-tail position (body_lower_exit_walk_let_match).
 fn body_lower_match_scrutinee_raw_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
     Absent => optional_absent()
     Present { value: head } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: head)) {
+      match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: head)) {
         Absent => optional_absent()
         Present { value: id } =>
           if id == ^dag_token_kw_match {
@@ -9761,7 +9732,7 @@ fn body_lower_match_arm_items_after_lbrace_optional(spine: Node) -> Outcome<Opti
       Present { value: left } =>
         match body_lower_match_spine_right(spine: spine) {
           Present { value: right } =>
-            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+            match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
               Present { value: id } =>
                 body_lower_match_arm_items_on_lbrace_token(id: id, right: right)
               Absent =>
@@ -9789,7 +9760,7 @@ fn body_lower_match_arms_after_lbrace_optional(spine: Node) -> Outcome<Optional<
 
 fn body_lower_match_arms_optional(captured: Node) -> Outcome<Optional<List<Node>>> {
   body_lower_match_arms_after_lbrace_optional(
-    spine: body_lower_unwrap_surface_shell(node: captured)
+    spine: sugar_unwrap_surface_shell(node: captured)
   )
 }
 
@@ -9839,7 +9810,7 @@ fn body_lower_match_spine_has_lbrace(spine: Node) -> Bool {
 fn body_lower_match_capture_heads_spine(spine: Node) -> Bool {
   match body_lower_match_spine_left(spine: spine) {
     Present { value: left } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+      match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
         Present { value: id } =>
           if id == ^dag_token_kw_match {
             match body_lower_match_spine_right(spine: spine) {
@@ -9981,7 +9952,7 @@ fn body_lower_postfix_lowered_primary_optional(captured: Node) -> Optional<Node>
   match sugar_sequence_pair_optional(node: captured) {
     Absent => Absent
     Present { value: pair } =>
-      if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+      if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
         match body_term_of(node: pair.left) {
           Accepted { value: Lowered { node: lowered, shape: _ }, diagnostics: _ } => optional_present(value: lowered)
           Accepted { value: RawParse { node: _ }, diagnostics: _ } => optional_absent()
@@ -9998,7 +9969,7 @@ fn body_lower_postfix_lowered_primary_optional(captured: Node) -> Optional<Node>
 // head and not the suffixes, so declining would drop the cast. The carried suffix is the refusal's
 // cause and locus.
 fn body_lower_postfix_chain_carries_cast_or_index_suffix(node: Node) -> Bool {
-  match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: node)) {
+  match sugar_sequence_pair_optional(node: sugar_unwrap_surface_shell(node: node)) {
     Absent => false
     Present { value: pair } => body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: pair.right)
   }
@@ -10033,10 +10004,10 @@ fn body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: Node) 
 
 // as_suffix = seq(kw_as, type_expr): answers the type expression when the element is a cast.
 fn body_lower_as_suffix_type_optional(repeat_elem: Node) -> Optional<Node> {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: repeat_elem)) {
+  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: repeat_elem)) {
     Absent => optional_absent()
     Present { value: pair } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+      match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: pair.left)) {
         Present { value: id } =>
           if id == ^dag_token_kw_as { optional_present(value: pair.right) } else { optional_absent() }
         Absent => optional_absent()
@@ -10046,10 +10017,10 @@ fn body_lower_as_suffix_type_optional(repeat_elem: Node) -> Optional<Node> {
 
 // is_suffix = seq(kw_is, name): answers the arm's name atom when the element is an `is` test.
 fn body_lower_is_suffix_arm_optional(repeat_elem: Node) -> Optional<Node> {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: repeat_elem)) {
+  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: repeat_elem)) {
     Absent => optional_absent()
     Present { value: pair } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+      match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: pair.left)) {
         Present { value: id } =>
           if id == ^dag_token_kw_is { body_lower_param_binding_atom_optional(node: pair.right) } else { optional_absent() }
         Absent => optional_absent()
@@ -10060,7 +10031,7 @@ fn body_lower_is_suffix_arm_optional(repeat_elem: Node) -> Optional<Node> {
 // index_suffix = seq(lbracket, seq(expr_list, rbracket)) -- the list literal's bracket shape: answers
 // its items capture when the element is an index suffix.
 fn body_lower_index_suffix_expr_optional(repeat_elem: Node) -> Optional<Node> {
-  body_lower_list_literal_items_capture_optional(captured: repeat_elem)
+  sugar_list_literal_items_capture_optional(captured: repeat_elem)
 }
 
 fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
@@ -10117,19 +10088,6 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
 // shape v2.std.node admits and the shape a fielded pattern lowers to, so `Rec { n: 1 }` and
 // `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is a postfix
 // chain and reaches the same builder, body_lower_record_construct, through its PostfixRecord step.
-// A STRING-KEYED INIT IS NOT A RECORD FIELD, AND THE PARSE SAYS SO. The key's kind is the grammar's
-// choice, carried as the production identity ^dag_surface_field_init_string_key
-// (v2.extdeps.languages.dag dag_grammar_field_init_expr), so a record literal refuses it at the item
-// rather than reading `{ "n": true }` as field `n`. Admitting a quoted key whose decoded text names a
-// declared field is a declared frontier (gunbc#12740); a map literal's entry is the map arm's
-// (gunbc#12758), which dispatches on this same identity.
-fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
-    Present { value: id } => id == ^dag_surface_field_init_string_key
-    Absent => false
-  }
-}
-
 // A PUN `R { s }` IS THE FIELD `s: s`, AND THE PARSE SAYS SO. The punned field is its own production
 // (^dag_surface_field_init_pun, v2.extdeps.languages.dag dag_grammar_field_init_pun_expr), so its kind is
 // the grammar's identity and not a guess from a missing colon. It lowers to the edge the explicit long
@@ -10140,7 +10098,7 @@ fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
 // value no reference can name. The grammar admits it so that a speculative record probe over a match body
 // does not hard-stop (v2.extdeps.languages.dag dag_grammar_field_init_pun_expr).
 fn body_lower_field_init_is_pun(item: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+  match parse_production_emitted_identity_optional(node: sugar_deep_unwrap_optional(node: item)) {
     Present { value: id } => id == ^dag_surface_field_init_pun
     Absent => false
   }
@@ -10168,7 +10126,7 @@ fn body_lower_field_init_pun_edge(captured: Node, item: Node) -> Outcome<Edge> {
 }
 
 fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
-  let stripped = body_lower_deep_unwrap_optional(node: item)
+  let stripped = sugar_deep_unwrap_optional(node: item)
   let captured = match parse_production_captured_child_optional(node: stripped) {
     Present { value: c } => c
     Absent => stripped
@@ -10179,7 +10137,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   if body_lower_field_init_is_pun(item: stripped) {
     body_lower_field_init_pun_edge(captured: captured, item: item)
   } else {
-  if body_lower_field_init_is_string_keyed(item: captured) {
+  if sugar_field_init_is_string_keyed(item: captured) {
     body_lower_map_literal_entry_edge_from_item(captured: captured, item: item, refuse: refuse)
   } else {
   match sugar_sequence_pair_optional(node: captured) {
@@ -10207,7 +10165,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
 }
 
 // A STRING-KEYED ITEM `"k": v` (a map literal's entry), recognised by the grammar's own production
-// (body_lower_field_init_is_string_keyed, the one reader). Its key is lowered as the VALUE any string
+// (sugar_field_init_is_string_keyed, the one reader). Its key is lowered as the VALUE any string
 // literal lowers to, never read as a field name, so the key's kind survives to resolve.
 fn body_lower_map_literal_entry_edge_from_item(captured: Node, item: Node, refuse: Outcome<Edge>) -> Outcome<Edge> {
   match sugar_sequence_pair_optional(node: parse_production_captured_child_optional_or_self(node: captured)) {
@@ -10221,7 +10179,7 @@ fn body_lower_map_literal_entry_edge_from_item(captured: Node, item: Node, refus
 }
 
 fn parse_production_captured_child_optional_or_self(node: Node) -> Node {
-  match parse_production_captured_child_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+  match parse_production_captured_child_optional(node: sugar_deep_unwrap_optional(node: node)) {
     Present { value: c } => c
     Absent => node
   }
@@ -10454,22 +10412,15 @@ fn body_lower_try_record_literal(captured: Node) -> Outcome<Optional<Node>> {
 // seq(lparen, seq(expr, rparen)); this answers the expr when the node is exactly that shape. Before it
 // was read, body_lower_primary_expr answered the group with body_lower_pattern_first_atom_optional --
 // its first atom, the `(` token -- so `(u)` lowered to `(` and `u` reached no reference site.
-fn body_lower_node_is_token(node: Node, token: Symbol) -> Bool {
-  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: node)) {
-    Present { value: id } => id == token
-    Absent => false
-  }
-}
-
 fn body_lower_paren_group_inner_optional(node: Node) -> Optional<Node> {
-  match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: node)) {
+  match sugar_sequence_pair_optional(node: sugar_unwrap_surface_shell(node: node)) {
     Absent => optional_absent()
     Present { value: pair } =>
-      if body_lower_node_is_token(node: pair.left, token: ^dag_token_lparen) {
+      if sugar_node_is_token(node: pair.left, token: ^dag_token_lparen) {
         match sugar_sequence_pair_optional(node: pair.right) {
           Absent => optional_absent()
           Present { value: rest } =>
-            if body_lower_node_is_token(node: rest.right, token: ^dag_token_rparen) {
+            if sugar_node_is_token(node: rest.right, token: ^dag_token_rparen) {
               optional_present(value: rest.left)
             } else {
               optional_absent()
@@ -10524,26 +10475,6 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
 // located at that element. Before this producer body_lower_primary_expr answered the literal with
 // its `[` atom and every element was dropped; call arguments refused the whole module instead
 // (body_lowering_reason_list_literal_unlowered).
-fn body_lower_list_literal_items_capture_optional(captured: Node) -> Optional<Node> {
-  match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
-    Absent => optional_absent()
-    Present { value: pair } =>
-      if body_lower_node_is_token(node: pair.left, token: ^dag_token_lbracket) {
-        match sugar_sequence_pair_optional(node: pair.right) {
-          Absent => optional_absent()
-          Present { value: rest } =>
-            if body_lower_node_is_token(node: rest.right, token: ^dag_token_rbracket) {
-              optional_present(value: rest.left)
-            } else {
-              optional_absent()
-            }
-        }
-      } else {
-        optional_absent()
-      }
-  }
-}
-
 fn body_lower_list_literal_element(item: Node) -> Outcome<Node> {
   match body_lower_value_lowered(node: item) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -10597,7 +10528,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   match body_lower_int_literal_with_magnitude_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
         Absent =>
-      match body_lower_list_literal_items_capture_optional(captured: captured) {
+      match sugar_list_literal_items_capture_optional(captured: captured) {
         Present { value: items_capture } =>
           body_lower_list_literal(literal: captured, items_capture: items_capture)
         Absent =>
@@ -10804,9 +10735,9 @@ fn body_lower_type_decl_eq_rhs_optional(captured: Node) -> Optional<Node> {
               match body_lower_fn_decl_spine_right(node: after_params) {
                 Absent => optional_absent()
                 Present { value: body_choice } =>
-                  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: body_choice)) {
+                  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: body_choice)) {
                     Absent => optional_absent()
-                    Present { value: eq_rhs } => optional_present(value: body_lower_deep_unwrap_optional(node: eq_rhs.right))
+                    Present { value: eq_rhs } => optional_present(value: sugar_deep_unwrap_optional(node: eq_rhs.right))
                   }
               }
           }
@@ -11153,7 +11084,7 @@ type TypeDeclModifierSlotRead
 // atom, a Conj with children -- is unreadable and refuses, located: the grammar admits nothing else
 // there, so that arm is the reader's own fail-closed boundary, never read as an empty slot.
 fn body_lower_type_decl_modifier_slot(slot: Node) -> TypeDeclModifierSlotRead {
-  let element = body_lower_deep_unwrap_optional(node: slot)
+  let element = sugar_deep_unwrap_optional(node: slot)
   match node_atom_identity_optional(node: element) {
     Present { value: id } =>
       if id == ^dag_token_kw_nominal_opaque {
@@ -11208,7 +11139,7 @@ fn body_lower_type_decl_modifiers_read(shell: Node, captured: Node) -> TypeDeclM
           match body_lower_fn_decl_spine_right(node: after_name) {
             Absent => TypeDeclModifiersUnreadable { at: shell }
             Present { value: after_params } =>
-              match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: after_params)) {
+              match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: after_params)) {
                 Absent => TypeDeclModifiersUnreadable { at: shell }
                 Present { value: slot_and_body } =>
                   match sugar_sequence_pair_optional(node: slot_and_body.left) {
@@ -11485,7 +11416,7 @@ type BodyLowerIoItem {
 }
 
 fn body_lower_io_item_optional(item: Node) -> Optional<BodyLowerIoItem> {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: item)) {
     Absent => Absent
     Present { value: pair } =>
       match body_lower_field_decl_optional(item: pair.left) {
@@ -11826,7 +11757,7 @@ fn body_lower_transport_field_step(edges: List<Edge>, shell: Node) -> Outcome<Li
     Absent => outcome_accepted(value: edges)
     Present { value: id } =>
       if id == ^dag_surface_field_init {
-        if body_lower_field_init_is_string_keyed(item: shell) {
+        if sugar_field_init_is_string_keyed(item: shell) {
           outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: shell))
         } else {
           bind_outcome(o: body_lower_field_init_edge(item: shell), f: fn(e) {
@@ -12047,7 +11978,7 @@ fn body_lower_status_class_atom_optional(shell: Node) -> Optional<Node> {
 fn body_lower_status_name_atom_optional(shell: Node) -> Optional<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Present { value: captured } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+      match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: captured)) {
         Present { value: id } => optional_present(value: node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: Empty))
         Absent => optional_absent()
       }
@@ -12455,7 +12386,7 @@ fn body_lower_resource_property_value_optional(entry: Node) -> Optional<Symbol> 
         Present { value: kw } =>
           match sugar_sequence_pair_optional(node: kw.right) {
             Absent => Absent
-            Present { value: colon } => node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: colon.right))
+            Present { value: colon } => node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: colon.right))
           }
       }
   }
@@ -12684,7 +12615,7 @@ fn body_lower_production_emitted_non_leaf(shell: Node, emitted: Symbol, fn_body_
     body_lower_forward_row_apply(shell: shell, emitted: emitted)
   } else if emitted == ^dag_surface_postfix_expr {
     body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_postfix_expr(shell: shell)), shape: LoweredPostfix)
-  } else if body_lower_is_pass_through_emitted(emitted: emitted) {
+  } else if sugar_is_pass_through_emitted(emitted: emitted) {
     body_lowering_lowered(o: body_lower_unwrap_pass_through(shell: shell))
   } else if emitted == ^dag_surface_primary_expr {
     body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_primary_expr(shell: shell)), shape: LoweredPrimary)
@@ -12722,10 +12653,10 @@ fn body_lower_return_statement_expr_optional(stmt: Node) -> Optional<Node> {
     Present { value: c } => c
     Absent => stmt
   }
-  match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
+  match sugar_sequence_pair_optional(node: sugar_unwrap_surface_shell(node: captured)) {
     Absent => optional_absent()
     Present { value: pair } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+      match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: pair.left)) {
         Present { value: id } =>
           if id == ^dag_token_kw_return { optional_present(value: pair.right) } else { optional_absent() }
         Absent => optional_absent()
@@ -12755,7 +12686,7 @@ fn body_lower_else_less_if_parts_optional(if_shell: Node) -> Optional<BodyLowerG
         Present { value: arms } =>
           match arms.else_slot {
             IfRowNoElse =>
-              if body_lower_is_fn_body_shell(node: body_lower_deep_unwrap_optional(node: arms.then_slot)) {
+              if body_lower_is_fn_body_shell(node: sugar_deep_unwrap_optional(node: arms.then_slot)) {
                 optional_present(value: BodyLowerGuard { shell: if_shell, condition: arms.condition, arm: arms.then_slot })
               } else {
                 optional_absent()
@@ -12781,7 +12712,7 @@ fn body_lower_statement_sole_if_optional(node: Node) -> Optional<Node> {
     Present { value: id } =>
       if id == ^dag_surface_if_expr {
         optional_present(value: node)
-      } else if body_lower_is_pass_through_emitted(emitted: id) || (id == ^dag_surface_primary_expr) {
+      } else if sugar_is_pass_through_emitted(emitted: id) || (id == ^dag_surface_primary_expr) {
         match parse_production_captured_child_optional(node: node) {
           Present { value: captured } => body_lower_statement_sole_if_optional(node: captured)
           Absent => optional_absent()
@@ -12790,13 +12721,13 @@ fn body_lower_statement_sole_if_optional(node: Node) -> Optional<Node> {
         optional_absent()
       }
     Absent =>
-      let peeled = body_lower_deep_unwrap_optional(node: node)
+      let peeled = sugar_deep_unwrap_optional(node: node)
       if !node_same_occurrence(a: peeled, b: node) {
         body_lower_statement_sole_if_optional(node: peeled)
       } else {
         match sugar_sequence_pair_optional(node: node) {
           Present { value: pair } =>
-            if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+            if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
               body_lower_statement_sole_if_optional(node: pair.left)
             } else {
               optional_absent()
@@ -12934,19 +12865,19 @@ fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outc
           Present { value: body } => body_lower_exit_walk(node: body, tail: arm_tail, arm_tail: false)
           Absent => body_lower_exit_walk_children(node: node, tail: false, arm_tail: false)
         }
-      } else if body_lower_is_pass_through_emitted(emitted: id) || (id == ^dag_surface_primary_expr) {
+      } else if sugar_is_pass_through_emitted(emitted: id) || (id == ^dag_surface_primary_expr) {
         body_lower_exit_walk_children(node: node, tail: tail, arm_tail: false)
       } else {
         body_lower_exit_walk_children(node: node, tail: false, arm_tail: false)
       }
     Absent =>
-      let peeled = body_lower_deep_unwrap_optional(node: node)
+      let peeled = sugar_deep_unwrap_optional(node: node)
       if !node_same_occurrence(a: peeled, b: node) {
         body_lower_exit_walk(node: peeled, tail: tail, arm_tail: arm_tail)
       } else {
         match sugar_sequence_pair_optional(node: node) {
           Present { value: pair } =>
-            if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+            if is_empty_conj_root(n: sugar_deep_unwrap_optional(node: pair.right)) {
               body_lower_exit_walk(node: pair.left, tail: tail, arm_tail: arm_tail)
             } else {
               body_lower_exit_walk_children(node: node, tail: false, arm_tail: arm_tail)
@@ -12960,8 +12891,8 @@ fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outc
 // A match_arm shell's own sequence, peeled as body_lower_wire_match_arm_capture peels it.
 fn body_lower_match_arm_stripped(arm: Node) -> Node {
   match parse_production_captured_child_optional(node: arm) {
-    Present { value: captured } => body_lower_deep_unwrap_optional(node: captured)
-    Absent => body_lower_deep_unwrap_optional(node: arm)
+    Present { value: captured } => sugar_deep_unwrap_optional(node: captured)
+    Absent => sugar_deep_unwrap_optional(node: arm)
   }
 }
 
@@ -13000,12 +12931,12 @@ fn body_lower_if_arm_as_node(arm: Node) -> Node {
   match parse_production_emitted_identity_optional(node: arm) {
     Present { value: _ } => arm
     Absent =>
-      match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: arm)) {
+      match sugar_sequence_pair_optional(node: sugar_unwrap_surface_shell(node: arm)) {
         Absent => arm
         Present { value: brace_rest } =>
           match sugar_sequence_pair_optional(node: brace_rest.right) {
             Absent => arm
-            Present { value: seq_close } => body_lower_deep_unwrap_optional(node: seq_close.left)
+            Present { value: seq_close } => sugar_deep_unwrap_optional(node: seq_close.left)
           }
       }
   }

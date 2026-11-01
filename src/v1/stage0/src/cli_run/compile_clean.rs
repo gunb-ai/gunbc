@@ -583,7 +583,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::InternalError { .. } => "InternalError",
         CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
         CompilerDiagnostic::WhereRefinementUnenforced { .. } => "WhereRefinementUnenforced",
-        CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
         CompilerDiagnostic::KernelMintShapeMismatch { .. } => "KernelMintShapeMismatch",
@@ -710,7 +709,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::WhereRefinementUnenforced {
             predicate, reason, ..
         } => format!("{predicate}: {reason}"),
-        CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::KernelMintShapeMismatch {
@@ -877,7 +875,6 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::NonExhaustiveMatch { .. } => None,
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => None,
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => None,
-        CompilerDiagnostic::OwnershipViolation { .. } => None,
         CompilerDiagnostic::ParseError { .. } => None,
         CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => None,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => None,
@@ -937,7 +934,6 @@ pub(crate) fn compile_clean_diags_from_resolved_stages(
     resolve_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
     norm_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
     typed: &Rc<v1_compiler_compile::ResolvedGraph>,
-    ownership_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
 ) -> Rc<im::Vector<Rc<ErrorNode>>> {
     let mut acc = im::Vector::new();
     for d in resolve_diags.iter() {
@@ -947,7 +943,6 @@ pub(crate) fn compile_clean_diags_from_resolved_stages(
     for d in typed.diagnostics.iter() {
         acc.push_back(d.clone());
     }
-    acc.extend(ownership_diags.iter().cloned());
     Rc::new(acc)
 }
 
