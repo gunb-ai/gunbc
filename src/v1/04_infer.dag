@@ -4658,7 +4658,7 @@ fn application_pair(declared: Node, produced: Node, scope: InferScope) -> Bool {
   declared.return_cardinality == produced.return_cardinality
     && (declared.children |> count) > 0
     && (declared.children |> count) == (produced.children |> count)
-    && (collection_application_pair(declared: declared, produced: produced, scope: scope)
+    && (collection_application_pair(declared: declared, produced: produced, source_indices: source_indices)
       || declared_template_application_pair(declared: declared, produced: produced, scope: scope))
 }
 
