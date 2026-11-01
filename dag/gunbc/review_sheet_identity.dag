@@ -381,7 +381,6 @@ fn internal_disposition_over_current_absence(
 // query and the file-by-id preflight -- execute on the operator's live converge run. Neither half
 // is an import, and this annotation does not claim CI runs the network legs.
 //
-// THE ROSTER STAYS AS AN EMPTY LIST rather than being deleted, because gunbc.census_closure_frontier
-// folds it by name: a module that has no frontier today may acquire one, and the row that reappears
+// THE ROSTER STAYS AS AN EMPTY LIST rather than being deleted, because a module that has no frontier today may acquire one, and the row that reappears
 // should join an existing authority rather than re-create it.
 data review_sheet_identity_consumer_frontier_rows: List<FrontierRow> = []

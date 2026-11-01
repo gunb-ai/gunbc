@@ -712,8 +712,8 @@ fn file_hold_nonholder_release_assess<Observation>(
   }
 }
 
-// THE NON-HOLDER RELEASE'S PRODUCTION CONSUMER IS A DECLARED FRONTIER (DESIGN 3c), folded by
-// gunbc.census_closure_frontier. The consumer this row first named -- gunbc.deploy_transition's transition
+// THE NON-HOLDER RELEASE'S PRODUCTION CONSUMER IS A DECLARED FRONTIER (DESIGN 3c); the
+// roster fold that read it was retired. The consumer this row first named -- gunbc.deploy_transition's transition
 // lease, triggered by its exclusive-create outcome type LeaseCreateOutcome retiring -- did not materialize:
 // the lease moved onto this hold library for acquire and the holder's release, LeaseCreateOutcome is
 // deleted, and the lease refuses a non-holder release instead of consuming this one (ruling stern-ram-763,

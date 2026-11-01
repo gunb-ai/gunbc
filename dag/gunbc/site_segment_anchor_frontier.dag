@@ -8,8 +8,7 @@ module gunbc.site_segment_anchor_frontier
 // named later change is S3 of gunbc.plans.site_segment_anchor_bmc_reach, the lookup with routerless
 // refusal, which has to ask which segment a host's controller is on before it can find the controller.
 //
-// gunbc.dissolution_census folds gunbc.census_closure_frontier.census_closure_frontier_rows() and
-// reports a row whose bound trigger APPEARS as fired, so the deferral cannot outlive the work.
+// The roster fold that read this row (gunbc.census_closure_frontier) was retired.
 // The trigger names a declaration that does not exist yet, as in
 // gunbc.machine_intake.bmc_recovery_route_frontier: the ref is the contract for what must be added.
 //

@@ -184,9 +184,7 @@ test fn witness_hand_rust_receipt_names_a_live_discriminator() -> Bool {
 // duplicated the typed trigger row and could drift from it. Its readers live where the subject
 // is read now: test.claim.githooks_pre_push_emit.witness_carrier_reader_reads_the_row executes
 // dissolution_description on gunbc.githooks.githooks_pre_push_emit
-// .githooks_pre_push_emit_concat_body_dissolution, and test.claim
-// .githooks_pre_push_emit_residual_census.witness_concat_body_is_counted_residual runs
-// gunbc.census_closure_frontier.census_closure_frontier_rows() and counts the row once.
+// .githooks_pre_push_emit_concat_body_dissolution.
 
 test fn witness_hooks_no_longer_conflate_absence_with_drift() -> Bool {
   let push = expected_githooks_pre_push_sh()

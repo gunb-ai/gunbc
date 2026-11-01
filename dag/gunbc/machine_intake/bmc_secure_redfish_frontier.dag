@@ -11,7 +11,7 @@
 //  extdeps.bmc.redfish carries the vendor's served shapes and has no obligation to be read by anything.
 //consumes: gunbc.bmc_model (the Redfish surface entries that have no production consumer yet), std.roster_frontier,
 //  std.decl_ref, std.dissolution.
-//referenced-by: gunbc.census_closure_frontier (the roster gunbc.dissolution_census folds).
+//referenced-by: nothing; the roster fold that read it (gunbc.census_closure_frontier) was retired.
 //invariants: every subject resolves to a declaration gunbc.bmc_model or extdeps.bmc.redfish declares (the world
 //  surface entries and the extdeps wire readers respectively); every trigger resolves to a declaration
 //  gunbc.machine_intake.bmc_secure does NOT declare yet; every trigger module is bmc_secure; deleting or renaming a

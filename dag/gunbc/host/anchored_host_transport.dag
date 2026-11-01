@@ -205,9 +205,8 @@ fn anchored_host_trusted_row(
 // to mtcollins1 through anchored_host_transport_of, and nothing starts sshd pointing at the delivered key --
 // the RAM image has no sshd in this slice at all (gunbc.runner.runner_host_first_boot_receipt
 // unobserved_after_first_boot: "no network or sshd exists in this slice"). These rows state that honestly
-// with the trigger that retires each, and they stand in the census-closure registry
-// (gunbc.census_closure_frontier); this module's witness pins they are well-formed and registered (the
-// network_boot_manifest_broker pattern). Until they dissolve, production transports to mtcollins1 do NOT
+// with the trigger that retires each, and this module's witness pins they are well-formed (the
+// network_boot_manifest_broker pattern); the census-closure registry that once enrolled them was retired. Until they dissolve, production transports to mtcollins1 do NOT
 // pass through this module, and the honest claim is only: any transport ROUTED through
 // anchored_host_transport_of refuses at AnchoredBindingAnchorAbsent today -- not that every production
 // transport does.

@@ -1,13 +1,9 @@
 module gunbc.githooks.githooks_pre_push_frontier
 
 // THE PRE-PUSH CONCAT BODY ON THE CLOSURE'S FRONTIER. This registers the residual in the
-// production roster fold — gunbc.census_closure_frontier.census_closure_frontier_rows() — so
-// the row is read by something other than tests: gunbc.dissolution_census.dissolution_census_verdict()
-// and dissolution_census_holds() resolve every registered row's trigger against the live
-// declaration index and refuse what they cannot decide, and frontier_rows_well_formed() checks
-// every row's shape. That is the same route that carries every other dissolution in the closure
-// (the extdeps.tools.sha256sum shell-only row is the closest sibling: an unbound capability
-// trigger over a foreign-executor body). The trigger row itself lives once, in
+// FrontierRow list, read by frontier_rows_well_formed(), which checks every row's shape; the roster fold
+// (gunbc.census_closure_frontier) that once enrolled it was retired.
+// The trigger row itself lives once, in
 // gunbc.githooks.githooks_pre_push_emit (githooks_pre_push_emit_concat_body_dissolution), next
 // to the body it names; this module is its registration, not a second statement of it.
 //
