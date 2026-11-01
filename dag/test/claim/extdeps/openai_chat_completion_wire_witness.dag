@@ -2,27 +2,29 @@ module test.claim.extdeps.openai_chat_completion_wire_witness
 
 import std.types { Bool, String }
 import extdeps.llm.openai {
-  OpenAiReasoningEffort, EffortMinimal, EffortLow, EffortMedium, EffortHigh,
-  OpenAiReasoningEffortOther, parse_openai_reasoning_effort, openai_reasoning_effort_wire,
+  EffortMinimal, EffortLow, EffortMedium, EffortHigh, UndocumentedEffortName, EmptyEffortName,
+  parse_openai_reasoning_effort, openai_reasoning_effort_wire,
   openai_reasoning_effort_minimal_wire, openai_reasoning_effort_low_wire,
   openai_reasoning_effort_medium_wire, openai_reasoning_effort_high_wire,
   openai_chat_completion_chunk_object_wire,
 }
 
-// THE DOCUMENTED EFFORTS LAND IN THEIR OWN ARMS. The check is the arm the name lands in, not the
-// name that comes back out: the undocumented arm of the pair re-emits whatever name it was given,
-// so a round-trip on the STRING would stay green with four fewer arms in the parse. Asking which
-// variant arrived is what fails when a documented name is dropped from the parse.
+// Which arm a name lands in, as a number. The rows below ask this rather than comparing the label
+// that comes back, because the undocumented arm re-emits whatever name it was given: a round-trip on
+// the STRING would stay green with all four documented arms missing from the parse.
 fn r_effort_arm(name: String) -> Int {
   match parse_openai_reasoning_effort(raw: name) {
     EffortMinimal => 0
     EffortLow => 1
     EffortMedium => 2
     EffortHigh => 3
-    OpenAiReasoningEffortOther { raw: _ } => 4
+    UndocumentedEffortName { raw: _ } => 4
+    EmptyEffortName => 5
   }
 }
 
+// THE DOCUMENTED EFFORTS LAND IN THEIR OWN ARMS. Red counterpart: drop any one documented arm from
+// the parse chain and that name falls through to the undocumented arm, whose number is 4.
 test fn a_documented_effort_parses_to_its_own_arm() -> Bool {
   let a = r_effort_arm(name: openai_reasoning_effort_minimal_wire) == 0
   let b = r_effort_arm(name: openai_reasoning_effort_low_wire) == 1
@@ -31,17 +33,33 @@ test fn a_documented_effort_parses_to_its_own_arm() -> Bool {
   if a && b && c && d { true } else { false }
 }
 
-// AN UNDOCUMENTED EFFORT IS KEPT WHOLE IN BOTH DIRECTIONS, not read as one of the four and not
-// refused: this model reports the endpoint's shape, and the endpoint decides what to do with a
-// name it does not know.
+// AN UNDOCUMENTED NAME IS KEPT WHOLE IN BOTH DIRECTIONS, not read as one of the four and not
+// refused: this model reports the endpoint's shape, and the endpoint decides what to do with a name
+// it does not know. Red counterpart: a parse that defaults an unknown name to a documented arm -- the
+// first would be `EffortLow`, the likeliest accident -- puts "xhigh" in arm 1 and fails both halves.
 test fn an_undocumented_effort_stays_whole_and_unnamed() -> Bool {
   let e = r_effort_arm(name: "xhigh") == 4
   let f = openai_reasoning_effort_wire(effort: parse_openai_reasoning_effort(raw: "xhigh")) == "xhigh"
   if e && f { true } else { false }
 }
 
+// AN EMPTY NAME IS REFUSED, NOT CARRIED AS A NAME. `raw` is a NonEmptyStr, and that refinement
+// (`String where string_non_empty`, std.types) is enforced at literal sites only today, so a parse
+// without the refusal would put an empty string behind a type whose name promises otherwise and
+// nothing downstream could tell it from a real name. Red counterpart: delete the `raw == ""` arm and
+// "" falls into the undocumented arm, arm 4, which is what the row refuses. The second half checks
+// the refusal does not swallow real names: the documented and undocumented arms stay where they are.
+test fn an_empty_effort_name_is_refused_rather_than_carried_as_a_name() -> Bool {
+  let empty_is_refused = r_effort_arm(name: "") == 5
+  let named_names_stay_named = (r_effort_arm(name: "xhigh") == 4)
+    && (r_effort_arm(name: openai_reasoning_effort_high_wire) == 3)
+  if empty_is_refused && named_names_stay_named { true } else { false }
+}
+
 // THE CHUNK'S OBJECT LITERAL IS THE STREAMED SHAPE, not the non-streaming one, so a reader that
-// branches on `object` can tell a chunk from a 200 body without guessing.
+// branches on `object` tells a chunk from a 200 body without guessing. Red counterpart: any other
+// value, the non-streaming "chat.completion" being the one that would be silently wrong -- a reader
+// keyed on this literal would treat a whole streamed answer as one body.
 test fn the_chunk_object_literal_is_the_streamed_shape() -> Bool {
   if openai_chat_completion_chunk_object_wire == "chat.completion.chunk" { true } else { false }
 }
