@@ -1,0 +1,93 @@
+module v2.compiler.uses_row_restatement_route
+
+import std.algebra { Empty, fold_list, list_snoc_item }
+import std.optional { Optional }
+import std.types { List }
+import v2.compiler.dependency_demand {
+  DependencyDemand,
+  dependency_demand_of
+}
+import v2.compiler.dependency_demand_facts {
+  AuthoredResolved,
+  AuthoredRowReading,
+  AuthoredTypeUnresolved,
+  DemandFactsClosureFacts
+}
+import v2.compiler.uses_row_restatement {
+  UsesRowReading,
+  UsesRowResolved,
+  UsesRowStanding,
+  UsesRowTypeUnresolved,
+  uses_row_demand_of,
+  uses_row_standing_of_demand
+}
+import v2.std.qualified_name { QualifiedName }
+
+// THE ROUTE OF THE USES-ROW CONSUMER, AND IT CONSUMES FACTS, NOT A REPORT.
+//
+// Its inputs are exactly the two things D13 produces: the FACT WALK's closure facts
+// (v2.compiler.dependency_demand_facts demand_facts_closure_facts, which this module hands to
+// v2.compiler.dependency_demand's dependency_demand_of) and the AUTHORED-ROW READER's readings
+// (demand_facts_strip and demand_facts_authored_readings, whose output type AuthoredRowReading is the
+// only fact-walk value that crosses this boundary). What it emits is its own: one entry per authored
+// function, carrying one UsesRowStanding per authored row.
+//
+// WHY NOT A REPORT. The consumer that used to sit here read DemandCensusReport / DemandCensusRow. Those
+// are census REPORT types, and the retired-by-default doctrine (gunbc.design_ruling
+// bad_process_is_worse_than_no_process, #15415; census instruments deleted, #15428) forbids building a
+// new consumer on a whole-population report. The doctrine retires the census PROCESS, not the D13
+// symbols, so the fact walk and the reader stay -- and their home is v2.compiler.dependency_demand_facts
+// (#15541, stacked on the operation-declaration PR #15382; NOT v2.compiler.dependency_demand, which
+// would close an import cycle with v2.std.operation_declaration). This module names that home in its
+// imports and takes no report.
+//
+// THE FACTS ARRIVE NORMALIZED, AND THIS MODULE DOES NOT NORMALIZE. A fn's demand is a join over the
+// operations it reaches, and a callee may live in another module of the ingest, so demand is derived once
+// over the whole closure; the callee paths in those facts are already mapped to the longest known
+// declaration path by the producer's closure-level entry (demand_facts_closure_facts), because the known
+// set is the closure's and a consumer that normalized for itself would be a second local implementation
+// of that rule. Deriving demand per module would read a transitive row as not-restating what its
+// transitive callee actually derives.
+
+fn uses_row_reading_of(r: AuthoredRowReading) -> UsesRowReading {
+  match r {
+    AuthoredResolved { declared: p } => UsesRowResolved { resource: p }
+    AuthoredTypeUnresolved => UsesRowTypeUnresolved
+  }
+}
+
+// One authored function and the readings its authored rows got from the reader. PAIRING IS STATED HERE,
+// not imported: the consumer needs "these rows belong to this fn", and a pairing type that arrives with a
+// report would put the consumer back on the retired process.
+type UsesRowAuthoredRows {
+  function: QualifiedName
+  readings: List<AuthoredRowReading>
+}
+
+type UsesRowRestatementEntry {
+  function: QualifiedName
+  standings: List<UsesRowStanding>
+}
+
+fn uses_row_entry_standings(demand: Optional<DependencyDemand>, entry: UsesRowAuthoredRows) -> List<UsesRowStanding> {
+  fold_list(xs: entry.readings, empty: Empty, cons: fn(acc, r) {
+    list_snoc_item(xs: acc, item: uses_row_standing_of_demand(demand: demand, reading: uses_row_reading_of(r: r)))
+  })
+}
+
+// The route: per authored function, its row-level standings over the closure's derived demand. Row-level
+// by construction -- uses_row_standing_of_demand judges each row's own resource for membership in the
+// fn's derived set, never set equality -- so a fn that derives several resources licenses deleting only
+// the rows it restates (gunbc#12992).
+fn uses_row_restatement_of(
+  facts: DemandFactsClosureFacts,
+  authored: List<UsesRowAuthoredRows>
+) -> List<UsesRowRestatementEntry> {
+  let rows = dependency_demand_of(functions: facts.functions, operations: facts.operations)
+  fold_list(xs: authored, empty: Empty, cons: fn(acc, entry) {
+    list_snoc_item(xs: acc, item: UsesRowRestatementEntry {
+      function: entry.function,
+      standings: uses_row_entry_standings(demand: uses_row_demand_of(rows: rows, function: entry.function), entry: entry)
+    })
+  })
+}
