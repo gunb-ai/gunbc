@@ -66,7 +66,7 @@ fn workspace_current_acquisition_invocation(plan: WorkspaceReservationPlan) -> U
         && trim(s: after.value) == trim(s: actual) && trim(s: main.value) == pid && pid != "0" {
         match unit_invocation_observation(manager: SystemManager, unit: unit as NonEmptyStr, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: actual) {
           UnitInvocationPresent { unit: _, run: r } => Present { value: r }
-          UnitInvocationAbsent { unit: _, manager: _ } => none
+          UnitInvocationAbsent { unit: _, manager: _, boot_id: _, boot_started_at: _ } => none
           UnitInvocationUnreadable { cause: _ } => none
         }
       } else { none }
@@ -229,7 +229,7 @@ fn workspace_prior_actor_standing(recorded: UnitRunIdentity, plan: WorkspaceRese
 // concurrent replacements only one commits, so only one can go on to issue the hold CAS.
 fn workspace_rearm_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, invocation: UnitRunIdentity) -> Bool
   admit_callers: [
-    decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor"),
+    decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_recorded"),
     decl_ref(module_path: "test.claim.workspace_acquisition_storage_wet_witness", decl_name: "actor_rearm_race"),
   ]
 {
@@ -240,8 +240,11 @@ fn workspace_rearm_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReserv
 
 // Cancel a terminal actor of a retired acquisition, fenced the same way; the tombstone names the
 // invocation it ended so a late reader can attribute the cancellation.
+// Admitted caller: workspace_take_over_recorded holds the decision that selects this effect. TakeoverCancelActor
+// is reached only from PriorActorTerminal (an observed termination of the recorded holder's own unit run, with no hold)
+// under the Retire intent; an unobservable or legacy standing retains and never reaches here.
 fn workspace_cancel_elected_actor(store: WorkspaceAcquisitionStore, plan: WorkspaceReservationPlan, generation: CasGeneration, prior_wire: NonEmptyStr) -> Bool
-  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor")]
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_recorded")]
 {
   let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
   let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "cancelled_after_actor", value: json_string(s: prior_wire))])) as NonEmptyStr

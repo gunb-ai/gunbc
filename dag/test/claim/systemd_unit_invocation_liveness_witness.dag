@@ -31,11 +31,13 @@ test fn a_reading_with_a_mismatched_boot_invocation_or_manager_is_not_the_same_r
       let live = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_a, stat: boot_old_stat, inv: inv_a))
       let other_inv = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_a, stat: boot_old_stat, inv: inv_b))
       let later_boot = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: stat_text, inv: inv_a))
-      let gone = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: UnitInvocationAbsent { unit: unit_a, manager: SystemManager })
+      let gone = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_a, stat: boot_old_stat, inv: ""))
+      let gone_later_boot = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: stat_text, inv: ""))
       (match live { HolderObservedLive { evidence: _ } => true  _ => false })
         && (match other_inv { HolderObservedDead { evidence: _ } => true  _ => false })
         && (match later_boot { HolderObservedDead { evidence: _ } => true  _ => false })
         && (match gone { HolderObservedDead { evidence: _ } => true  _ => false })
+        && (match gone_later_boot { HolderObservedDead { evidence: _ } => true  _ => false })
     }
     _ => false
   }
@@ -47,10 +49,14 @@ test fn a_foreign_subject_or_unordered_boot_is_unobservable_never_dead() -> Bool
     UnitInvocationPresent { unit: _, run: r } => {
       let other_mgr = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: UserManager { uid: 1000 }, unit: unit_a, boot: boot_a, stat: stat_text, inv: inv_b))
       let other_unit = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_b, boot: boot_a, stat: stat_text, inv: inv_b))
-      let other_unit_absent = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: UnitInvocationAbsent { unit: unit_b, manager: SystemManager })
-      let other_mgr_absent = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: UnitInvocationAbsent { unit: unit_a, manager: UserManager { uid: 1000 } })
+      let other_unit_absent = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_b, boot: boot_a, stat: stat_text, inv: ""))
+      let other_mgr_absent = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: UserManager { uid: 1000 }, unit: unit_a, boot: boot_a, stat: stat_text, inv: ""))
       let earlier_boot = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: boot_old_stat, inv: inv_a))
-      (match other_mgr { HolderLivenessUnobservable { cause: _ } => true  _ => false })
+      let absent_earlier_boot = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: boot_old_stat, inv: ""))
+      let absent_equal_start = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: stat_text, inv: ""))
+      (match absent_earlier_boot { HolderLivenessUnobservable { cause: _ } => true  _ => false })
+        && (match absent_equal_start { HolderLivenessUnobservable { cause: _ } => true  _ => false })
+        && (match other_mgr { HolderLivenessUnobservable { cause: _ } => true  _ => false })
         && (match other_unit { HolderLivenessUnobservable { cause: _ } => true  _ => false })
         && (match other_unit_absent { HolderLivenessUnobservable { cause: _ } => true  _ => false })
         && (match other_mgr_absent { HolderLivenessUnobservable { cause: _ } => true  _ => false })
@@ -165,22 +171,32 @@ test fn boot_and_acquisition_are_ordered_only_outside_the_callers_skew_bound() -
   })
 }
 
+// AN ABSENT STANDING TAKEN ON A GIVEN HOST PAIR. The standing carries its own boot now, so a row that wants
+// the conjunction to hold must take the standing and the boot operand from ONE host reading; a row that wants
+// the cross-check to fail says so by naming a different pair. Built through the production admission function,
+// so the boot fields in the standing are the product of the same decode the host reading uses.
+fn absent_standing(boot_id_text: String, proc_stat_text: String, unit: NonEmptyStr, manager: SystemdManagerInstance) -> UnitInvocationObservation {
+  unit_invocation_observation(manager: manager, unit: unit, boot_id_text: boot_id_text, proc_stat_text: proc_stat_text, invocation_text: "")
+}
+
 // THE LAWFUL CONTROL: the manager that ran the unit has no such unit, AND this boot began after the hold
 // was acquired. That is death evidence, and it is the only shape that produces it here.
 test fn an_absent_unit_and_a_boot_that_began_after_the_acquisition_is_death_evidence() -> Bool {
   let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
-  match unit_reboot_holder_liveness(standing: UnitInvocationAbsent { unit: unit_a, manager: SystemManager }, holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+  match unit_reboot_holder_liveness(standing: absent_standing(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, unit: unit_a, manager: SystemManager), holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
     HolderObservedDead { evidence: _ } => true
     _ => false
   }
 }
 
 // RED: A BOOT THAT PREDATES THE ACQUISITION IS NOT DEATH EVIDENCE. The unit is gone from the manager, and
-// that still does not free the hold: the process that took it can be running in this very boot.
+// that still does not free the hold. It is UNOBSERVABLE rather than live: a unit not loaded in a boot that
+// began before the acquisition may never have been started in that boot, so the boot neither ends the holder
+// nor proves it running -- and claiming life from absence would be the same over-claim as claiming death.
 test fn a_boot_that_predates_the_acquisition_keeps_the_hold_even_with_the_unit_gone() -> Bool {
   let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
-  match unit_reboot_holder_liveness(standing: UnitInvocationAbsent { unit: unit_a, manager: SystemManager }, holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1792100000, skew_bound_seconds: 120) {
-    HolderObservedLive { evidence: _ } => true
+  match unit_reboot_holder_liveness(standing: absent_standing(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, unit: unit_a, manager: SystemManager), holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1792100000, skew_bound_seconds: 120) {
+    HolderLivenessUnobservable { cause: _ } => true
     _ => false
   }
 }
@@ -202,11 +218,11 @@ test fn an_unorderable_boot_or_an_unreadable_standing_never_frees_the_hold() -> 
   let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
   let unreadable_boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_no_btime)
   let unreadable_standing = unit_invocation_observation(manager: SystemManager, unit: unit_a, boot_id_text: "not-a-uuid", proc_stat_text: stat_btime_1792000000, invocation_text: "not-hex")
-  (match unit_reboot_holder_liveness(standing: UnitInvocationAbsent { unit: unit_a, manager: SystemManager }, holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1792000060, skew_bound_seconds: 120) {
+  (match unit_reboot_holder_liveness(standing: absent_standing(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, unit: unit_a, manager: SystemManager), holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1792000060, skew_bound_seconds: 120) {
     HolderLivenessUnobservable { cause: _ } => true
     _ => false
   })
-  && (match unit_reboot_holder_liveness(standing: UnitInvocationAbsent { unit: unit_a, manager: SystemManager }, holder_unit: unit_a, holder_manager: SystemManager, boot: unreadable_boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+  && (match unit_reboot_holder_liveness(standing: absent_standing(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, unit: unit_a, manager: SystemManager), holder_unit: unit_a, holder_manager: SystemManager, boot: unreadable_boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
     HolderLivenessUnobservable { cause: _ } => true
     _ => false
   })
@@ -223,12 +239,31 @@ test fn an_unorderable_boot_or_an_unreadable_standing_never_frees_the_hold() -> 
 // about somebody else does not even establish that this holder is running.
 test fn a_foreign_subject_never_frees_the_hold_even_across_a_boot() -> Bool {
   let boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
-  let other_unit_absent = unit_reboot_holder_liveness(standing: UnitInvocationAbsent { unit: unit_b, manager: SystemManager }, holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120)
-  let other_manager_absent = unit_reboot_holder_liveness(standing: UnitInvocationAbsent { unit: unit_a, manager: UserManager { uid: 1000 } }, holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120)
+  let other_unit_absent = unit_reboot_holder_liveness(standing: absent_standing(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, unit: unit_b, manager: SystemManager), holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120)
+  let other_manager_absent = unit_reboot_holder_liveness(standing: absent_standing(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, unit: unit_a, manager: UserManager { uid: 1000 }), holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120)
   let other_unit_present = unit_reboot_holder_liveness(standing: unit_invocation_observation(manager: SystemManager, unit: unit_b, boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, invocation_text: inv_a), holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120)
   let own_unit_present = unit_reboot_holder_liveness(standing: unit_invocation_observation(manager: SystemManager, unit: unit_a, boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, invocation_text: inv_a), holder_unit: unit_a, holder_manager: SystemManager, boot: boot, acquired_at: 1791900000, skew_bound_seconds: 120)
   (match other_unit_absent { HolderLivenessUnobservable { cause: _ } => true  _ => false })
     && (match other_manager_absent { HolderLivenessUnobservable { cause: _ } => true  _ => false })
     && (match other_unit_present { HolderLivenessUnobservable { cause: _ } => true  _ => false })
     && (match own_unit_present { HolderObservedLive { evidence: _ } => true  _ => false })
+}
+
+// THE BOOT THAT ORDERS MUST BE THE BOOT THE STANDING WAS TAKEN ON. The not-found reading now carries its own
+// boot, and the order is taken against THAT boot; the boot operand is a cross-check, not a second source. A
+// standing from one host pair offered beside a boot from another is not one reading, so the arm refuses even
+// though the second boot began long after the acquisition -- which is exactly the shape that would otherwise
+// manufacture death evidence out of two facts that were never observed together.
+test fn a_boot_that_is_not_the_standing_s_own_boot_never_frees_the_hold() -> Bool {
+  let standing = absent_standing(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000, unit: unit_a, manager: SystemManager)
+  let other_pair_boot = unit_boot_observation(boot_id_text: boot_b, proc_stat_text: boot_old_stat)
+  let same_pair_boot = unit_boot_observation(boot_id_text: boot_good, proc_stat_text: stat_btime_1792000000)
+  (match unit_reboot_holder_liveness(standing: standing, holder_unit: unit_a, holder_manager: SystemManager, boot: other_pair_boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+    HolderLivenessUnobservable { cause: _ } => true
+    _ => false
+  })
+  && (match unit_reboot_holder_liveness(standing: standing, holder_unit: unit_a, holder_manager: SystemManager, boot: same_pair_boot, acquired_at: 1791900000, skew_bound_seconds: 120) {
+    HolderObservedDead { evidence: _ } => true
+    _ => false
+  })
 }
