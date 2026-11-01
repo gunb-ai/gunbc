@@ -1,0 +1,76 @@
+module std.machine_width_reading
+
+import std.types { Bool, Int, List }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.nat { Nat }
+import std.algebra { Cons, Empty }
+import std.integer { Signedness, Signed, Unsigned }
+import std.measure { BitWidth, bit_width }
+
+// This cannot live in std.machine_constraints: Signedness lives in std.integer,
+// which imports std.machine_constraints. Neither compiler's Node is imported here.
+// Supplied facts are the bounded projection this decision consumes, not a second
+// recursive type tree. All argument counts survive; an unknown literal stays Absent.
+// Adapters resolve aliases before projecting and make no width/sign policy decisions.
+type MachineWidthArgumentFacts {
+  declaration: Optional<DeclarationRef>
+  is_kernel_int: Bool
+  natural_arguments: List<Optional<Nat>>
+}
+
+type MachineWidthApplicationFacts {
+  head: Optional<DeclarationRef>
+  arguments: List<MachineWidthArgumentFacts>
+}
+
+type MachineWidthUnreadableCause
+  = MachineWidthComposeMalformed
+  | MachineWidthNotStatic
+  | MachineWidthCarrierSignednessUndeclared
+
+type MachineWidthReading
+  = NotWidthConstrained
+  | WidthReadable { signedness: Signedness, bits: BitWidth }
+  | WidthUnreadable { reason: MachineWidthUnreadableCause }
+
+fn machine_width_carrier_signedness(carrier: MachineWidthArgumentFacts) -> Optional<Signedness> {
+  if carrier.is_kernel_int { Present { value: Signed } }
+  else if carrier.declaration == Present { value: decl_ref(module_path: "std.nat", decl_name: "Nat") } {
+    Present { value: Unsigned }
+  } else { Absent }
+}
+
+fn machine_width_argument_bits(argument: MachineWidthArgumentFacts) -> Optional<BitWidth> {
+  if count(argument.natural_arguments) != 1 { Absent }
+  else {
+    match first(argument.natural_arguments) {
+      Present { value: Present { value: n } } => Present { value: bit_width(count: n) }
+      _ => Absent
+    }
+  }
+}
+
+fn read_machine_width(application: MachineWidthApplicationFacts) -> MachineWidthReading {
+  if application.head != Present { value: decl_ref(module_path: "std.machine_constraints", decl_name: "Compose") } {
+    NotWidthConstrained
+  } else if count(application.arguments) != 2 {
+    WidthUnreadable { reason: MachineWidthComposeMalformed }
+  } else {
+    match application.arguments {
+      Cons { head: carrier, tail: Cons { head: constraint, tail: Empty } } =>
+        if constraint.declaration != Present { value: decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth") } {
+          NotWidthConstrained
+        } else {
+          match machine_width_argument_bits(argument: constraint) {
+            Absent => WidthUnreadable { reason: MachineWidthNotStatic }
+            Present { value: bits } => match machine_width_carrier_signedness(carrier: carrier) {
+              Absent => WidthUnreadable { reason: MachineWidthCarrierSignednessUndeclared }
+              Present { value: sign } => WidthReadable { signedness: sign, bits: bits }
+            }
+          }
+        }
+      _ => WidthUnreadable { reason: MachineWidthComposeMalformed }
+    }
+  }
+}

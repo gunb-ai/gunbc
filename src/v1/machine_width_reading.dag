@@ -1,0 +1,44 @@
+module v1.compiler.machine_width_reading
+
+import v1.std.core { Node, NewlineIndex, expr_literal_int_optional }
+import v1.compiler.infer_env { TypeEnv, settled_type, kernel_settled_name }
+import std.types { String, Map }
+import std.optional { Optional, Present, Absent }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.machine_width_reading {
+  MachineWidthApplicationFacts, MachineWidthArgumentFacts, MachineWidthReading, read_machine_width
+}
+
+// The seed realizes the same supplied-fact interface as v2.compiler.infer.
+// Alias resolution stays in infer_env.settled_type, including argument substitution
+// and Phantom opacity. No width declaration or alias spelling is recognized here.
+fn seed_machine_width_natural_argument(n: Node) -> Optional<Nat> {
+  match expr_literal_int_optional(expr: n) {
+    Present { value: value } => checked_int_to_nat(n: value)
+    Absent => Absent
+  }
+}
+
+fn seed_machine_width_argument_facts(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> MachineWidthArgumentFacts {
+  let settled = settled_type(n: n, source_indices: source_indices, env: env, fuel: 1024)
+  let args = match settled { Present { value: t } => t.args Absent => n.children }
+  MachineWidthArgumentFacts {
+    declaration: match settled { Present { value: t } => Present { value: t.head } Absent => Absent },
+    is_kernel_int: kernel_settled_name(n: n, source_indices: source_indices, env: env, fuel: 1024) == Present { value: "Int" },
+    natural_arguments: args |> map(a => seed_machine_width_natural_argument(n: a))
+  }
+}
+
+fn seed_machine_width_application_facts(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> MachineWidthApplicationFacts {
+  let settled = settled_type(n: n, source_indices: source_indices, env: env, fuel: 1024)
+  let args = match settled { Present { value: t } => t.args Absent => n.children }
+  MachineWidthApplicationFacts {
+    head: match settled { Present { value: t } => Present { value: t.head } Absent => Absent },
+    arguments: args |> map(a => seed_machine_width_argument_facts(n: a, source_indices: source_indices, env: env))
+  }
+}
+
+fn seed_machine_width_of(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> MachineWidthReading {
+  read_machine_width(application: seed_machine_width_application_facts(n: n, source_indices: source_indices, env: env))
+}

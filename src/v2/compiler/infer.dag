@@ -35,6 +35,13 @@ import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGr
 import gunbc.structural_realization_bindings { kernel_grounding_rows, literal_homomorphism_rows }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.measure { BitWidth, bit_width }
+import std.machine_width_reading {
+  MachineWidthApplicationFacts, MachineWidthArgumentFacts, MachineWidthReading,
+  NotWidthConstrained, WidthReadable, WidthUnreadable, MachineWidthUnreadableCause,
+  MachineWidthComposeMalformed, MachineWidthNotStatic, MachineWidthCarrierSignednessUndeclared,
+  read_machine_width, machine_width_argument_bits, machine_width_carrier_signedness
+}
+import std.nat { Nat }
 import std.checked_arithmetic { nat_magnitude }
 import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls, dag_algebra_inhabitance_row_type_params, DagCanonicalBoolLiteral, DagCanonicalIntLiteral, DagCanonicalSymbolLiteral, DagCanonicalStringLiteral, DagCanonicalFloatLiteral, DagCanonicalLiteral, dag_binding_denotation, dag_kernel_type_declaration_binding_optional, dag_canonical_literal_from_node, dag_declared_inhabitants_root, dag_declared_inhabitants_subject_field, dag_grammar_production_member_declared_type, parse_production_captured_child_optional, qualified_name_from_module_node, dag_int_literal_magnitude_int_from_node }
 import v2.extdeps.languages.python { python_declared_inhabitants_root, python_declared_inhabitants_subject_field }
@@ -5235,7 +5242,7 @@ fn infer_int_literal_value_at(value: Int, expected: Node, declarations: SymbolIn
           } else {
             InferLiteralElaborationRefused { cause: ^infer_reason_literal_outside_machine_width }
           }
-        WidthUnreadable { reason: r } => InferLiteralElaborationRefused { cause: r }
+        WidthUnreadable { reason: r } => InferLiteralElaborationRefused { cause: infer_machine_width_unreadable_reason(reason: r) }
         NotWidthConstrained => infer_int_literal_value_at_declared(value: value, wanted: wanted, destination: destination)
       }
   }
@@ -5249,70 +5256,48 @@ fn infer_int_literal_value_at(value: Int, expected: Node, declarations: SymbolIn
 // not declared. Unreadable refuses, typed: a width that cannot be read is neither admitted by guessing one nor
 // handed to ordinary grounding, which would accept any literal the carrier accepts. The meaning of a readable width
 // is std.machine_width_range machine_width_admits, not a table here.
-type InferMachineWidth
-  = NotWidthConstrained
-  | WidthReadable { signedness: Signedness, bits: BitWidth }
-  | WidthUnreadable { reason: Symbol }
+// Thin v2 projection into the shared decision. The caller supplies the alias-normalized
+// application; no Compose/MachineWidth identity or signedness policy lives in this adapter.
+fn infer_machine_width_of(t: Node) -> MachineWidthReading {
+  read_machine_width(application: infer_machine_width_application_facts(t: t))
+}
 
-fn infer_machine_width_of(t: Node) -> InferMachineWidth {
-  match infer_type_declaration_ref(t: t) {
-    Absent => NotWidthConstrained
-    Present { value: head } =>
-      if head == decl_ref(module_path: "std.machine_constraints", decl_name: "Compose") {
-        match infer_type_head_and_args(t: t).args {
-          Cons { head: carrier, tail: Cons { head: width, tail: Empty } } =>
-            if infer_type_names_machine_width(t: width) {
-              match infer_machine_width_bits(t: width) {
-                Absent => WidthUnreadable { reason: ^infer_reason_machine_width_not_static }
-                Present { value: bits } =>
-                  match infer_machine_width_signedness(carrier: carrier) {
-                    Absent => WidthUnreadable { reason: ^infer_reason_machine_width_carrier_signedness_undeclared }
-                    Present { value: signedness } => WidthReadable { signedness: signedness, bits: bits }
-                  }
-              }
-            } else {
-              NotWidthConstrained
-            }
-          Cons { head: _, tail: _ } => WidthUnreadable { reason: ^infer_reason_machine_width_compose_malformed }
-          Empty => WidthUnreadable { reason: ^infer_reason_machine_width_compose_malformed }
-        }
-      } else {
-        NotWidthConstrained
-      }
+fn infer_machine_width_natural_argument(t: Node) -> Optional<Nat> {
+  match dag_int_literal_magnitude_int_from_node(node: t) {
+    Accepted { value: m, diagnostics: _ } => Present { value: nat_magnitude(a: m) }
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
-fn infer_type_names_machine_width(t: Node) -> Bool {
-  match infer_type_declaration_ref(t: t) {
-    Absent => false
-    Present { value: head } => head == decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth")
+fn infer_machine_width_argument_facts(t: Node) -> MachineWidthArgumentFacts {
+  MachineWidthArgumentFacts {
+    declaration: infer_type_declaration_ref(t: t),
+    is_kernel_int: node_equal_ignoring_provenance(a: t, b: integer_int_type_node()),
+    natural_arguments: map(infer_type_head_and_args(t: t).args, a => infer_machine_width_natural_argument(t: a))
   }
 }
 
+fn infer_machine_width_application_facts(t: Node) -> MachineWidthApplicationFacts {
+  MachineWidthApplicationFacts {
+    head: infer_type_declaration_ref(t: t),
+    arguments: map(infer_type_head_and_args(t: t).args, a => infer_machine_width_argument_facts(t: a))
+  }
+}
+
+// Existing direct-boundary witnesses keep their interfaces, now through the same facts.
 fn infer_machine_width_bits(t: Node) -> Optional<BitWidth> {
-  match infer_type_head_and_args(t: t).args {
-    Cons { head: literal, tail: Empty } =>
-      match dag_int_literal_magnitude_int_from_node(node: literal) {
-        Accepted { value: m, diagnostics: _ } => optional_present(value: bit_width(count: nat_magnitude(a: m)))
-        Rejected { diagnostics: _ } => optional_absent()
-      }
-    Cons { head: _, tail: _ } => optional_absent()
-    Empty => optional_absent()
-  }
+  machine_width_argument_bits(argument: infer_machine_width_argument_facts(t: t))
 }
 
-// std.integer's own carriers need no case here: its Int is the kernel Int by the roster (infer_kernel_value_type_optional) and
-// its UInt = Nat unfolds by the alias rule before this reads it (measured, v2.test.claim.compiler.width_literal_admission,
-// whose peer states those two declarations as std.integer writes them).
 fn infer_machine_width_signedness(carrier: Node) -> Optional<Signedness> {
-  if node_equal_ignoring_provenance(a: carrier, b: integer_int_type_node()) {
-    optional_present(value: Signed)
-  } else {
-    match infer_type_declaration_ref(t: carrier) {
-      Present { value: d } =>
-        if d == decl_ref(module_path: "std.nat", decl_name: "Nat") { optional_present(value: Unsigned) } else { optional_absent() }
-      Absent => optional_absent()
-    }
+  machine_width_carrier_signedness(carrier: infer_machine_width_argument_facts(t: carrier))
+}
+
+fn infer_machine_width_unreadable_reason(reason: MachineWidthUnreadableCause) -> Symbol {
+  match reason {
+    MachineWidthComposeMalformed => ^infer_reason_machine_width_compose_malformed
+    MachineWidthNotStatic => ^infer_reason_machine_width_not_static
+    MachineWidthCarrierSignednessUndeclared => ^infer_reason_machine_width_carrier_signedness_undeclared
   }
 }
 
