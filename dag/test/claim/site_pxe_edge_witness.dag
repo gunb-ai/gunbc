@@ -1,0 +1,590 @@
+module test.claim.site_pxe_edge_witness
+
+import extdeps.network.ipv4 { ipv4_address }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
+import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, mac_address }
+import std.content_hash { content_hash_of_value }
+import extdeps.uri { Uri, Https, Tftp }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.toolchain.types { Aarch64, X86_64 }
+import product.placement_supply { SiteIdentity }
+import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
+import extdeps.provisioning.network_boot {
+  ProxyDhcp,
+  NetworkBootLoaderMember,
+  FirstStageLoader,
+  NotAuthenticated,
+  network_boot_loader_member_is_authenticated,
+}
+import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
+import extdeps.provisioning.ubuntu_install_media {
+  noble_numbat_2404_3_amd64_uefi_network_boot_chain,
+  noble_numbat_2404_3_arm64_uefi_network_boot_chain,
+  ubuntu_network_boot_loader_chain,
+}
+import extdeps.formats.dnsmasq {
+  dnsmasq_proxy_boot_standing,
+  DnsmasqProxyBootByPxeService,
+  DnsmasqProxyBootIgnoredDhcpBoot,
+  DnsmasqNotProxyMode,
+}
+import gunbc.network_boot_delivery {
+  SitePxeEdgeEstablished,
+  ArchitectureChainloader,
+  SiteBootstrapDiscovery,
+  SiteAnsweredDhcp,
+  SiteDhcpRelay,
+  DhcpFilenameHint,
+}
+import gunbc.machine_intake.mtcollins1_netboot_client_observation {
+  mtcollins1_pxe_arch_code
+}
+import gunbc.site_pxe_edge {
+  SiteDhcpOfferObservation,
+  BootOfferObserved,
+  AddressOnlyOfferObserved,
+  BootNetworkProbe,
+  BootNetworkProbeSucceeded,
+  BootNetworkProbeFailed,
+  BootNetworkProbeUnobserved,
+  BootNetworkReachabilityObservation,
+  BootNetworkReachabilityAxis,
+  BootNetworkReachabilityDeficit,
+  BootNetworkAxisProbeFailed,
+  BootNetworkAxisUnobserved,
+  BootNetworkDns,
+  BootNetworkDefaultRoute,
+  BootNetworkGlobalHttps,
+  EdgeClientRequest,
+  SiteEdgeRoster,
+  SiteEdgeServedChain,
+  SiteEdgeServedMember,
+  SiteEdgeObservation,
+  SiteEdgeClientAdmission,
+  SiteEdgeClientAdmitted,
+  SiteEdgeUnknownMachineRefused,
+  SiteEdgeUnknownArchitectureRefused,
+  SiteEdgeClientClassNotServed,
+  SiteEdgeNotEstablished,
+  SiteEdgeClientArchitectureNotAdmitted,
+  SiteEdgeDiscoveryRefused,
+  AddressOnlyOffer,
+  OfferedFilenameMismatch,
+  first_onboarding_known_client_mac,
+  site_edge_served_chain,
+  site_edge_served_path_collisions,
+  site_edge_chain_for_client,
+  EveryKnownClient,
+  InstallBoundClients,
+  site_edge_client_admission,
+  site_edge_proxy_dhcp_config
+}
+
+data proxy_dhcp: SiteBootstrapDiscovery = SiteAnsweredDhcp { direction: ProxyDhcp }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data obs: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.site_pxe_edge_witness",
+  decl_name: "obs",
+  field: WholeDeclaration,
+}
+
+data known_mac: Eui48Address = mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 12, octet6: 1)
+
+data unknown_mac: Eui48Address = mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 12, octet6: 255)
+
+data chainloader_filename: NonEmptyStr = ipxe_arm64_efi_snponly.image
+
+fn ok() -> BootNetworkProbe {
+  BootNetworkProbeSucceeded { observation: obs, observed_at: 1788000000000 }
+}
+
+fn failed() -> BootNetworkProbe {
+  BootNetworkProbeFailed { observation: obs, observed_at: 1788000000000 }
+}
+
+fn reach(dns: BootNetworkProbe, route: BootNetworkProbe, https: BootNetworkProbe) -> BootNetworkReachabilityObservation {
+  BootNetworkReachabilityObservation { broker_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" }, artifact_origin: Uri { scheme: Https, locator: "boot-origin.example.test" }, dns_resolution: dns, default_route: route, global_https_fetch: https }
+}
+
+fn boot_offer(mode: SiteBootstrapDiscovery, filename: NonEmptyStr) -> SiteDhcpOfferObservation {
+  BootOfferObserved { mode: mode, offered_filename: filename, observation: obs, observed_at: 1788000000000 }
+}
+
+fn observed_with(offer: SiteDhcpOfferObservation, reachability: BootNetworkReachabilityObservation) -> SiteEdgeObservation {
+  SiteEdgeObservation { offer: offer, reachability: reachability, observation: obs, observed_at: 1788000000000 }
+}
+
+fn healthy_observed() -> SiteEdgeObservation {
+  observed_with(offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
+}
+
+// SUPPLIED CHAINS. The arm64 chain has the shape the converge derives from the landed iPXE pin (one
+// unsigned member, snponly.efi); the amd64 chain is the Ubuntu chain row with fixture digests. A served
+// chain has a checked constructor, so every fixture is Optional and a claim over one that did not
+// construct is false, never vacuously true.
+fn arm64_chain() -> SiteEdgeServedChain? {
+  site_edge_served_chain(
+    architecture: Aarch64,
+    audience: EveryKnownClient,
+    members: FreeSemigroup {
+      head: SiteEdgeServedMember {
+        member: NetworkBootLoaderMember { role: FirstStageLoader, served_path: chainloader_filename, verifier: NotAuthenticated },
+        digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+      },
+      tail: [],
+    },
+    citation: "iPXE bin-arm64-efi/snponly.efi per ipxe.org/howto/chainloading",
+  )
+}
+
+fn amd64_chain() -> SiteEdgeServedChain? {
+  let c = ubuntu_network_boot_loader_chain(chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain)
+  site_edge_served_chain(
+    architecture: X86_64,
+    audience: EveryKnownClient,
+    members: FreeSemigroup {
+      head: SiteEdgeServedMember { member: c.members.head, digest: content_hash_of_value(value: "shim-fixture") },
+      tail: map(c.members.tail, m => SiteEdgeServedMember { member: m, digest: content_hash_of_value(value: m.served_path) }),
+    },
+    citation: "Ubuntu 24.04.3 amd64 signed shim and network GRUB per documentation.ubuntu.com",
+  )
+}
+
+fn roster_with(chains: FreeSemigroup<SiteEdgeServedChain>, macs: List<Eui48Address>) -> SiteEdgeRoster {
+  SiteEdgeRoster {
+    site: "onboarding-segment-0c" as SiteIdentity,
+    served_chains: chains,
+    tftp_server_name: "srv4",
+    tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196),
+    known_client_macs: macs,
+    install_client_macs: [],
+  }
+}
+
+fn arm64_roster(macs: List<Eui48Address>) -> SiteEdgeRoster? {
+  match arm64_chain() {
+    Absent => Absent
+    Present { value: a } => Present { value: roster_with(chains: FreeSemigroup { head: a, tail: [] }, macs: macs) }
+  }
+}
+
+fn amd64_roster(macs: List<Eui48Address>) -> SiteEdgeRoster? {
+  match amd64_chain() {
+    Absent => Absent
+    Present { value: x } => Present { value: roster_with(chains: FreeSemigroup { head: x, tail: [] }, macs: macs) }
+  }
+}
+
+fn both_roster(macs: List<Eui48Address>) -> SiteEdgeRoster? {
+  match arm64_chain() {
+    Absent => Absent
+    Present { value: a } =>
+      match amd64_chain() {
+        Absent => Absent
+        Present { value: x } => Present { value: roster_with(chains: FreeSemigroup { head: a, tail: [x] }, macs: macs) }
+      }
+  }
+}
+
+fn holds(roster: SiteEdgeRoster?, claim: fn(SiteEdgeRoster) -> Bool) -> Bool {
+  match roster {
+    Absent => false
+    Present { value: r } => claim(r)
+  }
+}
+
+fn admit(roster: SiteEdgeRoster?, observed: SiteEdgeObservation, request: EdgeClientRequest, expect: fn(SiteEdgeClientAdmission) -> Bool) -> Bool {
+  holds(roster: roster, claim: r => expect(site_edge_client_admission(roster: r, observed: observed, request: request)))
+}
+
+fn arm64_request(mac: Eui48Address) -> EdgeClientRequest {
+  EdgeClientRequest { mac: mac, arch_code: 11 }
+}
+
+fn x86_request(mac: Eui48Address) -> EdgeClientRequest {
+  EdgeClientRequest { mac: mac, arch_code: 7 }
+}
+
+fn is_admitted_with_discovery(admission: SiteEdgeClientAdmission, discovery: SiteBootstrapDiscovery) -> Bool {
+  match admission {
+    SiteEdgeClientAdmitted { standing: SitePxeEdgeEstablished { receipt: r } } => r.edge.discovery == discovery
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownMachineRefused { mac: _ } => false
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+    SiteEdgeClientClassNotServed { client: _ } => false
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeDiscoveryRefused { refusal: _ } => false
+  }
+}
+
+fn not_established_with(admission: SiteEdgeClientAdmission, expected: List<BootNetworkReachabilityDeficit>) -> Bool {
+  match admission {
+    SiteEdgeNotEstablished { standing: _, unreachable: u } => u == expected
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeClientClassNotServed { client: _ } => false
+    SiteEdgeDiscoveryRefused { refusal: _ } => false
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownMachineRefused { mac: _ } => false
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+  }
+}
+
+fn class_not_served(admission: SiteEdgeClientAdmission) -> SiteEdgeClientAdmission? {
+  match admission {
+    SiteEdgeClientClassNotServed { client: _ } => Present { value: admission }
+    SiteEdgeClientAdmitted { standing: _ } => Absent
+    SiteEdgeUnknownMachineRefused { mac: _ } => Absent
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => Absent
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => Absent
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => Absent
+    SiteEdgeDiscoveryRefused { refusal: _ } => Absent
+  }
+}
+
+test fn known_arm64_client_on_observed_proxy_edge_is_admitted() -> Bool {
+  admit(roster: arm64_roster(macs: [known_mac]), observed: healthy_observed(), request: arm64_request(mac: known_mac), expect: a => is_admitted_with_discovery(admission: a, discovery: proxy_dhcp))
+}
+
+test fn relay_offer_is_admitted_as_relay() -> Bool {
+  admit(
+    roster: arm64_roster(macs: [known_mac]),
+    observed: observed_with(offer: boot_offer(mode: SiteDhcpRelay, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok())),
+    request: arm64_request(mac: known_mac),
+    expect: a => is_admitted_with_discovery(admission: a, discovery: SiteDhcpRelay),
+  )
+}
+
+test fn unknown_machine_gets_no_boot() -> Bool {
+  admit(roster: arm64_roster(macs: [known_mac]), observed: healthy_observed(), request: arm64_request(mac: unknown_mac), expect: a => match a {
+    SiteEdgeUnknownMachineRefused { mac: m } => m == unknown_mac
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+    SiteEdgeClientClassNotServed { client: _ } => false
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeDiscoveryRefused { refusal: _ } => false
+  })
+}
+
+// WRONG-ARCHITECTURE RED: code 7 is the IANA x64 UEFI class, recognized, and an arm64-only edge serves no
+// chain for it, so it is refused BY NAME at the measured class, never served the arm64 loader.
+test fn an_x86_client_on_an_arm64_only_edge_is_refused_by_class() -> Bool {
+  admit(roster: arm64_roster(macs: [known_mac]), observed: healthy_observed(), request: x86_request(mac: known_mac), expect: a => match class_not_served(admission: a) {
+    Present { value: SiteEdgeClientClassNotServed { client: c } } => c == UefiX86_64
+    Present { value: _ } => false
+    Absent => false
+  })
+}
+
+// THE OTHER DIRECTION: an edge serving only the amd64 chain refuses an arm64 client by its class.
+test fn an_edge_serving_only_amd64_refuses_the_arm64_class() -> Bool {
+  admit(roster: amd64_roster(macs: [known_mac]), observed: healthy_observed(), request: arm64_request(mac: known_mac), expect: a => match class_not_served(admission: a) {
+    Present { value: SiteEdgeClientClassNotServed { client: c } } => c == UefiArm64
+    Present { value: _ } => false
+    Absent => false
+  })
+}
+
+// CODE 9 IS EBC (IANA), NOT x86-64: RFC 4578's table printed 9 as EFI x86-64, and dnsmasq's names follow it.
+// The registry's inverse has no member for 9, so it is carried as read and refused, never guessed.
+test fn code_nine_is_not_guessed_onto_x86_64() -> Bool {
+  admit(roster: both_roster(macs: [known_mac]), observed: healthy_observed(), request: EdgeClientRequest { mac: known_mac, arch_code: 9 }, expect: a => match a {
+    SiteEdgeUnknownArchitectureRefused { arch_code: c } => c == 9
+    SiteEdgeClientClassNotServed { client: _ } => false
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownMachineRefused { mac: _ } => false
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeDiscoveryRefused { refusal: _ } => false
+  })
+}
+
+// X86 ADMITTED AS DATA: the edge with the Ubuntu amd64 chain row added admits a known x86 client whose
+// offer named shim, and the established edge's x86 transport is the shim at the rendered server.
+test fn an_edge_with_the_amd64_row_admits_a_known_x86_client() -> Bool {
+  admit(
+    roster: both_roster(macs: [known_mac]),
+    observed: observed_with(offer: boot_offer(mode: proxy_dhcp, filename: "bootx64.efi"), reachability: reach(dns: ok(), route: ok(), https: ok())),
+    request: x86_request(mac: known_mac),
+    expect: a => match a {
+      SiteEdgeClientAdmitted { standing: SitePxeEdgeEstablished { receipt: r } } =>
+        r.edge.discovery == proxy_dhcp
+          && any(r.edge.bootstrap_transports.tail, t => match t {
+            ArchitectureChainloader { architecture: arch, filename_hint: DhcpFilenameHint { filename: f }, chainloader_digest: _, tftp_root: route } =>
+              arch == X86_64 && (f as String) == "bootx64.efi" && route == Uri { scheme: Tftp, locator: "192.168.1.196/" }
+          })
+      SiteEdgeClientAdmitted { standing: _ } => false
+      SiteEdgeUnknownMachineRefused { mac: _ } => false
+      SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+      SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+      SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+      SiteEdgeClientClassNotServed { client: _ } => false
+      SiteEdgeDiscoveryRefused { refusal: _ } => false
+    },
+  )
+}
+
+// AN x86 CLIENT OFFERED THE ARM FILENAME IS REFUSED ON DISCOVERY: the hint is its own chain's first stage.
+test fn an_x86_client_offered_the_arm64_loader_is_refused() -> Bool {
+  admit(roster: both_roster(macs: [known_mac]), observed: healthy_observed(), request: x86_request(mac: known_mac), expect: a => match a {
+    SiteEdgeDiscoveryRefused { refusal: OfferedFilenameMismatch { offered: f, observation: _, observed_at: _ } } => (f as String) == (chainloader_filename as String)
+    SiteEdgeDiscoveryRefused { refusal: _ } => false
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownMachineRefused { mac: _ } => false
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeClientClassNotServed { client: _ } => false
+  })
+}
+
+test fn dns_failure_alone_unestablishes_the_edge() -> Bool {
+  admit(roster: arm64_roster(macs: [known_mac]), observed: observed_with(offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: failed(), route: ok(), https: ok())), request: arm64_request(mac: known_mac), expect: a => not_established_with(admission: a, expected: [BootNetworkAxisProbeFailed { axis: BootNetworkDns, observation: obs, observed_at: 1788000000000 }]))
+}
+
+test fn missing_default_route_alone_unestablishes_the_edge() -> Bool {
+  admit(roster: arm64_roster(macs: [known_mac]), observed: observed_with(offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: BootNetworkProbeUnobserved, https: ok())), request: arm64_request(mac: known_mac), expect: a => not_established_with(admission: a, expected: [BootNetworkAxisUnobserved { axis: BootNetworkDefaultRoute }]))
+}
+
+test fn failed_https_fetch_alone_unestablishes_the_edge() -> Bool {
+  admit(roster: arm64_roster(macs: [known_mac]), observed: observed_with(offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: failed())), request: arm64_request(mac: known_mac), expect: a => not_established_with(admission: a, expected: [BootNetworkAxisProbeFailed { axis: BootNetworkGlobalHttps, observation: obs, observed_at: 1788000000000 }]))
+}
+
+// A PROBE THAT FAILED AND A PROBE NOBODY RAN ARE DIFFERENT DEFICITS on the same axis.
+test fn an_unprobed_dns_axis_is_unobserved_not_failed() -> Bool {
+  admit(roster: arm64_roster(macs: [known_mac]), observed: observed_with(offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: BootNetworkProbeUnobserved, route: ok(), https: ok())), request: arm64_request(mac: known_mac), expect: a => not_established_with(admission: a, expected: [BootNetworkAxisUnobserved { axis: BootNetworkDns }]))
+}
+
+test fn offer_with_other_filename_is_refused_with_the_offered_name() -> Bool {
+  admit(roster: arm64_roster(macs: [known_mac]), observed: observed_with(offer: boot_offer(mode: proxy_dhcp, filename: "ipxe.efi"), reachability: reach(dns: ok(), route: ok(), https: ok())), request: arm64_request(mac: known_mac), expect: a => match a {
+    SiteEdgeDiscoveryRefused { refusal: OfferedFilenameMismatch { offered: f, observation: _, observed_at: _ } } => f as String == "ipxe.efi"
+    SiteEdgeDiscoveryRefused { refusal: _ } => false
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownMachineRefused { mac: _ } => false
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeClientClassNotServed { client: _ } => false
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+  })
+}
+
+// THE REAL ROUTE, on the measured facts: mtcollins1's own MAC and option-93 code against the first
+// segment's roster. The segment's router answered with an address and no boot filename, so the known
+// ARM64 client is refused as an ADDRESS-ONLY OFFER carrying that observation -- on discovery, not on
+// identity or architecture.
+test fn mtcollins1_on_its_measured_segment_is_not_yet_admitted() -> Bool {
+  match first_onboarding_known_client_mac {
+    MacParseFailed { error: _ } => false
+    MacParsed { address: host } =>
+      admit(
+        roster: arm64_roster(macs: [host]),
+        observed: observed_with(offer: AddressOnlyOfferObserved { observation: obs, observed_at: 1788620040000 }, reachability: reach(dns: ok(), route: ok(), https: ok())),
+        request: EdgeClientRequest { mac: host, arch_code: mtcollins1_pxe_arch_code },
+        expect: a => match a {
+          SiteEdgeDiscoveryRefused { refusal: AddressOnlyOffer { observation: _, observed_at: t } } => t == 1788620040000
+          SiteEdgeDiscoveryRefused { refusal: _ } => false
+          SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+          SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+          SiteEdgeClientClassNotServed { client: _ } => false
+          SiteEdgeClientAdmitted { standing: _ } => false
+          SiteEdgeUnknownMachineRefused { mac: _ } => false
+          SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+        },
+      )
+  }
+}
+
+// THE ROSTER IS THE MEASURED HOST NIC, PARSED: 28:c1:3c:8a:d6:4a, not re-authored octets.
+test fn the_landed_roster_parses_to_the_measured_host_nic() -> Bool {
+  match first_onboarding_known_client_mac {
+    MacParseFailed { error: _ } => false
+    MacParsed { address: a } => a == mac_address(octet1: 40, octet2: 193, octet3: 60, octet4: 138, octet5: 214, octet6: 74)
+  }
+}
+
+// THE ARM LINE IS A pxe-service: in proxy mode dnsmasq offers a boot file only through pxe-service (man
+// page), and the client system type is the integer 11, never dnsmasq's name. The rendering passes the
+// same readback judgment a host's bytes are put through.
+test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
+  holds(roster: arm64_roster(macs: [known_mac]), claim: r => {
+    let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), roster: r, tftp_directory: "/srv/edge-tftp")
+    contains(cfg, "port=0")
+      && contains(cfg, "dhcp-range=192.168.1.0,proxy")
+      && contains(cfg, "dhcp-match=set:efi-arm64,option:client-arch,11")
+      && contains(cfg, "dhcp-host=02:00:00:00:0c:01,set:onboarding-known")
+      && contains(cfg, "pxe-service=tag:efi-arm64,tag:onboarding-known,11,\"gunbc efi-arm64\",snponly.efi,192.168.1.196")
+      && contains(cfg, "iPXE bin-arm64-efi/snponly.efi per ipxe.org/howto/chainloading")
+      && contains(cfg, "enable-tftp")
+      && contains(cfg, "tftp-root=/srv/edge-tftp")
+      && length(split(cfg, "pxe-service=")) == 2
+      && !contains(cfg, "dhcp-boot=")
+      && dnsmasq_proxy_boot_standing(config: cfg) == DnsmasqProxyBootByPxeService
+  })
+}
+
+// BOTH ROWS RENDER, each on its own integer client type, and nothing else offers a boot file.
+test fn an_edge_with_both_rows_renders_one_pxe_service_per_class() -> Bool {
+  holds(roster: both_roster(macs: [known_mac]), claim: r => {
+    let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), roster: r, tftp_directory: "/srv/edge-tftp")
+    contains(cfg, "dhcp-match=set:efi-x86_64,option:client-arch,7")
+      && contains(cfg, "pxe-service=tag:efi-x86_64,tag:onboarding-known,7,\"gunbc efi-x86_64\",bootx64.efi,192.168.1.196")
+      && contains(cfg, "pxe-service=tag:efi-arm64,tag:onboarding-known,11,\"gunbc efi-arm64\",snponly.efi,192.168.1.196")
+      && length(split(cfg, "pxe-service=")) == 3
+      && dnsmasq_proxy_boot_standing(config: cfg) == DnsmasqProxyBootByPxeService
+  })
+}
+
+// READBACK RED: bytes read off a host -- not this renderer, which cannot spell dhcp-boot -- that put a
+// dhcp-boot line under a proxy dhcp-range are refused with the line located; the same line outside proxy
+// mode is a different standing.
+test fn a_proxy_config_carrying_dhcp_boot_is_refused_at_readback() -> Bool {
+  let bad = "port=0\ndhcp-range=192.168.1.0,proxy\ndhcp-match=set:efi-arm64,option:client-arch,11\ndhcp-boot=tag:efi-arm64,snponly.efi,srv4,192.168.1.196\nenable-tftp\n"
+  let not_proxy = "dhcp-range=192.168.1.100,192.168.1.200\ndhcp-boot=pxelinux.0\n"
+  (match dnsmasq_proxy_boot_standing(config: bad) {
+    DnsmasqProxyBootIgnoredDhcpBoot { line: l } => l == "dhcp-boot=tag:efi-arm64,snponly.efi,srv4,192.168.1.196"
+    DnsmasqProxyBootByPxeService => false
+    DnsmasqNotProxyMode => false
+  }) && dnsmasq_proxy_boot_standing(config: not_proxy) == DnsmasqNotProxyMode
+}
+
+// TWO CHAINS MAY NOT CLAIM ONE TFTP PATH: an amd64 chain reusing snponly.efi beside the arm64 chain is a
+// located collision; the arm64 plus Ubuntu amd64 roster has none.
+test fn served_path_collisions_are_located() -> Bool {
+  let clashing = site_edge_served_chain(
+    architecture: X86_64,
+    audience: EveryKnownClient,
+    members: FreeSemigroup {
+      head: SiteEdgeServedMember { member: NetworkBootLoaderMember { role: FirstStageLoader, served_path: chainloader_filename, verifier: NotAuthenticated }, digest: content_hash_of_value(value: "other") },
+      tail: [],
+    },
+    citation: "fixture",
+  )
+  holds(roster: both_roster(macs: [known_mac]), claim: r => length(site_edge_served_path_collisions(roster: r)) == 0)
+    && (match arm64_chain() {
+      Absent => false
+      Present { value: a } =>
+        match clashing {
+          Absent => false
+          Present { value: x } =>
+            map(site_edge_served_path_collisions(roster: roster_with(chains: FreeSemigroup { head: a, tail: [x] }, macs: [known_mac])), q => q as String) == [chainloader_filename as String]
+        }
+    })
+}
+
+// THE UBUNTU amd64 CHAIN'S TRUST IS TYPED PER MEMBER: shim by the firmware db, GRUB by shim's vendor
+// certificate, the kernel by shim-lock; grub.cfg and the initrd by nobody.
+test fn the_amd64_chain_states_each_members_verifier() -> Bool {
+  let c = ubuntu_network_boot_loader_chain(chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain)
+  map(c.members.tail, m => m.served_path as String) == ["grubx64.efi", "grub/grub.cfg", "vmlinuz", "initrd"]
+    && (c.members.head.served_path as String) == "bootx64.efi"
+    && network_boot_loader_member_is_authenticated(member: c.members.head)
+    && map(filter(c.members.tail, m => network_boot_loader_member_is_authenticated(member: m) == false), m => m.served_path as String) == ["grub/grub.cfg", "initrd"]
+}
+
+// THE ROUTE THE JOIN CHECKS IS THE SERVER THE CONFIG NAMES: an admitted edge's transport carries a
+// tftp_root built from the roster's tftp_server_address, the same address the pxe-service line renders.
+test fn admitted_edge_tftp_route_is_the_rendered_server() -> Bool {
+  admit(roster: arm64_roster(macs: [known_mac]), observed: healthy_observed(), request: arm64_request(mac: known_mac), expect: a => match a {
+    SiteEdgeClientAdmitted { standing: SitePxeEdgeEstablished { receipt: r } } =>
+      match r.edge.bootstrap_transports.head {
+        ArchitectureChainloader { architecture: _, filename_hint: _, chainloader_digest: _, tftp_root: route } =>
+          route == Uri { scheme: Tftp, locator: "192.168.1.196/" }
+      }
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownMachineRefused { mac: _ } => false
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeClientClassNotServed { client: _ } => false
+    SiteEdgeDiscoveryRefused { refusal: _ } => false
+  })
+}
+
+// ── The arm64 install chain beside the arm64 default chain ─────────────────────────────────────
+// merry-fox-82's conditions for the arm64 Ubuntu chain: the iPXE row stays the class's default, the install
+// chain is offered only to a client an install binding names, and an unbound MAC gets no install path. The
+// fixture digests are content hashes of the served path, so the two Ubuntu chains' grub/grub.cfg carry equal
+// digests, as the converge's one fallback rendering does.
+fn arm64_install_chain(grub_cfg_digest_seed: String) -> SiteEdgeServedChain? {
+  let c = ubuntu_network_boot_loader_chain(chain: noble_numbat_2404_3_arm64_uefi_network_boot_chain)
+  site_edge_served_chain(
+    architecture: Aarch64,
+    audience: InstallBoundClients,
+    members: FreeSemigroup {
+      head: SiteEdgeServedMember { member: c.members.head, digest: content_hash_of_value(value: "shimaa64-fixture") },
+      tail: map(c.members.tail, m => SiteEdgeServedMember { member: m, digest: content_hash_of_value(value: if (m.served_path as String) == "grub/grub.cfg" { grub_cfg_digest_seed } else { m.served_path as String }) }),
+    },
+    citation: "Ubuntu 24.04.3 arm64 signed shim and network GRUB fixture",
+  )
+}
+
+data install_mac: Eui48Address = mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 12, octet6: 14)
+
+fn three_chain_roster(install_macs: List<Eui48Address>, grub_cfg_digest_seed: String) -> SiteEdgeRoster? {
+  match arm64_chain() {
+    Absent => Absent
+    Present { value: a } => match arm64_install_chain(grub_cfg_digest_seed: grub_cfg_digest_seed) {
+      Absent => Absent
+      Present { value: i } => match amd64_chain() {
+        Absent => Absent
+        Present { value: x } => Present { value: SiteEdgeRoster {
+          site: "onboarding-segment-0c" as SiteIdentity,
+          served_chains: FreeSemigroup { head: a, tail: [i, x] },
+          tftp_server_name: "srv4",
+          tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196),
+          known_client_macs: [known_mac, install_mac],
+          install_client_macs: install_macs,
+        } }
+      }
+    }
+  }
+}
+
+fn offered_first_stage(roster: SiteEdgeRoster, mac: Eui48Address) -> String {
+  match site_edge_chain_for_client(roster: roster, client: UefiArm64, mac: mac) {
+    Absent => ""
+    Present { value: c } => c.members.head.member.served_path as String
+  }
+}
+
+// THE BOUND CLIENT GETS THE INSTALL CHAIN, every other known arm64 client the iPXE default; the rendering says
+// the same with exclusive tags: the default line requires the install tag UNSET, the install line requires it SET,
+// and only the bound MAC carries it. One dhcp-match for the arm64 class however many chains it has.
+test fn an_install_bound_arm64_client_alone_reaches_the_install_chain() -> Bool {
+  holds(roster: three_chain_roster(install_macs: [install_mac], grub_cfg_digest_seed: "grub/grub.cfg"), claim: r => {
+    let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), roster: r, tftp_directory: "/srv/edge-tftp")
+    offered_first_stage(roster: r, mac: install_mac) == "bootaa64.efi"
+      && offered_first_stage(roster: r, mac: known_mac) == "snponly.efi"
+      && contains(cfg, "pxe-service=tag:efi-arm64,tag:onboarding-known,tag:!onboarding-install,11,\"gunbc efi-arm64\",snponly.efi,192.168.1.196")
+      && contains(cfg, "pxe-service=tag:efi-arm64,tag:onboarding-known,tag:onboarding-install,11,\"gunbc efi-arm64 install\",bootaa64.efi,192.168.1.196")
+      && contains(cfg, "pxe-service=tag:efi-x86_64,tag:onboarding-known,7,\"gunbc efi-x86_64\",bootx64.efi,192.168.1.196")
+      && contains(cfg, "dhcp-mac=set:onboarding-install,02:00:00:00:0c:0e")
+      && length(split(cfg, "dhcp-mac=")) == 2
+      && length(split(cfg, "dhcp-match=set:efi-arm64,")) == 2
+      && length(split(cfg, "pxe-service=")) == 4
+      && length(site_edge_served_path_collisions(roster: r)) == 0
+  })
+}
+
+// RED: WITH NO INSTALL BINDING, NO MAC CARRIES THE INSTALL TAG, so the install line reaches nobody and every
+// arm64 client, the would-be install client included, is offered the iPXE default.
+test fn an_unbound_mac_gets_no_install_path() -> Bool {
+  holds(roster: three_chain_roster(install_macs: [], grub_cfg_digest_seed: "grub/grub.cfg"), claim: r => {
+    let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), roster: r, tftp_directory: "/srv/edge-tftp")
+    offered_first_stage(roster: r, mac: install_mac) == "snponly.efi"
+      && offered_first_stage(roster: r, mac: known_mac) == "snponly.efi"
+      && !contains(cfg, "dhcp-mac=")
+  })
+}
+
+// SHARING ONE FALLBACK FILE IS NOT A COLLISION WHEN THE BYTES ARE ONE; the same path with other bytes is.
+test fn a_shared_grub_cfg_collides_only_when_its_bytes_differ() -> Bool {
+  holds(roster: three_chain_roster(install_macs: [install_mac], grub_cfg_digest_seed: "grub/grub.cfg"), claim: r => length(site_edge_served_path_collisions(roster: r)) == 0)
+    && holds(roster: three_chain_roster(install_macs: [install_mac], grub_cfg_digest_seed: "a different rendering"), claim: r => map(site_edge_served_path_collisions(roster: r), q => q as String) == ["grub/grub.cfg"])
+}
+

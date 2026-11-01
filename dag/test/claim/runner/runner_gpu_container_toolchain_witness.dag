@@ -1,0 +1,1567 @@
+module test.claim.runner.runner_gpu_container_toolchain_witness
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// THE NEVER-GREEN CONTRACT FOR THE GPU CONTAINER CAPABILITY
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// A slot that cannot run a container seeing a GPU must make the dependent instrument go red — never
+// green with an empty observation. Two folds decide that, and both are pure, so both can be nailed
+// here without a host under them:
+//
+//   * gunbc.runner.runner_gpu_container_toolchain runner_gpu_container_toolchain_ready — the
+//     conjunctive four-arm gate. The container-sees-device arm is one of the four; if it is missing
+//     or unobserved the gate is false even when the toolkit package, the CDI spec and the job-user
+//     daemon all answer ok.
+//   * gunbc.runner.runner_gpu_container_toolchain gpu_docker_labels_outcome_holds — the converge is
+//     green only when the capability read back ready AND the label action was a grant. A revoke on an
+//     unready host is the RIGHT action but a FAILED converge; a grant while unready is impossible and
+//     is what this witness refuses.
+//
+// THE POSITIVE CONTROLS ARE NOT OPTIONAL. An assertion that the unready case goes red is satisfied by
+// a gate that is hard-wired false; each red claim here is paired with the green case that only a
+// correct gate can also admit. A test file whose every claim is a negative is a test file that passes
+// on a module that does nothing.
+//
+// THE SUBORDINATE-RANGE CLAIMS ARE HERE TOO because a namespace collision is the failure mode that
+// reads like something else (see the provisioning commentary in the module under test): a job user
+// sharing a subordinate range with another account makes dockerd-rootless fail in a way that looks
+// like a Docker bug. The plan fold must REFUSE, not install a broken daemon, so the refusal is pinned
+// against the exact range pair srv3 shipped with (two accounts both at 100000+65536).
+
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+import std.logic { Bool }
+import std.types { NonEmptyStr, List, Int, String }
+import std.algebra { trim, string_contains }
+import std.measure { second_count }
+
+import product.host_identity { HostIdentity }
+
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+
+import gunbc.runner.runner_capability_labels { DropinPresent, host_capability_dropin_presence, host_capability_witness_of_reads }
+import gunbc.runner.runner_gpu_container_toolchain {
+  gpu_container_provision_start_leg,
+  gpu_container_provision_start_actions,
+  gpu_container_provision_start_admitted,
+  GpuContainerProvisionRun,
+  GpuContainerProvisioned, GpuContainerProvisionRefused,
+  GpuContainerArm,
+  GpuContainerArmOk, GpuContainerArmMissing, GpuContainerArmUnobserved,
+  GpuContainerToolchainReadback,
+  runner_gpu_container_toolchain_ready,
+  runner_gpu_container_toolchain_host_ready,
+  GpuDockerLabelsOutcome,
+  GpuDockerLabelsGranted, GpuDockerLabelsRevoked, GpuDockerLabelsFailed,
+  gpu_docker_labels_outcome_holds,
+  gpu_container_provision_repo_actions_for,
+  gpu_container_provision_plan_has_refusal,
+  gpu_container_provision_plan_step_names,
+  gpu_container_provision_plan_check_count,
+  gpu_container_provision_step_names_include,
+  GpuContainerProvisionCheck,
+  GpuContainerProvisionAction,
+  ProvisionOwnedDirectory,
+  ProvisionRootOwnedFile,
+  ProvisionSubordinateRangesFile,
+  ProvisionLegs,
+  ProvisionVerify,
+  ProvisionRefusal,
+  gpu_container_provision_subordinate_write,
+  GpuContainerProvisionMapScan,
+  GpuContainerProvisionMapClear,
+  GpuContainerProvisionMapMappedFromRange,
+  GpuContainerProvisionMapUnreadableRow,
+  GpuContainerProvisionMapNamespaceUnreadable,
+  GpuContainerProvisionNamespaceScope,
+  GpuContainerProvisionNamespaceInitial,
+  GpuContainerProvisionNamespaceChild,
+  GpuContainerProvisionNamespaceUnreadable,
+  GpuContainerProvisionNamespaceLinkRead,
+  GpuContainerProvisionNamespaceLinkUnreadable,
+  GpuContainerProvisionNamespaceBatch,
+  GpuContainerProvisionNamespaceBatchAligned,
+  GpuContainerProvisionNamespaceBatchUnreadable,
+  gpu_container_provision_namespace_scope,
+  gpu_container_provision_namespace_scan_pid_limit,
+  gpu_container_provision_namespace_batch_reading,
+  gpu_container_provision_map_scan,  gpu_container_provision_subordinate_write_bound,
+  gpu_container_provision_subordinate_lock_wait,
+  gpu_container_provision_subordinate_lock_conflict_exit_code,
+  VerifyKeyringFingerprint,
+  gpu_container_provision_check_verdict,
+  GpuContainerProvisionStep,
+  GpuContainerProvisioned, GpuContainerProvisionRefused, GpuContainerProvisionSkipped,
+  gpu_container_acceptance_image, gpu_container_acceptance_probe_argv,
+  gpu_container_subordinate_integrity_holds,
+  gpu_container_provision_subuid_verify_step,
+  gpu_container_provision_subgid_verify_step,
+}
+
+import gunbc.runner.runner_capability_labels {
+  runner_gpu_docker_ready_registration_labels,
+  host_capability_rows, host_capability_rows_to_observe, host_capability_row_label,
+  host_capability_label_is_declared,
+}
+import gunbc.runner.runner_registration_labels {
+  HostCapabilityWitness, HostCapabilityRow, CapabilityHeld, CapabilityAbsent, CapabilityUnobservable,
+  RunnerRegistrationLabelsResolution,
+  RegistrationLabelsResolved, RegistrationLabelsRefused,
+  gunbc_gpu_docker_label,
+  gunbc_browser_ready_label,
+}
+
+import extdeps.shadow.subordinate_ids {
+  SubordinateRange,
+  SubordinateFileUnreadable, SubordinateFileRead, SubordinateFileReading,
+  SubordinatePlan, SubordinatePlanSteps, SubordinatePlanRefused,
+  subordinate_collisions,
+  parse_subordinate_file,
+  parse_subordinate_file_exact,
+  plan_subordinate_file,
+  render_subordinate_file,
+  subordinate_rows_after_plan,
+  subordinate_file_bytes,
+  subordinate_file_ranges,
+  subordinate_range_text,
+}
+
+import gunbc.typed_remote_file_write { typed_remote_file_step_failure_reason }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.sudo.elevation { sudo_program }
+import extdeps.tools.env { env_path_resolved_program }
+import extdeps.docker.cli {
+  docker_info_command, docker_program, docker_gpu_cdi_probe_run_command,
+}
+import extdeps.container.docker_ce { docker_ce_packages, docker_ce_rootless_prerequisite_packages }
+import gunbc.runner.runner_host_deploy { runner_host_gpu_container_toolchain_for, RunnerHostGpuToolchainFound, RunnerHostGpuToolchainAbsent, GpuContainerToolchainDesired, GpuContainerToolchainNotWanted, GpuContainerToolchainUnmeasured }
+import extdeps.container.nvidia_container_toolkit {
+  nvidia_ctk_cdi_generate_command, nvidia_ctk_cdi_list_command, nvidia_ctk_program,
+  nvidia_cdi_all_gpu_device,
+}
+import gunbc.runner.runner_gpu_container_toolchain { job_user_command }
+
+// ── THE READBACK GATE ────────────────────────────────────────────────────────────────────────
+
+fn ok(detail: String) -> GpuContainerArm { GpuContainerArmOk { detail: detail } }
+fn missing(detail: String) -> GpuContainerArm { GpuContainerArmMissing { detail: detail } }
+fn unobserved(reason: String) -> GpuContainerArm { GpuContainerArmUnobserved { reason: reason } }
+
+fn all_four_ok() -> GpuContainerToolchainReadback {
+  GpuContainerToolchainReadback {
+    job_user: "ghrunner" as NonEmptyStr,
+    toolkit_package: ok("nvidia-container-toolkit"),
+    cdi_spec: ok("nvidia.com/gpu=all"),
+    job_user_daemon: ok("rootless"),
+    container_sees_device: ok("GPU 0"),
+  }
+}
+
+// A host that truly has the capability is ready. Without this, every red claim below is vacuous.
+test fn a_host_with_all_four_arms_is_ready() -> Bool {
+  runner_gpu_container_toolchain_ready(r: all_four_ok())
+}
+
+// THE DECIDING ARM: the container that sees no GPU makes the host not ready even though the package,
+// the spec and the daemon all answer ok. This is the exact shape that would let a slot advertise the
+// capability and the dependent instrument observe nothing — it must be unready.
+test fn a_missing_container_device_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: r.toolkit_package,
+    cdi_spec: r.cdi_spec,
+    job_user_daemon: r.job_user_daemon,
+    container_sees_device: missing("exited 125: no such device"),
+  }) == false
+}
+
+// UNOBSERVED IS NOT OK. A leg that could not be run (transport refused, uid unknown) is a refusal to
+// answer, not a green answer; the container arm in particular may never be treated as satisfied
+// because it was never measured.
+test fn an_unobserved_container_device_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: r.toolkit_package,
+    cdi_spec: r.cdi_spec,
+    job_user_daemon: r.job_user_daemon,
+    container_sees_device: unobserved("job user uid unobserved"),
+  }) == false
+}
+
+// The same refusal applied to each of the other three arms in turn: dropping any one of the four to
+// missing makes the host unready, so no single arm can be silently forgotten by a later refactor.
+test fn dropping_the_toolkit_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: missing("dpkg query empty"),
+    cdi_spec: r.cdi_spec,
+    job_user_daemon: r.job_user_daemon,
+    container_sees_device: r.container_sees_device,
+  }) == false
+}
+
+test fn dropping_the_cdi_spec_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: r.toolkit_package,
+    cdi_spec: missing("no spec names the device"),
+    job_user_daemon: r.job_user_daemon,
+    container_sees_device: r.container_sees_device,
+  }) == false
+}
+
+test fn dropping_the_job_user_daemon_arm_is_never_ready() -> Bool {
+  let r = all_four_ok()
+  runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback {
+    job_user: r.job_user,
+    toolkit_package: r.toolkit_package,
+    cdi_spec: r.cdi_spec,
+    job_user_daemon: missing("socket silent"),
+    container_sees_device: r.container_sees_device,
+  }) == false
+}
+
+// ── THE LABEL ACTION GATE ────────────────────────────────────────────────────────────────────
+
+// GRANTED AND READY is the only green pair. This is the positive control for the whole section.
+test fn a_grant_on_a_ready_host_holds() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsGranted, ready: true)
+}
+
+// A GRANT CANNOT BE GREEN WITHOUT THE CAPABILITY. If the readback is unready, a Granted outcome must
+// not hold — otherwise a stale drop-in left by a previous converge could report green on a host that
+// lost the toolkit.
+test fn a_grant_on_an_unready_host_never_holds() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsGranted, ready: false) == false
+}
+
+// A REVOKE ON AN UNREADY HOST IS THE RIGHT ACTION, and is still recorded correctly: holds() is true
+// for the action being right, but the converge's own green test (ready && holds) is false because
+// ready is false. This claim pins that the two are independent — holds() must not be collapsed into
+// "is the converge green", which is what would let a revoke masquerade as success.
+test fn a_revoke_on_an_unready_host_is_the_correct_action() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsRevoked, ready: false)
+}
+
+// A revoke on a READY host is wrong — the host kept the capability but lost its label — so it does not
+// hold, and combined with the green test it can never be reported as success.
+test fn a_revoke_on_a_ready_host_does_not_hold() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsRevoked, ready: true) == false
+}
+
+// A FAILURE holds on neither host, on either host: it is the one outcome with no green path.
+test fn a_failed_label_action_never_holds() -> Bool {
+  gpu_docker_labels_outcome_holds(o: GpuDockerLabelsFailed { cause: "refused" }, ready: true) == false
+    && gpu_docker_labels_outcome_holds(o: GpuDockerLabelsFailed { cause: "refused" }, ready: false) == false
+}
+
+// THE CONVERGE'S GREEN TEST, spelled the way the wet entry spells it (ready && holds), is false for
+// every unready combination — including the grant-on-stale-label shape — and true only for the one
+// green pair above. This is the single line that turns the whole module on or off, so it is asserted
+// as a table rather than left to the reader to re-derive.
+fn converge_is_green(o: GpuDockerLabelsOutcome, ready: Bool) -> Bool {
+  ready && gpu_docker_labels_outcome_holds(o: o, ready: ready)
+}
+
+test fn the_converge_is_green_only_for_a_grant_on_a_ready_host() -> Bool {
+  converge_is_green(o: GpuDockerLabelsGranted, ready: true)
+    && converge_is_green(o: GpuDockerLabelsGranted, ready: false) == false
+    && converge_is_green(o: GpuDockerLabelsRevoked, ready: true) == false
+    && converge_is_green(o: GpuDockerLabelsRevoked, ready: false) == false
+    && converge_is_green(o: GpuDockerLabelsFailed { cause: "x" }, ready: true) == false
+    && converge_is_green(o: GpuDockerLabelsFailed { cause: "x" }, ready: false) == false
+}
+
+// ── THE SUBORDINATE-RANGE PLAN ───────────────────────────────────────────────────────────────
+
+// THE COLLISION SRV3 SHIPPED WITH, DETECTED. Two accounts both at 100000+65536 is exactly what srv3's
+// /etc/subuid had; the collision fold must name the pair rather than pass it as a clean file.
+test fn the_srv3_range_pair_is_reported_as_colliding() -> Bool {
+  let a = SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 }
+  let b = SubordinateRange { account: "ubuntu" as NonEmptyStr, first: 100000, count: 65536 }
+  length(subordinate_collisions(rs: [a, b])) == 1
+}
+
+// A CLEAN FILE HAS NO COLLISION (the positive control for the claim above).
+test fn disjoint_ranges_do_not_collide() -> Bool {
+  let a = SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 }
+  let b = SubordinateRange { account: "briansrls" as NonEmptyStr, first: 165536, count: 65536 }
+  length(subordinate_collisions(rs: [a, b])) == 0
+}
+
+
+// A READING AS THE HOST ROUTE WOULD PRODUCE IT. The BYTES ARE LITERAL, typed the way shadow writes them --
+// every line terminated, INCLUDING the last (MEASURED on srv3: 65 bytes for the three rows whose texts
+// total 62, i.e. one newline per row) -- and the ROWS come out of the production parser run over those
+// bytes, so neither side of the round-trip is minted from the renderer under test.
+//
+// A helper that rendered the bytes from rows (`bytes: render_subordinate_file(rs: rs)`) made every
+// byte-identity assertion in this file true by construction: `render(rows) == bytes` where bytes is
+// defined as render(rows) cannot fail, and it failed to fail exactly once -- the renderer once joined the
+// rows with "\n" and stopped, and every witness still passed while the real file ended in a newline, so
+// each converge would have rewritten an UNCHANGED /etc/subuid by one byte. Supplying bytes literally and
+// rows through the parser is what DESIGN §5 asks of an independent oracle and what §3 forbids pairing.
+fn subordinate_read_of_file(path: String, stdout: String) -> SubordinateFileReading {
+  parse_subordinate_file(path: path, exit_code: 0, stdout: stdout, stderr: "")
+}
+
+// THE PLAN REFUSES TO MOVE THE JOB USER ONTO A RANGE HELD BY AN ACCOUNT THE MODEL DID NOT NAME AS
+// DISPLACEABLE. The job user is asked for 100000+65536, which the undeclared admin account "gunbc-fleet"
+// already holds; the model only permits moving "briansrls". The plan must refuse rather than evict an
+// account whose container store nobody has checked — moving it is the exact silent downgrade the manager's
+// constraint forbids.
+test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
+  let reading = subordinate_read_of_file(
+    path: "/etc/subuid",
+    stdout: "ghrunner:100000:65536\ngunbc-fleet:100000:65536\n")
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: reading,
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "briansrls" as NonEmptyStr,
+    displaceable_store_free: true,
+    displacee_regrant_first: 400000,
+  ) {
+    SubordinatePlanRefused { reason: _ } => true
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+  }
+}
+
+// THE PLAN REFUSES WHEN THE DISPLACEE CANNOT BE REGRACTED CLEARLY: moving the displacee onto a range
+// that overlaps a surviving account must refuse, not create a fresh collision behind the job user's
+// back. Here briansrls would be re-granted onto 165536, which gunbc-worker already holds.
+test fn a_plan_refuses_when_the_regrant_would_collide() -> Bool {
+  let reading = subordinate_read_of_file(
+    path: "/etc/subuid",
+    stdout: "ghrunner:100000:65536\nbriansrls:100000:65536\ngunbc-worker:165536:65536\n")
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: reading,
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "briansrls" as NonEmptyStr,
+    displaceable_store_free: true,
+    displacee_regrant_first: 165536,
+  ) {
+    SubordinatePlanRefused { reason: _ } => true
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+  }
+}
+
+// AN UNREADABLE FILE REFUSES THE PLAN. It is not the same as an empty file: not-knowing is not
+// permission to rewrite the file, and a plan that proceeded here could clobber ranges it never saw.
+test fn an_unreadable_subordinate_file_refuses_the_plan() -> Bool {
+  match plan_subordinate_file(
+    path: "/etc/subgid",
+    reading: SubordinateFileUnreadable { path: "/etc/subgid", cause: "EACCES" },
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu" as NonEmptyStr,
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanRefused { reason: _ } => true
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+  }
+}
+
+// THE CLEAN MOVE ON THE FILE SRV3 SHIPPED, WITH ITS MODEL-NAMED DISPLACEABLE ACCOUNT: ghrunner keeps
+// 100000+65536, the admin account that collided with it is displaced and re-granted clear of everyone,
+// and no account is left sharing a range. This is the case the whole collision machinery exists to
+// make safe; if it refused, srv3 would never converge, so it must produce steps.
+test fn the_srv3_collision_resolves_to_steps_when_the_named_account_moves() -> Bool {
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_file(
+      path: "/etc/subuid",
+      stdout: "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"),
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu" as NonEmptyStr,
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanSteps { steps: _, rows: _ } => true
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// THE SAME MOVE, BUT THE DISPLACEABLE ACCOUNT HAS A CONTAINER STORE. store_free=false is the readback
+// saying "this account is running containers on the very range you want", which is the constraint the
+// manager put on the re-range: a range move strands that account's images and containers owned by the
+// old uids. The plan must refuse, so a converge never silently breaks a live store.
+test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_file(
+      path: "/etc/subuid",
+      stdout: "ghrunner:100000:65536\nubuntu:100000:65536\n"),
+    account: "ghrunner" as NonEmptyStr,
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu" as NonEmptyStr,
+    displaceable_store_free: false,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanRefused { reason: _ } => true
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+  }
+}
+
+// ── NEITHER REPO INSTALL IS EVER FABRICATED ──────────────────────────────────────────────────
+//
+// Review 86284 caught a hole of the kind a comment cannot prevent, and reviews 86305/86314 then removed the
+// shell it lived in. The first version assembled the installer as a String and returned the empty string
+// for a host with no declared row — and an empty file is a VALID shell script, `sh` reads it, runs nothing,
+// exits 0, so the converge reported "nvidia repo install: ok". The fix was three-layered at the time: the
+// host row is read as typed data, absence becomes a refusal naming the host, and the executor refused an
+// empty body where a body became a file. That third layer is now GONE along with the variant that had a
+// body at all (review 86503 took the last staged script out of this plan), so the two layers left standing
+// are the ones this section actually tests: a host with no row refuses, and an empty action list refuses.
+//
+// THE PROPERTY OUTLIVES BOTH FIXES, so it is claimed here rather than commented, and it now has a stricter
+// form: an action list can be fabricated too. An empty list would reach the fold as "nothing needed doing"
+// and read as success exactly as an empty script did, so a host the model does not describe must produce a
+// REFUSAL, not a shorter plan. And the Desired side has to produce the steps the trust argument depends on:
+// counting actions is not enough, because the step that can vanish without anything downstream noticing is
+// the fingerprint check — remove it and the fetch still "succeeds", the dearmor still writes to the system
+// keyring path, and the host ends up trusting unverified bytes.
+//
+// Both halves are needed. Asserting only "srv3 gets actions" would pass on an implementation that returned
+// [] for every host. Asserting only "srv2 gets a refusal" would pass on an implementation that refused
+// everyone.
+
+// THE POSITIVE HALF: each host that declares the toolchain gets a real plan, and that plan contains the
+// verification the trust argument rests on plus the sources file whose content is the model's own rendering.
+test fn a_desired_host_gets_repo_actions_including_the_keyring_check() -> Bool {
+  let a1 = gpu_container_provision_repo_actions_for(host: operator_host_srv1)
+  let a3 = gpu_container_provision_repo_actions_for(host: operator_host_srv3)
+  if length(a1) == 0 || length(a3) == 0 {
+    false
+  } else {
+    let steps1 = gpu_container_provision_plan_step_names(actions: a1)
+    let steps3 = gpu_container_provision_plan_step_names(actions: a3)
+    // No refusal may hide in a Desired host's plan, and the checks must actually be there.
+    !gpu_container_provision_plan_has_refusal(actions: a1)
+      && !gpu_container_provision_plan_has_refusal(actions: a3)
+      && gpu_container_provision_plan_check_count(actions: a1) > 0
+      && gpu_container_provision_plan_check_count(actions: a3) > 0
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "nvidia keyring fingerprint verified")
+      && gpu_container_provision_step_names_include(names: steps3, wanted: "nvidia keyring fingerprint verified")
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "nvidia apt sources")
+      && gpu_container_provision_step_names_include(names: steps3, wanted: "apt index refresh")
+      // AND THE DOCKER HALF OF THE SAME PLAN, checked with the same seriousness. Review 86503's defect was
+      // precisely that this repo's install existed only as an opaque shell string, so the claim here is not
+      // "docker appears" but "docker's fingerprint check and sources file are modelled steps", which is what
+      // an implementation that regressed to a staged script would fail.
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "docker keyring fingerprint verified")
+      && gpu_container_provision_step_names_include(names: steps3, wanted: "docker keyring fingerprint verified")
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "docker apt sources")
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "apt keyring directory")
+  }
+}
+
+// THE NEGATIVE HALF, WHICH IS THE ORIGINAL BUG IN ITS NEW DRESSING: a host the model does not certify for
+// this toolchain must answer with a REFUSAL that names the host — never an empty list (which the fold reads
+// as "nothing to do", the same false green the empty script produced) and never any install step.
+//
+// All three non-Desired arms are exercised, because the old code collapsed them into ONE answer (`Absent`)
+// and that collapse was half the defect: an unmeasured host and a host with no row at say very different
+// things about what an operator should do next, and a refusal that cannot tell them apart cannot be acted
+// on. srv2 and srv4 carry UNMEASURED rows (a row exists; nobody has read the host); srv9 carries no row at
+// all. Each must refuse, name itself, and — the part that makes this a real refusal rather than a
+// relabelled install — name no keyring, since a refusal that also describes fetching a key is a plan in
+// disguise.
+test fn an_uncertified_host_is_refused_by_every_non_desired_arm() -> Bool {
+  match refusal_cause_for(host: operator_host_srv2) {
+    Absent => false
+    Present { value: c2 } =>
+      if !string_contains(s: c2, pattern: "srv2") || !string_contains(s: c2, pattern: "UNMEASURED") {
+        false
+      } else {
+        match refusal_cause_for(host: operator_host_srv9) {
+          Absent => false
+          Present { value: c9 } =>
+            if !string_contains(s: c9, pattern: "srv9") || !string_contains(s: c9, pattern: "no GPU container toolchain row") {
+              false
+            } else {
+              // A refusal must not smuggle in the install it is refusing.
+              !string_contains(s: c2, pattern: "keyring")
+                && !string_contains(s: c9, pattern: "keyring")
+            }
+          }
+      }
+  }
+}
+
+// ONE ACTION, OR NOTHING — the shape check that sits next to the wording check. A refusal is exactly one
+// action of type ProvisionRefusal; anything else (an empty list, or a list carrying a leg alongside the
+// refusal) is the fabrication in a different form, because the fold would then run something.
+fn refusal_cause_for(host: HostIdentity) -> String? {
+  let actions = gpu_container_provision_repo_actions_for(host: host)
+  match actions.first() {
+    Absent => Absent
+    Present { value: ProvisionRefusal { step: _, cause: c } } =>
+      if length(actions) == 1 { Present { value: c } } else { Absent }
+    Present { value: _ } => Absent
+  }
+}
+
+// THE FINGERPRINT DECISION ITSELF, AS DATA — the arm that replaced `… | grep -q <fingerprint> || exit 1`
+// inside a shell string. Three cases, because a check that only ever sees success is not a check: the
+// pinned key's real colon record (MEASURED on srv1 2026-10-25, byte-for-byte) passes; the same record with
+// the fingerprint altered refuses; and output with no fpr record at all refuses. The second case is the one
+// a substring shortcut would get wrong for the wrong reason, and the third is the case that would pass
+// silently if "no output" were treated as "nothing to complain about".
+test fn the_keyring_fingerprint_check_accepts_the_pinned_key_and_refuses_everything_else() -> Bool {
+  let pinned = "C95B321B61E88C1809C4F759DDCAE044F796ECB0"
+  let good = "pub:-:1024:1:0000000000000000:1600000000:::::::::\n"
+    + "fpr:::::::::C95B321B61E88C1809C4F759DDCAE044F796ECB0:\n"
+    + "sub:-:2048:1:1111111111111111:1600000001:::::::::\n"
+    + "fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n"
+  let wrong = "pub:-:1024:1:0000000000000000:1600000000:::::::::\n"
+    + "fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n"
+  let no_fpr = "pub:-:1024:1:0000000000000000:1600000000:::::::::\n"
+  // The pinned key must be accepted even though it is NOT the first fpr record in the keyring: a keyring
+  // holds a primary and its subkeys, and first-record-only would refuse a good key.
+  match gpu_container_provision_check_verdict(check: VerifyKeyringFingerprint { keyring_path: "/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg", expected_fingerprint: pinned }, job_user: "ghrunner" as NonEmptyStr, stdout: good) {
+    Absent =>
+      match gpu_container_provision_check_verdict(check: VerifyKeyringFingerprint { keyring_path: "/k", expected_fingerprint: pinned }, job_user: "ghrunner" as NonEmptyStr, stdout: wrong) {
+        Present { value: w } =>
+          if !string_contains(s: w, pattern: "NvidiaKeyringFingerprintRefusal") {
+            false
+          } else {
+            match gpu_container_provision_check_verdict(check: VerifyKeyringFingerprint { keyring_path: "/k", expected_fingerprint: pinned }, job_user: "ghrunner" as NonEmptyStr, stdout: no_fpr) {
+              Present { value: n } => string_contains(s: n, pattern: "NvidiaKeyringFingerprintRefusal")
+              Absent => false
+            }
+          }
+        Absent => false
+      }
+    // The accepted key must produce NO refusal: a verdict that reports a problem with the good keyring
+    // is the false-refusal direction, and it fails this witness as loudly as a false acceptance would.
+    Present { value: _ } => false
+  }
+}
+
+// ── SUBORDINATE INTEGRITY: THE HOST THAT PASSES EVERY PROBE AND MUST STILL BE RED ────────────
+//
+// Review 5644178843's finding was that `ready` could be true while the subordinate-range reconciliation
+// had refused or half-applied, because the four capability arms describe the RUNNING system and none of
+// them reads /etc/subuid or /etc/subgid. The shape that makes that visible is deliberately specific: the
+// uid leg lands, the gid leg fails, and the dockerd that is already running — started under ranges that
+// were correct when it started — answers every probe. Four ok arms, and the verdict has to be red.
+//
+// THE TESTS ARE WRITTEN AGAINST THE DECISION FUNCTION, not the inline expression in the converge, so the
+// thing under test is the thing that runs: runner_gpu_container_toolchain_host_ready is what the wet
+// converge calls, and a witness that tested a hand-copied conjunction would be certifying a copy.
+
+fn prov(step: String) -> GpuContainerProvisionStep { GpuContainerProvisioned { step: step } }
+fn refused(step: String) -> GpuContainerProvisionStep {
+  GpuContainerProvisionRefused { step: step, cause: "leg refused" }
+}
+fn skipped(step: String) -> GpuContainerProvisionStep { GpuContainerProvisionSkipped { step: step, reason: "chain stopped" } }
+
+// THE BASELINE WITHOUT WHICH EVERY RED CLAIM BELOW IS VACUOUS: a host that genuinely has both ranges
+// verified, four ok arms, a good ensure and a good CDI generate is ready. If this fails, the gate is
+// rejecting everyone and the "never green" claims pass for the wrong reason.
+test fn both_ranges_verified_and_four_arms_ok_is_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      prov("staging directory"),
+      prov("nvidia keyring fingerprint verified"),
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ],
+  )
+}
+
+// THE DISCRIMINATING CASE, THE MID-MIGRATION HOST. uid migrated, gid refused. Every capability arm is ok
+// — the daemon answers, the spec is present, nvidia-smi lists the devices — and the converge still must
+// not be green. This is the case the old comment argued away by claiming a refused range meant no daemon
+// and so a failed readback; on a host that already had working ranges, that inference is simply false.
+test fn a_partially_migrated_host_with_four_ok_arms_is_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      prov("nvidia keyring fingerprint verified"),
+      prov("nvidia apt sources"),
+      prov(gpu_container_provision_subuid_verify_step),
+      refused(gpu_container_provision_subgid_verify_step),
+    ],
+  ) == false
+}
+
+// THE SAME HOST SEEN THE OTHER WAY ROUND. Migration can stop on either file, and a gate that only
+// recognises one direction is a gate that is half-built.
+test fn uid_refused_with_gid_ok_is_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      refused(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ],
+  ) == false
+}
+
+// NOT-RUN IS NOT-PASSED. When the fold stops at the first refusal the remaining steps are never emitted
+// at all, so a chain that died before the verifications leaves them ABSENT. Absence must not satisfy a
+// safety gate; only a step that actually ran and passed counts.
+test fn absent_range_verifications_are_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      prov("staging directory"),
+      prov("docker-ce repo install"),
+      refused("apt index refresh"),
+    ],
+  ) == false
+}
+
+// SKIPPED IS NOT-PASSED EITHER. A step reported skipped is a step that did not verify anything, and a
+// gate that accepted it would let a plan that decided not to check pass as a plan that checked.
+test fn skipped_range_verifications_are_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      skipped(gpu_container_provision_subuid_verify_step),
+      skipped(gpu_container_provision_subgid_verify_step),
+    ],
+  ) == false
+}
+
+// ONE VERIFICATION IS NOT BOTH. The two files are independent and the whole finding is about one of them
+// moving without the other, so a gate satisfied by a single pass would reinstate the bug exactly.
+test fn only_one_range_verified_is_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [prov(gpu_container_provision_subuid_verify_step)],
+  ) == false
+    && runner_gpu_container_toolchain_host_ready(
+      ensure_ok: true,
+      cdi_ok: true,
+      readback: all_four_ok(),
+      provision_steps: [prov(gpu_container_provision_subgid_verify_step)],
+    ) == false
+}
+
+// DUPLICATE RECORDS FOR ONE FILE CANNOT ANSWER FOR THE OTHER — review 5644178843's remaining fail-open,
+// and the counterexample the 33-claim run did not contain. The first version of the predicate filtered
+// steps whose name was either of the two and required `length(proven) == 2`, which is a statement about a
+// COMBINED POPULATION, not about two files. Two successful "subuid verified" records and no "subgid
+// verified" record at all is a population of two matching records: the old predicate returned true, and
+// with all four capability arms green the label was grantable on a host whose /etc/subgid had never been
+// read. The answer was not to tighten the count to three or add a distinctness count on records; it was to
+// stop counting and ask ONE QUESTION PER FILE, which is what gpu_container_subordinate_range_verification_
+// proven does. These claims are red for the per-file predicate and would be GREEN for the counting one,
+// which is what makes them discriminating rather than decorative.
+test fn duplicate_uid_verifications_without_any_gid_verification_are_never_ready() -> Bool {
+  let dup = [
+    prov(gpu_container_provision_subuid_verify_step),
+    prov(gpu_container_provision_subuid_verify_step),
+  ]
+  // The predicate itself, in isolation: two matching records, one file answered, so it must refuse.
+  !gpu_container_subordinate_integrity_holds(steps: dup)
+    // And the gate it feeds, with every other arm green: this is the grantable-label shape the old
+    // predicate admitted, so it is the one that has to be proven unreachable.
+    && runner_gpu_container_toolchain_host_ready(
+      ensure_ok: true,
+      cdi_ok: true,
+      readback: all_four_ok(),
+      provision_steps: dup,
+    ) == false
+    // The mirror image: two gid records, no uid record.
+    && !gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subgid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ])
+    && runner_gpu_container_toolchain_host_ready(
+      ensure_ok: true,
+      cdi_ok: true,
+      readback: all_four_ok(),
+      provision_steps: [
+        prov(gpu_container_provision_subgid_verify_step),
+        prov(gpu_container_provision_subgid_verify_step),
+      ],
+    ) == false
+}
+
+// A REFUSAL UNDER ONE NAME IS NOT OUTVOTED BY A SUCCESS UNDER THE SAME NAME. If a population ever carries
+// both a pass and a refusal for one file, the module does not take a vote: these two names are emitted by
+// exactly one planning site each, so a contradiction means the plan or the executor is not what this module
+// believes, and the conservative answer is to withhold the capability. Without this claim, a future edit
+// that counted only successes would pass every other witness here while letting a poisoned file through.
+test fn a_refusal_under_a_name_is_not_hidden_by_a_duplicate_success() -> Bool {
+  !gpu_container_subordinate_integrity_holds(steps: [
+    prov(gpu_container_provision_subuid_verify_step),
+    refused(gpu_container_provision_subuid_verify_step),
+    prov(gpu_container_provision_subgid_verify_step),
+  ])
+    && !gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+      skipped(gpu_container_provision_subgid_verify_step),
+    ])
+    // Positive control, so the two claims above are not red because the predicate refuses everything:
+    // the same population minus the contradicting record is proven.
+    && gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ])
+}
+
+// A REFUSAL CAN ONLY BE SEEN AS A REFUSAL IF THE NAMES AGREE. The predicate matches on the step names,
+// and the plan emits those same names from the same two rows; if a future edit renamed the row the plan
+// emits while the predicate still asked for the old string, every host would fail forever (safe) — but if
+// the predicate's string drifted to something the plan never emits, the gate would silently require a step
+// that cannot exist and every host would be red forever, which an operator would experience as the
+// capability being simply unobtainable. This pins the pair together: the rows are non-empty, distinct, and
+// the predicate treats them as the two it needs.
+test fn the_two_range_verifications_are_distinct_and_both_required() -> Bool {
+  gpu_container_provision_subuid_verify_step != gpu_container_provision_subgid_verify_step
+    && gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ])
+    && !gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      prov("subgid verified (typo)"),
+    ])
+    // A refusal that happens to carry the right step name still must not count: the predicate asks what
+    // PASSED, not what was mentioned.
+    && !gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      refused(gpu_container_provision_subgid_verify_step),
+    ])
+}
+
+// ── THE GPU DROP-IN NEVER RESTATES A BROWSER LABEL THE HOST NEVER EARNED ─────────────────────
+//
+// Review 86378's finding, in one sentence: the GPU label set was built on top of the browser-ready set, so
+// the first GPU converge to succeed wrote an 86- drop-in advertising gunbc-browser-ready on a host whose
+// browser converge had never certified anything — and srv1 is exactly such a host, where
+// 85-browser-ready-labels.conf is absent although the browser mode has been dispatched. Browser jobs would
+// have scheduled onto a host that cannot run a browser, with the browser side still reporting green.
+//
+// The repair is at the boundary where the derivation could not be justified: the renderer takes the
+// browser half as an OBSERVATION and adds it only when observed. Three cases are asserted, because each
+// one is a different way to get this wrong:
+//   ABSENT must not carry the browser label — that is the fabricated capability;
+//   HELD must carry it — dropping it would silently revoke a capability from a host that legitimately has
+//     it, because the 86- file REPLACES the 85-'s LABELS_JSON rather than adding to it;
+//   ABSENT must not carry it;
+//   UNOBSERVABLE must produce no label set at all — "could not look" may not be answered either way.
+//
+// THE ARGUMENT IS A LIST OF WITNESSES, NOT A FLAG, and that is the shape review 86550 asked for. The first
+// version took `browser_ready_granted: Bool`, whose comment admitted a caller could simply pass true. Now a
+// capability reaches the set only as a record of a read someone actually performed, the set is produced by
+// one fold over the capability table (gunbc.runner.runner_capability_labels), and this witness file never
+// names the browser capability as a branch — it names it as a row it chose to observe.
+
+fn gpu_labels_for_witnesses(host: HostIdentity, witnesses: List<HostCapabilityWitness>) -> List<String> {
+  match runner_gpu_docker_ready_registration_labels(host: host, witnesses: witnesses, receipt: ReceiptAbsent) {
+    RegistrationLabelsResolved { labels: ls } => ls
+    RegistrationLabelsRefused { host: _, cause: _ } => []
+  }
+}
+
+fn browser_held() -> HostCapabilityWitness {
+  CapabilityHeld { label: gunbc_browser_ready_label }
+}
+
+fn browser_absent() -> HostCapabilityWitness {
+  CapabilityAbsent { label: gunbc_browser_ready_label }
+}
+
+fn browser_unreadable() -> HostCapabilityWitness {
+  CapabilityUnobservable { label: gunbc_browser_ready_label, cause: "elevated cat exited 255: ssh refused" }
+}
+
+// THE HOST THAT NEVER EARNED IT: srv1 has no browser drop-in, so the observed answer is ABSENT and the GPU
+// label set must contain the host label and gunbc-gpu-docker and NOTHING browser-shaped.
+test fn an_unearned_browser_label_is_never_restated_by_the_gpu_set() -> Bool {
+  let ls = gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_absent()])
+  length(ls) > 0
+    && ls.any(l => l == gunbc_gpu_docker_label)
+    && !ls.any(l => l == gunbc_browser_ready_label)
+    && !ls.any(l => string_contains(s: l, pattern: "browser"))
+}
+
+// THE HOST THAT DID EARN IT: with the 85- drop-in read back carrying the token, the set must restate the
+// browser label. This is not a nicety — systemd lets the later drop-in's Environment= replace the earlier
+// one wholesale, so a GPU converge that omitted the browser label would revoke it from a host that has both
+// toolchains, and the browser floor would stop scheduling there with nothing broken to find.
+test fn an_observed_browser_label_is_restated_so_it_is_not_silently_revoked() -> Bool {
+  let ls = gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_held()])
+  ls.any(l => l == gunbc_gpu_docker_label)
+    && ls.any(l => l == gunbc_browser_ready_label)
+}
+
+// COULD-NOT-LOOK IS NOT "NOT HELD". An unreadable row must refuse the WHOLE SET — not drop the sibling
+// label, and not emit a set at all. The distinction is the entire safety property of the three-arm
+// observation: defaulting a failed read to absent would strip a capability a host legitimately holds on
+// any ssh blip, while every check on the owning side stayed green.
+test fn an_unreadable_sibling_row_refuses_the_whole_set_rather_than_dropping_a_label() -> Bool {
+  let ls = gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_unreadable()])
+  // Refused renders resolve to nothing at all here, which is what makes the converge fail rather than write.
+  length(ls) == 0
+    // And a refusal is not the same as an ABSENT row, which does resolve — the pair of claims is what stops
+    // this test passing because the fold always refuses.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_absent()])) > 0
+    // A held row beside an unreadable one is still refused: one bad read blocks the whole write, because
+    // the set is written as one file and a partial set is a revocation.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_held(), browser_unreadable()])) == 0
+}
+
+// THE TABLE, NOT A HARDCODED PAIR — the claim that makes the generalization real rather than cosmetic, in
+// BOTH DIRECTIONS.
+//
+// INWARD: the fold takes whatever the rows declare. Every declared row except the gpu converge's own must
+// be restatable from a held witness, obtained by iterating host_capability_rows rather than by naming
+// capabilities here. If the fold still carried a browser branch, the loop would still pass today and fail
+// the day a third row lands — which is exactly the property a row-per-capability design is supposed to buy,
+// and the reason this claim iterates instead of enumerating.
+//
+// OUTWARD: a witness for a label the table does NOT declare is refused, so the table is the only authority
+// on what can be advertised. Without this half, the fold is an open door: CapabilityHeld is a value, and any
+// caller could mint a capability the model has never heard of. Both halves are needed — iterate-only would
+// pass on a fold that trusted caller-supplied labels, and refuse-undeclared-only would pass on a fold that
+// hardcodes the two it knows.
+test fn the_capability_table_is_the_only_authority_on_what_can_be_advertised() -> Bool {
+  let rows = host_capability_rows
+  // Every declared row except gpu's own is restatable, WITHOUT this file naming it.
+  rows.any(r => {
+    let lab = host_capability_row_label(row: r)
+    lab != gunbc_gpu_docker_label
+      && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [CapabilityHeld { label: lab }]).any(l => l == lab)
+  })
+    // The gpu label is still granted from its own read-back, never from a witness.
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: []).any(l => l == gunbc_gpu_docker_label)
+    // UNDECLARED IS REFUSED, and refusal means no set at all rather than a set missing one label.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [CapabilityHeld { label: "gunbc-invented-capability" }])) == 0
+    && !host_capability_label_is_declared(label: "gunbc-invented-capability")
+    // A declared label beside an undeclared one does not smuggle through: the whole write is refused.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [browser_held(), CapabilityHeld { label: "gunbc-invented-capability" }])) == 0
+    // Positive control for the last claim: the same declared witness alone does resolve.
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [browser_held()])) > 0
+}
+
+// THE OBSERVATION SET IS DERIVED, NOT ENUMERATED. The gpu converge must observe every row that is not its
+// own and must not observe its own: reading back the file it is about to write would make the answer depend
+// on write ordering instead of on the read-back, which is the kind of ordering dependence that survives
+// review and breaks on a retry.
+test fn the_gpu_converge_observes_every_row_except_its_own() -> Bool {
+  let observed = host_capability_rows_to_observe(own_label: gunbc_gpu_docker_label)
+  length(observed) > 0
+    // no self-observation
+    && !observed.any(r => host_capability_row_label(row: r) == gunbc_gpu_docker_label)
+    // and everything else is there, counted rather than named
+    && length(observed) == length(rows_declared_excluding_gpu())
+}
+
+fn rows_declared_excluding_gpu() -> List<HostCapabilityRow> {
+  filter(host_capability_rows, r => host_capability_row_label(row: r) != gunbc_gpu_docker_label)
+}
+
+// THE LABEL SET IS NEVER EMPTY ON A GRANT, for either observation. An empty resolved set would reach the
+// drop-in as a LABELS_JSON with no capability in it — the runner would start, register, and take nothing,
+// which is the "green host, zero capacity" shape this module keeps being asked to make unrepresentable.
+test fn the_gpu_label_set_always_carries_the_gpu_capability() -> Bool {
+  gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: [browser_held()]).any(l => l == gunbc_gpu_docker_label)
+    && gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: []).any(l => l == gunbc_gpu_docker_label)
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [browser_held()]).any(l => l == gunbc_gpu_docker_label)
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: []).any(l => l == gunbc_gpu_docker_label)
+}
+
+// ── THE EMITTED ARGV IS THE CONTRACT, NOT THE INTENT ─────────────────────────────────────────
+//
+// Two defects the whole witness suite missed and a live host caught on its first run (srv3,
+// 2026-10-26), because every claim so far asks a QUESTION OF A MODEL VALUE and none inspects the word
+// list that leaves for the host. Both were silent, both were fatal to the arm they belonged to, and both
+// were invisible until something actually exec'd:
+//   - nvidia-ctk's argv rows began with "nvidia-ctk" while argv_command also carries it as the program,
+//     and argv_words PREPENDS the program, so the host received `nvidia-ctk nvidia-ctk cdi generate …`
+//     and exited 3 with "unknown command nvidia-ctk". The CDI arm was red for a spelling.
+//   - job_user_command put the DOCKER_HOST assignment in FRONT of sudo, and /etc/sudoers is
+//     `Defaults env_reset`, so the value was erased before docker ran; docker fell back to the rootful
+//     socket and both job-user arms certified a daemon that was never contacted.
+// These claims pin the two shapes at the only level that would have caught them: the words.
+
+fn word_at(words: List<String>, n: Int) -> String {
+  match words.get(index: n) {
+    Present { value: w } => w
+    Absent => ""
+  }
+}
+
+// THE PROGRAM APPEARS EXACTLY ONCE. A row list that spells the binary it is arguments TO is the bug, and
+// "exactly once" is the assertion that distinguishes it: the second occurrence is what the binary reads as
+// its first subcommand. Asserted on BOTH legs, and on the list form too, because the defect was in the rows
+// and either consumer of them would have shipped it.
+test fn the_nvidia_ctk_argv_never_repeats_its_program() -> Bool {
+  let generate_words = argv_words(command: nvidia_ctk_cdi_generate_command())
+  let list_words = argv_words(command: nvidia_ctk_cdi_list_command())
+  let ctk = nvidia_ctk_program().invocation as String
+  word_at(words: generate_words, n: 0) == ctk
+    && word_at(words: generate_words, n: 1) == "cdi"
+    && word_at(words: generate_words, n: 2) == "generate"
+    && !generate_words.skip(n: 1).any(w => w == ctk)
+    && word_at(words: list_words, n: 0) == ctk
+    && word_at(words: list_words, n: 1) == "cdi"
+    && word_at(words: list_words, n: 2) == "list"
+    && !list_words.skip(n: 1).any(w => w == ctk)
+}
+
+// THE DOCKER INFO ARM REACHES THE JOB USER, AS THE JOB USER, WITH ITS OWN SOCKET. Order is the entire
+// meaning here: `env` must sit AFTER sudo's -n -u <user>, because sudo's env_reset erases anything set in
+// front of it. The wrong order puts words 4 and 5 at "env" and "DOCKER_HOST=…" and the right order puts
+// them at the user name and "env" — so this claim is red on the shape that shipped, not merely green on
+// the shape that works.
+test fn the_job_user_docker_host_survives_the_elevation() -> Bool {
+  let words = argv_words(command: job_user_command(
+    user: "ghrunner" as NonEmptyStr,
+    socket: "unix:///run/user/999/docker.sock",
+    inner: docker_info_command()
+  ))
+  word_at(words: words, n: 0) == sudo_program().invocation as String
+    && word_at(words: words, n: 1) == "-n"
+    && word_at(words: words, n: 2) == "-u"
+    && word_at(words: words, n: 3) == "ghrunner"
+    && word_at(words: words, n: 4) == env_path_resolved_program().invocation as String
+    && word_at(words: words, n: 5) == "DOCKER_HOST=unix:///run/user/999/docker.sock"
+    && word_at(words: words, n: 6) == docker_program().invocation as String
+    && word_at(words: words, n: 7) == "info"
+}
+
+// THE SAME SHAPE FOR THE CONTAINER ARM, since it is a second, independently-composed call and a fix that
+// covered only docker info would leave the GPU readback asking the rootful daemon. The device word is
+// checked too: the probe must go through the CDI device the label certifies, not through --gpus.
+test fn the_gpu_container_probe_is_elevated_inside_its_environment() -> Bool {
+  let words = argv_words(command: job_user_command(
+    user: "ghrunner" as NonEmptyStr,
+    socket: "unix:///run/user/999/docker.sock",
+    inner: docker_gpu_cdi_probe_run_command(
+      image: gpu_container_acceptance_image,
+      device: nvidia_cdi_all_gpu_device,
+      probe_argv: gpu_container_acceptance_probe_argv,
+    )
+  ))
+  word_at(words: words, n: 4) == env_path_resolved_program().invocation as String
+    && word_at(words: words, n: 5) == "DOCKER_HOST=unix:///run/user/999/docker.sock"
+    && words.any(w => w == nvidia_cdi_all_gpu_device as String)
+    && !words.any(w => w == "--gpus")
+}
+
+// ── DEFECT 3: THE SUBORDINATE FILES ARE WRITTEN WHOLE ──────────────────────────────────────────────
+// usermod CANNOT DO THIS AT ALL. It exits 8 with "user X is currently used by process N" for any account
+// that has a running process, and both accounts this converge ever touches are logged in -- the displaced
+// account holds a systemd --user, the job account holds lingering sessions. So the route is a typed
+// whole-file write, and everything shadow's own writer was providing has to become an explicit refusal
+// here. Each witness below is one of those refusals, or the one shape the render is allowed to have.
+// A witness that only counted steps would pass with any of them missing.
+
+// THE srv3 FILE, AS THE FIRST CONVERGE FOUND IT (measured, 65 bytes, 0644 root:root): the job account and
+// the displaced account BOTH claim 100000-165535, and a third row sits above them. This collision is the
+// defect the converge exists to fix, so it is the input every witness below starts from.
+fn srv3_subuid_bytes() -> String {
+  "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"
+}
+
+fn srv3_read() -> SubordinateFileReading {
+  subordinate_read_of_file(path: "/etc/subuid", stdout: srv3_subuid_bytes())
+}
+
+fn srv3_plan() -> SubordinatePlan {
+  plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: srv3_read(),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  )
+}
+
+// THE RENDER IS THE WHOLE FILE, IN THE ORDER IT WAS READ, with the displaced row re-granted in place at
+// the new first and the third row untouched. This is the byte-level contract: an untouched row that is
+// reordered, reformatted, or dropped is a corrupted file, and the writer's re-read compare would only
+// notice that something ELSE had touched it.
+test fn the_rendered_file_moves_the_displacee_and_keeps_every_other_row_byte_identical() -> Bool {
+  match srv3_plan() {
+    SubordinatePlanSteps { steps: _, rows: rows } =>
+      render_subordinate_file(reading: srv3_read(), rs: rows)
+        == "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n"
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// THE srv1 ANSWER: a file that already holds the declared rows produces NO WRITE AT ALL, and the render
+// round-trips exactly. ghrunner there holds a running rootless store; a converge that rewrote the file "to
+// be sure" would take the fleet lock and dirty the mtime of a file it was only asked to inspect, and a
+// converge that moved that row would orphan 149 MB of images.
+test fn a_file_that_already_holds_the_declared_rows_produces_no_write_and_renders_itself_back() -> Bool {
+  let reading = subordinate_read_of_file(
+    path: "/etc/subuid",
+    stdout: "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n")
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: reading,
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: false,
+    displacee_regrant_first: 296608,
+  ) {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      length(steps) == 0
+        && length(gpu_container_provision_subordinate_write(
+             step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading)) == 0
+        && render_subordinate_file(reading: reading, rs: rows) == subordinate_file_bytes(reading: reading)
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// A ROW THAT DOES NOT RENDER BACK BYTE-IDENTICALLY IS A REFUSAL, NOT A REWRITE. Here the live file carries
+// a trailing space on one row: the parse recovered the row, so a plan that rendered from the ROWS ALONE
+// would silently drop the space and publish a file that is not the one it read. "I parsed 2 of your 2
+// rows" is not the invariant -- the invariant is that the text and the rows agree.
+test fn a_row_that_does_not_render_back_byte_identically_refuses_the_write() -> Bool {
+  // The trailing space on the second line survives `cat` and does not survive the row parse, which
+  // trims -- so the ROW guard is the one that must catch it, and this fixture asserts on that guard's
+  // own words rather than on the phrase the two byte-identity guards share. The bytes stay literal and
+  // the rows come from the production parser: a hand-minted `ranges:` here would have let the test
+  // disagree with the file it claims to be reading.
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_file(
+      path: "/etc/subuid",
+      stdout: "ghrunner:100000:65536\nubuntu:100000:65536 "),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+    SubordinatePlanRefused { reason: r } => string_contains(s: r, pattern: "holds a row whose text")
+  }
+}
+
+// THE RENDERED RANGES MUST BE PAIRWISE DISJOINT, OR NOTHING IS WRITTEN. shadow itself permits two rows for
+// one account, and a plan that re-grants BOTH of them to the same new first would render a file where the
+// displaced account holds the same range twice -- which is not a collision shadow would refuse to read, it
+// is a collision that reads as one wider range than anyone granted.
+test fn rows_that_would_render_over_each_other_refuse_the_write() -> Bool {
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_file(
+      path: "/etc/subuid",
+      stdout: "ubuntu:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+    SubordinatePlanRefused { reason: r } => string_contains(s: r, pattern: "pairwise disjoint")
+  }
+}
+
+// THE WRITE CARRIES TWO KINDS OF BYTES, AND THEY ARE NOT THE SAME FACT: what this converge rendered, and
+// what the file held when the rows were read. Collapsing them (writing `expected` as the content, or
+// comparing against a re-read) is how a stale lock holder overwrites a file it never parsed.
+fn subordinate_write_fields_match(
+  action: GpuContainerProvisionAction,
+  step: String,
+  path: String,
+  content: String,
+  expected: String,
+) -> Bool {
+  match action {
+    ProvisionOwnedDirectory { step: _, argv: _ } => false
+    ProvisionRootOwnedFile { step: _, path: _, content: _, scope: _ } => false
+    ProvisionSubordinateRangesFile { step: s, path: p, content: c, expected: e } =>
+      s == step && p == path && c == content && e == expected && c != e
+    ProvisionLegs { legs: _ } => false
+    ProvisionVerify { step: _, check: _ } => false
+    ProvisionRefusal { step: _, cause: _ } => false
+  }
+}
+
+test fn the_subordinate_write_carries_the_render_and_the_bytes_it_was_made_against() -> Bool {
+  let reading = srv3_read()
+  match srv3_plan() {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      fold(
+        gpu_container_provision_subordinate_write(
+          step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading),
+        init: false,
+        f: (found, a) =>
+          found || subordinate_write_fields_match(
+            action: a,
+            step: "subuid",
+            path: "/etc/subuid",
+            content: render_subordinate_file(reading: reading, rs: rows),
+            expected: subordinate_file_bytes(reading: reading)))
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// ── THE NAMESPACE PRECHECK: WHAT usermod WAS NEVER ABLE TO ASK ──────────────────────────────────────
+// usermod refuses every account with a process, which is why it could not be used here AND why it never
+// answered the question that matters: not "does this account run" but "does any process of it hold a user
+// namespace mapped out of the range being moved". These rows are /proc/<pid>/uid_map as the kernel writes
+// them -- right-aligned columns, which is why the reader tokenizes instead of splitting on one space.
+
+// LITERAL NAMESPACE LINKS, as readlink(1) prints them. The host's own namespace is the reference every
+// other link is compared against; the child is a different inode.
+fn host_user_namespace() -> String { "user:[4026531837]" }
+
+fn child_user_namespace() -> String { "user:[4026532871]" }
+
+fn child_scope() -> GpuContainerProvisionNamespaceScope {
+  gpu_container_provision_namespace_scope(
+    link: GpuContainerProvisionNamespaceLinkRead { target: child_user_namespace() },
+    init_namespace: host_user_namespace())
+}
+
+fn initial_scope() -> GpuContainerProvisionNamespaceScope {
+  gpu_container_provision_namespace_scope(
+    link: GpuContainerProvisionNamespaceLinkRead { target: host_user_namespace() },
+    init_namespace: host_user_namespace())
+}
+
+fn map_scan_verdict(scope: GpuContainerProvisionNamespaceScope, text: String) -> String {
+  match gpu_container_provision_map_scan(scope: scope, text: text, first: 100000, count: 65536) {
+    GpuContainerProvisionMapClear => "clear"
+    GpuContainerProvisionMapMappedFromRange { row: _ } => "mapped"
+    GpuContainerProvisionMapUnreadableRow { row: _ } => "unreadable-row"
+    GpuContainerProvisionMapNamespaceUnreadable { cause: _ } => "unreadable-namespace"
+  }
+}
+
+test fn a_namespace_mapped_from_the_range_being_moved_is_caught() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0     100000      65536") == "mapped"
+}
+
+// ADJACENCY IS NOT OVERLAP: a namespace on the range ABOVE (165536+) shares no id with the range being
+// moved (100000..165535). A check that refused this would refuse every real host, because /etc/subuid on
+// these machines stacks its rows contiguously.
+test fn an_adjacent_namespace_range_is_clear() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0     165536      65536") == "clear"
+}
+
+// EVERY ROW IS READ, not the first. The overlapping mapping is the third line here: a scan that stopped at
+// the first clear row -- or read only line 1, where the root's own mapping always sits -- would certify a
+// container that is live on the range being moved.
+test fn every_row_of_a_map_is_read_and_not_just_the_first() -> Bool {
+  map_scan_verdict(
+    scope: child_scope(),
+    text: "         0          0          1\n         1     165536      65536\n         0     100000      65536") == "mapped"
+}
+
+// A ROW THIS MODEL CANNOT READ IS A REFUSAL, NOT A SKIP. /proc/<pid>/uid_map is written by the kernel; a
+// row whose columns are not integers is a kernel this model does not describe, and "I could not read it"
+// must never be reported as "nothing is mapped from that range".
+test fn an_unreadable_map_row_is_refused_rather_than_skipped() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0     100000    notanumber") == "unreadable-row"
+}
+
+// THE srv3 CASE, VERBATIM (fleet-converge run 40843061056): ubuntu pid 4116, a systemd --user in the host's
+// own user namespace, whose uid_map is the initial namespace's identity row. Its ns/user link equals
+// /proc/1/ns/user, so it maps nothing from any subordinate range.
+test fn a_process_in_the_initial_user_namespace_is_clear_whatever_its_identity_row_overlaps() -> Bool {
+  map_scan_verdict(scope: initial_scope(), text: "         0          0 4294967295") == "clear"
+}
+
+// THE SAME ROW IN A CHILD NAMESPACE IS NOT CLEAR: the discriminator is namespace identity, not the shape of
+// the row. A child namespace whose outside column covers the whole parent id space reaches the range.
+test fn the_identity_row_in_a_child_namespace_still_overlaps() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0          0 4294967295") == "mapped"
+}
+
+// A CHILD NAMESPACE WHOSE OUTSIDE RANGE IS DISJOINT FROM THE RANGE BEING MOVED is clear.
+test fn a_child_namespace_with_a_disjoint_outside_range_is_clear() -> Bool {
+  map_scan_verdict(scope: child_scope(), text: "         0       1000          1") == "clear"
+}
+
+// AN UNREADABLE NAMESPACE LINK REFUSES: not knowing which namespace a process is in is not evidence that it
+// maps nothing -- even when its rows would have been clear.
+test fn an_unreadable_namespace_link_is_refused_rather_than_read_as_the_host() -> Bool {
+  map_scan_verdict(
+    scope: gpu_container_provision_namespace_scope(
+      link: GpuContainerProvisionNamespaceLinkUnreadable { path: "/proc/4116/ns/user", cause: "exit 1 Permission denied" },
+      init_namespace: host_user_namespace()),
+    text: "         0          0 4294967295") == "unreadable-namespace"
+}
+
+// THE PID BOUND IS DERIVED, NOT TRANSCRIBED: half of execve(2)'s per-argument ceiling (32 pages of 4096 =
+// 131072 bytes) over the 22-byte word of the largest admissible pid (`/proc/4194304/ns/user` plus a space),
+// which is 65536 / 22 = 2978. It must admit the live session host that refused at 556 processes (run
+// 40837033922) and must not exceed what one argument can carry.
+test fn the_pid_bound_is_half_the_argument_ceiling_over_the_longest_word_and_admits_the_srv1_host() -> Bool {
+  gpu_container_provision_namespace_scan_pid_limit == 2978 && gpu_container_provision_namespace_scan_pid_limit >= 556
+}
+
+// THE BATCH READING, against literal readlink -v output. Gone pids are named on stderr and left out; the
+// stdout lines pair in order with the pids that remain.
+fn batch_namespaces_of(pids: List<Int>, exit_code: Int, stdout: String, stderr: String) -> String {
+  match gpu_container_provision_namespace_batch_reading(
+    reference: host_user_namespace(), pids: pids, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+    GpuContainerProvisionNamespaceBatchAligned { reference: _, namespaces: ns, gone: g } =>
+      join(["aligned gone=", to_string(g), " ", join(map(ns, n => join([to_string(n.pid), "=", n.target], "")), ",")], "")
+    GpuContainerProvisionNamespaceBatchUnreadable { cause: _ } => "unreadable"
+  }
+}
+
+test fn a_complete_batch_report_pairs_every_pid_with_its_namespace() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 0,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n", stderr: "")
+    == "aligned gone=0 10=user:[4026531837],20=user:[4026532871]"
+}
+
+// A VANISHED PID is named on stderr, left out, and the lines pair with the pids that REMAIN -- even when a
+// child namespace is among them, so the child is attributed to its own pid and not guessed.
+test fn a_vanished_pid_is_named_and_the_rest_stay_attributed() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20, 30], exit_code: 1,
+    stdout: "user:[4026531837]\nuser:[4026532871]\n",
+    stderr: "readlink: /proc/20/ns/user: No such file or directory\n")
+    == "aligned gone=1 10=user:[4026531837],30=user:[4026532871]"
+}
+
+// A LIVE PID WHOSE LINK COULD NOT BE READ IS NOT A VANISHED PID: a permission denial names the pid but not
+// as No-such-file, so the scan refuses rather than reading the pid as host-namespace.
+test fn a_live_pid_whose_link_is_denied_is_refused_not_counted_as_gone() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1,
+    stdout: "user:[4026531837]\n",
+    stderr: "readlink: /proc/20/ns/user: Permission denied\n") == "unreadable"
+}
+
+// A MISSING LINE WITH NOTHING NAMED ON STDERR cannot be attributed to anything: refused.
+test fn a_missing_line_that_stderr_does_not_name_is_refused() -> Bool {
+  batch_namespaces_of(
+    pids: [10, 20], exit_code: 1, stdout: "user:[4026531837]\n", stderr: "") == "unreadable"
+}
+
+// A pid number that is a PREFIX of another's must not be mistaken for it: pid 2 vanished, pid 20 did not.
+test fn a_vanished_pid_is_matched_by_its_whole_path() -> Bool {
+  batch_namespaces_of(
+    pids: [2, 20], exit_code: 1,
+    stdout: "user:[4026532871]\n",
+    stderr: "readlink: /proc/2/ns/user: No such file or directory\n")
+    == "aligned gone=1 20=user:[4026532871]"
+}
+
+// NOTHING BACK for pids still present is a refusal, not a clear.
+test fn an_empty_batch_report_is_refused() -> Bool {
+  batch_namespaces_of(pids: [10], exit_code: 0, stdout: "", stderr: "") == "unreadable"
+}
+
+// THE ROW BUILDER'S CONTRACT, DIRECTLY, without the plan's guards in the way: survivors keep the order
+// they were READ in, the displaced row is re-granted IN PLACE at the new first rather than moved to the
+// end, and the declared row is appended only when the account does not already hold exactly it. Read order
+// matters because shadow appends to these files; re-granting at the end would reorder a file the next
+// shadow write also appends to, and a witness that only checked the SET of rows would not notice.
+test fn the_rows_keep_read_order_regrant_in_place_and_append_only_what_is_missing() -> Bool {
+  let displacee_row = SubordinateRange { account: "ubuntu", first: 100000, count: 65536 }
+  let rows = subordinate_rows_after_plan(
+    rs: [
+      displacee_row,
+      SubordinateRange { account: "briansrls", first: 165536, count: 65536 },
+      SubordinateRange { account: "carol", first: 296608, count: 65536 },
+    ],
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    stale: [],
+    movable: [displacee_row],
+    displacee_regrant_first: 231072,
+    holds_exactly: false,
+  )
+  join(map(rows, r => subordinate_range_text(r: r)), "\n")
+    == "ubuntu:231072:65536\nbriansrls:165536:65536\ncarol:296608:65536\nghrunner:100000:65536"
+}
+
+// THE BOUND, PINNED TO THE WORDS THAT WERE SET FOR IT. The sentence is a commitment about what the write
+// IS serialized against and what it is NOT, and a paraphrase is a different promise. It must name fleet
+// actuations and must concede the final compare-to-rename interval -- and it must NOT claim a lock against
+// shadow, which serializes on fcntl/lockf and ignores flock(2) outright (measured: usermod 4.13 blocks on
+// /etc/.pwd.lock, and /etc/subuid.lock does not exist). A receipt that said "locked against shadow-utils"
+// would be the one sentence here that no host could ever have honored, and it would be read by the next
+// operator who decides a hand-run usermod is safe.
+test fn the_subordinate_write_bound_claims_fleet_serialization_and_never_a_shadow_lock() -> Bool {
+  string_contains(s: gpu_container_provision_subordinate_write_bound, pattern: "serialized against fleet actuations")
+    && string_contains(
+      s: gpu_container_provision_subordinate_write_bound,
+      pattern: "detected by the re-read compare, except within the final compare-to-rename interval")
+    && !string_contains(s: gpu_container_provision_subordinate_write_bound, pattern: "shadow")
+}
+
+// --------------------------------------------------------------------------------
+// THE NEWLINE CONVENTION IS THE FILE'S, NOT THE RENDERER'S.
+//
+// shadow terminates every line of /etc/subuid and /etc/subgid; MEASURED on srv3 the file is 65 bytes for
+// three rows whose texts total 62. A renderer that joined with "\n" and stopped therefore differed from
+// what it read by one byte at the end of the file, on EVERY converge -- including the one that changes
+// nothing, where the converge would take the fleet lock and rewrite an unchanged file to bytes no host
+// tool ever wrote. It survived because the fixture built its bytes FROM that renderer, so every equality
+// was true by construction. These witnesses supply bytes literally and go through the production parser,
+// which is the only way the pair can disagree.
+// --------------------------------------------------------------------------------
+
+fn gpu_subordinate_collision_bytes(terminated: Bool) -> String {
+  if terminated {
+    "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"
+  } else {
+    "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536"
+  }
+}
+
+fn gpu_subordinate_plan_on(bytes: String) -> SubordinatePlan {
+  plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_file(path: "/etc/subuid", stdout: bytes),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  )
+}
+
+fn gpu_subordinate_move_keeps_convention(terminated: Bool) -> Bool {
+  match gpu_subordinate_plan_on(bytes: gpu_subordinate_collision_bytes(terminated: terminated)) {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      length(steps) > 0
+        && render_subordinate_file(
+             reading: subordinate_read_of_file(
+               path: "/etc/subuid", stdout: gpu_subordinate_collision_bytes(terminated: terminated)),
+             rs: rows)
+           == if terminated {
+                "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n"
+              } else {
+                "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536"
+              }
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// A MOVE KEEPS THE TERMINATOR THE FILE HAD -- and does not invent one, and does not drop one. A host whose
+// file ends mid-line is written back ending mid-line: refusing over a trailing byte would strand it, and
+// "normalising" it would be the converge editing bytes it was never asked to touch.
+test fn the_render_keeps_the_newline_convention_of_the_file_it_read() -> Bool {
+  gpu_subordinate_move_keeps_convention(terminated: true)
+    && gpu_subordinate_move_keeps_convention(terminated: false)
+}
+
+// THE RED THE REVIEWER ASKED FOR: an UNTOUCHED file that ends with a newline plans NO write. Before the
+// fix this was the everyday srv1/srv3 case -- the file needed no change, so the plan was empty and the
+// write leg was the only thing standing between it and a rewrite -- and the byte-identity claim that
+// should have caught the one-byte drift was checked against bytes minted from the drifting renderer.
+test fn an_untouched_file_that_ends_with_a_newline_plans_no_write() -> Bool {
+  let bytes = "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n"
+  let reading = subordinate_read_of_file(path: "/etc/subuid", stdout: bytes)
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: reading,
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: false,
+    displacee_regrant_first: 296608,
+  ) {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      length(steps) == 0
+        && length(gpu_container_provision_subordinate_write(
+             step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading)) == 0
+        && render_subordinate_file(reading: reading, rs: subordinate_file_ranges(reading: reading)) == bytes
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// A FILE THE MODEL CANNOT REPRODUCE IS A REFUSAL, NOT A REFORMAT. The rows here all parse and every row
+// text round-trips; the file holds a blank line between them, which the row parse throws away and the
+// render therefore cannot put back. Before the whole-file gate this converge would have "successfully"
+// published two rows and quietly deleted an operator's blank line -- and the post-rename read-back would
+// have compared the destination against the render, which is to say against itself.
+test fn a_file_the_model_cannot_reproduce_byte_for_byte_refuses_the_write() -> Bool {
+  match gpu_subordinate_plan_on(bytes: "ghrunner:100000:65536\n\nubuntu:100000:65536\n") {
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+    SubordinatePlanRefused { reason: r } =>
+      string_contains(s: r, pattern: "does not render back byte-identically from its parsed rows")
+  }
+}
+
+// THE BYTES THAT GET WRITTEN, NOT THE BYTES THE RENDERER WOULD HAVE PRODUCED. The action's `content` is
+// the only thing the writer ever sees, so the convention claim has to be pinned there rather than on a
+// render the executor might not be the one that runs.
+test fn the_written_content_carries_the_terminated_file_and_the_moved_row() -> Bool {
+  let reading = subordinate_read_of_file(
+    path: "/etc/subuid", stdout: gpu_subordinate_collision_bytes(terminated: true))
+  match gpu_subordinate_plan_on(bytes: gpu_subordinate_collision_bytes(terminated: true)) {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      fold(
+        gpu_container_provision_subordinate_write(
+          step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading),
+        init: false,
+        f: (found, a) =>
+          found || subordinate_write_fields_match(
+            action: a,
+            step: "subuid",
+            path: "/etc/subuid",
+            content: "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536\n",
+            expected: "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"))
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// THE LOCK POLICY IS THIS WRITE'S OWN, AND IT IS NOT THE FLEET APPLY'S.
+//
+// The apply runs plain `flock -x <path> bash -c ...` -- no -w, no --conflict-exit-code -- so it waits
+// UNBOUNDED on the same lock file and cannot tell a conflict from its own command failing. Nothing in the
+// fleet therefore supplies these two numbers, and a shared row the apply does not consume would be a
+// dangling declaration making a meaning claim the apply does not honour. What this write does is bound its
+// own wait and give a conflict an exit code a caller can recognise: 75 is EX_TEMPFAIL from sysexits.h, the
+// "temporary condition, retrying is the remedy" convention the corpus also cites in
+// codex_harness_turn_busy_exit and native_serve_stuck_exit_code -- cited, not imported, because an exit
+// contract belongs to the subsystem that reports it and a GPU runner converge's exit status has no
+// business depending on the codex harness. A contention here also means the host-mutation concurrency
+// group failed to keep the two actuators off one host, which is a reason to stop, not to wait longer.
+test fn the_subordinate_write_bounds_its_own_wait_and_reports_conflict_as_tempfail() -> Bool {
+  second_count(s: gpu_container_provision_subordinate_lock_wait) == 120
+    && gpu_container_provision_subordinate_lock_conflict_exit_code == 75
+}
+
+// THE TRANSPORT TRIMS CAPTURED STDOUT, SO THE READING MUST NOT BE `cat`. This is the srv3 refusal (run
+// 40960539993): bytes read through the trim lacked the file's final newline and `cmp -s - /etc/subuid`
+// exited 1 on every converge. The oracle here is a hand-written od dump of the 22-byte line
+// "ghrunner:100000:65536\n" (0x0a last), supplied as the transport hands it back -- trailing newline of the
+// dump already trimmed -- and the expected bytes are a literal, never rendered from the parse.
+test fn an_od_reading_carries_the_files_final_newline_the_transport_would_trim() -> Bool {
+  let reading = parse_subordinate_file_exact(
+    path: "/etc/subuid", exit_code: 0, stderr: "",
+    od_stdout: " 67 68 72 75 6e 6e 65 72 3a 31 30 30 30 30 30 3a 36 35 35 33 36 0a")
+  subordinate_file_bytes(reading: reading) == "ghrunner:100000:65536\n"
+    && length(subordinate_file_ranges(reading: reading)) == 1
+}
+
+// A dump that is not whole bytes, or holds a non-ASCII byte, is Unreadable: a reading that cannot carry
+// exact bytes must not stand as one.
+test fn an_od_reading_that_is_not_exact_ascii_bytes_is_unreadable() -> Bool {
+  let odd = parse_subordinate_file_exact(path: "/etc/subuid", exit_code: 0, stderr: "", od_stdout: " 67 6")
+  let high = parse_subordinate_file_exact(path: "/etc/subuid", exit_code: 0, stderr: "", od_stdout: " 67 ff")
+  reading_is_unreadable(reading: odd) && reading_is_unreadable(reading: high)
+}
+
+fn reading_is_unreadable(reading: SubordinateFileReading) -> Bool {
+  match reading {
+    SubordinateFileUnreadable { path: _, cause: _ } => true
+    SubordinateFileRead { path: _, bytes: _, ranges: _ } => false
+  }
+}
+
+// A REFUSAL NEVER HAS AN EMPTY REASON: cmp -s is silent, so its exit code is the whole evidence.
+test fn the_re_read_compare_names_its_exit_code_and_no_step_refuses_with_an_empty_reason() -> Bool {
+  typed_remote_file_step_failure_reason(step: "re-read-compare", exit_code: 1, stderr: "") == "destination differs from the bytes read (cmp exit 1)"
+    && typed_remote_file_step_failure_reason(step: "re-read-compare", exit_code: 2, stderr: "") == "destination unreadable (cmp exit 2)"
+    && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "") != "remote step failed: "
+    && typed_remote_file_step_failure_reason(step: "rename", exit_code: 1, stderr: "denied\n") == "remote step failed: denied"
+}
+
+// A FAILED UNIT START IS NEVER OPAQUE: the start leg carries the status and the journal tail of the unit,
+// both addressed to the same uid-keyed manager the start addressed, and the journal read is keyed by the
+// trusted _UID field. Discriminates against the pre-repair leg (start argv, no evidence) and against a
+// journal read of the wrong account.
+test fn the_unit_start_leg_captures_status_and_the_users_journal_on_refusal() -> Bool {
+  let leg = gpu_container_provision_start_leg(uid: 999, job_user: "ghrunner" as NonEmptyStr)
+  length(leg.on_refusal) == 10
+    && leg.on_refusal.any(a => a == ["systemctl", "--user", "--machine=999@", "status", "--no-pager", "--full", "docker.service"])
+    && leg.on_refusal.any(a => a == ["journalctl", "--user-unit=docker.service", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
+    && leg.on_refusal.any(a => a == ["journalctl", "_UID=999", "-n", "100", "--no-pager", "-o", "short-unix"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newuidmap"])
+    && leg.on_refusal.any(a => a == ["ls", "-ldn", "--", "/usr/bin/newgidmap"])
+    && leg.on_refusal.any(a => a == ["sysctl", "-n", "kernel.apparmor_restrict_unprivileged_userns"])
+    && leg.on_refusal.any(a => a == ["setpriv", "--reuid=999", "--regid=999", "--clear-groups", "unshare", "--user", "--map-root-user", "true"])
+    && leg.on_refusal.any(a => a == ["grep", "-H", "-F", "-e", "ghrunner", "--", "/etc/subuid", "/etc/subgid"])
+    && leg.argv == ["systemctl", "--user", "--machine=999@", "start", "docker.service"]
+}
+
+// THE START PHASE FOLLOWS THE ENSURE: it is admitted only when the first phase held AND every package
+// holds, and it is its own two actions (start, active readback), absent from the first plan. A start that
+// ran regardless of the ensure (srv3 run 41004665254) makes the ensure-failed arm true and this RED.
+test fn the_unit_start_runs_only_after_the_package_ensure_holds() -> Bool {
+  let held = GpuContainerProvisionRun { steps: [GpuContainerProvisioned { step: "unit enable" }], planned: 1 }
+  let refused = GpuContainerProvisionRun { steps: [GpuContainerProvisionRefused { step: "linger", cause: "x" }], planned: 1 }
+  gpu_container_provision_start_admitted(prior: held, ensure_ok: true)
+    && !gpu_container_provision_start_admitted(prior: held, ensure_ok: false)
+    && !gpu_container_provision_start_admitted(prior: refused, ensure_ok: true)
+    && gpu_container_provision_plan_step_names(actions: gpu_container_provision_start_actions(uid: 999, job_user: "ghrunner" as NonEmptyStr)) == ["unit start", "unit active verified"]
+}
+
+// A MISSING DROP-IN IS ABSENT, A DROP-IN THAT CANNOT BE LOOKED AT IS NOT (srv3 run 41006939256 refused the whole
+// label render over ENOENT). The probe exits 0 with empty stdout for a missing entry: that renders without the
+// label; a nonzero probe (permission denied, sudo refused) still refuses; a present file keeps its label.
+test fn a_missing_label_dropin_is_absent_and_an_unreadable_one_still_refuses() -> Bool {
+  let absent = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 0, stdout: "", unreadable_cause: "x"), read_exit_code: 0, read_stdout: "", read_cause: "r")
+  let denied = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 1, stdout: "", unreadable_cause: "permission denied"), read_exit_code: 0, read_stdout: "", read_cause: "r")
+  let held = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: host_capability_dropin_presence(exit_code: 0, stdout: "/etc/x.conf\n", unreadable_cause: "x"), read_exit_code: 0, read_stdout: gunbc_browser_ready_label, read_cause: "r")
+  let read_failed = host_capability_witness_of_reads(label: gunbc_browser_ready_label, presence: DropinPresent, read_exit_code: 1, read_stdout: "", read_cause: "read failed")
+  let srv3 = gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [absent])
+  length(srv3) > 0
+    && !srv3.any(l => l == gunbc_browser_ready_label)
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [denied])) == 0
+    && length(gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [read_failed])) == 0
+    && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [held]).any(l => l == gunbc_browser_ready_label)
+}
+
+// THE ROOTLESS PREREQUISITES ARE INHABITED, NOT VALIDATED: every declared prerequisite is a member of
+// docker_ce_packages and of the package set srv3's row resolves to (the set the apt ensure installs). Dropping
+// uidmap from either makes this false; srv3 run 40997904513 lived in that state. The end-to-end proof that
+// newuidmap works is the rerun's job_user_daemon reading ok.
+test fn every_rootless_prerequisite_is_in_the_docker_package_set_and_srv3s_resolved_ensure_set() -> Bool {
+  let srv3_packages = match runner_host_gpu_container_toolchain_for(host: operator_host_srv3) {
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: _, docker_repo: _, packages: ps } } => ps
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainNotWanted { reason: _ } } => []
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainUnmeasured { } } => []
+    RunnerHostGpuToolchainAbsent { host: _ } => []
+  }
+  length(docker_ce_rootless_prerequisite_packages) > 0
+    && docker_ce_rootless_prerequisite_packages.all(p => docker_ce_packages.any(q => q == p))
+    && docker_ce_rootless_prerequisite_packages.all(p => srv3_packages.any(q => q == p))
+}

@@ -252,7 +252,7 @@ pub fn string_member(set: Rc<HashMap<String, bool>>, key: String) -> bool {
 }
 
 pub fn reached_set(views: Rc<CallGraphAdjacencyViews>, start: String) -> Rc<HashMap<String, bool>> {
-    crate::std_graph::graph_reverse_reachable_members_from_views(views.clone(), start.clone())
+    crate::std_graph::graph_reverse_reachable_members_from_views(views, start)
         .iter()
         .cloned()
         .fold(
@@ -288,8 +288,7 @@ pub fn emitted_target_reach(
                 __result
             }),
         });
-        let transposed =
-            crate::std_graph::build_adjacency_views(names.clone(), forward_as_reverse.clone());
+        let transposed = crate::std_graph::build_adjacency_views(names, forward_as_reverse);
         emitted.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, edge: Rc<EmittedEdge>| {
@@ -418,7 +417,7 @@ pub fn merge_emitted_edges(
                 present: present.clone(),
                 refusal: std::option::Option::None,
             }),
-            |acc: _, edge: Rc<EmittedEdge>| {
+            |acc: Rc<EmittedEdgeMergeFold>, edge: Rc<EmittedEdge>| {
                 emitted_edge_merge_step(acc, edge.clone(), module_set.clone(), reach.clone())
             },
         );
@@ -513,7 +512,7 @@ pub fn partition_components_dependencies_first(
             }
             __result
         }),
-        partition_call_graph(edges.clone()),
+        partition_call_graph(edges),
     ))
 }
 
@@ -525,7 +524,7 @@ pub struct PolicyPartitionFill {
 }
 
 pub fn policy_partition_unit_id(unit_index: i64) -> NonEmptyStr {
-    v1_rt::concat("policy-unit-".to_string(), (unit_index.clone()).to_string())
+    v1_rt::concat("policy-unit-".to_string(), (unit_index).to_string())
 }
 
 pub fn policy_partition_assignment_over(
@@ -594,7 +593,7 @@ pub fn assignment_first_omitted_module(
 ) -> Option<NonEmptyStr> {
     modules.iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, module_id: NonEmptyStr| match acc.clone() {
+        |acc: Option<NonEmptyStr>, module_id: NonEmptyStr| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 match assignment_owner(assignment.clone(), module_id.clone()) {
@@ -622,7 +621,7 @@ pub fn assignment_first_stranger(
             .cloned()
             .fold(
                 std::option::Option::None,
-                |acc: _, module_id: ModuleId| match acc.clone() {
+                |acc: Option<NonEmptyStr>, module_id: ModuleId| match acc.clone() {
                     Some(_) => acc.clone(),
                     std::option::Option::None => match v1_rt::map_get(&known, module_id.clone()) {
                         Some(_) => std::option::Option::None,
@@ -656,8 +655,8 @@ pub fn admit_partition_assignment(
                     ),
                 }),
                 std::option::Option::None => match (*validate_partition_r4_over(
-                    edges.clone(),
-                    components.clone(),
+                    edges,
+                    components,
                     assignment.clone(),
                 ))
                 .clone()
@@ -733,7 +732,7 @@ pub fn assignment_unit_graph_has_cycle(
     {
         let unit_edges = Rc::new({
             let mut __result = Vec::new();
-            for e in assignment_unit_dep_edges_over(edges.clone(), assignment.clone())
+            for e in assignment_unit_dep_edges_over(edges, assignment.clone())
                 .iter()
                 .cloned()
             {
@@ -779,7 +778,7 @@ pub fn validate_partition_r4_over(
     components: Rc<Vec<Rc<Vec<String>>>>,
     assignment: Rc<HashMap<NonEmptyStr, NonEmptyStr>>,
 ) -> Rc<PartitionR4ValidityVerdict> {
-    if assignment_has_scc_split(components.clone(), assignment.clone()) {
+    if assignment_has_scc_split(components, assignment.clone()) {
         Rc::new(PartitionR4ValidityVerdict::PartitionR4Refused {
             cause: Rc::new(PartitionR4ValidityCause::SccSplit {
                 detail:
@@ -788,7 +787,7 @@ pub fn validate_partition_r4_over(
             }),
         })
     } else {
-        if assignment_unit_graph_has_cycle(edges.clone(), assignment.clone()) {
+        if assignment_unit_graph_has_cycle(edges, assignment.clone()) {
             Rc::new(PartitionR4ValidityVerdict::PartitionR4Refused {
                 cause: Rc::new(PartitionR4ValidityCause::UnitGraphCycle {
                     detail: "Rust R4: compilation-unit dependency graph is cyclic".to_string(),
@@ -914,28 +913,30 @@ pub fn unit_dep_closure(
     mut __tco_loop_acc: Rc<Vec<NonEmptyStr>>,
     mut __tco_loop_fuel: i64,
 ) -> Rc<Vec<NonEmptyStr>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut edges = __tco_loop_edges;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (fuel.clone() <= 0) {
-            break acc.clone();
-        } else {
-            let grown = unit_dep_closure_step(edges.clone(), acc.clone());
-            if ((grown.clone().len() as i64) == (acc.clone().len() as i64)) {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut edges = __tco_loop_edges;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
                 break acc.clone();
             } else {
-                {
-                    let __tco_0 = edges;
-                    let __tco_1 = grown.clone();
-                    let __tco_2 = v1_rt::int_sub(fuel, 1);
-                    __tco_loop_edges = __tco_0;
-                    __tco_loop_acc = __tco_1;
-                    __tco_loop_fuel = __tco_2;
-                    continue;
+                let grown = unit_dep_closure_step(edges.clone(), acc.clone());
+                if ((grown.clone().len() as i64) == (acc.clone().len() as i64)) {
+                    break acc.clone();
+                } else {
+                    {
+                        let __tco_0 = edges;
+                        let __tco_1 = grown.clone();
+                        let __tco_2 = v1_rt::int_sub(fuel, 1);
+                        __tco_loop_edges = __tco_0;
+                        __tco_loop_acc = __tco_1;
+                        __tco_loop_fuel = __tco_2;
+                        continue;
+                    }
                 }
             }
         }
@@ -948,7 +949,7 @@ pub fn unit_package_name(
 ) -> Option<String> {
     rows.iter().cloned().fold(
         std::option::Option::None,
-        |acc: _, row: Rc<Stage0PartitionCrateRow>| match acc.clone() {
+        |acc: Option<String>, row: Rc<Stage0PartitionCrateRow>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if (row.unit_id.clone() == unit_id.clone()) {

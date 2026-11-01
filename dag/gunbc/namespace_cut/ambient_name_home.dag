@@ -12,7 +12,7 @@ import std.optional { Optional, optional_present }
 //
 // Two consumers read it. The generated import sweep (owned by the #14017 generator's owner) inserts the
 // home's import into every module the ambient-name census lists for the name; and the namespace-wave
-// binding diff (gunbc.instruments.namespace_wave_binding_diff) admits exactly the re-bindings a row
+// binding diff (retired) admitted exactly the re-bindings a row
 // names -- an occurrence of `name` that was ambient on base and binds the row's declaration on head -- and refuses
 // every other one. A row is added by the wave that moves its name, in that wave's own PR.
 //
@@ -80,7 +80,9 @@ fn ambient_name_declaration(row: AmbientNameHome) -> String {
 // One row per landed wave. Wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars, answered by the std.primitives
 // authority row where it binds at all, has its one declared home in std.host_text. list_push (#14751): its one declared
 // home is std.algebra `fn list_push<T>(xs: FreeMonoid<T>, item: T)`, and its std.primitives list_push_contract row is
-// retired. A kit_call restates its home's signature (gunbc.rung_drop.kit_call_shape_restates_the_home_signature); the
+// retired. sha256_hex_of_text: its one declared home is std.content_hash `fn sha256_hex_of_text(text: String) -> String`
+// (UTF-8 encode, SHA-256, lowercase hex; root-coordinator decision, sleek-owl-397), and its std.primitives
+// sha256_hex_of_text_contract row is retired. A kit_call restates its home's signature (gunbc.rung_drop.kit_call_shape_restates_the_home_signature); the
 // declaration is the authority, so the row follows it.
 fn ambient_name_homes() -> List<AmbientNameHome> {
   [
@@ -105,6 +107,17 @@ fn ambient_name_homes() -> List<AmbientNameHome> {
         ],
         result: kit_list_of_int()
       } }
+    },
+    AmbientNameHome {
+      name: "sha256_hex_of_text" as NonEmptyStr,
+      home: "std.content_hash" as NonEmptyStr,
+      table: PrimitiveAuthorityTable,
+      origin: ExistingDeclaration,
+      retired_contract: optional_present(value: "sha256_hex_of_text_contract" as NonEmptyStr),
+      kit_probe: KitCallProbe { call: AmbientNameKitCall {
+        params: [AmbientNameKitParam { name: "text" as NonEmptyStr, type_ref: kit_string() }],
+        result: kit_string()
+      } }
     }
   ]
 }
@@ -127,6 +140,10 @@ fn chars_kit_call() -> AmbientNameKitCall {
 
 fn kit_int() -> AmbientNameKitType {
   AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "Int" as NonEmptyStr, arguments: [] }
+}
+
+fn kit_string() -> AmbientNameKitType {
+  AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "String" as NonEmptyStr, arguments: [] }
 }
 
 fn kit_list_of_int() -> AmbientNameKitType {

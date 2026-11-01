@@ -3,33 +3,15 @@ module gunbc.plans.input_envelope_roadmap
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol }
+import gunbc.plans.md_helpers { p }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn input_envelope_roadmap_body() -> List<MarkdownBlock> {
   [
-    h2(text: "Why (one paragraph)"),
-    p(text: "An unbounded input is the data-side of a non-terminating Loop (which requires DescentEvidence per std/induction.dag). A WorkDemand that does not declare its input envelope is therefore fail-open by construction: it can accept an arbitrary corpus with no declared ceiling, and the scheduler has no basis for admission control. Mirroring DescentEvidence (Strict | NonIncreasing | DescentUnknown), the InputEnvelope is BoundedInput (the declared ceiling, analog of Strict) or EnvelopeUnknown (honest fail-closed bottom, analog of DescentUnknown). Admission is decided by input_admitted, which is the first-class gate that closes the loop: EnvelopeUnknown => RefusedUndeclared (fail-closed); a declared axis whose actual count exceeds the ceiling => RefusedOverEnvelope; an actual axis not covered by any declared bound => RefusedOverEnvelope (undeclared axis = refuse); all within bounds => Admitted."),
-    h2(text: "P1 (this PR) — shape + CI corpus instance + admission witness"),
-    ul(items: [
-      li(text: "InputSizeAxis closed enum: WitnessCount | SourceNodeCount | CorpusNodeCount"),
-      li(text: "InputBound record: axis: InputSizeAxis, max: Measure<Count, One, Nat>"),
-      li(text: "InputEnvelope coproduct: BoundedInput \\{ bounds: List<InputBound> \\} | EnvelopeUnknown"),
-      li(text: "AdmissionVerdict coproduct: Admitted | RefusedOverEnvelope \\{ axis \\} | RefusedUndeclared"),
-      li(text: "input_admitted function: EnvelopeUnknown => RefusedUndeclared; per-axis ceiling check"),
-      li(text: "WorkDemand.input_envelope required field added; existing demands carry EnvelopeUnknown (honest: ceiling not yet declared)"),
-      li(text: "gunbc_ci_corpus_envelope: the CI corpus as the first BoundedInput instance — ceiling values are operator-set operating-point ceilings, NOT derived quantities (P2 derives them; P1 scaffolds with explicit Scaffold-disposition values)"),
-      li(text: "input_envelope_admission.dag: 5 test fns covering at-limit, over-limit, undeclared-axis, EnvelopeUnknown, and a red-on-revert discriminating assertion"),
-    ]),
-    h2(text: "P2 (follow-on, operator sign-off before landing) — ceiling derivation"),
-    ul(items: [
-      li(text: "Derive the WitnessCount ceiling from the marker-driven corpus discovery roster (gunbc.ci.ci_layer_roots witness_discovery_scan_dirs scan; count is known at CI-spec emit time)"),
-      li(text: "Derive SourceNodeCount and CorpusNodeCount from the measured per-file / per-tree node counts (the ci_floor_measurement infrastructure)"),
-      li(text: "Replace the Scaffold ceiling rows in gunbc_ci_corpus_envelope with derived values; the Scaffold disposition dissolves on this replacement"),
-      li(text: "Wire input_admitted into the scheduler / admission path as a fail-closed gate (operator controls timing; this PR's gate is a wall on WorkDemand construction, not a runtime check yet)"),
-    ]),
-    h2(text: "Ceiling value disposition (P1 scaffolds)"),
-    p(text: "The three ceiling values in gunbc_ci_corpus_envelope (WitnessCount: 2000, SourceNodeCount: 500000, CorpusNodeCount: 5000000) are operator-set operating-point ceilings. They are NOT derived quantities — the derivation is P2. These are explicit Scaffold-bearing values: they must be replaced with derived values when the P2 derivation lands. The numbers are chosen as round conservative ceilings well above current corpus size; do NOT treat them as authoritative measurements."),
+    p(text: "Goal: refuse work whose input size is unknown, exceeds a declared ceiling, or contains an undeclared axis; make the scheduler consume the same input_admitted contract as WorkDemand."),
+    p(text: "Method: retain InputSizeAxis (WitnessCount, SourceNodeCount, CorpusNodeCount), count-valued InputBound, and BoundedInput versus EnvelopeUnknown. input_admitted returns RefusedUndeclared for unknown envelopes and RefusedOverEnvelope for exceeded or missing axes; only fully covered inputs are Admitted. Existing unknown demands remain explicit."),
+    p(text: "Remaining P2, requiring operator sign-off: derive witness ceilings from gunbc.ci.ci_layer_roots witness_discovery_scan_dirs and node ceilings from ci_floor_measurement; replace the Scaffold values in gunbc_ci_corpus_envelope, then wire runtime admission. P1 required the field but did not establish that runtime gate. Its 2000/500000/5000000 ceilings were operating-point choices, never measurements."),
+    p(text: "Validate with input_envelope_admission: at-limit acceptance, over-limit refusal, undeclared-axis refusal, EnvelopeUnknown refusal, and a control that fails when refusal is removed. Retirement additionally requires every WorkDemand to carry a real bound or an explicit explanation for its unknown envelope."),
   ]
 }
 

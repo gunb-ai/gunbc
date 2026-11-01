@@ -5,6 +5,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.algebra { list_append, list_snoc_item, fold_list }
 import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import v2.std.fn_index { atom_identities_in_node }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Node, NodeFold, Symbol, fold_node, symbol_lexeme }
@@ -192,16 +193,22 @@ fn v1_discovered_rows_for(pool_roots: List<String>) -> List<V1ConsumerRow> {
 }
 
 // THE KEYED ARM. decl_facts_at filters host-side, before any of it becomes interpreter values, so
-// asking for one declaration by name costs the index the caller's resolve already built rather than
-// a walk over the corpus. This is the entry a witness uses to execute the fold against a REAL
+// asking for declarations by name costs one walk of the pool and marshals only the named rows,
+// rather than minting the whole corpus into interpreter values. (An earlier sentence here said it
+// reused the index the caller's resolve already built; it does not -- with no census provider
+// registered, each keyed read walks the pool, which is why a caller reads once per claim.) This is the entry a witness uses to execute the fold against a REAL
 // declaration node -- not a fabricated DeclFact, which could not be built without inventing a Node
 // and would test the assertion rather than the producer.
-fn v1_discovery_rows_at_name(qualified_name: String) -> List<V1ConsumerRow> {
-  v1_discovered_rows_over(facts: decl_facts_at(pool_roots: v1cd_pool_roots, qualified_name: qualified_name))
+//
+// A caller asking about several names reads them in ONE keyed read and folds each name's own rows
+// from it (decl_facts_matching_qualified_name), so each name answers exactly as a one-name read
+// would and the pool is walked once per caller, not once per name.
+fn v1_discovery_facts_at_names(qualified_names: List<String>) -> List<DeclFact> {
+  decl_facts_at(pool_roots: v1cd_pool_roots, qualified_names: qualified_names, type_names: [])
 }
 
-fn v1_discovery_keys_at_name(qualified_name: String) -> List<String> {
-  v1_discovery_rows_at_name(qualified_name: qualified_name) |> map(r => v1_row_key(r: r))
+fn v1_discovery_keys_in(facts: List<DeclFact>, qualified_name: String) -> List<String> {
+  v1_discovered_rows_over(facts: decl_facts_matching_qualified_name(qn: qualified_name, facts: facts)) |> map(r => v1_row_key(r: r))
 }
 
 data v1cd_pool_roots: List<String> = ["dag", "src/v2"]
@@ -234,7 +241,7 @@ fn v1_discovery_undisposed() -> List<String> {
 // answered interrupted_before_verdict on every one of them. That is the floor stating that this
 // SUBJECT exceeds what a merge-path claim may cost, and it is a fact about the subject rather than
 // about the fold: the same fold over one declaration, fetched by name through
-// v1_discovery_rows_at_name, runs inside the ordinary per-PR budget and IS enrolled, in
+// v1_discovery_facts_at_names and v1_discovery_keys_in, runs inside the ordinary per-PR budget and IS enrolled, in
 // dag/test/claim/self_host_v1_consumer_census_witness.dag. So the mechanism has an executed
 // arm and the whole-corpus JOIN does not, which is an honest split rather than a silence: what is
 // unenrolled is one specific claim -- that the corpus contains no undisposed .dag relation today --

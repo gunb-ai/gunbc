@@ -2754,7 +2754,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "convergence-coverage", contribution: "Coverage is an identity join over paths, not a count of findings. The census is the program's denominator."),
-      centering: plan(text: "Target: a roster carrier consumed by later cc-* leaves, authority docs/plans/convergence-coverage-program.md. (1) Do not redesign D14 or v2-compiler-architecture. (2) First slice: classify the production folds D14 section 10 and the operator review already name -- srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv / RunArgvStdin / RunArgvOutcome -- as supplied-report vs established-operand. (3) Ingest valiant-gull-69's cause-F wrapper census as sourced inventory; do not re-count srv1_live_dashboard_instance pins. (4) Plant one omitted path that reds the census. (5) Acceptance: a claim process over that roster once bound; until then ExecutionContractUnspecified is honest."),
+      centering: plan(text: "Target: a roster carrier consumed by later cc-* leaves, authority `gunbc.plans.convergence_coverage_program`. (1) Do not redesign D14 or v2-compiler-architecture. (2) First slice: classify the production folds D14 section 10 and the operator review already name -- srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv / RunArgvStdin / RunArgvOutcome -- as supplied-report vs established-operand. (3) Ingest valiant-gull-69's cause-F wrapper census as sourced inventory; do not re-count srv1_live_dashboard_instance pins. (4) Plant one omitted path that reds the census. (5) Acceptance: a claim process over that roster once bound; until then ExecutionContractUnspecified is honest."),
     ),
     roadmap_node(
       identity: "rn_XW56ZS6QC1081AFR252PR2RBPS",
@@ -3442,17 +3442,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/rung_drop/measurement_bankruptcy.dag"),
       line: ticket(t: fields(
           headline: "Retire the measurement_bankruptcy drop whose trigger already fired",
-          boundary: "gunbc.rung_drop.measurement_bankruptcy reads standing: Standing while its own prose records that the trigger fired. Flip it to Retired citing the capability, and regenerate docs/design-rung-drops.md.",
+          boundary: "gunbc.rung_drop.measurement_bankruptcy reads standing: Standing while its own prose records that the trigger fired. Flip it to Retired citing the capability, and regenerate `gunbc.design_ledgers` `expected_design_rung_drops_md`.",
           displaced_cost: "A drop that stays Standing after its trigger fired inflates the standing roster and hides that the climb happened.",
           first_slice: "Flip the standing field, check the design-ledger special case, regenerate the projection.",
           red_control: "The row still in the standing partition after the flip, or the regenerated projection drifting from the authority.",
           out_of_scope: "Any other rung drop.",
-          handback: "The retired row, the regenerated docs/design-rung-drops.md, and the partition witness green."
+          handback: "The retired row, the regenerated `gunbc.design_ledgers` `expected_design_rung_drops_md`, and the partition witness green."
         )),
       dispatch: dispatchable(),
       execution: bound(contract: gunbc_claim_execution_contract(entry: "dag/test/claim/rung_drop_standing_partition_witness.dag" as FilePath, function: "standing_list_excludes_every_retired_drop" as NonEmptyStr)),
       parent: in_project(project: "dp-m1-dissolvable-rows-retired", contribution: "A standing drop whose own prose says its trigger fired is §4b rung dishonesty in the ledger itself."),
-      centering: plan(text: "Target: dag/gunbc/rung_drop/measurement_bankruptcy.dag (module gunbc.rung_drop.measurement_bankruptcy), field standing (currently Standing; its prose says THE TRIGGER HAS FIRED). (1) Flip standing to Retired { trigger_fired: ... } citing gunbc.instruments.emission_entry_instrument measure_entry_emission as the capability that fired it; copy the Retired shape from an already-retired drop (rung_drop.dag declares the arm; regen_producer.dag has an example). (2) Check dag/gunbc/design_ledgers.dag, which special-cases this identity to append compile_phase_frontier_blocks(): it must still render for a retired row. (3) Regenerate docs/design-rung-drops.md with the projection the repo already uses and commit it with the flip. (4) Acceptance: the named test process on dag/test/claim/rung_drop_standing_partition_witness.dag. Do NOT edit any other drop. If measure_entry_emission does not exist under that name, stop and hand back what you found."),
+      centering: plan(text: "Target: dag/gunbc/rung_drop/measurement_bankruptcy.dag (module gunbc.rung_drop.measurement_bankruptcy), field standing (currently Standing; its prose says THE TRIGGER HAS FIRED). (1) Flip standing to Retired { trigger_fired: ... } citing gunbc.instruments.emission_entry_instrument measure_entry_emission as the capability that fired it; copy the Retired shape from an already-retired drop (rung_drop.dag declares the arm; regen_producer.dag has an example). (2) Check dag/gunbc/design_ledgers.dag, which special-cases this identity to append compile_phase_frontier_blocks(): it must still render for a retired row. (3) Regenerate `gunbc.design_ledgers` `expected_design_rung_drops_md` with the projection the repo already uses and commit it with the flip. (4) Acceptance: the named test process on dag/test/claim/rung_drop_standing_partition_witness.dag. Do NOT edit any other drop. If measure_entry_emission does not exist under that name, stop and hand back what you found."),
     ),
     roadmap_node(
       identity: "rn_B4SE27370CQF1VHMWHMRANB56K",
@@ -4359,7 +4359,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/demand-engine-program.md"),
       line: ticket(t: fields(
         headline: "Primitive-egress residue: TEXT-0 alphabet collapse, alias fixture enrolment, admission rows, hex literal",
-        boundary: "TEXT-0's alphabet collapse; enrolment of the applied-generic alias fixture; the 40 consumed ACTION-USE transition-admission rows deleted as gunbc#11790 deleted the first 11; a hex literal form for .dag; heal.yml dispatch-only with the dashboard readiness pending quirk recorded; batch floor 2 on a quiet host under ruling A; the unlanded demand-engine plan refinements on branch fierce-seal-607/plan-e2-handler (D11 realization ruling, E2 handler shape) folded into docs/plans/demand-engine-program.md.",
+        boundary: "TEXT-0's alphabet collapse; enrolment of the applied-generic alias fixture; the 40 consumed ACTION-USE transition-admission rows deleted as gunbc#11790 deleted the first 11; a hex literal form for .dag; heal.yml dispatch-only with the dashboard readiness pending quirk recorded; batch floor 2 on a quiet host under ruling A; the unlanded demand-engine plan refinements on branch fierce-seal-607/plan-e2-handler (D11 realization ruling, E2 handler shape) folded into `gunbc.plans.demand_engine_program`.",
         displaced_cost: "Each is a small known debt whose only cost today is being remembered by a person instead of a row.",
         first_slice: "The 40 consumed admission rows, which is a deletion whose census is the floor.",
         red_control: "A consumed admission row surviving deletion reds; a hex literal that lexes as two tokens refuses.",
@@ -4453,23 +4453,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "customer-workspace-service", contribution: "Prospect census and buyer review are the customer-facing edge of the service; their identity and custody belong with it."),
-    ),
-    roadmap_node(
-      identity: "rn_6WDPNLJ4RQKZXC2VTH7BM9SYFG",
-      id: "ntfy-publisher-token-onto-gcp-custody",
-      owner: "buyer-review",
-      carriers: carrier(path: "docs/plans/review-sheet-and-census-lane-handoff.md"),
-      line: ticket(t: fields(
-        headline: "Dissolve the ntfy publisher-token HumanIntervention into the Mt Collins custody pattern",
-        boundary: "Consolidate gunbc.auth.approval_ntfy_deployment approval_ntfy_publisher_token_intervention into the custody authority gunbc#11679 establishes, as ONE fleet-converge mode whose credential is a dispatch choice over a CLOSED ROSTER of custody rows. The controller key becomes that roster's first row rather than a constant. Each row carries a SecretRef, a path, an owner principal, a group principal, a mode ARM, and the directory's own owner, group and mode.",
-        displaced_cost: "The read side is already modeled and only delivery is manual, so every credential rotation spends an operator. One converge mode per credential grows a hand-enumerated roster, and a free-text credential input is a stringly selector; the closed roster is what keeps both out.",
-        first_slice: "The consolidation onto the custody authority gunbc#11679 established, with the controller key as the first roster row. gunbc#11679 is merged, so nothing external gates this.",
-        red_control: "A 0640 token for a service group needs a directory that group can traverse, so a row whose directory mode refuses every group bit must fail; the exact-mode and forbidden-bits legs are derived from the mode arm, never taken as a caller octal.",
-        out_of_scope: "This does NOT retire gunbc.rung_drop approval_store_single_writer_by_agreement. A find-metadata readback establishes which principals HOLD PERMISSION BITS and not that a non-writer cannot open the store; that trigger needs an execution-as-another-user leg, and its row already names a permission-bits readback among the things that do not retire it.",
-        handback: "The custody authority with the controller key and the ntfy token as rows, and the HumanIntervention deleted rather than left beside it."
-      )),
-      dispatch: dispatchable(),
-      parent: in_project(project: "managed-identity-access-dependencies", contribution: "A publisher token held outside managed custody is an ambient credential this milestone retires."),
     ),
     roadmap_node(
       identity: "rn_6ZFZPYVBX39088FFTWTNF3SCXJ",

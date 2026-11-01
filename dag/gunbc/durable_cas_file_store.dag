@@ -7,6 +7,7 @@ import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.checked_arithmetic { int_inclusive_max }
+import std.integer { int_to_decimal_string }
 import extdeps.access.posix { FileMode, file_mode_bits }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -224,7 +225,7 @@ fn admit_cas_attempt_for_derived_payload(
 // is what lets an exclusive create serve as the conditional write: two
 // generations of one slot are two different files, so the OS decides the race.
 fn cas_file_slot_name(key: NonEmptyStr, generation: CasGeneration) -> String {
-  concat(concat(key as String, "."), cas_generation_count(g: generation) as String)
+  concat(concat(key as String, "."), int_to_decimal_string(value: cas_generation_count(g: generation)))
 }
 
 fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> String {
@@ -551,15 +552,21 @@ fn cas_observe_window_once(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe?
   }
 }
 
+// THE FOLD'S INIT CARRIES ITS DECLARED TYPE: the v1 seed types `init: none` as the bare Optional and takes no
+// expected type from a `let` annotation into the init, so the accumulator would be emitted undeclared
+// (gunbc.recurring_failure_mode seed_fold_accumulator_declared_from_an_open_init).
+fn cas_no_observation() -> CasSlotProbe? { none }
+
 fn cas_observe_window(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_retained_slot"),
   ]
 {
-  match fold(cas_window_observation_attempts, init: none, f: (acc, _) => match acc {
+  let observed = fold(cas_window_observation_attempts, init: cas_no_observation(), f: (acc, _) => match acc {
     Present { value: p } => Present { value: p }
     Absent => cas_observe_window_once(root: root, key: key)
-  }) {
+  })
+  match observed {
     Present { value: p } => p
     Absent => ProbedWindowHeadUnsettled { attempts: count(cas_window_observation_attempts) }
   }
@@ -617,7 +624,7 @@ fn cas_head_as_readable(generation: CasGeneration, value: NonEmptyStr) -> CasRea
 fn cas_generation_unreadable(generation: CasGeneration, kind: FilesystemFailureKind) -> CasUnreadableSlot {
   CasUnreadableReadRefused {
     detail: concat(
-      concat("generation ", cas_generation_count(g: generation) as String),
+      concat("generation ", int_to_decimal_string(value: cas_generation_count(g: generation))),
       concat(" unreadable:", filesystem_failure_kind_name(kind: kind)),
     ) as NonEmptyStr
   }
@@ -626,7 +633,7 @@ fn cas_generation_unreadable(generation: CasGeneration, kind: FilesystemFailureK
 fn cas_generation_read_kind_unrecognized(generation: CasGeneration, observed: String) -> CasUnreadableSlot {
   CasUnreadableMalformed {
     detail: concat(
-      concat("generation ", cas_generation_count(g: generation) as String),
+      concat("generation ", int_to_decimal_string(value: cas_generation_count(g: generation))),
       concat(" read failure kind unrecognized: ", observed),
     ) as NonEmptyStr
   }
@@ -689,6 +696,7 @@ fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObserva
 fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr>
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_read_index"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "slot_observe_windowed"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_slot_holds_at_most_k_plus_one_generations_by_real_execution"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_observation_at_generation_1500_terminates_by_real_execution"),
   ]
@@ -861,21 +869,31 @@ fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
   match admitted.publication {
     DefaultAccessCreateOnly => {
       let write = Filesystem.WriteCreateNew(path: path, content: content)
-      cas_outcome_from_create(
+      match cas_create_refusal(
         attempt: attempt,
-        target: target,
         created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
         post: observe_cas_slot_state_retained(root: root, key: attempt.key, retention: admitted.retention),
-      )
+      ) {
+        Present { value: refusal } => refusal
+        Absent =>
+          CasCommitted {
+            committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
+          }
+      }
     }
     DeclaredModeCreateOnly { mode } => {
       let write = Filesystem.WriteCreateNewWithMode(path: path, content: content, mode: file_mode_bits(mode: mode))
-      cas_outcome_from_create(
+      match cas_create_refusal(
         attempt: attempt,
-        target: target,
         created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
         post: observe_cas_slot_state_retained(root: root, key: attempt.key, retention: admitted.retention),
-      )
+      ) {
+        Present { value: refusal } => refusal
+        Absent =>
+          CasCommitted {
+            committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
+          }
+      }
     }
     OwnerOnlyCreateOnly => {
       let write = Filesystem.WriteOwnerOnly(path: path, content: content)
@@ -890,27 +908,25 @@ fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
   }
 }
 
-// THE CLASSIFICATION FOLD FOR THE TYPED BINDING (gunbc#11335). Occupancy is
-// FilesystemCreateTargetOccupied PLUS a readable winner; an occupied report whose re-observation
-// cannot be read refuses with that observation's cause; an occupied report with no winner, and
-// every other kind, is the store refusing to publish. Re-observing absence after a failed
+// THE REFUSAL CLASSIFICATION FOR THE TYPED BINDING (gunbc#11335). It answers a refusal or NOTHING: the
+// success arm is not here, it is the `Absent` arm beside each `Filesystem.WriteCreateNew*` in
+// `cas_commit_at`, so no value of `FilesystemCreateNew` authored elsewhere buys a `CasCommitted`.
+// Occupancy is FilesystemCreateTargetOccupied PLUS a readable winner; an occupied report whose
+// re-observation cannot be read refuses with that observation's cause; an occupied report with no
+// winner, and every other kind, is the store refusing to publish. Re-observing absence after a failed
 // publication must not mint CasPreconditionFailed: that is the store-refusal-as-contention widen.
-fn cas_outcome_from_create(
+fn cas_create_refusal(
   attempt: CasAttempt<NonEmptyStr>,
-  target: CasGeneration,
   created: FilesystemCreateNew,
   post: CasSlotObservation<NonEmptyStr>,
-) -> CasOutcome<NonEmptyStr> {
+) -> CasOutcome<NonEmptyStr>? {
   match created {
-    FilesystemCreated { path: _ } =>
-      CasCommitted {
-        committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
-      }
-    FilesystemCreateTargetOccupied { path: _ } => cas_occupied_publication_outcome(attempt: attempt, post: post)
+    FilesystemCreated { path: _ } => none
+    FilesystemCreateTargetOccupied { path: _ } => Present { value: cas_occupied_publication_outcome(attempt: attempt, post: post) }
     FilesystemCreateRefused { path: _, kind: k, error: _ } =>
-      cas_publication_refused(detail: concat("the store refused publication: ", filesystem_failure_kind_name(kind: k)))
+      Present { value: cas_publication_refused(detail: concat("the store refused publication: ", filesystem_failure_kind_name(kind: k))) }
     FilesystemCreateKindUnrecognized { path: _, observed: o, error: _ } =>
-      cas_publication_refused(detail: concat("the store refused publication with an unrecognized failure kind: ", o))
+      Present { value: cas_publication_refused(detail: concat("the store refused publication with an unrecognized failure kind: ", o)) }
   }
 }
 
@@ -1175,6 +1191,7 @@ fn file_compare_and_set(root: NonEmptyStr, publication: CasGenerationPublication
 fn file_compare_and_set_windowed(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt, window: CasGenerationWindow) -> CasFileWrite
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index_settled"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "slot_commit_windowed"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "run_cas_in"),
   ]
 {
@@ -1219,11 +1236,105 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => CasSlotKeysSubjectRefused { root: root, cause: c }
     FilesystemDirectoryListingRefused { directory: _, error: e } => CasSlotKeysListingRefused { root: root, detail: e }
     FilesystemDirectoryListed(listed) => {
-      let keys = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
+      let keys: List<NonEmptyStr> = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
         Absent => acc
         Present { value: k } => acc |> list_push(k)
       })
       CasSlotKeysListed { keys: distinct_by_key(xs: keys, key: fn(k) { k as String }) }
     }
+  }
+}
+
+// ── The store as a value ─────────────────────────────────────────────────────────────────────
+// THE SLOT STORE IS DATA: the root its slots live under, and nothing else. The operations are ordinary
+// functions over it (slot_observe, slot_commit, slot_keys), each answering through the Filesystem
+// operations the CAS functions above already perform. It holds no closures: a record of effectful
+// closures emits as `.await` inside a synchronous Rc<dyn Fn> (rustc E0728, measured on gunbc#14944 at
+// 681b79b, three errors, one per closure), because function types carry no effects; plain functions
+// over a data record emit as the async functions they are.
+//
+// sole_constructor: the only expression that builds a SlotStore is file_slot_store below (seal per
+// file on the seed route; residuals f13 coproduct variants and f19 parameter defaults, so the record
+// is non-generic and never a variant arm). The seal is on CONSTRUCTION only: a field read is not
+// module-private, so any holder can read `store.root` (declared in
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). A SlotStore is
+// not an identity; identity lives one level up, in a per-store sealed record whose declaring module
+// derives the root from its own declaration (gunbc.roadmap.roadmap_attempt_worktree_claim_root
+// WorktreeClaimStore).
+//
+// It inhabits std.durable_compare_and_set (the outcomes and observations are that module's own); it
+// is not an ArtifactStore (a pure content-addressed fold) nor a StorageSurface (cache capacity
+// policy): neither models a generation-checked create-new slot. The WINDOWED pair (slot_observe_windowed,
+// slot_commit_windowed) is carried because its first holder needs it: the approval device store's head-only
+// slots (gunbc.auth.approval_device_redemption, the push registration and the APNs provider token). Each
+// delegates to observe_cas_slot_state_windowed / file_compare_and_set_windowed, the one windowed contract,
+// and stays a distinct operation pair rather than a mode of slot_observe / slot_commit, because a slot whose
+// generation line is an audit trail must not be reachable through the head-only reclamation. The retained
+// operations are not carried: no holder uses them, and a holder that does adds them with its first consumer
+// (DESIGN section 3c).
+type SlotStore sole_constructor {
+  root: NonEmptyStr
+}
+
+fn slot_observe(store: SlotStore, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  observe_cas_slot_state(root: store.root, key: key)
+}
+
+fn slot_commit(store: SlotStore, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
+  file_compare_and_set(root: store.root, publication: publication, verified: verified)
+}
+
+fn slot_observe_windowed(store: SlotStore, key: NonEmptyStr, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr> {
+  observe_cas_slot_state_windowed(root: store.root, key: key, window: window)
+}
+
+fn slot_commit_windowed(store: SlotStore, publication: CasGenerationPublication, verified: VerifiedCasAttempt, window: CasGenerationWindow) -> CasFileWrite {
+  file_compare_and_set_windowed(root: store.root, publication: publication, verified: verified, window: window)
+}
+
+fn slot_keys(store: SlotStore) -> CasSlotKeys {
+  cas_slot_keys(root: store.root)
+}
+
+// THE ONE SLOT STORE BUILDER, AND IT TAKES A ROOT. It is public because a per-store declaring module
+// has to build the SlotStore its sealed record holds, and the seal is per file. Its only non-witness callers
+// are those per-store mints, each passing a root it derived from its own declaration:
+// gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store,
+// gunbc.roadmap.roadmap_session_attempt_slots_root session_attempt_slots_store,
+// gunbc.dispatch_credential_acquisition credential_acquisition_store and
+// gunbc.compute.compute_attempt_slots_root compute_seat_store. Holding a SlotStore from it is not holding any of
+// those stores: none of the four records can be spelled outside its module.
+// That this builder is reachable from every module, with a literal path, is a declared residual and NOT a
+// discharged one: gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module (its
+// restoring capability is ambient filesystem authority removed, a language-level lane).
+fn file_slot_store(root: NonEmptyStr) -> SlotStore {
+  SlotStore { root: root }
+}
+
+// The listing outcome of one store's OWN directory, before any store record is minted. The
+// Listed arm carries the root whose listing the Filesystem answered for: readiness is evidence
+// that THIS directory was observed, not a caller assertion (DESIGN section 4b).
+type SlotStoreAdmission
+  = SlotStoreListed { root: NonEmptyStr }
+  | SlotStoreRefused { detail: String }
+
+// THE ONE LIST-THEN-FOLD for every sealed slot store (DESIGN section 6b root generalization: a
+// repeated rule gets ONE implementation; four stores folded this body verbatim before it moved
+// here). List `root`, fold the listing into a SlotStoreAdmission, and the caller mints its own
+// sealed record on Listed. `member` is the store's declaration name as spelled in its own module
+// (the member label of its OwnedDirectoryTarget declaration, e.g. the AttemptSlotsMember as
+// String), so the refusal says WHICH store was not admitted. Sharing costs no seal strength:
+// this exposes nothing `file_slot_store` does not already expose (a public path-taking builder),
+// and the sealed store record still has exactly one mint, in its own module -- the per-file seal
+// is where the store record lives, and that is untouched. A store whose directory must be
+// ensured before the fold (a store whose target is a fresh owned directory) passes through
+// gunbc.durable_cas_file_store's OWN ensure path first and calls this only for the readiness
+// evidence; no store gets a second copy of this fold.
+fn listed_slot_store(member: String, root: NonEmptyStr) -> SlotStoreAdmission {
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SlotStoreRefused { detail: join(["the ", member, " store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => SlotStoreRefused { detail: join(["the ", member, " store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => SlotStoreListed { root: root }
   }
 }

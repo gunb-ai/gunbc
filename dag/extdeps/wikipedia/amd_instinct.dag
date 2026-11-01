@@ -1,0 +1,71 @@
+module extdeps.wikipedia.amd_instinct
+
+import std.types { List }
+import std.measure { bandwidth, milliwatt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.wikipedia.gpu_spec_table { WikipediaGpuSpecPage, WikipediaGpuSpecTable, WikipediaSpecTable, WikipediaNonSpecTable, WikipediaGpuSpecRow, WikipediaMemoryCell, WikipediaBandwidthCell, NoModelColumn, NoMemorySizeColumn }
+import extdeps.storage.types { PcieLink, Gen3, Gen4, Gen5 }
+
+// EVERY WIKITABLE OF "AMD Instinct" AT REVISION 1380954529, in document order, as extdeps.wikipedia.gpu_spec_table
+// shapes it. The revision is pinned by oldid; html_sha256 is the digest of its rendered HTML as fetched on
+// 2026-10-27. Wikipedia text is CC BY-SA 4.0: the figures below are the page's, attributed to it here.
+
+data revision_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/w/index.php?title=AMD_Instinct&oldid=1380954529"
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = revision_authority
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.wikipedia.amd_instinct", decl_name: "amd_instinct_page", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data amd_instinct_page: WikipediaGpuSpecPage = WikipediaGpuSpecPage {
+  revision: revision_authority,
+  html_sha256: "ef5e15446117b9bc3cbf0e0966d811fd052658204705d3cb77c4512f967a50dc",
+  table_count: 2,
+  tables: [
+    amd_instinct_table_000,
+    amd_instinct_table_001,
+  ],
+}
+
+data amd_instinct_table_000: WikipediaGpuSpecTable = WikipediaSpecTable {
+  ordinal: 0,
+  heading: "Chipset table",
+  row_count: 5,
+  rows: [
+    WikipediaGpuSpecRow { ordinal: 0, model: Present { value: "Radeon Instinct MI6 (Polaris 10)" }, launch_cell: Present { value: "Jun 20, 2017" }, launch_year: Present { value: 2017 }, memory_cell: Present { value: "16" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [16384] } }, memory_type_cell: none, bandwidth_cell: Present { value: "224" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 224000000000)] } }, power_cell: Present { value: "150 W" }, power: [milliwatt(count: 150000)], bus_cell: Present { value: "PCIe 3.0 ×16" }, bus: Present { value: PcieLink { generation: Gen3, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 1, model: Present { value: "Radeon Instinct MI8 (Fiji)" }, launch_cell: Present { value: "Jun 20, 2017" }, launch_year: Present { value: 2017 }, memory_cell: Present { value: "4" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [4096] } }, memory_type_cell: none, bandwidth_cell: Present { value: "512" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 512000000000)] } }, power_cell: Present { value: "175 W" }, power: [milliwatt(count: 175000)], bus_cell: Present { value: "PCIe 3.0 ×16" }, bus: Present { value: PcieLink { generation: Gen3, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 2, model: Present { value: "Radeon Instinct MI25 (Vega 10)" }, launch_cell: Present { value: "Jun 20, 2017" }, launch_year: Present { value: 2017 }, memory_cell: Present { value: "16" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [16384] } }, memory_type_cell: none, bandwidth_cell: Present { value: "484" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 484000000000)] } }, power_cell: Present { value: "300 W" }, power: [milliwatt(count: 300000)], bus_cell: Present { value: "PCIe 3.0 ×16" }, bus: Present { value: PcieLink { generation: Gen3, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 3, model: Present { value: "Radeon Instinct MI50 (Vega 20)" }, launch_cell: Present { value: "Nov 18, 2018" }, launch_year: Present { value: 2018 }, memory_cell: Present { value: "16 32" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [16384, 32768] } }, memory_type_cell: none, bandwidth_cell: Present { value: "1024" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 1024000000000)] } }, power_cell: Present { value: "300 W" }, power: [milliwatt(count: 300000)], bus_cell: Present { value: "PCIe 4.0 ×16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 4, model: Present { value: "Radeon Instinct MI60 (Vega 20)" }, launch_cell: Present { value: "Nov 18, 2018" }, launch_year: Present { value: 2018 }, memory_cell: Present { value: "32" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [32768] } }, memory_type_cell: none, bandwidth_cell: Present { value: "1024" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 1024000000000)] } }, power_cell: Present { value: "300 W" }, power: [milliwatt(count: 300000)], bus_cell: Present { value: "PCIe 4.0 ×16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+  ],
+}
+
+data amd_instinct_table_001: WikipediaGpuSpecTable = WikipediaSpecTable {
+  ordinal: 1,
+  heading: "Chipset table",
+  row_count: 10,
+  rows: [
+    WikipediaGpuSpecRow { ordinal: 0, model: Present { value: "AMD Instinct MI100 (Arcturus)" }, launch_cell: Present { value: "Nov 16, 2020" }, launch_year: Present { value: 2020 }, memory_cell: Present { value: "32" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [32768] } }, memory_type_cell: none, bandwidth_cell: Present { value: "1228.8" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 1228800000000)] } }, power_cell: Present { value: "300 W" }, power: [milliwatt(count: 300000)], bus_cell: Present { value: "PCIe 4.0 ×16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 1, model: Present { value: "AMD Instinct MI210 (Aldebaran)" }, launch_cell: Present { value: "Mar 22, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "64" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [65536] } }, memory_type_cell: none, bandwidth_cell: Present { value: "1638.4" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 1638400000000)] } }, power_cell: Present { value: "300 W" }, power: [milliwatt(count: 300000)], bus_cell: Present { value: "PCIe 4.0 ×16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 2, model: Present { value: "AMD Instinct MI250 (Aldebaran)" }, launch_cell: Present { value: "Nov 8, 2021" }, launch_year: Present { value: 2021 }, memory_cell: Present { value: "2 × 64" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 2, sizes_mib: [65536] } }, memory_type_cell: none, bandwidth_cell: Present { value: "2 × 1638.4" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 2, rates: [bandwidth(count: 1638400000000)] } }, power_cell: Present { value: "500 W 560 W (Peak)" }, power: [milliwatt(count: 500000), milliwatt(count: 560000)], bus_cell: Present { value: "PCIe 4.0 ×16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 3, model: Present { value: "AMD Instinct MI250X (Aldebaran)" }, launch_cell: Present { value: "Nov 8, 2021" }, launch_year: Present { value: 2021 }, memory_cell: Present { value: "2 × 64" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 2, sizes_mib: [65536] } }, memory_type_cell: none, bandwidth_cell: Present { value: "2 × 1638.4" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 2, rates: [bandwidth(count: 1638400000000)] } }, power_cell: Present { value: "500 W 560 W (Peak)" }, power: [milliwatt(count: 500000), milliwatt(count: 560000)], bus_cell: Present { value: "PCIe 4.0 ×16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 4, model: Present { value: "AMD Instinct MI300A (Antares)" }, launch_cell: Present { value: "Dec 6, 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "128" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [131072] } }, memory_type_cell: none, bandwidth_cell: Present { value: "5300" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 5300000000000)] } }, power_cell: Present { value: "550 W 760 W (Liquid Cooling)" }, power: [milliwatt(count: 550000), milliwatt(count: 760000)], bus_cell: Present { value: "PCIe 5.0 ×16" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 5, model: Present { value: "AMD Instinct MI300X (Aqua Vanjaram)" }, launch_cell: Present { value: "Dec 6, 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "192" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [196608] } }, memory_type_cell: none, bandwidth_cell: Present { value: "5300" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 5300000000000)] } }, power_cell: Present { value: "750 W" }, power: [milliwatt(count: 750000)], bus_cell: Present { value: "PCIe 5.0 ×16" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 6, model: Present { value: "AMD Instinct MI325X (Aqua Vanjaram)" }, launch_cell: Present { value: "Dec 6, 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "256" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [262144] } }, memory_type_cell: none, bandwidth_cell: Present { value: "6000" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 6000000000000)] } }, power_cell: Present { value: "1000 W" }, power: [milliwatt(count: 1000000)], bus_cell: Present { value: "PCIe 5.0 ×16" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 7, model: Present { value: "AMD Instinct MI350P" }, launch_cell: Present { value: "May 7, 2026" }, launch_year: Present { value: 2026 }, memory_cell: Present { value: "144" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [147456] } }, memory_type_cell: none, bandwidth_cell: Present { value: "8000" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 8000000000000)] } }, power_cell: Present { value: "600 W" }, power: [milliwatt(count: 600000)], bus_cell: Present { value: "PCIe 5.0 ×16" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 8, model: Present { value: "AMD Instinct MI350X" }, launch_cell: Present { value: "Jun 12, 2025" }, launch_year: Present { value: 2025 }, memory_cell: Present { value: "288" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [294912] } }, memory_type_cell: none, bandwidth_cell: Present { value: "8000" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 8000000000000)] } }, power_cell: Present { value: "1000 W" }, power: [milliwatt(count: 1000000)], bus_cell: Present { value: "PCIe 5.0 ×16 (OAM)" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 9, model: Present { value: "AMD Instinct MI355X" }, launch_cell: Present { value: "Jun 12, 2025" }, launch_year: Present { value: 2025 }, memory_cell: Present { value: "288" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [294912] } }, memory_type_cell: none, bandwidth_cell: Present { value: "8000" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 8000000000000)] } }, power_cell: Present { value: "1400 W" }, power: [milliwatt(count: 1400000)], bus_cell: Present { value: "PCIe 5.0 ×16 (OAM)" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+  ],
+}

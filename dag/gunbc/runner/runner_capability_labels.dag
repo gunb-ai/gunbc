@@ -1,0 +1,252 @@
+module gunbc.runner.runner_capability_labels
+
+// ── THE CAPABILITY ROW TABLE ──────────────────────────────────────────────────────────────────────
+//
+// WHY THIS FILE EXISTS, and why it is a table rather than a branch in each converge.
+//
+// A capability label reaches a runner as a template drop-in setting `Environment=LABELS_JSON=…`, and
+// systemd applies a template's drop-ins in filename order with the LATER value of a repeated key
+// REPLACING the earlier one — not merging. So on a host that holds two capabilities, the higher-numbered
+// drop-in is the ONLY LABELS_JSON the runner ever sees, and it has to carry both labels or the lower one is
+// silently revoked. The first version of the GPU label set handled exactly one named sibling, and review
+// 86550 named the consequence: a third capability would have to know about both of its predecessors and
+// carry a read for each, the cost grows quadratically, and forgetting one name revokes a label while every
+// check on the owning side stays green. Same defect class as the fabricated installer, arriving through the
+// label axis.
+//
+// DESIGN.md §6b: "The trigger is the second local implementation of one rule," and "Done means a new
+// ordinary case is data, not control flow: adding it edits a row, not a branch." The second capability was
+// the trigger. The rule now lives in one fold (gunbc.runner.runner_registration_labels
+// runner_capability_registration_labels), and a capability is THIS row: a label, and the drop-in whose bytes
+// are the evidence it was earned. A fourth capability adds one entry here. It edits no sibling, learns no
+// sibling's name, and cannot forget one — the fold reads every row.
+//
+// WHY THE EVIDENCE IS A FILE AND NOT A FUNCTION CALL. The alternative is for each converge to import the
+// owning converge's verdict, which makes this module a second authority on someone else's toolchain and
+// couples every capability to every other. The drop-in is what the owning converge ALREADY writes when its
+// read-back holds and removes when it does not, so asking the host for its bytes is asking for the truth
+// rather than for a re-derivation of it. It also catches what a call cannot: a label file written by an
+// earlier converge, then hand-edited, removed, or left behind after a mode stopped being dispatched.
+//
+// WHY THE PATHS ARE DECLARED HERE AND IMPORTED BY THEIR OWNERS, which is the part worth defending. The
+// row's `dropin_path` is not a copy of the owner's write target — it IS the write target, and the owner
+// imports it from this file. A render path and an evidence path spelled twice drift apart eventually, and
+// the failure mode when they do is invisible: the converge writes capability bytes to one file while the
+// restating converge reads a different one, so the capability is withheld forever and nothing is red. One
+// declaration, two readers. This is why the leaf imports only runner_unit and the label module: it can name
+// the files without importing either converge, and the converges depend on the table rather than the table
+// on them.
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.algebra { string_contains }
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_unit { runner_unit_dropin_path }
+import gunbc.runner.runner_registration_labels {
+  HostCapabilityRow, HostCapabilityWitness, CapabilityHeld, CapabilityAbsent, CapabilityUnobservable,
+  RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_evidence_gated_registration_labels, runner_label_set_union,
+  gunbc_browser_ready_label, gunbc_gpu_docker_label,
+}
+
+// THE BROWSER READINESS DROP-IN, and the GPU one beside it. Numbered so the later capability's file sorts
+// after the earlier one's in systemd's filename order and both are visible in one `systemctl cat`, rather
+// than one silently overwriting the other with nobody the wiser.
+data browser_ready_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "85-browser-ready-labels.conf" as NonEmptyStr)
+data gpu_docker_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "86-gpu-docker-labels.conf" as NonEmptyStr)
+
+// WHAT IS STILL DEFERRED, stated because §6b treats an unstated deferral as a rejection and a stated one as
+// a decision. The FOLD is shared now — one function composes every capability label set, and a capability is
+// a row. What is NOT yet shared is the WRITER: each capability's converge still renders its own LABELS_JSON
+// drop-in, so filename order still decides which file is the runner's last word, and a converge that grants
+// a capability re-reads its siblings at that moment. The consequence, said plainly: if the browser converge
+// revokes gunbc-browser-ready after the GPU converge last wrote its drop-in, the GPU drop-in keeps
+// advertising it until the next GPU converge. That window is the same length as the interval between GPU
+// converges, and it is not new — it is the behaviour review 86378 found, narrowed from "granted on a host
+// that never earned it" to "restated until the next write".
+//
+// THE TRIGGER THAT CLOSES IT, named rather than promised: the drop-ins become pure capability MARKERS
+// carrying no Environment= line, and one shared producer writes the only LABELS_JSON as the fold over those
+// markers. That is a strictly smaller change than it sounds, because the fold already exists and reads
+// markers today; what it needs is a producer step in the converge workflow, and it changes what the browser
+// converge writes, which is why it does not ride on this PR. Run the fold's tests and they pass either way —
+// the fold does not know who writes the file.
+
+// THE CAPABILITIES THAT SHARE ONE LABELS_JSON. Order is irrelevant: the fold unions, it does not sequence.
+//
+// A row is the contract in BOTH directions. Its owner earns its label from its own read-back and writes it
+// to `dropin_path`; every other converge restates that label only when it has read `dropin_path` and found
+// the token. The GPU row is listed although the GPU converge has no sibling of its own yet, because the
+// table is what makes a fourth capability cost a row rather than an edit — and a row that exists only in
+// the head of the author who might need it is the same as a row that does not exist.
+data host_capability_rows: List<HostCapabilityRow> = [
+  HostCapabilityRow {
+    label: gunbc_browser_ready_label,
+    dropin_path: browser_ready_labels_dropin_path,
+  },
+  HostCapabilityRow {
+    label: gunbc_gpu_docker_label,
+    dropin_path: gpu_docker_labels_dropin_path,
+  },
+]
+
+// THE ROWS A GIVEN CONVERGE MUST OBSERVE: every row except its own. A converge never restates its own
+// label from a file — it earned that label in this run or it is not granting it — and reading back a file
+// the converge is about to write would make the observation depend on write ordering rather than on the
+// read-back, which is exactly the sort of ordering-dependence that survives review and breaks on a retry.
+fn host_capability_rows_to_observe(own_label: String) -> List<HostCapabilityRow> {
+  filter(host_capability_rows, r => match r {
+    HostCapabilityRow { label: l, dropin_path: _ } => l != own_label
+  })
+}
+
+// THE LABEL TOKEN A DROP-IN MUST CONTAIN for its row to count as held, taken from the row rather than
+// re-spelled at the call site, so the grep on the far side and the label in the set are the same string by
+// construction. An earlier draft kept a separate token literal beside the observation that used it; the two
+// agreed only because nobody renamed one.
+fn host_capability_row_label(row: HostCapabilityRow) -> String {
+  match row {
+    HostCapabilityRow { label: l, dropin_path: _ } => l
+  }
+}
+
+fn host_capability_row_dropin_path(row: HostCapabilityRow) -> NonEmptyStr {
+  match row {
+    HostCapabilityRow { label: _, dropin_path: p } => p
+  }
+}
+
+// THE LABEL A WITNESS SPEAKS FOR, whichever arm it is. Taken from the record rather than passed alongside
+// it, so a witness cannot describe one label while being credited for another.
+fn host_capability_witness_label(w: HostCapabilityWitness) -> String {
+  match w {
+    CapabilityHeld { label: l } => l
+    CapabilityAbsent { label: l } => l
+    CapabilityUnobservable { label: l, cause: _ } => l
+  }
+}
+
+fn host_capability_witness_held(w: HostCapabilityWitness) -> Bool {
+  match w {
+    CapabilityHeld { label: _ } => true
+    CapabilityAbsent { label: _ } => false
+    CapabilityUnobservable { label: _, cause: _ } => false
+  }
+}
+
+// IS THIS LABEL ONE THE TABLE DECLARES? The check that keeps the fold from being an open door. A witness
+// is a value, and a caller can build `CapabilityHeld { label: "gunbc-whatever" }` out of thin air, so a
+// fold that trusted the record's label would let any converge advertise any capability. Requiring the
+// label to be a declared row makes the table the only authority on what can be advertised: a caller can
+// still lie about WHAT IT READ, which it could always do by editing the host's files, but it cannot
+// invent a capability the model has never heard of.
+fn host_capability_label_is_declared(label: String) -> Bool {
+  host_capability_rows.any(r => match r {
+    HostCapabilityRow { label: l, dropin_path: _ } => l == label
+  })
+}
+
+// WHETHER A ROW'S DROP-IN EXISTS, three-valued. ABSENT is a decided fact (the host does not hold that
+// capability) and contributes no label; UNREADABLE is "could not look" (sudo refused, a directory
+// unreadable, transport failure) and keeps refusing. The presence probe is a directory walk that exits 0
+// with empty stdout for a missing entry, so the verdict comes from the exit status and stdout and never from
+// parsing a tool's error text.
+type HostCapabilityDropinPresence
+  = DropinPresent
+  | DropinAbsent
+  | DropinUnreadable { cause: String }
+
+fn host_capability_dropin_presence(exit_code: Int, stdout: String, unreadable_cause: String) -> HostCapabilityDropinPresence {
+  if exit_code != 0 {
+    DropinUnreadable { cause: unreadable_cause }
+  } else if stdout == "" {
+    DropinAbsent
+  } else {
+    DropinPresent
+  }
+}
+
+// THE WITNESS FOR ONE ROW, from its presence verdict and, when present, the read of its bytes. `read` is
+// consulted only for a present drop-in; a failed read of a drop-in that exists is unreadable, not absent.
+fn host_capability_witness_of_reads(
+  label: String,
+  presence: HostCapabilityDropinPresence,
+  read_exit_code: Int,
+  read_stdout: String,
+  read_cause: String,
+) -> HostCapabilityWitness {
+  match presence {
+    DropinUnreadable { cause: c } => CapabilityUnobservable { label: label, cause: c }
+    DropinAbsent => CapabilityAbsent { label: label }
+    DropinPresent =>
+      if read_exit_code != 0 {
+        CapabilityUnobservable { label: label, cause: read_cause }
+      } else if string_contains(s: read_stdout, pattern: label) {
+        CapabilityHeld { label: label }
+      } else {
+        CapabilityAbsent { label: label }
+      }
+  }
+}
+
+data runner_unit_dropin_search_root: String = "/etc/systemd/system"
+
+// THE ONE PRODUCER OF A CAPABILITY-BEARING LABEL SET. Every LABELS_JSON drop-in that advertises a
+// capability composes its set here: the host's own offered set, plus the label this converge earned, plus
+// every sibling label whose row was OBSERVED as held. It is the only place that union is spelled, which is
+// what makes a new capability a row rather than an edit to someone else's renderer.
+//
+// THE TWO REFUSALS ARE THE CONTENT OF THE FUNCTION; the union is the easy part.
+//  - A row that could not be READ refuses the whole set. Dropping it instead is the silent revocation this
+//    mechanism exists to prevent, and it would be caused by nothing worse than a transient ssh failure on
+//    the host that owns the label.
+//  - A witness for a label the table does not DECLARE refuses too, so the set can only ever contain
+//    capabilities this file has named.
+//
+// NO FILLER ARM IN EITHER. Both refusals are built by folding the witnesses into a list of reasons, so
+// there is no `Present { value: _ }` branch that has to invent a cause for a case the type already excludes
+// — the shape review 86284 rejected, in a different guise.
+fn runner_capability_registration_labels(
+  host: HostIdentity,
+  own: List<String>,
+  witnesses: List<HostCapabilityWitness>,
+  receipt: RunnerUserSessionReceiptInput,
+) -> RunnerRegistrationLabelsResolution {
+  let unreadable_reasons = flat_map(witnesses, w => match w {
+    CapabilityUnobservable { label: l, cause: c } =>
+      [join(["'", l, "' could not be read (", c, ")"], "")]
+    CapabilityHeld { label: _ } => []
+    CapabilityAbsent { label: _ } => []
+  })
+  let undeclared_reasons = flat_map(witnesses, w =>
+    if host_capability_label_is_declared(label: host_capability_witness_label(w: w)) {
+      []
+    } else {
+      [join(["'", host_capability_witness_label(w: w), "' is not a declared capability row"], "")]
+    })
+  let reasons = append(unreadable_reasons, items: undeclared_reasons)
+  if length(reasons) > 0 {
+    RegistrationLabelsRefused {
+      host: host,
+      cause: join(["refusing to render LABELS_JSON rather than revoke or fabricate a capability: ", join(reasons, "; ")], "") as NonEmptyStr,
+    }
+  } else {
+    match runner_evidence_gated_registration_labels(host: host, receipt: receipt) {
+      RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsRefused { host: h, cause: c }
+      RegistrationLabelsResolved { labels: ls } => {
+        let restated = map(filter(witnesses, w => host_capability_witness_held(w: w)), w => host_capability_witness_label(w: w))
+        RegistrationLabelsResolved {
+          labels: runner_label_set_union(a: runner_label_set_union(a: ls, b: own), b: restated),
+        }
+      }
+    }
+  }
+}
+
+// THE GPU CONVERGE'S SET: its own label, plus whatever its caller OBSERVED. No capability is named here —
+// not the browser one, and not any future one. That is the test of whether the generalization is real: this
+// function would have to change under the design review 86550 rejected, and it cannot change under adding
+// the fourth capability.
+fn runner_gpu_docker_ready_registration_labels(host: HostIdentity, witnesses: List<HostCapabilityWitness>, receipt: RunnerUserSessionReceiptInput) -> RunnerRegistrationLabelsResolution {
+  runner_capability_registration_labels(host: host, own: [gunbc_gpu_docker_label], witnesses: witnesses, receipt: receipt)
+}

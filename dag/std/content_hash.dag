@@ -2,7 +2,7 @@ module std.content_hash
 import std.optional { Absent, Present }
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
-import std.algebra { collection_concat_shape, collection_join_shape }
+import std.algebra { Ordering, TotalOrder, collection_concat_shape, collection_join_shape, string_compare_canonical }
 import std.host_text { chars }
 
 // CRYPTOGRAPHIC CARRIER WALL (reviews 45441/45460/45496; same law as extdeps.git.object_store
@@ -35,6 +35,16 @@ type Sha256DigestHex = String where lower_hex_64
 type Sha1DigestHex = String where lower_hex_40
 type Sha512DigestHex = String where lower_hex_128
 type Fnv1a64StructuralDigestHex = String where lower_hex_16
+
+fn fnv1a64_digest_hex_compare(a: Fnv1a64StructuralDigestHex, b: Fnv1a64StructuralDigestHex) -> Ordering {
+  string_compare_canonical(a: a, b: b)
+}
+
+// The canonical content order on Fnv1a64Structural.digest keys: the lower-hex text's String order, the order the host
+// sort_by applies to them (declared, as string_total_order is, because a refined key kind is its own K at list_sort_by_key).
+fn fnv1a64_digest_hex_total_order() -> TotalOrder<Fnv1a64StructuralDigestHex> {
+  TotalOrder { compare: fnv1a64_digest_hex_compare }
+}
 
 type Fnv1a64Structural {
   digest: Fnv1a64StructuralDigestHex
@@ -120,6 +130,21 @@ fn sha256_hex_digest(hex: String) -> Sha256Digest? {
   } else {
     none
   }
+}
+
+// THE ONE DECLARED HOME OF sha256_hex_of_text (NAMESPACE-XL; root-coordinator decision, sleek-owl-397). Its meaning
+// is three steps, in order: ENCODE the text as UTF-8 (std.bytes utf8_encode_bytes -- not Latin-1, not UTF-16, not the
+// Unicode scalars of std.host_text chars), DIGEST those octets with SHA-256 (FIPS 180-4; the substrate's own fold is
+// extdeps.crypto.sha2 sha256_hex), RENDER the 32-octet digest as 64 lowercase hex digits (the sha256_hex_digest wall
+// above admits it). The body cannot compose those pieces: extdeps.crypto.sha2 imports this module, so composing it here
+// is a cycle, and this module has no digest-of-octets piece of its own. So it is a host seam: a self-call body bound
+// by THIS declaration's identity (std.primitive_projection primitive_sha256_hex_of_text, HostRealizedSeam), realized by
+// the interpreter's RustCrypto arm (gunbc.host_crypto_digest_seed_growth). The pure fold stays its differential oracle
+// through the known answers they share (test.claim.sha256_host_known_answer_witness). There is no Rust bridge row, so
+// emitted code refuses (the unrealized-seam panic), never recurses. The std.primitives sha256_hex_of_text_contract row
+// that admitted the bare name with no import is retired; a caller reaches this by `import std.content_hash`.
+fn sha256_hex_of_text(text: String) -> String {
+  sha256_hex_of_text(text: text)
 }
 
 fn sha1_hex_digest(hex: String) -> Sha1Digest? {

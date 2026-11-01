@@ -53,6 +53,7 @@ type NotDerivedSite
   | ConstructFieldsUnbound
   | ConstructFormalsAuthored
   | ConstructTypeAbsent
+  | FunctionValueSignatureUndetermined
 
 // Why GroundingNotDerived exists: before this arm, a node no derivation rule covered was routed
 // through solve_constraints with the singleton candidate set [root], and the resulting grounding

@@ -25,7 +25,7 @@ module gunbc.durable_exclusive_hold_file_store
 import std.types { NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { retires_dissolution }
+import std.dissolution { unbound_dissolution }
 import std.durable_compare_and_set {
   CasExpectation, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasStoreFailure, CasSlotObservationRefused,
@@ -43,6 +43,9 @@ import std.durable_exclusive_hold {
   HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseAssessment, DurableHoldReleaseRefusal,
   durable_hold_acquire_assess, durable_hold_release_assess,
   DurableHoldHolderReport, DurableHoldRecoveryRefusal, DurableHoldRecoveryAssessment, HoldRecoveryEligible, HoldRecoveryRefused,
+  DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
+  HoldRecoveryNothingHeld, HoldRecoveryHolderLive, HoldRecoveryHolderUnobservable,
+  HoldRecoverySlotUndecodable, HoldRecoveryObservationUnavailable,
   durable_hold_recovery_assess,
   DurableHoldNonHolderRelease, DurableHoldNonHolderReleaseRefusal, DurableHoldNonHolderReleaseBasis,
   NonHolderReleaseEligible, NonHolderReleaseRefused, durable_hold_nonholder_release_assess, DurableHoldRef,
@@ -556,9 +559,66 @@ fn file_hold_recovery_assess_retained(
 fn file_hold_recovery_assess(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef) -> FileHoldRecoveryAssessment
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recover_dead_holder"),
   ]
 {
   file_hold_recovery_assess_retained(root: root, slot_key: slot_key, report: report, released_by: released_by, retention: KeepAllGenerations)
+}
+
+// THE ONE DEAD-HOLDER RECOVERY, written once for every root. A consumer that found its slot
+// occupied owes three things and no more: observe WHO holds it, prove THAT holder dead, and take
+// the slot with a release naming who did the proving. Only the first differs between roots -- a
+// managed host unit names a systemd unit, the fleet printer controller names an authorization plus
+// a process -- so it arrives as a function and the other two steps stay HERE, where the report
+// mint, the eligibility check and the CAS commit each already have their own admission. This is
+// the arm the two earlier consumers each hand-carried and a third root skipped: a root that never
+// admitted the recovery ends in a slot nothing can release.
+//
+// Refusing typed is the point. A holder observed LIVE is refused as live and an unobservable one as
+// unobservable, because the thing that makes recovery sound -- a death someone actually saw -- is
+// exactly what neither of those two arms has. A caller cannot pass a dead-looking verdict in as
+// data: report lives in std.durable_exclusive_hold's closed set, and DurableHoldHolderReport has
+// no declaration outside the mint.
+// Each arm says why the slot is STILL held, in one of the store's own words, so a consumer maps its
+// typed refusal without re-telling the story: a live holder means wait, an unobservable one means go
+// look, a lost commit means the slot moved under us and a retry must re-observe from scratch.
+type FileHoldDeadHolderRecovery
+  = FileHoldDeadHolderRecovered { dead_holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
+  | FileHoldDeadHolderHolderLive { holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
+  | FileHoldDeadHolderHolderUnobservable { holder: DurableHoldOwnerRef, cause: NonEmptyStr }
+  | FileHoldDeadHolderNotEligible { refusal: DurableHoldRecoveryRefusal }
+  | FileHoldDeadHolderReleaseLost
+  | FileHoldDeadHolderReleaseStoreUnavailable { cause: NonEmptyStr }
+  | FileHoldDeadHolderReleaseKeyNotAddressable
+
+fn file_hold_recover_dead_holder(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  holder: DurableHoldOwnerRef,
+  generation: CasGeneration,
+  released_by: DurableHoldReleaseRef,
+  live_owner: fn(DurableHoldOwnerRef) -> DurableHoldHolderLiveness,
+) -> FileHoldDeadHolderRecovery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
+    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_enter"),
+  ]
+{
+  match live_owner(holder) {
+    HolderObservedDead { evidence: e } =>
+      match file_hold_recovery_assess(root: root, slot_key: slot_key, report: DurableHoldHolderReport { holder: holder, generation: generation, liveness: HolderObservedDead { evidence: e } }, released_by: released_by) {
+        FileHoldRecoveryPlanned { plan: p, dead_holder: d, evidence: ev } =>
+          match file_hold_release_commit(plan: p) {
+            FileHoldReleased { slot_key: _, generation: _ } => FileHoldDeadHolderRecovered { dead_holder: d, evidence: ev }
+            FileHoldReleaseLost { slot_key: _ } => FileHoldDeadHolderReleaseLost
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: c } => FileHoldDeadHolderReleaseStoreUnavailable { cause: c }
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => FileHoldDeadHolderReleaseKeyNotAddressable
+          }
+        FileHoldRecoveryNotEligible { slot_key: _, refusal: r } => FileHoldDeadHolderNotEligible { refusal: r }
+      }
+    HolderObservedLive { evidence: e } => FileHoldDeadHolderHolderLive { holder: holder, evidence: e }
+    HolderLivenessUnobservable { cause: c } => FileHoldDeadHolderHolderUnobservable { holder: holder, cause: c }
+  }
 }
 
 fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, report: DurableHoldHolderReport, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldWindowedRecoveryAssessment
@@ -602,8 +662,12 @@ fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, 
 // The evidence is a verdict about the world that only the observing consumer can take, so this mint
 // admits its callers by name, as recovery's does: a caller free to hand it an authored
 // SectionObservedComplete would be the forged-release path the plan's sole_constructor exists to close.
-// Keep-all only: no windowed consumer exists, and the consumer this is for is a lease whose generations
-// are its audit trail.
+// THE ROSTER IS FROZEN (ruling stern-ram-763, 2026-10-25): it landed with gunb-ai/gunbc#15061 although
+// the operator rejected caller rosters as architecture, and it is not deleted, because the function is
+// generic in Observation and its caller chooses that type, so no seal on any one consumer's observation
+// replaces it. No member is added. The class, its trigger and this roster's place on the
+// allowlist-cleanup list are gunbc.recurring_failure_mode
+// a_generic_release_assess_accepts_evidence_its_caller_authored. Keep-all only: no windowed consumer exists.
 // A FILE HOLD'S IDENTITY IS ITS STORE AND ITS SLOT, joined the way this store joins them on disk. The key
 // is slot-addressable only without a "/" (gunbc.durable_cas_file_store cas_key_is_slot_addressable), so
 // the join splits uniquely at its last separator and two distinct (root, key) pairs never mint one ref.
@@ -627,6 +691,7 @@ fn file_hold_nonholder_release_assess<Observation>(
 ) -> FileHoldNonHolderReleaseAssessment<Observation>
   admit_callers: [
     decl_ref(module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", decl_name: "nr_assess_at"),
+    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_nonholder_assess"),
   ]
 {
   match durable_hold_nonholder_release_assess(hold: file_hold_ref(root: root, slot_key: slot_key), observed: observe_file_hold(root: root, key: slot_key), request: request) {
@@ -648,15 +713,16 @@ fn file_hold_nonholder_release_assess<Observation>(
 }
 
 // THE NON-HOLDER RELEASE'S PRODUCTION CONSUMER IS A DECLARED FRONTIER (DESIGN 3c), folded by
-// gunbc.census_closure_frontier. gunbc.deploy_transition clears its transition lease on exactly the
-// two bases modeled here, over a hand-rolled exclusive create whose outcome type is LeaseCreateOutcome.
-// The trigger is that type RETIRING: it exists today, so the trigger is verifiable now, and it cannot
-// survive the lease moving onto this hold library, so the census reports this row fired-but-present
-// the moment the migration lands and the row must be deleted with it.
+// gunbc.census_closure_frontier. The consumer this row first named -- gunbc.deploy_transition's transition
+// lease, triggered by its exclusive-create outcome type LeaseCreateOutcome retiring -- did not materialize:
+// the lease moved onto this hold library for acquire and the holder's release, LeaseCreateOutcome is
+// deleted, and the lease refuses a non-holder release instead of consuming this one (ruling stern-ram-763,
+// 2026-10-25). So the row is re-pointed at the CAPABILITY whose absence keeps every consumer out, and it is
+// unbound because that capability has no declaration yet to name.
 data durable_hold_nonholder_release_consumer_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_nonholder_release_assess"),
-    reason: "file_hold_nonholder_release_assess (and std.durable_exclusive_hold durable_hold_nonholder_release_assess beneath it) is consumed in its introducing change only by test.claim.durable_exclusive_hold_nonholder_release_witness and test.claim.durable_exclusive_hold_nonholder_release_wet_witness. Named production consumer: gunbc.deploy_transition's transition lease, whose ClearedByEvidence becomes ReleasedOnEvidence and whose ClearedByAbandonment becomes ReleasedByOperator when acquire_transition_lease moves off its exclusive-create lock onto this hold library (the change after gunb-ai/gunbc#15061). That change also types the lease's Observation (today ResidueEvidence.observed_head is a caller-supplied String) and adds itself to this function's admit_callers.",
-    dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.deploy_transition", decl_name: "LeaseCreateOutcome")),
+    reason: "file_hold_nonholder_release_assess (and std.durable_exclusive_hold durable_hold_nonholder_release_assess beneath it) is consumed only by test.claim.durable_exclusive_hold_nonholder_release_witness and test.claim.durable_exclusive_hold_nonholder_release_wet_witness. It is generic in Observation and the caller chooses that type, so a production consumer is admissible only once an authored observation cannot reach it; until then its roster is frozen and gunbc.deploy_transition's transition lease, the consumer it was written for, refuses a non-holder release (gunbc.recurring_failure_mode a_generic_release_assess_accepts_evidence_its_caller_authored).",
+    dissolution: unbound_dissolution(description: "module-private functions, or a non-holder release assess that accepts only a sole_constructor observation minted by the real observation, so a caller-authored Observation cannot reach file_hold_nonholder_release_assess; then the transition lease consumes it and this row is deleted" as NonEmptyStr),
   ),
 ]

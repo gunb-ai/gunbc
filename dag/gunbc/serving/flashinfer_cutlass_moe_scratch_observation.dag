@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size, BasisPoint, basis_point, TokenCount, token_count }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
-import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.types { GpuDeviceCatalogRow }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog }
 
 data flashinfer_moe_scratch_read_obligation: NonEmptyStr = "Re-read the pinned vLLM launch log for Flash-Next NVFP4 on RTX PRO 6000 at TP2+EP: FlashInfer CUTLASS MoE scratch GiB at max_num_batched_tokens 32768 versus the profiled budget at gpu_memory_utilization 0.85, and the 8192 value that started. Until a P3 receipt fold derives those bytes from committed raw text, this row is an observation transcribed from that launch, not an upstream vLLM or FlashInfer law." as NonEmptyStr
@@ -18,7 +18,7 @@ type FlashInferCutlassMoeScratchObservation {
   gpu_memory_utilization: BasisPoint
   tensor_parallel: Nat
   expert_parallel: Bool
-  accelerator: GpuModelCatalogRow
+  accelerator: GpuDeviceCatalogRow
   scratch: ByteSize
   started_at_tokens: TokenCount
   standing: CitedFigureStanding
@@ -29,7 +29,7 @@ fn flashinfer_cutlass_moe_scratch_observation(
   gpu_memory_utilization: BasisPoint,
   tensor_parallel: Nat,
   expert_parallel: Bool,
-  accelerator: GpuModelCatalogRow,
+  accelerator: GpuDeviceCatalogRow,
   scratch: ByteSize,
   started_at_tokens: TokenCount,
   standing: CitedFigureStanding,

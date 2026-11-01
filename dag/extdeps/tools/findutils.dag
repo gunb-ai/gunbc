@@ -133,6 +133,14 @@ fn find_children_named_command(root: String, name_glob: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-maxdepth", "1", "-name", name_glob, "-printf", "%f\\n"])
 }
 
+// THE ENTRY AT ONE EXACT PATH, FOUND BELOW A ROOT THAT EXISTS, printed when present and nothing when absent
+// (-path is a whole-path match; -maxdepth bounds the walk). A missing ENTRY exits 0 with empty stdout; only a
+// walk that could not complete (unreadable directory, bad root) exits nonzero. That split is the point: it
+// lets a caller tell "not there" from "could not look" by exit status, without reading any tool's stderr.
+fn find_entry_at_path_command(root: String, path: String, max_depth: Int) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-maxdepth", to_string(max_depth), "-path", path, "-print"])
+}
+
 // ENTRIES UNDER ROOTS THAT ARE NOT TRUSTED AS A ROOT-OWNED LOCUS: not owned by `owner`, writable by
 // group or other (-perm /022: any of the two bits), or a symbolic link (find(1) TESTS; -P, the default,
 // does not follow a starting point, so a symlinked root is seen as a link). `top_only` adds
@@ -309,6 +317,25 @@ fn find_subtree_walk_words(target: String, pruned: List<String>, depth: Nat) -> 
   concat(
     concat([target, "-maxdepth", to_string(depth)], find_subtree_prune_words(target: target, pruned: pruned)),
     ["-not", "-type", "l"],
+  )
+}
+
+// THE PROOF THAT A GRANT REACHED EVERYTHING: the walk FAILS if any entry it reaches is not group-writable or not in
+// `group`, naming the first such entry on stderr -- which is where a failed exec step's detail is read. The decision
+// is find's own exit status (`-exec false {} +` makes "found one" non-zero), so no output is parsed to decide it,
+// and a walk that cannot run (a missing target, an unreadable directory) is non-zero too. A full mode listing
+// folded afterwards would say the same thing at the cost of one receipt line per entry, which on a checkout of
+// thousands of files is the whole cost of the check.
+fn find_subtree_ungranted_entry_refusal_command(target: String, pruned: List<String>, group: String, depth: Nat) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(
+      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      concat(
+        ["(", "-not", "-perm", "-g+w", "-o", "-not", "-group", group, ")", "-fprint", "/dev/stderr"],
+        find_subtree_exec_action(words: ["false"]),
+      ),
+    ),
   )
 }
 

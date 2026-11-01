@@ -537,7 +537,7 @@ pub enum TransportKind {
     RestTransport,
     ShellTransport,
     FileTransport,
-    LocalTransport,
+    UndeclaredTransport,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -588,6 +588,11 @@ pub enum CompilerDiagnostic {
     },
     UnresolvedType {
         name: String,
+        span: Rc<SourceSpan>,
+    },
+    TypeRefMeasureBindingDisagreement {
+        name: String,
+        production_route: String,
         span: Rc<SourceSpan>,
     },
     UnitVariantPhantomIdentityEvidenceUnavailable {
@@ -782,6 +787,10 @@ pub enum CompilerDiagnostic {
         reason: String,
         span: Rc<SourceSpan>,
     },
+    DeclaredTypeInhabitanceUnmodeled {
+        position: String,
+        span: Rc<SourceSpan>,
+    },
     UnlistedImportUse {
         name: String,
         span: Rc<SourceSpan>,
@@ -925,6 +934,11 @@ pub enum CompilerDiagnostic {
         missing_realization_fact: String,
         span: Rc<SourceSpan>,
     },
+    CastRealizationRefused {
+        target: String,
+        missing_realization_fact: String,
+        span: Rc<SourceSpan>,
+    },
     TypeNameCarriesNoRecordConstructor {
         type_name: String,
         declared_variants: Rc<Vec<String>>,
@@ -1026,6 +1040,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ImportCollidesWithKernelName { span: s, .. } => s.clone(),
         CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeRefMeasureBindingDisagreement { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { span: s, .. } => {
             s.clone()
         }
@@ -1066,6 +1081,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeNotInhabited { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { span: s, .. } => s.clone(),
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { span: s, .. } => s.clone(),
@@ -1099,6 +1115,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
         CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
+        CompilerDiagnostic::CastRealizationRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { span: s, .. } => s.clone(),
     }
 }
@@ -1111,6 +1128,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') collides with the kernel name whose mint is the declaration in '".to_string()), k.clone()), "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.".to_string()),
     CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "') cannot be judged against the kernel mint: ".to_string()), (c.clone()).to_string()), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::TypeRefMeasureBindingDisagreement { name: n, production_route: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type reference '".to_string(), n.clone()), "' resolves in production through ".to_string()), r.clone()), ", but the N1a measure's binding authority finds no binding for it here: its qualifier is neither an ancestor of this module nor a module this module imports. The two routes disagree; the measure refuses rather than reading a production binding as unresolved.".to_string()),
     CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name: n, .. } => v1_rt::concat(v1_rt::concat("unit-variant marker identity evidence unavailable for '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
@@ -1149,6 +1167,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position: pos, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("declared-type inhabitance is undecidable at the ".to_string(), pos.clone()), " (".to_string()), r.clone()), "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction".to_string()),
+    CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position: pos, .. } => v1_rt::concat(v1_rt::concat("declared-type inhabitance is UNMODELED at the ".to_string(), pos.clone()), ": no arm of the relation judges this pair yet. This is not an undecidable fact but a gap in the relation's wiring, counted here instead of read as acceptance until the class is dispositioned and the terminal arm refuses".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no provider is present for '".to_string(), n.clone()), "', referenced by module '".to_string()), rm.clone()), "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply".to_string()),
     CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name: n, referencing_module: rm, provider_module: p, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the provider of '".to_string(), n.clone()), "' is present but its export could not be established: module '".to_string()), rm.clone()), "' references the name, the registry maps it to '".to_string()), p.clone()), "', and that module's transitive export surface does not establish it. The remedy is NOT an import -- the provider is already in the closure -- it is that the emitter cannot prove an export the provider may well hold".to_string()),
@@ -1177,6 +1196,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
     CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
     CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
+    CompilerDiagnostic::CastRealizationRefused { target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("cast cannot be emitted for target '".to_string(), tgt.clone()), "' -- ".to_string()), missing.clone()),
     CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { type_name: t, declared_variants: vs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("record literal names '".to_string(), t.clone()), "' which declares no record constructor: '".to_string()), t.clone()), "' is a union with variants [".to_string()), vs.clone().join(&", ".to_string())), "]; construct one of its variants instead (DESIGN §4b: a value inhabits its declared type)".to_string()),
 }
 }
@@ -1241,6 +1261,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::UnresolvedType { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TypeRefMeasureBindingDisagreement { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1405,6 +1429,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
+    CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
     CompilerDiagnostic::UnlistedImportUse { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityNonError,
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
@@ -1517,6 +1545,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
+    CompilerDiagnostic::CastRealizationRefused { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
     CompilerDiagnostic::TypeNameCarriesNoRecordConstructor { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
@@ -1525,7 +1557,7 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
 }
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    match diagnostic_disposition(d.clone()).severity.clone() {
+    match diagnostic_disposition(d).severity.clone() {
         DiagnosticSeverity::SeverityError => true,
         DiagnosticSeverity::SeverityNonError => false,
     }
@@ -1541,7 +1573,7 @@ pub fn where_refinement_deferral_reason_scaffold_note() -> Rc<DissolutionConditi
 }
 
 pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    match (*diagnostic_disposition(d.clone()).gate.clone()).clone() {
+    match (*diagnostic_disposition(d).gate.clone()).clone() {
         DiagnosticGateDisposition::GateBlocking => true,
         DiagnosticGateDisposition::GateAdvisoryTypecheck => false,
         DiagnosticGateDisposition::GateRenderedUncounted { reason: _, .. } => false,
@@ -1549,7 +1581,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 }
 
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    match (*diagnostic_disposition(d.clone()).gate.clone()).clone() {
+    match (*diagnostic_disposition(d).gate.clone()).clone() {
         DiagnosticGateDisposition::GateBlocking => false,
         DiagnosticGateDisposition::GateAdvisoryTypecheck => true,
         DiagnosticGateDisposition::GateRenderedUncounted { reason: _, .. } => false,
@@ -1692,7 +1724,7 @@ pub fn make_named_expr_node(
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), name_span.clone()),
+        ident_span: default_ident_span(name.clone(), name_span),
         children: children.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1720,8 +1752,8 @@ pub fn make_pattern_binder_declaration_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     make_named_expr_node(
-        occurrence_identity.clone(),
-        name.clone(),
+        occurrence_identity,
+        name,
         Rc::new(ExprData::NoExprData),
         Rc::new(vec![]),
         std::option::Option::None,
@@ -1784,7 +1816,7 @@ pub fn make_arg_node(
             occurrence_identity: occurrence_identity.clone(),
             name: arg_name.clone(),
             span: span.clone(),
-            ident_span: default_ident_span(arg_name.clone(), name_span.clone()),
+            ident_span: default_ident_span(arg_name.clone(), name_span),
             children: Rc::new(vec![value.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -1857,7 +1889,7 @@ pub fn make_resource_use_node(
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), name_span.clone()),
+        ident_span: default_ident_span(name.clone(), name_span),
         children: Rc::new(vec![resource.clone()]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1883,7 +1915,7 @@ pub fn resource_use_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), n.clone())
+    authored_name_at(source_indices, n)
 }
 
 pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
@@ -1909,7 +1941,7 @@ pub fn make_field_init_node(
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), name_span.clone()),
+        ident_span: default_ident_span(name.clone(), name_span),
         children: Rc::new(vec![value.clone()]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1942,7 +1974,7 @@ pub fn make_field_binding_node(
         occurrence_identity: occurrence_identity.clone(),
         name: field_name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(field_name.clone(), name_span.clone()),
+        ident_span: default_ident_span(field_name.clone(), name_span),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1968,7 +2000,7 @@ pub fn field_binding_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), n.clone())
+    authored_name_at(source_indices, n)
 }
 
 pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
@@ -2061,7 +2093,7 @@ pub fn make_param_node(
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
-            ident_span: default_ident_span(name.clone(), name_span.clone()),
+            ident_span: default_ident_span(name.clone(), name_span),
             children: children.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -2102,7 +2134,7 @@ pub fn make_resolved_param_node(
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
-            ident_span: default_ident_span(name.clone(), name_span.clone()),
+            ident_span: default_ident_span(name.clone(), name_span),
             children: children.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -2131,14 +2163,14 @@ pub fn param_node_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), n.clone())
+    authored_name_at(source_indices, n)
 }
 
 pub fn generic_param_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), n.clone())
+    authored_name_at(source_indices, n)
 }
 
 pub fn authored_name_at(
@@ -2255,7 +2287,7 @@ pub fn make_field_node(
             occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
-            ident_span: default_ident_span(name.clone(), name_span.clone()),
+            ident_span: default_ident_span(name.clone(), name_span),
             children: children.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -2282,7 +2314,7 @@ pub fn field_node_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), n.clone())
+    authored_name_at(source_indices, n)
 }
 
 pub fn field_node_type_expr(n: Rc<Node>) -> Rc<Node> {
@@ -2325,7 +2357,7 @@ pub fn field_node_from_key(
     match find_property(
         n.properties.clone(),
         field_from_key_property_name(),
-        source_indices.clone(),
+        source_indices,
     ) {
         Some(p) => expr_literal_string_optional(p.clone()),
         std::option::Option::None => std::option::Option::None,
@@ -2347,7 +2379,7 @@ pub fn make_variant_node(
         occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
-        ident_span: default_ident_span(name.clone(), name_span.clone()),
+        ident_span: default_ident_span(name.clone(), name_span),
         children: fields.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -2373,7 +2405,7 @@ pub fn variant_node_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), n.clone())
+    authored_name_at(source_indices, n)
 }
 
 pub fn variant_node_fields(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -2585,7 +2617,7 @@ pub fn arg_name_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
-        let name = authored_name_at(source_indices.clone(), n.clone());
+        let name = authored_name_at(source_indices, n);
         if (name.clone() == "".to_string()) {
             std::option::Option::None
         } else {
@@ -2637,7 +2669,7 @@ pub fn field_init_node_name_at(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), n.clone())
+    authored_name_at(source_indices, n)
 }
 
 pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
@@ -2767,7 +2799,7 @@ pub fn fn_admit_callers(
     {
         Some(p) => Some(admit_callers_entries_from_list(
             field_init_node_value(p.clone()).children.clone(),
-            source_indices.clone(),
+            source_indices,
         )),
         std::option::Option::None => std::option::Option::None,
     }
@@ -2818,11 +2850,11 @@ pub fn admit_callers_entry_coords(
 }
 
 pub fn if_condition(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "if condition".to_string())
+    expr_child_at(texpr, 0, "if condition".to_string())
 }
 
 pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "if then-branch".to_string())
+    expr_child_at(texpr, 1, "if then-branch".to_string())
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
@@ -2830,7 +2862,7 @@ pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "match scrutinee".to_string())
+    expr_child_at(texpr, 0, "match scrutinee".to_string())
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -2838,33 +2870,33 @@ pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "binop left".to_string())
+    expr_child_at(texpr, 0, "binop left".to_string())
 }
 
 pub fn binop_right(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "binop right".to_string())
+    expr_child_at(texpr, 1, "binop right".to_string())
 }
 
 pub fn unaryop_operand(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "unaryop operand".to_string())
+    expr_child_at(texpr, 0, "unaryop operand".to_string())
 }
 
 pub fn expr_var_name_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), texpr.clone())
+    authored_name_at(source_indices, texpr)
 }
 
 pub fn field_access_base(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "field access base".to_string())
+    expr_child_at(texpr, 0, "field access base".to_string())
 }
 
 pub fn field_access_field_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), texpr.clone())
+    authored_name_at(source_indices, texpr)
 }
 
 pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
@@ -2916,7 +2948,7 @@ pub fn expr_call_func_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), texpr.clone())
+    authored_name_at(source_indices, texpr)
 }
 
 pub fn expr_call_descent_evidence(texpr: Rc<Node>) -> Option<Rc<Vec<Rc<SubValueRelation>>>> {
@@ -2930,7 +2962,7 @@ pub fn expr_call_descent_evidence(texpr: Rc<Node>) -> Option<Rc<Vec<Rc<SubValueR
 }
 
 pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "method receiver".to_string())
+    expr_child_at(texpr, 0, "method receiver".to_string())
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -2941,7 +2973,7 @@ pub fn expr_method_name_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), texpr.clone())
+    authored_name_at(source_indices, texpr)
 }
 
 pub fn expr_method_call_semantics(texpr: Rc<Node>) -> Option<Rc<MethodSemantics>> {
@@ -2955,7 +2987,7 @@ pub fn expr_method_call_semantics(texpr: Rc<Node>) -> Option<Rc<MethodSemantics>
 }
 
 pub fn lambda_body(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "lambda body".to_string())
+    expr_child_at(texpr, 0, "lambda body".to_string())
 }
 
 pub fn lambda_param_names_at(
@@ -2975,7 +3007,7 @@ pub fn lambda_param_names_at(
 }
 
 pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "let value".to_string())
+    expr_child_at(texpr, 0, "let value".to_string())
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
@@ -2986,54 +3018,54 @@ pub fn let_binding_name_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), texpr.clone())
+    authored_name_at(source_indices, texpr)
 }
 
 pub fn cast_expr(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "cast expr".to_string())
+    expr_child_at(texpr, 0, "cast expr".to_string())
 }
 
 pub fn cast_target(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "cast target".to_string())
+    expr_child_at(texpr, 1, "cast target".to_string())
 }
 
 pub fn foreach_collection(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "foreach collection".to_string())
+    expr_child_at(texpr, 0, "foreach collection".to_string())
 }
 
 pub fn foreach_body(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "foreach body".to_string())
+    expr_child_at(texpr, 1, "foreach body".to_string())
 }
 
 pub fn foreach_variable_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    authored_name_at(source_indices.clone(), texpr.clone())
+    authored_name_at(source_indices, texpr)
 }
 
 pub fn index_base(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "index base".to_string())
+    expr_child_at(texpr, 0, "index base".to_string())
 }
 
 pub fn index_expr(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "index expression".to_string())
+    expr_child_at(texpr, 1, "index expression".to_string())
 }
 
 pub fn slice_base(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "slice base".to_string())
+    expr_child_at(texpr, 0, "slice base".to_string())
 }
 
 pub fn slice_start(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1, "slice start".to_string())
+    expr_child_at(texpr, 1, "slice start".to_string())
 }
 
 pub fn slice_end(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 2, "slice end".to_string())
+    expr_child_at(texpr, 2, "slice end".to_string())
 }
 
 pub fn return_value(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0, "return value".to_string())
+    expr_child_at(texpr, 0, "return value".to_string())
 }
 
 pub fn block_stmts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -3045,7 +3077,7 @@ pub fn record_lit_type_name_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
-        let name = authored_name_at(source_indices.clone(), texpr.clone());
+        let name = authored_name_at(source_indices, texpr);
         if (name.clone() == "".to_string()) {
             std::option::Option::None
         } else {
@@ -3222,16 +3254,16 @@ pub fn make_transport_node(
     })
 }
 
-pub fn local_transport_node(
+pub fn undeclared_transport_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     make_transport_node(
-        occurrence_identity.clone(),
+        occurrence_identity,
         Rc::new(vec![]),
         Rc::new(vec![]),
         std::option::Option::None,
-        span.clone(),
+        span,
     )
 }
 
@@ -3252,7 +3284,7 @@ pub fn rest_transport_node(
         let url_field = make_field_init_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             transport_url_key(),
-            base_url.clone(),
+            base_url,
             zero_span.clone(),
             zero_span.clone(),
         );
@@ -3329,11 +3361,11 @@ pub fn rest_transport_node(
             headers.clone(),
         );
         make_transport_node(
-            occurrence_identity.clone(),
-            props.clone(),
+            occurrence_identity,
+            props,
             Rc::new(vec![]),
             std::option::Option::None,
-            span.clone(),
+            span,
         )
     }
 }
@@ -3419,7 +3451,7 @@ pub fn file_transport_node(
         let path_field = make_field_init_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             transport_path_key(),
-            base_path.clone(),
+            base_path,
             no_span(),
             no_span(),
         );
@@ -3437,11 +3469,11 @@ pub fn file_transport_node(
             std::option::Option::None => Rc::new(vec![path_field.clone()]),
         };
         make_transport_node(
-            occurrence_identity.clone(),
-            props.clone(),
+            occurrence_identity,
+            props,
             Rc::new(vec![]),
             std::option::Option::None,
-            span.clone(),
+            span,
         )
     }
 }
@@ -3477,7 +3509,7 @@ pub fn find_property_string(
     prop_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match find_property(props.clone(), prop_name.clone(), source_indices.clone()) {
+    match find_property(props, prop_name, source_indices) {
         Some(n) => expr_literal_string_optional(n.clone()),
         std::option::Option::None => std::option::Option::None,
     }
@@ -3527,31 +3559,33 @@ pub fn expr_literal_symbol_optional(expr: Rc<Node>) -> Option<String> {
 }
 
 pub fn expr_is_any_literal(mut __tco_loop_expr: Rc<Node>) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut expr = __tco_loop_expr;
-        match (*expr.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
-                LiteralValue::LitNull => {
-                    break false;
-                }
-                _ => {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut expr = __tco_loop_expr;
+            match (*expr.expr_data.clone()).clone() {
+                ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+                    LiteralValue::LitNull => {
+                        break false;
+                    }
+                    _ => {
+                        break true;
+                    }
+                },
+                ExprData::ExprElaboratedLiteral { .. } => {
                     break true;
                 }
-            },
-            ExprData::ExprElaboratedLiteral { .. } => {
-                break true;
-            }
-            ExprData::ExprUnaryOp {
-                op: UnaryOpKind::Neg,
-                ..
-            } => {
-                let __tco_0 = unaryop_operand(expr);
-                __tco_loop_expr = __tco_0;
-                continue;
-            }
-            _ => {
-                break false;
+                ExprData::ExprUnaryOp {
+                    op: UnaryOpKind::Neg,
+                    ..
+                } => {
+                    let __tco_0 = unaryop_operand(expr);
+                    __tco_loop_expr = __tco_0;
+                    continue;
+                }
+                _ => {
+                    break false;
+                }
             }
         }
     }
@@ -3569,7 +3603,7 @@ pub fn record_lit_named_field_value_optional(
     field: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    match record_lit_expr_optional(record_expr.clone()) {
+    match record_lit_expr_optional(record_expr) {
         Some(record) => match Rc::new({
             let mut __result = Vec::new();
             for fi in record.children.clone().iter().cloned() {
@@ -3593,29 +3627,21 @@ pub fn transport_base_path(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    find_property(
-        t.properties.clone(),
-        transport_path_key(),
-        source_indices.clone(),
-    )
+    find_property(t.properties.clone(), transport_path_key(), source_indices)
 }
 
 pub fn transport_verb(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    find_property(
-        t.properties.clone(),
-        transport_verb_key(),
-        source_indices.clone(),
-    )
+    find_property(t.properties.clone(), transport_verb_key(), source_indices)
 }
 
 pub fn is_rest_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (transport_base_url(t.clone(), source_indices.clone()) != std::option::Option::None)
+    (transport_base_url(t, source_indices) != std::option::Option::None)
 }
 
 pub fn is_shell_transport(t: Rc<Node>) -> bool {
@@ -3626,7 +3652,7 @@ pub fn is_file_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (transport_base_path(t.clone(), source_indices.clone()) != std::option::Option::None)
+    (transport_base_path(t, source_indices) != std::option::Option::None)
 }
 
 pub fn is_bare_transport(t: Rc<Node>) -> bool {
@@ -3648,7 +3674,7 @@ pub fn classify_transport(
                 Some(TransportKind::FileTransport)
             } else {
                 if is_bare_transport(t.clone()) {
-                    Some(TransportKind::LocalTransport)
+                    Some(TransportKind::UndeclaredTransport)
                 } else {
                     std::option::Option::None
                 }
@@ -3657,12 +3683,12 @@ pub fn classify_transport(
     }
 }
 
-pub fn is_local_transport(
+pub fn is_undeclared_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match classify_transport(t.clone(), source_indices.clone()) {
-        Some(TransportKind::LocalTransport) => true,
+    match classify_transport(t, source_indices) {
+        Some(TransportKind::UndeclaredTransport) => true,
         _ => false,
     }
 }
@@ -3672,7 +3698,7 @@ pub fn field_init_operation_modifier(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<OperationModifier> {
     {
-        let fi_name = field_init_node_name_at(field_init.clone(), source_indices.clone());
+        let fi_name = field_init_node_name_at(field_init, source_indices);
         if (fi_name.clone() == "idempotent".to_string()) {
             Some(OperationModifier::Idempotent)
         } else {
@@ -3701,11 +3727,7 @@ pub fn transport_base_url(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    find_property(
-        t.properties.clone(),
-        transport_url_key(),
-        source_indices.clone(),
-    )
+    find_property(t.properties.clone(), transport_url_key(), source_indices)
 }
 
 pub fn transport_auth_token(
@@ -3715,7 +3737,7 @@ pub fn transport_auth_token(
     find_property(
         t.properties.clone(),
         transport_auth_token_key(),
-        source_indices.clone(),
+        source_indices,
     )
 }
 
@@ -3726,7 +3748,7 @@ pub fn transport_auth_header_name(
     find_property_string(
         t.properties.clone(),
         transport_auth_header_key(),
-        source_indices.clone(),
+        source_indices,
     )
 }
 
@@ -3737,7 +3759,7 @@ pub fn transport_has_auth(
     match find_property(
         t.properties.clone(),
         transport_auth_token_key(),
-        source_indices.clone(),
+        source_indices,
     ) {
         Some(_) => true,
         std::option::Option::None => false,
@@ -3748,11 +3770,7 @@ pub fn transport_method(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    find_property(
-        t.properties.clone(),
-        transport_method_key(),
-        source_indices.clone(),
-    )
+    find_property(t.properties.clone(), transport_method_key(), source_indices)
 }
 
 pub fn transport_path_template(
@@ -3762,7 +3780,7 @@ pub fn transport_path_template(
     find_property(
         t.properties.clone(),
         transport_path_template_key(),
-        source_indices.clone(),
+        source_indices,
     )
 }
 
@@ -3770,33 +3788,21 @@ pub fn transport_query(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    find_property(
-        t.properties.clone(),
-        transport_query_key(),
-        source_indices.clone(),
-    )
+    find_property(t.properties.clone(), transport_query_key(), source_indices)
 }
 
 pub fn transport_request_body(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    find_property(
-        t.properties.clone(),
-        transport_body_key(),
-        source_indices.clone(),
-    )
+    find_property(t.properties.clone(), transport_body_key(), source_indices)
 }
 
 pub fn transport_stdin(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    find_property(
-        t.properties.clone(),
-        transport_stdin_key(),
-        source_indices.clone(),
-    )
+    find_property(t.properties.clone(), transport_stdin_key(), source_indices)
 }
 
 pub fn transport_response_format(
@@ -3806,7 +3812,7 @@ pub fn transport_response_format(
     find_property(
         t.properties.clone(),
         transport_response_format_key(),
-        source_indices.clone(),
+        source_indices,
     )
 }
 
@@ -3834,7 +3840,7 @@ pub fn transport_auth_basic(
     find_property(
         t.properties.clone(),
         transport_auth_basic_key(),
-        source_indices.clone(),
+        source_indices,
     )
 }
 
@@ -4271,7 +4277,7 @@ pub fn service_config_properties(
         let ep_prop = Rc::new(vec![make_field_init_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             service_config_field_property_name(ServiceConfigField::SvcEndpoint),
-            endpoint.clone(),
+            endpoint,
             zero_span.clone(),
             zero_span.clone(),
         )]);
@@ -4335,7 +4341,7 @@ pub fn service_config_endpoint(
     find_property(
         n.properties.clone(),
         "svc_endpoint".to_string(),
-        source_indices.clone(),
+        source_indices,
     )
 }
 
@@ -4343,11 +4349,7 @@ pub fn service_config_auth(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    find_property(
-        n.properties.clone(),
-        "svc_auth".to_string(),
-        source_indices.clone(),
-    )
+    find_property(n.properties.clone(), "svc_auth".to_string(), source_indices)
 }
 
 pub fn service_config_auth_input(
@@ -4357,7 +4359,7 @@ pub fn service_config_auth_input(
     find_property(
         n.properties.clone(),
         "svc_auth_input".to_string(),
-        source_indices.clone(),
+        source_indices,
     )
 }
 
@@ -4368,7 +4370,7 @@ pub fn service_config_auth_source(
     find_property(
         n.properties.clone(),
         "svc_auth_source".to_string(),
-        source_indices.clone(),
+        source_indices,
     )
 }
 
@@ -4538,7 +4540,7 @@ pub fn kernel_span(name: String) -> Rc<SourceSpan> {
 
 pub fn resolved_node_is_kernel_identity_for_name(node: Rc<Node>, name: String) -> bool {
     match node.ident_span.clone() {
-        Some(sp) => (sp.file.clone() == kernel_span(name.clone()).file.clone()),
+        Some(sp) => (sp.file.clone() == kernel_span(name).file.clone()),
         std::option::Option::None => false,
     }
 }
@@ -4774,14 +4776,14 @@ pub fn string_type() -> Rc<Node> {
     CACHED.with(|c: &Rc<Node>| c.clone())
 }
 
-pub fn hash_type() -> Rc<Node> {
+pub fn symbol_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: "Hash".to_string(),
-        span: kernel_span("Hash".to_string()),
-        ident_span: Some(kernel_span("Hash".to_string())),
+        name: "Symbol".to_string(),
+        span: kernel_span("Symbol".to_string()),
+        ident_span: Some(kernel_span("Symbol".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -5174,7 +5176,7 @@ pub fn render_span_location(
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    render_span_location_of(locate_span(span.clone(), source_indices.clone()))
+    render_span_location_of(locate_span(span, source_indices))
 }
 
 pub fn render_span_location_of(location: Rc<SpanLocation>) -> String {
@@ -5211,7 +5213,7 @@ pub fn located_span_of(
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<LocatedSpan>> {
-    match (*locate_span(span.clone(), source_indices.clone())).clone() {
+    match (*locate_span(span, source_indices)).clone() {
         SpanLocation::Located { at: at, .. } => Some(at.clone()),
         SpanLocation::Unlocated { cause: _, .. } => std::option::Option::None,
     }
@@ -5242,11 +5244,7 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             Some(o) => o.clone(),
             std::option::Option::None => src_len.clone(),
         };
-        v1_rt::chars_to_string(
-            &index.char_codes.clone(),
-            line_start.clone(),
-            line_end.clone(),
-        )
+        v1_rt::chars_to_string(&index.char_codes.clone(), line_start, line_end)
     }
 }
 
@@ -5509,7 +5507,7 @@ pub enum ContainerSpellingVerdict {
 
 pub fn known_container_leaf(name: String) -> Option<String> {
     {
-        let leaf = qualified_last_segment(name.clone());
+        let leaf = qualified_last_segment(name);
         match crate::std_types::container_expected_arity(leaf.clone()) {
             Some(_) => Some(leaf.clone()),
             std::option::Option::None => std::option::Option::None,
@@ -5714,7 +5712,7 @@ pub struct ShellTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LocalTransport;
+pub struct UndeclaredTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SeverityError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

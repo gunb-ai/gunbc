@@ -3,15 +3,15 @@ module gunbc.provisioning.network_boot_actuation
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget }
-import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeChainloaderBuildReceipt }
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin }
+import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgePinnedChain }
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin }
 import gunbc.machine_intake.subject { UnitKey, IntakeAttemptId }
-import gunbc.provisioning.altra_autoinstall_seed {
-  AltraAutoinstallSeed,
-  AltraAutoinstallSeedBinding,
-  AltraAutoinstallTarget,
+import gunbc.provisioning.ubuntu_autoinstall_seed {
+  UbuntuAutoinstallSeed,
+  UbuntuAutoinstallSeedBinding,
+  ProvisioningTargetAdmission,
   TargetDiskSelection,
-  bind_altra_autoinstall_seed,
+  bind_ubuntu_autoinstall_seed,
   Bound,
   BindRefused,
 }
@@ -36,7 +36,7 @@ import gunbc.os_install_mechanism { OsInstallMechanism, PxeHttpInstall, VirtualM
 // the value it returns is the statement of what one attempt will do, and each effect still goes through
 // its own admission and approval.
 //
-// WHAT THE ACTUATION CARRIES IS WHAT THE ARM BOUND. The chainloader receipt, the network origin, the
+// WHAT THE ACTUATION CARRIES IS WHAT THE ARM BOUND. The pinned loader chain, the network origin, the
 // seed binding and the firmware preparation travel into the result, so two armed attempts that differ in
 // any of them produce different actuations. An actuation built from the mechanism constant alone would
 // be identical for all of them, and the arm's whole job -- checking and binding those fields -- would be
@@ -57,10 +57,10 @@ type NetworkBootActuation
       attempt: AttemptBinding
       mechanism: OsInstallMechanism
       boot_target: RedfishBootSourceOverrideTarget
-      chainloader: SitePxeEdgeChainloaderBuildReceipt
+      chain: SitePxeEdgePinnedChain
       firmware: FirmwarePreparation
       origin: UbuntuNetworkOrigin
-      seed: AltraAutoinstallSeedBinding
+      seed: UbuntuAutoinstallSeedBinding
     }
   | ArmActuationVirtualMedia {
       attempt: AttemptBinding
@@ -68,7 +68,7 @@ type NetworkBootActuation
       boot_target: RedfishBootSourceOverrideTarget
       media_observation: DeclarationRef
       origin: UbuntuNetworkOrigin
-      seed: AltraAutoinstallSeedBinding
+      seed: UbuntuAutoinstallSeedBinding
     }
   | ArmActuationWithheld {
       attempt: AttemptBinding
@@ -77,12 +77,12 @@ type NetworkBootActuation
 
 fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation {
   match arm.shape {
-    ArmedPxeOrUefiHttp { chainloader: c, firmware: f, origin: o, seed: s } =>
+    ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
       ArmActuationPxe {
         attempt: arm.attempt,
         mechanism: PxeHttpInstall,
         boot_target: install_boot_target_for(mechanism: PxeHttpInstall),
-        chainloader: c,
+        chain: c,
         firmware: f,
         origin: o,
         seed: s,
@@ -101,8 +101,8 @@ fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation
   }
 }
 
-// THE INSTALL-ATTEMPT-RECORD STEP: the one production call of the sealed binder. An AltraAutoinstallSeedBinding
-// is minted only by bind_altra_autoinstall_seed, so the seed an arm carries is never typed by hand; this entry
+// THE INSTALL-ATTEMPT-RECORD STEP: the one production call of the sealed binder. An UbuntuAutoinstallSeedBinding
+// is minted only by bind_ubuntu_autoinstall_seed, so the seed an arm carries is never typed by hand; this entry
 // takes the raw seed, target, unit key, intake attempt and live disk selection, binds, and only then derives
 // the arm and actuates it. The strategy is a single parameter: one strategy per attempt, and a refused binding
 // is Withheld, never re-armed as the other delivery. `evidence.seed` is overwritten by the binding, so a
@@ -113,19 +113,19 @@ fn network_boot_attempt_actuation(
   strategy: DeliveryStrategy,
   evidence: DeliveryEvidence,
   attempt: AttemptBinding,
-  seed: AltraAutoinstallSeed,
-  target: AltraAutoinstallTarget,
+  seed: UbuntuAutoinstallSeed,
+  target: ProvisioningTargetAdmission,
   unit_key: UnitKey,
   intake_attempt: IntakeAttemptId,
   selection: TargetDiskSelection,
 ) -> NetworkBootActuation {
-  match bind_altra_autoinstall_seed(seed: seed, target: target, unit_key: unit_key, attempt: intake_attempt, selection: selection) {
+  match bind_ubuntu_autoinstall_seed(seed: seed, target: target, unit_key: unit_key, attempt: intake_attempt, selection: selection) {
     Bound { binding: b } =>
       network_boot_arm_actuator_steps(arm: provisioning_arm_derive(
         strategy: strategy,
         evidence: DeliveryEvidence {
           firmware: evidence.firmware,
-          chainloader: evidence.chainloader,
+          chain: evidence.chain,
           virtual_media: evidence.virtual_media,
           origin: evidence.origin,
           seed: Present { value: b },

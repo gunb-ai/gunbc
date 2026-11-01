@@ -5,6 +5,26 @@ import gunbc.stage0.stage0_crate_partition_generated { generated_partition_crate
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial, repo_self_warning_denial_rustflags }
 import extdeps.rust.cargo_build { cargo_clippy_command }
 import extdeps.exec.command { argv_words }
+import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_assign,
+  bash_build_command_from_lits,
+  bash_build_exit,
+  bash_build_if,
+  bash_build_if_else,
+  bash_build_or_else,
+  bash_build_stmt_list_from_nodes,
+  bash_build_subshell_from_stmts,
+  bash_build_test_bracket,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var,
+}
+import gunbc.shell_command_text { shell_command_text_refused_with_cause }
 
 // THE SINGLE POINT THROUGH WHICH THIS REPOSITORY BUILDS ITS OWN BINARIES.
 // Before this module the same operation was spelled independently in three
@@ -188,6 +208,345 @@ fn repo_self_clippy_command() -> String {
 // required phase. That gap is the 2026-08-25 declared row and this command does not close it.
 fn repo_self_build_partition_crate_packages() -> List<String> {
   generated_partition_crate_rows |> map(row => row.package_name)
+}
+
+// THE BUILD ENVIRONMENT EVERY SEED BINARY IS BUILT IN. One commit must give one sha256, and before
+// this preamble was consumed by the seed-build steps it did not: the same commit built DIFFERENT
+// bytes on runners whose absolute checkout path, CARGO_TARGET_DIR, CARGO_HOME or rustc sysroot
+// differed, because each of those absolute paths is baked into the binary's .rodata (panic Location
+// strings and file literals) with nothing normalizing them, and because a runner-local untracked
+// file flipped build.rs's `-dirty` identity suffix. The measured experiment, the classification,
+// and the interim citation rule live in gunbc.recurring_failure_mode.seed_sha256_is_runner_relative;
+// THE RUNG, STATED HONESTLY (DESIGN section 4b). The control is src/v1/stage0/src/compiler_tests.rs
+// ::seed_build_reproducibility_falsifier, and it is #[ignore]d because it performs cold release
+// builds of the seed. Nothing on the required path runs it: DESIGN's "Building & checks" says the
+// required path does not run the v1 unit tests, so an ignored lib test runs nowhere by itself. That
+// makes it an ON-DEMAND INSTRUMENT, not an enrolled gate -- rung "mitigatable", exactly one rung
+// above "exposed" -- and the rung recorded on
+// gunbc.recurring_failure_mode.seed_sha256_is_runner_relative is the authority on that, not this
+// comment. NOTHING IS ENFORCED ON A PULL BY THAT CONTROL: its structural arms (pairs read from
+// repo_self_seed_build_remaps, present in the committed step, variable assigned and exported) live in
+// the SAME #[ignore]d test function, so they are part of the same on-demand instrument rather than a
+// cheap gate -- they are cheap when someone runs the test, and absent when nobody does. The only
+// preamble-related thing a pull does get is the release-bins key carrying the preamble digest as an
+// axis, which stops a preamble change restoring stale cached binaries; it does not check the pairs. THE CAPABILITY THAT WOULD RAISE THE RUNG: the native compiler/gate executing this
+// label as a gunbc test row, or a cheaper witness -- e.g. each seed-build step reading
+// GUNBC_MATERIALIZED_TREE_IDENTITY plus its preamble digest back into its own floor receipt, which
+// would make a fallback visible in CI without three cold builds.
+//
+// What the test does, when run: green arm builds one commit twice from two independent clones
+// through the preamble and requires equal sha256; red arm builds the same commit WITHOUT the
+// preamble and requires a different hash. This is NOT a second cargo authority: it is the
+// environment half of the same build operation repo_self_build_command owns the argv for, and a
+// seed-build step that spells its own RUSTFLAGS has taken both halves back.
+//
+// THE FOUR PREFIXES ARE NOT INDIVIDUALLY NEGOTIABLE. Each names an input rustc fuses into string
+// literals reachable from the produced binary -- checkout, target directory, registry home, sysroot.
+// Per-prefix presence is what the control's STRUCTURAL arms check, pair by pair, against the list
+// below (dropping one from the data list trips the cardinality assertion; dropping it from the
+// emitted step trips the per-pair containment assertion), so a future author dropping one meets a
+// red assertion rather than silent receipt drift. The per-prefix BYTE effect is not re-measured per
+// prefix: a byte arm per prefix means one full cold build each, six total, past the runner's 1h cap,
+// so the byte arm is whole-preamble and the per-prefix before-side is the measured record on
+// gunbc.recurring_failure_mode.seed_sha256_is_runner_relative. The target prefix is not paranoia:
+// two runners with the same checkout at different depths proved the build directory reaches the
+// binary too.
+//
+// THE WARNING DENIAL IS CARRIED AS A SETTING OF THE SAME TABLE KEY, NOT AS A RIVAL TO IT, AND THE
+// DISTINCTION IS LOAD-BEARING: .cargo/config.toml carries `[build] rustflags = ["-D", "warnings"]`,
+// and an ambient RUSTFLAGS OVERRIDES that table key entirely rather than extending it. So the denial
+// is asserted here as the same fact that file states (its comment names
+// gunbc.repo.repo_self_warning_policy as its source), and a seed build must reach the same floor with
+// or without this preamble. That is what makes the falsifier's red arm -- remap disabled, denial still
+// applied, still -D warnings -- the meaningful comparison: if dropping the denial were the difference,
+// the reproducibility claim would be resting on a silent floor inversion.
+//
+// THE IDENTITY PIN IS THE CONTENT IDENTITY. GUNBC_MATERIALIZED_TREE_IDENTITY is pinned to
+// tree:<object-format>:<HEAD^{tree}> -- the value shape the fleet release-bins key already computes
+// as its SOURCE_CLOSURE axis, so both name the same commit content -- but only when the TRACKED tree
+// is clean, checked with --untracked-files=no. Untracked files are excluded from that test because
+// they reach neither rustc nor the identity: a tracked module graph reaching an untracked file would
+// mean HEAD itself does not build, so an untracked runner scratch file changing the seed's bytes was
+// the bug being repaired, not a fact to preserve (that is the same rule src/v1/stage0/build.rs
+// applies to its `-dirty` suffix, and the two must agree or the suffix reappears as variance).
+// A TRACKED-DIRTY TREE IS NOT REFUSED, IT IS LEFT UNPINNED: build.rs then bakes `<head>-dirty`,
+// which names the build honestly as "this commit plus an edit that is in no commit". Refusing
+// instead would be a new CI behavior for a case the suffix already describes, and a seed-build step
+// is not where an uncommitted edit gets adjudicated. Producers that consume this preamble get the
+// content identity automatically; a producer that does not falls back to git HEAD plus the
+// tracked-dirty suffix, which is why every seed-build site consumes this and none re-spells it.
+//
+// WHY THE REMAP IS NOT A KEY INPUT the fleet release-bins key must name. Each prefix names a
+// LOCATION -- checkout, target directory, registry home, sysroot -- and the key already excludes the
+// location-naming environment variables (CARGO_HOME, RUSTUP_HOME, CARGO_BIN in
+// gunbc.fleet.fleet_release_bins_key release_bins_unkeyed_environment_pattern) for exactly this
+// reason. The prefixes differ per runner, so keying them would re-fragment the cache per checkout
+// depth and defeat the repair's purpose. That exclusion is justified by the prefix NAMES being
+// location-only, and it is checked by the falsifier below, pair by pair -- which, per the rung note
+// above, is a hand-run control and not a gate anyone can rely on being green. The key step also runs in its own process
+// before the build step, so the RUSTFLAGS exported here never reaches its `env -0` probe: the
+// ambient value it keys is the toolchain step's, unchanged.
+//
+// AN EMPTY READ FAILS THE STEP, AND WHY THAT MATTERS MORE THAN IT LOOKS: `git rev-parse
+// --show-toplevel` fails -- printing nothing -- when run OUTSIDE a work tree, which is the ordinary
+// state of a checkout handed to a tool, a `git worktree add` mid-flight, or a runner that cloned into a
+// path since unmounted. `--show-toplevel` fails where `--git-dir` would not, and it is the right probe
+// because the remap must name the WORK tree: the work tree, not a bare git directory, is the prefix rustc
+// bakes into those panic Location and file literals (measured 2026-10-25: a build whose checkout prefix
+// was left unremapped carried `/tmp/rr2/g1/src/v1/stage0/src/cli_run/pre_entry_phase.rs` into .rodata). An
+// unanchored remap would be worse than no remap at all: `--remap-path-prefix==/build/checkout` matches
+// nothing, the absolute path stays fused into the binary, and the step still reports success -- a silently
+// falsified receipt, which is the failure mode this whole preamble exists to close. Same reason the
+// sysroot read is guarded: `rustc --print sysroot` on a shim that answers nothing would leave the
+// toolchain half of the variance unaddressed while looking applied.
+// THE REMAP PAIRS, IN ONE PLACE, AS DATA THE SHELL AND THE CONTROL BOTH READ. Each pair names one
+// absolute location rustc fuses into the seed binary -- the checkout (panic Location literals carry
+// the source path), the target directory, the registry home (a dependency's panic location carries
+// its registry path), and the rustc sysroot -- together with the stable /build/* name that location
+// gets in the bytes. Nothing here re-spells the flag name in a second place: remap_segments below
+// holds the single `--remap-path-prefix=` spelling, and the falsifier control READS that literal
+// out of this file and composes it with the records below, so what the control asserts and what the
+// preamble emits cannot drift apart (DESIGN section 3, one fact one home).
+type SeedBuildRemap {
+  variable: String
+  stable: String
+}
+
+data repo_self_seed_build_remaps: List<SeedBuildRemap> = [
+  SeedBuildRemap { variable: "GUNBC_SEED_CHECKOUT", stable: "/build/checkout" },
+  SeedBuildRemap { variable: "GUNBC_SEED_TARGET", stable: "/build/target" },
+  SeedBuildRemap { variable: "GUNBC_SEED_CARGO_HOME", stable: "/build/cargo-home" },
+  SeedBuildRemap { variable: "GUNBC_SEED_SYSROOT", stable: "/build/rust" },
+]
+
+
+// THE PREAMBLE IS A BASH GRAMMAR TREE, NOT A STRING. Every statement is built by
+// v2.extdeps.languages.bash_build and serialized once by v2.workflow.bash_emit, which owns word
+// quoting (POSIX single-quote, cited at extdeps.posix.shell_command_language). Hand-joined shell
+// text here would be a second path beside that modeled route (DESIGN section 6 lists "raw shell
+// implementing semantics expressible in .dag" as the tell) and would put the SHELL TEXT in the
+// position of authority over a build environment that DESIGN section 3 says lives in this module.
+//
+// THE PAIR IS A CONCAT WORD, NOT A LITERAL. This matters: bash_build_word_lit renders its text
+// single-quoted, so a $GUNBC_SEED_* written as a literal would reach the compiler as the four
+// characters `$GUN`-nothing -- rustc accepts a --remap-path-prefix that matches nothing, the seed
+// keeps the runner's absolute paths, and no later step notices. A concat word renders its literal
+// segments single-quoted and its variable segment double-quoted, so the adjacent segments form one
+// shell word whose variable DOES expand. The falsifier's structural arm checks exactly this
+// (variable segment present, not the literal spelling).
+//
+// A serializer refusal is not swallowed: it lands as the shared poison marker WITH its cause, so a
+// step that stops carrying a remap fails loudly instead of quietly building an unremapped seed.
+fn repo_self_build_env_stmts() -> List<Node> {
+  concat(
+    [
+      assign_cmd(name: "GUNBC_SEED_CHECKOUT", argv: ["git", "rev-parse", "--show-toplevel"]),
+      refuse_when_empty(
+        name: "GUNBC_SEED_CHECKOUT",
+        title: "seedBuildRemap",
+        code: "CheckoutRootUnread",
+        why: "the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build"
+      ),
+      // The two defaults the grammar has no word kind for (a shell `${VAR:-default}`) are modeled
+      // the grammar's way instead: an if/else over the variable itself, tested for emptiness. That is
+      // the only route v2.extdeps.languages.bash_build offers -- its word kinds are lit, var, concat
+      // and cmdsubst -- and it is what a reader of the emitted YAML can check line by line. (The
+      // alternative was spelling `${VAR:-default}` as text, which puts shell syntax back in a string;
+      // a prose note naming who approved this shape would be an untyped ruling, so it is not here.)
+      default_from(name: "GUNBC_SEED_TARGET", source: "CARGO_TARGET_DIR", fallback: [
+        bash_build_word_var(name: "GUNBC_SEED_CHECKOUT"),
+        bash_build_word_lit(text: "/target"),
+      ]),
+      default_from(name: "GUNBC_SEED_CARGO_HOME", source: "CARGO_HOME", fallback: [
+        bash_build_word_var(name: "HOME"),
+        bash_build_word_lit(text: "/.cargo"),
+      ]),
+      assign_cmd(name: "GUNBC_SEED_SYSROOT", argv: ["rustc", "--print", "sysroot"]),
+      refuse_when_empty(
+        name: "GUNBC_SEED_SYSROOT",
+        title: "seedBuildRemap",
+        code: "SysrootUnread",
+        why: "the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build"
+      ),
+      // THE DENIAL LEADS THE VALUE. An ambient RUSTFLAGS REPLACES the [build] rustflags key of
+      // .cargo/config.toml rather than extending it, so a build whose denial arrived only from the
+      // config file could lose it; the denial comes from gunbc.repo.repo_self_warning_policy and is
+      // written first so it survives however a caller spells RUSTFLAGS afterwards.
+      bash_build_assign(
+        name: "RUSTFLAGS",
+        value: bash_build_word_concat_from_nodes(parts: rustflags_segments())
+      ),
+      // The derived variables are exported, not just assigned: the remap has to reach the compiler
+      // process, and a step that runs its command in a subshell (every floor receipt wrapper does)
+      // would otherwise re-read them as empty -- and an empty prefix is the silent failure the
+      // guards above refuse at the source.
+      command(argv: ["export", "RUSTFLAGS"]),
+      command(argv: ["export", "GUNBC_SEED_CHECKOUT"]),
+      command(argv: ["export", "GUNBC_SEED_TARGET"]),
+      command(argv: ["export", "GUNBC_SEED_CARGO_HOME"]),
+      command(argv: ["export", "GUNBC_SEED_SYSROOT"]),
+      tracked_tree_dirty_assign_stmt(),
+      tracked_tree_identity_stmt(),
+    ],
+    []
+  )
+}
+
+// The RUSTFLAGS word: the warning denial, then one segment run per declared pair. Each segment run
+// carries its own leading space inside its quoted literal, because adjacent segments of a concat
+// word concatenate with nothing between them.
+fn rustflags_segments() -> List<Node> {
+  let denial = repo_self_warning_denial_rustflags()
+  concat(
+    [bash_build_word_lit(text: join([" ", denial], ""))],
+    (repo_self_seed_build_remaps |> map(remap => remap_segments(remap: remap)))
+  )
+}
+
+// `--remap-path-prefix=$<variable>=<stable>` as ONE shell word whose variable still expands: a
+// literal segment for the flag, a variable segment for the path source, a literal segment for the
+// stable name. Three segments rather than one literal is the whole point -- a single literal would
+// be rendered single-quoted by the serializer and the variable would reach rustc as text.
+fn remap_segments(remap: SeedBuildRemap) -> Node {
+  bash_build_word_concat_from_nodes(parts: [
+    bash_build_word_lit(text: " --remap-path-prefix="),
+    bash_build_word_var(name: remap.variable),
+    bash_build_word_lit(text: join(["=", remap.stable], "")),
+  ])
+}
+
+fn command(argv: List<String>) -> Node {
+  bash_build_command_from_lits(lits: argv)
+}
+
+fn assign_cmd(name: String, argv: List<String>) -> Node {
+  bash_build_assign(name: name, value: bash_build_word_cmdsubst(body: command(argv: argv)))
+}
+
+// `[ -n "$NAME" ] || ('echo' '::error title=<title> <code>::<why>'; exit 1)`. An empty read is
+// refused rather than tolerated, because an empty prefix makes --remap-path-prefix name nothing:
+// rustc accepts such a flag, the binary keeps absolute paths baked in, and no later step would
+// notice -- measured 2026-10-25, where an unremapped build carried
+// /tmp/rr2/g1/src/v1/stage0/src/cli_run/pre_entry_phase.rs into .rodata.
+fn refuse_when_empty(name: String, title: String, code: String, why: String) -> Node {
+  bash_build_or_else(
+    left: non_empty_test(name: name),
+    right: bash_build_subshell_from_stmts(stmts: [
+      command(argv: ["echo", join(["::error title=", title, " ", code, "::", why], "")]),
+      bash_build_exit(code: "1"),
+    ])
+  )
+}
+
+fn non_empty_test(name: String) -> Node {
+  bash_build_test_bracket(words: [
+    bash_build_word_lit(text: "-n"),
+    bash_build_word_var(name: name),
+  ])
+}
+
+// NAME=$SOURCE when SOURCE is set, NAME=<fallback> when it is not -- the grammar's spelling of a
+// parameter default. The two arms are STATEMENTS, so they go through the constructor that builds
+// the statement-list spine: passing a bare statement as a body is the shape the fold refuses.
+fn default_from(name: String, source: String, fallback: List<Node>) -> Node {
+  bash_build_if_else_from_stmts(
+    cond: non_empty_test(name: source),
+    then_stmts: [bash_build_assign(name: name, value: bash_build_word_var(name: source))],
+    else_stmts: [bash_build_assign(
+      name: name,
+      value: bash_build_word_concat_from_nodes(parts: fallback)
+    )]
+  )
+}
+
+// THE PINNED TREE IDENTITY, AND WHY IT IS THE IDENTITY AND NOT `git describe`. build.rs bakes a
+// build identity into the seed; its fallback is HEAD plus `-dirty` whenever `git status --porcelain`
+// is non-empty, and an UNTRACKED runner file (a receipt, a probe checkout, a floor scratch dir)
+// flips that suffix -- so one commit hashed differently on three runners, which falsifies every
+// seed-sha receipt that cites it (measured 2026-10-26: `-dirty` alone moved the digest, eedf8e3c vs
+// b8c24b3d). So the CONTENT identity is what gets pinned, from the TRACKED tree only
+// (`--porcelain=1 --untracked-files=no`): an untracked file can no longer change the bytes.
+//
+// A TRACKED-DIRTY TREE IS NOT REFUSED, IT IS LEFT UNPINNED: build.rs then bakes `<head>-dirty`,
+// which names the build honestly as "this commit plus an edit that is in no commit". Refusing
+// instead would invent a new CI behavior for a case the suffix already describes, and a seed-build
+// step is not where an uncommitted edit gets adjudicated.
+// THE GUARD'S FIRST HALF: read the worktree's TRACKED state into a variable. It is its own
+// statement because the fold admits a statement list only as the spine it builds -- a nested list
+// node sitting in a statement slot has no production, and the whole emission is refused with
+// grammar_relation_production_not_found -- and because the value has to exist before the test that
+// reads it.
+fn tracked_tree_dirty_assign_stmt() -> Node {
+  assign_cmd(
+    name: "GUNBC_SEED_WORKTREE_DIRTY",
+    argv: ["git", "status", "--porcelain=1", "--untracked-files=no"]
+  )
+}
+
+// THE GUARD ITSELF, and the pinning it guards. THE TRACKED STATE IS READ ONCE, INTO A VARIABLE, AND
+// THE GUARD TESTS THE QUOTED VARIABLE. Substituting inside the bracket is the shape that breaks: an
+// unquoted command substitution undergoes word splitting AND pathname expansion, so a worktree with
+// two or more tracked edits makes the test error with "[: too many arguments" instead of evaluating
+// false. The guard still ends up taking the intended branch -- the error exits 2, the `&&` chain is
+// false, the identity is left unpinned -- but through a diagnostic that misdescribes what happened,
+// and a changed path containing `*`, `?` or a space would glob or split before the test ever saw it.
+// The grammar quotes a WORD VARIABLE (`"$NAME"`), so testing a variable is the shape that renders
+// correctly today; the substitution word kind's emitted spelling is bare `$(...)`.
+fn tracked_tree_identity_stmt() -> Node {
+  bash_build_if(
+    cond: bash_build_and_then(
+      left: bash_build_test_bracket(words: [
+        bash_build_word_lit(text: "-z"),
+        bash_build_word_var(name: "GUNBC_MATERIALIZED_TREE_IDENTITY"),
+      ]),
+      right: bash_build_test_bracket(words: [
+        bash_build_word_lit(text: "-z"),
+        bash_build_word_var(name: "GUNBC_SEED_WORKTREE_DIRTY"),
+      ])
+    ),
+    body: bash_build_stmt_list_from_nodes(stmts: [
+      assign_cmd(name: "GUNBC_SEED_OBJECT_FORMAT", argv: ["git", "rev-parse", "--show-object-format"]),
+      refuse_when_empty(
+        name: "GUNBC_SEED_OBJECT_FORMAT",
+        title: "seedBuildIdentity",
+        code: "ObjectFormatUnread",
+        why: "the git object format read back empty, so the pinned identity would be malformed; refusing to build"
+      ),
+      bash_build_assign(
+        name: "GUNBC_MATERIALIZED_TREE_IDENTITY",
+        value: bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "tree:"),
+          bash_build_word_var(name: "GUNBC_SEED_OBJECT_FORMAT"),
+          bash_build_word_lit(text: ":"),
+          // `HEAD^{tree}` is git revision syntax, not a shell brace expansion; the braces are
+          // escaped because the .dag string lexer reads an unescaped brace as interpolation.
+          bash_build_word_cmdsubst(body: command(argv: ["git", "rev-parse", "HEAD^\{tree\}"])),
+        ])
+      ),
+      command(argv: ["export", "GUNBC_MATERIALIZED_TREE_IDENTITY"]),
+    ])
+  )
+}
+
+fn repo_self_build_env_preamble() -> String {
+  match bash_emit_stmts(statements: repo_self_build_env_stmts(), set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
+  }
+}
+
+// THE ONE WRAPPER FOR A SEED-BINARY BUILD COMMAND. A step's `run:` text is this preamble followed
+// by the cargo line the repo_self_build_* authority owns; a step that spells a bare cargo line gets
+// a runner-relative sha256 that looks like a commit hash, which is how the variance survived. The
+// preamble goes FIRST so its refusal guards abort the step before cargo starts, and it is emitted
+// per step rather than at job level only because the anchors are knowable inside a working
+// directory, which is a step property. repo_self_build_env_preamble states what each prefix and
+// guard is for; the census of seed-binary build steps and their producers is in
+// gunbc.recurring_failure_mode.seed_sha256_is_runner_relative. Floor-wrapped build steps get the
+// same treatment from gunbc.witness.witness_floor_workflow witness_floor_build_step, which puts the
+// preamble OUTSIDE the receipt wrapper.
+fn repo_self_seed_build_step_run(command: String) -> String {
+  join([repo_self_build_env_preamble(), command, ""], "\n")
 }
 
 fn repo_self_build_packages_command(packages: List<String>) -> String {

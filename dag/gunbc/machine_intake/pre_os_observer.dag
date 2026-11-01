@@ -1,6 +1,7 @@
 module gunbc.machine_intake.pre_os_observer
 
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { firmware_pxe_mac_rendering }
+import extdeps.network.mac { Eui48Address, render_mac_address }
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
@@ -83,7 +84,7 @@ fn pre_os_training_assessment(milestones: PreOsMilestones) -> GoalAssessment<Non
 // userspace's emitted BEGIN/END pair plus its own host NIC and kernel identity,
 // not a BMC status. The source-to-machine authentication is checked by the
 // envelope consumer before this parser is called. No kernel boot UUID is minted.
-fn pre_os_host_userspace_boot(text: String, host_mac: NonEmptyStr) -> ObservationAttempt<HostBootOutcome, NonEmptyStr> {
+fn pre_os_host_userspace_boot(text: String, host_mac: Eui48Address) -> ObservationAttempt<HostBootOutcome, NonEmptyStr> {
   let lines = terminal_transcript_lines(text: text)
   let beginning = "\nmarker=gunbc-runner-host-boot\n"
   let ending = "\nmarker-end=gunbc-runner-host-boot\n"
@@ -98,7 +99,7 @@ fn pre_os_host_userspace_boot(text: String, host_mac: NonEmptyStr) -> Observatio
           let fields = split(s: body, delimiter: "\n")
           any(fields, line => line == "machine=aarch64")
             && any(fields, line => starts_with(s: line, prefix: "kernel=") && line != "kernel=")
-            && any(fields, line => line == concat("iface=eth0 mac=", host_mac as String))
+            && any(fields, line => line == concat("iface=eth0 mac=", render_mac_address(addr: host_mac)))
         }
       }
     }) {
@@ -127,7 +128,7 @@ fn pre_os_host_population_statement(text: String) -> ObservationAttempt<NonEmpty
 // CR arrives as the two printable bytes "^M", which the channel framing (a raw
 // CR) does not and should not remove. Boot-option errors remain independently unrecognized
 // by the training-statement roster; this fact does not green that assessment.
-fn pre_os_firmware_boot_selection(text: String, host_mac: NonEmptyStr) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
+fn pre_os_firmware_boot_selection(text: String, host_mac: Eui48Address) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
   let lines = map(terminal_transcript_lines(text: text), line =>
     if ends_with(s: line, suffix: "^M") { substring(s: line, start: 0, end: line.length() - 2) } else { line })
   let rendered_host_mac = firmware_pxe_mac_rendering(host_mac: host_mac)

@@ -28,8 +28,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // MUTATIONS, each leaving the compiler runnable: removing the callback frame join (the callback subtree
 // inheriting its parent's frame unchanged) turns the positives and the Bool control red again; removing
-// the callback's signature from the argument judgment (infer_entries_with_callback_signatures) turns
-// the monomorphic positive and the wrong-return refusal red again.
+// the callback's own type (v2.compiler.infer infer_function_value_facts, the row that types a function value
+// from its frame and body -- v2.test.claim.compiler.function_value_type) turns the monomorphic positive and the
+// wrong-return refusal red again; removing the arity refutation (infer_entries_with_callback_arity_refutations)
+// turns the extra-parameter refusal red.
 
 data caf_prelude: String = "module p\n\ntype Res<T>\n  = Ok { value: T }\n  | Err\n\nfn h() -> Res<Int> {\n  Ok { value: 1 }\n}\n\nfn need_int(n: Int) -> Res<Int> {\n  Ok { value: n }\n}\n\n"
 

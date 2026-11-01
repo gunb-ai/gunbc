@@ -344,9 +344,26 @@ type ContainerSource
   = SameAsReceiver
   | Named { name: String }
 
+// RECEIVERELEMENTORSELF is the dual-form argument of a free-monoid operation: the value that lands
+// in this position is EITHER an element (the snoc form) OR the free monoid itself (the concat form),
+// and WHICH it is is answered by the value's own shape, never by its name. It exists because
+// `append`'s row claimed `ReceiverElement` and nothing honoured the claim: the model's interpreter
+// routes `append` through the `method_call.concat` arm, which merges `value_to_list_carrier(arg)`
+// when the argument is a list and pushes the argument as ONE item otherwise (the same arm serves
+// `concat` and `push`), and the Rust realization lowers a list-shaped appended argument to
+// `v1_rt::rc_list_concat` (list ++ list) and only a non-list one to the `rc_vec_push` snoc bridge
+// (v1.compiler.emit_rust `rust_append_call_is_concat_form`). Read as a plain `ReceiverElement`, a
+// call `append(acc, [v])` claimed the appended LIST was an element, so an open accumulator
+// (a fold's `init: []`, whose element type the seed has not pinned) was typed `List<List<T>>` and
+// the emitted closure was refused by rustc with E0308 -- the seed reported the claim, the model and
+// the realization both refused it. The single-item form is NOT this position: `list_push` is
+// FreeMonoid's declared home for a snoc and keeps `ReceiverElement` (see the row census in
+// v1.compiler.infer_types `type_is_ordered_element_run`). Which way a call goes is judged by ONE predicate,
+// shared with the emitter, so infer and the realization cannot answer the same question apart.
 type AlgebraTypeTemplate
   = ReceiverSelf
   | ReceiverElement
+  | ReceiverElementOrSelf
   | ReceiverKey
   | ReceiverValue
   | NamedTemplate { name: String }
@@ -502,6 +519,7 @@ fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
       CallableOf { params: _, return_type: _ } => true
       ReceiverSelf => false
       ReceiverElement => false
+      ReceiverElementOrSelf => false
       ReceiverKey => false
       ReceiverValue => false
       NamedTemplate { name: _ } => false
@@ -531,6 +549,7 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
           CallableOf { params: _, return_type: r } => Present { value: r }
           ReceiverSelf => none
           ReceiverElement => none
+          ReceiverElementOrSelf => none
           ReceiverKey => none
           ReceiverValue => none
           NamedTemplate { name: _ } => none
@@ -553,6 +572,11 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
             CallableOf { params: _, return_type: _ } => false
             ReceiverSelf => p == acc_type
             ReceiverElement => p == acc_type
+            // A closed variant answers every match over it, reachable or not (DESIGN 4b). The rule
+            // is the one this predicate states: the plain parameter whose type IS the type the step
+            // returns. A dual-form position is that parameter exactly when the step returns the dual
+            // form; literal equality, the same test its siblings get, with no guess about which side.
+            ReceiverElementOrSelf => p == acc_type
             ReceiverKey => p == acc_type
             ReceiverValue => p == acc_type
             NamedTemplate { name: _ } => p == acc_type
@@ -1116,7 +1140,12 @@ fn free_monoid_collection_templates() -> FreeMonoid<AlgebraFieldTemplate> {
     { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: Present { value: ShrinkEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     collection_sort_by_shape(),
-    { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none },
+    // `append` is the dual-form append: an element lands here (snoc) or the whole run does (concat),
+    // and the argument's own shape answers which -- the claim the interpreter's `method_call.concat`
+    // arm and the emitter's `rust_append_call_is_concat_form` both honour, and which the bare
+    // `ReceiverElement` did not (it mistyped `append(acc, [v])` as a list OF lists). See
+    // `AlgebraTypeTemplate`'s ReceiverElementOrSelf. `list_push` keeps the plain element row.
+    { name: "append", param_types: [ReceiverSelf, ReceiverElementOrSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none },
     { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "enumerate", param_types: [ReceiverSelf], return_type: ContainerOf { source: SameAsReceiver, element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } }, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
@@ -1411,6 +1440,16 @@ fn int_total_order() -> TotalOrder<Int> {
   TotalOrder { compare: int_compare_canonical }
 }
 
+fn string_compare_canonical(a: String, b: String) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+// The canonical content order on String keys, the order the host sort_by applies to them (declared, not derived: the
+// order a String key sorts under is this record's compare, which the migration's rows name explicitly).
+fn string_total_order() -> TotalOrder<String> {
+  TotalOrder { compare: string_compare_canonical }
+}
+
 // std.primitives sort_by_contract inhabited by a MODELED merge sort (named apart from the `sort_by` method
 // spelling, which is a primitive with the host realization): no host seam, so the realization
 // is this body. The key order is the caller's TotalOrder (the host admits String, Int and Bool keys
@@ -1641,12 +1680,44 @@ fn non_empty_to_list<T>(xs: FreeSemigroup<T>) -> FreeMonoid<T> {
   Cons { head: xs.head, tail: xs.tail }
 }
 
+// ALL BUT THE LAST, IN ORDER. The recursion this replaced (Cons { head: h, tail: list_init(t) }) made the
+// CALL DEPTH the list's length: under the seed interpreter every caller inherited an overflow at ~10^5
+// members. §6 names the producer, not the reading: the RED claim
+// v2.test.claim.execution.dag_emit_interface dag_string_scalar_body_read_by_slice_reaches_the_decode_lane,
+// run through `claim_batch --claim-run`, re-derives that overflow on the replaced shape (it dies by stack
+// overflow, not by a wrong answer), and v2.test.claim.derived_roster_seed_agreement
+// rung_drop_standing_acquires_with_its_derived_roster reached the same depth through this combinator.
+// DESIGN 6: a fixed cost, regardless of n. One native fold_list pass carries a lag pair — the element
+// read one step ago is only committed to the kept list when its successor arrives — so the last element is
+// what never gets committed, and the interpreter's stack never grows with n (fold_list is a seed native
+// intercept, and the emitter lowers it to a cursor loop). The pass is linear because the accumulator grows
+// by one list_push per step and BOTH realizations of that push share the spine instead of copying the
+// members: the dry-lane rc_list_push (v1_rt.rs) is Rc::make_mut(..).push_back(..), and the clone make_mut
+// takes when the handle is shared is im::Vector's structural-sharing clone -- O(1) per im-15.1.0
+// vector/mod.rs "Clone for Vector", O(n) only up to the bounded inline threshold, never per member -- and
+// the wet-lane list_push arm reads the receiver as a Value::List (value_to_list_carrier, copied = 0) and
+// pushes on a clone of that same tree. What re-derives it is the interpreter's own MutationCounters
+// list_push row (calls / entries copied / average per call; MutationCounters::fmt in
+// src/v1/stage0/src/v1_interpreter.rs, printed as the [interp-stats] block by print_interp_stats in
+// src/v1/stage0/src/bin/claim_batch.rs): a push that copied members would drive that average up with n
+// instead of holding at one entry per call. A Cons-prepend fold would have rebuilt the accumulator per step.
+type ListInitLag<T> {
+  kept: FreeMonoid<T>
+  pending: Optional<T>
+}
+
 fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
-  match xs {
-    Empty => Empty
-    Cons { head: _, tail: Empty } => Empty
-    Cons { head: h, tail: t } => Cons { head: h, tail: list_init(xs: t) }
-  }
+  fold_list(
+    xs: xs,
+    empty: ListInitLag { kept: Empty, pending: Absent },
+    cons: fn(acc, item) {
+      match acc.pending {
+        Absent => ListInitLag { kept: acc.kept, pending: Present { value: item } }
+        Present { value: p } =>
+          ListInitLag { kept: list_push(xs: acc.kept, item: p), pending: Present { value: item } }
+      }
+    }
+  ).kept
 }
 
 fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
@@ -1659,24 +1730,50 @@ fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool
   }
 }
 
+// ELEMENTWISE EQUALITY OF TWO SAME-LENGTH LISTS. The recursion this replaced put the call INSIDE the
+// `&&` (eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)), so the frame stayed live across the element
+// comparison AND the whole rest of the list: host depth equalled the list's length. The v1 interpreter
+// performs no tail-call optimization at all, so tail position would not have helped either — the only
+// fixed-depth route in the wet lane is the intercepted fold_list (v1_interpreter.rs
+// `native_intercept.fold_list`), which is also emitted as a __tco_loop, so it costs no host stack in
+// either lane. §6: a proven cost-shape defect is always fixed, regardless of realized n.
+// THE RED that re-derives the old shape: v2.test.claim.algebra.list_linear_combinators
+// zip_eq_compares_a_list_too_long_to_recurse_over, run through the claim-batch binary
+// src/v1/stage0/src/bin/claim_batch.rs. On the replaced shape it refuses inside this function at
+// the interpreter's call-depth ceiling instead of answering. The consumer that showed up host-side
+// is v2.test.claim.derived_roster_seed_agreement rung_drop_standing_acquires_with_its_derived_roster,
+// which aborted on the host stack; the call-depth trace recorded in gunbc#15258 located it by
+// climbing a fixed step per sibling through this function and v2.std.node node_edge_same_occurrence /
+// node_same_occurrence — so the depth was a property of the list's length, not of its contents.
+// The fold walks a's members once, carrying b's aligned tail in the accumulator. Once a mismatch is
+// held the pass keeps its shape but stops calling `eq`, so a pair count matches the old short-circuit;
+// the final is_empty over the leftover asks the question the old base case asked (a ran out before b).
+type ZipEqWalk<T> {
+  rest: FreeMonoid<T>
+  agreed: Bool
+}
+
 fn zip_eq<T>(
   a: FreeMonoid<T>,
   b: FreeMonoid<T>,
   eq: fn(T, T) -> Bool
 ) -> Bool {
-  match a {
-    Empty =>
-      match b {
-        Empty => true
-        Cons { head: _, tail: _ } => false
-      }
-    Cons { head: ha, tail: ta } =>
-      match b {
-        Empty => false
+  let walk = fold_list(
+    xs: a,
+    empty: ZipEqWalk { rest: b, agreed: true },
+    cons: fn(acc, item) {
+      match acc.rest {
+        Empty => ZipEqWalk { rest: Empty, agreed: false }
         Cons { head: hb, tail: tb } =>
-          eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)
+          if acc.agreed {
+            ZipEqWalk { rest: tb, agreed: eq(item, hb) }
+          } else {
+            ZipEqWalk { rest: tb, agreed: false }
+          }
       }
-  }
+    }
+  )
+  walk.agreed && is_empty(xs: walk.rest)
 }
 
 fn zip_map<A, B, C>(

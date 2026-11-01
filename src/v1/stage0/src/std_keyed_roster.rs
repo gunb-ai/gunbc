@@ -173,7 +173,11 @@ pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "K: Clone + serde::Serialize, V: Clone + serde::Serialize",
+    deserialize = "K: Clone + serde::Deserialize<'de>, V: Clone + serde::Deserialize<'de>"
+))]
 #[serde(tag = "_variant")]
 pub enum KeyedRosterInsert<K: Clone, V: Clone> {
     KeyedRosterInserted {
@@ -189,6 +193,75 @@ pub enum KeyedRosterInsert<K: Clone, V: Clone> {
         first: Rc<KeyedRow<K, V>>,
         duplicate: Rc<KeyedRow<K, V>>,
     },
+}
+
+impl<K: Clone + std::fmt::Debug, V: Clone + std::fmt::Debug> std::fmt::Debug
+    for KeyedRosterInsert<K, V>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::KeyedRosterInserted { rows } => f
+                .debug_struct("KeyedRosterInserted")
+                .field("rows", rows)
+                .finish(),
+            Self::KeyedRosterDuplicateKey {
+                key,
+                existing,
+                incoming,
+            } => f
+                .debug_struct("KeyedRosterDuplicateKey")
+                .field("key", key)
+                .field("existing", existing)
+                .field("incoming", incoming)
+                .finish(),
+            Self::KeyedRosterInvalidRoster {
+                key,
+                first,
+                duplicate,
+            } => f
+                .debug_struct("KeyedRosterInvalidRoster")
+                .field("key", key)
+                .field("first", first)
+                .field("duplicate", duplicate)
+                .finish(),
+        }
+    }
+}
+
+impl<K: Clone + PartialEq, V: Clone + PartialEq> PartialEq for KeyedRosterInsert<K, V> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::KeyedRosterInserted { rows: a_rows },
+                Self::KeyedRosterInserted { rows: b_rows },
+            ) => a_rows == b_rows,
+            (
+                Self::KeyedRosterDuplicateKey {
+                    key: a_key,
+                    existing: a_existing,
+                    incoming: a_incoming,
+                },
+                Self::KeyedRosterDuplicateKey {
+                    key: b_key,
+                    existing: b_existing,
+                    incoming: b_incoming,
+                },
+            ) => a_key == b_key && a_existing == b_existing && a_incoming == b_incoming,
+            (
+                Self::KeyedRosterInvalidRoster {
+                    key: a_key,
+                    first: a_first,
+                    duplicate: a_duplicate,
+                },
+                Self::KeyedRosterInvalidRoster {
+                    key: b_key,
+                    first: b_first,
+                    duplicate: b_duplicate,
+                },
+            ) => a_key == b_key && a_first == b_first && a_duplicate == b_duplicate,
+            _ => false,
+        }
+    }
 }
 
 pub fn keyed_roster_insert<K: Clone, V: Clone>(
@@ -224,11 +297,7 @@ pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
     incoming: Rc<KeyedRow<K, V>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Rc<KeyedRosterInsert<K, V>> {
-    match crate::std_keyed_row::keyed_row_find(
-        rows.clone(),
-        incoming.row_key.clone(),
-        key_eq.clone(),
-    ) {
+    match crate::std_keyed_row::keyed_row_find(rows.clone(), incoming.row_key.clone(), key_eq) {
         Some(existing) => Rc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
             key: incoming.row_key.clone(),
             existing: existing.clone(),
@@ -240,7 +309,11 @@ pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "K: Clone + serde::Serialize, V: Clone + serde::Serialize",
+    deserialize = "K: Clone + serde::Deserialize<'de>, V: Clone + serde::Deserialize<'de>"
+))]
 #[serde(tag = "_variant")]
 pub enum KeyedRosterBuild<K: Clone, V: Clone> {
     KeyedRosterBuilt {
@@ -251,6 +324,52 @@ pub enum KeyedRosterBuild<K: Clone, V: Clone> {
         first: Rc<KeyedRow<K, V>>,
         duplicate: Rc<KeyedRow<K, V>>,
     },
+}
+
+impl<K: Clone + std::fmt::Debug, V: Clone + std::fmt::Debug> std::fmt::Debug
+    for KeyedRosterBuild<K, V>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::KeyedRosterBuilt { rows } => f
+                .debug_struct("KeyedRosterBuilt")
+                .field("rows", rows)
+                .finish(),
+            Self::KeyedRosterBuildDuplicateKey {
+                key,
+                first,
+                duplicate,
+            } => f
+                .debug_struct("KeyedRosterBuildDuplicateKey")
+                .field("key", key)
+                .field("first", first)
+                .field("duplicate", duplicate)
+                .finish(),
+        }
+    }
+}
+
+impl<K: Clone + PartialEq, V: Clone + PartialEq> PartialEq for KeyedRosterBuild<K, V> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::KeyedRosterBuilt { rows: a_rows }, Self::KeyedRosterBuilt { rows: b_rows }) => {
+                a_rows == b_rows
+            }
+            (
+                Self::KeyedRosterBuildDuplicateKey {
+                    key: a_key,
+                    first: a_first,
+                    duplicate: a_duplicate,
+                },
+                Self::KeyedRosterBuildDuplicateKey {
+                    key: b_key,
+                    first: b_first,
+                    duplicate: b_duplicate,
+                },
+            ) => a_key == b_key && a_first == b_first && a_duplicate == b_duplicate,
+            _ => false,
+        }
+    }
 }
 
 pub fn keyed_roster_build<K: Clone, V: Clone>(
@@ -310,5 +429,5 @@ pub fn keyed_roster_union<K: Clone, V: Clone>(
     right: Rc<Vec<Rc<KeyedRow<K, V>>>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Rc<KeyedRosterBuild<K, V>> {
-    keyed_roster_build(v1_rt::concat(left.clone(), right.clone()), key_eq.clone())
+    keyed_roster_build(v1_rt::concat(left.clone(), right.clone()), key_eq)
 }

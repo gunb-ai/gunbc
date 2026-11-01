@@ -13,6 +13,7 @@ import gunbc.host.host_effect_realize {
   DarkStepEnable,
   DarkStepRestart,
   DarkStepSliceControl,
+  DarkStepDeviceStore,
   DarkState,
   DarkOk,
   DarkFailed,
@@ -22,6 +23,8 @@ import gunbc.host.host_effect_realize {
   DarkLegExpectEmpty,
   dark_run_legs,
   dark_run_leg,
+  dark_state_directory_legs,
+  dark_state_directories_admit,
   dark_expect_empty_state,
   dark_unit_legs,
   dark_slice_control_legs,
@@ -43,7 +46,19 @@ import std.algebra { list_map, non_empty_to_list, Cons, Empty }
 import std.types { list_length }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal, fleet_posix_operator_user }
+import gunbc.auth.approval_broker_state_directories {
+  approval_broker_state_directories,
+  approval_decision_store_directory,
+}
+import gunbc.auth.approval_assertion_counter { approval_assertion_counter_directory, assertion_counter_slots_path }
+import gunbc.host_state_root { host_state_tree }
+import gunbc.auth.approval_decision_store { approval_decision_store_root }
+import gunbc.managed_directory { managed_directory_admit, managed_directory_mode_octal, managed_directory_permissions, ManagedDirectory, ManagedDirectoryAdmitted, ManagedDirectoryRefused, DirectoryDependent, EntriesUnmanaged }
+import gunbc.ownership { Ensured }
+import std.effect_grant { Read, Write, Execute }
+import extdeps.access.posix { PosixUser, LoginShellUnobserved }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_argv }
 import gunbc.live_deploy.spec { gunbc_approval_broker_unit_name }
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
 import extdeps.sudo.elevation { sudo_elevate_command }
@@ -140,8 +155,8 @@ test fn an_empty_leg_list_is_ok() -> Bool {
 // claim must FAIL rather than wave it through.
 //
 // THE BOUND, AND WHY IT IS NOT JUST A COUNT. >= count(units) is the floor the projection must clear
-// (each unit fans out to three argv legs -- revert, MemoryMax, MemoryHigh -- plus CPUQuota for the
-// sessions unit), but a count alone is satisfiable by a projection that emits ALL of unit 1's legs and
+// (each unit fans out to its set-property residue removals, one reload and a set-property per
+// property, with CPUQuota on the sessions unit), but a count alone is satisfiable by a projection that emits ALL of unit 1's legs and
 // NONE of unit 2's, and by one that emits one leg per unit while dropping two per unit. So the total is
 // pinned to the upstream producer the real fold enumerates over -- host_axis_caps
 // .slice_control_converge_argvs_for_unit, the same leaf test.claim.host.sessions_slice_cpu_witness reads
@@ -258,4 +273,125 @@ test fn the_launcher_snapshot_readback_covers_every_ancestor_and_refuses_links()
     && all(ancestors, p => any(args, a => a == p))
     && any(args, a => a == "l")
     && any(args, a => a == "/022")
+}
+
+// ── THE BROKER STATE-ROOT CENSUS (the srv1 assertion-counter 503) ─────────────────────────────
+// THE POSITIVE CONTROL THE DEFECT NEEDS. On srv1 (release a3b8d7df, 2026-10-24) an enrolled device's
+// PUT push-token route 503'd because nothing created /var/lib/gunbc/approval-assertion-counters: the
+// counter root was a bare path with no ManagedDirectory, while its device-store and JWKS siblings were
+// converged by a nested match in dark_state_directories_install that NAMED only those two. The fold now
+// consumes gunbc.auth.approval_broker_state_directories approval_broker_state_directories, and these
+// claims name what the deploy emits — deleting the counter row from the census fails exactly these
+// witnesses (the RED), and every row below is compared against the argv builders the route itself calls.
+
+// THE EXACT ARGV THE ROUTE BUILDS, RESTATED. The leg's command is sudo_elevate_command over
+// coreutils_install_directory_owned_argv, so its arguments are the -n prefix plus install -d -m 00700
+// -o briansrls -g briansrls <root> — the literal 00700 is the device-mode operand spelled twice on
+// purpose: if a derivation change moves the census row's mode away from the operator-owned directory
+// srv1 stands at, this claim and the shape claim below fail together and say which side moved.
+fn counter_install_args() -> List<String> {
+  list_append(
+    left: ["-n"],
+    right: coreutils_install_directory_owned_argv(
+      mode: managed_directory_permissions(d: approval_assertion_counter_directory()).mode,
+      owner: fleet_posix_operator_user.name,
+      group: fleet_posix_operator_user.name,
+      path: assertion_counter_slots_path(tree: host_state_tree()) as String,
+    ),
+  )
+}
+
+// THE ARGV LITERALLY, INDEPENDENT OF THE BUILDERS: the same list spelled from its flags and names, so
+// a silent change in coreutils_install_directory_owned_argv or sudo_elevate cannot move both this and
+// the builder-based claim above in lockstep.
+fn counter_install_args_literal() -> List<String> {
+  ["-n", "install", "-d", "-m", "00700", "-o", "briansrls", "-g", "briansrls", "/var/lib/gunbc/approval-assertion-counters"]
+}
+
+// THE EMITTED DEPLOY PLAN INCLUDES THE COUNTER DIRECTORY: the fold's leg list carries a
+// `sudo install -d` leg for the counter root's argv, with the step name the realization reports.
+test fn the_state_directory_plan_includes_the_assertion_counter_root() -> Bool {
+  let legs = dark_state_directory_legs()
+  any(legs, l => match l {
+    DarkLegArgv { step: DarkStepDeviceStore, command: c } =>
+      c.arguments == counter_install_args() && c.arguments == counter_install_args_literal()
+    DarkLegArgv { step: _, command: _ } => false
+    DarkLegStdin { step: _, command: _, payload: _ } => false
+    DarkLegExpectEmpty { step: _, command: _ } => false
+  })
+}
+
+// THE CENSUS IS THE BROKER STATE ROOTS THE SERVE PATH READS OR WRITES: every serve-written root has a
+// row — the device store (enrolments, push registrations and the APNs provider token, since #15124)
+// and JWKS cache that were converged before this change, the counter root (the observed 503), and the
+// decision store (serve-written at redemption commit, serve-read on every status route). A root joins the deploy by
+// being a row here; adding a broker state root without a row is visible at review in this one list.
+test fn the_census_names_every_broker_serve_path_state_root() -> Bool {
+  let rows = approval_broker_state_directories()
+  let paths = list_map(xs: rows, f: d => d.path as String)
+  count(rows) == 4
+    && any(paths, p => p == "/var/lib/gunbc/approval-devices")
+    && any(paths, p => p == "/var/lib/gunbc/approval-jwks")
+    && any(paths, p => p == "/var/lib/gunbc/approval-assertion-counters")
+    && any(paths, p => p == approval_decision_store_root as String)
+}
+
+// DERIVED, NOT RE-MINTED: the counter row's path IS the path the owning module's mint lists
+// (assertion_counter_slots_path over the production tree, both from assertion_counter_slots) — the census
+// cannot drift the path away from what the CAS store reads. The row carries the device store's shape (operator-owned
+// both sides, ownership Ensured so contents survive a retract of the deployment that created it) —
+// exactly the briansrls:briansrls 0700 state the operator's hand-made srv1 directory already stands at,
+// so `install -d` converges it as a no-op rather than fighting it (no wet claim asserts it is absent:
+// gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
+test fn the_counter_row_is_derived_and_shaped_for_the_live_host() -> Bool {
+  let d = approval_assertion_counter_directory()
+  d.path as String == assertion_counter_slots_path(tree: host_state_tree()) as String
+    && d.owner == fleet_posix_operator_user
+    && d.group_principal == fleet_posix_operator_user
+    && d.ownership == Ensured
+    && managed_directory_mode_octal(d: d) == "0700"
+    && (match managed_directory_admit(d: d) {
+         ManagedDirectoryAdmitted { dir: _ } => true
+         ManagedDirectoryRefused { member: _, path: _, writer: _ } => false
+       })
+}
+
+// THE CENSUS IS ADMITTED BEFORE ANY LEG RUNS: the fold refuses the whole install if any row's dependents
+// fail to cover their writes, so a malformed row five cannot mutate the host after rows one through four.
+test fn the_whole_census_admits() -> Bool {
+  match dark_state_directories_admit(directories: approval_broker_state_directories()) {
+    DarkOk => true
+    DarkFailed { step: _, reason: _ } => false
+  }
+}
+
+// A BROKER-UNCOVERED WRITER REFUSES THE CENSUS: the admission gate is live, not decorative — a row whose
+// writer sits outside every permission class fails the fold before any install -d runs.
+test fn a_census_row_with_an_uncovered_writer_refuses_the_install() -> Bool {
+  let outsider = PosixUser { name: "outsider", uid: 6001, gid: 6001, shell: LoginShellUnobserved }
+  let bad = ManagedDirectory {
+    member: "approval-counter-sabotage",
+    path: "/var/lib/gunbc/approval-assertion-counters",
+    owner: fleet_posix_operator_user,
+    group_principal: fleet_posix_operator_user,
+    dependents: [DirectoryDependent { who: outsider, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+  match dark_state_directories_admit(directories: [approval_assertion_counter_directory(), bad]) {
+    DarkFailed { step: s, reason: r } => s == DarkStepDeviceStore && string_contains(s: r, pattern: "outsider")
+    DarkOk => false
+  }
+}
+
+// THE DECISION ROW IS THE SAME SHAPE, DERIVED FROM ITS OWNER: the census's whole point is that a new
+// root joins by being a row, not a branch — so a row's ownership story is the device store's, restated
+// once by broker_state_directory. (The push-registration row is gone: #15124 moved push registrations
+// into the device store, whose row is the census's first.)
+test fn the_decision_row_is_derived_owner_only() -> Bool {
+  let decision = approval_decision_store_directory()
+  decision.path as String == approval_decision_store_root as String
+    && managed_directory_mode_octal(d: decision) == "0700"
+    && decision.owner == fleet_posix_operator_user
+    && decision.ownership == Ensured
 }

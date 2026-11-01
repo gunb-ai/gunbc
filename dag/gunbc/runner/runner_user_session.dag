@@ -1,0 +1,205 @@
+module gunbc.runner.runner_user_session
+
+import std.types { Bool, Int, String, List, NonEmptyStr, FilePath }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Present, Absent }
+import extdeps.exec.command { ArgvCommand, argv_words, env_prefixed_command }
+import extdeps.sudo.elevation { sudo_elevate_command, sudo_elevate_as_command }
+import extdeps.systemd.loginctl { loginctl_enable_linger_argv, loginctl_show_user_linger_command, loginctl_linger_reading, LoginctlLingerReading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
+import extdeps.systemd.systemctl { systemctl_user_manager_probe_command, systemctl_start_command }
+import extdeps.tools.id { id_uid_of_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.host_identity { HostIdentity }
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused }
+import gunbc.host.user_session_runtime { user_session_runtime_dir, user_session_launcher_env }
+import gunbc.runner.runner_host_deploy { RunnerHostSpec, runner_job_user_session_on }
+import gunbc.runner.runner_user_session_receipt {
+  UserSessionAnswer, UserSessionAnswered, UserSessionNotAnswered,
+  UserSessionLingerEnable, UserSessionLingerEnableOk, UserSessionLingerEnableFailed,
+  user_session_answer_of, user_session_answer_text,
+  runner_user_session_receipt_header_line, runner_user_session_receipt_enable_linger_line,
+  runner_user_session_receipt_linger_line, runner_user_session_converge_receipt_path,
+}
+import gunbc.runner.runner_microvm_host_ready { microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+
+// THE JOB ACCOUNT'S USER SYSTEMD MANAGER, CONVERGED ON ONE HOST AND READ BACK. The desired state is the row
+// gunbc.runner.runner_host_deploy runner_job_user_session_hosts: on those hosts the CI job account
+// (RunnerHostSpec.job_user) lingers, so its user manager runs without a login session and a job can start
+// transient units with `systemd-run --user`.
+//
+// MAIN-ONLY: fleet-converge's cloud identity admits a branch run only through a run-scoped grant, and this mode
+// requests none (gunbc.auth.branch_dispatch_federation), so it runs from the default branch (a branch dispatch
+// stops at WIF auth, run 40190879507). NO RUNNER LABEL IS DERIVED FROM THE ROW YET: a capability label is
+// truthful only once this converge's readback has held on the host, so it is a second step after the first
+// main run, and a job selector on it (gunbc#14972's systemd credential rows) a third.
+//
+// ONE HOST PER RUN: the host the fleet-converge dispatch selected and the machine confirms (the sealed binding
+// of gunbc.runner.runner_microvm_host_ready, as the browser toolchain converge reuses it). A host the row does
+// not name REFUSES before any effect: the converge never widens to a host it was not asked to change.
+//
+// THE EFFECT IS ONE ARGV, extdeps.systemd.loginctl loginctl_enable_linger_argv over the host's job_user,
+// elevated with sudo -n over the administrator edge. loginctl enable-linger starts the user manager as well as
+// recording the linger, so the readback can follow immediately.
+//
+// THEN user@<uid>.service IS STARTED, elevated (extdeps.systemd.systemctl systemctl_start_command): the start
+// blocks until the manager is up, so the readback does not race the manager the linger just asked for, and on a
+// host where it already runs it is a no-op.
+//
+// THE READBACK IS TWO READINGS AND BOTH MUST HOLD. Linger itself, from logind's record
+// (extdeps.systemd.loginctl loginctl_show_user_linger_command, Linger=yes): the converge starts the manager, so
+// a manager that answers proves only that it runs now, not that it will run after the next boot. And the
+// manager over the job's own route: as the job user, with XDG_RUNTIME_DIR and
+// DBUS_SESSION_BUS_ADDRESS bound to /run/user/<uid> (gunbc.host.user_session_runtime, the bindings a job binds),
+// the repository's one user-manager probe, extdeps.systemd.systemctl systemctl_user_manager_probe_command
+// (`systemctl --user show-environment`), which succeeds only when the client reaches its manager over the user
+// bus, exactly the precondition `systemd-run --user` needs. It is used rather than `is-system-running`, which
+// exits non-zero on a degraded manager that is perfectly reachable (that probe's own note). Writing
+// /var/lib/systemd/linger/<user> alone would leave the manager unstarted until a reboot, which is why the file
+// is not the desired state.
+
+type UserSessionHostAdmission
+  = UserSessionHostAdmitted { job_user: NonEmptyStr }
+  | UserSessionHostRefused { cause: String }
+
+fn user_session_host_admission(host: NonEmptyStr, spec: RunnerHostSpec) -> UserSessionHostAdmission {
+  if runner_job_user_session_on(host: (host as String) as HostIdentity) {
+    UserSessionHostAdmitted { job_user: spec.job_user }
+  } else {
+    UserSessionHostRefused { cause: join(["runner_user_session_converge: host ", host as String, " is not in gunbc.runner.runner_host_deploy runner_job_user_session_hosts, so its job account is not converged to linger"], "") }
+  }
+}
+
+fn user_session_enable_linger_command(job_user: NonEmptyStr) -> ArgvCommand {
+  sudo_elevate_command(command: loginctl_enable_linger_argv(subject: job_user))
+}
+
+fn user_session_readback_command(job_user: NonEmptyStr, uid: Int) -> ArgvCommand {
+  sudo_elevate_as_command(
+    user: job_user,
+    command: argv_words(command: env_prefixed_command(
+      bindings: user_session_launcher_env(runtime_dir: user_session_runtime_dir(uid: uid)),
+      command: systemctl_user_manager_probe_command(),
+    )),
+  )
+}
+
+fn user_manager_unit(uid: Int) -> NonEmptyStr {
+  join(["user@", to_string(value: uid), ".service"], "") as NonEmptyStr
+}
+
+fn observed_or_cause(step: String, outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportRefused { reason: why } => join([step, ": the transport refused before the leg ran: ", why], "")
+    RunArgvTransportObserved { observed: o } => join([step, ": exit=", to_string(value: o.exit_code), " ", trim(s: o.stderr)], "")
+  }
+}
+
+fn uid_of(outcome: RunArgvTransportOutcome) -> Int? {
+  match outcome {
+    RunArgvTransportRefused { reason: _ } => none
+    RunArgvTransportObserved { observed: o } => if o.exit_code == 0 { parse_int(s: trim(s: o.stdout)) } else { none }
+  }
+}
+
+data runner_user_session_converge_attempt_raw: String = "runner-user-session-converge-ci"
+
+fn user_session_admin_target(host: NonEmptyStr) -> SshTargetResolution {
+  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
+}
+
+fn linger_reading_of(outcome: RunArgvTransportOutcome) -> LoginctlLingerReading {
+  match outcome {
+    RunArgvTransportRefused { reason: why } => LoginctlLingerUnread { cause: concat("the transport refused: ", why) }
+    RunArgvTransportObserved { observed: o } => loginctl_linger_reading(exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
+  }
+}
+
+// THE RECEIPT IS WRITTEN BEFORE THE VERDICT on every path past the admission, including a refused SSH context
+// or target, so the upload step always finds it.
+fn user_session_receipt_then(host: NonEmptyStr, job_user: NonEmptyStr, lines: List<String>, holds: Bool) -> ProcessExit {
+  // The header line is RENDERED by the receipt module (review 88438: the wire vocabulary had two sources,
+  // the writer's literals and the parser's prefixes; one module now owns both directions). The clock word
+  // is read HERE, at the effect edge that performs the probe -- the renderer is pure and takes the instant
+  // as input (DESIGN 2).
+  let body = join([
+    runner_user_session_receipt_header_line(
+      host: host as String,
+      job_user: job_user as String,
+      probed_at: probed_at_word(reading: clock_now_probed_at()) as String
+    ),
+    "\n",
+    join(lines, "\n"), "\n",
+  ], "")
+  let w = Filesystem.Write(path: runner_user_session_converge_receipt_path, content: body)
+  if w.success == false {
+    exit_failure(reason: join(["runner_user_session_converge: receipt write failed: ", w.error, "\n", body], ""))
+  } else if holds {
+    ExitSuccess
+  } else {
+    exit_failure(reason: body)
+  }
+}
+
+fn runner_user_session_converge_ci_wet() -> ProcessExit {
+  match microvm_host_binding_wet() {
+    MicrovmHostBindingRefused { cause: c } =>
+      exit_failure(reason: join(["runner_user_session_converge: ", microvm_host_binding_refusal_text(c: c)], ""))
+    MicrovmHostBound { spec: spec, host: host } =>
+      match user_session_host_admission(host: host, spec: spec) {
+        UserSessionHostRefused { cause: c } => exit_failure(reason: c)
+        UserSessionHostAdmitted { job_user: job_user } =>
+          match prepare_fleet_ssh_agent_context(attempt_raw: runner_user_session_converge_attempt_raw) {
+            FleetSshContextRefused { cause: c } =>
+              user_session_receipt_then(host: host, job_user: job_user, lines: [concat("refused: the fleet SSH context: ", c)], holds: false)
+            FleetSshContextReady { context: context, receipt: context_receipt } =>
+              match user_session_admin_target(host: host) {
+                SshTargetRefused { endpoint: e, refusal: why } =>
+                  user_session_receipt_then(host: host, job_user: job_user, lines: [trim(s: context_receipt), concat("refused: ", ssh_target_refusal_text(endpoint: e, refusal: why))], holds: false)
+                SshTargetResolved { target: admin } => {
+                  let transport = FleetSsh { target: admin, context: context }
+                  let uid_read = run_argv_over_host_effect_transport(command: id_uid_of_command(user: job_user), transport: transport)
+                  let linger = run_argv_over_host_effect_transport(command: user_session_enable_linger_command(job_user: job_user), transport: transport)
+                  let linger_ok = match linger { RunArgvTransportObserved { observed: o } => o.exit_code == 0  RunArgvTransportRefused { reason: _ } => false }
+                  let lingers = linger_reading_of(outcome: run_argv_over_host_effect_transport(command: loginctl_show_user_linger_command(subject: job_user), transport: transport))
+                  let answer = match uid_of(outcome: uid_read) {
+                    Absent => UserSessionNotAnswered { cause: observed_or_cause(step: "the job user's uid", outcome: uid_read) }
+                    Present { value: uid } =>
+                      if !linger_ok {
+                        UserSessionNotAnswered { cause: observed_or_cause(step: "loginctl enable-linger", outcome: linger) }
+                      } else {
+                        match run_argv_over_host_effect_transport(command: systemctl_start_command(unit: user_manager_unit(uid: uid)), transport: transport) {
+                          RunArgvTransportRefused { reason: why } => UserSessionNotAnswered { cause: concat("the user manager start transport refused: ", why) }
+                          RunArgvTransportObserved { observed: started } =>
+                            if started.exit_code != 0 {
+                              UserSessionNotAnswered { cause: join(["systemctl start ", user_manager_unit(uid: uid) as String, " exit ", to_string(value: started.exit_code), ": ", trim(s: started.stderr)], "") }
+                            } else {
+                              match run_argv_over_host_effect_transport(command: user_session_readback_command(job_user: job_user, uid: uid), transport: transport) {
+                                RunArgvTransportRefused { reason: why } => UserSessionNotAnswered { cause: concat("the readback transport refused: ", why) }
+                                RunArgvTransportObserved { observed: o } => user_session_answer_of(exit_code: o.exit_code, stderr: o.stderr)
+                              }
+                            }
+                        }
+                      }
+                  }
+                  let holds = linger_ok
+                    && match lingers { LoginctlLingerEnabled => true  LoginctlLingerDisabled => false  LoginctlLingerUnread { cause: _ } => false }
+                    && match answer { UserSessionAnswered => true  UserSessionNotAnswered { cause: _ } => false }
+                  user_session_receipt_then(host: host, job_user: job_user, lines: [
+                    trim(s: context_receipt),
+                    runner_user_session_receipt_enable_linger_line(enable: if linger_ok { UserSessionLingerEnableOk } else { UserSessionLingerEnableFailed { cause: observed_or_cause(step: "loginctl enable-linger", outcome: linger) } }),
+                    runner_user_session_receipt_linger_line(reading: lingers),
+                    user_session_answer_text(a: answer),
+                  ], holds: holds)
+                }
+              }
+          }
+      }
+  }
+}

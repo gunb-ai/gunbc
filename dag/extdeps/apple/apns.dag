@@ -1,11 +1,14 @@
 module extdeps.apple.apns
 
 import std.types { NonEmptyStr, String, Int, Bool, List, brand }
+import std.optional { Absent, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.measure { Second, second, ByteSize, byte_size }
 import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256 }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.auth.jwt { JwtCompactSerialization }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_int }
 
 // Apple Push Notification service, HTTP/2 provider API with token-based authentication.
 // Cited pages: "Sending notification requests to APNs", "Establishing a token-based connection to
@@ -53,6 +56,15 @@ data apns_provider_token_min_refresh: Second = second(count: 1200)
 type ApnsProviderIdentity {
   team_id: AppleTeamId
   key_id: ApnsKeyId
+}
+
+// The claims set is exactly Apple's two members. iat is NumericDate (RFC 7519 section 2): seconds
+// since the epoch, a JSON number.
+fn apns_provider_token_claims_json(identity: ApnsProviderIdentity, issued_at: Int) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "iss", value: json_string(s: identity.team_id as String)),
+    json_kv(key: "iat", value: json_int(n: issued_at)),
+  ]))
 }
 
 // ── Request headers ──────────────────────────────────────────────────────────────────────────
@@ -106,9 +118,11 @@ fn apns_interruption_level_wire(l: ApnsInterruptionLevel) -> NonEmptyStr {
   }
 }
 
+// subtitle and category are OPTIONAL keys, and absent is a different wire fact from empty: Apple
+// reads an empty category as a category named "". So their absence is the Optional's, never "".
 type ApnsAlert {
   title: NonEmptyStr
-  subtitle: String
+  subtitle: NonEmptyStr?
   body: NonEmptyStr
 }
 
@@ -116,7 +130,7 @@ type ApnsAps {
   alert: ApnsAlert
   mutable_content: Bool
   interruption_level: ApnsInterruptionLevel
-  category: String
+  category: NonEmptyStr?
 }
 
 // Apple's limit for a non-VoIP remote notification payload.
@@ -145,6 +159,69 @@ type ApnsRequest {
   custom: List<ApnsCustomKey>
 }
 
+// ── The request on the wire ──────────────────────────────────────────────────────────────────
+// POST https://<host>/3/device/<device token>, over HTTP/2 (APNs refuses HTTP/1.1). The token is an
+// address, not a credential; the credential is the authorization header's provider token.
+data apns_device_path_prefix: NonEmptyStr = "/3/device/"
+
+fn apns_request_url(r: ApnsRequest) -> NonEmptyStr {
+  join(["https://", apns_host(e: r.environment) as String, apns_device_path_prefix as String, r.device_token as String], "") as NonEmptyStr
+}
+
+type ApnsHeader {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+fn apns_request_headers(r: ApnsRequest) -> List<ApnsHeader> {
+  [
+    ApnsHeader { name: "apns-topic", value: r.topic as NonEmptyStr },
+    ApnsHeader { name: "apns-push-type", value: apns_push_type_wire(t: r.push_type) },
+    ApnsHeader { name: "apns-priority", value: to_string(apns_priority_wire(p: r.priority)) as NonEmptyStr },
+    ApnsHeader { name: "apns-collapse-id", value: r.collapse_id as NonEmptyStr },
+  ]
+}
+
+// Token-based authentication carries the provider token as "bearer <JWT>".
+fn apns_authorization_header(token: JwtCompactSerialization) -> ApnsHeader {
+  ApnsHeader { name: "authorization", value: join(["bearer ", token as String], "") as NonEmptyStr }
+}
+
+// The response header that names an accepted notification.
+data apns_id_header_name: NonEmptyStr = "apns-id"
+
+// The JSON body. aps holds Apple's keys; an optional key Apple documents is sent exactly when it is
+// Present (subtitle, category) or true (mutable-content). Custom keys sit beside aps at the top level.
+fn apns_alert_json(a: ApnsAlert) -> JsonValue {
+  json_object(members: concat(
+    [json_kv(key: "title", value: json_string(s: a.title as String))],
+    concat(
+      match a.subtitle { Absent => []  Present { value: st } => [json_kv(key: "subtitle", value: json_string(s: st as String))] },
+      [json_kv(key: "body", value: json_string(s: a.body as String))],
+    ),
+  ))
+}
+
+fn apns_aps_json(aps: ApnsAps) -> JsonValue {
+  json_object(members: concat(
+    [json_kv(key: "alert", value: apns_alert_json(a: aps.alert))],
+    concat(
+      if aps.mutable_content { [json_kv(key: "mutable-content", value: json_int(n: 1))] } else { [] },
+      concat(
+        [json_kv(key: "interruption-level", value: json_string(s: apns_interruption_level_wire(l: aps.interruption_level) as String))],
+        match aps.category { Absent => []  Present { value: c } => [json_kv(key: "category", value: json_string(s: c as String))] },
+      ),
+    ),
+  ))
+}
+
+fn apns_payload_json(r: ApnsRequest) -> String {
+  serialize_json(v: json_object(members: concat(
+    [json_kv(key: "aps", value: apns_aps_json(aps: r.aps))],
+    map(r.custom, c => json_kv(key: c.key as String, value: json_string(s: c.value as String))),
+  )))
+}
+
 // ── Responses ────────────────────────────────────────────────────────────────────────────────
 // 200 carries the apns-id header and no body. Every refusal carries a JSON body { reason }, and 410
 // adds { timestamp } -- the last moment APNs knew the token was valid. The status table is Apple's.
@@ -166,10 +243,11 @@ fn apns_refusal_class(status: Int) -> ApnsRefusalClass {
   if status == 400 { ApnsBadRequest } else { if status == 403 { ApnsAuthenticationRefused } else { if status == 404 { ApnsBadPath } else { if status == 405 { ApnsBadMethod } else { if status == 410 { ApnsTokenUnregistered } else { if status == 413 { ApnsPayloadTooLarge } else { if status == 429 { ApnsTooManyRequests } else { if status == 500 { ApnsServerError } else { if status == 503 { ApnsServiceUnavailable } else { ApnsStatusUnlisted { status: status } } } } } } } } } }
 }
 
-// The same four-way outcome extdeps.ntfy.ntfy NtfyPublishOutcome settled on, for the same reasons: a
-// transport refusal has no status and must not be given one, and an undecodable 200 is not a
-// refusal. The broker-level shape both fold into is the consumer's (gunbc.auth.approval_device_redemption
-// PushProviderOutcome), not this module's.
+// THE FOUR-WAY OUTCOME, settled here: an HTTP client can honestly report three things -- accepted,
+// refused-with-a-status, never-reached -- and a body it cannot decode is a fourth thing that is none
+// of them. A transport refusal has no status and must not be given one; an undecodable 200 is not a
+// refusal. The broker-level shape this folds into is the consumer's
+// (gunbc.auth.approval_device_redemption PushProviderOutcome), not this module's.
 type ApnsSendOutcome
   = ApnsAccepted { apns_id: NonEmptyStr }
   | ApnsRefused { status: Int, class: ApnsRefusalClass, reason: String }

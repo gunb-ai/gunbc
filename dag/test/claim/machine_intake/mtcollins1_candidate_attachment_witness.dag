@@ -19,9 +19,10 @@ import gunbc.machine_intake.mtcollins1_expansion_attachment {
   NoObservationForUnit, attachment_for_unit, attachment_against_evidence,
 }
 import gunbc.machine_intake.mtcollins1_expansion_candidates {
-  candidate_verdicts, mtcollins1_candidate_verdicts, InstalledUnobserved, FullHeightBracket, LowProfileBracket,
+  candidate_verdicts, mtcollins1_candidate_verdicts, InstalledUnobserved,
 }
 import gunbc.machine_intake.mtcollins1_connectx4lx_observation { Connectx4LxHostUnobserved, Connectx4LxHostObserved }
+import extdeps.standards.pcie_cem { CemFullHeightBracket, CemLowProfileBracket }
 import gunbc.machine_intake.mtcollins1_dimm_connector_observation { observed_unit }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -73,8 +74,8 @@ test fn real_candidates_reach_typed_verdicts() -> Bool {
                 && arrived.host_link.generation == Gen3 && arrived.host_link.lane_count == 8
                 && arrived.port_count == 2 && arrived.port_connector == "SFP28" && relay != ""
                 && match bracket {
-                  FullHeightBracket => true
-                  LowProfileBracket => false
+                  CemFullHeightBracket => true
+                  CemLowProfileBracket => false
                 }
                 && match host {
                   Connectx4LxHostUnobserved { seated_report: _, pcie_read_obligation: _, driver_read_obligation: _, discharges_at: _ } => true

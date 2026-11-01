@@ -2,7 +2,7 @@ module extdeps.bmc.ipmi_sdr
 
 import std.algebra { trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { Celsius, Percent, RevolutionsPerMinute, SdrUndecodedLineCount, celsius, percent, rpm, sdr_undecoded_line_count }
+import std.measure { Celsius, Percent, RevolutionsPerMinute, celsius, percent, rpm }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -294,13 +294,6 @@ fn sdr_unrecognised_temperature_texts(results: List<SdrLineResult>) -> List<Stri
       SdrTemperatureUnrecognised { text: t } => [t]
     }
   })
-}
-
-fn sdr_unstructured_count(results: List<SdrLineResult>) -> SdrUndecodedLineCount {
-  sdr_undecoded_line_count(count: filter(results, r => match r {
-    SdrLineDecoded { line: _ } => false
-    SdrLineUnstructured { text: _ } => true
-  }).length())
 }
 
 // WHAT A WHOLE TEMPERATURE READ ESTABLISHED, AS THREE STATES RATHER THAN A Bool.

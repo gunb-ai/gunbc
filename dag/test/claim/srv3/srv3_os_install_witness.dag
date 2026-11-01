@@ -1,9 +1,24 @@
 module test.claim.srv3.srv3_os_install_witness
 
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.provisioning.network_boot { ProxyDhcp, NativeDhcpBootOptions, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, ubuntu_network_boot_loader_chain }
+import gunbc.os_install {
+  srv3_os_install_plan_standing,
+  srv3_pxe_network_boot_chain,
+  LanInstallInfraSurvey,
+  survey_implied_dhcp_direction,
+  OsInstallPlanRefused,
+  OsInstallPlanReady,
+}
+import gunbc.os_install_mechanism { srv3_install_mechanism_solution, OsInstallMechanismRefused, OsInstallMechanismSelected }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// ARCH-GROUNDED is still the claim and is asserted directly on the mapping,
+// ARCH-GROUNDED is still the claim, now asserted on the amd64 chain row Canonical documents (the
+// uncited grubnet filename map it replaced is deleted),
 // which is where it lives. The srv3 clause that used to read the architecture off
 // a Ready plan is now the plan's refusal: with no delivery mechanism selectable
 // on 3.22.00 there is no plan to take an architecture from, and taking one anyway
@@ -13,14 +28,8 @@ test fn bootloader_artifact_is_arch_grounded() -> Bool {
     OsInstallPlanRefused { cause: _ } => true
     OsInstallPlanReady { plan: _ } => false
   }
-    && match network_uefi_bootloader_artifact(arch: X86_64) {
-      Present { value: x } => x == "grubnetx64.efi"
-      Absent => false
-    }
-    && match network_uefi_bootloader_artifact(arch: Riscv64) {
-      Present { value: _ } => false
-      Absent => true
-    }
+    && (ubuntu_network_boot_loader_chain(chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain).members.head.served_path as String) == "bootx64.efi"
+    && map(ubuntu_network_boot_loader_chain(chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain).members.tail, m => m.served_path as String) == ["grubx64.efi", "grub/grub.cfg", "vmlinuz", "initrd"]
 }
 
 test fn srv3_pxe_chain_is_uefi_http_boot_when_modeled() -> Bool {

@@ -255,6 +255,73 @@ fn classify_curl_http_code_after_newline(stdout: String) -> CurlWriteOutHttpStat
   }
 }
 
+// ── THE CONFIG FILE ON STDIN ───────────────────────────────────────────────────────────────────
+// `curl --config -` (-K) reads options from stdin, one per line: the long option name without its
+// dashes, then "=" and the value. A double-quoted value takes the escapes \\ and \" and \n (curl(1),
+// -K), so any header or body can travel quoted. This is how a request carrying a CREDENTIAL in a
+// header reaches curl without it ever being an argv word (gunbc.credential_argv_exposure): argv is
+// `curl --config -`, and the bearer, the body and the URL are stdin.
+type CurlConfigLine
+  = CurlConfigFlag { option: NonEmptyStr }
+  | CurlConfigValue { option: NonEmptyStr, value: String }
+
+fn curl_config_quoted(s: String) -> String {
+  let escaped_backslash = join(split(s: s, delimiter: "\\"), "\\\\")
+  let escaped_quote = join(split(s: escaped_backslash, delimiter: "\""), "\\\"")
+  join(["\"", join(split(s: escaped_quote, delimiter: "\n"), "\\n"), "\""], "")
+}
+
+fn curl_config_line_text(l: CurlConfigLine) -> String {
+  match l {
+    CurlConfigFlag { option: o } => o as String
+    CurlConfigValue { option: o, value: v } => join([o as String, " = ", curl_config_quoted(s: v)], "")
+  }
+}
+
+fn curl_config_text(lines: List<CurlConfigLine>) -> String {
+  join(map(lines, l => concat(curl_config_line_text(l: l), "\n")), "")
+}
+
+// ── A RESPONSE DUMPED TO STDOUT ────────────────────────────────────────────────────────────────
+// `--dump-header -` writes the status line and headers to stdout ahead of the body, the head ending at
+// its first empty line; with curl_http_code_after_newline_write_out_format the last line is the
+// status. So stdout splits into three parts by position, and nothing is guessed from content: the
+// head is every line before the first blank one (each trimmed of its CR), the status is the last
+// line, and the body is what lies between, rejoined exactly.
+type CurlDumpedResponse {
+  header_lines: List<String>
+  body: String
+  status: CurlWriteOutHttpStatus
+}
+
+fn curl_first_blank_line(lines: List<String>, i: Int) -> Int {
+  match lines.get(index: i) {
+    Absent => i
+    Present { value: l } => if trim(s: l) == "" { i } else { curl_first_blank_line(lines: lines, i: i + 1) }
+  }
+}
+
+fn curl_dumped_response(stdout: String) -> CurlDumpedResponse {
+  let lines = split(s: stdout, delimiter: "\n")
+  let blank = curl_first_blank_line(lines: lines, i: 0)
+  let last = length(lines) - 1
+  CurlDumpedResponse {
+    header_lines: map(lines.take(n: blank), l => trim(s: l)),
+    body: if blank + 1 >= last { "" } else { join(lines.skip(n: blank + 1).take(n: last - blank - 1), "\n") },
+    status: classify_curl_http_code_after_newline(stdout: stdout),
+  }
+}
+
+// The value of the named header in a dumped head, matched on the lowercase name HTTP/2 puts on the
+// wire (RFC 9113 section 8.2.1). none when the head does not carry it.
+fn curl_dumped_header(header_lines: List<String>, lowercase_name: NonEmptyStr) -> String? {
+  let prefix = concat(lowercase_name as String, ":")
+  match filter(header_lines, l => starts_with(s: l, prefix: prefix)).get(index: 0) {
+    Absent => none
+    Present { value: l } => Present { value: trim(s: substring(s: l, start: string_length(prefix), end: string_length(l))) }
+  }
+}
+
 data curl_if_none_match_any_header: String = "If-None-Match: *"
 
 // If-Match carries the entity tag verbatim as the store returned it, quotes included (RFC 9110
@@ -621,9 +688,12 @@ fn curl_trace_transfer_sending(events: List<CurlTraceEvent>, text: NonEmptyStr) 
     CurlTraceRecvHeader => false
     CurlTraceOtherEvent => false
   })
-  let ids = fold(carriers, init: [], f: (acc, e) => if length(filter(acc, i => i == e.transfer as String)) > 0 { acc } else { concat(acc, [e.transfer as String]) })
-  if length(ids) != 1 { none } else {
-    match ids.first() { Present { value: i } => Present { value: i as NonEmptyStr }  Absent => none }
+  match carriers.first() {
+    Absent => none
+    Present { value: first } =>
+      if all(carriers, event => event.transfer == first.transfer) {
+        Present { value: first.transfer }
+      } else { none }
   }
 }
 

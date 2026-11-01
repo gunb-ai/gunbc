@@ -3,46 +3,75 @@ import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import product.printed_chassis.assembly_inventory { InventoryMutation, InventoryObservation, InventoryCaptured, InventoryReadRefusal, InventoryUnread, decode_inventory, inventory_json, capture_validity, transition_inventory, InventoryTransitionPrepared, InventoryTransitionRefused }
-import gunbc.durable_cas_file_store { observe_cas_slot_state, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, file_compare_and_set, DefaultAccessCreateOnly }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreListed, SlotStoreRefused, slot_observe, slot_commit, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, DefaultAccessCreateOnly }
 import std.durable_compare_and_set { CasExpectation, CasGeneration, cas_generation_count, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
-import gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_member_path, printer_state_directory, printer_starts_legacy_scan, PrinterStartsClean, PrinterStartsLegacyEntries, PrinterStartsUnreadable }
+import gunbc.host_state_root { HostStateTree }
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DeclaredDirectoryMode }
+import gunbc.owned_directory { OwnedDirectoryTarget }
 import extdeps.languages.json.emit { serialize_json }
+import std.integer { int_to_decimal_string }
 
-// The prototype has one inventory slot in the existing printer control-plane store.
-// A caller cannot reset reservations by choosing a different output directory.
+// THE CASSETTE INVENTORY STORE, SEALED. The prototype has one inventory slot; it lives in its own member of the
+// printer-starts parent, declared once here, and the mint takes the host state tree and nothing else, so a caller
+// cannot reset reservations by choosing a different output directory or root. The slot key is unchanged from the
+// flat layout, so the generations the old code wrote are read back verbatim after gunbc.fleet.printer_state_layout
+// moves them.
+type CassetteInventoryDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+data cassette_inventory_slots: CassetteInventoryDeclaration = CassetteInventoryDeclaration {
+ member: "cassette-inventory" as NonEmptyStr,
+ mode: DirectoryOwnerGroupWritableSetgid,
+}
 data inventory_slot:NonEmptyStr="cassette-prototype-inventory" as NonEmptyStr
-fn publish_inventory(expected:CasExpectation, next:InventoryObservation) -> ProcessExit {
+fn cassette_inventory_path(tree:HostStateTree) -> NonEmptyStr { printer_starts_member_path(tree:tree,member:cassette_inventory_slots.member) }
+fn cassette_inventory_directory_target(tree:HostStateTree) -> OwnedDirectoryTarget {
+ printer_state_directory(member:cassette_inventory_slots.member as String,path:cassette_inventory_path(tree:tree),mode:cassette_inventory_slots.mode)
+}
+type CassetteInventoryStore sole_constructor { slots:SlotStore }
+type CassetteInventoryStoreReading = CassetteInventoryStoreReady {store:CassetteInventoryStore} | CassetteInventoryStoreUnready {detail:String}
+fn cassette_inventory_legacy_entry(name:String) -> Bool { starts_with(s:name,prefix:concat(inventory_slot as String,".")) }
+fn cassette_inventory_store(tree:HostStateTree) -> CassetteInventoryStoreReading {
+ match printer_starts_legacy_scan(tree:tree,owns:n=>cassette_inventory_legacy_entry(name:n)) {
+ PrinterStartsUnreadable {detail:d}=>CassetteInventoryStoreUnready {detail:d}
+ PrinterStartsLegacyEntries {names:n}=>CassetteInventoryStoreUnready {detail:join(["printer-starts still holds the flat layout (",join(n,", "),"); gunbc.fleet.printer_state_layout moves it"],"")}
+ PrinterStartsClean=>match listed_slot_store(member:cassette_inventory_slots.member as String,root:cassette_inventory_path(tree:tree)) {
+ SlotStoreRefused {detail:d}=>CassetteInventoryStoreUnready {detail:d}
+ SlotStoreListed {root:r}=>CassetteInventoryStoreReady {store:CassetteInventoryStore {slots:file_slot_store(root:r)}}
+ }
+ }
+}
+fn publish_inventory(store:CassetteInventoryStore, expected:CasExpectation, next:InventoryObservation) -> ProcessExit {
  let text=serialize_json(v:inventory_json(observed:next))
  match admit_cas_attempt_for_derived_payload(key:inventory_slot,expected:expected,proposed:text as NonEmptyStr) {
  DerivedPayloadKeyNotSlotAddressable {key:_}=>exit_failure(reason:"Inventory store key refused")
- DerivedPayloadAdmitted {verified:v}=>match file_compare_and_set(root:printer_start_claim_directory,publication:DefaultAccessCreateOnly,verified:v) {
+ DerivedPayloadAdmitted {verified:v}=>match slot_commit(store:store.slots,publication:DefaultAccessCreateOnly,verified:v) {
  CasCommitted {committed:_}=>ExitSuccess
  CasPreconditionFailed {expected:_,observed:_}=>exit_failure(reason:"Inventory changed concurrently; re-observe before retrying")
  CasStoreRefused {cause:_}=>exit_failure(reason:"Inventory publication refused; no actuation admitted")
  }
  }
 }
-fn initialize_inventory(capture:String) -> ProcessExit {
+fn initialize_inventory(store:CassetteInventoryStore,capture:String) -> ProcessExit {
  let decoded=match decode_inventory(text:capture) {Present {value:c}=>c Absent=>return exit_failure(reason:"Malformed initial inventory capture")}
- match capture_validity(observed:decoded) {Present {value:_}=>exit_failure(reason:"Initial inventory contains ambiguous identities or invalid evidence") Absent=>publish_inventory(expected:ExpectSlotAbsent,next:decoded)}
+ match capture_validity(observed:decoded) {Present {value:_}=>exit_failure(reason:"Initial inventory contains ambiguous identities or invalid evidence") Absent=>publish_inventory(store:store,expected:ExpectSlotAbsent,next:decoded)}
 }
-fn mutate_inventory(mutation:InventoryMutation) -> ProcessExit {
- match observe_cas_slot_state(root:printer_start_claim_directory,key:inventory_slot) {
+fn mutate_inventory(store:CassetteInventoryStore,mutation:InventoryMutation) -> ProcessExit {
+ match slot_observe(store:store.slots,key:inventory_slot) {
  CasObservedUnreadable {cause:_}=>exit_failure(reason:"Inventory store unreadable; no transition admitted")
  CasObservedReadable {readable:CasReadableAbsent}=>exit_failure(reason:"Inventory has not been initialized from an independent capture")
  CasObservedReadable {readable:CasReadablePresent {version:v}}=>{
  let observed=match decode_inventory(text:v.value as String) {Present {value:c}=>capture_at_generation(capture:c,generation:v.generation) Absent=>return exit_failure(reason:"Stored inventory malformed")}
  match transition_inventory(observed:observed,mutation:mutation) {
  InventoryTransitionRefused {cause:_}=>exit_failure(reason:"Inventory transition refused; inspect baseline, identities and attempt")
- InventoryTransitionPrepared {next:n}=>publish_inventory(expected:ExpectSlotGeneration {generation:v.generation},next:n)
+ InventoryTransitionPrepared {next:n}=>publish_inventory(store:store,expected:ExpectSlotGeneration {generation:v.generation},next:n)
  }
  }
  }
 }
 
 // Independent store read after publication. Neither goal membership nor revision is an input.
-fn observe_stored_inventory() -> ObservationAttempt<InventoryObservation,InventoryReadRefusal> {
- match observe_cas_slot_state(root:printer_start_claim_directory,key:inventory_slot) {
+fn observe_stored_inventory(store:CassetteInventoryStore) -> ObservationAttempt<InventoryObservation,InventoryReadRefusal> {
+ match slot_observe(store:store.slots,key:inventory_slot) {
  CasObservedUnreadable {cause:_}=>ObservationRefused {cause:InventoryUnread {reason:"Inventory store unreadable"}}
  CasObservedReadable {readable:CasReadableAbsent}=>ObservationRefused {cause:InventoryUnread {reason:"Inventory capture not initialized"}}
  CasObservedReadable {readable:CasReadablePresent {version:v}}=>match decode_inventory(text:v.value as String) {Present {value:c}=>ObservationEstablished {observed:capture_at_generation(capture:c,generation:v.generation)} Absent=>ObservationRefused {cause:InventoryUnread {reason:"Stored inventory malformed"}}}
@@ -52,5 +81,5 @@ fn observe_stored_inventory() -> ObservationAttempt<InventoryObservation,Invento
 // Fence with the store generation, not a caller-authored receipt name. Reusing a receipt
 // label can never resurrect an old baseline after intervening publications (ABA).
 fn capture_at_generation(capture:InventoryObservation,generation:CasGeneration) -> InventoryObservation {
- match capture {InventoryCaptured {snapshot:_,covered_slots:c,entries:e,retired_rejections:r}=>InventoryCaptured {snapshot:concat("generation:",cas_generation_count(g:generation) as String),covered_slots:c,entries:e,retired_rejections:r}}
+ match capture {InventoryCaptured {snapshot:_,covered_slots:c,entries:e,retired_rejections:r}=>InventoryCaptured {snapshot:concat("generation:",int_to_decimal_string(value: cas_generation_count(g:generation))),covered_slots:c,entries:e,retired_rejections:r}}
 }

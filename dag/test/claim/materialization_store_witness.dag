@@ -1,5 +1,7 @@
 module test.claim.materialization_store_witness
 
+import std.cache_interface { ReplaceExisting, LeastRecentlyUsed, RefuseNewStore }
+
 import std.judgment_contract { length_prefixed_encode, identity_structural_component, identity_digest_component, identity_component_canonical }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind }
 import std.types { Bool, Int, List, String, NonEmptyStr }
@@ -76,6 +78,7 @@ import extdeps.realization.materialization_store_local {
   store_read_observation,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { nat_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -540,16 +543,12 @@ test fn a_store_opens_only_on_its_own_marker() -> Bool {
 }
 
 fn budget_row(family: String, bytes: Int) -> LocalStoreFamilyBudget {
-  LocalStoreFamilyBudget { family: family as ArtifactKindId, budget: byte_size(count: bytes) }
-}
-
-fn catalog_text(c: List<LocalStoreFamilyBudget>) -> List<String> {
-  c |> map(b => concat(concat(b.family as String, " -> "), measure_count(m: b.budget) as String))
+  LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: family as ArtifactKindId, budget: byte_size(count: bytes) }
 }
 
 fn decodes_to(root: MaterializationStoreRoot, content: String, expected: List<LocalStoreFamilyBudget>) -> Bool {
   match store_marker_decode(root: root, content: content) {
-    StoreMarkerDecoded { catalog: c } => catalog_text(c: c) == catalog_text(c: expected)
+    StoreMarkerDecoded { catalog: c } => c == expected
     StoreMarkerForeign => false
     StoreMarkerMalformed { detail: _ } => false
   }
@@ -565,6 +564,19 @@ fn is_malformed(root: MaterializationStoreRoot, content: String) -> Bool {
 
 fn hand_marker(root: MaterializationStoreRoot, after_head: String) -> String {
   concat(store_marker_head(root: root), after_head)
+}
+
+test fn marker_retention_is_bound_and_legacy_lru_keeps_its_meaning() -> Bool {
+  let root = WitnessScratchRoot { root: "/tmp/gunbc_matstore_witness" }
+  let retained = [LocalStoreFamilyBudget { family: "x" as ArtifactKindId, budget: byte_size(count: 10), at_capacity: RefuseNewStore }]
+  let lru = [budget_row(family: "x", bytes: 10)]
+  let old_head = replace(store_marker_head(root: root), "gunbc-materialization-store v4", "gunbc-materialization-store v3")
+  let old = concat(old_head, "1:x=10;\ninstance legacy\n")
+  let new = store_marker_content(root: root, instance_label: "retained", budgets: retained)
+  decodes_to(root: root, content: old, expected: lru)
+    && decodes_to(root: root, content: new, expected: retained)
+    && !decodes_to(root: root, content: new, expected: lru)
+    && is_malformed(root: root, content: concat(old_head, "1:x=10!\ninstance forged\n"))
 }
 
 // THE MARKER CODEC IS EXACT. Family names that carry every delimiter the old text form used

@@ -1,0 +1,844 @@
+module gunbc.instruments.router_proxy_falsifier
+
+import std.types { Int, List, String, Bool, NonEmptyStr, Port }
+import std.optional { Optional, Present, Absent }
+import std.algebra { skip }
+import std.measure { byte_size }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_members_named }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, JsonArray, JsonObject }
+import extdeps.docker.cli_service { DockerCli, SignalHangup }
+import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
+import extdeps.proxy.openresty {
+  NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
+  ClientMaxBodySize, ClientBodyBufferSize, LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
+  ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
+}
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config, RouterDevUpstream, RouterUpstreamScheme, UpstreamHttp, RouterDevCacheLocality, EngineLocal, router_dev_first_party_json, router_dev_first_party_upstreams, router_dev_retiring_name_conflict, no_effort_rules }
+import gunbc.serving.router_proxy_config {
+  RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
+}
+
+// THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router, S1b). `gunbc test
+// //gunbc/instruments:router-proxy-falsifier` emits this closure, builds it and runs it: the pinned
+// OpenResty image (extdeps.proxy.openresty openresty_1_27_1_1_image) is given the configuration
+// gunbc.serving.router_proxy_config emits, and every case below is a request through that proxy. Nothing
+// is interpreted, and every process is started through extdeps.docker.cli_service DockerCli, the one
+// process-spawn effect the native claim route admits (ruling gunbc.design_ruling
+// native_claim_route_admits_the_docker_cli).
+//
+// THE WORLD. Three containers share one network namespace, so no host port and no bind mount is used and
+// the run is the same under a local or a remote daemon: the fixture (authz stub on 19001, stream-end sink
+// on 19002, a chunked SSE upstream on 19003), the router on 18443 with the emitted configuration, and a
+// second router on 18444 whose authz port (19009) has no listener. Requests are made by the pinned curl
+// image inside the same namespace. Configurations reach the containers by `docker cp`.
+//
+// THE FIXTURE IS TEST SOURCE, rendered from the same directive model as the router; its Lua is the stub's
+// behaviour, not router policy.
+//
+// NO DAEMON IS NO OBSERVATION. A runner whose docker daemon does not answer `docker version` exits 2,
+// never a skip or a green; the control case below runs the same classification against a daemon address
+// that cannot exist and requires it to read as unavailable. A docker program that cannot be spawned is a
+// transport error, which the claim main also reports as no observation.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn docker() -> NonEmptyStr { "docker" as NonEmptyStr }
+fn fixture_name() -> NonEmptyStr { "gunbc-rpf-fixture" as NonEmptyStr }
+fn router_name() -> NonEmptyStr { "gunbc-rpf-router" as NonEmptyStr }
+fn unreachable_router_name() -> NonEmptyStr { "gunbc-rpf-router-noauthz" as NonEmptyStr }
+fn dev_router_name() -> NonEmptyStr { "gunbc-rpf-dev" as NonEmptyStr }
+fn test_name() -> NonEmptyStr { "gunbc-rpf-test" as NonEmptyStr }
+fn shared_namespace() -> NonEmptyStr { "container:gunbc-rpf-fixture" as NonEmptyStr }
+fn absent_daemon() -> NonEmptyStr { "unix:///nonexistent/gunbc-router-proxy-falsifier.sock" as NonEmptyStr }
+
+fn router_conf_path() -> String { "/tmp/gunbc-rpf-router.conf" }
+fn unreachable_conf_path() -> String { "/tmp/gunbc-rpf-router-noauthz.conf" }
+fn broken_conf_path() -> String { "/tmp/gunbc-rpf-router-broken.conf" }
+fn fixture_conf_path() -> String { "/tmp/gunbc-rpf-fixture.conf" }
+
+type DaemonReading
+  = DaemonAnswered
+  | DaemonUnavailable { stderr: String }
+
+fn daemon_reading(exit_code: Int, stderr: String) -> DaemonReading {
+  if exit_code == 0 { DaemonAnswered } else { DaemonUnavailable { stderr: stderr } }
+}
+
+type FalsifierCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn case_of(identity: String, held: Bool, observed: String) -> FalsifierCase {
+  FalsifierCase { identity: identity, held: held, observed: observed }
+}
+
+fn text_of(r: RouterProxyConfig) -> String {
+  match r { RouterProxyConfigRendered { text: t } => t RouterProxyConfigRefused { token: _ } => "" }
+}
+
+fn tok(text: String) -> NginxToken? { nginx_token(text: text) }
+
+fn fixture_location(path: String, exact: Bool, lines: List<String>) -> List<NginxDirective> {
+  match tok(text: path) {
+    Present { value: p } => [LocationBlock {
+      matching: if exact { ExactMatch { path: p } } else { PrefixMatch { path: p } },
+      body: [LuaPhaseBlock { phase: ContentPhase, lines: lines }],
+    }]
+    Absent => no_directives()
+  }
+}
+
+// THE DEV-POLICY UPSTREAMS: a plain HTTP upstream and two HTTPS upstreams, each echoing which upstream it
+// is, the Authorization it was sent and the body. The certificate of the first HTTPS one is the pinned
+// bundle the dev router trusts; the second presents a certificate outside the bundle.
+fn echo_lines(name: String) -> List<String> {
+  ["ngx.req.read_body()", "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')"]
+}
+
+// THE SAME ECHO, ABLE TO HOLD A TURN: ?hold keeps the request inside the upstream for six seconds, which
+// is how a cap becomes observable from the outside -- the turn is active while it sleeps. Without this the
+// binding rules could only ever be tested against a cap of zero.
+fn echo_lines_holding_turn(name: String) -> List<String> {
+  ["ngx.req.read_body()", "if ngx.var.arg_hold then ngx.sleep(6) end", "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')"]
+}
+
+// THE SAME ECHO, ABLE TO ANSWER AS A STREAM: ?sse=1 answers text/event-stream with the frames below, the
+// usage frame split across two flushes so the router's body filter sees a frame that spans chunks. The
+// frames are declared once; the fixture prints them and the case compares the client's bytes to them. They are
+// printed inside level-1 long brackets because "data: [DONE]" ends in "]", which closes a level-0 one early.
+fn sse_content_frame() -> String { "data: \{\"choices\":[\{\"delta\":\{\"content\":\"hi\"}}]}" }
+fn sse_usage_head() -> String { "data: \{\"usage\":\{\"prompt_tokens\":7001,\"completion_tokens\":3003," }
+fn sse_usage_tail() -> String { "\"prompt_tokens_details\":\{\"cached_tokens\":5001}}}" }
+fn sse_done_frame() -> String { "data: [DONE]" }
+fn sse_stream_text() -> String { sse_content_frame() + "\n\n" + sse_usage_head() + sse_usage_tail() + "\n\n" + sse_done_frame() + "\n\n" }
+
+fn echo_lines_or_sse(name: String) -> List<String> {
+  [
+    "ngx.req.read_body()",
+    "if ngx.var.arg_sse then",
+    "  ngx.header['Content-Type'] = 'text/event-stream'",
+    "  ngx.print([=[" + sse_content_frame() + "]=] .. '\\n\\n') ngx.flush(true)",
+    "  ngx.print([=[" + sse_usage_head() + "]=]) ngx.flush(true) ngx.sleep(0.2)",
+    "  ngx.print([=[" + sse_usage_tail() + "]=] .. '\\n\\n') ngx.flush(true)",
+    "  ngx.print([=[" + sse_done_frame() + "]=] .. '\\n\\n')",
+    "  return",
+    "end",
+    "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')",
+  ]
+}
+
+fn tls_fixture_server(port: Port, cert: String, key: String, name: String) -> List<NginxDirective> {
+  match tok(text: "127.0.0.1") { Absent => no_directives() Present { value: host } =>
+  match tok(text: cert) { Absent => no_directives() Present { value: c } =>
+  match tok(text: key) { Absent => no_directives() Present { value: k } =>
+    [ServerBlock { body: concat([ListenTlsOn { address: host, port: port }, SslCertificate { path: c }, SslCertificateKey { path: k }], fixture_location(path: "/", exact: false, lines: echo_lines(name: name))) }]
+  } } }
+}
+
+fn fixture_server(port: Port, locations: List<NginxDirective>) -> List<NginxDirective> {
+  match tok(text: "127.0.0.1") {
+    Present { value: host } => [ServerBlock { body: concat([ListenOn { address: host, port: port }], locations) }]
+    Absent => no_directives()
+  }
+}
+
+// The authz stub refuses a request carrying x-deny; otherwise it reads the forwarded body and answers an
+// upstream and a permit naming the request's x-case and the body's model, except that the noupstream,
+// nopermit and badupstream cases omit the upstream, omit the permit, or answer an upstream that is not an
+// address; the sink counts stream-end notices and keeps the last permit; the upstream
+// counts its hits, echoes the body and sends one SSE event, flushes, then either aborts its connection
+// (?reset) or optionally waits four seconds (?slow) before a second.
+fn dev_upstreams() -> List<NginxDirective> {
+  concat(concat(concat(concat(concat(
+      fixture_server(port: 19101 as Port, locations: fixture_location(path: "/", exact: false, lines: echo_lines_or_sse(name: "a"))),
+      tls_fixture_server(port: 19443 as Port, cert: "/etc/fake/b.crt", key: "/etc/fake/b.key", name: "b")),
+    tls_fixture_server(port: 19444 as Port, cert: "/etc/fake/o.crt", key: "/etc/fake/o.key", name: "d")),
+    // The two engines that answer m-e. e1's certificate is outside the pins, so every turn routed to it
+    // fails at the TLS handshake -- a 502 the health guard must eject -- and e2 is a healthy engine the
+    // session can only reach by MOVING, which is what the unavailable-binding case asserts.
+    tls_fixture_server(port: 19445 as Port, cert: "/etc/fake/o.crt", key: "/etc/fake/o.key", name: "e1")),
+    fixture_server(port: 19106 as Port, locations: fixture_location(path: "/", exact: false, lines: echo_lines(name: "e2"))),
+    fixture_server(port: 19105 as Port, locations: fixture_location(path: "/", exact: false, lines: echo_lines_holding_turn(name: "f1"))),
+    // f2 answers m-f too, with the SAME cap: the two rows tie on free capacity, so the pick loop keeps
+    // the row it sees first and a new session binds to f1. f2 is the engine a LOST binding would
+    // silently escape to -- which is what the at-cap case forbids.
+    fixture_server(port: 19107 as Port, locations: fixture_location(path: "/", exact: false, lines: echo_lines(name: "f2")))
+  ))
+}
+
+fn fixture_directives() -> List<NginxDirective> {
+  let authz = fixture_location(path: "/authz", exact: true, lines: [
+    "if ngx.var.http_x_deny then return ngx.exit(403) end",
+    "ngx.req.read_body()",
+    "local model = string.match(ngx.req.get_body_data() or '', '\"model\":\"([%w%-]+)\"') or 'nobody'",
+    "local case = ngx.var.http_x_case or 'none'",
+    "local upstream = '127.0.0.1:19003'",
+    "if case == 'badupstream' then upstream = 'not an address' elseif case == 'badport0' then upstream = '127.0.0.1:0' elseif case == 'badporthigh' then upstream = '127.0.0.1:70000' end",
+    "if case ~= 'noupstream' then ngx.header['x-upstream'] = upstream end",
+    "local body = ngx.req.get_body_data()",
+    "if not body then local f = ngx.req.get_body_file() if f then local h = io.open(f, 'rb') body = h:read('*a') h:close() end end",
+    "body = body or ''",
+    "local permit = 'p-' .. case .. '-' .. model",
+    "if case == 'large' then permit = permit .. '-' .. #body .. '-' .. ngx.md5(body) end",
+    "if case ~= 'nopermit' then ngx.header['x-seat-permit'] = permit end",
+    "ngx.say('ok')",
+  ])
+  let stream_end = fixture_location(path: "/stream-end", exact: true, lines: [
+    "ngx.shared.seen:incr('ends', 1, 0)",
+    "ngx.shared.seen:set('last', ngx.var.http_x_seat_permit or '')",
+    "ngx.say('ok')",
+  ])
+  let ends = fixture_location(path: "/ends", exact: true, lines: [
+    "local want = tonumber(ngx.var.arg_n) or 0",
+    "local i = 0",
+    "while (ngx.shared.seen:get('ends') or 0) < want and i < 80 do ngx.sleep(0.1) i = i + 1 end",
+    "ngx.say('ends=', (ngx.shared.seen:get('ends') or 0), ' last=', (ngx.shared.seen:get('last') or ''), ' hits=', (ngx.shared.seen:get('hits') or 0))",
+  ])
+  let upstream = fixture_location(path: "/v1/", exact: false, lines: [
+    "ngx.shared.seen:incr('hits', 1, 0)",
+    "ngx.req.read_body()",
+    "local b = ngx.req.get_body_data() or ''",
+    "local pm = string.match(ngx.var.http_x_seat_permit or '', '%-(%x+)$')",
+    "if #b > 4096 then ngx.say('same_body=', tostring(pm == ngx.md5(b)), ' len=', #b) else ngx.say('body: ', b) end",
+    "ngx.say('data: one') ngx.say('') ngx.flush(true)",
+    "if ngx.var.arg_reset then return ngx.exit(ngx.ERROR) end",
+    "if ngx.var.arg_slow then ngx.sleep(4) end",
+    "ngx.say('data: two') ngx.say('')",
+  ])
+  let dict = match tok(text: "seen") {
+    Present { value: n } => [LuaSharedDict { name: n, size: byte_size(count: 1048576) }]
+    Absent => no_directives()
+  }
+  [
+    WorkerProcesses { count: 1 },
+    EventsBlock,
+    HttpBlock { body: concat(concat(concat(concat(concat([AccessLogOff, ClientMaxBodySize { size: byte_size(count: 16777216) }, ClientBodyBufferSize { size: byte_size(count: 16777216) }], dict), fixture_server(port: 19001 as Port, locations: authz)), fixture_server(port: 19002 as Port, locations: concat(stream_end, ends))), fixture_server(port: 19003 as Port, locations: upstream)), dev_upstreams()) },
+  ]
+}
+
+fn curl(arguments: List<String>) -> String {
+  let r = DockerCli.RunRemoved(docker: docker(), network: shared_namespace(), image: curlimages_curl_8_11_1_image, arguments: arguments)
+  concat(concat(r.stdout, " exit="), to_string(r.exit_code))
+}
+
+fn request(port: String, case_header: String, query: String, max_seconds: String) -> String {
+  request_with(port: port, case_header: case_header, query: query, max_seconds: max_seconds, model: "alpha")
+}
+
+fn request_with(port: String, case_header: String, query: String, max_seconds: String, model: String) -> String {
+  curl(arguments: ["-sS", "-N", "--max-time", max_seconds, "-H", case_header, "-d", concat(concat("\{\"model\":\"", model), "\"\}"), "-w", "\n%\{http_code\}", concat(concat(concat("http://127.0.0.1:", port), "/v1/x"), query)])
+}
+
+fn sink(n: String) -> String {
+  curl(arguments: ["-sS", "--max-time", "10", concat("http://127.0.0.1:19002/ends?n=", n)])
+}
+
+fn ready(port: String) -> String {
+  curl(arguments: ["-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "30", "--retry-delay", "1", "--retry-connrefused", concat(concat("http://127.0.0.1:", port), "/ready")])
+}
+
+fn remove_all() -> Int {
+  let a = DockerCli.RemoveForce(docker: docker(), name: test_name())
+  let b = DockerCli.RemoveForce(docker: docker(), name: router_name())
+  let c = DockerCli.RemoveForce(docker: docker(), name: unreachable_router_name())
+  let e = DockerCli.RemoveForce(docker: docker(), name: dev_router_name())
+  let d = DockerCli.RemoveForce(docker: docker(), name: fixture_name())
+  a.exit_code + b.exit_code + c.exit_code + e.exit_code + d.exit_code
+}
+
+fn destination(name: NonEmptyStr) -> String {
+  concat(concat(name as String, ":"), openresty_image_config_path as String)
+}
+
+// `openresty -t` over one configuration file, in a container with no network: its exit code and stderr.
+fn openresty_test(conf_path: String) -> String {
+  let created = DockerCli.Create(docker: docker(), name: test_name(), network: "none" as NonEmptyStr, image: openresty_1_27_1_1_image, command: ["openresty", "-t"])
+  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path, destination: destination(name: test_name()))
+  let ran = DockerCli.StartAttached(docker: docker(), name: test_name())
+  let cleaned = DockerCli.RemoveForce(docker: docker(), name: test_name())
+  concat(concat(concat(concat(ran.stderr, " exit="), to_string(ran.exit_code)), " setup="), to_string(created.exit_code + copied.exit_code + cleaned.exit_code))
+}
+
+// No command: the image's default (the server in the foreground).
+fn image_default_command() -> List<String> { [] }
+
+fn start_with(name: NonEmptyStr, network: NonEmptyStr, conf_path: String) -> Int {
+  let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: image_default_command())
+  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path, destination: destination(name: name))
+  let started = DockerCli.Start(docker: docker(), name: name)
+  created.exit_code + copied.exit_code + started.exit_code
+}
+
+fn start_with_command(name: NonEmptyStr, network: NonEmptyStr, conf_path: String, command: List<String>, extras: List<CopyPair>) -> Int {
+  let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: command)
+  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path, destination: destination(name: name))
+  let extras_copied = copy_all(name: name, extras: extras, acc: 0)
+  let started = DockerCli.Start(docker: docker(), name: name)
+  created.exit_code + copied.exit_code + extras_copied + started.exit_code
+}
+
+type CopyPair {
+  source: String
+  target: String
+}
+
+fn no_copies() -> List<CopyPair> { [] }
+
+// Each copy in order, summing the exit codes into acc; tail recursion (the realization lowers it to a
+// loop) rather than a fold, because each step performs an effect that must finish before the next.
+fn copy_all(name: NonEmptyStr, extras: List<CopyPair>, acc: Int) -> Int {
+  match first(extras) {
+    Absent => acc
+    Present { value: c } => {
+      let r = DockerCli.CopyInto(docker: docker(), source: c.source, destination: concat(concat(name as String, ":"), c.target))
+      copy_all(name: name, extras: skip(extras, 1), acc: acc + r.exit_code)
+    }
+  }
+}
+
+// A self-signed certificate made inside the container before the server starts (the image carries the
+// openssl tool), so no key material is in the repository or on the host.
+fn self_signed(key: String, cert: String, cn: String) -> String {
+  "openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=" + cn + " -addext subjectAltName=DNS:" + cn + " -keyout " + key + " -out " + cert + " 2>/dev/null"
+}
+
+fn fixture_command() -> List<String> {
+  ["sh", "-c", "mkdir -p /etc/fake && " + self_signed(key: "/etc/fake/b.key", cert: "/etc/fake/b.crt", cn: "fakeb") + " && " + self_signed(key: "/etc/fake/o.key", cert: "/etc/fake/o.crt", cn: "fakeb") + " && exec openresty -g 'daemon off;'"]
+}
+
+fn dev_state_dir() -> String { "/usr/local/openresty/nginx/conf" }
+
+fn dev_router_command() -> List<String> {
+  ["sh", "-c", "mkdir -p " + dev_state_dir() + "/tls && " + self_signed(key: dev_state_dir() + "/tls/key.pem", cert: dev_state_dir() + "/tls/cert.pem", cn: "router") + " && exec openresty -g 'daemon off;'"]
+}
+
+fn dev_site() -> RouterDevSite {
+  RouterDevSite { listen_address: "127.0.0.1", listen_port: 18445, state_dir: dev_state_dir(), model_alias: "flash-next" }
+}
+
+// The dev config, or the token it refused: a refusal is reported by name in dev_world_starts, never
+// replaced by an empty configuration.
+fn dev_config() -> RouterDevConfig { router_dev_config(site: dev_site()) }
+
+fn dev_text() -> String {
+  match dev_config() { RouterDevConfigRendered { text: t } => t RouterDevConfigRefused { token: _ } => "" }
+}
+
+fn dev_refusal() -> String {
+  match dev_config() { RouterDevConfigRendered { text: _ } => "" RouterDevConfigRefused { token: k } => concat("dev config refused token ", k) }
+}
+
+// Four upstreams: a (HTTP), b (HTTPS, pinned), c (cap 0) and d (HTTPS, certificate outside the bundle).
+// a carries an effort dialect (xhigh becomes high, none drops thinking), so the in-place body rewrite runs.
+fn dev_upstreams_json() -> String { dev_upstreams_json_with(f1: dev_f1_row(cap: "1", extra: "")) }
+
+// THE SAME FILE WITH f1 LOWERED TO CAP 0, loaded by a reload while f1 still holds a binding: the one way a
+// session can be bound to a row whose cap is 0. max_model_len 4321 is the reload's readback mark.
+fn dev_upstreams_json_f1_cap_0() -> String { dev_upstreams_json_with(f1: dev_f1_row(cap: "0", extra: ",\"max_model_len\":4321")) }
+
+fn dev_f1_row(cap: String, extra: String) -> String {
+  "\{\"name\":\"f1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"kf\",\"model\":\"m-f\",\"cap\":" + cap + extra + ",\"cache_locality\":\"engine_local\",\"in_service\":true},"
+}
+
+fn dev_upstreams_json_with(f1: String) -> String {
+  "[\{\"name\":\"a\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"ka\",\"model\":\"m-a\",\"cap\":4,\"effort_effects\":[\{\"client\":\"xhigh\",\"to\":\"high\"},\{\"client\":\"none\",\"drop_thinking\":true}]},"
+    + "\{\"name\":\"b\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19443,\"sni\":\"fakeb\",\"key\":\"kb\",\"model\":\"m-b\",\"cap\":4},"
+    + "\{\"name\":\"c\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kc\",\"model\":\"m-c\",\"cap\":0},"
+    + "\{\"name\":\"d\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19444,\"sni\":\"fakeb\",\"key\":\"kd\",\"model\":\"m-d\",\"cap\":4},"
+    + "\{\"name\":\"e1\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19445,\"sni\":\"fakeb\",\"key\":\"ke1\",\"model\":\"m-e\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
+    + "\{\"name\":\"e2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19106,\"key\":\"ke2\",\"model\":\"m-e\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
+    + f1
+    + "\{\"name\":\"f2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"kf2\",\"model\":\"m-f\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
+    + "\{\"name\":\"g1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19108,\"key\":\"kg\",\"model\":\"m-g\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":false}]"
+}
+
+fn dev_request(key: String, session: String, body: String, path: String) -> String {
+  curl(arguments: ["-k", "-sS", "--max-time", "10", "-H", concat("Authorization: Bearer ", key), "-H", concat("x-session-id: ", session), "-d", body, "-w", "\n%\{http_code\}", concat("https://127.0.0.1:18445", path)])
+}
+
+fn dev_get(key: String, path: String) -> String {
+  curl(arguments: ["-k", "-sS", "--max-time", "10", "-H", concat("Authorization: Bearer ", key), "-w", "\n%\{http_code\}", concat("https://127.0.0.1:18445", path)])
+}
+
+fn model_body(model: String) -> String { concat(concat("\{\"model\":\"", model), "\"\}") }
+
+// A body whose bytes an engine's prompt depends on: spaced, with objects whose key order is not sorted,
+// and the model between them. Any re-serialization changes these bytes; a splice changes one literal.
+fn order_body(model: String, kwargs: String) -> String {
+  "\{\"tools\": [\{\"type\": \"function\", \"function\": \{\"name\": \"t\", \"parameters\": \{\"zeta\": 1, \"alpha\": 2, \"mid\": 3}}}], \"model\": \"" + model + "\", \"chat_template_kwargs\": \{" + kwargs + "}, \"stream\": false}"
+}
+
+// Reads /v1/models until it carries the mark, at most n more times: a reload is asynchronous to the
+// signal that asks for it, so the turn after it waits for the reloaded worker to answer.
+fn await_models(mark: String, n: Int) -> String {
+  let r = dev_get(key: "ck-falsifier", path: "/v1/models")
+  if contains(s: r, p: mark) || n <= 0 { r } else { await_models(mark: mark, n: n - 1) }
+}
+
+fn contains(s: String, p: String) -> Bool { string_contains(s: s, pattern: p) }
+
+// A ROW WITH NO OPTIONALITIES SET, so a falsifier case can state the one field it is about. The guard
+// under test reads name, in_service and retiring_names only; everything else is filler.
+fn dev_row(name: String, retiring: List<String>) -> RouterDevUpstream {
+  RouterDevUpstream { name: name, scheme: UpstreamHttp, host: "127.0.0.1", port: 19101, tls_name: Absent, model: "m", cap: 1, max_model_len: 0, overflow: false, path_prefix: "", retiring_names: retiring, in_service: true, cache_locality: EngineLocal, effort_effects: no_effort_rules() }
+}
+
+// HOW MANY TIMES A NEEDLE OCCURS. Some rows must count, not just spot: eleven rows carrying a field is a
+// different fact from one row carrying it, and a presence test cannot tell them apart.
+// ROW FIELDS ARE COUNTED BY PARSING, NOT BY GREPPING THE RENDER. Two emitters are in play here:
+// this repository's serialize_json writes '"key": value' and cjson (used by the running proxy) writes
+// '"key":value'. A string needle spells one of them and silently misses the other -- a count of zero
+// for a field present in every row is a test bug, not a product bug, and it is invisible unless the
+// expectation is written against the parsed value.
+fn row_array(json: String) -> List<JsonValue> {
+  match parse_json_document(s: json) {
+    JsonDocumentParsed { value: JsonArray { elements } } => elements
+    _ => []
+  }
+}
+
+fn row_string_field_count(json: String, key: String, want: String) -> Int {
+  count(filter(row_array(json: json), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: key), v => match v {
+      JsonString { value } => value == want
+      _ => false
+    })
+    _ => false
+  }))
+}
+
+fn row_bool_field_count(json: String, key: String, want: Bool) -> Int {
+  count(filter(row_array(json: json), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: key), v => match v {
+      JsonBool { value } => value == want
+      _ => false
+    })
+    _ => false
+  }))
+}
+
+fn occurrences(s: String, needle: String) -> Int {
+  if needle == "" { 0 } else { count(split(s: s, delimiter: needle)) - 1 }
+}
+
+// THE ROW CASES: what the emitted configuration's rows say, read from router_proxy_directives before any
+// container runs. The process cases below establish what the proxy does with them.
+// An empty row list, typed by this signature (an untyped [] has no element type to emit).
+fn no_directives() -> List<NginxDirective> { [] }
+
+fn rows() -> List<NginxDirective> {
+  match router_proxy_vocabulary() {
+    Present { value: v } => router_proxy_directives(v: v, listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port)
+    Absent => no_directives()
+  }
+}
+
+// The body of the router location (the /v1/ prefix), reached by walking http -> server -> location.
+fn v1_body(ds: List<NginxDirective>) -> List<NginxDirective> {
+  fold(ds, init: no_directives(), f: (acc, d) => concat(acc, match d {
+    HttpBlock { body: b } => v1_body(ds: b)
+    ServerBlock { body: b } => v1_body(ds: b)
+    LocationBlock { matching: m, body: b } => match m { PrefixMatch { path: _ } => b _ => no_directives() }
+    _ => no_directives()
+  }))
+}
+
+fn is_pass(d: NginxDirective) -> Bool { match d { ProxyPassDirective { target: _, variable: _ } => true _ => false } }
+fn is_fixed_pass(d: NginxDirective) -> Bool { match d { ProxyPassToHost { host: _, port: _, path: _ } => true _ => false } }
+fn is_retry_off(d: NginxDirective) -> Bool { match d { ProxyNextUpstreamDirective { value: _ } => true _ => false } }
+fn is_buffering_off(d: NginxDirective) -> Bool {
+  match d { ProxyBufferingDirective { value: _ } => true ProxyRequestBufferingDirective { value: _ } => true _ => false }
+}
+fn is_access_hook(d: NginxDirective) -> Bool { match d { LuaPhaseBlock { phase: ph, lines: _ } => match ph { AccessPhase => true _ => false } _ => false } }
+fn is_log_hook(d: NginxDirective) -> Bool { match d { LuaPhaseBlock { phase: ph, lines: _ } => match ph { LogPhase => true _ => false } _ => false } }
+
+fn token_absent(t: NginxToken?) -> Bool { match t { Absent => true Present { value: _ } => false } }
+fn variable_absent(t: NginxVariable?) -> Bool { match t { Absent => true Present { value: _ } => false } }
+
+fn unsafe_tokens_are_absent() -> Bool {
+  let quote = token_absent(t: nginx_token(text: "x'; os.execute('x"))
+  let dollar = variable_absent(t: nginx_variable(text: "a$b"))
+  let hash = token_absent(t: nginx_token(text: "x#"))
+  let dash = variable_absent(t: nginx_variable(text: "a-b"))
+  let safe = !token_absent(t: nginx_token(text: "x-seat-permit"))
+  // Refusals a blacklist lets through: the admitted class lists no punctuation but - . / : _, and a Lua
+  // variable must start at a letter. A value is admitted ONLY IF every character is in the class.
+  let question = token_absent(t: nginx_token(text: "a?b"))
+  let comma = token_absent(t: nginx_token(text: "a,b"))
+  let equals = token_absent(t: nginx_token(text: "a=b"))
+  let amp = token_absent(t: nginx_token(text: "a&b"))
+  let lt = token_absent(t: nginx_token(text: "a<b"))
+  let pipe = token_absent(t: nginx_token(text: "a|b"))
+  let backtick = token_absent(t: nginx_token(text: "a`b"))
+  let parens = token_absent(t: nginx_token(text: "a(b)"))
+  let digit_head = variable_absent(t: nginx_variable(text: "1abc"))
+  let dot = variable_absent(t: nginx_variable(text: "a.b"))
+  let underscore_ok = !variable_absent(t: nginx_variable(text: "a_b"))
+  quote && dollar && hash && dash && safe && question && comma && equals && amp && lt && pipe && backtick && parens
+    && digit_head && dot && underscore_ok
+}
+
+// The brand is not enforced: a forced cast reaches a row and renders unescaped. This case PINS the hole the
+// stall gunbc.guarantee_stall/nginx_token_validator_not_constructor carries, and is written to go RED when
+// the gap closes (constructor-only admission), not to certify the hole as fine.
+fn forced_cast_renders_unescaped() -> Bool {
+  let injected = render_nginx_directives(rows: [ProxyPassToHost {
+    host: "127.0.0.1'; os.exit(1)" as NginxToken,
+    port: 9001 as Port,
+    path: "/" as NginxToken,
+  }])
+  contains(s: injected, p: "'; os.exit(1)")
+}
+
+fn emitted_text() -> String {
+  text_of(r: router_proxy_config(listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port))
+}
+
+// Fixed literals per fragment, each from the concrete ports, so a mis-rendered arm goes red.
+fn fragments_held(t: String) -> Bool {
+  contains(s: t, p: "location = /_authz") && contains(s: t, p: "listen 127.0.0.1:18443;") && contains(s: t, p: "proxy_pass http://127.0.0.1:19001/authz;")
+    && contains(s: t, p: "ngx.exit(503)") && contains(s: t, p: "s:connect('127.0.0.1', 19002)") && contains(s: t, p: "always_forward_body = true")
+    && contains(s: t, p: "client_max_body_size 16777216;") && contains(s: t, p: "client_body_buffer_size 1048576;")
+    && contains(s: t, p: "tonumber(string.match(v, ':(%d+)$')) <= 65535")
+    // The permit copied into the stream-end notice's raw request must be shaped like a token value, not
+    // merely non-empty: the notice interpolates it verbatim, so CR/LF would split the request.
+    && contains(s: t, p: "string.match(v, '^[A-Za-z0-9._:/%-]+$')") && !contains(s: t, p: "v ~= ''")
+}
+
+fn row_cases() -> List<FalsifierCase> {
+  let body = v1_body(ds: rows())
+  let passes = count(filter(body, d => is_pass(d: d)))
+  let fixed = count(filter(body, d => is_fixed_pass(d: d)))
+  [
+    case_of(identity: "rows_router_location_proxies_only_to_the_authz_supplied_upstream", held: passes == 1 && fixed == 0, observed: concat(concat(to_string(passes), "/"), to_string(fixed))),
+    case_of(identity: "rows_retries_and_buffering_are_off", held: count(filter(body, d => is_retry_off(d: d))) == 1 && count(filter(body, d => is_buffering_off(d: d))) == 2, observed: to_string(count(body))),
+    case_of(identity: "rows_one_authz_hook_and_one_stream_end_hook", held: count(filter(body, d => is_access_hook(d: d))) == 1 && count(filter(body, d => is_log_hook(d: d))) == 1, observed: to_string(count(body))),
+    case_of(identity: "rows_rendering_follows_the_rows", held: emitted_text() != "" && emitted_text() == render_nginx_directives(rows: rows()), observed: "rendered"),
+    case_of(identity: "rows_the_rendered_text_holds_the_expected_fragments", held: fragments_held(t: emitted_text()), observed: "fragments"),
+    case_of(identity: "rows_red_unsafe_tokens_have_no_constructor_result", held: unsafe_tokens_are_absent(), observed: "tokens"),
+    case_of(identity: "rows_pinned_a_forced_cast_bypasses_the_brand_and_renders_unescaped", held: forced_cast_renders_unescaped(), observed: "cast"),
+  ]
+}
+
+fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
+  let router = text_of(r: router_proxy_config(listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port))
+  let unreachable = text_of(r: router_proxy_config(listen_port: 18444 as Port, authz_port: 19009 as Port, stream_end_port: 19002 as Port))
+  let w1 = Filesystem.Write(path: router_conf_path(), content: router)
+  let w2 = Filesystem.Write(path: unreachable_conf_path(), content: unreachable)
+  let w3 = Filesystem.Write(path: broken_conf_path(), content: concat(router, "gunbc_no_such_directive on;\n"))
+  let w4 = Filesystem.Write(path: fixture_conf_path(), content: render_nginx_directives(rows: fixture_directives()))
+  let written = w1.success && w2.success && w3.success && w4.success && router != "" && unreachable != ""
+  let cleared = remove_all()
+  let t_ok = openresty_test(conf_path: router_conf_path())
+  let t_broken = openresty_test(conf_path: broken_conf_path())
+  let t_unreachable = openresty_test(conf_path: unreachable_conf_path())
+  let started_fixture = start_with_command(name: fixture_name(), network: "bridge" as NonEmptyStr, conf_path: fixture_conf_path(), command: fixture_command(), extras: no_copies())
+  let started_router = start_with(name: router_name(), network: shared_namespace(), conf_path: router_conf_path())
+  let started_unreachable = start_with(name: unreachable_router_name(), network: shared_namespace(), conf_path: unreachable_conf_path())
+  let ready_sink = ready(port: "19002")
+  let ready_router = ready(port: "18443")
+  let ready_unreachable = ready(port: "18444")
+  let full = request(port: "18443", case_header: "x-case: full", query: "", max_seconds: "10")
+  let after_full = sink(n: "1")
+  let full_beta = request_with(port: "18443", case_header: "x-case: full", query: "", max_seconds: "10", model: "beta")
+  let after_beta = sink(n: "2")
+  let aborted = request(port: "18443", case_header: "x-case: abort", query: "?slow=1", max_seconds: "1")
+  let after_abort = sink(n: "3")
+  let reset = request(port: "18443", case_header: "x-case: reset", query: "?reset=1", max_seconds: "10")
+  let after_reset = sink(n: "4")
+  let denied = request(port: "18443", case_header: "x-deny: 1", query: "", max_seconds: "10")
+  let no_upstream = request(port: "18443", case_header: "x-case: noupstream", query: "", max_seconds: "10")
+  let no_permit = request(port: "18443", case_header: "x-case: nopermit", query: "", max_seconds: "10")
+  let bad_upstream = request(port: "18443", case_header: "x-case: badupstream", query: "", max_seconds: "10")
+  let bad_port_zero = request(port: "18443", case_header: "x-case: badport0", query: "", max_seconds: "10")
+  let bad_port_high = request(port: "18443", case_header: "x-case: badporthigh", query: "", max_seconds: "10")
+  let no_authz = request(port: "18444", case_header: "x-case: noauthz", query: "", max_seconds: "10")
+  let after_refusals = sink(n: "0")
+  let w5 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev.conf", content: dev_text())
+  let w6 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-client-keys", content: "ck-falsifier\n")
+  let w7 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams.json", content: dev_upstreams_json())
+  let pinned = DockerCli.CopyInto(docker: docker(), source: "gunbc-rpf-fixture:/etc/fake/b.crt", destination: "/tmp/gunbc-rpf-dev-upstream-ca.pem")
+  let started_dev = start_with_command(name: dev_router_name(), network: shared_namespace(), conf_path: "/tmp/gunbc-rpf-dev.conf", command: dev_router_command(),
+    extras: [
+      CopyPair { source: "/tmp/gunbc-rpf-dev-client-keys", target: dev_state_dir() + "/client_keys" },
+      CopyPair { source: "/tmp/gunbc-rpf-dev-upstreams.json", target: dev_state_dir() + "/upstreams.json" },
+      CopyPair { source: "/tmp/gunbc-rpf-dev-upstream-ca.pem", target: dev_state_dir() + "/upstream_ca.pem" },
+    ])
+  let dev_ready = curl(arguments: ["-k", "-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "30", "--retry-delay", "1", "--retry-connrefused", "https://127.0.0.1:18445/ready"])
+  let dev_no_key = dev_request(key: "wrong", session: "s0", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let dev_models = dev_get(key: "ck-falsifier", path: "/v1/models")
+  let dev_a = dev_request(key: "ck-falsifier", session: "s1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let dev_b = dev_request(key: "ck-falsifier", session: "s2", body: model_body(model: "m-b"), path: "/v1/chat/completions")
+  let dev_d = dev_request(key: "ck-falsifier", session: "s3", body: model_body(model: "m-d"), path: "/v1/chat/completions")
+  let dev_c = dev_request(key: "ck-falsifier", session: "s4", body: model_body(model: "m-c"), path: "/v1/chat/completions")
+  let dev_unknown = dev_request(key: "ck-falsifier", session: "s5", body: model_body(model: "m-none"), path: "/v1/chat/completions")
+  let alias1 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
+  let alias2 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
+  let alias3 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
+  let alias_other = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "m-b"), path: "/v1/chat/completions")
+  let dev_large = curl(arguments: ["-k", "-sS", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: big", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
+  // CACHE-LOCALITY BINDING (measured on srv1: soft binding cost the Strata engines ~77% of their
+  // prompt-cache reuse, because a session whose engine was at its cap migrated and re-read 50-115k
+  // tokens at ~215 tok/s). e1 is an engine-local row whose certificate is outside the pins, so it fails
+  // every turn; e2 is a healthy engine for the same model, reachable ONLY by moving.
+  let local_bad = dev_request(key: "ck-falsifier", session: "loc-bad", body: model_body(model: "m-e"), path: "/v1/chat/completions")
+  let local_after_eject = dev_request(key: "ck-falsifier", session: "loc-bad", body: model_body(model: "m-e"), path: "/v1/chat/completions")
+  // f1 is engine-local with cap 1. The first turn parks inside the upstream for four seconds, so the
+  // second arrives while that turn is still active and must be refused on the SAME engine -- never
+  // silently re-placed -- and the third waits behind it and is served once the first releases.
+  // ONE curl process, TWO transfers (-Z --parallel-immediate): the requests must overlap, and
+  // sequential bindings cannot overlap -- the holding turn would already have finished by the time
+  // its successor was issued. One transfer holds f1 (its engine sleeps six seconds) while the other
+  // arrives, and -i prints the status line and headers of each so the refusal is visible as a 429.
+  // TWO INVOCATION FACTS, both measured, because both made this case vacuously green:
+  // - The hold needs ?hold=1, not ?hold: nginx leaves arg_hold NIL for a query without '=', so a bare
+  //   ?hold never entered the sleep. Against the fixture on srv1: ?hold=1 sleeps 6.00s, ?hold 0.001s.
+  // - -Z ALONE DOES NOT OVERLAP TWO TRANSFERS TO THE SAME host:port over HTTP/1.1: curl opens one
+  //   connection, learns the peer cannot multiplex, and queues the second transfer behind the first.
+  //   Measured against a local server that sleeps 6s and stamps its own arrival: without
+  //   --parallel-immediate the arrivals are 6.001s apart (the second never contended anything); with
+  //   --parallel-immediate both arrive in the same millisecond. So the cap was never reached and the
+  //   429 this case exists to prove was never issued -- the client, not the router, serialized them.
+  // line and headers of each so the refusal is visible as a 429 carrying Retry-After.
+  let cap_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--parallel-immediate", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: cap-1", "--data-binary", "\{\"model\":\"m-f\",\"q\":\"contended\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/v1/chat/completions?hold=1"])
+  // After the contended turn releases, the SAME session still goes to f1: the binding survived a refusal.
+  let cap_after_release = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
+  let drained = dev_request(key: "ck-falsifier", session: "drained-1", body: model_body(model: "m-g"), path: "/v1/chat/completions")
+  let dev_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  let dev_stats_no_key = dev_get(key: "wrong", path: "/router/stats")
+  // BYTES IN, BYTES OUT (2026-10-30: a re-encode on the alias rewrite reordered every object, so no two
+  // turns of one h11 conversation shared a prompt prefix). Session z is bound to a, so each turn lands on
+  // a and the echo shows the bytes a received. The control sends a's own model id and nothing to rewrite.
+  let bytes_control = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "m-a", kwargs: "\"zeta\": 1"), path: "/v1/chat/completions")
+  let bytes_rewritten = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "flash-next", kwargs: "\"reasoning_effort\": \"xhigh\", \"zeta\": 1"), path: "/v1/chat/completions")
+  let bytes_dropped = dev_request(key: "ck-falsifier", session: "z", body: order_body(model: "flash-next", kwargs: "\"reasoning_effort\": \"none\", \"zeta\": 1"), path: "/v1/chat/completions")
+  let two_sites = dev_request(key: "ck-falsifier", session: "dup-1", body: "\{\"model\": \"flash-next\", \"metadata\": \{\"model\": \"flash-next\"}}", path: "/v1/chat/completions")
+  // A STREAMED TURN THROUGH THE DEV ROUTER (review of 94abf8b: the body filter's line loop restarted at
+  // the newline it had just found and never ended). The stream must arrive unchanged and complete, the
+  // usage frame split across chunks must be read, and the turn must be released.
+  let sse = dev_request(key: "ck-falsifier", session: "sse-1", body: model_body(model: "m-a"), path: "/v1/chat/completions?sse=1")
+  let sse_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // A ROW LOWERED TO CAP 0 UNDER A LIVE BINDING. cap-1 is bound to f1; the reload keeps the state
+  // dictionary (bindings and counters) and loads f1 at cap 0. The bound turn must be refused at the cap
+  // like any full engine-local row, and nothing it did may move f1's active count.
+  let w8 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams-f1-cap-0.json", content: dev_upstreams_json_f1_cap_0())
+  let lowered = DockerCli.CopyInto(docker: docker(), source: "/tmp/gunbc-rpf-dev-upstreams-f1-cap-0.json", destination: concat(concat(dev_router_name() as String, ":"), dev_state_dir() + "/upstreams.json"))
+  let reloaded = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
+  let reloaded_models = await_models(mark: "4321", n: 20)
+  let cap_0_bound = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
+  let cap_0_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
+  let after_large = sink(n: "5")
+  let removed = remove_all()
+  [
+    case_of(identity: "daemon_red_absent_daemon_reads_unavailable", held: match daemon_control { DaemonUnavailable { stderr: _ } => true DaemonAnswered => false }, observed: match daemon_control { DaemonUnavailable { stderr: _ } => "unavailable" DaemonAnswered => "answered" }),
+    case_of(identity: "world_starts", held: written && started_fixture == 0 && started_router == 0 && started_unreachable == 0 && contains(s: ready_sink, p: "404") && contains(s: ready_router, p: "404") && contains(s: ready_unreachable, p: "404"), observed: concat(concat(ready_sink, ready_router), ready_unreachable)),
+    case_of(identity: "nginx_t_accepts_the_emitted_config", held: contains(s: t_ok, p: "test is successful") && contains(s: t_ok, p: " exit=0 setup=0"), observed: t_ok),
+    case_of(identity: "nginx_t_accepts_the_emitted_config_with_an_unreachable_authz_port", held: contains(s: t_unreachable, p: " exit=0 setup=0"), observed: t_unreachable),
+    case_of(identity: "nginx_t_red_unknown_directive_fails", held: contains(s: t_broken, p: "unknown directive") && contains(s: t_broken, p: "test failed") && !contains(s: t_broken, p: " exit=0 "), observed: t_broken),
+    case_of(identity: "sse_completes_through_the_authz_upstream", held: contains(s: full, p: "data: one") && contains(s: full, p: "data: two") && contains(s: full, p: "\n200 exit=0"), observed: full),
+    case_of(identity: "the_upstream_receives_the_client_body_unchanged", held: contains(s: full, p: "body: \{\"model\":\"alpha\"\}") && contains(s: full_beta, p: "body: \{\"model\":\"beta\"\}"), observed: full_beta),
+    case_of(identity: "stream_end_fires_on_completion_with_its_permit", held: contains(s: after_full, p: "ends=1 last=p-full-alpha hits=1"), observed: after_full),
+    case_of(identity: "authz_reads_the_body_so_two_models_get_two_answers", held: contains(s: after_beta, p: "ends=2 last=p-full-beta hits=2") && contains(s: after_full, p: "p-full-alpha"), observed: after_beta),
+    case_of(identity: "sse_is_relayed_before_the_upstream_ends", held: contains(s: aborted, p: "data: one") && !contains(s: aborted, p: "data: two") && contains(s: aborted, p: "exit=28"), observed: aborted),
+    case_of(identity: "stream_end_fires_on_client_abort", held: contains(s: after_abort, p: "ends=3 last=p-abort-alpha hits=3"), observed: after_abort),
+    case_of(identity: "an_upstream_reset_ends_the_client_stream", held: contains(s: reset, p: "data: one") && !contains(s: reset, p: "data: two") && contains(s: reset, p: "exit=18"), observed: reset),
+    case_of(identity: "stream_end_fires_on_upstream_reset", held: contains(s: after_reset, p: "ends=4 last=p-reset-alpha hits=4"), observed: after_reset),
+    case_of(identity: "authz_refusal_answers_503", held: contains(s: denied, p: "\n503 exit=0"), observed: denied),
+    case_of(identity: "an_answer_without_upstream_answers_503", held: contains(s: no_upstream, p: "\n503 exit=0"), observed: no_upstream),
+    case_of(identity: "an_answer_without_permit_answers_503", held: contains(s: no_permit, p: "\n503 exit=0"), observed: no_permit),
+    case_of(identity: "an_answer_with_a_malformed_upstream_answers_503", held: contains(s: bad_upstream, p: "\n503 exit=0"), observed: bad_upstream),
+    case_of(identity: "an_answer_with_port_zero_answers_503", held: contains(s: bad_port_zero, p: "\n503 exit=0"), observed: bad_port_zero),
+    case_of(identity: "an_answer_with_a_port_above_65535_answers_503", held: contains(s: bad_port_high, p: "\n503 exit=0"), observed: bad_port_high),
+    case_of(identity: "unreachable_authz_answers_503", held: contains(s: no_authz, p: "\n503 exit=0"), observed: no_authz),
+    case_of(identity: "no_refusal_forwarded_or_fired_stream_end", held: contains(s: after_refusals, p: "ends=4 last=p-reset-alpha hits=4"), observed: after_refusals),
+    case_of(identity: "dev_world_starts", held: dev_refusal() == "" && count(dev_upstreams()) == 7 && w5.success && w6.success && w7.success && dev_text() != "" && pinned.exit_code == 0 && started_dev == 0 && contains(s: dev_ready, p: "404"), observed: concat(dev_refusal(), dev_ready)),
+    case_of(identity: "dev_red_wrong_client_key_answers_401", held: contains(s: dev_no_key, p: "\n401 exit=0"), observed: dev_no_key),
+    // The row fields the binding rules read are the ones in the emitted file: a drained row is present
+    // and false, an engine-local row is not silently shared, and every row carries the fields at all.
+    case_of(identity: "rows_carry_cache_locality_and_in_service", held: row_string_field_count(json: router_dev_first_party_json(), key: "cache_locality", want: "engine_local") == 9 && row_string_field_count(json: router_dev_first_party_json(), key: "cache_locality", want: "shared") == 2 && row_bool_field_count(json: router_dev_first_party_json(), key: "in_service", want: true) == 11 && row_bool_field_count(json: router_dev_first_party_json(), key: "in_service", want: false) == 0 && contains(s: dev_text(), p: "u.cache_locality == ") && contains(s: dev_text(), p: "engine_local") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: concat(to_string(row_string_field_count(json: router_dev_first_party_json(), key: "cache_locality", want: "engine_local")), "/", to_string(row_string_field_count(json: router_dev_first_party_json(), key: "cache_locality", want: "shared")), "/", to_string(row_bool_field_count(json: router_dev_first_party_json(), key: "in_service", want: true)))),
+    // A NAME CANNOT BE BOTH LIVE AND RETIRING. The guard is a function of the rows, so it is tested on
+    // rows: clean on the shipped set, and red on each defect it exists to refuse -- a live name in
+    // another row's retiring list, and one name retired by two rows at once.
+    case_of(identity: "a_retiring_name_that_is_live_or_double_claimed_is_refused", held: match router_dev_retiring_name_conflict(rows: router_dev_first_party_upstreams()) { Absent => true Present { value: why } => false } && match router_dev_retiring_name_conflict(rows: [dev_row(name: "live-one", retiring: ["live-two"]), dev_row(name: "live-two", retiring: [])]) { Present { value: why } => string_contains(s: why, pattern: "live-two") Absent => false } && match router_dev_retiring_name_conflict(rows: [dev_row(name: "one", retiring: ["gone"]), dev_row(name: "two", retiring: ["gone"])]) { Present { value: why } => string_contains(s: why, pattern: "more than one row") Absent => false }, observed: match router_dev_retiring_name_conflict(rows: router_dev_first_party_upstreams()) { Absent => "clean" Present { value: why } => why }),
+    // THE USAGE METER IS RENDERED AND ITS COUNTERS ARE THE STATS DOCUMENT'S SOURCE. No fixture engine
+    // reports usage, so every owned turn here must land as UNMEASURED rather than as zero tokens -- a
+    // missing count is never a zero -- and with no quote row for these models the comparison figures are
+    // absent, not invented. Owned spend is zero by construction.
+    case_of(identity: "the_meter_tallies_owned_turns_and_never_invents_tokens", held: contains(s: dev_stats, p: "\"version\":2") && occurrences(s: dev_stats, needle: "\"billing\":\"owned\"") == 6 && occurrences(s: dev_stats, needle: "\"unmeasured_requests\":") == 6 && !contains(s: dev_stats, p: "\"comparison_pricing\"") && contains(s: dev_stats, p: "\"actual_spend_usd\":0"), observed: one_line(s: dev_stats)),
+    // Effort is translated by the ROW dialect, per upstream model, before the body leaves the router.
+    // A DRAINED ENGINE IS UNREACHABLE, NOT MERELY UNPOPULAR. g1 is in the file with in_service false and
+    // no server behind its port: if the flag were ignored the turn would be proxied there and read 502,
+    // so 404 is what makes this row discriminate.
+    case_of(identity: "a_drained_upstream_answers_404_and_is_never_proxied", held: contains(s: drained, p: "\n404 exit=0") && contains(s: drained, p: "unknown model") && !contains(s: drained, p: "502"), observed: one_line(s: drained)),
+    case_of(identity: "effort_translation_is_a_row_not_a_lua_literal", held: occurrences(s: dev_text(), needle: "ROUTER_EFFORT") >= 3 && contains(s: dev_text(), p: "chat_template_kwargs") && contains(s: dev_text(), p: "enable_thinking"), observed: to_string(occurrences(s: dev_text(), needle: "ROUTER_EFFORT"))),
+    // The comparison price is READ FROM A QUOTE ROW (figures, reference model, authority, reading date),
+    // never written as a literal in the proxy's Lua.
+    case_of(identity: "comparison_pricing_arrives_as_cited_rows", held: occurrences(s: dev_text(), needle: "ROUTER_COMPARISON['") == 3 && contains(s: dev_text(), p: "reference_model") && contains(s: dev_text(), p: "read_on") && contains(s: dev_text(), p: "input_micro") && occurrences(s: dev_text(), needle: "0.15") == 0, observed: to_string(occurrences(s: dev_text(), needle: "ROUTER_COMPARISON["))),
+    case_of(identity: "dev_models_lists_both_models_and_the_alias", held: contains(s: dev_models, p: "m-a") && contains(s: dev_models, p: "m-b") && contains(s: dev_models, p: "flash-next") && !contains(s: dev_models, p: "m-g") && contains(s: dev_models, p: "\n200 exit=0"), observed: dev_models),
+    case_of(identity: "dev_routes_by_model_with_that_upstreams_key", held: contains(s: dev_a, p: "upstream=a auth=Bearer ka") && contains(s: dev_a, p: "\n200 exit=0"), observed: dev_a),
+    case_of(identity: "dev_https_upstream_is_verified_against_its_pin", held: contains(s: dev_b, p: "upstream=b auth=Bearer kb") && contains(s: dev_b, p: "\n200 exit=0"), observed: dev_b),
+    case_of(identity: "dev_red_certificate_outside_the_pins_answers_502", held: contains(s: dev_d, p: "\n502 exit=0") && !contains(s: dev_d, p: "upstream=d"), observed: dev_d),
+    case_of(identity: "dev_red_upstream_at_its_cap_answers_429", held: contains(s: dev_c, p: "\n429 exit=0") && !contains(s: dev_c, p: "upstream="), observed: dev_c),
+    case_of(identity: "dev_red_unknown_model_answers_404", held: contains(s: dev_unknown, p: "\n404 exit=0"), observed: dev_unknown),
+    case_of(identity: "dev_alias_is_sticky_and_rewritten_to_the_upstream_model", held: contains(s: alias1, p: "upstream=a") && contains(s: alias2, p: "upstream=a") && contains(s: alias3, p: "upstream=a") && contains(s: alias1, p: "m-a") && !contains(s: alias1, p: "flash-next"), observed: alias3),
+    case_of(identity: "dev_red_bound_session_on_another_model_answers_409", held: contains(s: alias_other, p: "\n409 exit=0") && !contains(s: alias_other, p: "upstream="), observed: alias_other),
+    case_of(identity: "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically", held: contains(s: large, p: "same_body=true len=4139216") && contains(s: large, p: "\n200 exit=0"), observed: large),
+    case_of(identity: "stream_end_fires_for_the_large_body", held: contains(s: after_large, p: "ends=5 last=p-large-nobody-4139216-") && contains(s: after_large, p: "hits=5"), observed: after_large),
+    // A bound session whose engine failed moves ONCE the health guard ejected it: still the same model,
+    // and now answered by the surviving engine instead of being stranded on the dead one.
+    case_of(identity: "dev_bound_session_moves_only_when_its_upstream_is_unavailable", held: contains(s: local_bad, p: "\n502 exit=0") && !contains(s: local_bad, p: "upstream=") && contains(s: local_after_eject, p: "upstream=e2 auth=Bearer ke2") && contains(s: local_after_eject, p: "\n200 exit=0"), observed: concat(local_bad, local_after_eject)),
+    // An engine-local session at its cap is refused on the engine it is bound to: 429 with Retry-After,
+    // and no other engine is ever contacted. If binding fell through to the pick loop the refusal count
+    // would be 2 and this would go red.
+    case_of(identity: "dev_bound_engine_local_session_at_cap_answers_429_and_never_re_routes", held: contains(s: cap_contended, p: "HTTP/1.1 429") && contains(s: cap_contended, p: "Retry-After") && contains(s: cap_contended, p: "at its active-turn cap") && contains(s: cap_contended, p: "upstream=f1") && !contains(s: cap_contended, p: "upstream=f2"), observed: one_line(s: cap_contended)),
+    // The refused turn is not lost: it retries the SAME engine and is served there once capacity frees.
+    // The refusal did not cost the session its engine: with the rival idle and roomier, the next turn
+    // The refusal did not cost the session its engine: it is served by the same one it was refused on.
+    case_of(identity: "dev_bound_session_behind_the_refusal_is_served_by_the_same_engine", held: contains(s: cap_after_release, p: "upstream=f1 auth=Bearer kf") && contains(s: cap_after_release, p: "\n200 exit=0") && !contains(s: cap_after_release, p: "upstream=f2"), observed: cap_after_release),
+    case_of(identity: "dev_a_body_above_the_buffer_is_read_from_its_file", held: contains(s: dev_large, p: "\n400 exit=0") && contains(s: dev_large, p: "model required"), observed: dev_large),
+    case_of(identity: "dev_stats_tally_each_status_and_upstream", held: contains(s: dev_stats, p: "\"status:401\":1") && contains(s: dev_stats, p: "\"status:429\":2") && contains(s: dev_stats, p: "\"status:502\":2") && contains(s: dev_stats, p: "\"upstream:a:200\":4") && contains(s: dev_stats, p: "\"active:a\":0"), observed: dev_stats),
+    case_of(identity: "dev_red_stats_need_a_client_key", held: contains(s: dev_stats_no_key, p: "\n401 exit=0"), observed: dev_stats_no_key),
+    case_of(identity: "dev_forwarded_body_is_the_client_bytes_when_nothing_is_rewritten", held: contains(s: bytes_control, p: concat("upstream=a auth=Bearer ka body=", order_body(model: "m-a", kwargs: "\"zeta\": 1"))) && contains(s: bytes_control, p: "\n200 exit=0"), observed: one_line(s: bytes_control)),
+    // The alias and the effort are rewritten by splicing two literals: every other byte, spacing and key
+    // order included, is the client's. A re-encode drops the spacing and reorders the objects.
+    case_of(identity: "dev_alias_and_effort_rewrites_splice_the_client_bytes", held: contains(s: bytes_rewritten, p: concat("upstream=a auth=Bearer ka body=", order_body(model: "m-a", kwargs: "\"reasoning_effort\": \"high\", \"zeta\": 1"))) && contains(s: bytes_rewritten, p: "\n200 exit=0"), observed: one_line(s: bytes_rewritten)),
+    case_of(identity: "dev_effort_drop_splices_enable_thinking_in_place", held: contains(s: bytes_dropped, p: concat("upstream=a auth=Bearer ka body=", order_body(model: "m-a", kwargs: "\"enable_thinking\": false, \"zeta\": 1"))) && contains(s: bytes_dropped, p: "\n200 exit=0"), observed: one_line(s: bytes_dropped)),
+    // A body with two unescaped model literals has no single site to splice: it is refused before any
+    // reservation, never re-encoded and never proxied.
+    case_of(identity: "dev_red_a_body_with_two_rewrite_sites_is_refused_not_re_encoded", held: contains(s: two_sites, p: "\n400 exit=0") && contains(s: two_sites, p: "single unescaped literal") && !contains(s: two_sites, p: "upstream="), observed: one_line(s: two_sites)),
+    case_of(identity: "dev_reload_loads_f1_at_cap_0", held: w8.success && lowered.exit_code == 0 && reloaded.exit_code == 0 && contains(s: reloaded_models, p: "4321"), observed: one_line(s: reloaded_models)),
+    // A cap is the ceiling for every non-overflow row, 0 included: the bound turn is refused at the cap
+    // and is not counted, so f1's active count stays 0. Read as an uncapped sentinel, the turn was served
+    // without a reservation and released one in the log phase, leaving active:f1 at -1.
+    case_of(identity: "dev_sse_stream_is_relayed_unchanged_and_completes", held: contains(s: sse, p: sse_stream_text() + "\n200 exit=0"), observed: one_line(s: sse)),
+    case_of(identity: "dev_sse_usage_split_across_chunks_is_observed_and_the_turn_released", held: contains(s: sse_stats, p: "\"prompt_tokens\":7001") && contains(s: sse_stats, p: "\"completion_tokens\":3003") && contains(s: sse_stats, p: "\"cached_prompt_tokens\":5001") && contains(s: sse_stats, p: "\"active:a\":0"), observed: one_line(s: sse_stats)),
+    case_of(identity: "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted", held: contains(s: cap_0_bound, p: "\n429 exit=0") && contains(s: cap_0_bound, p: "at its active-turn cap") && !contains(s: cap_0_bound, p: "upstream=") && contains(s: cap_0_stats, p: "\"active:f1\":0") && !contains(s: cap_0_stats, p: "\"upstream:f1:429\""), observed: concat(one_line(s: cap_0_bound), one_line(s: cap_0_stats))),
+    case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
+  ]
+}
+
+fn falsifier_expected_identities() -> List<String> {
+  [
+    "rows_router_location_proxies_only_to_the_authz_supplied_upstream",
+    "rows_retries_and_buffering_are_off",
+    "rows_one_authz_hook_and_one_stream_end_hook",
+    "rows_rendering_follows_the_rows",
+    "rows_the_rendered_text_holds_the_expected_fragments",
+    "rows_red_unsafe_tokens_have_no_constructor_result",
+    "rows_pinned_a_forced_cast_bypasses_the_brand_and_renders_unescaped",
+    "daemon_red_absent_daemon_reads_unavailable",
+    "world_starts",
+    "nginx_t_accepts_the_emitted_config",
+    "nginx_t_accepts_the_emitted_config_with_an_unreachable_authz_port",
+    "nginx_t_red_unknown_directive_fails",
+    "sse_completes_through_the_authz_upstream",
+    "the_upstream_receives_the_client_body_unchanged",
+    "stream_end_fires_on_completion_with_its_permit",
+    "authz_reads_the_body_so_two_models_get_two_answers",
+    "sse_is_relayed_before_the_upstream_ends",
+    "stream_end_fires_on_client_abort",
+    "an_upstream_reset_ends_the_client_stream",
+    "stream_end_fires_on_upstream_reset",
+    "authz_refusal_answers_503",
+    "an_answer_without_upstream_answers_503",
+    "an_answer_without_permit_answers_503",
+    "an_answer_with_a_malformed_upstream_answers_503",
+    "an_answer_with_port_zero_answers_503",
+    "an_answer_with_a_port_above_65535_answers_503",
+    "unreachable_authz_answers_503",
+    "no_refusal_forwarded_or_fired_stream_end",
+    "dev_world_starts",
+    "dev_red_wrong_client_key_answers_401",
+    "dev_models_lists_both_models_and_the_alias",
+    "dev_routes_by_model_with_that_upstreams_key",
+    "dev_https_upstream_is_verified_against_its_pin",
+    "dev_red_certificate_outside_the_pins_answers_502",
+    "dev_red_upstream_at_its_cap_answers_429",
+    "dev_red_unknown_model_answers_404",
+    "dev_alias_is_sticky_and_rewritten_to_the_upstream_model",
+    "dev_red_bound_session_on_another_model_answers_409",
+    "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically",
+    "stream_end_fires_for_the_large_body",
+    "dev_a_body_above_the_buffer_is_read_from_its_file",
+    "dev_stats_tally_each_status_and_upstream",
+    "dev_bound_session_moves_only_when_its_upstream_is_unavailable",
+    "dev_bound_engine_local_session_at_cap_answers_429_and_never_re_routes",
+    "dev_bound_session_behind_the_refusal_is_served_by_the_same_engine",
+    "rows_carry_cache_locality_and_in_service",
+    "a_drained_upstream_answers_404_and_is_never_proxied",
+    "effort_translation_is_a_row_not_a_lua_literal",
+    "a_retiring_name_that_is_live_or_double_claimed_is_refused",
+    "the_meter_tallies_owned_turns_and_never_invents_tokens",
+    "comparison_pricing_arrives_as_cited_rows",
+    "dev_red_stats_need_a_client_key",
+    "dev_forwarded_body_is_the_client_bytes_when_nothing_is_rewritten",
+    "dev_alias_and_effort_rewrites_splice_the_client_bytes",
+    "dev_effort_drop_splices_enable_thinking_in_place",
+    "dev_red_a_body_with_two_rewrite_sites_is_refused_not_re_encoded",
+    "dev_reload_loads_f1_at_cap_0",
+    "dev_sse_stream_is_relayed_unchanged_and_completes",
+    "dev_sse_usage_split_across_chunks_is_observed_and_the_turn_released",
+    "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted",
+    "world_is_removed",
+  ]
+}
+
+// One row is one line: the reader joins rows by line, so an observed value that spans lines (nginx -t's
+// two lines, a 503 page) is written with its line breaks as the two characters \n.
+fn one_line(s: String) -> String {
+  join(split(s: s, delimiter: "\n"), "\\n")
+}
+
+fn case_row(c: FalsifierCase) -> String {
+  join(["case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", one_line(s: c.observed), "\n"], "")
+}
+
+// THE ROW CASES RUN FIRST AND ON EVERY HOST: they read the emitted rows and text and need no effect, so a
+// host without a daemon still reports them, and a red row case is not held there either. Only the process
+// cases wait on the daemon.
+// Completeness is an identity join, not a count equality (§5): the roster line is DERIVED from the cases
+// that ran (the precedent is gunbc.instruments.native_allocation_observation), so the harness's
+// one-for-one roster/rows join can never be fed a roster that drifted from the cases. The declared
+// expected list stays the denominator: it is joined against the ran identities by set equality, and a
+// case dropped, renamed or never run -- or an expectation no case carries -- refuses the terminal.
+fn strings_same_set(a: List<String>, b: List<String>) -> Bool {
+  count(a) == count(b) && all(a, x => any(b, y => x == y)) && all(b, x => any(a, y => x == y))
+}
+
+fn set_diff_text(a: List<String>, b: List<String>) -> String {
+  let missing = join(filter(a, x => !any(b, y => x == y)), ",")
+  let extra = join(filter(b, y => !any(a, x => x == y)), ",")
+  concat(if missing == "" { "" } else { concat(" ran-but-not-expected: ", missing) },
+         if extra == "" { "" } else { concat(" expected-but-not-run: ", extra) })
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let rows_first = row_cases()
+  let rows_failed = map(filter(rows_first, c => !c.held), c => c.identity)
+  let probe = DockerCli.Version(docker: docker())
+  match daemon_reading(exit_code: probe.exit_code, stderr: probe.stderr) {
+    DaemonUnavailable { stderr: e } => NativeClaimReport {
+      stdout: concat(concat("roster ", join(map(rows_first, c => c.identity), ","), "\n"), join(map(rows_first, c => case_row(c: c)), "")),
+      terminal: if count(rows_failed) == 0 { NativeClaimNoObservation { reason: concat("row cases held; docker daemon unavailable for the process cases: ", e) } } else { not_held_terminal(reason: concat("not held: ", join(rows_failed, ","))) },
+    }
+    DaemonAnswered => {
+      let control = DockerCli.VersionAtHost(docker: docker(), host: absent_daemon())
+      let cases = concat(rows_first, falsifier_cases(daemon_control: daemon_reading(exit_code: control.exit_code, stderr: control.stderr)))
+      let ran = map(cases, c => c.identity)
+      let roster = concat("roster ", join(ran, ","), "\n")
+      let failed = map(filter(cases, c => !c.held), c => c.identity)
+      let expected = falsifier_expected_identities()
+      let roster_drift = if strings_same_set(a: ran, b: expected) { "" } else { concat(" roster does not join the declared expectations at: ", set_diff_text(a: ran, b: expected)) }
+      let terminal = if count(failed) == 0 && roster_drift == "" { held_terminal() } else { not_held_terminal(reason: concat("not held: ", join(failed, ","), roster_drift)) }
+      NativeClaimReport { stdout: concat(roster, join(map(cases, c => case_row(c: c)), "")), terminal: terminal }
+    }
+  }
+}
+
+fn held_terminal() -> NativeClaimTerminal { NativeClaimHeld }
+
+fn not_held_terminal(reason: String) -> NativeClaimTerminal { NativeClaimNotHeld { reason: reason } }

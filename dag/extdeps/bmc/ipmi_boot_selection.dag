@@ -1,9 +1,13 @@
 module extdeps.bmc.ipmi_boot_selection
 
-import std.types { NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.numeric.base16 { base16_word_value }
+import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
+import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -44,11 +48,15 @@ type IpmiBootPersistence
   | IpmiBootPersistent
 
 // A VALID BOOT SELECTION, NOT THREE INDEPENDENT SCALARS. This record is sole_constructor so a
-// caller cannot place Aarch64 beside Legacy or manufacture an opaque options word. The only
-// constructor currently exported is aarch64_uefi_once_boot_selection: its signature has no mode
-// or persistence parameter, hence `(Aarch64, Legacy, Cdrom)` and persistent intake overrides
-// have no source spelling at all. A future x86 legacy requirement adds a different constructor
-// here; it does not widen this one with a Boolean or raw-string escape hatch.
+// caller cannot manufacture an opaque options word or a legacy override. The only constructor is
+// uefi_once_boot_selection: its signature has no mode or persistence parameter, so a legacy or a
+// persistent intake override has no source spelling at all. A future legacy requirement adds a
+// different constructor here; it does not widen this one with a Boolean or raw-string escape hatch.
+// THE SELECTION CARRIES NO ARCHITECTURE: parameter 5 has no architecture field on the wire (its bytes
+// are below), so an architecture here was a second, unread copy of the board admission that decides
+// which boards may receive an EFI override (gunbc.host.virtual_media_boot_selection's architecture gate,
+// gunbc.network_boot_delivery uefi_pxe_admitted_architectures). The aarch64-only constructor it
+// replaces produced the same bytes for the same device.
 //
 // The wire and read-back spellings travel with the semantic axes because they are one CLI
 // serialization. A caller selects `IpmiBootCdrom`; it never authors `cdrom`,
@@ -57,26 +65,16 @@ type IpmiBootPersistence
 // `ipmi_boot_selection_options_token`; parameter-5 readback words are
 // `ipmi_boot_expected_*_rendering`. None of those strings is stored beside the axes.
 type IpmiBootSelection sole_constructor {
-  architecture: Architecture
   device: IpmiBootDevice
   firmware_mode: IpmiFirmwareBootMode
   persistence: IpmiBootPersistence
 }
 
-fn aarch64_uefi_once_boot_selection(device: IpmiBootDevice) -> IpmiBootSelection {
-  match device {
-    IpmiBootPxe => IpmiBootSelection {
-      architecture: Aarch64,
-      device: IpmiBootPxe,
-      firmware_mode: IpmiBootEfi,
-      persistence: IpmiBootOnce,
-    }
-    IpmiBootCdrom => IpmiBootSelection {
-      architecture: Aarch64,
-      device: IpmiBootCdrom,
-      firmware_mode: IpmiBootEfi,
-      persistence: IpmiBootOnce,
-    }
+fn uefi_once_boot_selection(device: IpmiBootDevice) -> IpmiBootSelection {
+  IpmiBootSelection {
+    device: device,
+    firmware_mode: IpmiBootEfi,
+    persistence: IpmiBootOnce,
   }
 }
 
@@ -86,6 +84,17 @@ fn ipmi_boot_device_label(device: IpmiBootDevice) -> NonEmptyStr {
     IpmiBootCdrom => "cdrom"
   }
 }
+
+// THE WORD THAT CLEARS THE OVERRIDE. `ipmitool chassis bootdev none` is the clear: `none` is ipmitool's
+// word for the SAME selector this module already grounds as 0 = 'no override' (ipmi_boot_selector_reading
+// below, IPMI v2.0 rev 1.1 data-2 bits 5:2), and the state it leaves on mtcollins1 is a capture, byte for
+// byte -- extdeps.bmc.ipmitool_observed_output ipmitool_bootparam5_no_override: 'Boot parameter data:
+// 0000000000', 'Boot Flag Invalid', 'Boot Device Selector : No override'. It is deliberately NOT an
+// IpmiBootDevice: this model never SELECTS 'none' -- there is no device to force -- so it has no selector
+// arm, no label arm, and no place in IpmiBootSelection or ipmi_boot_selectable_devices (which stays the
+// two devices that CAN be forced). What the command PRINTS is a different question, held beside the other
+// observed output at extdeps.bmc.ipmitool_observed_output ipmitool_bootdev_none_reply_standing.
+data ipmi_boot_device_none: NonEmptyStr = "none"
 
 fn ipmi_boot_mode_label(mode: IpmiFirmwareBootMode) -> NonEmptyStr {
   match mode {
@@ -153,5 +162,109 @@ fn ipmi_boot_expected_persistence_rendering(selection: IpmiBootSelection) -> Non
   match selection.persistence {
     IpmiBootOnce => "Options apply to only next boot"
     IpmiBootPersistent => "Options apply to all future boots"
+  }
+}
+
+// THE BOOT-FLAGS PARAMETER AS IT CROSSES THE WIRE. IPMI v2.0 rev 1.1, Get/Set System Boot Options,
+// boot option parameter 5 (boot flags), five data bytes. Data 1: bit 7 boot flag valid, bit 6 options
+// persist for all future boots (0 = next boot only), bit 5 BIOS boot type (1 = EFI, 0 = PC compatible).
+// Data 2: bits 5:2 boot device selector (0001b force PXE, 0101b force boot from CD/DVD). Data 3-5: no
+// further overrides. ipmitool's set-bootdev path sets the valid bit (the anchor above), and its
+// `chassis bootparam get 5` prints these bytes as "Boot parameter data: <hex>", which is what a readback
+// compares against. The bytes are derived from the selection's axes and never stored beside them.
+data ipmi_v2_boot_options_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/dam/www/public/us/en/documents/product-briefs/ipmi-second-gen-interface-spec-v2-rev1-1.pdf"
+  }
+}
+
+fn ipmi_boot_device_selector(device: IpmiBootDevice) -> Int {
+  match device {
+    IpmiBootPxe => 1
+    IpmiBootCdrom => 5
+  }
+}
+
+fn ipmi_boot_flags_parameter_data(selection: IpmiBootSelection) -> List<Int> {
+  let persistent = match selection.persistence {
+    IpmiBootOnce => 0
+    IpmiBootPersistent => 64
+  }
+  let efi = match selection.firmware_mode {
+    IpmiBootEfi => 32
+    IpmiBootLegacy => 0
+  }
+  [128 + persistent + efi, ipmi_boot_device_selector(device: selection.device) * 4, 0, 0, 0]
+}
+
+// The same bytes as ipmitool prints them after "Boot parameter data: ", through the admitted octet
+// route; a member out of [0, 255] has no rendering rather than a wrapped one.
+fn ipmi_boot_flags_parameter_hex(selection: IpmiBootSelection) -> String? {
+  match uint8_octets_of_ints(values: ipmi_boot_flags_parameter_data(selection: selection)) {
+    QualifiedOctetsReady { value: o } => Present { value: base16_encode_lower(octets: o) }
+    QualifiedOctetsRefused { observed: _ } => Absent
+  }
+}
+
+// THE STATE OF PARAMETER 5 AS READ, decoded from the bytes `chassis bootparam get 5` prints after "Boot
+// parameter data: " -- the same five bytes ipmi_boot_flags_parameter_data writes, read in the other
+// direction. This is the read-only observation of what is in force (an intake reads it before any write);
+// judging a write's readback stays with ipmi_boot_expected_*_rendering above, and this is not a second judge.
+// Data 1 bit 7 valid, bit 6 persistent, bit 5 EFI; data 2 bits 5:2 the device selector (IPMI v2.0 rev 1.1,
+// Get System Boot Options, parameter 5).
+type IpmiBootFlagsReading {
+  flag_valid: Bool
+  persistent: Bool
+  efi: Bool
+  device_selector: Int
+}
+
+// WHAT A SELECTOR NAMES. The two devices this model writes are read back as themselves; 0 is "no override";
+// every other selector the specification defines (hard drive, BIOS setup, remote media, ...) is kept as
+// its number rather than mapped onto a device this model cannot select.
+type IpmiBootSelectorReading
+  = IpmiSelectorNoOverride
+  | IpmiSelectorModeled { device: IpmiBootDevice }
+  | IpmiSelectorUnmodeled { selector: Int }
+
+data ipmi_boot_selectable_devices: List<IpmiBootDevice> = [IpmiBootPxe, IpmiBootCdrom]
+
+fn ipmi_boot_selector_reading(selector: Int) -> IpmiBootSelectorReading {
+  if selector == 0 { IpmiSelectorNoOverride } else {
+    match first(filter(ipmi_boot_selectable_devices, d => ipmi_boot_device_selector(device: d) == selector)) {
+      Present { value: d } => IpmiSelectorModeled { device: d }
+      Absent => IpmiSelectorUnmodeled { selector: selector }
+    }
+  }
+}
+
+fn bootparam_data_line(stdout: String) -> String? {
+  first(map(filter(split(s: stdout, delimiter: "\n"), l => starts_with(s: trim(l), prefix: "Boot parameter data: ")), l => trim(substring(s: trim(l), start: 21, end: string_length(s: trim(l))))))
+}
+
+fn hex_byte_at(hex: String, i: Int) -> Int? {
+  base16_word_value(word: substring(s: hex, start: i * 2, end: i * 2 + 2), max_digits: 2)
+}
+
+// Exactly ten hex digits, or no reading: a shorter line is a different parameter or a truncated capture.
+fn ipmi_boot_flags_reading_of_bootparam_get(stdout: String) -> IpmiBootFlagsReading? {
+  match bootparam_data_line(stdout: stdout) {
+    Absent => none
+    Present { value: hex } =>
+      if string_length(s: hex) != 10 { none } else {
+        match hex_byte_at(hex: hex, i: 0) {
+          Absent => none
+          Present { value: d1 } => match hex_byte_at(hex: hex, i: 1) {
+            Absent => none
+            Present { value: d2 } => Present { value: IpmiBootFlagsReading {
+              flag_valid: d1 / 128 == 1,
+              persistent: (d1 / 64) % 2 == 1,
+              efi: (d1 / 32) % 2 == 1,
+              device_selector: (d2 / 4) % 16,
+            } }
+          }
+        }
+      }
   }
 }

@@ -10,12 +10,12 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::ExprLiteral;
 use crate::v1_std_core::TransportKind::{
-    FileTransport, LocalTransport, RestTransport, ShellTransport,
+    FileTransport, RestTransport, ShellTransport, UndeclaredTransport,
 };
 pub use crate::v1_std_core::{
-    classify_transport, file_transport_node, is_local_transport, local_transport_node,
-    make_expr_node, make_field_init_node, make_transport_node, no_span, rest_transport_node,
-    shell_transport_node, ExprData, NewlineIndex, Node, TransportKind,
+    classify_transport, file_transport_node, is_undeclared_transport, make_expr_node,
+    make_field_init_node, make_transport_node, no_span, rest_transport_node, shell_transport_node,
+    undeclared_transport_node, ExprData, NewlineIndex, Node, TransportKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -25,7 +25,7 @@ use std::rc::Rc;
 pub fn transport_roster_closure_witness_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "EXECUTING-ON-DEMAND evidence that the transport roster is closed, that its precedence has ONE authority, and that a transport matching no member is refused rather than absorbed.\n\nWHERE THIS RUNS, STATED FIRST AND WITHOUT FLATTERY, BECAUSE THE FILE BESIDE THIS ONE HISTORICALLY GOT IT WRONG. THIS WITNESS IS NOT DISCOVERED BY CI. gunbc.ci.ci_layer_roots witness_discovery_scan_dirs is [dag/test/claim, src/v2/test/claim/manual, src/v2/test/claim/emit] -- src/v1/tests/claim is not in it -- and the required run invokes claim_executor with --source-root dag --source-root src/v2, which could not resolve this file's `import v1.std.core` even if it were discovered. Zero witnesses under dag/test/claim import v1.* today, so there is currently NO executing home for evidence over v1 compiler internals. The rows below were run directly during authoring and PASS; direct execution is evidence the assertions HOLD, never evidence that CI runs them, and conflating those two is the error this file refuses to repeat. NEXT-RUNG TRIGGER: a discovery scope that admits src/v1 witnesses under a source-root envelope that includes src/v1, at which point this row deletes and the enrollment is stated instead.\n\nAND THE NEIGHBOUR IS NOW REPAIRED. src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag previously claimed enrollment in the nonexistent gunbc.ci.ci_layer_roots v1_claim_scoped_witness_entries roster and execution by the batch deleted in the 2026-08-15 floor cut. Its execution paragraph now follows this file's account: the witness is on-demand, outside both discovery and the required source-root envelope, and names the same next-rung trigger. This paragraph records the repair rather than continuing to call an accurate neighbour false.\n\nWHAT CHANGED AND WHY IT NEEDED EVIDENCE. is_local_transport was DEFINED as `not rest and not shell and not file`, so `local` absorbed every transport the other three predicates declined. The consequence was not local's: it made emit_unified_transport_dispatch's final arm, `unrecognized transport kind`, unreachable BY CONSTRUCTION -- no input of any shape could arrive there, because local claimed them all first. A check whose red is unreachable is a decoration, permanently green and cited as coverage (DESIGN, the reachability-read-as-occupancy class), and it is worse than absent because a reader counts it. classify_transport replaces four hand-copies of the precedence with one authority and makes local a POSITIVE test over the node local_transport_node actually builds.\n\nWHAT THIS PROVES AND WHAT IT DOES NOT. It proves the arm is REACHABLE: unrecognized_transport_matches_no_roster_member constructs a transport node carrying a property under no recognized key and shows classify_transport answers Absent for it. It does NOT prove the arm FIRES on any source spelling, and no row here claims that. A REACHABLE WALL AND A WALL THAT FIRES ARE DIFFERENT PROPERTIES. Both parse_file_fields and parse_rest_fields substitute an empty string literal when their key is omitted rather than producing a keyless transport node, so every transport the PARSER builds still lands in a roster member and the arm's occupancy is zero. That is a parser fact and the open next step; it is named here so the reachability claim is not read as the stronger one. It is also why no source-level witness could carry these rows: the state under test is unauthorable from .dag source, which is the same fact as the arm being unoccupied.\n\nTHE DISCRIMINATING ROW IS unrecognized_transport_is_not_local. Under the old negative definition it answered TRUE -- the keyless node WAS local, by exclusion -- and the emitted realization for it was a direct function call fabricated by omission. It answers false only because the predicate is positive. Restoring the negative definition turns this row red and nothing else in the corpus would notice.\n\nrest_wins_over_a_file_key_on_the_same_transport is the precedence row. A transport carrying both base_url and base_path is claimed by the FIRST arm, and that ordering used to be restated in four places that agreed by coincidence. It is asserted here so the single authority is pinned to an answer rather than merely being singular.".to_string()
+            "EXECUTING-ON-DEMAND evidence that the transport roster is closed, that its precedence has ONE authority, and that a transport matching no member is refused rather than absorbed.\n\nWHERE THIS RUNS, STATED FIRST AND WITHOUT FLATTERY, BECAUSE THE FILE BESIDE THIS ONE HISTORICALLY GOT IT WRONG. THIS WITNESS IS NOT DISCOVERED BY CI. gunbc.ci.ci_layer_roots witness_discovery_scan_dirs is [dag/test/claim, src/v2/test/claim/manual, src/v2/test/claim/emit] -- src/v1/tests/claim is not in it -- and the required run invokes claim_executor with --source-root dag --source-root src/v2, which could not resolve this file's `import v1.std.core` even if it were discovered. Zero witnesses under dag/test/claim import v1.* today, so there is currently NO executing home for evidence over v1 compiler internals. The rows below were run directly during authoring and PASS; direct execution is evidence the assertions HOLD, never evidence that CI runs them, and conflating those two is the error this file refuses to repeat. NEXT-RUNG TRIGGER: a discovery scope that admits src/v1 witnesses under a source-root envelope that includes src/v1, at which point this row deletes and the enrollment is stated instead.\n\nAND THE NEIGHBOUR IS NOW REPAIRED. src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag previously claimed enrollment in the nonexistent gunbc.ci.ci_layer_roots v1_claim_scoped_witness_entries roster and execution by the batch deleted in the 2026-08-15 floor cut. Its execution paragraph now follows this file's account: the witness is on-demand, outside both discovery and the required source-root envelope, and names the same next-rung trigger. This paragraph records the repair rather than continuing to call an accurate neighbour false.\n\nWHAT CHANGED AND WHY IT NEEDED EVIDENCE. is_undeclared_transport was DEFINED as `not rest and not shell and not file`, so `local` absorbed every transport the other three predicates declined. The consequence was not local's: it made emit_unified_transport_dispatch's final arm, `unrecognized transport kind`, unreachable BY CONSTRUCTION -- no input of any shape could arrive there, because local claimed them all first. A check whose red is unreachable is a decoration, permanently green and cited as coverage (DESIGN, the reachability-read-as-occupancy class), and it is worse than absent because a reader counts it. classify_transport replaces four hand-copies of the precedence with one authority and makes local a POSITIVE test over the node undeclared_transport_node actually builds.\n\nWHAT THIS PROVES AND WHAT IT DOES NOT. It proves the arm is REACHABLE: unrecognized_transport_matches_no_roster_member constructs a transport node carrying a property under no recognized key and shows classify_transport answers Absent for it. It does NOT prove the arm FIRES on any source spelling, and no row here claims that. A REACHABLE WALL AND A WALL THAT FIRES ARE DIFFERENT PROPERTIES. Both parse_file_fields and parse_rest_fields substitute an empty string literal when their key is omitted rather than producing a keyless transport node, so every transport the PARSER builds still lands in a roster member and the arm's occupancy is zero. That is a parser fact and the open next step; it is named here so the reachability claim is not read as the stronger one. It is also why no source-level witness could carry these rows: the state under test is unauthorable from .dag source, which is the same fact as the arm being unoccupied.\n\nTHE DISCRIMINATING ROW IS unrecognized_transport_is_not_undeclared. Under the old negative definition it answered TRUE -- the keyless node WAS local, by exclusion -- and the emitted realization for it was a direct function call fabricated by omission. It answers false only because the predicate is positive. Restoring the negative definition turns this row red and nothing else in the corpus would notice.\n\nrest_wins_over_a_file_key_on_the_same_transport is the precedence row. A transport carrying both base_url and base_path is claimed by the FIRST arm, and that ordering used to be restated in four places that agreed by coincidence. It is asserted here so the single authority is pinned to an answer rather than merely being singular.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -45,13 +45,13 @@ pub fn str_expr(s: String) -> Rc<Node> {
 
 pub fn kind_name(t: Rc<Node>) -> String {
     match crate::v1_std_core::classify_transport(
-        t.clone(),
+        t,
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
     ) {
         Some(TransportKind::RestTransport) => "rest".to_string(),
         Some(TransportKind::ShellTransport) => "shell".to_string(),
         Some(TransportKind::FileTransport) => "file".to_string(),
-        Some(TransportKind::LocalTransport) => "local".to_string(),
+        Some(TransportKind::UndeclaredTransport) => "undeclared".to_string(),
         std::option::Option::None => "no-roster-member".to_string(),
     }
 }
@@ -90,11 +90,11 @@ pub fn file_transport_classifies_as_file() -> bool {
     )) == "file".to_string())
 }
 
-pub fn bare_transport_classifies_as_local() -> bool {
-    (kind_name(crate::v1_std_core::local_transport_node(
+pub fn bare_transport_classifies_as_undeclared() -> bool {
+    (kind_name(crate::v1_std_core::undeclared_transport_node(
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         crate::v1_std_core::no_span(),
-    )) == "local".to_string())
+    )) == "undeclared".to_string())
 }
 
 pub fn keyless_transport() -> Rc<Node> {
@@ -117,16 +117,16 @@ pub fn unrecognized_transport_matches_no_roster_member() -> bool {
     (kind_name(keyless_transport()) == "no-roster-member".to_string())
 }
 
-pub fn unrecognized_transport_is_not_local() -> bool {
-    (crate::v1_std_core::is_local_transport(
+pub fn unrecognized_transport_is_not_undeclared() -> bool {
+    (crate::v1_std_core::is_undeclared_transport(
         keyless_transport(),
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
     ) == false)
 }
 
-pub fn the_bare_node_is_still_local_positive_control() -> bool {
-    (crate::v1_std_core::is_local_transport(
-        crate::v1_std_core::local_transport_node(
+pub fn the_bare_node_is_still_undeclared_positive_control() -> bool {
+    (crate::v1_std_core::is_undeclared_transport(
+        crate::v1_std_core::undeclared_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             crate::v1_std_core::no_span(),
         ),

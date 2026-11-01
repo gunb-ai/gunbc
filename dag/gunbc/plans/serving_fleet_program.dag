@@ -1,0 +1,422 @@
+module gunbc.plans.serving_fleet_program
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock, MarkdownListItem }
+import gunbc.plans.md_helpers { h2, p, li, ul, quote }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+
+// The program is a list of typed rows; the markdown body is their projection. A row's
+// identity, owner, standing and edges are fields, so a misspelled label or an unknown
+// standing has no constructor, and a witness folds over the edges instead of parsing text
+// (DESIGN section 4c: a status or citation belongs in a typed carrier, not in prose).
+// Row prose names no other row: every relation between rows is `depends_on` (a completion
+// prerequisite) or `related` (a cross-reference that is not one), so the declared graph
+// is the whole graph.
+
+type ServingFleetRowId
+  = SfpA1 | SfpA2 | SfpA3
+  | SfpB1
+  | SfpC1 | SfpC2
+  | SfpD1 | SfpD2 | SfpD3 | SfpD4 | SfpD5 | SfpD6 | SfpD7 | SfpD8
+  | SfpE0 | SfpE1 | SfpE2 | SfpE3 | SfpE4
+  | SfpF1
+  | SfpG1 | SfpG2 | SfpG3 | SfpG4 | SfpG5 | SfpG6 | SfpG7 | SfpG8
+
+type ServingFleetSection = SfpSupply | SfpRouter | SfpMeasurement | SfpPolicy
+
+// modeled: a declaration exists and a witness executes it. executed: a real run produced a
+// receipt. deployed: a live unit serves traffic. unstarted: nothing exists.
+type ServingFleetStanding = SfpModeled | SfpExecuted | SfpDeployed | SfpUnstarted
+
+// An owner is a declared symbol that must resolve, or an explicit modeling obligation.
+type ServingFleetOwner
+  = SfpOwnedBy { symbol: String }
+  | SfpUnowned { obligation: String }
+
+type ServingFleetRow {
+  id: ServingFleetRowId
+  section: ServingFleetSection
+  title: String
+  owner: ServingFleetOwner
+  summary: String
+  standing: ServingFleetStanding
+  standing_note: String
+  pr: String
+  done: String
+  depends_on: List<ServingFleetRowId>
+  related: List<ServingFleetRowId>
+}
+
+fn sfp_row_label(id: ServingFleetRowId) -> String {
+  match id {
+    SfpA1 => "A1"
+    SfpA2 => "A2"
+    SfpA3 => "A3"
+    SfpB1 => "B1"
+    SfpC1 => "C1"
+    SfpC2 => "C2"
+    SfpD1 => "D1"
+    SfpD2 => "D2"
+    SfpD3 => "D3"
+    SfpD4 => "D4"
+    SfpD5 => "D5"
+    SfpD6 => "D6"
+    SfpD7 => "D7"
+    SfpD8 => "D8"
+    SfpE0 => "E0"
+    SfpE1 => "E1"
+    SfpE2 => "E2"
+    SfpE3 => "E3"
+    SfpE4 => "E4"
+    SfpF1 => "F1"
+    SfpG1 => "G1"
+    SfpG2 => "G2"
+    SfpG3 => "G3"
+    SfpG4 => "G4"
+    SfpG5 => "G5"
+    SfpG6 => "G6"
+    SfpG7 => "G7"
+    SfpG8 => "G8"
+  }
+}
+
+fn sfp_row_ref(id: ServingFleetRowId) -> String {
+  join(["Row ", sfp_row_label(id: id)], "")
+}
+
+fn sfp_section_key(s: ServingFleetSection) -> String {
+  match s {
+    SfpSupply => "supply"
+    SfpRouter => "router"
+    SfpMeasurement => "measurement"
+    SfpPolicy => "policy"
+  }
+}
+
+fn sfp_standing_text(s: ServingFleetStanding) -> String {
+  match s {
+    SfpModeled => "modeled"
+    SfpExecuted => "executed"
+    SfpDeployed => "deployed"
+    SfpUnstarted => "unstarted"
+  }
+}
+
+fn sfp_owner_text(o: ServingFleetOwner) -> String {
+  match o {
+    SfpOwnedBy { symbol } => join(["`", symbol, "`."], "")
+    SfpUnowned { obligation } => join(["unowned; ", obligation], "")
+  }
+}
+
+fn sfp_refs_text(ids: List<ServingFleetRowId>) -> String {
+  if ids.length() == 0 { "nothing" } else { join(map(ids, i => sfp_row_ref(id: i)), ", ") }
+}
+
+fn sfp_related_text(ids: List<ServingFleetRowId>) -> String {
+  if ids.length() == 0 { "" } else { join([" Related, not a prerequisite: ", sfp_refs_text(ids: ids), "."], "") }
+}
+
+fn sfp_standing_note_text(note: String) -> String {
+  if note == "" { "." } else { join([", ", note, "."], "") }
+}
+
+fn serving_fleet_row_text(r: ServingFleetRow) -> String {
+  join([
+    "**", sfp_row_ref(id: r.id), " ", r.title, ".** Owner: ", sfp_owner_text(o: r.owner), " ", r.summary,
+    " Standing: ", sfp_standing_text(s: r.standing), sfp_standing_note_text(note: r.standing_note),
+    " PR: ", r.pr, ". Done: ", r.done, " Depends on: ", sfp_refs_text(ids: r.depends_on), ".",
+    sfp_related_text(ids: r.related)
+  ], "")
+}
+
+data serving_fleet_rows: List<ServingFleetRow> = [
+  ServingFleetRow {
+    id: SfpA1, section: SfpSupply, title: "Vast, rented and interruptible",
+    owner: SfpOwnedBy { symbol: "gunbc.fleet.flex_pass_run::pass" },
+    summary: "The fleet-converge mode flex_pass runs the pass under `product.fabric.flex_vast_loop::flex_run_pass_caller_frontier`. Dispatched flex_pass runs on srv1 succeeded on 2026-10-19, and their receipts show complete instance and charge walks with an idle outcome. That fires trigger (1) of the caller frontier, whose text still says the pass has not executed. Selection is still unwired: the receipt reports needs-evidence under `product.fabric.flex_vast_loop::flex_select_supply_consumer_frontier`. Live target: Apply on, a $50 spend cap, at most 2 cards. This row owns the live rented integration.",
+    standing: SfpExecuted, standing_note: "in Plan mode, not deployed", pr: "unstarted for the live leg",
+    done: "live observation that one card was rented, enrolled, served a turn and was destroyed with the destroy independently read back, inside the cap.",
+    depends_on: [SfpA3, SfpD4, SfpD5], related: []
+  },
+  ServingFleetRow {
+    id: SfpA2, section: SfpSupply, title: "AWS EC2 spot g7e, rented and interruptible",
+    owner: SfpOwnedBy { symbol: "gunbc.plans.flex_supplier_generalization::flex_supplier_generalization_plan" },
+    summary: "Owned by witty-lynx-354 and cited only (PRs 14856 plan, 14862 shapes, 14866 serving image, 14879 supplier-agnostic carriers and destroy safety). The machine identity it extends is `product.fabric.flex_policy::FlexMachineKey`. The boot path (3b) and the aws_cli plus Plan-mode supplier row (4b) are unstarted.",
+    standing: SfpModeled, standing_note: "up to 14879", pr: "14856, 14862, 14866, 14879",
+    done: "a Plan-mode pass against a real account observed green, and only then Apply, with the destroy read back as for Vast.",
+    depends_on: [SfpA3], related: [SfpA1]
+  },
+  ServingFleetRow {
+    id: SfpA3, section: SfpSupply, title: "Pinned serving image and onstart, shared by rented and owned",
+    owner: SfpOwnedBy { symbol: "product.fabric.flex_serving_image::flex_lil_serving_image" },
+    summary: "The frontier it closes is `gunbc.serving.replica_endpoint_launch::replica_incarnation_unverified_obligation`, the declared frontier that the launched incarnation is not yet verified against the image.",
+    standing: SfpModeled, standing_note: "", pr: "14866",
+    done: "the incarnation check executes and a launched replica proves it runs the pinned image, flags and weights.",
+    depends_on: [], related: []
+  },
+  ServingFleetRow {
+    id: SfpB1, section: SfpSupply, title: "Owned premium, RTX PRO 6000 on srv1",
+    owner: SfpOwnedBy { symbol: "gunbc.serving.serving_enrollment::ServingRoute" },
+    summary: "Registered as a standing route, never through flex, with the same image and onstart as rented supply. One card at TP1; a TP2 pair is a later purchase and not a row. Blocked: the card does not power on, a hardware fault that only the operator can act on.",
+    standing: SfpModeled, standing_note: "", pr: "unstarted",
+    done: "live observation of a turn placed on the standing route and served by this card. Its measurement is a later row that depends on this one.",
+    depends_on: [SfpA3, SfpD1], related: []
+  },
+  ServingFleetRow {
+    id: SfpC1, section: SfpSupply, title: "Owned cheap tier, per-host islands",
+    owner: SfpUnowned { obligation: "no engine module exists for Strata yet, and that module is a prerequisite row." },
+    summary: "Flash Next IQ3_S through Strata, with CPU-computed experts, is unmeasured and stays Unobserved until it is measured; the stock-vLLM alternative serves Qwen3.6 35B-A3B or 27B. Islands are per host and never cross-host TP. The wire a compatible engine speaks already lives in `extdeps.llm.openai_compat_sse::openai_compat_sse_line_payload`. The return window on the cards ends 2026-11-24, which orders the measurement ahead of the keep decision.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the island's upstream is converged, with a converge readback that reports no pending action, and answers a direct engine probe. Its measurement, and the served turn through the router, are later rows that depend on this one.",
+    depends_on: [SfpC2], related: [SfpE3]
+  },
+  ServingFleetRow {
+    id: SfpC2, section: SfpSupply, title: "Strata engine module",
+    owner: SfpUnowned { obligation: "the Strata engine has no extdeps module." },
+    summary: "One with its own scope under `extdeps.external_authority::ExternalModelScope` is a modeling obligation (DESIGN section 3), carrying the serving API as Strata documents it, and nothing is cited as Strata fact until it exists.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the module exists and a witness reads its declared API; an adapter is written only if that API is not OpenAI-compatible.",
+    depends_on: [], related: []
+  },
+  ServingFleetRow {
+    id: SfpD1, section: SfpRouter, title: "Router design",
+    owner: SfpOwnedBy { symbol: "gunbc.plans.fabric_serving_router::fabric_serving_router_plan" },
+    summary: "Owned by proud-bear-756 and cited only (PR 14929). The contract it realizes is `gunbc.serving.router_realization::router_capability_permission`.",
+    standing: SfpModeled, standing_note: "as an approved plan", pr: "14929",
+    done: "a witness drives the router contract over supplied requests, granting a permit and releasing the seat when the stream ends. The first live routed request is a later integration row that depends on this one.",
+    depends_on: [SfpD2, SfpD3], related: [SfpD8]
+  },
+  ServingFleetRow {
+    id: SfpD2, section: SfpRouter, title: "Streaming proxy scaffold",
+    owner: SfpUnowned { obligation: "the owner is slice S1 of the router plan, not yet on main (PR 14938)." },
+    summary: "The callouts it must reach are `gunbc.serving.serving_front_door::front_door_stream_end`. The hand-rendered configuration is operator-approved TRACKED debt that dissolves at the v2-native streaming door.",
+    standing: SfpExecuted, standing_note: "as a scaffold, not deployed", pr: "14938",
+    done: "the falsifier cases of the router plan observed, and this row retires when the native door carries the bytes.",
+    depends_on: [], related: []
+  },
+  ServingFleetRow {
+    id: SfpD3, section: SfpRouter, title: "Authz and stream-end callouts",
+    owner: SfpOwnedBy { symbol: "std.compiler_entry::CompilerEntryDriver" },
+    summary: "The NativeServeDriver arm, as a separate srv1 unit beside the device-crypto sidecar.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "every RouterCapability arm exercised by a witness, and the real callouts driven by the streaming proxy harness.",
+    depends_on: [SfpD2, SfpD6], related: []
+  },
+  ServingFleetRow {
+    id: SfpD4, section: SfpRouter, title: "Rent-to-enroll",
+    owner: SfpOwnedBy { symbol: "gunbc.serving.rented_enrollment::rented_cohort_enrollments" },
+    summary: "An empty hand list in production, to be replaced by applying `gunbc.serving.rented_allocation_host_enrollment::rented_allocation_host_enrollment` to each live allocation.",
+    standing: SfpModeled, standing_note: "", pr: "unstarted; sequenced after 14879",
+    done: "a witness applies the enrollment to a supplied live allocation and the card becomes placeable with no hand edit. The live observation belongs to the rented integration, which depends on this row.",
+    depends_on: [SfpA3], related: []
+  },
+  ServingFleetRow {
+    id: SfpD5, section: SfpRouter, title: "Reclaim and session re-placement",
+    owner: SfpOwnedBy { symbol: "gunbc.serving.rented_release::rented_release_receipt" },
+    summary: "It owns drain, revoke, clean and destroy. Re-placement of a session whose card is reclaimed has no home today; it is a modeling obligation on the incarnation frontier of the serving image, and no generic replica-failover abstraction is introduced.",
+    standing: SfpModeled, standing_note: "the release legs, with no driver; re-placement is unstarted", pr: "unstarted",
+    done: "a reclaimed card is gone, read back, and the session's next turn is placed on a surviving card, both shown by a witness over a supplied allocation. The live observation belongs to the rented integration, which depends on this row.",
+    depends_on: [SfpA3], related: []
+  },
+  ServingFleetRow {
+    id: SfpD6, section: SfpRouter, title: "Client API key",
+    owner: SfpOwnedBy { symbol: "gunbc.serving.serving_key_grant::serving_key_request" },
+    summary: "The pool key a client presents.",
+    standing: SfpModeled, standing_note: "", pr: "unstarted for the callout check",
+    done: "a witness drives the key and grant check over supplied requests: a valid key is granted, and a missing or revoked key is refused. Live served and refused requests belong to the live integration, which depends on this row.",
+    depends_on: [], related: []
+  },
+  ServingFleetRow {
+    id: SfpD7, section: SfpRouter, title: "Live deploy leg",
+    owner: SfpOwnedBy { symbol: "gunbc.live_deploy.apply_legs::DeployApplyPlan" },
+    summary: "For the proxy and callout units, never a hand-written script.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the deployed units are read back as running by the live deploy readback. Live traffic through them belongs to the live integration, which depends on this row.",
+    depends_on: [SfpD2, SfpD3], related: []
+  },
+  ServingFleetRow {
+    id: SfpD8, section: SfpRouter, title: "First live routed request",
+    owner: SfpUnowned { obligation: "this is the integration row for the milestone of section 6, not a module." },
+    summary: "It owns the live probe and its controls.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the live probe and the controls of section 6 observed.",
+    depends_on: [SfpC1, SfpD1, SfpD6, SfpD7], related: []
+  },
+  ServingFleetRow {
+    id: SfpE0, section: SfpMeasurement, title: "Benchmark run receipt",
+    owner: SfpUnowned { obligation: "no module carries a run-level receipt." },
+    summary: "The facts the tiers need (KV capacity, knee, safe seats at 180k, open-loop agentic throughput, wall power and the power cap in force) belong to a whole run, not to one request: `extdeps.gpu_bench.request_v2::gpu_bench_parse_jsonl` reads a per-request row, and `gunbc.serving.gpu_bench_warm_standing::GpuBenchWarmStanding` is eligibility for a warm reading, not a rate. A typed run receipt is a modeling obligation: one observation per run naming host, GPU, engine, quantization and topology, carrying those quantities, and built from the request rows it aggregates.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "a witness folds supplied request rows into a run receipt, and one inhabitance claim reads a real run.",
+    depends_on: [], related: []
+  },
+  ServingFleetRow {
+    id: SfpE1, section: SfpMeasurement, title: "Rented receipts",
+    owner: SfpUnowned { obligation: "until the run receipt carrier lands." },
+    summary: "A run receipt from a rented card, with results pulled off the box every 5 minutes.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "a receipt from a rented card read through the run receipt carrier, with the pull cadence observed.",
+    depends_on: [SfpE0, SfpA1], related: []
+  },
+  ServingFleetRow {
+    id: SfpE2, section: SfpMeasurement, title: "Owned premium receipts",
+    owner: SfpUnowned { obligation: "until the run receipt carrier lands." },
+    summary: "Run receipts for the PRO 6000, one per power cap at 300, 400, 500 and 600 W; the frontier they feed is `gunbc.serving.home_serving_accelerator_field::home_serving_accelerator_field_p4_frontier`. Blocked while the card does not power on.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "one receipt per cap.",
+    depends_on: [SfpE0, SfpB1], related: []
+  },
+  ServingFleetRow {
+    id: SfpE3, section: SfpMeasurement, title: "Cheap tier receipts",
+    owner: SfpUnowned { obligation: "until the run receipt carrier lands." },
+    summary: "A run receipt per engine on one island.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "a receipt for Strata and one for stock vLLM, measured on the converged island, which turns the Unobserved reading into a number.",
+    depends_on: [SfpE0, SfpC1], related: []
+  },
+  ServingFleetRow {
+    id: SfpE4, section: SfpMeasurement, title: "Receipt to operating-point cost",
+    owner: SfpUnowned { obligation: "no module ingests a run receipt into a unit cost." },
+    summary: "`product.fabric.serving_recipe::serving_unit_cost_for_selection` and `product.fabric.serving_recipe::serving_cost_per_million_tokens` refuse an unread unit cost, but the throughput they read is an operator reading on the recipe, not a run receipt. The ingestion that turns a run receipt into the candidate operating-point cost is a modeling obligation. That cost feeds offline fleet and capital selection, as `product.fleet_operating_point::fleet_operating_point_selection` does; runtime request routing is the tier policy and is a separate decision.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "a witness where a supplied receipt yields the unit cost that selection reads, and selection refuses a tier with no receipt.",
+    depends_on: [SfpE0], related: [SfpF1]
+  },
+  ServingFleetRow {
+    id: SfpF1, section: SfpPolicy, title: "Tier policy",
+    owner: SfpUnowned { obligation: "no module owns the boundary rule or the summary carrier, a modeling obligation to land as a model before any router code reads it." },
+    summary: "A session's KV is tied to its exact weights, so a tier switch happens only at a task boundary, and an escalation from the cheap tier to the premium tier carries a compact summary, not the transcript. The home is a consumer of the shared choice authorities `std.decision::select_realization` and `product.fabric.selection::select_supply`, following the precedent `product.fleet_operating_point::fleet_operating_point_selection`; the session identity it must respect is `gunbc.serving.session_store::ServingPrefixIdentity`.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "a witness where a mid-task tier switch is refused, a task-boundary switch is selected, and the summary carrier is the only thing handed across.",
+    depends_on: [SfpE4, SfpD1], related: []
+  },
+  ServingFleetRow {
+    id: SfpG1, section: SfpSupply, title: "One serving profile, not one launch per host",
+    owner: SfpOwnedBy { symbol: "product.fabric.serving_recipe::ServingRecipe" },
+    summary: "How a checkpoint is served on hardware is written three times today: the srv1 launch in `gunbc.serving.srv1_serving_launch::srv1_serving_launch`, the srv3 Strata cell `gunbc.serving.strata_ada_pair_cell::srv3_strata_flags`, and the retired Spark arm, whose checkpoint, runtime and topology factoring in `gunbc.spark.serving_arm::ServingCheckpoint`, `gunbc.spark.serving_arm::ServingRuntime` and `gunbc.spark.serving_arm::ServingTopology` is the family to generalise rather than re-invent. The consolidated profile is a value with five parts: the checkpoint as an explicit input, never hard-coded; a placement and a memory budget, which are NOT re-modeled here: `gunbc.serving.serving_layout` (#15434) already derives a host's layout from what it has (`gunbc.serving.serving_layout::ServingResourceGrant`), how its devices serve together (`gunbc.serving.serving_layout::ServingDeviceGroup`) and what one replica of an engine and model needs (`gunbc.serving.serving_layout::ServingBackendProfile`), against `gunbc.serving.serving_layout::ServingRequirement`, through `gunbc.serving.serving_layout::serving_layout_derive`, with per-replica admission in `gunbc.serving.serving_layout::serving_replica_admit`; the profile carries those values rather than a second budget, and memory stays per device, never summed into a pool; the user-visible endpoint, with any hardware-forced context cap stated; and per-axis expectations whose figures carry their standing through `extdeps.external_authority::CitedFigureStanding` (cited to an authority, transcribed uncited with its read obligation, or observed by receipt). Whether a configuration is qualified live is not re-modeled either: it is `gunbc.serving.serving_layout::ServingLiveQualification` and `gunbc.serving.serving_layout::ServingLiveStanding`, kept separate from fit and from backend support. It extends the recipe home and consumes the serving layout, so no parallel authority is created; `gunbc.serving.serving_layout::strata_iq3_s_a16_profile` is the existing backend-profile value the first non-srv1 profile reuses. The context cap is one pool value, `gunbc.serving.serving_context_cap::serving_fleet_context_cap`, under the ruling `gunbc.design_ruling::one_serving_context_cap`; the profile reads it rather than holding a copy, and every adapter renders it in its own engine's spelling.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the profile type lives in the recipe home, the srv1 launch is expressed as one profile value, and a witness shows that two devices of equal nominal memory but different usable memory admit different profiles.",
+    depends_on: [], related: [SfpB1, SfpC1]
+  },
+  ServingFleetRow {
+    id: SfpG2, section: SfpSupply, title: "Engine adapters own what is engine-specific",
+    owner: SfpUnowned { obligation: "no engine-adapter declaration exists; it is a modeling obligation inside the profile home of G1, with vLLM as the first adapter and the second engine unselected. Whether AMD cards are in the first contract is an open operator question, not a ruling; the recorded advice is to defer it unless those cards go into an x86-64 host, since the AMD GPU userspace is x86-64 only upstream." },
+    summary: "The common contract is engine-neutral: checkpoint, placement and group, memory and capacity intent, endpoint, and qualification. Each adapter owns its build pin, its capability check against the kernel arms the checkpoint needs, launch-flag construction and readback, and its own KV, memory and cache sizing. Switching engines preserves the deployment intent and recomputes everything engine-dependent; identical flags and transferable runtime KV are never assumed. vLLM is the first adapter. A second engine is a later selection, not part of this row.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the vLLM adapter builds the srv1 launch from a profile, and a witness shows an engine switch recomputing memory sizing rather than copying it.",
+    depends_on: [SfpG1], related: [SfpC2]
+  },
+  ServingFleetRow {
+    id: SfpG3, section: SfpSupply, title: "srv1 moves onto the profile without changing behaviour",
+    owner: SfpOwnedBy { symbol: "gunbc.serving.serving_provision_derivation::serving_provision_from_vllm" },
+    summary: "Today this provision step refuses every vLLM recipe that is not srv1's. The refusal dissolves into a recipe-owned launch, and srv1 becomes the first profile. The control is byte identity: the launch argv and environment rendered from the profile equal the current srv1 launch, which since G8 carries the pool context cap, and the existing serving witnesses stay green.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the srv1 launch renders byte-identically from its profile and the srv1-only refusal is gone, with no live redeploy needed.",
+    depends_on: [SfpG1, SfpG2, SfpG8], related: [SfpB1]
+  },
+  ServingFleetRow {
+    id: SfpG8, section: SfpSupply, title: "One context cap rendered into both engines",
+    owner: SfpOwnedBy { symbol: "gunbc.serving.serving_context_cap::serving_fleet_context_cap" },
+    summary: "Under the ruling `gunbc.design_ruling::one_serving_context_cap`, every pool engine launches with one context cap, held once at `gunbc.serving.serving_context_cap::serving_fleet_context_cap`. srv3's Strata cell `gunbc.serving.strata_ada_pair_cell::srv3_strata_flags` reads it, and srv1's vLLM launch `gunbc.serving.srv1_serving_launch::srv1_serving_launch` carries it as its maximum model length in place of the launcher profile's wider default. The operator reordered this row ahead of G3, so G3's byte-identity control compares against the launch that already carries the cap. The srv1 observation is not rewritten: its launch witness pins the render as the observed argv plus only the cap, until a launch at the cap is read.",
+    standing: SfpModeled, standing_note: "srv1 not relaunched at the cap; no startup receipt at it yet", pr: "15440",
+    done: "srv1 is relaunched at the cap in an operator window, its startup receipt reads the cap, and the launch witness compares against that reading with no suffix.",
+    depends_on: [], related: [SfpG1, SfpG3]
+  },
+  ServingFleetRow {
+    id: SfpG4, section: SfpPolicy, title: "A profile is selected for an observed card",
+    owner: SfpOwnedBy { symbol: "std.decision::select_realization" },
+    summary: "The subject is an observed placement: each card joined to its catalog row through `gunbc.gpu_market.realization_join::realization_gpu_join`, which exists but has no serving consumer yet. The candidate field is the adapter, grouping and offload options. Hard constraints (memory fit, capability arm, endpoint cap) exclude a candidate before ranking. With no declared policy the answer is a request for policy, never a default. `product.fabric.serving_recipe::serving_recipe_accepts_card` checks one recipe against one card today; it becomes one constraint inside the selection rather than a second chooser.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "a witness where an observed card selects its profile, an unknown card refuses by name, and a missing policy returns a request for policy.",
+    depends_on: [SfpG1], related: [SfpF1]
+  },
+  ServingFleetRow {
+    id: SfpG5, section: SfpSupply, title: "Multi-device replica identity",
+    owner: SfpUnowned { obligation: "no multi-device replica identity is modeled; it is a separate coordinated change that preserves the single-device partition and permit keys or states their migration." },
+    summary: "A replica spread over several cards needs its own identity. The topology half exists: `gunbc.serving.serving_layout::ServingDeviceGroup` already says which devices serve together as one replica, so the identity keys on that group rather than inventing a second grouping; what is missing is the partition and permit identity of a group-spanning replica. A device pair is never represented as device 0, and the change adds no admission authority. The single-device identity already suffices for srv1 and for the checkpoint barrier; this row gates every multi-card profile, including any grouping of the A2 cards and the srv4 enrollment.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "a multi-device replica has its own identity, and single-device replicas keep their keys unchanged under a regression control.",
+    depends_on: [], related: [SfpG4]
+  },
+  ServingFleetRow {
+    id: SfpG6, section: SfpSupply, title: "Worked case: four Tesla A2 cards",
+    owner: SfpUnowned { obligation: "three separate standings, never one read as another. INSTALLED AND OBSERVED, message-grade: four A2 cards are installed in Butch, `gunbc.fleet.fleet_host_identity::operator_host_srv14` (hostname drawn in `gunbc.hostname_allocation`), read only in proud-raven-703 dated messages of 2026-10-30 and 2026-10-31 naming GPUs on PCIe buses 0001:01:00.0, 0004:01:00.0 and 0004:02:00.0; the repository holds no enumeration receipt of all four cards, which stays an install-observation obligation, and the host has no platform row (its board facts are `extdeps.boards.asrock_altrad8ud_beta_firmware`; the ALTRAD8UD managed-host row is a frontier in `gunbc.machine_intake.bmc_secure`). THERMAL QUALIFICATION FAILED, outside the repository: on 2026-10-30 the factory fan curve idled the cards at 84 to 93 C (the comment in `product.zone_thermal_curve`); one card at a time at a 35 W cap with chassis fans at 100 percent reached 94 C during a long prefill and the guard stopped the engine; on 2026-10-31 two cards together reached the clock floor at 86 and 88 C and were stopped by hand; no instrument or row records these runs, and the operator plans to remove cards. SERVING PROFILE UNADMITTED: no profile is admitted on these cards, and nothing here is a live serving result." },
+    summary: "From `extdeps.gpu.nvidia_a2::nvidia_a2_catalog`: 16 GiB per device, 200 GB/s memory bandwidth, compute capability 8.6, 40 to 60 W, low profile, single slot. Still unread on the installed host: its PCIe topology, usable memory per device after driver load, and host RAM. (Design-time snapshot, 2026-10-30, kept as history: the cards were then recorded as on hand and uninstalled with a provisional host, which the installed-and-observed, thermal-qualification and serving-profile standings in this row's obligation supersede.) The current checkpoint in `extdeps.local_inference_lab.qwen3_8_flash_next::qwen3_8_flash_next_manifest` pins about 95 GiB of safetensors, loaded as nvfp4. Its candidates: all weights on device does not fit, since about 95 GiB of weights cannot be placed on four 16 GiB devices even split ideally, and separate devices are never summed into one pool; host-memory expert offload is undecided, missing the active-parameter split, host RAM and per-slot PCIe width; another checkpoint or quantization is undecided until a candidate row exists. Independently of fit, nvfp4 targets newer GPU generations than compute capability 8.6, so engine support for this checkpoint on A2 is a read obligation. No throughput range is claimed while its inputs are missing.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "on Butch, with a thermal qualification that passes first, each card is joined to its catalog row, its usable memory and the PCIe topology are read, one candidate is admitted or every candidate refuses with its named missing input, and the acceptance scenario of G7 runs on the admitted one.",
+    depends_on: [SfpG1, SfpG4, SfpG5, SfpG7], related: []
+  },
+  ServingFleetRow {
+    id: SfpG7, section: SfpMeasurement, title: "Warm acceptance for a profile",
+    owner: SfpUnowned { obligation: "the scenario and its pass criteria await operator review; the existing benchmark material has not been operator-reviewed and sets no threshold." },
+    summary: "One fixed agent-style scenario of one to two minutes, separate from model-quality evaluation. It warms the engine with a stated warm state, then runs at a named low and a named higher concurrency. It reports response correctness, time to first token, per-session decode rate, aggregate throughput, errors, and peak memory against the profile's budget, each beside the profile's estimated range, with hardware, engine image, checkpoint and profile identity recorded. Reusable components exist in `gunbc.serving.serving_benchmark::serving_benchmark_short_n4`, but they are inspected material, not approved policy. A warm pass is not cold-start qualification.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the operator approves the scenario text and its pass criteria, and one profile has a receipt reporting estimate against measurement.",
+    depends_on: [SfpG1], related: [SfpE4]
+  },
+]
+
+fn sfp_section_items(s: ServingFleetSection) -> List<MarkdownListItem> {
+  map(filter(serving_fleet_rows, r => sfp_section_key(s: r.section) == sfp_section_key(s: s)), r => li(text: serving_fleet_row_text(r: r)))
+}
+
+fn serving_fleet_program_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Status: umbrella index, awaiting review.** Operator goal, 2026-10-24: serve Qwen3.8 Flash Next, and smaller Qwen models, to dashboard agent sessions from ONE pool through a gunbc-native router, over three supply kinds. This plan is the index and the design spine. It restates no sub-plan: each row names the one module that owns its fact, or says it is unowned when that module does not exist yet, and says what done means, so the program can be tracked as rows close. The rows are typed records and this text is their projection. The buying material (prices, budgets, site power, accounts, endpoints, keys) is deliberately absent from this public repository."),
+      p(text: "**Standing vocabulary.** modeled means a declaration exists and a witness executes it. executed means a real run produced a receipt. deployed means a live unit serves traffic. unstarted means nothing exists. No row below is deployed; the router has no live unit and no supply kind has served a session through it."),
+    ]),
+
+    h2(text: "1. Supply kinds"),
+    ul(items: sfp_section_items(s: SfpSupply)),
+
+    h2(text: "2. Router and lifecycle"),
+    ul(items: sfp_section_items(s: SfpRouter)),
+
+    h2(text: "3. Measurement"),
+    ul(items: sfp_section_items(s: SfpMeasurement)),
+
+    h2(text: "4. Routing policy across tiers"),
+    ul(items: sfp_section_items(s: SfpPolicy)),
+
+    h2(text: "5. Order of closure"),
+    p(text: join([
+      "The dependency edges form an acyclic graph, and the witness checks that they do. Rows with no dependency open the work: ",
+      sfp_refs_text(ids: [SfpA3, SfpC2, SfpD2, SfpD6, SfpE0]),
+      ". The milestone of section 6 is ", sfp_row_ref(id: SfpD8), ", reached through ", sfp_refs_text(ids: [SfpD3, SfpD1, SfpD7]),
+      ", with ", sfp_refs_text(ids: [SfpC2, SfpC1]), " on the local supply side, and ", sfp_row_ref(id: SfpE3),
+      " measuring the island once it converges. The rented path follows: ", sfp_refs_text(ids: [SfpD4, SfpD5, SfpA1, SfpE1]),
+      ", with ", sfp_row_ref(id: SfpA2), " needing only its own Plan pass. ", sfp_row_ref(id: SfpE4),
+      " comes before any selection trusts a throughput, and ", sfp_row_ref(id: SfpF1), " after it. ",
+      sfp_refs_text(ids: [SfpB1, SfpE2]),
+      " join through the same router once the card powers on. Under the ruling `gunbc.design_ruling::installed_cards_converge_first`, the cards already installed converge before incoming ones: the A16 cards on h11 and the Blackwell card on srv1. The profile consolidation opens at ", sfp_refs_text(ids: [SfpG1, SfpG5]),
+      ", moves srv1 onto it through ", sfp_refs_text(ids: [SfpG8, SfpG2, SfpG3]), ", selects by observed card in ", sfp_row_ref(id: SfpG4),
+      ", and reaches the first new hardware in ", sfp_row_ref(id: SfpG6), " with the acceptance of ", sfp_row_ref(id: SfpG7), ". Each row is updated by its own PR, and this plan is retired when every row is closed or has moved to its owner's declarations."
+    ], "")),
+
+    h2(text: "6. Acceptance criteria: the first end-to-end milestone"),
+    p(text: join([
+      "**Milestone.** A request that carries the pool API key reaches a converged local upstream through the router and returns tokens. Local cards come first: the srv3 Strata replica of ",
+      sfp_row_ref(id: SfpC1), ", then a srv1 vLLM upstream registered as in ", sfp_row_ref(id: SfpB1),
+      "; rented flex supply follows. Supply is brought up and kept up by gunbc converge, never by a hand-run script."
+    ], "")),
+    p(text: "**Route.** A live probe through the deployed router: one streamed completion request with the pool key, answered with tokens by the local upstream, read beside the converge receipt for that upstream, whose readback shows it converged with no pending action. **Controls that must go red.** The same probe without the key, or with a revoked key, is refused at the authz callout and returns no tokens; the same probe with the upstream stopped returns a typed refusal, never a hang and never tokens from another source; and a converge pass with the upstream stopped reports an action, not a converged state."),
+    ul(items: [
+      li(text: join(["1. The local upstream is converged: ", sfp_row_ref(id: SfpC1), " for srv3, with the receipt of ", sfp_row_ref(id: SfpE3), " before selection trusts its throughput. Child PR: unstarted."], "")),
+      li(text: join(["2. The streaming proxy is up: ", sfp_row_ref(id: SfpD2), ", PR 14938; deployed by ", sfp_row_ref(id: SfpD7), ", child PR unstarted."], "")),
+      li(text: join(["3. The pool key is checked: ", sfp_row_ref(id: SfpD6), " through the callouts of ", sfp_row_ref(id: SfpD3), ", child PR unstarted."], "")),
+      li(text: join(["4. The router contract the probe exercises: ", sfp_row_ref(id: SfpD1), ", PR 14929. The live request itself is ", sfp_row_ref(id: SfpD8), ", which closes this milestone."], "")),
+      li(text: join(["Out of scope for this milestone: rented supply under ", sfp_refs_text(ids: [SfpA1, SfpA2, SfpD4, SfpD5]), "; the premium card under ", sfp_row_ref(id: SfpB1), ", while it does not power on; and the tier policy under ", sfp_row_ref(id: SfpF1), ". Each is closed by its own row's PR."], "")),
+    ]),
+  ]
+}
+
+data serving_fleet_program_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "serving-fleet-program",
+  title: "Serving-fleet program: rented, owned premium and owned cheap supply behind one native router",
+  body: serving_fleet_program_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this plan when every deliverable row is deployed and observed, or has moved to the declarations and witnesses of the module that owns it.") },
+}

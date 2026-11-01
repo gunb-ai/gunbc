@@ -6,6 +6,7 @@ import std.measure { Second, second }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import gunbc.host.bmc_release_capability_catalog { megarac_committed_hpm_check_identity }
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessObservationStanding,
@@ -182,7 +183,7 @@ data mtcollins1_evidence_manifest_digest: ContentHash = Sha256Hash(Sha256Digest 
 // which is the only difference between an observed capability and a hopeful one. The write evidence
 // is the second artifact, artifacts/bmc/mtcollins1-intake-write-exercise.json.
 data mtcollins1_boot_control_route: BmcBootControlRouteObservation = BmcBootControlRouteObservation {
-  route: IpmiLanplusRoute,
+  route: IpmiLanplusRoute { cipher_suite: Absent },
   raw_response: mtcollins1_write_exercise_digest,
   observed_at: mtcollins1_write_exercise_observed_at,
 }
@@ -282,3 +283,35 @@ data mtcollins1_access_standing: BmcAccessObservationStanding = BmcAccessObserve
 data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
 
 data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)
+
+// THE CURRENT BUILD, AS THE MACHINE READ IT -- DERIVED, NOT TYPED (review 38602; DESIGN.md §3, §5), AND
+// OPTIONAL, NOT FABRICATED (reviews 86103/86139; DESIGN.md §5 "every path succeeds fully or fails with a
+// typed, located diagnostic"). The unit shipped and was catalogued at 0.32; it has run 0.45 since the
+// 2026-10-02 reflash, and boot run 40082618814 read that off the controller. This is the identity the
+// ATTACHED boot's catalogue join resolves against -- distinct from the intake-era rows above
+// (mtcollins1_firmware, mtcollins1_identity), which retain what the FIRST contact read. It is asked of the
+// catalogue ROW that holds those committed bytes, whose establishment is the single mint; there is no wire
+// literal here to drift from them. And if that ask REFUSES -- no row at the path, two rows, bytes that
+// cannot name a release -- this is Absent, not a stand-in identity: the ledger then carries NO
+// current-build reading and NO reflash destination (megarac_operation_evidence builds both only on the
+// Present arm), and the boot's join finds no build to attach to and REFUSES at attach. A fabricated
+// identity here would enter the ledger as "a reading of a build called no-version-stored"; Absent enters
+// nothing, which is what a read that read nothing must do.
+data mtcollins1_current_build_firmware: BmcFirmwareReleaseIdentity? = megarac_committed_hpm_check_identity
+
+// THE SAME READING, AS A BmcObservedIdentity, because the build-reading mint of the operation ledger
+// takes an identity of THAT shape (gunbc.host.megarac_operation_standing megarac_build_reading) -- or
+// NOTHING of that shape, when the machine read refused. Board and chassis are TAKEN FROM
+// mtcollins1_identity -- the controller's own `fru print 0` answer from the committed intake capture,
+// which a build change does not move -- not copied out of it: a copy can drift, a field read cannot. Only
+// `firmware` differs, and it carries the derived identity rather than the page label.
+data mtcollins1_current_build_identity: BmcObservedIdentity? = match mtcollins1_current_build_firmware {
+  Present { value: firmware } => Present {
+    value: BmcObservedIdentity {
+      board: mtcollins1_identity.board,
+      chassis_part_number: mtcollins1_identity.chassis_part_number,
+      firmware: firmware,
+    },
+  }
+  Absent => Absent
+}

@@ -76,11 +76,32 @@ pub enum ParsedImportStatements {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "LexicalToken: Clone + serde::Serialize",
+    deserialize = "LexicalToken: Clone + serde::Deserialize<'de>"
+))]
 pub struct ParsedImportObservation<LexicalToken: Clone> {
     pub tokens: Rc<Vec<LexicalToken>>,
     pub imports: Rc<ParsedImportStatements>,
     pub _phantom: std::marker::PhantomData<LexicalToken>,
+}
+
+impl<LexicalToken: Clone + std::fmt::Debug> std::fmt::Debug
+    for ParsedImportObservation<LexicalToken>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ParsedImportObservation")
+            .field("tokens", &self.tokens)
+            .field("imports", &self.imports)
+            .finish()
+    }
+}
+
+impl<LexicalToken: Clone + PartialEq> PartialEq for ParsedImportObservation<LexicalToken> {
+    fn eq(&self, other: &Self) -> bool {
+        self.tokens == other.tokens && self.imports == other.imports
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -177,28 +198,30 @@ pub fn import_module_start(
     mut __tco_loop_at: i64,
     mut __tco_loop_limit: i64,
 ) -> i64 {
-    loop {
-        #[allow(unused_mut)]
-        let mut statement_text = __tco_loop_statement_text;
-        #[allow(unused_mut)]
-        let mut at = __tco_loop_at;
-        #[allow(unused_mut)]
-        let mut limit = __tco_loop_limit;
-        if (at.clone() >= limit.clone()) {
-            break at.clone();
-        } else {
-            if is_import_whitespace(v1_rt::char_at(&statement_text, at.clone())) {
-                {
-                    let __tco_0 = statement_text;
-                    let __tco_1 = v1_rt::int_add(at, 1);
-                    let __tco_2 = limit;
-                    __tco_loop_statement_text = __tco_0;
-                    __tco_loop_at = __tco_1;
-                    __tco_loop_limit = __tco_2;
-                    continue;
-                }
-            } else {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut statement_text = __tco_loop_statement_text;
+            #[allow(unused_mut)]
+            let mut at = __tco_loop_at;
+            #[allow(unused_mut)]
+            let mut limit = __tco_loop_limit;
+            if (at.clone() >= limit.clone()) {
                 break at.clone();
+            } else {
+                if is_import_whitespace(v1_rt::char_at(&statement_text, at.clone())) {
+                    {
+                        let __tco_0 = statement_text;
+                        let __tco_1 = v1_rt::int_add(at, 1);
+                        let __tco_2 = limit;
+                        __tco_loop_statement_text = __tco_0;
+                        __tco_loop_at = __tco_1;
+                        __tco_loop_limit = __tco_2;
+                        continue;
+                    }
+                } else {
+                    break at.clone();
+                }
             }
         }
     }
@@ -424,9 +447,5 @@ pub fn strip_one_import_statement(
     source: String,
     statement: Rc<ParsedImportStatement>,
 ) -> Rc<ImportStripOutcome> {
-    strip_import_statements(
-        source_file.clone(),
-        source.clone(),
-        Rc::new(vec![statement.clone()]),
-    )
+    strip_import_statements(source_file, source, Rc::new(vec![statement.clone()]))
 }

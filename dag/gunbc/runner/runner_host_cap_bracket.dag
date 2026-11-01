@@ -2,7 +2,7 @@ module gunbc.runner.runner_host_cap_bracket
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
-import std.algebra { list_flat_map }
+import std.algebra { list_flat_map, trim }
 import std.measure { Second, second, second_count }
 import extdeps.github.actions { cancelled_job_always_step_timeout }
 import std.types { EpochMs }
@@ -37,16 +37,26 @@ import gunbc.runner.runner_slot_actuation { slot_is_masked }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
-import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonBool, JsonArray, serialize_json, json_object, json_kv, json_string, json_bool, json_array }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, serialize_json, json_object, json_kv, json_string, json_bool, json_int, json_array }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
 import extdeps.systemd.systemctl { systemctl_mask_argv, systemctl_stop_argv }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
-import gunbc.fleet.fleet_workflow_steps { gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
+
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+// THE HOLDER IDENTIFICATION'S LOCAL READ: the job's own cgroup membership (/proc/self/cgroup), read with
+// the sanctioned effect (the same production idiom as the dispatch belt's producer identity,
+// gunbc.dispatch_credential_acquisition) -- not an exec over ssh, because the holder is THIS process's
+// host and the read is of this process itself.
+import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
+import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, ProcPidCgroupMembershipRecord, CurrentCgroupObserved, MembershipMissing, MembershipAmbiguous, MembershipMalformed, ProcSelfCgroupLineMissingColon, ProcSelfCgroupLineMissingSecondColon, ProcSelfCgroupLineEmptyHierarchy, ProcSelfCgroupLineEmptyPath }
+import gunbc.runner.runner_unit { NotARunnerUnit, RunnerUnitInstanceMalformed, RunnerUnitInstance, read_runner_unit_name, runner_unit_name_of_registration }
+import extdeps.github.actions_environment { github_runner_name_variable_name }
 import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound }
+import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh, LedgerCount, LedgerUnwritable, SlotCapOutcome, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused }
 
 // THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
 //
@@ -108,19 +118,25 @@ type ReregistrationTrigger
   | LongLivedSlotReregistrationRoute
 
 // the readings after the last of which the window opens; the wire renders them, so the residual's population is data
+// CurrentRegistrationReading is the fourth decay: #14877 joined the roster on the slot's CURRENT JIT identity
+// (read from the host's .runner file), and that reading decays like the other three -- between its read and the
+// stop the slot's registration identity can change (a re-registration replaces .runner), which makes the roster
+// evidence pertain to an identity the host no longer carries. It is taken inside the same pass and re-read with
+// it immediately before the stop, so it narrows, never closes -- exactly the residual's shape.
 type ResidualReading
   = MaskReading
   | RosterBusyFalseReading
   | NoRunnerWorkerReading
+  | CurrentRegistrationReading
 
 type ListenerRestartResidual {
   window_opens_after: List<ResidualReading>
 }
 
-data listener_restart_residual: ListenerRestartResidual = ListenerRestartResidual { window_opens_after: [MaskReading, RosterBusyFalseReading, NoRunnerWorkerReading] }
+data listener_restart_residual: ListenerRestartResidual = ListenerRestartResidual { window_opens_after: [MaskReading, RosterBusyFalseReading, NoRunnerWorkerReading, CurrentRegistrationReading] }
 
 fn residual_reading_wire(r: ResidualReading) -> String {
-  match r { MaskReading => "mask" RosterBusyFalseReading => "roster busy=false" NoRunnerWorkerReading => "no Runner.Worker" }
+  match r { MaskReading => "mask" RosterBusyFalseReading => "roster busy=false" NoRunnerWorkerReading => "no Runner.Worker" CurrentRegistrationReading => "current registration" }
 }
 
 type ListenerReregistrationFrontier {
@@ -189,13 +205,29 @@ type HostCapDrainPolicy {
 // second literal can disagree with the bracket.
 data runner_host_cap_drain_poll_interval: Second = second(count: 15)
 
+// THE STARTUP OF A RUNNER-HOST STEP IS THE RESOLVE OF ITS CLOSURE, and that closure is not the generic one.
+// Every runner-host step (the converge, the withdraw, and this bracket's release) is a `gunbc run` of an entry
+// whose closure is the runner-host-file-converge closure (about 2870 files, effectively the corpus), resolved
+// in full before the first effect. The generic gunbc.fleet.fleet_workflow_steps
+// gunbc_ci_gunbc_run_resolve_step_timeout_minutes (15) is below what that resolve measures on the fleet, so a
+// release step was killed before its first effect on every run, and a converge step whose bracket used its full
+// drain bound would have been killed after masking (gunbc.recurring_failure_mode
+// runner_host_cap_release_lost_to_cancellation).
+// MEASURED by the instrument the step already runs: its own `[pre-entry] phase=resolve_entry_graph_inclusive`
+// line, on srv4 (contended: process CPU about half of wall): 1544252 ms in run 40882448080 and 1780404 ms in
+// run 40922121143. POLICY: 1.5x the larger reading, rounded up to whole minutes (2671s -> 45 min). The
+// withdraw entry imports the converge module, so its closure contains this one; its own resolve is not
+// separately measured. A step that reads its resolve above this budget is the trigger to re-measure, not
+// to raise the generic figure.
+data runner_host_closure_resolve_budget: Second = second(count: 2700)
+
 data runner_host_cap_drain_policy: HostCapDrainPolicy = HostCapDrainPolicy {
   wait_bound: fleet_targeted_wait_bound(policy_poll_interval: runner_host_cap_drain_poll_interval),
   poll_interval: runner_host_cap_drain_poll_interval,
   operations_allowance: second(count: 600),
   release_allowance: second(count: 240),
   cancellation_envelope: cancelled_job_always_step_timeout,
-  release_startup_allowance: second(count: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60),
+  release_startup_allowance: runner_host_closure_resolve_budget,
 }
 
 // THE ENVIRONMENT VARIABLE THROUGH WHICH THE ENCLOSING STEP TELLS THE BRACKET ITS OWN DECLARED BUDGET, in
@@ -216,8 +248,8 @@ type BracketBudgetVerdict
 // THE RELEASE IS NOT GUARANTEED TO FIT THE CANCELLATION ENVELOPE, AND SAYS SO. GitHub gives a cancelled job's
 // always() steps a 5-minute cancellation timeout and then force-cancels (docs.github.com/en/actions/reference/
 // workflows-and-actions/expressions, status check functions; the figure is extdeps.github.actions cancelled_job_always_step_timeout). The release
-// step is a gunbc run step: its startup is the workflow's declared resolve budget (one authority,
-// gunbc_ci_gunbc_run_resolve_step_timeout_minutes), and the measured resolve of this closure is minutes, so
+// step is a gunbc run step: its startup is its closure's declared resolve budget (one authority,
+// runner_host_closure_resolve_budget), and the measured resolve of this closure is tens of minutes, so
 // the declared release does not fit. The standing is a typed residual, not a refusal and not a claim:
 // refusing every bracket would make the cap unconvergeable, and claiming coverage would be false. The harm
 // and the climb are the recurring_failure_mode row runner_host_cap_release_lost_to_cancellation.
@@ -1010,6 +1042,138 @@ type BracketAcquisition
   = BracketAcquired { owned: List<NonEmptyStr> }
   | BracketNotAcquired { refusal: HostCapBracketRefusal }
 
+// WHICH SLOT DOES THE BRACKET ITSELF RUN ON? The fleet converge job is host-pinned: it executes inside a
+// slot OF THE HOST IT CONVERGES (fleet_ssh_locus: the subject host's slot attests to its own state). The
+// bracket therefore cannot drain, stop or restart one of its own units -- a slot is permanently busy with
+// its own Runner.Worker, and stopping it would kill this very run. Before #holder-exclusion the bracket
+// tried anyway: run 40085967610 drained its own slot srv3-13 until the 5415s bound, withheld caps for the
+// WHOLE host, and every srv3/srv4 PR that landed there reds at the memory envelope as a result. Excluding
+// the holder is safe only if the exclusion names the RIGHT unit, so identification joins three
+// independent facts and fails closed, LOUDLY, if any is missing, unread or disagreeing:
+//   1. the cgroup leaf this process lives in (Filesystem.Read of /proc/self/cgroup -- the sanctioned
+//      production idiom, gunbc.dispatch_credential_acquisition's producer identity), parsed by the ONE
+//      runner-unit parser so a non-runner cgroup can never name a runner unit;
+//   2. the runner name this Actions job carries in its own environment (RUNNER_NAME); and
+//   3. what that unit's CURRENT registration file says on the host (the same reading the drain certifies
+//      listeners with), so a stale environment cannot point the exclusion at somebody else's slot.
+// A slot added after the last converge, or one whose registration moved under the job, fails leg 3 and
+// withholds: an unverifiable holder is an unverifiable exclusion, and a wrong exclusion lets the bracket
+// unmask or restart a slot it never drained -- the accident class this whole module is built to refuse.
+// WHO THE BRACKET MUST LEAVE ALONE, as three arms (review 86600; DESIGN §5: every path succeeds fully or
+// fails with a typed, located diagnostic -- a case whose answer is DECIDABLE is not a failure):
+//  - HolderIdentified: the job provably runs on this named desired slot of the subject host, so THAT unit
+//    is excluded from the bracket and judged by its live cgroup read-back.
+//  - HolderNotOnSubject: the job provably runs nowhere this pass manages (its cgroup leaf is not a runner
+//    unit at all, or names a slot this pass does not manage). The exclusion set is then EMPTY -- bracket
+//    every desired unit, exactly as before the holder work existed. Refusing this case would narrow the
+//    target (a host could only ever be converged from its own slots) with no safety to show for it.
+//  - HolderUnidentified: the job looks like it runs inside a runner slot of this host but the facts will
+//    not join (unreadable cgroup, ambiguous/malformed membership, missing RUNNER_NAME, unreadable or
+//    disagreeing registration). An unverifiable holder means an unverifiable EXCLUSION, and a wrong
+//    exclusion stops the job mid-run -- so only THIS arm refuses.
+type BracketHolder
+  = HolderIdentified { unit: NonEmptyStr }
+  | HolderNotOnSubject { why: String }
+  | HolderUnidentified { cause: String }
+
+// THE ONE EXPRESSION OF THE EXCLUSION SET (review 86600, §3): which units the bracket may touch. An
+// identified holder removes exactly its own unit; a job not on the subject host removes nothing, so the
+// remote converge keeps bracketing EVERY desired unit. Nothing else in the route may re-derive this list.
+fn bracket_units_to_bracket(units: List<NonEmptyStr>, holder: BracketHolder) -> List<NonEmptyStr>
+{
+  match holder {
+    HolderIdentified { unit: h } => filter(units, u => u != h)
+    // Both other arms remove NOTHING, for two different reasons that the wire keeps distinct: an
+    // off-subject job occupies no unit this pass manages, and an unidentified holder never reaches this
+    // function at all (the entry withholds first). Spelled out rather than a catch-all so a future arm on
+    // BracketHolder cannot inherit "exclude nothing" by accident.
+    HolderNotOnSubject { why: _ } => units
+    HolderUnidentified { cause: _ } => units
+  }
+}
+
+fn bracket_holder_leaf(relative_path: String) -> String {
+  fold(split(s: relative_path, delimiter: "/"), init: "", f: (acc, part) => if trim(s: part) == "" { acc } else { trim(s: part) })
+}
+
+// THE LEAF-TO-UNIT STEP, PURE. The cgroup leaf of a runner job is the unit name itself
+// (systemd.slice/actions-runner@<instance>.service); the ONE parser in gunbc.runner.runner_unit decides
+// whether the leaf is a runner unit at all, and the unit string is rebuilt from the parser's own
+// instance, so what comes out is exactly the name the bracket speaks in its argv and refusals.
+fn bracket_holder_unit_of_leaf(leaf: String) -> BracketHolder
+{
+  // An empty leaf is a job whose unified line carries nothing but slashes: it sits in the root cgroup and
+  // occupies no unit this pass manages, exactly like a dispatcher job. Named here rather than cast to a
+  // non-empty string and handed to the parser, which would turn a decidable case into a cast with nothing
+  // to name. (A job in a SLICE root is not this case: the leaf fold keeps the slice's own name, and the
+  // parser calls it not-a-runner-unit.)
+  if leaf == "" {
+    HolderNotOnSubject { why: "the job's own cgroup has no leaf unit: it runs at the root cgroup, not in a runner slot" }
+  } else {
+    match read_runner_unit_name(observed: leaf as NonEmptyStr) {
+      NotARunnerUnit { observed: o } => HolderNotOnSubject { why: join(["the cgroup leaf '", o as String, "' is not an actions-runner@ unit: this job runs outside every runner slot of the subject host, so there is nothing to exclude"], "") }
+      RunnerUnitInstanceMalformed { observed: o, cause: c } => HolderUnidentified { cause: join(["the cgroup leaf '", o as String, "' names an actions-runner@ instance that cannot be parsed: ", c as String], "") }
+      RunnerUnitInstance { registration_name: i } => HolderIdentified { unit: runner_unit_name_of_registration(registration_name: i) }
+    }
+  }
+}
+
+// THE FULL IDENTIFICATION. Each refusal names the leg that failed, because an operator reading a withheld
+// converge has to be able to tell "this job was not dispatched from a slot" apart from "the slot's
+// registration moved underneath the job" -- the first is a dispatch-shape bug and the second is a race.
+// A job that cannot say who it is answers HolderUnidentified and the driver withholds on it:
+// identification is what makes the holder's exclusion safe, so an ambiguous holder converges nobody.
+// A job that positively says "I am not on a slot of this host" answers HolderNotOnSubject instead, which
+// is a decidable outcome, not a failure -- see bracket_units_to_bracket.
+fn bracket_holder_identify(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> BracketHolder
+{
+  let self_read = Filesystem.Read(path: procfs_path_literal(p: ProcSelfCgroup) as String)
+  if self_read.success {
+    match read_unified_cgroup_membership(content: self_read.content) {
+      CurrentCgroupObserved { relative_path: rel } =>
+        match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: rel as String)) {
+          HolderUnidentified { cause: c } => HolderUnidentified { cause: c }
+          // The leaf names something that is not a runner unit: the job occupies no slot this pass manages.
+          HolderNotOnSubject { why: w } => HolderNotOnSubject { why: w }
+          HolderIdentified { unit: unit } =>
+            // THE UNIT MUST BE ONE THIS PASS MANAGES. If the job runs on a slot the desired shape does not
+            // list (a slot mid-decommission, or a dispatch landed on a leftover runner), excluding it from
+            // the bracket is meaningless -- withhold instead of converging a host around a slot nobody owns.
+            if length(filter(units, u => u == unit)) == 0 {
+              // The bracket only ever touches DESIRED units, so a job sitting on a leftover or
+              // mid-decommission slot has nothing of this pass's to drain -- the exclusion set is empty.
+              HolderNotOnSubject { why: join(["the job's own unit '", unit as String, "' is not a desired slot of this host: this pass manages no unit the job occupies"], "") }
+            } else {
+              match actions_variable_read(name: github_runner_name_variable_name) {
+                ActionsVariableAbsent { variable: v, detail: d } => HolderUnidentified { cause: join(["the job carries no ", v, " (", d, "): a converge job dispatched outside a runner job has no verifiable holder"], "") }
+                ActionsVariablePresent { value: env_name } =>
+                  match slot_current_registration_over_unit(target: target, context: context, unit: unit) {
+                    UnitRegistrationUnreadable { unit: u, cause: c } => HolderUnidentified { cause: join(["the current registration of the job's own unit '", u as String, "' is unreadable (", c, "): the environment cannot be joined to the host"], "") }
+                    UnitRegistrationRead { unit: u, instance: _, name: n } =>
+                      if (n as String) != env_name {
+                        HolderUnidentified { cause: join(["the job's ", github_runner_name_variable_name, " is '", env_name, "' but the current registration of its own unit '", u as String, "' is '", n as String, "': the environment and the host disagree about who this job is"], "") }
+                      } else {
+                        HolderIdentified { unit: u }
+                      }
+                  }
+              }
+            }
+        }
+      // EVERY non-observed arm answers who-is-this with its own located cause (review 86323, finding 2:
+      // no fabricated "unreachable" diagnostic -- these arms match the FAILURE cases by name, and the
+      // observed case is the happy path above, so the type system keeps the impossible case out).
+      MembershipMissing => HolderUnidentified { cause: "the job's own cgroup has no unified (v2) membership line: this is not a cgroupv2 host, and caps have no meaning here" }
+      MembershipAmbiguous { first: f, second: s } => HolderUnidentified { cause: join(["the job's own cgroup reports two unified memberships ('", f as String, "' and '", s as String, "'): the holder could be either"], "") }
+      MembershipMalformed { cause: ProcSelfCgroupLineMissingColon } => HolderUnidentified { cause: "the job's own /proc/self/cgroup carries a line with no hierarchy separator" }
+      MembershipMalformed { cause: ProcSelfCgroupLineMissingSecondColon } => HolderUnidentified { cause: "the job's own /proc/self/cgroup carries a line with no path separator" }
+      MembershipMalformed { cause: ProcSelfCgroupLineEmptyHierarchy } => HolderUnidentified { cause: "the job's own /proc/self/cgroup carries a line with an empty hierarchy field" }
+      MembershipMalformed { cause: ProcSelfCgroupLineEmptyPath } => HolderUnidentified { cause: "the job's own /proc/self/cgroup carries a line with an empty path field" }
+    }
+  } else {
+    HolderUnidentified { cause: join(["Filesystem.Read of ", procfs_path_literal(p: ProcSelfCgroup) as String, " failed: ", self_read.error, ": the job cannot say which unit it runs on"], "") }
+  }
+}
+
 fn acquire_bracket_over(target: SshTarget, context: FleetSshExecutionContext, host: String, units: List<NonEmptyStr>) -> BracketAcquisition
 {
   match owned_set_of(readings: map(units, u => read_slot_drain_over(target: target, context: context, unit: u))) {
@@ -1019,5 +1183,178 @@ fn acquire_bracket_over(target: SshTarget, context: FleetSshExecutionContext, ho
         Present { value: why } => BracketNotAcquired { refusal: BracketRefusedObligationNotRecorded { cause: why } }
         Absent => BracketAcquired { owned: owned }
       }
+  }
+}
+
+// ── The holder deferral ledger ─────────────────────────────────────────────────────────────────
+
+// THE COUNT THAT BOUNDS THE HOLDER'S DEFERRAL (review 86146, finding 2; DESIGN §4b meta-obligation 2: a
+// class below ceiling names its next-rung trigger; §5: a degradation is countable, never quietly success).
+// A DEFERRED-SELF holder is owed a bracket from a pass dispatched on ANOTHER slot; if placement keeps
+// landing every pass on this same slot, the deferral must not be a permanent green. The count lives on
+// the HOST, in the holder's own slot directory (see holder_deferral_ledger_path: a per-run file could
+// not carry state across passes, and that is exactly the state this ledger exists to carry). It is
+// keyed to the HOST AND THE UNIT: slot 02's debt is not slot 03's. A pass that finds the holder at
+// desired DELETES the file (convergence clears the debt); a pass that finds it owed increments the
+// count; past the fleet bound the cap module turns the same reading into a REFUSAL, and an unreadable
+// or stale-key ledger ALSO refuses -- this pass then resets it behind that loud red step (see
+// holder_ledger_after_verdict, review 86323). A slot converged as an OWNED unit by another slot's pass
+// keeps its old count: a stale count makes the bound fire EARLY -- a red run, fail-closed -- never late,
+// so the bound's safety property (no permanent green) survives even when only holder passes clear.
+type HolderDeferralLedgerFile {
+  key: String
+  deferred_passes: Int
+}
+
+data holder_deferral_ledger_file_name: String = "runner-host-cap-holder-deferral"
+
+fn holder_deferral_ledger_key(host: String, unit: String) -> String {
+  join(["host=", host, " unit=", unit], "")
+}
+
+// THE LEDGER LIVES IN THE HOLDER'S OWN SLOT DIRECTORY (/opt/actions-runner/<instance>/), NOT RUNNER_TEMP.
+// RUNNER_TEMP is per-run and cleaned between runs, so a count kept there resets on every pass and the
+// bound below could never fire -- the very hole the bound exists to close. The slot directory is durable,
+// per-unit, and is the same tree the pass already reads (.runner_path) and the same account owns. An
+// instance the unit does not name has no directory and no ledger: that is unwritable, not fresh.
+fn holder_deferral_ledger_path(unit: NonEmptyStr) -> String?
+{
+  match read_runner_unit_name(observed: unit) {
+    RunnerUnitInstance { registration_name: i } => Present { value: join([actions_runner_base_dir, "/", i as String, "/", holder_deferral_ledger_file_name], "") }
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => none
+    NotARunnerUnit { observed: _ } => none
+  }
+}
+
+fn holder_deferral_ledger_text(o: HolderDeferralLedgerFile) -> String {
+  serialize_json(v: json_object(members: [json_kv(key: "key", value: json_string(s: o.key)), json_kv(key: "deferred_passes", value: json_int(n: o.deferred_passes))]))
+}
+
+type HolderDeferralLedgerReading
+  = LedgerReadingAbsent
+  | LedgerReadingHeld { passes: Int }
+  | LedgerReadingStale { found: String }
+  | LedgerReadingUnreadable { cause: String }
+
+fn holder_deferral_ledger_reading_of_text(text: String, expected_key: String) -> HolderDeferralLedgerReading {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => LedgerReadingUnreadable { cause: concat("the deferral ledger is not a JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: doc } =>
+      match doc {
+        JsonObject { members: ms } =>
+          if length(ms) != 2 {
+            LedgerReadingUnreadable { cause: "the deferral ledger does not carry exactly the members key and deferred_passes" }
+          } else {
+            match json_object_unique_member(v: doc, key: "key") {
+              JsonMemberFound { value: JsonString { value: k } } =>
+                if k != expected_key {
+                  LedgerReadingStale { found: k }
+                } else {
+                  match json_object_unique_member(v: doc, key: "deferred_passes") {
+                    JsonMemberFound { value: JsonNumber { lexeme: l } } =>
+                      match parse_int(s: l) {
+                        Present { value: n } => if n < 0 { LedgerReadingUnreadable { cause: "the deferral ledger counts a negative number of passes" } } else { LedgerReadingHeld { passes: n } }
+                        Absent => LedgerReadingUnreadable { cause: concat("the deferral ledger's deferred_passes is not an integer: ", l) }
+                      }
+                    _ => LedgerReadingUnreadable { cause: "the deferral ledger's deferred_passes member is missing, duplicated or not a number" }
+                  }
+                }
+              _ => LedgerReadingUnreadable { cause: "the deferral ledger's key member is missing, duplicated or not a string" }
+            }
+          }
+        _ => LedgerReadingUnreadable { cause: "the deferral ledger is not a JSON object" }
+      }
+  }
+}
+
+fn holder_deferral_ledger_reading_of(observation: FilesystemFileObservation, expected_key: String) -> HolderDeferralLedgerReading {
+  match observation {
+    FilesystemFileAbsent(_) => LedgerReadingAbsent
+    FilesystemFileRead { path: _, content: c } => holder_deferral_ledger_reading_of_text(text: c, expected_key: expected_key)
+    FilesystemFileIndeterminate { cause: c } => LedgerReadingUnreadable { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => LedgerReadingUnreadable { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => LedgerReadingUnreadable { cause: c }
+  }
+}
+
+// THE LEDGER READING, FOLDED TO THE CAP MODULE'S INPUT. Stale and unreadable both become UNWRITABLE
+// (with the cause named), never Fresh: a file that exists but cannot be trusted says the host HAS
+// deferral state this pass cannot see, and pretending freshness would restart the bound for free --
+// the fold on this reading REFUSES red, and the bracket pass resets the file behind that loud step.
+fn holder_deferral_ledger_read(host: String, unit: NonEmptyStr) -> HolderDeferralLedger
+{
+  let key = holder_deferral_ledger_key(host: host, unit: unit as String)
+  match holder_deferral_ledger_path(unit: unit) {
+    Absent => LedgerUnwritable { cause: "the holder unit names no parseable slot instance, so it has no slot directory to carry a deferral ledger" }
+    Present { value: path } =>
+      match holder_deferral_ledger_reading_of(observation: filesystem_file_observation_of_path(path: path), expected_key: key) {
+        LedgerReadingAbsent => LedgerFresh
+        LedgerReadingHeld { passes: n } => LedgerCount { prior: n }
+        LedgerReadingStale { found: k } => LedgerUnwritable { cause: concat("the ledger on this host belongs to another subject: ", k) }
+        LedgerReadingUnreadable { cause: c } => LedgerUnwritable { cause: c }
+      }
+  }
+}
+
+// RECORDING ONE MORE DEFERRED PASS, OR CLEARING THE DEBT. Both return a cause instead of raising: a
+// ledger that cannot be written makes the NEXT pass's reading uncounted, which the wire already names;
+// it must never itself be the reason a cap phase withholds.
+fn holder_deferral_ledger_record(host: String, unit: NonEmptyStr, passes: Int) -> String?
+{
+  match holder_deferral_ledger_path(unit: unit) {
+    Absent => Present { value: "the holder unit names no parseable slot instance, so the ledger has nowhere to live" }
+    Present { value: path } => {
+      let w = Filesystem.Write(path: path, content: holder_deferral_ledger_text(o: HolderDeferralLedgerFile { key: holder_deferral_ledger_key(host: host, unit: unit as String), deferred_passes: passes }))
+      if w.success { none } else { Present { value: w.error } }
+    }
+  }
+}
+
+fn holder_deferral_ledger_clear(host: String, unit: NonEmptyStr) -> String?
+{
+  match holder_deferral_ledger_path(unit: unit) {
+    Absent => none
+    Present { value: path } => {
+      // An effect result, read like every other delete in the repo (the idiom in
+      // gunbc.github_effect_perform.remove_staged_controller_key): success covers both deleted and
+      // already-absent, and a refusal carries its error -- the typed variant arms are the kernel's,
+      // not route vocabulary.
+      let removed = Filesystem.Delete(path: path)
+      if removed.success { none } else { Present { value: join(["delete of ", path, " refused: ", removed.error], "") } }
+    }
+  }
+}
+
+// THE LEDGER STEP THE DRIVER RUNS AROUND THE HOLDER'S VERDICT. One place decides what the host's count
+// does for each verdict shape: converged clears the debt; deferred counts one more pass (from whatever
+// the read said, fresh = 1); ANY refusal -- unread cgroup, or the bound having blown -- leaves the count
+// exactly as it was: a refusal is not a pass where progress was possible, and a blown bound must stay red
+// until something actually changes. Returns a cause when the bookkeeping itself could not land; the
+// driver reports it on the wire but never lets it change the verdict.
+fn holder_ledger_after_verdict(host: String, unit: NonEmptyStr, verdict: SlotCapOutcome, ledger: HolderDeferralLedger) -> String?
+{
+  match verdict {
+    SlotCapsSelfAtDesired { unit: _ } => holder_deferral_ledger_clear(host: host, unit: unit)
+    SlotCapsSelfDeferred { unit: _, detail: _ } =>
+      // A deferral means the fold READ a ledger (an unreadable one refuses, see
+      // slot_cap_holder_deferral_outcome); the Unwritable arm here is defensive recovery: if a pass
+      // ever defers on an unreadable count, restart the count at 1 -- never leave it uncounted.
+      match ledger {
+        LedgerCount { prior: p } => holder_deferral_ledger_record(host: host, unit: unit, passes: p + 1)
+        _ => holder_deferral_ledger_record(host: host, unit: unit, passes: 1)
+      }
+    // THE RESET AFTER THE LOUD RED STEP (review 86323, finding 1): the ledger refused the run. This
+    // pass is the counted, loud step that earns the overwrite. Rewrite it at pass 1 so the NEXT pass
+    // reads a real count and can defer normally, with the bound live again. A stale-key or corrupted
+    // file costs one red run -- not a permanent green, and not a silent widen either: the overwrite
+    // only happens behind a refusal the operator sees on the wire. Matched BY CONSTRUCTOR (review
+    // 86500): a step-name string compared here could drift from its producers and silently disable
+    // the self-heal; the type system now carries that fact.
+    SlotCapsHolderLedgerRefused { unit: _, cause: _ } =>
+      match ledger {
+        LedgerUnwritable { cause: _ } => holder_deferral_ledger_record(host: host, unit: unit, passes: 1)
+        _ => none
+      }
+    _ => none
   }
 }

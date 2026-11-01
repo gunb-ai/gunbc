@@ -4,7 +4,7 @@ import extdeps.network.endpoint { render_network_host }
 
 import std.types { String, NonEmptyStr }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
-import gunbc.workspace_gateway_store { WorkspaceGatewayRead, WorkspaceGatewayEvidenceUnavailable, workspace_publish_gateway_evidence, workspace_publish_gateway_refusal }
+import gunbc.workspace_gateway_store { WorkspaceGatewayRead, WorkspaceGatewayEvidenceUnavailable, workspace_publish_gateway_evidence, workspace_publish_gateway_refusal, workspace_gateway_store }
 import std.measure { second }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.shell
@@ -77,8 +77,8 @@ fn workspace_refresh_gateway_wet(store: FabricStorageBinding, slot: RunnerSlotId
   match workspace_observe_gateway_wet(slot: slot, trust: trust, agent_socket: agent_socket) {
     WorkspaceGatewayUnobserved { reason: detail } => match clock_now_probed_at() {
       Absent => WorkspaceGatewayEvidenceUnavailable { reason: "gateway refresh failed and refusal clock is unavailable" }
-      Present { value: now } => workspace_publish_gateway_refusal(store: store, slot: slot, reason: detail, observed_at: now)
+      Present { value: now } => workspace_publish_gateway_refusal(store: workspace_gateway_store(binding: store), slot: slot, reason: detail, observed_at: now)
     }
-    WorkspaceGatewayObserved { evidence: observed } => workspace_publish_gateway_evidence(store: store, slot: slot, evidence: observed)
+    WorkspaceGatewayObserved { evidence: observed } => workspace_publish_gateway_evidence(store: workspace_gateway_store(binding: store), slot: slot, evidence: observed)
   }
 }

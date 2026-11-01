@@ -1,0 +1,95 @@
+module gunbc.plans.fleet_naming_reach_access
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.design_ruling {
+  project_documentation_projections_are_not_checkout_artifacts,
+  root_generalization_closes_breadth,
+  epistemic_humility_is_symmetric,
+}
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { p }
+import std.types { List, String }
+
+// THE DESIGN AND SURVEY FOR FLEET NAMING, OVERLAY REACH AND ACCESS (session bright-swift-248,
+// 2026-10-25): every fleet member under a name the fleet chooses, attached to a private overlay whose
+// first realization is Tailscale, with every connection gated by independent endpoint, route,
+// provider-policy, host, principal and application facts. Design only: it changes no producer.
+// Populations are cited by the declarations that hold them, and the counts are survey readings at
+// a5cc1bbdd2e, not pins. Site, BMC and boot-media reach are separate plans with their own
+// retirement: gunbc.plans.site_segment_anchor_bmc_reach and gunbc.plans.boot_origin_bmc_media.
+
+fn ruling_names() -> List<String> {
+  [
+    root_generalization_closes_breadth.reference.decl_name as String,
+    epistemic_humility_is_symmetric.reference.decl_name as String,
+  ]
+}
+
+fn opening() -> List<MarkdownBlock> {
+  [
+    p(text: "Goal: every fleet subject has an allocated identity-independent name and qualified provider-neutral attachment. Tailscale is the first realization, not the generic contract. Endpoint, route, provider grant, host authentication, principal authentication and application authorization must each hold independently. Site-segment/BMC and boot-origin/media plans are peers with separate retirement; do not fake compiler governance roles for this non-compiler program."),
+    p(text: concat("Rulings (gunbc.design_ruling): ", join(ruling_names(), ", "))),
+  ]
+}
+
+fn settled() -> List<MarkdownBlock> {
+  [
+    p(text: "Operator 2026-10-25 D1–D3: durable HostIdentity/workload incarnation, allocated FleetMemberName and observed AttachmentEndpoint are distinct facts. HostIdentity→HostnameAllocation→FleetMemberLabel, then explicit naming policy→LinuxHostname/provider machine name. FleetMemberLabel/LinuxHostname/TailscaleMachineName/ProviderEndpoint are distinct types, not NonEmptyStr conventions. Services use ServiceEndpointIdentity, not host names or DeploymentId; moving a service must not change its identity."),
+    p(text: "D4–D5: lottery draw_human_name/gen_z with retained draw supplies new owned/long-lived names; preserve LegacyHostname until operator migration, draw missing mtjade1/srv9–12. Rented replicas use incarnation-keyed ephemeral membership without allocations/tombstones (ReplicaIncarnation/ProviderGuestIncarnation). Canonical host/services live under fleet-controlled gunb.ai; ts.net is provider endpoint only, never durable OAuth/config/certificate contract. Zone cut waits for operator delegation; existing ts.net consumers are debt."),
+    p(text: "D6–D8: derive exact grants/tags from admitted ReachDemand; any widening refuses. Delete additive member_baseline_grant in the SAME policy cut—narrow additions beside it do nothing. tagOwners is control-plane ownership; registration capability is subject-exact desired tags only. Prefer WIF where issuer/subject/audience are admitted; Tailscale ≥1.90.1 direct OIDC registration requires matching configured tags and auth_keys scope. Otherwise one-off exact-tag bootstrap key, OAuth fallback; generic consumers never select provider credential mechanics."),
+    p(text: "D9–D10: rename Reach FabricTunnel/FabricTunnelNotOperational→ManagedOverlay/ManagedOverlayNotOperational, alongside product topology TailscaleOverlay/TailscaleEndpoint/TailscaleMesh. extdeps.network remains product-neutral; FleetOverlayAttachment belongs to fleet. srv3 direct overlay SSH replaces nested srv2 hop."),
+  ]
+}
+
+fn survey() -> List<MarkdownBlock> {
+  [
+    p(text: "Survey at a5cc1bbdd2e, reread before action. Two old funnels: fleet_reach_endpoint.fleet_owned_probe_endpoint_for falls back to HostIdentity spelling; fleet_tailnet.tailnet_host_from/tailnet_base_url_from accept arbitrary strings. endpoint_authority_replacement_cut.external_consumers is the census; remove its nonexistent spark.serving_converge_slice_wet row, unused harness_wire host_lan_address import and empty dgx_spark_router_bindings path as appropriate to observed consumers."),
+    p(text: "Consumer surface: approval_ntfy_publish, approval_broker_endpoint/placement, fabric_storage_endpoint_for, deployment_tailnet_url, roster_host_tailnet_node, live_deploy_proxied_health_url, workspace_fleet_gateway, tracker_web_oauth_public_redirect_uri; identity-as-SSH in host_identity_access/adopt, ci_deploy_access, deployment_srv1_target/srv2_target; the install documents are key-only since 2026-10-28 (no autoinstall identity section; dashboard node adhoc-dfa3a487), so the hostname they used to write comes from gunbc.fleet.fleet_host_identity's row alone and the srv3 seeded-media directory derives its name from that row; printer_lan_host_identity. Existing hostname_set/host_identity_converge already use allocation. Host IP rows in fleet_intent_network, fleet_reach LAN, provider_guest_endpoints, runner_host_deploy and ACL move behind endpoint authority; historical/topology/Spark-RoCE/microVM/bootstrap/recovery facts remain."),
+    p(text: "Tailscale use already has acl/acl_api, serve/whois/identity, ACL emitter/readback, package/version probe and sudo capability. Registration up/set, devices/node IDs, auth keys/WIF/OAuth, expiry/ephemeral/userspace need cited modeling. Recorded policy granted all-member all-port access, Tailscale SSH and funnel; its shape-check witness is not derivation. tailnet policy push remains operator-gated; tailscale_acl_phase2_credential’s named upsert module was absent."),
+  ]
+}
+
+fn model() -> List<MarkdownBlock> {
+  [
+    p(text: "Attachments include selected FleetOverlayAttachment, SiteLanAttachment and explicit bootstrap/recovery routes; selection is policy. Provider replacement enrolls/observes/qualifies demands before switching and retiring old bindings, without consumer change. OverlayMemberBinding carries subject, attachment, provider, host/workload incarnation, exact provider device/node IDs, desired label/roles. Name is never device identity (provider collision suffix can persist). OwnedHostIncarnation extends prior_life_boundary, a P2 gap, not a parallel life model."),
+    p(text: "EndpointAuthority(subject/service, required attachment/capability) returns observed/bound ResolvedEndpoint or typed EndpointRefused. Missing allocation/binding/observation refuses, never identity/raw-IP fallback. ReachDemand binds source principal/role, destination identity, protocol/port/purpose from enrollment, published services and converge-mode SSH needs. Keep route Reach, fleet_host_key_enrollment, fleet_posix_accounts/host_authorized_keys_reconcile and service authorization independent."),
+  ]
+}
+
+fn enrollment() -> List<MarkdownBlock> {
+  [
+    p(text: "Obtain exact-tag capability (ephemeral when rented), register with derived provider name/tags, then join devices API and local status --json by exact device AND node IDs. Refuse missing local identity, absent/multiple device match, matching name/wrong identity, correct identity/wrong name or tags, prior-incarnation device, or local/control-plane disagreement."),
+    p(text: "Reimage replacement establishes new incarnation/device, fences old binding, retires only recognized superseded device and verifies exactly one current binding. Unknown devices refuse and are never deleted. Public boot images contain no key; bootstrap delivers one-off key only after runtime_identity_match. Cloud registers at launch; vast userspace networking requires observed/cited support."),
+    p(text: "Registration/custody follows select_authorization_pattern, privileged_effect_census, fleet_secret_accessor_roster and r2_token_mint’s mint/custody/readback/revoke pattern. Implement a fleet_converge mode like HostCredentialCustodyConverge; bootstrap OpenSSH principal/key reach must not depend on the overlay being enrolled."),
+  ]
+}
+
+fn access_cut() -> List<MarkdownBlock> {
+  [
+    p(text: "Project complete policy exactly from demands; delete baseline and every unsupported grant/funnel attribute. Delete operator_tailscale_acl_ssh and prove per-member Tailscale SSH off; retaining a second authentication route requires a separate modeled-principal decision. Generate positive demanded-edge and critical negative-edge tests; API readback must structurally equal projection, not merely acknowledge upload."),
+  ]
+}
+
+fn phases() -> List<MarkdownBlock> {
+  [
+    p(text: "Gap-intolerant endpoint cut: P1 live identity-joined device/local census; P2 name/service/incarnation/attachment/demand models plus upstream registration and missing lottery rows; P3 all generic-provider vocabulary renamed with matches; P4 enrollment/reimage canaries (Hetzner then owned) before fleet."),
+    p(text: "P5 shadow provider-neutral endpoint authority with read-only bindings and differential observations, NEVER fallback to old; migrate all consumers/services, switch one root and delete fleet_owned_probe_endpoint_for/tailnet_host_from/tailnet_base_url_from. Retain only legitimately observed/topology/bootstrap/recovery IP facts; delete last raw-IP consumers after zero-consumer census. P6 exact policy/tagOwners cut with negative tests/readback. P7 canonical gunb.ai names/OAuth/certificates only after gunb_ai_nameserver_delegation is DelegationObservedInParent; registrar-reported alone refuses. End ts.net embedding debt."),
+  ]
+}
+
+fn risks() -> List<MarkdownBlock> {
+  [
+    p(text: "Open: exact usable workload issuer/subject/audience per Hetzner/AWS/vast/CI/owned bootstrap; fixed-tag WIF may require separate identities, never widened credentials; upstream device/node fields and ephemeral expiry; OwnedHostIncarnation/ServiceEndpointIdentity. Overlapping private site ranges require segment anchors; Tailscale4via6 is later, not assumed current routing."),
+  ]
+}
+
+data fleet_naming_reach_access_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "fleet-naming-reach-access",
+  title: "Fleet naming, overlay reach and access: allocated names and service identities downstream of identity, a provider-neutral overlay realized by Tailscale, and connection gated by independent facts",
+  body: concat(concat(concat(concat(concat(concat(concat(opening(), settled()), survey()), model()), enrollment()), access_cut()), phases()), risks()),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire when every enrolled member has a qualified attachment through the selected fleet-overlay realization, read back and joined on provider device and node identity; no production declaration builds a name or address from a HostIdentity spelling, and no generic type names the provider; the endpoint authority is the only route to a member or service; and the read-back provider policy equals the projection of the admitted reach demands, with no member baseline grant and no Tailscale SSH rule left that no demand produces."),
+  },
+}

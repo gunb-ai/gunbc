@@ -1,7 +1,8 @@
 module v2.compiler.generated_head_demand
 
-import std.types { Bool, List }
-import std.algebra { list_find_first, list_snoc_item }
+import std.types { List }
+import std.algebra { list_snoc_item }
+import std.list { list_member }
 import std.optional { Absent, Present }
 import v2.std.node { Node }
 import v2.std.qualified_name { QualifiedName }
@@ -36,19 +37,12 @@ fn generated_head_demand_in_node(acc: List<QualifiedName>, node: Node) -> List<Q
 
 fn generated_head_demand_add_all(acc: List<QualifiedName>, paths: List<QualifiedName>) -> List<QualifiedName> {
   fold(paths, init: acc, f: fn(walk, path) {
-    if generated_head_holds(xs: walk, predicate: fn(held) { held == path }) {
+    if list_member(xs: walk, x: path, eq: fn(held, wanted) { held == wanted }) {
       walk
     } else {
       list_snoc_item(xs: walk, item: path)
     }
   })
-}
-
-fn generated_head_holds<T>(xs: List<T>, predicate: fn(T) -> Bool) -> Bool {
-  match list_find_first(xs: xs, predicate: predicate) {
-    Present { value: _ } => true
-    Absent => false
-  }
 }
 
 fn generated_head_paths_of(node: Node) -> List<QualifiedName> {

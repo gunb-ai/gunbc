@@ -1,10 +1,11 @@
 module test.claim.runner_service_slot_controller_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_jit_deregistration { SlotListenerExitedClean, SlotListenerExitedNonzero, SlotNeverLaunched }
+import gunbc.runner.runner_jit_deregistration { SlotListenerExitedClean, SlotListenerExitedNonzero, SlotNeverLaunched, SlotListenerOutcomeUnobserved, SlotLostBoot, SlotUnitStopping }
 import gunbc.runner.runner_service_slot_controller {
   ListenerNotLaunched, ListenerExited, service_slot_exit_of,
   service_slot_rebuild, ServiceSlotUnitUnparsed,
@@ -21,6 +22,9 @@ test fn a_zero_listener_exit_is_a_clean_exit_and_claims_no_job() -> Bool {
     SlotListenerExitedClean => true
     SlotListenerExitedNonzero { cause: _ } => false
     SlotNeverLaunched { cause: _ } => false
+    SlotListenerOutcomeUnobserved { cause: _ } => false
+    SlotLostBoot { superseded_by: _ } => false
+    SlotUnitStopping { unit: _ } => false
   }
 }
 
@@ -30,6 +34,9 @@ test fn a_nonzero_listener_exit_is_not_a_clean_exit() -> Bool {
     SlotListenerExitedNonzero { cause: c } => (c as String) == "listener exited with status 3"
     SlotListenerExitedClean => false
     SlotNeverLaunched { cause: _ } => false
+    SlotListenerOutcomeUnobserved { cause: _ } => false
+    SlotLostBoot { superseded_by: _ } => false
+    SlotUnitStopping { unit: _ } => false
   }
 }
 
@@ -38,6 +45,9 @@ test fn an_unlaunched_listener_is_never_launched() -> Bool {
     SlotNeverLaunched { cause: _ } => true
     SlotListenerExitedClean => false
     SlotListenerExitedNonzero { cause: _ } => false
+    SlotListenerOutcomeUnobserved { cause: _ } => false
+    SlotLostBoot { superseded_by: _ } => false
+    SlotUnitStopping { unit: _ } => false
   }
 }
 
@@ -50,7 +60,7 @@ test fn a_non_service_slot_unit_name_is_unparsed() -> Bool {
   match service_boot_id_of(run: KernelBootId { boot_id: uuid }) {
     Absent => false
     Present { value: boot } =>
-      match service_slot_rebuild(host: refused, identity: "mtcollins1" as HostIdentity, boot: boot, unit: "ssh.service") {
+      match service_slot_rebuild(host: refused, identity: "mtcollins1" as HostIdentity, boot: boot, unit: "ssh.service", receipt: ReceiptAbsent) {
         ServiceSlotUnitUnparsed { unit: _ } => true
         _ => false
       }

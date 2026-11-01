@@ -1,0 +1,261 @@
+module gunbc.serving.flash_next_roofline
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { ByteSize, byte_size, byte_size_count, bandwidth_count, Microsecond, microsecond, microsecond_count, Second, second_count, token_count_value, BasisPoint, basis_point_count, Permille, permille, permille_count, giga_tensor_operations_per_second_count }
+import extdeps.external_authority { CitedFigureStanding }
+import extdeps.gpu.types { GpuDeviceCatalogRow, TensorDatatype, TensorFp4, TensorBf16, DenseTensorThroughput, gpu_dense_tensor_throughput, GpuBandwidthFigure, gpu_catalog_bandwidth }
+import extdeps.qwen.qwen3_8_flash_next { FlashNextArchitecture, flash_next_qsa_kv_bytes_per_token, flash_next_params_per_routed_expert }
+import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt }
+
+// A ROOFLINE UPPER BOUND, NEVER A FORECAST. Every function here is integer arithmetic over cited-or-
+// transcribed figures and returns the ceiling the physics of the stated figures allows; a measured row
+// below its ceiling is efficiency, a measured row above it falsifies a figure. Absence is not zero: a
+// quantity whose input is missing (a bandwidth the catalog does not carry, a divisor of zero, a reserve
+// larger than the memory) is absent, and the prediction that depends on it is not scored.
+//
+// A FLOOR IS BUILT ONLY FROM MANDATORY WORK (review 5641830716). A step-time floor divides work the step
+// cannot avoid by the card's peak rate, so every term is a lower bound: bytes or operations the
+// architecture forces on every token, never an expectation under an assumed routing distribution, never an
+// upper bound on traffic, never an at-most budget. Anything left out only lowers the floor and keeps it a
+// floor; anything estimated would stop it being one. Every integer division rounds down, which also only
+// lowers a floor.
+
+// WHAT A CARD IS, FOR THE FOLD: the catalog row (bandwidth, tensor throughput), the memory the driver reported on the
+// rented card (memory_bytes: observed, not the vendor figure), plus the three
+// numbers this repository does not get from a catalog -- the weights the engine loads on it, the
+// engine overhead outside weights and KV, and the engine's gpu-memory-utilization. A bandwidth the
+// catalog lacks (the B200 row carries none) is supplied as an explicit operator figure and keeps its
+// own standing (a GpuBandwidthFigure, review 5641830716); it is never defaulted.
+// Review 84774 (flat-scalar unit fields): byte figures carry std.measure ByteSize and the bandwidth
+// override's rate carries Bandwidth (the same carrier the catalog row uses for memory_bandwidth), so a raw
+// count never stands for a unit. gpu_memory_utilization rides std.measure's BasisPoint (review
+// 84973: a dimensionless ratio still has a print scale, and std.measure's ratio family covers it).
+type RooflineCard {
+  catalog: GpuDeviceCatalogRow
+  bandwidth_override: GpuBandwidthFigure?
+  memory_bytes: ByteSize
+  weights_bytes: ByteSize
+  overhead_bytes: ByteSize
+  gpu_memory_utilization: BasisPoint
+  main_kv_element_bytes: ByteSize
+  math_datatype: TensorDatatype
+}
+
+// The override is read only where the catalog row carries no bandwidth at all; a row that carries one its
+// citations do not ground is absent, not silently replaced by the override.
+fn roofline_bandwidth(card: RooflineCard) -> GpuBandwidthFigure? {
+  match card.catalog.memory_bandwidth {
+    Present { value: _ } => gpu_catalog_bandwidth(row: card.catalog)
+    none => card.bandwidth_override
+  }
+}
+
+fn roofline_math(card: RooflineCard) -> DenseTensorThroughput? {
+  gpu_dense_tensor_throughput(row: card.catalog, datatype: card.math_datatype)
+}
+
+fn ratio_permille(num: Nat, den: Nat) -> Permille? {
+  if den == 0 { none } else { Present { value: permille(count: num * 1000 / den) } }
+}
+
+// P1 -- KV CAPACITY FROM MEMORY: utilization x capacity, minus weights, minus overhead, over KV bytes per
+// token. Absent when the reserve consumes the budget or bytes per token is zero.
+// (review 84955: kv_bytes_per_token rides std.measure's ByteSize — the one byte quantity this fn consumed
+// as bare Nat. Its return is a token count, which the 84774 verdict leaves as plain Nat.)
+fn kv_capacity_tokens(card: RooflineCard, kv_bytes_per_token: ByteSize) -> Nat? {
+  let budget = byte_size_count(b: card.memory_bytes) * basis_point_count(bp: card.gpu_memory_utilization) / 10000
+  let reserve = byte_size_count(b: card.weights_bytes) + byte_size_count(b: card.overhead_bytes)
+  if byte_size_count(b: kv_bytes_per_token) == 0 || reserve >= budget {
+    none
+  } else {
+    Present { value: (budget - reserve) / byte_size_count(b: kv_bytes_per_token) }
+  }
+}
+
+// THE MAX-Q'S MEASURED KV BYTES PER TOKEN (pool bytes / pool tokens, GDN state included), the one
+// calibration the registered P1 stands on. (review 84955 sweep: same pattern, ByteSize.)
+fn maxq_kv_bytes_per_token(receipt: FlashNextMaxQRunReceipt) -> ByteSize? {
+  let tokens = token_count_value(t: receipt.kv_cache_tokens)
+  if tokens == 0 { none } else { Present { value: byte_size(count: byte_size_count(b: receipt.kv_cache_bytes) / tokens) } }
+}
+
+// KV BYTES PER TOKEN ON ANOTHER CARD: the Max-Q's measured figure, which was taken with the FP8 main KV
+// (element width 1), moved by the QSA layers' K+V bytes at the card's element width. The GDN state and
+// indexer cache are held at their Max-Q size; they are the part of this figure that is calibration, not
+// derivation.
+// (review 84955: the calibration bytes, the element width and the result ride std.measure's ByteSize —
+// no locally minted per-token byte alias; the denominator, per token, lives in the fn name.)
+fn kv_bytes_per_token_at_width(arch: FlashNextArchitecture, calibration_bytes_per_token: ByteSize, element_bytes: ByteSize) -> ByteSize {
+  byte_size(count: byte_size_count(b: calibration_bytes_per_token) + byte_size_count(b: flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: element_bytes)) - byte_size_count(b: flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: byte_size(count: 1))))
+}
+
+// P2 -- MEAN-SIZE SESSIONS RESIDENT: capacity over the receipt's mean prompt tokens per request.
+fn mean_prompt_tokens(receipt: FlashNextMaxQRunReceipt) -> Nat? {
+  if receipt.requests == 0 { none } else { Present { value: token_count_value(t: receipt.prompt_tokens) / receipt.requests } }
+}
+
+fn sessions_resident(capacity_tokens: Nat, receipt: FlashNextMaxQRunReceipt) -> Nat? {
+  match mean_prompt_tokens(receipt: receipt) {
+    Present { value: m } => if m == 0 { none } else { Present { value: capacity_tokens / m } }
+    none => none
+  }
+}
+
+// MANDATORY STEP BYTES. Every token is routed to experts_per_token distinct experts in every layer and
+// runs every layer's shared expert, so any step, of any number of rows, reads at least that many experts
+// per layer: the rows may all pick the same ones, which is the least traffic routing can produce. Expert
+// weights are stored at 4.5 bits per parameter (4-bit values plus one FP8 scale per 16: NVFP4, and the
+// Marlin W4A16 repack of it), the narrowest storage this checkpoint has, so 9/16 byte per parameter is a
+// lower bound on what reading one costs. Left out, each only lowering the floor: the attention, GDN and
+// projection weights (their storage widths are not modeled), the QSA KV and indexer reads, and every
+// other expert the step's rows touch.
+// (Review 5641830716 replaced the expected-unique-experts term, an expectation under uniform independent
+// routing, and the all-non-routed-weights and indexer-budget terms, an upper bound and an at-most budget:
+// together they were an estimate, and an estimate divided by a peak rate is not a minimum time.)
+fn expert_bytes(arch: FlashNextArchitecture) -> ByteSize {
+  byte_size(count: flash_next_params_per_routed_expert(arch: arch) * 9 / 16)
+}
+
+fn shared_expert_bytes(arch: FlashNextArchitecture) -> ByteSize {
+  byte_size(count: 3 * arch.hidden_size * arch.shared_expert_intermediate_size * 9 / 16)
+}
+
+fn mandatory_step_bytes(arch: FlashNextArchitecture) -> ByteSize {
+  byte_size(count: arch.layer_count * (arch.experts_per_token * byte_size_count(b: expert_bytes(arch: arch)) + byte_size_count(b: shared_expert_bytes(arch: arch))))
+}
+
+// MANDATORY OPERATIONS PER TOKEN: two (multiply and add) per parameter of the experts_per_token routed
+// experts and the shared expert, in every layer. The transcribed active-parameter total is not used: it
+// counts embedding rows that are gathered rather than multiplied, and the LM head, which prefill runs only
+// at sampled positions, so it is not a lower bound on prefill work.
+fn mandatory_operations_per_token(arch: FlashNextArchitecture) -> Nat {
+  2 * arch.layer_count * (arch.experts_per_token * flash_next_params_per_routed_expert(arch: arch) + 3 * arch.hidden_size * arch.shared_expert_intermediate_size)
+}
+
+// A FLOOR AND THE STANDING OF THE RATE IT DIVIDED BY: the bandwidth figure for a bandwidth floor, the
+// tensor-throughput figure for a compute floor. The workload's own standing is the architecture's.
+type RooflineFloor {
+  time: Microsecond
+  rate_standing: CitedFigureStanding
+}
+
+fn bandwidth_floor(bytes: ByteSize, bw: GpuBandwidthFigure) -> RooflineFloor? {
+  if bandwidth_count(b: bw.rate) == 0 { none } else {
+    Present { value: RooflineFloor { time: microsecond(count: byte_size_count(b: bytes) * 1000000 / bandwidth_count(b: bw.rate)), rate_standing: bw.standing } }
+  }
+}
+
+// P3 CEILING -- the bandwidth floor of one decode step: its mandatory bytes over the card's bandwidth. It
+// does not depend on concurrency, draft depth or context, all of which only add traffic above it.
+fn decode_step_floor(arch: FlashNextArchitecture, card: RooflineCard) -> RooflineFloor? {
+  match roofline_bandwidth(card: card) {
+    Present { value: bw } => bandwidth_floor(bytes: mandatory_step_bytes(arch: arch), bw: bw)
+    none => none
+  }
+}
+
+// P4 CEILING -- one prefill chunk of `chunk_tokens`. Compute: the mandatory operations of every token, in
+// giga-ops, over the card's dense rate at its math datatype. Bandwidth: the chunk's mandatory bytes, which
+// are the decode step's (a chunk's rows may all route to the same experts). The chunk's floor is the larger
+// of the two, and `ComputeBound` / `BandwidthBound` names which, so the floor carries the standing of the
+// rate that bound it.
+type PrefillBound = ComputeBound | BandwidthBound
+
+type PrefillChunkFloor {
+  compute: RooflineFloor
+  bandwidth: RooflineFloor
+  bound: PrefillBound
+}
+
+fn prefill_floor(f: PrefillChunkFloor) -> RooflineFloor {
+  match f.bound {
+    ComputeBound => f.compute
+    BandwidthBound => f.bandwidth
+  }
+}
+
+fn prefill_chunk_floor(arch: FlashNextArchitecture, card: RooflineCard, chunk_tokens: Nat) -> PrefillChunkFloor? {
+  match roofline_math(card: card) {
+    Present { value: math } => match decode_step_floor(arch: arch, card: card) {
+      Present { value: bw_floor } => {
+        let rate = giga_tensor_operations_per_second_count(r: math.rate)
+        if rate == 0 { none } else {
+          let compute_us = mandatory_operations_per_token(arch: arch) * chunk_tokens / 1000000000 * 1000000 / rate
+          Present {
+            value: PrefillChunkFloor {
+              compute: RooflineFloor { time: microsecond(count: compute_us), rate_standing: math.standing },
+              bandwidth: bw_floor,
+              bound: if compute_us >= microsecond_count(m: bw_floor.time) { ComputeBound } else { BandwidthBound },
+            }
+          }
+        }
+      }
+      none => none
+    }
+    none => none
+  }
+}
+
+// A CEILING RATIO against the Max-Q baseline, in permille (1000 = parity): the baseline's floor over the
+// card's. Both are floors, so the speedup a registered interval claims, baseline time over card time, can
+// exceed this only if the Max-Q runs slower than its own floor by the gap. It carries the standing of every
+// figure it divided by (the card's rate, the baseline's rate) and of the workload (the architecture's
+// transcribed sizes), so a consumer cannot read a TranscribedUncited figure as a cited law.
+type CeilingRatio {
+  permille: Permille
+  card_rate_standing: CitedFigureStanding
+  baseline_rate_standing: CitedFigureStanding
+  workload_standing: CitedFigureStanding
+}
+
+fn ceiling_ratio(arch: FlashNextArchitecture, baseline: RooflineFloor, card: RooflineFloor) -> CeilingRatio? {
+  match ratio_permille(num: microsecond_count(m: baseline.time), den: microsecond_count(m: card.time)) {
+    Present { value: r } => Present { value: CeilingRatio { permille: r, card_rate_standing: card.rate_standing, baseline_rate_standing: baseline.rate_standing, workload_standing: arch.transcribed_standing } }
+    none => none
+  }
+}
+
+fn p4_ceiling_ratio(arch: FlashNextArchitecture, baseline: RooflineCard, card: RooflineCard, chunk_tokens: Nat) -> CeilingRatio? {
+  match prefill_chunk_floor(arch: arch, card: baseline, chunk_tokens: chunk_tokens) {
+    Present { value: b } => match prefill_chunk_floor(arch: arch, card: card, chunk_tokens: chunk_tokens) {
+      Present { value: c } => ceiling_ratio(arch: arch, baseline: prefill_floor(f: b), card: prefill_floor(f: c))
+      none => none
+    }
+    none => none
+  }
+}
+
+fn p3_ceiling_ratio(arch: FlashNextArchitecture, baseline: RooflineCard, card: RooflineCard) -> CeilingRatio? {
+  match decode_step_floor(arch: arch, card: baseline) {
+    Present { value: b } => match decode_step_floor(arch: arch, card: card) {
+      Present { value: c } => ceiling_ratio(arch: arch, baseline: b, card: c)
+      none => none
+    }
+    none => none
+  }
+}
+
+// P5 COMPOSITION. A request spends its non-queue service time in prefill and in decode in the receipt's
+// proportion; a card that is r3 times faster in decode and r4 times in prefill serves a request in
+// share_prefill / r4 + share_decode / r3 of the baseline time. Returns the request-rate ratio in
+// permille. This composes ceilings or interval ends; it does not model queueing, which is the
+// registered P5 basis for exceeding it ("more KV removes queueing and preemption").
+fn p5_composed_permille(receipt: FlashNextMaxQRunReceipt, r3: Permille, r4: Permille) -> Permille? {
+  let prefill = second_count(s: receipt.prefill_time_sum_seconds)
+  let decode = second_count(s: receipt.decode_time_sum_seconds)
+  let total = prefill + decode
+  let r3_permille = permille_count(p: r3)
+  let r4_permille = permille_count(p: r4)
+  if total == 0 || r3_permille == 0 || r4_permille == 0 {
+    none
+  } else {
+    let time_ppm = prefill * 1000000 / total * 1000 / r4_permille + decode * 1000000 / total * 1000 / r3_permille
+    if time_ppm == 0 { none } else { Present { value: permille(count: 1000000000 / time_ppm) } }
+  }
+}
+
+data flash_next_roofline_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: the roofline folds are consumed by gunbc.serving.flash_next_predictions (P1 to P6 scoring against ceilings) and executed by test.claim.flash_next_serving_witness. Declared frontiers, each with its trigger: (1) the step floors count only the routed and shared experts every token must read; attention, GDN and projection weights, KV and indexer reads and the further experts a step touches are left out, which keeps them floors and makes them loose. A per-layer expert count and step-bytes counter from an H200 or B200 run would tighten them, as mandatory bytes only if they bound every step. (2) The weight storage width is the checkpoint's NVFP4 4.5 bits; a path that stores experts wider only raises its true floor. (3) No kernel efficiency is modeled; efficiency is the ratio a measured row has to its ceiling." as NonEmptyStr
+)

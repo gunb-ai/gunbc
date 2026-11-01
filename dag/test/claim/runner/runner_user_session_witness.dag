@@ -1,0 +1,118 @@
+module test.claim.runner.runner_user_session_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
+import extdeps.shell
+import std.algebra { string_contains }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.loginctl { loginctl_enable_linger_argv }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_host_deploy { runner_job_user_session_on, runner_job_user_session_hosts, srv1_runner_host_spec, srv4_runner_host_spec }
+import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_linger_reading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
+import gunbc.runner.runner_user_session_receipt {
+  UserSessionAnswer, UserSessionAnswered, UserSessionNotAnswered, user_session_answer_of, runner_user_session_converge_receipt_path,
+}
+import gunbc.runner.runner_user_session {
+  UserSessionHostAdmission, UserSessionHostAdmitted, UserSessionHostRefused, user_session_host_admission,
+  user_session_enable_linger_command, user_session_readback_command,
+  user_session_receipt_then,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// THE ROW AND THE CONVERGE'S ADMISSION READ ONE FACT (gunbc.runner.runner_host_deploy
+// runner_job_user_session_hosts). Each control below is paired: the host the row names, and a host it does not.
+
+test fn the_user_session_row_names_srv4_and_not_srv1() -> Bool {
+  runner_job_user_session_on(host: operator_host_srv4)
+    && !runner_job_user_session_on(host: operator_host_srv1)
+    && !runner_job_user_session_on(host: operator_host_srv3)
+    && runner_job_user_session_hosts.length() == 1
+}
+
+test fn the_converge_admits_a_row_host_and_refuses_any_other() -> Bool {
+  let admitted = match user_session_host_admission(host: "srv4" as NonEmptyStr, spec: srv4_runner_host_spec) {
+    UserSessionHostAdmitted { job_user: u } => (u as String) == "ghrunner"
+    UserSessionHostRefused { cause: _ } => false
+  }
+  let refused = match user_session_host_admission(host: "srv1" as NonEmptyStr, spec: srv1_runner_host_spec) {
+    UserSessionHostAdmitted { job_user: _ } => false
+    UserSessionHostRefused { cause: c } => string_contains(s: c, pattern: "runner_job_user_session_hosts")
+  }
+  admitted && refused
+}
+
+// The effect is loginctl_enable_linger_argv over the job user, elevated; no second spelling of the verb.
+test fn the_linger_effect_is_the_loginctl_row_elevated() -> Bool {
+  let words = argv_words(command: user_session_enable_linger_command(job_user: "ghrunner" as NonEmptyStr))
+  let linger = loginctl_enable_linger_argv(subject: "ghrunner" as NonEmptyStr)
+  words.length() == linger.length() + 2
+    && string_contains(s: join(words, " "), pattern: join(linger, " "))
+    && string_contains(s: join(words, " "), pattern: "sudo -n")
+}
+
+// The readback is the job's own route: as the job user, the bus bound to /run/user/<uid>.
+test fn the_readback_runs_as_the_job_user_over_its_runtime_bus() -> Bool {
+  let line = join(argv_words(command: user_session_readback_command(job_user: "ghrunner" as NonEmptyStr, uid: 1001)), " ")
+  string_contains(s: line, pattern: "-u ghrunner")
+    && string_contains(s: line, pattern: "XDG_RUNTIME_DIR=/run/user/1001")
+    && string_contains(s: line, pattern: "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus")
+    && string_contains(s: line, pattern: "systemctl --user show-environment")
+}
+
+test fn a_manager_reached_over_the_bus_holds() -> Bool {
+  match user_session_answer_of(exit_code: 0, stderr: "") {
+    UserSessionAnswered => true
+    UserSessionNotAnswered { cause: _ } => false
+  }
+}
+
+// The refusal the fleet runner gave before this converge (instrument-dispatch run 40176427408) is not an answer.
+test fn a_client_that_reaches_no_bus_is_not_converged() -> Bool {
+  match user_session_answer_of(exit_code: 1, stderr: "Failed to connect to bus: No medium found") {
+    UserSessionAnswered => false
+    UserSessionNotAnswered { cause: c } => string_contains(s: c, pattern: "No medium found")
+  }
+}
+
+// LINGER IS READ FROM LOGIND'S RECORD, not inferred from a manager the converge itself just started.
+test fn the_linger_readback_is_loginctl_show_user_for_the_job_user() -> Bool {
+  join(argv_words(command: loginctl_show_user_linger_command(subject: "ghrunner" as NonEmptyStr)), " ") == "loginctl show-user ghrunner --property=Linger"
+}
+
+test fn linger_yes_reads_enabled_and_linger_no_reads_disabled() -> Bool {
+  let yes = match loginctl_linger_reading(exit_code: 0, stdout: "Linger=yes\n", stderr: "") {
+    LoginctlLingerEnabled => true
+    LoginctlLingerDisabled => false
+    LoginctlLingerUnread { cause: _ } => false
+  }
+  let no = match loginctl_linger_reading(exit_code: 0, stdout: "Linger=no\n", stderr: "") {
+    LoginctlLingerEnabled => false
+    LoginctlLingerDisabled => true
+    LoginctlLingerUnread { cause: _ } => false
+  }
+  yes && no
+}
+
+// An account logind holds no record of is not lingering; an answer that says neither is unread, never "enabled".
+test fn an_unknown_account_reads_disabled_and_anything_else_unread() -> Bool {
+  let unknown = match loginctl_linger_reading(exit_code: 1, stdout: "", stderr: "Failed to get user: User ID 1001 is not logged in or lingering") {
+    LoginctlLingerEnabled => false
+    LoginctlLingerDisabled => true
+    LoginctlLingerUnread { cause: _ } => false
+  }
+  let garbled = match loginctl_linger_reading(exit_code: 0, stdout: "Linger=maybe", stderr: "") {
+    LoginctlLingerEnabled => false
+    LoginctlLingerDisabled => false
+    LoginctlLingerUnread { cause: c } => string_contains(s: c, pattern: "Linger=maybe")
+  }
+  unknown && garbled
+}
+
+// A REFUSAL PAST ADMISSION STILL WRITES THE RECEIPT the upload step requires, and still refuses.
+test fn a_refused_path_writes_its_receipt_and_refuses() -> Bool {
+  let _made = shell.Mkdir.Parents(path: "target" as FilePath)
+  let exit = user_session_receipt_then(host: "srv4" as NonEmptyStr, job_user: "ghrunner" as NonEmptyStr, lines: ["refused: the fleet SSH context: witness"], holds: false)
+  let written = Filesystem.Read(path: runner_user_session_converge_receipt_path)
+  let refused = match exit { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true }
+  refused && written.success && string_contains(s: written.content, pattern: "refused: the fleet SSH context: witness")
+}

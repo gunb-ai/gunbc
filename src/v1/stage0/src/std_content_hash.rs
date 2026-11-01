@@ -4,7 +4,10 @@
 use self::ContentHash::*;
 use self::ContentHashComparison::*;
 use self::HashFamily::*;
-pub use crate::std_algebra::{collection_concat_shape, collection_join_shape};
+use crate::std_algebra::Ordering::*;
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_join_shape, string_compare_canonical, Ordering, TotalOrder,
+};
 pub use crate::std_host_text::chars;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
@@ -51,6 +54,17 @@ pub type Sha1DigestHex = String;
 pub type Sha512DigestHex = String;
 
 pub type Fnv1a64StructuralDigestHex = String;
+
+pub fn fnv1a64_digest_hex_compare(a: String, b: String) -> Ordering {
+    crate::std_algebra::string_compare_canonical(a, b)
+}
+
+pub fn fnv1a64_digest_hex_total_order() -> Rc<TotalOrder<String>> {
+    Rc::new(TotalOrder {
+        compare: Rc::new(fnv1a64_digest_hex_compare),
+        _phantom: std::marker::PhantomData,
+    })
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Fnv1a64Structural {
@@ -143,11 +157,11 @@ pub fn content_hash_validate_lower_hex_length(text: String, expected_hex_digits:
 }
 
 pub fn lower_hex_16(value: String) -> bool {
-    content_hash_validate_lower_hex_length(value.clone(), 16)
+    content_hash_validate_lower_hex_length(value, 16)
 }
 
 pub fn lower_hex_40(value: String) -> bool {
-    content_hash_validate_lower_hex_length(value.clone(), 40)
+    content_hash_validate_lower_hex_length(value, 40)
 }
 
 pub fn sha256_hex_digit_count() -> i64 {
@@ -155,11 +169,11 @@ pub fn sha256_hex_digit_count() -> i64 {
 }
 
 pub fn lower_hex_64(value: String) -> bool {
-    content_hash_validate_lower_hex_length(value.clone(), sha256_hex_digit_count())
+    content_hash_validate_lower_hex_length(value, sha256_hex_digit_count())
 }
 
 pub fn lower_hex_128(value: String) -> bool {
-    content_hash_validate_lower_hex_length(value.clone(), 128)
+    content_hash_validate_lower_hex_length(value, 128)
 }
 
 pub fn sha256_hex_digest(hex: String) -> Option<Rc<Sha256Digest>> {
@@ -168,6 +182,10 @@ pub fn sha256_hex_digest(hex: String) -> Option<Rc<Sha256Digest>> {
     } else {
         std::option::Option::None
     }
+}
+
+pub fn sha256_hex_of_text(text: String) -> String {
+    panic!("unrealized host seam 'sha256_hex_of_text' in std.content_hash: this declaration's whole body is a self-call, so it has no behaviour on this target. It compiles as a refusal rather than as recursion. Give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.")
 }
 
 pub fn sha1_hex_digest(hex: String) -> Option<Rc<Sha1Digest>> {
@@ -211,18 +229,18 @@ pub fn as_content_hash_sha512(digest: Rc<Sha512Digest>) -> Rc<ContentHash> {
 }
 
 pub fn content_hash_of_value(value: String) -> Rc<ContentHash> {
-    as_content_hash_structural(content_hash_atom(value.clone()))
+    as_content_hash_structural(content_hash_atom(value))
 }
 
 pub fn content_hash_from_structural_digest(digest: String) -> Option<Rc<ContentHash>> {
-    match fnv1a64_structural_hex_digest(digest.clone()) {
+    match fnv1a64_structural_hex_digest(digest) {
         Some(structural) => Some(as_content_hash_structural(structural.clone())),
         std::option::Option::None => std::option::Option::None,
     }
 }
 
 pub fn content_hash_atom(value: String) -> Rc<Fnv1a64Structural> {
-    structural_content_hash(v1_rt::atom_identity_hash(value.clone()))
+    structural_content_hash(v1_rt::atom_identity_hash(value))
 }
 
 pub fn content_hash_combine_preimage(
@@ -239,18 +257,18 @@ pub fn content_hash_combine_structural(
     left: Rc<Fnv1a64Structural>,
     right: Rc<Fnv1a64Structural>,
 ) -> Rc<Fnv1a64Structural> {
-    content_hash_atom(content_hash_combine_preimage(left.clone(), right.clone()))
+    content_hash_atom(content_hash_combine_preimage(left, right))
 }
 
 pub fn content_hash_tagged_structural(
     tag: String,
     payload: Rc<Fnv1a64Structural>,
 ) -> Rc<Fnv1a64Structural> {
-    content_hash_combine_structural(content_hash_atom(tag.clone()), payload.clone())
+    content_hash_combine_structural(content_hash_atom(tag), payload)
 }
 
 pub fn content_hash_tagged(tag: String, payload: Rc<Fnv1a64Structural>) -> Rc<ContentHash> {
-    as_content_hash_structural(content_hash_tagged_structural(tag.clone(), payload.clone()))
+    as_content_hash_structural(content_hash_tagged_structural(tag, payload))
 }
 
 pub fn content_hash_eq_structural(
@@ -283,7 +301,7 @@ pub enum ContentHashComparison {
 }
 
 pub fn content_hash_equal(left: Rc<ContentHash>, right: Rc<ContentHash>) -> bool {
-    match compare_content_hash(left.clone(), right.clone()) {
+    match compare_content_hash(left, right) {
         ContentHashComparison::ContentHashEqual => true,
         ContentHashComparison::ContentHashDifferent => false,
         ContentHashComparison::ContentHashCrossFamilyIncomparable => false,

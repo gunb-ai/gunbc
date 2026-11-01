@@ -1,0 +1,620 @@
+module extdeps.cloudflare.zone
+
+// THE CLOUDFLARE ZONE: the unit a custom domain must live in. gunbc.cloudflare.boot_origin refuses an
+// r2.dev boot origin and needs its hostname bound as an R2 custom domain; that bind is admissible only
+// inside an ACTIVE zone in the SAME account as the bucket. Cloudflare states the rule itself, so the open
+// item of gunbc.plans.boot_origin_bmc_media closes at its own citation below rather than at inference.
+// This module carries the vendor's interface SHAPE and nothing else: no transport, no effect, no policy.
+// Every write belongs to a gunbc.cloudflare.* fold behind the gunbc.auth authorization pattern.
+
+import std.types { Bool, Duration, Int, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.uri { Uri, Https }
+import extdeps.dns.domain_name { HostName, domain_name_wire }
+import std.optional { Absent, Optional, Present }
+import std.content_hash { content_hash_validate_lower_hex_syntax }
+
+// THE OPEN ITEM, CLOSED AT THE VENDOR'S OWN WORDS. Transcribed verbatim from the page's Enable custom
+// domains section (front-matter dateModified 2026-09-25), read 2026-10-27, so a reader can diff the
+// transcription against the page without re-fetching it.
+data r2_custom_domain_requires_zone_reading: NonEmptyStr = "Public buckets > Add your domain to Cloudflare: 'The domain being used must have been added as a zone in the same account as the R2 bucket.' 'If your domain is not managed by Cloudflare, you need to set it up using a partial (CNAME) setup to add it to your account.' Public buckets > Connect a bucket to a custom domain: 'If the zone is on an Enterprise plan, make sure that you release the zone hold before adding the custom domain.' 'A zone hold would prevent the custom subdomain from activating.' page dateModified 2026-09-25, read 2026-10-27."
+data r2_custom_domain_requires_zone_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.zone",
+    decl_name: "CloudflareR2CustomDomainBinding",
+    field: WholeDeclaration
+  },
+  authority: r2_custom_domain_requires_zone_authority
+}
+
+data r2_custom_domain_requires_zone_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/r2/buckets/public-buckets/"
+  }
+}
+
+// ONE ROW PER URI, ALIASED UNDER THE CONVENTION NAME (review 87750): every extdeps module carries
+// extdeps_external_authority_anchor, and this module's anchor is now an ALIAS of the requirement page's
+// row rather than a second ExternalAuthority literal for the same locator — two literals for one page can
+// drift apart independently, which is §3's nicknaming (a second name for one concept was fine; a second
+// FACT for one thing is not). The sibling precedent is extdeps.cloudflare.r2_buckets
+// (anchor = r2_get_bucket_authority), and the canonical row keeps the descriptive name because the
+// citation and the model scope both address it as the requirement authority.
+data extdeps_external_authority_anchor: ExternalAuthority = r2_custom_domain_requires_zone_authority
+
+
+// The route and the exact wire shapes, transcribed from the vendor's own API pages (read 2026-10-27). The
+// member spellings matter: the create body is {domain, enabled, zoneId} — camelCase zoneId, and no
+// hostname/zone_id spelling exists on that route — so a fold that addressed it differently would be
+// writing a field the vendor does not read.
+data r2_custom_domain_api_reading: NonEmptyStr = "R2 buckets custom domains: POST /client/v4/accounts/$ACCOUNT_ID/r2/buckets/$BUCKET_NAME/domains/custom with body \{domain, enabled, zoneId\} and optional \{minTLS, ciphers\}; the list route GET /accounts/\{account_id\}/r2/buckets/\{bucket_name\}/domains/custom returns \{domains: array of \{domain, enabled, status, zoneId, ciphers, minTLS, 4 more\}\}, status being \{ownership, ssl\}. Read 2026-10-27."
+data r2_custom_domain_api_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.zone",
+    decl_name: "CloudflareR2CustomDomainBinding",
+    field: WholeDeclaration
+  },
+  authority: r2_custom_domain_api_authority
+}
+
+data r2_custom_domain_api_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/domains/subresources/custom/methods/create/"
+  }
+}
+
+// The zone-list route and the status value set it publishes, transcribed from GET /client/v4/zones:
+// status is one of initializing / pending / active / moved. The model has one arm per published value and
+// Unknown for a value the reader has not seen: a new vendor value must arrive as a fact, never silently
+// as active.
+data zone_list_api_reading: NonEmptyStr = "Zones: GET /client/v4/zones filters by name and account.id and returns Zone \{ status, paused, type, verification_key, ... \} with status one of initializing, pending, active, moved. Read 2026-10-27."
+data zone_list_api_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.zone",
+    decl_name: "CloudflareZoneStatus",
+    field: WholeDeclaration
+  },
+  authority: zone_list_api_authority
+}
+
+data zone_list_api_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/zones/methods/list/"
+  }
+}
+
+// The custom domain's own activation stands in TWO dimensions — ownership and ssl — each its own published
+// six-value set, both read from the list route's status object. Modeling one merged "active" would be a
+// meaning fork: an owned domain with an ssl certificate still initializing is exactly the state a boot
+// origin must not be served from.
+data r2_custom_domain_status_api_reading: NonEmptyStr = "Custom domain status: status.ownership is one of pending, active, deactivated, blocked, error, unknown; status.ssl is one of initializing, pending, active, deactivated, error, unknown. Read 2026-10-27."
+data r2_custom_domain_status_api_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.zone",
+    decl_name: "CloudflareR2CustomDomainStatus",
+    field: WholeDeclaration
+  },
+  authority: r2_custom_domain_status_api_authority
+}
+
+data r2_custom_domain_status_api_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/domains/subresources/custom/methods/list/"
+  }
+}
+
+// The DNS record routes: the list that a zone copy is verified against, and the add route the copy would
+// use when a fold has a write authorization. Proxied is a boolean on A/AAAA/CNAME only, and a PROXIED
+// record answers with Cloudflare's own addresses rather than its stored content — which is why a DNS
+// answer cannot confirm a proxied record's content and the record LIST is the only complete source.
+data dns_record_api_reading: NonEmptyStr = "DNS records: GET /client/v4/dns/records returns the zone's record list; POST /client/v4/zones/\{zone_id\}/dns_records adds one with body \{type, name, content, ttl?, proxied?\} where proxied is valid on A/AAAA/CNAME only. Read 2026-10-27."
+data dns_record_api_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.zone",
+    decl_name: "CloudflareDnsRecord",
+    field: WholeDeclaration
+  },
+  authority: dns_record_api_authority
+}
+
+data dns_record_api_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/dns/subresources/records/methods/list/"
+  }
+}
+
+// --------------------------------------------------------------------------------
+// THE HOLD, AS THREE DISTINCT FACTS — one per page, none doubling as another (review 87750 split).
+//
+// Earlier this file carried two authorities and let both float as the source of "a hold blocks the
+// custom domain". They never supported the same claim, and pretending otherwise meant a reader could not
+// tell which page backed what:
+//
+//   (1) the WIRE — zones.holds is a subresource whose model is zone_hold { hold: boolean } — is the API
+//       reference's fact, and it is what ZoneHold's two arms model (zone_hold_api_citation);
+//   (2) the POLICY — what a hold IS (an Enterprise-only account-security measure that stops another
+//       account from adding an active zone) and its release remedy — is the fundamentals page's fact, and
+//       it is what the admissibility refusal's next_action cites (zone_hold_policy_citation);
+//   (3) the CONSEQUENCE for this fleet — "release the zone hold before adding the custom domain", "a zone
+//       hold would prevent the custom subdomain from activating" — is published ONLY on the public-buckets
+//       requirement page, and its citation is r2_custom_domain_requires_zone_citation, which is the basis
+//       the admissibility rule actually carries. Nothing below restates it.
+// --------------------------------------------------------------------------------
+
+data zone_hold_api_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/api/resources/zones/subresources/hold/"
+  }
+}
+
+data zone_hold_api_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.zone",
+    decl_name: "ZoneHold",
+    field: WholeDeclaration
+  },
+  authority: zone_hold_api_authority
+}
+
+data zone_hold_policy_reading: NonEmptyStr = "Zone holds prevent other teams in your organization from adding zones that are already active in another account. Zone holds are enabled by default for all Enterprise zones; availability is Enterprise only (Free/Pro/Business: No). Dashboard: zone homepage > Quick Actions > Zone Hold toggle; enabling it disallows adding the zone to another account ('The zone name provided is subject to a hold which disallows the creation of this zone'). Read 2026-10-28."
+data zone_hold_policy_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/fundamentals/account/account-security/zone-holds/"
+  }
+}
+data zone_hold_policy_citation: FactCitation = FactCitation {
+  fact: DeclarationRef {
+    module_path: "extdeps.cloudflare.zone",
+    decl_name: "zone_hold_policy_reading",
+    field: WholeDeclaration
+  },
+  authority: zone_hold_policy_authority
+}
+
+// A proxied record resolves to Cloudflare's addresses; these are the vendor's published ranges, cited
+// because "the answer is not the stored content" is a claim that needs a source of its own.
+data cloudflare_proxy_ranges_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/fundamentals/reference/network-address-ranges/"
+  }
+}
+
+// A partial (CNAME) setup is the vendor's named route for putting a not-yet-Cloudflare-delegated domain
+// into an account — the branch that makes the same-account rule satisfiable while the registrar still
+// names other servers, which is gunb.ai's situation (gunbc.namecheap.account).
+data zone_partial_setup_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.cloudflare.com/dns/zone-setups/partial-setup/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloudflare.zone",
+      decl_name: "CloudflareZone",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: r2_custom_domain_requires_zone_authority,
+  further_citations: [
+    r2_custom_domain_api_authority,
+    zone_list_api_authority,
+    r2_custom_domain_status_api_authority,
+    dns_record_api_authority,
+    cloudflare_proxy_ranges_authority,
+    zone_partial_setup_authority,
+    zone_hold_policy_authority,
+  ]
+}
+
+// The two identities a bind is addressed by. Both are vendor-issued 32-lowercase-hex strings, and
+// neither is derivable here. They are NOMINAL RECORDS with a checked constructor, not `where brand`
+// aliases: DESIGN section 4 retires where-refinements in favour of constructors that return Optional,
+// and extdeps.posix.identity (posix_user_id_from_text) is the corpus pattern. A `where brand` alias
+// only rejects a LITERAL at typecheck — a String that flows in from a read casts straight through, so
+// the wall would be decorative exactly where a vendor response arrives. The 32-hex alphabet is reused
+// from std.content_hash rather than re-invented (DESIGN section 2).
+type CloudflareAccountId {
+  value: NonEmptyStr
+}
+
+type CloudflareZoneId {
+  value: NonEmptyStr
+}
+
+data cloudflare_id_hex_width: Int = 32
+
+fn cloudflare_id_text_is_valid(text: String) -> Bool {
+  text.length() == cloudflare_id_hex_width && content_hash_validate_lower_hex_syntax(text: text)
+}
+
+fn cloudflare_account_id_from_text(text: String) -> Optional<CloudflareAccountId> {
+  if cloudflare_id_text_is_valid(text: text) {
+    Present { value: CloudflareAccountId { value: text as NonEmptyStr } }
+  } else {
+    Absent
+  }
+}
+
+fn cloudflare_zone_id_from_text(text: String) -> Optional<CloudflareZoneId> {
+  if cloudflare_id_text_is_valid(text: text) {
+    Present { value: CloudflareZoneId { value: text as NonEmptyStr } }
+  } else {
+    Absent
+  }
+}
+
+fn cloudflare_account_id_text(account: CloudflareAccountId) -> String {
+  account.value as String
+}
+
+fn cloudflare_zone_id_text(zone_id: CloudflareZoneId) -> String {
+  zone_id.value as String
+}
+
+fn cloudflare_account_id_eq(a: CloudflareAccountId, b: CloudflareAccountId) -> Bool {
+  cloudflare_account_id_text(account: a) == cloudflare_account_id_text(account: b)
+}
+
+fn cloudflare_zone_id_eq(a: CloudflareZoneId, b: CloudflareZoneId) -> Bool {
+  cloudflare_zone_id_text(zone_id: a) == cloudflare_zone_id_text(zone_id: b)
+}
+
+type CloudflareZoneStatus
+  = ZoneStatusInitializing
+  | ZoneStatusPending
+  | ZoneStatusActive
+  | ZoneStatusMoved
+  | ZoneStatusUnknown { wire: NonEmptyStr }
+
+fn cloudflare_zone_status_from_wire(wire: NonEmptyStr) -> CloudflareZoneStatus {
+  if wire == "initializing" {
+    ZoneStatusInitializing
+  } else if wire == "pending" {
+    ZoneStatusPending
+  } else if wire == "active" {
+    ZoneStatusActive
+  } else if wire == "moved" {
+    ZoneStatusMoved
+  } else {
+    ZoneStatusUnknown { wire: wire }
+  }
+}
+
+fn cloudflare_zone_status_wire(status: CloudflareZoneStatus) -> NonEmptyStr {
+  match status {
+    ZoneStatusInitializing => "initializing"
+    ZoneStatusPending => "pending"
+    ZoneStatusActive => "active"
+    ZoneStatusMoved => "moved"
+    ZoneStatusUnknown { wire } => wire
+  }
+}
+
+// The vendor's zone hold, as its own endpoint publishes it: GET /zones/{zone_id}/hold returns the
+// zone_hold model, whose `hold` field is a boolean (developers.cloudflare.com/api/resources/zones/
+// subresources/hold/). Two states, because the vendor publishes two — and deliberately NOTHING for "the
+// read has not happened": a missing observation is a coverage obligation of the LAYER THAT OBSERVES
+// (DESIGN §3, External upstream decomposition), never a property of the upstream type. The rule below
+// therefore receives the hold as an Optional from the observing module, and refuses for its own reason
+// when the read has not been made, instead of this file inventing a stand-in for it.
+//
+// paused and hold also stay distinct from each other: the pause switch is the account owner's toggle,
+// while a hold is an Enterprise-only account-security measure. WHY the admissibility rule below consults
+// it at all is the requirement page's own instruction ("release the zone hold ... before adding the
+// custom domain"; "A zone hold would prevent the custom subdomain from activating"), cited through
+// r2_custom_domain_requires_zone_citation — the CONSEQUENCE, which that page alone publishes; the hold's
+// own page supplies the policy and the release remedy (zone_hold_policy_citation), and this endpoint
+// supplies the wire (zone_hold_api_citation). The three facts are kept apart above.
+type ZoneHold
+  = ZoneHeld
+  | ZoneNotHeld
+
+// A zone as the zones-list endpoint describes it: one apex namespace under one account, with a status and
+// a separate pause switch. NO hold field — the hold is a DIFFERENT endpoint, so a zone parsed from the
+// list response does not know it, and a type that demanded one would force the reader to invent it.
+type CloudflareZone {
+  apex: HostName
+  account: CloudflareAccountId
+  zone_id: CloudflareZoneId
+  status: CloudflareZoneStatus
+  paused: Bool
+}
+
+// The record types the copy path can ever need. Every other vendor type lands in Unknown rather than
+// being invented here: SOA and NS are in the list because both appeared in the observed zone, and a
+// model that could not name them would have to call them unknown.
+type CloudflareDnsRecordType
+  = RecordTypeA
+  | RecordTypeAAAA
+  | RecordTypeCNAME
+  | RecordTypeTXT
+  | RecordTypeMX
+  | RecordTypeNS
+  | RecordTypeSOA
+  | RecordTypeUnknown { wire: NonEmptyStr }
+
+fn cloudflare_dns_record_type_wire(record_type: CloudflareDnsRecordType) -> NonEmptyStr {
+  match record_type {
+    RecordTypeA => "A"
+    RecordTypeAAAA => "AAAA"
+    RecordTypeCNAME => "CNAME"
+    RecordTypeTXT => "TXT"
+    RecordTypeMX => "MX"
+    RecordTypeNS => "NS"
+    RecordTypeSOA => "SOA"
+    RecordTypeUnknown { wire } => wire
+  }
+}
+
+fn cloudflare_dns_record_type_from_wire(wire: NonEmptyStr) -> CloudflareDnsRecordType {
+  if wire == "A" {
+    RecordTypeA
+  } else if wire == "AAAA" {
+    RecordTypeAAAA
+  } else if wire == "CNAME" {
+    RecordTypeCNAME
+  } else if wire == "TXT" {
+    RecordTypeTXT
+  } else if wire == "MX" {
+    RecordTypeMX
+  } else if wire == "NS" {
+    RecordTypeNS
+  } else if wire == "SOA" {
+    RecordTypeSOA
+  } else {
+    RecordTypeUnknown { wire: wire }
+  }
+}
+
+// A record's proxy state has THREE honest shapes, not two. `Proxied` and `Direct` split what a single
+// "not proxied" arm would fork: an unproxied A record is a record the vendor COULD have fronted and
+// does not, while a TXT never had the option at all. Keeping them apart is what lets a reader tell
+// "Cloudflare answers this with its own addresses, so its content is invisible to a DNS read" from
+// "this record's content is exactly what a DNS read shows" — the distinction the copy verification
+// below turns on. proxied is valid on A/AAAA/CNAME only, per the add route.
+type CloudflareRecordProxy
+  = Proxied
+  | Direct
+  | ProxyNotApplicable
+
+fn cloudflare_record_proxy(record_type: CloudflareDnsRecordType, proxied: Bool) -> CloudflareRecordProxy {
+  if !cloudflare_record_type_admits_proxy(record_type: record_type) {
+    ProxyNotApplicable
+  } else if proxied {
+    Proxied
+  } else {
+    Direct
+  }
+}
+
+// The proxy-able type set, read straight off the vendor's proxy-range page: only A, AAAA and CNAME can
+// sit behind the anycast front. This is a property of the TYPE — whether one PARTICULAR record sits
+// behind the front is read by matching its `proxy` variant directly (review 87180 removed the two Bool
+// helpers that re-tested the same variant, one as the negation of the other).
+fn cloudflare_record_type_admits_proxy(record_type: CloudflareDnsRecordType) -> Bool {
+  match record_type {
+    RecordTypeA => true
+    RecordTypeAAAA => true
+    RecordTypeCNAME => true
+    _ => false
+  }
+}
+
+// ONE DNS RECORD AS THE ZONE KEEPS IT. `content` is the vendor's single rdata field (an address, a
+// target, a quoted string, a "preference host" pair for MX) kept as the vendor spells it, so a copy and
+// a served record are compared in the same shape on both sides. `ttl` is a Duration — seconds, the unit
+// the vendor publishes it in — reusing std.types' Duration rather than growing a new unit concept, and
+// the observed values are 300/1799/1800/3601/86400.
+type CloudflareDnsRecord {
+  name: HostName
+  record_type: CloudflareDnsRecordType
+  content: NonEmptyStr
+  ttl: Duration
+  proxy: CloudflareRecordProxy
+}
+
+// What "the same record" means for a copy-versus-served comparison: name, type and content. TTL is not
+// identity (the served TTLs are the vendor's defaults for the same values), and the proxy flag is not
+// identity either — it says how Cloudflare ANSWERS, not what the record is.
+fn cloudflare_dns_record_key(record: CloudflareDnsRecord) -> String {
+  join([domain_name_wire(name: record.name.name), cloudflare_dns_record_type_wire(record_type: record.record_type), record.content as String], "/")
+}
+
+// The two published six-value sets, one arm each — every PUBLISHED value gets a named arm, including the
+// vendor's own "unknown", which is a REAL answer the vendor sends (it is in the list route's member
+// lists), not a missing one. Unknown{wire} therefore means exactly one thing: a value OUTSIDE the
+// published set, a value this model has not modelled. Squatting it for "the reader has not read" (the
+// manager blocker on this PR, same species as review 87415) conflated an unmade read with a stated
+// unknown and silently collided with the published value below. An unperformed read is absence, carried
+// by the observing layer, never a wire string here.
+type R2OwnershipStatus
+  = OwnershipPending
+  | OwnershipActive
+  | OwnershipDeactivated
+  | OwnershipBlocked
+  | OwnershipError
+  | OwnershipVendorUnknown
+  | OwnershipStatusUnknown { wire: NonEmptyStr }
+
+fn r2_ownership_status_wire(status: R2OwnershipStatus) -> NonEmptyStr {
+  match status {
+    OwnershipPending => "pending"
+    OwnershipActive => "active"
+    OwnershipDeactivated => "deactivated"
+    OwnershipBlocked => "blocked"
+    OwnershipError => "error"
+    OwnershipVendorUnknown => "unknown"
+    OwnershipStatusUnknown { wire } => wire
+  }
+}
+
+fn r2_ownership_status_of_text(text: String) -> R2OwnershipStatus {
+  match text {
+    "pending" => OwnershipPending
+    "active" => OwnershipActive
+    "deactivated" => OwnershipDeactivated
+    "blocked" => OwnershipBlocked
+    "error" => OwnershipError
+    "unknown" => OwnershipVendorUnknown
+    other => OwnershipStatusUnknown { wire: other as NonEmptyStr }
+  }
+}
+
+type R2SslStatus
+  = SslInitializing
+  | SslPending
+  | SslActive
+  | SslDeactivated
+  | SslError
+  | SslVendorUnknown
+  | SslStatusUnknown { wire: NonEmptyStr }
+
+fn r2_ssl_status_wire(status: R2SslStatus) -> NonEmptyStr {
+  match status {
+    SslInitializing => "initializing"
+    SslPending => "pending"
+    SslActive => "active"
+    SslDeactivated => "deactivated"
+    SslError => "error"
+    SslVendorUnknown => "unknown"
+    SslStatusUnknown { wire } => wire
+  }
+}
+
+fn r2_ssl_status_of_text(text: String) -> R2SslStatus {
+  match text {
+    "initializing" => SslInitializing
+    "pending" => SslPending
+    "active" => SslActive
+    "deactivated" => SslDeactivated
+    "error" => SslError
+    "unknown" => SslVendorUnknown
+    other => SslStatusUnknown { wire: other as NonEmptyStr }
+  }
+}
+
+// The custom domain as the list route returns it. domain/zoneId are the same spellings the create body
+// uses, and `status` is the two-dimensional stand: a binding is SERVING only when its ownership is active
+// AND its certificate is active, which is why one merged flag would have been wrong.
+type CloudflareR2CustomDomainStatus {
+  ownership: R2OwnershipStatus
+  ssl: R2SslStatus
+}
+
+// zone_id is Optional (review 87415): the vendor's list response carries it ONLY once the binding
+// exists, so "the read has not happened" has exactly one spelling — Absent — and no in-band value can
+// pretend to be a zone nobody read. The §3b absence ruling (dag_absence_is_one_meaning) with
+// std.optional::Optional as the existing authority; the type, not a comment, is the protection.
+type CloudflareR2CustomDomainBinding {
+  domain: HostName
+  bucket: NonEmptyStr
+  zone_id: Optional<CloudflareZoneId>
+  enabled: Bool
+  status: CloudflareR2CustomDomainStatus
+}
+
+// THE one serving check; the product fold calls this and no longer re-derives it. The two active arms are
+// matched positively so an Unknown on either dimension falls to false through the arms, never through a
+// string comparison that could drift.
+fn cloudflare_r2_custom_domain_is_serving(binding: CloudflareR2CustomDomainBinding) -> Bool {
+  binding.enabled
+    && match binding.status.ownership {
+         OwnershipActive => true
+         _ => false
+       }
+    && match binding.status.ssl {
+         SslActive => true
+         _ => false
+       }
+}
+
+// A readback matches a zone only when it CARRIES a zone identity to match: Absent fails through the
+// arms, not through an inequality against a made-up id.
+fn cloudflare_r2_custom_domain_matches(binding: CloudflareR2CustomDomainBinding, zone: CloudflareZone, bucket: NonEmptyStr) -> Bool {
+  match binding.zone_id {
+    Present { value: zone_id } => cloudflare_zone_id_eq(a: zone_id, b: zone.zone_id) && (binding.bucket as String) == (bucket as String)
+    Absent => false
+  }
+}
+
+// THE ADMISSIBILITY RULE, written once so no fold re-derives it: same account, not paused, active
+// status, and no zone hold standing in the way of activation — the last of these is the page's own
+// warning, and it is a CHECKED ARM here rather than a comment, because an Enterprise zone under a hold
+// is admissible on every other dimension and the bind would simply never activate. A missing zone is the
+// partial-setup branch of the same rule, and it carries that reading because the next action differs in
+// kind: add the zone, do not retry a bind that was never addressable.
+type R2CustomDomainZoneStanding
+  = ZoneAdmissible { zone: CloudflareZone, basis: FactCitation }
+  | ZoneRefusedWrongAccount { zone: CloudflareZone, bucket_account: CloudflareAccountId, basis: FactCitation }
+  | ZoneRefusedNotActive { zone: CloudflareZone, basis: FactCitation }
+  | ZoneRefusedPaused { zone: CloudflareZone, basis: FactCitation }
+  | ZoneRefusedHold { zone: CloudflareZone, basis: FactCitation }
+  | ZoneRefusedHoldUnobserved { zone: CloudflareZone, basis: FactCitation }
+  // The bucket's owning account is itself an observation (review 87415): when it has not been read, the
+  // same-account rule CANNOT be evaluated, and inventing an id to compare against would turn "unknown"
+  // into "wrong account" or, worse, into a match. Its own arm, its own next action (read it).
+  | ZoneRefusedBucketAccountUnobserved { zone: CloudflareZone, basis: FactCitation }
+  | ZoneMissingForHostname { hostname: HostName, reason: NonEmptyStr, basis: FactCitation }
+
+// hold arrives as the CALLER's observation (Optional<ZoneHold>): the hold lives on its own endpoint, so
+// whether it has been read is a fact about the READER, carried by the observing layer (§3 External
+// upstream decomposition), never a property of the zone type (review 87475). The rule still names the
+// vendor's consequence — the hold page says a held zone blocks adding a custom domain even in the same
+// account — and refuses for each input state with its OWN arm, because the next action differs:
+// release a hold, versus read the hold endpoint.
+fn r2_custom_domain_zone_admissible(zone: CloudflareZone, bucket_account: Optional<CloudflareAccountId>, hold: Optional<ZoneHold>) -> R2CustomDomainZoneStanding {
+  let basis = r2_custom_domain_requires_zone_citation
+  match bucket_account {
+    // No identity read means no rule to evaluate: this refuses FIRST, for its own reason, rather than
+    // comparing the zone against anything.
+    Absent => ZoneRefusedBucketAccountUnobserved { zone: zone, basis: basis }
+    Present { value: account } =>
+      if !cloudflare_account_id_eq(a: zone.account, b: account) {
+        ZoneRefusedWrongAccount { zone: zone, bucket_account: account, basis: basis }
+      } else if zone.paused {
+        ZoneRefusedPaused { zone: zone, basis: basis }
+      } else if match zone.status {
+               // The arm, matched AT THE CALL SITE (review 87789): the deleted Bool re-derived which arm
+               // means active, a second home for one fact. The fallback here is fail-CLOSED — a status
+               // this model has not named (a vendor arm added later, or the published unknown) refuses,
+               // so a new value can never widen admissibility; only ZoneStatusActive admits.
+               ZoneStatusActive => false
+               _ => true
+             } {
+        ZoneRefusedNotActive { zone: zone, basis: basis }
+      } else {
+        // The hold is matched, not asked about, and its absence is the CALLER'S unread state, not a
+        // Cloudflare state: a hold and an unread hold differ in the NEXT action (release it, or read
+        // it), so neither collapses into the other nor into a Bool.
+        match hold {
+          Present { value: ZoneHeld } => ZoneRefusedHold { zone: zone, basis: basis }
+          Present { value: ZoneNotHeld } => ZoneAdmissible { zone: zone, basis: basis }
+          Absent => ZoneRefusedHoldUnobserved { zone: zone, basis: basis }
+        }
+      }
+  }
+}
+
+// The reason a missing zone is the partial-setup branch rather than a retry: the vendor names the route,
+// and the citation is what stops a fold from treating "zone absent" as a transient read failure.
+fn zone_missing_reason_for_partial_setup(hostname: HostName) -> NonEmptyStr {
+  join(["no zone covers ", domain_name_wire(name: hostname.name), "; the vendor's route is a partial (CNAME) setup that adds the domain to the bucket's account"], "") as NonEmptyStr
+}
+
+// Two records of the same shape are compared by their wire spelling: one function over the type, so a
+// copy-versus-served comparison cannot disagree with the identity the key function publishes.
+fn cloudflare_record_type_wire_eq(a: CloudflareDnsRecordType, b: CloudflareDnsRecordType) -> Bool {
+  cloudflare_dns_record_type_wire(record_type: a) == cloudflare_dns_record_type_wire(record_type: b)
+}

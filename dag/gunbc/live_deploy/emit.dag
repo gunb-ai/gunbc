@@ -24,7 +24,6 @@ import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_ro
 import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
-import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
@@ -280,23 +279,6 @@ import gunbc.host.host_layout {
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import product.host_identity { HostIdentity }
-import gunbc.host.host_converge {
-  slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
-  SliceControlUnit,
-}
-import gunbc.host.host_axis_caps {
-  CapAuthorizationRefused, CapAuthorizationWithheld,
-  CapAuthorizedForThisHost,
-  CapConvergeDecision,
-  CapConvergeWithheld,
-  CapMember,
-  cap_authorization_for_host,
-  deploy_memory_cap_apply_script_from_authorization,
-  deploy_memory_cap_script_author_precedes_shadow_revert,
-  host_axis_caps_author_before_revert_enforced,
-  slice_control_converge_stmts,
-  deploy_slice_control_converge_script,
-}
 import gunbc.ownership { Ownership }
 import std.algebra { FreeSemigroup, list_tail }
 import gunbc.membership_reconcile {
@@ -1428,7 +1410,8 @@ fn path_parent_dir(path: String) -> String {
 // THE 0755 IS A SHARED CONSTANT, NOT A DERIVED FACT, and every member still on it inherits it
 // regardless of what that member's readers and writers actually need. That is why
 // /opt/gunbc/attempt-state converges world-readable while the per-attempt directories the belt
-// creates under it are 0700 (attempt_state_prepare_argv_for_instance) — the leaf states its
+// creates under it are owner-only, or group-traversable for a dedicated worker account
+// (attempt_state_prepare_argvs_for_instance) — the leaf states its
 // requirement, the root cannot, so the root is loose by default rather than by decision. Ownership
 // is already derived (-o/-g project the service user from the spec, install_d_owned_command); the
 // mode is the one field on the triple still hand-picked.
@@ -1640,13 +1623,14 @@ fn microvm_controller_release_dir(revision: ReleaseRevisionBinding) -> String {
 // THE TARBALL IS STAGED UNDER THE JOB'S OWN CHECKOUT, beside the verified release bins it copies
 // from, because the fetch and the extraction run as the job user and the locus is root's: the only
 // privileged steps are the two installs into the locus, exactly as the gunbc binary's install is.
-// The path is RELATIVE to the job's working directory (the checkout root, as "$PWD" is for the
-// tree copy) and carries no variable, because digest_shell_verify_line single-quotes the path it
-// checks and a "$PWD" inside single quotes would be verified as a literal.
+// The directory is named RELATIVE to the checkout root and carries no variable; the install plan
+// resolves it against the checkout root it is given (gunbc.host.host_effect_realize
+// microvm_controller_install_staging), because its elevated legs run as another principal whose
+// working directory is not the checkout.
 data microvm_controller_stage_dir: String = "target/microvm-controller-stage"
 
-fn microvm_controller_tarball_stage_path() -> String {
-  join([microvm_controller_stage_dir, "/", firecracker_release_tarball_filename(rel: microvm_controller_firecracker_release)], "")
+fn microvm_controller_stage_tarball_path(stage: String) -> String {
+  join([stage, "/", firecracker_release_tarball_filename(rel: microvm_controller_firecracker_release)], "")
 }
 
 fn microvm_controller_vmm_receipt_path(revision: ReleaseRevisionBinding) -> String {

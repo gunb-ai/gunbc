@@ -1,0 +1,232 @@
+module test.claim.fabric.fabric_storage_seal_witness
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE FABRIC-DB-BACKED STORES ARE SEALED RECORDS MINTED FROM THEIR OWN SLOT DECLARATIONS. Each of the six workspace stores and the
+// tailnet cutover journal is sole_constructor, minted only by its module over a FabricStorageBinding (never a path), with the slot
+// member derived from its declaration; and gunbc.fabric.fabric_storage_file_store FabricStorageFileRoot is sole_constructor too.
+// Each RED hands the compiler a foreign module and asserts EXACTLY ONE SoleConstructorViolation keyed on the exact type name
+// (literal and cast); the GREEN is the lawful mint, with zero violations and no blocking delta over a baseline importing the
+// same closure. WHAT IS SEALED IS CONSTRUCTION: field reads are not sealed, and the binding the mint takes is not sealed
+// (its LocalFiles arm is built over a path by fabric_storage_file_root, the expecting-red probes at the end).
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data workspace_allocation_literal: String = "module probe_workspace_allocation_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f(b: FabricStorageBinding, m: NonEmptyStr) -> WorkspaceAllocationStore {\n  WorkspaceAllocationStore { binding: b }\n}\n"
+
+data workspace_allocation_cast: String = "module probe_workspace_allocation_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f(r: NonEmptyStr) -> WorkspaceAllocationStore {\n  r as WorkspaceAllocationStore\n}\n"
+
+data workspace_allocation_lawful: String = "module probe_workspace_allocation_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f(b: FabricStorageBinding) -> WorkspaceAllocationStore {\n  workspace_allocation_store(binding: b)\n}\n"
+
+data workspace_allocation_baseline: String = "module probe_workspace_allocation_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data workspace_metrics_literal: String = "module probe_workspace_metrics_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_metrics { WorkspaceMetricsStore, workspace_metrics_store }\nfn f(b: FabricStorageBinding, m: NonEmptyStr) -> WorkspaceMetricsStore {\n  WorkspaceMetricsStore { binding: b, member: m }\n}\n"
+
+data workspace_metrics_cast: String = "module probe_workspace_metrics_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_metrics { WorkspaceMetricsStore, workspace_metrics_store }\nfn f(r: NonEmptyStr) -> WorkspaceMetricsStore {\n  r as WorkspaceMetricsStore\n}\n"
+
+data workspace_metrics_lawful: String = "module probe_workspace_metrics_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_metrics { WorkspaceMetricsStore, workspace_metrics_store }\nfn f(b: FabricStorageBinding) -> WorkspaceMetricsStore {\n  workspace_metrics_store(binding: b)\n}\n"
+
+data workspace_metrics_baseline: String = "module probe_workspace_metrics_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_metrics { WorkspaceMetricsStore, workspace_metrics_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data workspace_milestone_literal: String = "module probe_workspace_milestone_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_milestones { WorkspaceMilestoneStore, workspace_milestone_store }\nfn f(b: FabricStorageBinding, m: NonEmptyStr) -> WorkspaceMilestoneStore {\n  WorkspaceMilestoneStore { binding: b, member: m }\n}\n"
+
+data workspace_milestone_cast: String = "module probe_workspace_milestone_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_milestones { WorkspaceMilestoneStore, workspace_milestone_store }\nfn f(r: NonEmptyStr) -> WorkspaceMilestoneStore {\n  r as WorkspaceMilestoneStore\n}\n"
+
+data workspace_milestone_lawful: String = "module probe_workspace_milestone_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_milestones { WorkspaceMilestoneStore, workspace_milestone_store }\nfn f(b: FabricStorageBinding) -> WorkspaceMilestoneStore {\n  workspace_milestone_store(binding: b)\n}\n"
+
+data workspace_milestone_baseline: String = "module probe_workspace_milestone_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_milestones { WorkspaceMilestoneStore, workspace_milestone_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data workspace_release_literal: String = "module probe_workspace_release_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_release { WorkspaceReleaseStore, workspace_release_store }\nfn f(b: FabricStorageBinding, m: NonEmptyStr) -> WorkspaceReleaseStore {\n  WorkspaceReleaseStore { binding: b, member: m }\n}\n"
+
+data workspace_release_cast: String = "module probe_workspace_release_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_release { WorkspaceReleaseStore, workspace_release_store }\nfn f(r: NonEmptyStr) -> WorkspaceReleaseStore {\n  r as WorkspaceReleaseStore\n}\n"
+
+data workspace_release_lawful: String = "module probe_workspace_release_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_release { WorkspaceReleaseStore, workspace_release_store }\nfn f(b: FabricStorageBinding) -> WorkspaceReleaseStore {\n  workspace_release_store(binding: b)\n}\n"
+
+data workspace_release_baseline: String = "module probe_workspace_release_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_allocation_release { WorkspaceReleaseStore, workspace_release_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data workspace_acquisition_literal: String = "module probe_workspace_acquisition_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_acquisition_invocation { WorkspaceAcquisitionStore, workspace_acquisition_store }\nfn f(b: FabricStorageBinding, m: NonEmptyStr) -> WorkspaceAcquisitionStore {\n  WorkspaceAcquisitionStore { binding: b, actor_member: m, protocol_member: m }\n}\n"
+
+data workspace_acquisition_cast: String = "module probe_workspace_acquisition_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_acquisition_invocation { WorkspaceAcquisitionStore, workspace_acquisition_store }\nfn f(r: NonEmptyStr) -> WorkspaceAcquisitionStore {\n  r as WorkspaceAcquisitionStore\n}\n"
+
+data workspace_acquisition_lawful: String = "module probe_workspace_acquisition_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_acquisition_invocation { WorkspaceAcquisitionStore, workspace_acquisition_store }\nfn f(b: FabricStorageBinding) -> WorkspaceAcquisitionStore {\n  workspace_acquisition_store(binding: b)\n}\n"
+
+data workspace_acquisition_baseline: String = "module probe_workspace_acquisition_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_acquisition_invocation { WorkspaceAcquisitionStore, workspace_acquisition_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data workspace_gateway_literal: String = "module probe_workspace_gateway_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_gateway_store { WorkspaceGatewayStore, workspace_gateway_store }\nfn f(b: FabricStorageBinding, m: NonEmptyStr) -> WorkspaceGatewayStore {\n  WorkspaceGatewayStore { binding: b, member: m }\n}\n"
+
+data workspace_gateway_cast: String = "module probe_workspace_gateway_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_gateway_store { WorkspaceGatewayStore, workspace_gateway_store }\nfn f(r: NonEmptyStr) -> WorkspaceGatewayStore {\n  r as WorkspaceGatewayStore\n}\n"
+
+data workspace_gateway_lawful: String = "module probe_workspace_gateway_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_gateway_store { WorkspaceGatewayStore, workspace_gateway_store }\nfn f(b: FabricStorageBinding) -> WorkspaceGatewayStore {\n  workspace_gateway_store(binding: b)\n}\n"
+
+data workspace_gateway_baseline: String = "module probe_workspace_gateway_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.workspace_gateway_store { WorkspaceGatewayStore, workspace_gateway_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data tailnet_door_cutover_literal: String = "module probe_tailnet_door_cutover_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.live_deploy.tailnet_door_cutover_host { TailnetDoorCutoverStore, tailnet_door_cutover_store }\nfn f(b: FabricStorageBinding, m: NonEmptyStr) -> TailnetDoorCutoverStore {\n  TailnetDoorCutoverStore { binding: b, member: m }\n}\n"
+
+data tailnet_door_cutover_cast: String = "module probe_tailnet_door_cutover_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.live_deploy.tailnet_door_cutover_host { TailnetDoorCutoverStore, tailnet_door_cutover_store }\nfn f(r: NonEmptyStr) -> TailnetDoorCutoverStore {\n  r as TailnetDoorCutoverStore\n}\n"
+
+data tailnet_door_cutover_lawful: String = "module probe_tailnet_door_cutover_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.live_deploy.tailnet_door_cutover_host { TailnetDoorCutoverStore, tailnet_door_cutover_store }\nfn f(b: FabricStorageBinding) -> TailnetDoorCutoverStore {\n  tailnet_door_cutover_store(binding: b)\n}\n"
+
+data tailnet_door_cutover_baseline: String = "module probe_tailnet_door_cutover_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageBinding }\nimport gunbc.live_deploy.tailnet_door_cutover_host { TailnetDoorCutoverStore, tailnet_door_cutover_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data file_root_literal: String = "module probe_file_root_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }\nfn f(r: NonEmptyStr) -> FabricStorageFileRoot {\n  FabricStorageFileRoot { objects: r, heads: r, entry_mode: none }\n}\n"
+
+data file_root_cast: String = "module probe_file_root_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }\nfn f(r: NonEmptyStr) -> FabricStorageFileRoot {\n  r as FabricStorageFileRoot\n}\n"
+
+data file_root_path_mint: String = "module probe_file_root_path_mint\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }\nfn f() -> FabricStorageFileRoot {\n  fabric_storage_file_root(root: \"/any/literal\")\n}\n"
+
+data file_root_baseline: String = "module probe_file_root_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data local_files_store_path: String = "module probe_local_files_store_path\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f() -> WorkspaceAllocationStore {\n  workspace_allocation_store(binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: \"/any/literal\") })\n}\n"
+
+data local_files_baseline: String = "module probe_local_files_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }\nimport gunbc.workspace_allocation_store { WorkspaceAllocationStore, workspace_allocation_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+test fn a_forged_workspace_allocation_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_allocation_literal, subject: "WorkspaceAllocationStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_workspace_allocation_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_allocation_cast, subject: "WorkspaceAllocationStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_workspace_allocation_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: workspace_allocation_lawful, safe: workspace_allocation_baseline, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: workspace_allocation_lawful, subject: "WorkspaceAllocationStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_workspace_metrics_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_metrics_literal, subject: "WorkspaceMetricsStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_workspace_metrics_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_metrics_cast, subject: "WorkspaceMetricsStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_workspace_metrics_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: workspace_metrics_lawful, safe: workspace_metrics_baseline, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: workspace_metrics_lawful, subject: "WorkspaceMetricsStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_workspace_milestone_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_milestone_literal, subject: "WorkspaceMilestoneStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_workspace_milestone_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_milestone_cast, subject: "WorkspaceMilestoneStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_workspace_milestone_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: workspace_milestone_lawful, safe: workspace_milestone_baseline, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: workspace_milestone_lawful, subject: "WorkspaceMilestoneStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_workspace_release_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_release_literal, subject: "WorkspaceReleaseStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_workspace_release_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_release_cast, subject: "WorkspaceReleaseStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_workspace_release_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: workspace_release_lawful, safe: workspace_release_baseline, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: workspace_release_lawful, subject: "WorkspaceReleaseStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_workspace_acquisition_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_acquisition_literal, subject: "WorkspaceAcquisitionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_workspace_acquisition_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_acquisition_cast, subject: "WorkspaceAcquisitionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_workspace_acquisition_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: workspace_acquisition_lawful, safe: workspace_acquisition_baseline, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: workspace_acquisition_lawful, subject: "WorkspaceAcquisitionStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_workspace_gateway_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_gateway_literal, subject: "WorkspaceGatewayStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_workspace_gateway_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: workspace_gateway_cast, subject: "WorkspaceGatewayStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_workspace_gateway_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: workspace_gateway_lawful, safe: workspace_gateway_baseline, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: workspace_gateway_lawful, subject: "WorkspaceGatewayStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_tailnet_door_cutover_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: tailnet_door_cutover_literal, subject: "TailnetDoorCutoverStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_tailnet_door_cutover_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: tailnet_door_cutover_cast, subject: "TailnetDoorCutoverStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_tailnet_door_cutover_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: tailnet_door_cutover_lawful, safe: tailnet_door_cutover_baseline, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: tailnet_door_cutover_lawful, subject: "TailnetDoorCutoverStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn a_forged_file_root_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: file_root_literal, subject: "FabricStorageFileRoot"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_file_root_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: file_root_cast, subject: "FabricStorageFileRoot"), holds: fn(n) { n == 1 }))
+}
+
+// AN EXPECTING-RED PROBE, recorded as what holds TODAY (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module):
+// fabric_storage_file_root stays exported, so a foreign module still reaches a FileRoot over a literal path. No rung is claimed;
+// when the ambient-authority lane (and the FabricStorageOperations follow-up) lands this must go red.
+test fn a_file_root_over_a_literal_path_is_accepted_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: file_root_path_mint, safe: file_root_baseline, holds: fn(n) { n <= 0 }))
+}
+
+// THE SECOND EXPECTING-RED PROBE: the LocalFiles arm of the binding carries that path-built FileRoot, and the store mints take the
+// binding, so a workspace store over a literal path is ACCEPTED today. Same trigger; no rung claimed.
+test fn a_workspace_store_over_a_local_files_literal_path_is_accepted_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: local_files_store_path, safe: local_files_baseline, holds: fn(n) { n <= 0 }))
+}
+
+// THE OUTCOME-TAKING FOLD IS DELETED: fabric_storage_put_from_create turned a supplied FilesystemCreated into FabricObjectStored
+// (and trusted a supplied FabricObjectFetched), so any module could mint the success outcome. It is inlined into
+// fabric_storage_file_put beside its own create and readback. RED: importing it is exactly one MissingExport keyed on the name;
+// GREEN: importing the lawful fabric_storage_file_put is zero. Restoring the export flips the RED to zero.
+data put_fold_import: String = "module probe_put_fold_import\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_put_from_create }\nfn f() -> Int {\n  1\n}\n"
+
+data put_lawful_import: String = "module probe_put_lawful_import\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_put }\nfn f() -> Int {\n  1\n}\n"
+
+test fn the_outcome_taking_put_fold_is_not_exported() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: put_fold_import, wanted_class: "MissingExport", wanted_subject: "fabric_storage_put_from_create"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_put_is_exported() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: put_lawful_import, wanted_class: "MissingExport", wanted_subject: "fabric_storage_file_put"), holds: fn(n) { n == 0 }))
+}
