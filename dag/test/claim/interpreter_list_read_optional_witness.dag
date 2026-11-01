@@ -1,0 +1,55 @@
+module test.claim.interpreter_list_read_optional_witness
+
+import std.live_tree { LiveTreeDisposition }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ilro_items: List<String> = ["a", "b", "c"]
+
+data ilro_none: List<String> = []
+
+// The interpreter's list reads are the declared Optional<T> (v2 `list_at_optional` is the
+// referent): Present in range, Absent otherwise, never a bare element or host null. Each RED
+// below is false on the pre-fix interpreter (bare element / Null compared with a Present or
+// Absent literal) and true after.
+test fn last_of_a_nonempty_list_is_present() -> Bool {
+  ilro_items.last() == Present { value: "c" }
+}
+
+test fn first_of_an_empty_list_is_absent_not_null() -> Bool {
+  ilro_none.first() == Absent
+}
+
+test fn last_of_an_empty_list_is_absent_not_null() -> Bool {
+  ilro_none.last() == Absent
+}
+
+test fn method_get_in_range_is_present_and_out_of_range_absent() -> Bool {
+  ilro_items.get(1) == Present { value: "b" } && ilro_items.get(3) == Absent
+}
+
+test fn free_get_in_range_is_present_and_out_of_range_absent() -> Bool {
+  get(ilro_items, 2) == Present { value: "c" } && get(ilro_items, 5) == Absent
+}
+
+test fn get_at_a_negative_index_is_absent() -> Bool {
+  ilro_items.get(0 - 1) == Absent
+}
+
+// POSITIVE CONTROL: the same reads eliminated by a match answer by value, before and after.
+test fn a_match_on_each_read_answers_by_value() -> Bool {
+  (match ilro_items.last() { Present { value: v } => v == "c"  Absent => false })
+    && (match ilro_none.first() { Present { value: v } => false  Absent => true })
+    && (match ilro_items.get(1) { Present { value: v } => v == "b"  Absent => false })
+}
+
+// RENDERING CONTROLS: a rendered optional read must not change silently. The expected text is
+// whatever the interpreter rendered a Present/Absent variant as BEFORE the change (the first
+// srv1 run records it); equality here pins that the fix did not alter the rendering.
+test fn a_rendered_present_read_equals_the_rendering_of_a_present_literal() -> Bool {
+  to_string(ilro_items.first()) == to_string(Present { value: "a" })
+}
+
+test fn a_rendered_absent_read_equals_the_rendering_of_an_absent_literal() -> Bool {
+  to_string(ilro_none.first()) == to_string(Absent)
+}
