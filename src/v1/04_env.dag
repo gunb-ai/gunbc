@@ -2675,3 +2675,36 @@ fn alias_rhs_head_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Decl
     Absent => none
   }
 }
+
+// THE HEAD-ONLY FACE OF THE CHAIN WALK, FOR A SEAM THAT HAS A NAME AND NO ARGUMENTS.
+// `alias_rhs_head_of_declaration` reads a TRANSPARENT alias's head; `settled_type_of_declaration`
+// chases the chain but CARRIES use-site arguments, which a name-only seam does not have -- and
+// substituting none is not neutral there, it hands every downstream reader an unbound parameter
+// where the use site had established an argument (the failure mode `settled_parameterized_alias`
+// records at its own comment). So a PARAMETERIZED alias (`type KcAlias<T> = FreeMonoid<T>`) stops at
+// itself in the name-only read, and a check whose whole question is WHICH DECLARATION DOES THIS NAME
+// DENOTE is left without an answer -- measured: a module-local alias of a carrier settled to the
+// alias, so the kernel container gate could not see the carrier behind it and the carrier's own
+// constructor was refused at that spelling. Following the chain to its head fabricates nothing, so
+// this face asks only that: the same two hop-readers as the chain walk (`alias_rhs_of_declaration`
+// for a transparent link, `parameterized_alias_of_declaration` for a parameterized one, dispatched
+// at EVERY hop exactly as `settled_rhs` does), the same fuel, the arguments deliberately not had.
+fn settled_head_of_declaration(d: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> DeclarationRef? {
+  if fuel <= 0 { return none }
+  match alias_rhs_of_declaration(item_ref: d, env: env) {
+    Present { value: rhs } =>
+      match rhs.declaration {
+        Present { value: head } => settled_head_of_declaration(d: head, source_indices: source_indices, env: env, fuel: fuel - 1)
+        Absent => Present { value: d }
+      }
+    Absent =>
+      match parameterized_alias_of_declaration(item_ref: d, source_indices: source_indices, env: env) {
+        Absent => Present { value: d }
+        Present { value: pa } =>
+          match pa.rhs.declaration {
+            Present { value: head } => settled_head_of_declaration(d: head, source_indices: source_indices, env: env, fuel: fuel - 1)
+            Absent => Present { value: d }
+          }
+      }
+  }
+}

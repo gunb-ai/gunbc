@@ -1,4 +1,9 @@
-module fixture.native_projection.projected
+module test.fixture.native_projection_projected
+
+// RETARGETED 2026-11-01 into `test.fixture`, a namespace the declared layout has a row for: an entry must
+// lie in a declared namespace (v2.compiler.module_acquisition acquisition_entry_requests), and rows are
+// emitted from the governed trees, so a `fixture.*` namespace can never be a row
+// (dag/gunbc/source_layout_namespaces.dag). No repository module of this name exists, in this or any tree.
 
 // THE NATIVE EMIT VERB'S WALKED SUBJECT FOR "A PROJECTION IS NOT A MODULE REFERENCE"
 // (src/v1/stage0/src/cli_run/native_lane_runner.rs walk_native_acquisition_projection_controls).

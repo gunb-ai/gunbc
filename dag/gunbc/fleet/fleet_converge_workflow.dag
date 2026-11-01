@@ -144,7 +144,7 @@ import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_artifact_glob,
 import gunbc.host.host_boot_attempt_admission { boot_attempt_receipt_env_name, boot_attempt_nonce_env_name }
 import gunbc.runner.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
 import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_job, qualification_floor_job_id, qualification_attempt_subject_env_name, qualification_attempt_artifact_glob }
-import gunbc.witness.compiler_gate_workflow { compiler_gate_emit_build_timeout_minutes }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_emit_build_timeout }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_step_timeout_minutes, srv1_root_mutation_select_name_env, srv1_root_mutation_select_value_env, srv1_root_mutation_mode_env }
 import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode, srv1_root_mutation_mode_wire, srv1_root_mutation_mode_job_id, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, ApprovalNtfyRetire }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
@@ -3731,7 +3731,7 @@ fn fleet_converge_qualification_attempt_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_qualification_attempt_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes + 30 }
+    timeout_minutes: Present { value: minute_count(m: compiler_gate_emit_build_timeout()) + 30 }
   }
 }
 
@@ -5782,7 +5782,7 @@ fn fleet_converge_qualification_floor_job() -> Job {
   qualification_floor_job(
     revision_input: fleet_converge_expected_revision_input,
     if_condition: join([fleet_converge_dispatch_event_if, " && ", fleet_converge_qualification_floor_step_if], ""),
-    timeout_minutes: compiler_gate_emit_build_timeout_minutes,
+    timeout_minutes: minute_count(m: compiler_gate_emit_build_timeout()),
   )
 }
 

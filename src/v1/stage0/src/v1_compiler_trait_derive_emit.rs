@@ -46,7 +46,8 @@ pub use crate::v1_compiler_infer_emit_info::{
     TypeDeclIndex, TypeDeclResolution,
 };
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, is_coproduct_type, node_is_collection, resolved_type,
+    child_type_node, is_coproduct_type, node_is_element_collection,
+    node_is_finite_power_set_algebra_spelling, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -1114,16 +1115,11 @@ pub fn v1_type_expr_is_finite_power_set_carrier(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (crate::v1_compiler_infer_types::node_is_collection(type_expr.clone(), source_indices.clone())
-        && match crate::std_types::container_template_algebra(
-            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
-                type_expr.clone(),
-            )),
-        ) {
-            Some(algebra) => (algebra.clone() == "FinitePowerSet".to_string()),
-            std::option::Option::None => false,
-        })
+    (((type_expr.children.clone().len() as i64) > 0)
+        && crate::v1_compiler_infer_types::node_is_finite_power_set_algebra_spelling(
+            type_expr.clone(),
+            source_indices,
+        ))
 }
 
 pub fn v1_set_unroutable_row_refusal() -> String {
@@ -3443,18 +3439,24 @@ pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
         {
             true
         } else {
-            if (crate::std_types::is_container_type(name.clone()) && {
-                let mut __found = false;
-                for c in type_expr.children.clone().iter().cloned() {
-                    if (crate::v1_std_core::authored_name_at(source_indices.clone(), c.clone())
-                        == param_name.clone())
-                    {
-                        __found = true;
-                        break;
+            if ((crate::std_types::is_container_type(name.clone())
+                || crate::v1_compiler_infer_types::node_is_element_collection(
+                    type_expr.clone(),
+                    source_indices.clone(),
+                ))
+                && {
+                    let mut __found = false;
+                    for c in type_expr.children.clone().iter().cloned() {
+                        if (crate::v1_std_core::authored_name_at(source_indices.clone(), c.clone())
+                            == param_name.clone())
+                        {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            }) {
+                    __found
+                })
+            {
                 true
             } else {
                 false

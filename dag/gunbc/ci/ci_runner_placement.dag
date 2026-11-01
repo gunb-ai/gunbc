@@ -58,16 +58,7 @@ import gunbc.ci.ci_floor_measurement {
   gunbc_ci_per_session_peak_samples,
   gunbc_ci_runner_cgroup_memory_cap,
 }
-import gunbc.host.host_memory_observation {
-  HostUsableRam,
-  HostUsableRamMeasured,
-  HostUsableRamConservativeLowerBound,
-  HostUsableRamUnmeasured,
-  HostFixedOverhead,
-  HostFixedOverheadMeasured,
-  HostFixedOverheadAllowance,
-  HostFixedOverheadUnmeasured,
-}
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import gunbc.ci.ci_fleet { fleet_intent_offers, fleet_converge_applied_offers, fleet_image_baked_offers, fleet_host_is_image_baked }
 import gunbc.host.host_layout { gunbc_compile_pool_placement }
 

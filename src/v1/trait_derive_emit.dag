@@ -8,7 +8,7 @@ import std.dissolution {
 
 import v1.compiler.emit { to_pascal, emit_ident }
 import v1.compiler.artifact { Rust }
-import v1.compiler.infer_types { node_is_collection, child_type_node, is_coproduct_type, resolved_type }
+import v1.compiler.infer_types { node_is_finite_power_set_algebra_spelling, node_is_element_collection, child_type_node, is_coproduct_type, resolved_type }
 import v1.compiler.emit_core_support { unique_strings, is_type_alias_item }
 import v1.compiler.coercion { realized_checkpoint, declaration_realization }
 import v1.compiler.infer_emit_info {
@@ -670,16 +670,22 @@ fn v1_set_element_params(
   )
 }
 
-// Set<T> is FinitePowerSet<T> by alias (std.types), realized as im::OrdSet ONLY where the renderer
-// selects the host container: node_is_collection (the alias roster) is the decision it consumes, so the
-// canonical FinitePowerSet<T> spelling renders the structural record and owes no Ord. Algebra from the
-// roster, representation from the renderer's own predicate, never a literal spelling.
+// Set<T> is FinitePowerSet<T> by alias (std.types), and BOTH spellings lower to the target's
+// OrdSet/BTreeSet realization -- one carrier, one Rust type (DESIGN section 3: the declared shape and the
+// realized shape are the same carrier, "not two, and the emitter never asks which to use"). A payload of
+// either spelling therefore owes its element generic the container's own bounds, Ord + Clone, exactly as the
+// `Set` spelling does. The renderer's carrier predicate is the authority for the algebra, the roster is the
+// authority for which spellings name it, and neither is a literal here.
+// The conjunct this used to carry -- node_is_collection, the ALIAS roster -- is what #15512 added to keep the
+// canonical spelling out, because at that point the renderer still emitted the structural record for it and a
+// bound would have been owed for a type that was not a container. That premise is gone: closing the renderer
+// fork (04_types node_is_finite_power_set_algebra_spelling) makes the spelling and the bound ONE decision, and
+// the control #15512 pinned on the old premise (control_forward_power_over_opaque, a fn over a
+// canonical-spelled NON-Ord element) is a refusal now, not a pass. The free-monoid carrier never carried the
+// conjunct, which is why a `FreeMonoid<K>` payload paid its Clone on arrival and the finite carrier did not.
+// Tracked by gunbc.recurring_failure_mode emitter_element_container_lowering_is_keyed_by_leaf_spelling.
 fn v1_type_expr_is_finite_power_set_carrier(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  node_is_collection(n: type_expr, source_indices: source_indices)
-    && match container_template_algebra(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))) {
-      Present { value: algebra } => algebra == "FinitePowerSet"
-      Absent => false
-    }
+  (type_expr.children |> count) > 0 && node_is_finite_power_set_algebra_spelling(n: type_expr, source_indices: source_indices)
 }
 
 fn v1_set_unroutable_row_refusal() -> String {
@@ -1775,6 +1781,16 @@ fn v1_arrow_type_expr_mentions_param(param_name: String, type_expr: Node, source
   }
 }
 
+// WHY THE ROSTER READ IS JOINED WITH THE REALIZATION PREDICATE HERE. `is_container_type` reads the
+// arity roster, and `algebra.dag`'s `arity_row_is_alias_spellings_only_reason` keeps the canonical
+// spelling of every carrier OUT of that roster on purpose -- which is right for arity lookup by ALIAS
+// and wrong for this question. This arm asks "does `tau: Clone` require `P: Clone`, because tau is a
+// container over P", and `im::OrdSet<A>`'s `Clone` impl bounds `A` whether the field was written
+// `Set<K>` or `FinitePowerSet<K>`: the bound follows the realized shape, not the spelling, exactly as
+// `rust_btree_set_supplemental_generic_bound_rows` already answers for the Ord half (#15512 gave the
+// free-monoid spelling the same treatment). Leaving the roster read alone here is what made a
+// canonical-spelled payload emit `PartialEq` over `Rc<BTreeSet<K>>` without `K: Clone` in the item or
+// impl headers -- E0277 at the field, with the alias spelling green beside it.
 fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
   param_name: String,
   type_expr: Node,
@@ -1783,7 +1799,7 @@ fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
   let name = authored_name_at(source_indices: source_indices, node: type_expr)
   if name == param_name && type_expr.connective == NoConnective && (type_expr.children |> count) == 0 {
     true
-  } else if is_container_type(name: name)
+  } else if (is_container_type(name: name) || node_is_element_collection(n: type_expr, source_indices: source_indices))
     && type_expr.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == param_name) {
     true
   } else {

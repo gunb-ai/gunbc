@@ -4616,6 +4616,74 @@ pub fn alias_rhs_head_of_declaration(
     }
 }
 
+pub fn settled_head_of_declaration(
+    mut __tco_loop_d: Rc<DeclarationRef>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_fuel: i64,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut d = __tco_loop_d;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
+                return std::option::Option::None;
+            }
+            match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                Some(rhs) => match rhs.declaration.clone() {
+                    Some(head) => {
+                        let __tco_0 = head.clone();
+                        let __tco_1 = source_indices;
+                        let __tco_2 = env;
+                        let __tco_3 = v1_rt::int_sub(fuel, 1);
+                        __tco_loop_d = __tco_0;
+                        __tco_loop_source_indices = __tco_1;
+                        __tco_loop_env = __tco_2;
+                        __tco_loop_fuel = __tco_3;
+                        continue;
+                    }
+                    std::option::Option::None => {
+                        break Some(d.clone());
+                    }
+                },
+                std::option::Option::None => {
+                    match parameterized_alias_of_declaration(
+                        d.clone(),
+                        source_indices.clone(),
+                        env.clone(),
+                    ) {
+                        std::option::Option::None => {
+                            break Some(d.clone());
+                        }
+                        Some(pa) => match pa.rhs.declaration.clone() {
+                            Some(head) => {
+                                let __tco_0 = head.clone();
+                                let __tco_1 = source_indices;
+                                let __tco_2 = env;
+                                let __tco_3 = v1_rt::int_sub(fuel, 1);
+                                __tco_loop_d = __tco_0;
+                                __tco_loop_source_indices = __tco_1;
+                                __tco_loop_env = __tco_2;
+                                __tco_loop_fuel = __tco_3;
+                                continue;
+                            }
+                            std::option::Option::None => {
+                                break Some(d.clone());
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TypeRefMeasureBound;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

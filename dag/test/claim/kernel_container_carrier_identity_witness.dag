@@ -73,6 +73,25 @@ fn carrier_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
 
 data kc_prelude: String = "module kc.entry\nimport std.algebra { FreeMonoid, Empty, Cons }\nfn kc_take(xs: List<Int>) -> Int { 0 }\n"
 
+// THE SET-SIDE FIXTURE. `List` is a seed kernel container spelling, so the FreeMonoid rows above need
+// only a `std.algebra` to own the carrier; `Set` reaches its carrier through std.types' alias, so the
+// fixture authors that alias too (`Set<T> = FinitePowerSet<T>`) and declares the carrier itself. The
+// minimal `FinitePowerSet` carries the `member` field alone -- enough to author a literal of it, which
+// is all these rows ask for; it is the same declaration identity the real std.algebra one has (module
+// path + name), which is the only thing the identity verdict compares.
+data set_carrier_algebra_source: String = "module std.algebra\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\ntype FinitePowerSet<T> {\n  member: fn(T) -> Bool,\n}\n"
+
+data set_carrier_types_source: String = "module std.types\ntype Set<T> = FinitePowerSet<T>\n"
+
+fn set_carrier_run(entry_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("std/algebra.dag", set_carrier_algebra_source), fixture_source("std/types.dag", set_carrier_types_source), fixture_source("kc/entry.dag", entry_source)],
+    entry: "kc/entry.dag"
+  })
+}
+
+data kc_set_prelude: String = "module kc.entry\nimport std.algebra { FreeMonoid, Empty, Cons, FinitePowerSet }\nimport std.types { Set }\nfn kc_member(v: Int) -> Bool { true }\n"
+
 test fn kc_empty_record_literal_is_a_list_value() -> Bool {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "fn kc_use() -> Int { kc_take(xs: Empty {}) }\n")))
 }
@@ -89,6 +108,36 @@ test fn kc_bare_empty_is_a_list_value() -> Bool {
 
 test fn kc_local_alias_of_the_carrier_admits_its_constructor() -> Bool {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcAlias<T> = FreeMonoid<T>\nfn kc_take_alias(xs: KcAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: Empty {}) }\n")))
+}
+
+// THE MISFIRE CONTROL FOR THE ROW ABOVE. Admitting the carrier's own constructor at an alias is the
+// roster's answer about the DENOTED DECLARATION, not a licence an alias grants: a record the module
+// declares for itself stays refused at that same alias, by the same identity that admitted `Empty {}`.
+// Without this row the admission could be read as "an alias formal accepts anything", which is the
+// over-admission the verdict's other half exists to prevent.
+test fn kc_local_alias_of_the_carrier_refuses_an_unrelated_record() -> Bool {
+  carrier_refused(o: carrier_run(entry_source: concat(kc_prelude, "type KcAlias<T> = FreeMonoid<T>\ntype KcPoint { x: Int }\nfn kc_take_alias(xs: KcAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: KcPoint { x: 1 }) }\n")))
+}
+
+// AN ALIAS OF AN ALIAS IS STILL THE CARRIER. `KcAlias2 -> KcAlias -> FreeMonoid` is the case a gate
+// that resolves ONE hop would miss; the settled chain is what the verdict asks, so the constructor is
+// admitted at the second spelling too.
+test fn kc_local_alias_of_an_alias_of_the_carrier_admits_its_constructor() -> Bool {
+  carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcAlias<T> = FreeMonoid<T>\ntype KcAlias2<T> = KcAlias<T>\nfn kc_take_alias(xs: KcAlias2<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: Empty {}) }\n")))
+}
+
+// ONE ROOT, TWO DIRECTIONS. The refusal the row above repairs was not FreeMonoid-shaped: the same
+// refusal appeared on the Set side (a `KcSetAlias<T> = Set<T>` formal refusing the product's own
+// record constructor), which is what says the root is the alias-resolution gate and not anything about
+// coproduct arms. The kernel containers are the roster's -- FreeMonoid under `List`, FinitePowerSet
+// under `Set` -- and the gate must answer for each from the declaration the formal denotes.
+test fn kc_local_alias_of_the_set_carrier_admits_its_constructor() -> Bool {
+  carrier_accepted(o: set_carrier_run(entry_source: concat(kc_set_prelude, "type KcSetAlias<T> = Set<T>\nfn kc_take_set(xs: KcSetAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_set(xs: FinitePowerSet { member: kc_member }) }\n")))
+}
+
+// THE SAME MISFIRE CONTROL ON THE OTHER DIRECTION.
+test fn kc_local_alias_of_the_set_carrier_refuses_an_unrelated_record() -> Bool {
+  carrier_refused(o: set_carrier_run(entry_source: concat(kc_set_prelude, "type KcSetAlias<T> = Set<T>\ntype KcPoint { x: Int }\nfn kc_take_set(xs: KcSetAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_set(xs: KcPoint { x: 1 }) }\n")))
 }
 
 test fn kc_list_field_admits_the_carrier_constructor() -> Bool {
