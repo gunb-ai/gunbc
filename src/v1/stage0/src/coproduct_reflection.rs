@@ -1830,52 +1830,49 @@ pub struct DeclFactsCorpusWalk {
     pub files_parsed: usize,
 }
 
-// decl_facts_corpus_walk parses every .dag under every pool_root independently,
-// taking module_path from each file's own module declaration. It does not consult
-// dependency-pool-index / the module source index used by compile/load. Where roots
-// shadow the same module path, this producer may emit facts for both the winning
-// source and the shadowed stub; compile binds only the winner.
-pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
-    let mut out = Vec::new();
-    let mut files_scanned = 0usize;
-    let mut files_parsed = 0usize;
-    for file in corpus_dag_files_for_roots(pool_roots) {
-        let rel = repo_rel(file.path());
-        files_scanned += 1;
-        let content = file.read().ok();
-        let module_path = content
-            .as_ref()
-            .and_then(|c| extract_module_path(c))
-            .unwrap_or_default();
-        // The acquired bytes, not a second read of the path: a derived roster has no file.
-        let filename = file
-            .path()
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("?");
-        let Some(parsed) = content.as_deref().and_then(|c| {
-            crate::module_path_index::parsed_dag_file::parse_dag_content(c, filename)
-        }) else {
+/// ONE FILE's declaration facts, appended to `out`; the module path is the file's own module
+/// declaration. Returns the declared module path when the file parsed (`None` when it did not), so
+/// the walk counts it and the keyed read can check it against the module the layout derived. The
+/// corpus walk and the keyed read share this one parser path.
+fn decl_facts_of_file(
+    file: &crate::cli_run::derived_row_roster::AcquiredDag,
+    out: &mut Vec<DeclFactRaw>,
+) -> Option<String> {
+    let rel = repo_rel(file.path());
+    let content = file.read().ok();
+    let module_path = content
+        .as_ref()
+        .and_then(|c| extract_module_path(c))
+        .unwrap_or_default();
+    // The acquired bytes, not a second read of the path: a derived roster has no file.
+    let filename = file
+        .path()
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("?");
+    let parsed = content
+        .as_deref()
+        .and_then(|c| crate::module_path_index::parsed_dag_file::parse_dag_content(c, filename))?;
+    let si = parsed.source_indices;
+    for item in parsed.items.iter() {
+        let name = authored_name_at(si.clone(), item.clone());
+        if name.is_empty() {
             continue;
-        };
-        files_parsed += 1;
-        let si = parsed.source_indices;
-        for item in parsed.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            let kind = item_kind(item.clone());
-            out.push(DeclFactRaw {
-                qualified_name: decl_qualified_name(&module_path, &name),
-                name,
-                kind,
-                node: item.clone(),
-                rel_path: rel.clone(),
-                source_indices: si.clone(),
-            });
         }
+        let kind = item_kind(item.clone());
+        out.push(DeclFactRaw {
+            qualified_name: decl_qualified_name(&module_path, &name),
+            name,
+            kind,
+            node: item.clone(),
+            rel_path: rel.clone(),
+            source_indices: si.clone(),
+        });
     }
+    Some(module_path)
+}
+
+fn sort_decl_facts(out: &mut [DeclFactRaw]) {
     out.sort_by(|a, b| {
         let kind_ord = |k: ItemKind| match k {
             ItemKind::FnItem => 0,
@@ -1891,6 +1888,24 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             kind_ord(b.kind),
         ))
     });
+}
+
+// decl_facts_corpus_walk parses every .dag under every pool_root independently,
+// taking module_path from each file's own module declaration. It does not consult
+// dependency-pool-index / the module source index used by compile/load. Where roots
+// shadow the same module path, this producer may emit facts for both the winning
+// source and the shadowed stub; compile binds only the winner.
+pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
+    let mut out = Vec::new();
+    let mut files_scanned = 0usize;
+    let mut files_parsed = 0usize;
+    for file in corpus_dag_files_for_roots(pool_roots) {
+        files_scanned += 1;
+        if decl_facts_of_file(&file, &mut out).is_some() {
+            files_parsed += 1;
+        }
+    }
+    sort_decl_facts(&mut out);
     DeclFactsCorpusWalk {
         facts: out,
         files_scanned,
@@ -2113,6 +2128,15 @@ pub fn eval_decl_facts_at(
     }
     let qualified: std::collections::HashSet<&str> =
         qualified_names.iter().map(String::as_str).collect();
+    // A QUALIFIED KEY NAMES ITS FILE (DESIGN section 3, the one name-to-path rule): read the files the
+    // asked keys derive, never the corpus. A bare type spelling names no module, so a call that asks
+    // one keeps the walk (its only consumer is v2.std.node_reflection; the trigger is that consumer
+    // asking by qualified name).
+    if type_names.is_empty() {
+        let facts = keyed_decl_facts(pool_roots, &qualified)
+            .map_err(|refusal| InterpError::DeclFactsKeyedReadRefused { refusal })?;
+        return eval_decl_facts_rows(ctx, &facts);
+    }
     let typed: std::collections::HashSet<&str> = type_names.iter().map(String::as_str).collect();
     let facts = decl_facts_for_roots_shared(pool_roots);
     let matching: Vec<DeclFactRaw> = facts
@@ -2124,6 +2148,172 @@ pub fn eval_decl_facts_at(
         .cloned()
         .collect();
     eval_decl_facts_rows(ctx, &matching)
+}
+
+/// Why the keyed read refused. Each arm is a place the derived read cannot stand behind its answer,
+/// and none falls back to the walk: a fallback would hide the deficit (DESIGN section 5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclFactsKeyedRefusal {
+    /// The key has no module part, or its module is not a layout-derivable name.
+    KeyUnderivable { key: String, cause: String },
+    /// A pool root outside the layout trees: no file the layout derives can lie under it, so an
+    /// empty answer there would be a silent miss, not a reading.
+    RootOutsideLayout { root: String },
+    /// The derived file declares a different module than the one its path derives. The walk would
+    /// have keyed it by its declaration; the layout says it is not where that module lives.
+    LayoutDisagrees {
+        file: String,
+        derived_module: String,
+        declared_module: String,
+    },
+    /// The derived file exists but does not parse, so it can answer neither yes nor no for the key.
+    FileUnparsed { file: String },
+    /// The derived file's directory could not be acquired (a legacy physical roster, an unreadable
+    /// row file), refused as `acquire_dir_files` refuses it.
+    AcquisitionRefused { file: String, cause: String },
+}
+
+impl std::fmt::Display for DeclFactsKeyedRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DeclFactsKeyedRefusal::KeyUnderivable { key, cause } => {
+                write!(f, "decl_facts_at: key {key:?} derives no file: {cause}")
+            }
+            DeclFactsKeyedRefusal::RootOutsideLayout { root } => write!(
+                f,
+                "decl_facts_at: pool root {root:?} is outside the layout trees (dag, src/v2), so no key can derive a file under it"
+            ),
+            DeclFactsKeyedRefusal::LayoutDisagrees {
+                file,
+                derived_module,
+                declared_module,
+            } => write!(
+                f,
+                "decl_facts_at: {file} is where module {derived_module} is stored, but it declares module {declared_module:?}"
+            ),
+            DeclFactsKeyedRefusal::FileUnparsed { file } => write!(
+                f,
+                "decl_facts_at: {file} is the file an asked key derives, and it does not parse"
+            ),
+            DeclFactsKeyedRefusal::AcquisitionRefused { file, cause } => {
+                write!(f, "decl_facts_at: acquiring {file}: {cause}")
+            }
+        }
+    }
+}
+
+/// The module part of a qualified key: every segment before the last (a declaration name has no dot).
+fn qualified_key_module(key: &str) -> Result<&str, DeclFactsKeyedRefusal> {
+    match key.rfind('.') {
+        Some(at) if at > 0 && at + 1 < key.len() => Ok(&key[..at]),
+        _ => Err(DeclFactsKeyedRefusal::KeyUnderivable {
+            key: key.to_string(),
+            cause: "a qualified key is <module>.<name>, and this one has no module part"
+                .to_string(),
+        }),
+    }
+}
+
+/// A pool root's repository-relative spelling when it lies inside a layout tree.
+fn layout_pool_root(root: &str) -> Result<String, DeclFactsKeyedRefusal> {
+    let rel = repo_rel(&workspace_root().join(root));
+    let rel = rel.trim_end_matches('/').to_string();
+    let inside = ["dag", "src/v2"]
+        .iter()
+        .any(|tree| rel == *tree || rel.starts_with(&format!("{tree}/")));
+    if inside {
+        Ok(rel)
+    } else {
+        Err(DeclFactsKeyedRefusal::RootOutsideLayout {
+            root: root.to_string(),
+        })
+    }
+}
+
+/// The derived file must declare the module its path derives; otherwise it refuses, never re-keys.
+fn layout_agrees(file: &str, derived: &str, declared: &str) -> Result<(), DeclFactsKeyedRefusal> {
+    if declared == derived {
+        Ok(())
+    } else {
+        Err(DeclFactsKeyedRefusal::LayoutDisagrees {
+            file: file.to_string(),
+            derived_module: derived.to_string(),
+            declared_module: declared.to_string(),
+        })
+    }
+}
+
+/// The facts for the asked qualified keys, read from the files the keys derive.
+///
+/// Each distinct derived file is read once and contributes once per pool root that contains it:
+/// the walk visits every supplied root, so a file under two roots (or under `[r, r]`) answers twice
+/// and multiplicity stays the ambiguity signal it was. An absent file is a genuine miss.
+fn keyed_decl_facts(
+    pool_roots: &[String],
+    qualified: &std::collections::HashSet<&str>,
+) -> Result<Vec<DeclFactRaw>, DeclFactsKeyedRefusal> {
+    let roots = pool_roots
+        .iter()
+        .map(|r| layout_pool_root(r))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut files: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for key in qualified {
+        let module = qualified_key_module(key)?;
+        let rel = crate::cli_run::source_layout_lookup::module_storage_relative(module).map_err(
+            |cause| DeclFactsKeyedRefusal::KeyUnderivable {
+                key: key.to_string(),
+                cause,
+            },
+        )?;
+        files.insert(rel, module.to_string());
+    }
+    let ws = workspace_root();
+    let mut out = Vec::new();
+    for (rel, module) in files {
+        let holders = roots
+            .iter()
+            .filter(|root| rel.starts_with(&format!("{root}/")))
+            .count();
+        if holders == 0 {
+            continue;
+        }
+        let path = ws.join(&rel);
+        let Some(dir) = path.parent().filter(|d| d.is_dir()) else {
+            continue;
+        };
+        let listing: Vec<PathBuf> = std::fs::read_dir(dir)
+            .map_err(|e| DeclFactsKeyedRefusal::AcquisitionRefused {
+                file: rel.clone(),
+                cause: e.to_string(),
+            })?
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|p| p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("dag"))
+            .collect();
+        let acquired = crate::cli_run::derived_row_roster::acquire_dir_files(dir, listing)
+            .map_err(|cause| DeclFactsKeyedRefusal::AcquisitionRefused {
+                file: rel.clone(),
+                cause,
+            })?;
+        let Some(file) = acquired.iter().find(|f| f.path() == path.as_path()) else {
+            continue;
+        };
+        let mut facts = Vec::new();
+        // An unparseable derived file is not a miss: the key names it, so zero rows would hide it.
+        let Some(declared) = decl_facts_of_file(file, &mut facts) else {
+            return Err(DeclFactsKeyedRefusal::FileUnparsed { file: rel });
+        };
+        layout_agrees(&rel, &module, &declared)?;
+        let asked: Vec<DeclFactRaw> = facts
+            .into_iter()
+            .filter(|f| qualified.contains(f.qualified_name.as_str()))
+            .collect();
+        for _ in 0..holders {
+            out.extend(asked.iter().cloned());
+        }
+    }
+    sort_decl_facts(&mut out);
+    Ok(out)
 }
 
 fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpResult<Value> {
@@ -2777,5 +2967,85 @@ mod field_binder_default_tests {
             span_of(17, 22),
         );
         marshal_with_default(literal).expect("a literal default marshals");
+    }
+}
+
+#[cfg(test)]
+mod keyed_decl_facts_tests {
+    use super::{decl_facts_for_roots, keyed_decl_facts, layout_agrees, DeclFactsKeyedRefusal};
+    use std::collections::HashSet;
+
+    fn rows(facts: &[super::DeclFactRaw]) -> Vec<(String, String, String)> {
+        facts
+            .iter()
+            .map(|f| {
+                (
+                    f.qualified_name.clone(),
+                    f.rel_path.clone(),
+                    format!("{:?}", f.kind),
+                )
+            })
+            .collect()
+    }
+
+    // The keyed read answers exactly what the walk filtered to the same keys answered: a key in
+    // each tree, a key two rows answer, a key whose module exists but whose name does not, a
+    // key whose module has no file, and a doubled root.
+    #[test]
+    fn keyed_read_equals_the_walk_filtered_to_the_keys() {
+        let keys: HashSet<&str> = [
+            "std.integer.Int",
+            "v2.std.integer.Int",
+            "std.optional.Optional",
+            "std.optional.no_such_declaration",
+            "std.no_such_module.Thing",
+        ]
+        .into_iter()
+        .collect();
+        for roots in [
+            vec!["dag/std".to_string(), "src/v2/std".to_string()],
+            vec!["dag/std".to_string(), "dag/std".to_string()],
+        ] {
+            let walked: Vec<_> = decl_facts_for_roots(&roots)
+                .into_iter()
+                .filter(|f| keys.contains(f.qualified_name.as_str()))
+                .collect();
+            let keyed = keyed_decl_facts(&roots, &keys).expect("keyed read admits these keys");
+            assert!(!walked.is_empty());
+            assert_eq!(rows(&keyed), rows(&walked), "roots {roots:?}");
+        }
+    }
+
+    #[test]
+    fn a_root_outside_the_layout_refuses() {
+        let keys: HashSet<&str> = ["std.integer.Int"].into_iter().collect();
+        match keyed_decl_facts(&["/tmp".to_string()], &keys) {
+            Err(DeclFactsKeyedRefusal::RootOutsideLayout { root }) => assert_eq!(root, "/tmp"),
+            other => panic!("expected RootOutsideLayout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_key_without_a_module_refuses() {
+        let keys: HashSet<&str> = ["Int"].into_iter().collect();
+        match keyed_decl_facts(&["dag/std".to_string()], &keys) {
+            Err(DeclFactsKeyedRefusal::KeyUnderivable { key, .. }) => assert_eq!(key, "Int"),
+            other => panic!("expected KeyUnderivable, got {other:?}"),
+        }
+    }
+
+    // RED for the layout disagreement: a file at the path of a.b that declares a.c refuses with
+    // both names, and the agreeing case admits.
+    #[test]
+    fn a_file_declaring_another_module_refuses() {
+        assert_eq!(
+            layout_agrees("dag/a/b.dag", "a.b", "a.c"),
+            Err(DeclFactsKeyedRefusal::LayoutDisagrees {
+                file: "dag/a/b.dag".to_string(),
+                derived_module: "a.b".to_string(),
+                declared_module: "a.c".to_string(),
+            })
+        );
+        assert_eq!(layout_agrees("dag/a/b.dag", "a.b", "a.b"), Ok(()));
     }
 }
