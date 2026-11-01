@@ -1,0 +1,75 @@
+module test.claim.declared_container_argument_witness
+
+// THE CLASS THIS FILE HOLDS OPEN (gunbc.recurring_failure_mode a_declared_container_type_is_checked_by_head_only).
+// v1.compiler.infer declared_type_conformance_diags_core judged a declared container application by its head:
+// its ground test admitted only element collections whose first element was a kernel scalar, keyed collections
+// fell to an empty diagnostic list, and v1.compiler.infer_types node_type_compatible compared the first child only. So
+// `let q: Map<Bool, Bool> = m` over a Map<String, Int> compiled, and the emitted Rust dropped the annotation
+// (`let q = m.clone();`), leaving rustc nothing to refuse. The repair is
+// v1.compiler.infer application_arguments_inhabitance: every argument position, compared pairwise and recursively, three-valued so an
+// opaque position (an unsolved variable) never hides a concrete disagreement at a sibling position.
+//
+// ONE RED PER DECLARED POSITION (let, declared return, record field, call argument), a key-only and a
+// value-only disagreement, one two levels down, and the sibling-variable shape. Each RED is paired, as in
+// test.claim.generic_element_slot_binding_witness, with the same module minus the disagreement, because
+// compile_dag_rust_emit_check returns false for more than one reason.
+
+fn carg_prelude() -> String {
+  "fn mk() -> Map<String, Int> {\n  map_insert(empty_map(), \"a\", 1)\n}\n\nfn nest() -> List<List<Int>> {\n  [[1]]\n}\n\n"
+}
+
+fn carg_source(module_leaf: String, body: String) -> String {
+  concat(concat(concat("module cargs.", module_leaf), "\n\n"), concat(carg_prelude(), body))
+}
+
+test fn a_let_annotation_refuses_a_wrong_map_value_argument_test() -> Bool {
+  !compile_dag_rust_emit_check(carg_source(module_leaf: "letv", body: "fn f() -> Int {\n  let q: Map<String, Bool> = mk()\n  map_keys(q) |> count\n}\n"), "src/cargs_letv.rs", [], [])
+}
+
+test fn a_let_annotation_refuses_a_wrong_map_value_argument_control_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(carg_source(module_leaf: "letv", body: "fn f() -> Int {\n  let q: Map<String, Int> = mk()\n  map_keys(q) |> count\n}\n"), "src/cargs_letv.rs", ["fn f"], ["compile_error"])
+}
+
+test fn a_let_annotation_refuses_a_wrong_map_key_argument_test() -> Bool {
+  !compile_dag_rust_emit_check(carg_source(module_leaf: "letk", body: "fn f() -> Int {\n  let q: Map<Bool, Int> = mk()\n  map_keys(q) |> count\n}\n"), "src/cargs_letk.rs", [], [])
+}
+
+test fn a_declared_return_refuses_a_wrong_map_value_argument_test() -> Bool {
+  !compile_dag_rust_emit_check(carg_source(module_leaf: "ret", body: "fn f() -> Map<String, Bool> {\n  mk()\n}\n"), "src/cargs_ret.rs", [], [])
+}
+
+test fn a_declared_return_refuses_a_wrong_map_value_argument_control_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(carg_source(module_leaf: "ret", body: "fn f() -> Map<String, Int> {\n  mk()\n}\n"), "src/cargs_ret.rs", ["fn f"], ["compile_error"])
+}
+
+test fn a_declared_return_refuses_a_wrong_argument_two_levels_down_test() -> Bool {
+  !compile_dag_rust_emit_check(carg_source(module_leaf: "nested", body: "fn f() -> List<List<String>> {\n  nest()\n}\n"), "src/cargs_nested.rs", [], [])
+}
+
+test fn a_declared_return_refuses_a_wrong_argument_two_levels_down_control_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(carg_source(module_leaf: "nested", body: "fn f() -> List<List<Int>> {\n  nest()\n}\n"), "src/cargs_nested.rs", ["fn f"], ["compile_error"])
+}
+
+test fn a_record_field_refuses_a_wrong_map_value_argument_test() -> Bool {
+  !compile_dag_rust_emit_check(carg_source(module_leaf: "field", body: "type Box {\n  m: Map<String, Bool>\n}\n\nfn f() -> Box {\n  Box { m: mk() }\n}\n"), "src/cargs_field.rs", [], [])
+}
+
+test fn a_record_field_refuses_a_wrong_map_value_argument_control_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(carg_source(module_leaf: "field", body: "type Box {\n  m: Map<String, Int>\n}\n\nfn f() -> Box {\n  Box { m: mk() }\n}\n"), "src/cargs_field.rs", ["fn f"], ["compile_error"])
+}
+
+test fn a_call_argument_refuses_a_wrong_map_value_argument_test() -> Bool {
+  !compile_dag_rust_emit_check(carg_source(module_leaf: "arg", body: "fn take(m: Map<String, Bool>) -> Int {\n  0\n}\n\nfn f() -> Int {\n  take(m: mk())\n}\n"), "src/cargs_arg.rs", [], [])
+}
+
+test fn a_call_argument_refuses_a_wrong_map_value_argument_control_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(carg_source(module_leaf: "arg", body: "fn take(m: Map<String, Int>) -> Int {\n  0\n}\n\nfn f() -> Int {\n  take(m: mk())\n}\n"), "src/cargs_arg.rs", ["fn f"], ["compile_error"])
+}
+
+test fn an_unsolved_key_does_not_hide_a_wrong_value_argument_test() -> Bool {
+  !compile_dag_rust_emit_check(carg_source(module_leaf: "sibling", body: "fn g<T>(x: T) -> Map<T, Int> {\n  map_insert(empty_map(), x, 1)\n}\n\nfn f<T>(x: T) -> Map<T, Bool> {\n  g(x: x)\n}\n"), "src/cargs_sibling.rs", [], [])
+}
+
+test fn an_unsolved_key_does_not_hide_a_wrong_value_argument_control_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(carg_source(module_leaf: "sibling", body: "fn g<T>(x: T) -> Map<T, Int> {\n  map_insert(empty_map(), x, 1)\n}\n\nfn f<T>(x: T) -> Map<T, Int> {\n  g(x: x)\n}\n"), "src/cargs_sibling.rs", ["fn f"], ["compile_error"])
+}

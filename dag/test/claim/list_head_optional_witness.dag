@@ -1,0 +1,24 @@
+module test.claim.list_head_optional_witness
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List }
+import std.algebra { list_head }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data empty_ints: List<Int> = []
+data some_ints: List<Int> = [7, 8]
+
+test fn empty_list_head_is_absent() -> Bool {
+  match list_head(xs: empty_ints) {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn nonempty_list_head_is_present_first_element() -> Bool {
+  match list_head(xs: some_ints) {
+    Present { value: v } => v == 7
+    _ => false
+  }
+}

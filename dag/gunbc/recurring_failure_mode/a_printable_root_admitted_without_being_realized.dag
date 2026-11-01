@@ -24,9 +24,11 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // independent defects sat behind one another in the same part: a passage cut whose footprint equals the
 // plug lip's own OUTER footprint, which deletes the plug that seats the part and leaves a floating rim;
 // and, once that is repaired, a relief cut that clears far less of the depth a required keep-out
-// envelope claims, leaving a sliver of wall inside a clearance the kernel demands. The second was
-// already refusing a SIBLING root for the same volume, which is what makes this the admission route's
-// class and not one bad part. The class is spotable without running any geometry: ask WHEN a root's
+// envelope claims, leaving a sliver of wall inside a clearance the kernel demands. The second is
+// specific to this home: the sibling blower root realizes as one solid and passes that same keep-out
+// check at current main, with a manifest byte-identical across the repair, so nothing about it moved.
+// What makes this the admission route's class and not one bad part is not a second failing root -- it
+// is that nothing before the print dispatch builds ANY root. The class is spotable without running any geometry: ask WHEN a root's
 // realization first runs. If the answer is preparation on the printer lane, then every admission, every
 // plate commit and every operator GO before it is unverified geometry, and the committed plate is not a
 // receipt of anything.
@@ -48,7 +50,9 @@ data a_printable_root_admitted_without_being_realized: RecurringFailureMode = Re
 
     "WHY IT SURVIVES REVIEW: the claims about a root assert its SELECTION, which is a fact about the selection rule and stays true no matter what the geometry does. Nothing on the required path realizes the part, so there is no red to go red, and the plate artifact looks like the evidence that the missing check would have produced.",
 
-    "SPECIMEN (print dispatch, 2026-10-31). Preparation refused a flat-on-end duct root with 'DUCT: 2 disconnected solids'. The refusal reproduces byte-identically at the commit that admitted the root and committed its plate plan and at every revision since. Behind it: a passage cut with the plug lip's own outer footprint, which deletes the plug and leaves a floating rim; repair that and the same part then occupies 455 mm3 of a required POWER-KEEPOUT envelope, because the relief clears 11.5 mm of a 40 mm depth the envelope claims. A sibling root realizes as one solid and fails that second rule alone, at the same volume.",
+    "SPECIMEN (print dispatch, 2026-10-31). Preparation refused a flat-on-end duct root with 'DUCT: 2 disconnected solids'. The refusal reproduces byte-identically at the commit that admitted the root and committed its plate plan and at every revision since. Behind it: a passage cut with the plug lip's own outer footprint, which deletes the plug and leaves a floating rim; repair that and the same part then occupies 455 mm3 of a required POWER-KEEPOUT envelope, because the relief clears 11.5 mm of a 40 mm depth the envelope claims. The sibling blower root was first recorded as failing that second rule too; that reading was wrong (see the next receipt) -- it realizes as one solid and passes the keep-out check at current main, its manifest byte-identical across the repair.",
+
+    "A CONTROL IS ONLY ITS OUTPUT. An emitted realization program embeds its own sys.argv, so passing a different root's paths on the command line silently re-runs the FIRST root's model. The sibling failure in the first draft of this row came from exactly that: the control printed the other root's part name and it was not read. Name a realization run by the part name it prints, never by the paths typed at it.",
 
     "THE DISCRIMINATOR THAT BOUNDS IT: ask WHEN a root's realization first runs. If it is the print route's preparation, the class is present -- the admission route carries no realization obligation. If a pre-admission route already builds and counts every admitted root, it is not. This keeps the row usable rather than a warning about CAD.",
 
