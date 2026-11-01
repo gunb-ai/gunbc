@@ -11720,20 +11720,37 @@ fn effective_variant_parent_from_resolved(leaf_name: String, rt: Node, binding_k
   }
 }
 
+// A LOCAL OR MATCH-BOUND VALUE REFERENCE NAMES ITS OWN BINDING, NEVER A VARIANT (DESIGN section 6b,
+// the second link of the #15565 class -- same authority, same shape as lookup_item_for_value_ref).
+// `emit_info.variant_to_enum` and the resolved-type membership test below are flat bare-leaf reads over
+// the whole emission closure: a local parameter, `let`, lambda parameter or match-arm binder whose
+// spelling happens to equal a coproduct ARM in the closure (module-level, or merged whole-closure by
+// merge_global_bare_variant_locals) previously read `red` as `Color::red` and emitted the qualified
+// variant construction in place of the variable -- even though infer_var_binding_kind had correctly
+// decided LocalValueBinding, so typecheck passed on the local's own type and only emission diverged.
+// The lexical scope's answer is consumed here, once, for both value-reference emitters (emit_var_ref and
+// emit_typed_expr_base both reach a variant parent only through this fn): LocalValueBinding and
+// MatchBoundBinding are lexical, so no variant parent; every other kind keeps the existing resolution.
 fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
-  let leaf_name = value_ref_qualified_leaf(name: name)
-  let cached = match map_get(emit_info.variant_to_enum, leaf_name) {
-    Present { value: p } => if p != "" { Present { value: qualified_last_segment(name: p) } } else { none }
-    Absent => none
-  }
-  match cached {
-    Present { value: parent } => Present { value: parent }
-    Absent =>
-      match resolved_type {
-        Present { value: Resolved { node: rt } } =>
-          effective_variant_parent_from_resolved(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
-        _ => variant_parent_from_binding_kind(binding_kind: binding_kind)
+  match binding_kind {
+    Present { value: LocalValueBinding } => none
+    Present { value: MatchBoundBinding } => none
+    _ => {
+      let leaf_name = value_ref_qualified_leaf(name: name)
+      let cached = match map_get(emit_info.variant_to_enum, leaf_name) {
+        Present { value: p } => if p != "" { Present { value: qualified_last_segment(name: p) } } else { none }
+        Absent => none
       }
+      match cached {
+        Present { value: parent } => Present { value: parent }
+        Absent =>
+          match resolved_type {
+            Present { value: Resolved { node: rt } } =>
+              effective_variant_parent_from_resolved(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
+            _ => variant_parent_from_binding_kind(binding_kind: binding_kind)
+          }
+      }
+    }
   }
 }
 
