@@ -5,6 +5,8 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.llm.openai_contracts { openai_finish_reason_wire_contract }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.languages.json.emit { JsonNumber }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -374,3 +376,173 @@ type OpenAiResponses200Body {
   usage: OpenAiResponses200Usage
   service_tier: String?
 }
+
+// ---------------------------------------------------------------------------------------
+// THE REQUEST SIDE OF THE CHAT COMPLETIONS CALL, AND THE PAYLOAD OF ONE STREAMED CHUNK.
+//
+// The section above models the answer of a non-streaming call. This models the other two shapes
+// the same endpoint involves: what the caller sends, and what one event of a streamed answer
+// carries. They sit together because one member of the request decides which answer shape
+// arrives: `stream` false yields one OpenAiChatCompletion200Body, `stream` true yields a run of
+// OpenAiChatCompletionChunkBody payloads, one JSON object per event. This module does not own the
+// event framing -- extdeps.llm.openai_compat_sse owns the `data: ` line, the `[DONE]` sentinel,
+// an error that arrives as a data line, and a stream that ends without the sentinel -- and it
+// lists no products, engines or endpoints: the authority is the ExternalAuthority anchor at the
+// top of this file, read 2026-11-01, whose member list is what the coverage rows below declare
+// unmodelled rather than absent (DESIGN section 3, external upstream decomposition).
+//
+// WHY A SAMPLING PARAMETER IS CARRIED AS THE PARSER'S OWN JsonNumber, AND NEVER AS TEXT.
+// std.float declares Float as a name with no operators and no ruled literal home -- its comment
+// records that v2 refuses a float literal with infer_reason_float_literal_home_unruled -- and the
+// json parser keeps a number as JsonNumber { lexeme } without ever evaluating it. So a request
+// read that produced a Float for `temperature` would be inventing a numeric home the language has
+// not ruled, and a caller that compared `temperature` as TEXT would be validating a string
+// standing in for a number. The carrier is therefore the parser's own JsonNumber: a typed JSON
+// number lexeme with its standing, no range check, no comparison, and nothing here re-encodes a
+// body -- a forwarder that re-emits the lexeme it read sends the client's bytes back out
+// unchanged. openai_chat_completion_wire_frontier_rows names the one trigger that turns these
+// into values: a ruled Float literal and operator home in std.float.
+type OpenAiCompletionStop
+  = StopAtString { text: String }
+  | StopAtStrings { texts: List<String> }
+
+type OpenAiStreamOptions {
+  include_usage: Bool
+}
+
+// `max_tokens` is the member the anchor documents for this endpoint. The Responses API's
+// `max_output_tokens` is a different endpoint's member and is not borrowed in here.
+type OpenAiChatCompletionRequest {
+  model: String
+  messages: List<OpenAiChatMessage>
+  max_tokens: Int?
+  n: Int?
+  seed: Int?
+  stop: OpenAiCompletionStop?
+  stream: Bool
+  stream_options: OpenAiStreamOptions?
+  reasoning_effort: OpenAiReasoningEffort?
+  temperature: JsonNumber?
+  top_p: JsonNumber?
+  presence_penalty: JsonNumber?
+  frequency_penalty: JsonNumber?
+}
+
+// An enumerated member, so it gets the pair this file already uses for enumerated members: wire
+// name in, variant out, unknown kept whole. A request that names a fifth effort is not silently
+// read as one of the four, and it is not refused here either -- the endpoint owns that answer.
+type OpenAiReasoningEffort
+  = EffortMinimal
+  | EffortLow
+  | EffortMedium
+  | EffortHigh
+  | OpenAiReasoningEffortOther { raw: NonEmptyStr }
+
+data openai_reasoning_effort_minimal_wire: String = "minimal"
+data openai_reasoning_effort_low_wire: String = "low"
+data openai_reasoning_effort_medium_wire: String = "medium"
+data openai_reasoning_effort_high_wire: String = "high"
+
+fn parse_openai_reasoning_effort(raw: String) -> OpenAiReasoningEffort {
+  if raw == openai_reasoning_effort_minimal_wire { EffortMinimal }
+  else if raw == openai_reasoning_effort_low_wire { EffortLow }
+  else if raw == openai_reasoning_effort_medium_wire { EffortMedium }
+  else if raw == openai_reasoning_effort_high_wire { EffortHigh }
+  else { OpenAiReasoningEffortOther { raw: raw } }
+}
+
+fn openai_reasoning_effort_wire(effort: OpenAiReasoningEffort) -> String {
+  match effort {
+    EffortMinimal => openai_reasoning_effort_minimal_wire
+    EffortLow => openai_reasoning_effort_low_wire
+    EffortMedium => openai_reasoning_effort_medium_wire
+    EffortHigh => openai_reasoning_effort_high_wire
+    OpenAiReasoningEffortOther { raw: r } => r
+  }
+}
+
+// ONE EVENT PAYLOAD of a streamed answer. The delta is what changed since the previous event: the
+// first event usually carries a role and no content, a middle event carries content and no role,
+// the last carries a finish_reason and neither. So every delta member is optional, and absent is
+// not empty -- an empty `content` is a token that is the empty string, which is a different fact
+// from a chunk that sent no content member at all.
+data openai_chat_completion_chunk_object_wire: String = "chat.completion.chunk"
+
+type OpenAiChatCompletionChunkDelta {
+  role: OpenAiChatMessageRole?
+  content: String?
+  refusal: String?
+}
+
+type OpenAiChatCompletionChunkChoice {
+  index: Int
+  delta: OpenAiChatCompletionChunkDelta
+  logprobs: OpenAiChatCompletion200Logprobs?
+  finish_reason: OpenAiFinishReason?
+}
+
+type OpenAiChatCompletionChunkBody {
+  id: String
+  object: String
+  created: Int
+  model: String
+  choices: List<OpenAiChatCompletionChunkChoice>
+  usage: OpenAiChatCompletion200Usage?
+  service_tier: String?
+  system_fingerprint: String?
+}
+
+// A streamed chunk's tool-call deltas are PARTIAL: an event may carry only a call index and a
+// fragment of one argument string, with no id and no function name, so the ToolCall record above
+// (id, type, function) cannot hold one. Modelling the accumulation is its own change: it needs a
+// decision about where the partial call is held between events, which belongs with whoever reads
+// the stream, not with the wire shape. Declared here rather than papered over with optional
+// fields on ToolCall, which would let a non-streaming request carry a half call.
+data structural_coverage_gap_openai_chat_chunk_tool_call_deltas: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiChatCompletionChunkDelta" },
+      Missing { item: "tool_call_delta_with_index_and_argument_fragment" },
+      Missing { item: "function_call_delta" }
+    ],
+    trigger: "a named home for a partial tool call held across events, with its accumulation rule"
+  }
+]
+
+// The request members this model does not carry, from the same anchor. Each is a member a caller
+// may send today; a caller that sends one is not thereby malformed. They are declared missing
+// rather than omitted, so the next change that needs one extends this record instead of
+// re-reading the endpoint's shape somewhere else.
+data structural_coverage_gap_openai_chat_completion_request_members: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "OpenAiChatCompletionRequest" },
+      Missing { item: "logit_bias" },
+      Missing { item: "logprobs_and_top_logprobs" },
+      Missing { item: "response_format" },
+      Missing { item: "tools_tool_choice_parallel_tool_calls" },
+      Missing { item: "legacy_functions_and_function_call" },
+      Missing { item: "audio" },
+      Missing { item: "modalities" },
+      Missing { item: "prediction" },
+      Missing { item: "max_completion_tokens" },
+      Missing { item: "service_tier" },
+      Missing { item: "store_and_metadata" },
+      Missing { item: "safety_identifier_and_user" },
+      Missing { item: "web_search_options" },
+      Missing { item: "prompt_cache_key" }
+    ],
+    trigger: "the first member a serving call must read or forward beyond sampling -- tools and response_format before the rest"
+  }
+]
+
+// A sampling parameter is carried as an un-evaluated JSON number lexeme. That is a frontier, not
+// a design: it dissolves when the language rules a float literal and operator home, at which
+// point these four fields become numbers and any read that compares them becomes meaningful.
+data openai_chat_completion_wire_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiChatCompletionRequest"),
+    reason: "temperature, top_p, presence_penalty and frequency_penalty are carried as the json parser's JsonNumber lexeme, because std.float declares Float as a name with no operators and no ruled literal home (v2 refuses a float literal: infer_reason_float_literal_home_unruled), and the json parser never evaluates a number's lexeme. Nothing here range-checks or orders them: that would be validation on text standing in for a number",
+    dissolution: unbound_dissolution(description: "feature:std-float-literal-and-operator-home - std.float rules a float literal home and the comparison operators for it, and extdeps.languages.json reads a lexeme into that value; then these four members are typed as that value, a read that rejects an out-of-range sampling parameter becomes meaningful and is placed at the caller that owns the range, and this row deletes. The lexeme path stays for a forwarder that must re-emit the client's bytes unchanged"),
+  ),
+]
