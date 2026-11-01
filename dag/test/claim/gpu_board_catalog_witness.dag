@@ -7,13 +7,19 @@ import std.measure { watt, watt_count }
 import extdeps.gpu.types {
   GpuBoardPowerSpecification, RatedBoardPower, ConfigurableBoardPower, GpuNamedPowerPoint,
   GpuBoardAdmission, GpuBoardAdmitted, GpuBoardRefused,
-  GpuBoardRefusal, BoardCarriesNoGpu, BoardPowerRangeInverted, BoardPowerDefaultOutsideRange, BoardNamedPointOutsideRange,
+  GpuBoardRefusal, SeveralGpusCountBelowTwo, BoardPowerRangeInverted, BoardPowerDefaultOutsideRange, BoardNamedPointOutsideRange,
   ZeroPowerSupported, ZeroPowerNotSupported, PcieAddInBoard, SxmModule, admit_gpu_board, gpu_board_power_ceiling
 }
 import extdeps.gpu.nvidia_a16 { nvidia_a16_board_facts, nvidia_a16_board_catalog }
 import gunbc.gpu_market.catalog_boards { gpu_catalog_board_admissions }
 import std.measure { byte_size_count }
-import extdeps.gpu.types { GpuBoardCatalogFacts, gpu_board_admission_facts, gpu_catalog_row_eq, PassiveThermalSolution, ActiveThermalSolution }
+import extdeps.gpu.types {
+  GpuBoardCatalogFacts, gpu_board_admission_facts, gpu_catalog_row_eq, PassiveThermalSolution, ActiveThermalSolution,
+  SeveralGpus, InterconnectRead, InterconnectUnread, OnBoardPcieSwitch, gpu_board_gpu_count,
+  gpu_board_single_model_memory, gpu_board_aggregate_memory,
+}
+import extdeps.external_authority { CitedToAuthority }
+import extdeps.gpu.nvidia_k80 { k80_board_specification_authority }
 import extdeps.gpu.nvidia_k80 { nvidia_tesla_k80_board_catalog }
 import extdeps.gpu.nvidia_m10 { nvidia_tesla_m10_board_catalog }
 import extdeps.gpu.nvidia_m60 { nvidia_tesla_m60_passive_board_catalog, nvidia_tesla_m60_active_board_catalog }
@@ -29,7 +35,7 @@ fn refused_as(a: GpuBoardAdmission, expect: GpuBoardRefusal) -> Bool {
   match a {
     GpuBoardAdmitted { row: _ } => false
     GpuBoardRefused { facts: _, refusal } => match refusal {
-      BoardCarriesNoGpu => match expect { BoardCarriesNoGpu => true  _ => false }
+      SeveralGpusCountBelowTwo { count: c } => match expect { SeveralGpusCountBelowTwo { count: e } => c == e  _ => false }
       BoardPowerRangeInverted => match expect { BoardPowerRangeInverted => true  _ => false }
       BoardPowerDefaultOutsideRange => match expect { BoardPowerDefaultOutsideRange => true  _ => false }
       BoardNamedPointOutsideRange { name } => match expect { BoardNamedPointOutsideRange { name: n } => (n as String) == (name as String)  _ => false }
@@ -39,7 +45,7 @@ fn refused_as(a: GpuBoardAdmission, expect: GpuBoardRefusal) -> Bool {
 
 fn with_power(f: GpuBoardCatalogFacts, p: GpuBoardPowerSpecification) -> GpuBoardCatalogFacts {
   GpuBoardCatalogFacts {
-    vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: f.gpu_count, attachment: f.attachment,
+    vendor: f.vendor, model: f.model, gpu: f.gpu, composition: f.composition, attachment: f.attachment,
     board_power: Present { value: p }, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id, driver_listed_name: f.driver_listed_name,
     figure_citations: f.figure_citations,
   }
@@ -53,7 +59,7 @@ test fn the_a16_is_admitted_with_its_brief_figures() -> Bool {
   match nvidia_a16_board_catalog {
     GpuBoardRefused { facts: _, refusal: _ } => false
     GpuBoardAdmitted { row } =>
-      row.facts.gpu_count == 4
+      gpu_board_gpu_count(composition: row.facts.composition) == 4
         && (row.facts.gpu.model as String) == "GA107-890"
         && (match row.facts.board_power {
           Present { value: ConfigurableBoardPower { default: d, minimum: lo, maximum: hi, named_points: _ } } =>
@@ -71,10 +77,11 @@ test fn the_a16_is_admitted_with_its_brief_figures() -> Bool {
 test fn a_board_that_breaks_an_invariant_has_no_row() -> Bool {
   let f = nvidia_a16_board_facts
   refused_as(a: admit_gpu_board(facts: GpuBoardCatalogFacts {
-      vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: 0, attachment: f.attachment, board_power: f.board_power,
+      vendor: f.vendor, model: f.model, gpu: f.gpu, attachment: f.attachment, board_power: f.board_power,
+      composition: SeveralGpus { count: 1, interconnect: InterconnectUnread { read_obligation: "fixture" } },
       zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id, driver_listed_name: f.driver_listed_name,
       figure_citations: f.figure_citations,
-    }), expect: BoardCarriesNoGpu)
+    }), expect: SeveralGpusCountBelowTwo { count: 1 })
     && refused_as(a: admit_gpu_board(facts: with_power(f: f, p: configurable(default: 250, minimum: 260, maximum: 250, named_points: []))), expect: BoardPowerRangeInverted)
     && refused_as(a: admit_gpu_board(facts: with_power(f: f, p: configurable(default: 300, minimum: 195, maximum: 250, named_points: []))), expect: BoardPowerDefaultOutsideRange)
     && refused_as(a: admit_gpu_board(facts: with_power(f: f, p: configurable(default: 250, minimum: 195, maximum: 250, named_points: [GpuNamedPowerPoint { name: "MaxQ", power: watt(count: 100) }]))), expect: BoardNamedPointOutsideRange { name: "MaxQ" })
@@ -115,14 +122,39 @@ fn board_ceiling_watts(f: GpuBoardCatalogFacts) -> Nat {
 
 fn gib(n: Nat) -> Nat { n * 1073741824 }
 
-// A MULTI-GPU BOARD IS ONE BOARD OF N DEVICES: the board's stated total memory is the device's memory
-// times its GPU count (K80: 2 x 12 = 24 GB; M10: 4 x 8 = 32 GB), and its power is stated once.
-test fn a_multi_gpu_board_is_n_devices_and_one_power() -> Bool {
+// A MULTI-GPU BOARD IS N MEMORY DOMAINS AND ONE POWER: the memory one model can use is one GPU's (K80:
+// 12 GB; M10: 8 GB; A16: 16 GB), the aggregate is only for independent copies (24 / 32 / 64 GB), and the
+// power is the board's once.
+test fn a_multi_gpu_board_is_n_memory_domains_and_one_power() -> Bool {
   let k80 = gpu_board_admission_facts(admission: nvidia_tesla_k80_board_catalog)
   let m10 = gpu_board_admission_facts(admission: nvidia_tesla_m10_board_catalog)
+  let a16 = gpu_board_admission_facts(admission: nvidia_a16_board_catalog)
   admitted(a: nvidia_tesla_k80_board_catalog) && admitted(a: nvidia_tesla_m10_board_catalog)
-    && k80.gpu_count == 2 && k80.gpu_count * byte_size_count(b: k80.gpu.memory.capacity) == gib(n: 24) && board_ceiling_watts(f: k80) == 300
-    && m10.gpu_count == 4 && m10.gpu_count * byte_size_count(b: m10.gpu.memory.capacity) == gib(n: 32) && board_ceiling_watts(f: m10) == 225
+    && gpu_board_gpu_count(composition: k80.composition) == 2
+    && byte_size_count(b: gpu_board_single_model_memory(facts: k80)) == gib(n: 12) && byte_size_count(b: gpu_board_aggregate_memory(facts: k80)) == gib(n: 24)
+    && board_ceiling_watts(f: k80) == 300
+    && gpu_board_gpu_count(composition: m10.composition) == 4
+    && byte_size_count(b: gpu_board_single_model_memory(facts: m10)) == gib(n: 8) && byte_size_count(b: gpu_board_aggregate_memory(facts: m10)) == gib(n: 32)
+    && board_ceiling_watts(f: m10) == 225
+    && byte_size_count(b: gpu_board_single_model_memory(facts: a16)) == gib(n: 16) && byte_size_count(b: gpu_board_aggregate_memory(facts: a16)) == gib(n: 64)
+}
+
+// THE INTERCONNECT CARRIES ITS STANDING: the K80's PLX switch is the board specification's statement; the
+// A16's switch is an nvidia-smi reading and stands as a transcription; the M10's is unread.
+test fn an_interconnect_is_cited_transcribed_or_unread_as_its_source_allows() -> Bool {
+  let k80 = gpu_board_admission_facts(admission: nvidia_tesla_k80_board_catalog)
+  let a16 = gpu_board_admission_facts(admission: nvidia_a16_board_catalog)
+  let m10 = gpu_board_admission_facts(admission: nvidia_tesla_m10_board_catalog)
+  (match k80.composition {
+    SeveralGpus { count: _, interconnect: InterconnectRead { interconnect: OnBoardPcieSwitch { downstream_link: _ }, standing: CitedToAuthority { authority: a } } } => a == k80_board_specification_authority
+    _ => false
+  })
+    && (match a16.composition {
+      SeveralGpus { count: 4, interconnect: InterconnectRead { interconnect: OnBoardPcieSwitch { downstream_link: _ }, standing: CitedToAuthority { authority: _ } } } => false
+      SeveralGpus { count: 4, interconnect: InterconnectRead { interconnect: OnBoardPcieSwitch { downstream_link: _ }, standing: _ } } => true
+      _ => false
+    })
+    && (match m10.composition { SeveralGpus { count: 4, interconnect: InterconnectUnread { read_obligation: _ } } => true  _ => false })
 }
 
 // ONE DEVICE, TWO BOARDS: the M60's passive and active boards carry the same GPU and differ in what only a
@@ -150,7 +182,7 @@ test fn the_census_k80_and_the_catalog_k80_agree() -> Bool {
   let ref = CensusRowRef { revision: list_of_nvidia_graphics_processing_units_page.revision, table: 89, row: 21 }
   let found = census_dispositions() |> filter(d => census_row_ref_eq(a: census_disposition_row(d: d), b: ref))
   count(found) == 1 && found |> all(d => match d {
-    CensusIncluded { row: _, cards: cs } => count(cs) == 1 && cs |> all(c => c.gpu_count == k80.gpu_count
+    CensusIncluded { row: _, cards: cs } => count(cs) == 1 && cs |> all(c => c.gpu_count == gpu_board_gpu_count(composition: k80.composition)
       && byte_size_count(b: c.memory_per_gpu) == byte_size_count(b: k80.gpu.memory.capacity))
     _ => false
   })
