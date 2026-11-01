@@ -117,7 +117,7 @@ import product.electrical.identification {
   RatingPrintedOnBody,
   ResistanceCodeRead,
 }
-import product.p4261.design {
+import product.p4261.carrier {
   AwayFromLatch,
   CarrierLayoutObservation,
   ConnectorHousing,
@@ -127,7 +127,7 @@ import product.p4261.design {
   RowSide,
   SideUnrecorded,
 }
-import product.p4261.e1 {
+import product.p4261.e1_b {
   e1_ground_ref,
   e1_j68,
   e1_j68_points,
@@ -137,7 +137,7 @@ import product.p4261.e1 {
 
 // WHAT IS DERIVED FROM A CARRIER'S RECORDS: polarity, placement across the input, the input voltage
 // bound, the energized draw, switch and controller-pin standings, and the readings that some
-// derivations take from the E1's records.
+// derivations take from the E1 board's records.
 
 // ── POLARITY ──────────────────────────────────────────────────────────────────────────────────
 

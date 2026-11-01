@@ -1,4 +1,4 @@
-module product.p4261.k1
+module product.p4261.k1_a
 
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
@@ -90,7 +90,7 @@ import product.electrical.identification {
   RatingPrintedOnBody,
   ResistanceCodeRead,
 }
-import product.p4261.design {
+import product.p4261.carrier {
   AssemblyLabel,
   BackplaneConnectorObservation,
   beige_part_discriminator,
@@ -142,7 +142,9 @@ import product.p4261.bench {
   t4_basis,
 }
 
-// THE K1 UNIT (design p4261-k1-a): its listing photographs, bench records and phases.
+// THE K1 BOARD WE HOLD (asset p4261-k1-a; NVIDIA assembly revision K1, extdeps.nvidia.p4261 p4261_k1):
+// its listing photographs, bench records and phases. A reading here is of this board, not of the
+// revision.
 
 // ── THE K1 UNIT (listing photographs; design p4261-k1-a) ────────────────────────────────────
 

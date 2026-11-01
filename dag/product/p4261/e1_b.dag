@@ -1,4 +1,4 @@
-module product.p4261.e1
+module product.p4261.e1_b
 
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
@@ -159,7 +159,7 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.electrical.investigation_hypothesis { InvestigationHypothesis }
-import product.p4261.design {
+import product.p4261.carrier {
   AcrossRows,
   AlongRow,
   AssemblyLabel,
@@ -220,8 +220,9 @@ import product.p4261.bench {
   t4_basis,
 }
 
-// THE E1 UNIT (design p4261-e1-b): its bench records, phases, incidents and its own fault
-// hypotheses.
+// THE E1 BOARD WE HOLD (asset p4261-e1-b; NVIDIA assembly revision E1, extdeps.nvidia.p4261 p4261_e1):
+// its bench records, phases, incidents and its own fault hypotheses. A reading here is of this board,
+// not of the revision.
 
 // PIN 7 IS HELD AT 0 V; Q301, HELD ON, IS THE LEADING CANDIDATE. Read on its own lead at 48 V, pin 7 is
 // far below its threshold (controller_enable_standing), so the input stage is held off by its enable. Unpowered, the

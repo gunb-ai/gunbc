@@ -123,7 +123,7 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.electrical.investigation_hypothesis { hypothesis_text }
-import product.p4261.design {
+import product.p4261.carrier {
   AssemblyLabel,
   AwayFromLatch,
   BoardMarking,
@@ -156,7 +156,7 @@ import product.p4261.design {
   UsbSuperSpeedMicroB,
   WholeBoardPhotographed,
 }
-import product.p4261.e1 {
+import product.p4261.e1_b {
   e1_ground_ref,
   e1_j24,
   e1_j24_pin,

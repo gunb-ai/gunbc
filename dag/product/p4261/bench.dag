@@ -12,10 +12,10 @@ import product.electrical.continuity {
   ProbeRecord,
 }
 
-// WHAT ONE BENCH SESSION RECORDED ACROSS BOTH UNITS: statements and probe-point bases that the E1's
-// and the K1's records each cite, held here so neither unit's module imports the other's. Three
-// keep their e1_ names (e1_read_ma, e1_draw_unrecorded, e1_short_after_said): the K1's records cite
-// them too.
+// WHAT ONE BENCH SESSION RECORDED ACROSS BOTH UNITS: statements and probe-point bases that the E1 board's
+// and the K1 board's records each cite, held here so neither unit's module imports the other's. Three
+// keep their e1_ names (e1_read_ma, e1_draw_unrecorded, e1_short_after_said): the K1 board's records
+// cite them too.
 
 data inductor_pad_unrecorded: NonEmptyStr = "pad read (which of the two unrecorded)"
 

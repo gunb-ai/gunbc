@@ -1,4 +1,4 @@
-module product.p4261.design
+module product.p4261.carrier
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
@@ -37,11 +37,12 @@ import product.electrical.investigation_hypothesis { InvestigationHypothesis }
 // says so. Strings below are transcriptions of what was printed or said, obligations, hypotheses, or
 // renderer output; no deduction reads them.
 //
-// THE P4261 AS A DESIGN: shared carrier-observation vocabulary, reference pinouts, discriminators and
-// hypotheses. Being stored here does not make a unit's observation a fact about every P4261; each keeps
-// the evidence standing it had. Each unit's own records are product.p4261.e1 and product.p4261.k1, readings that one
-// bench session took across both units are product.p4261.bench, the derivations are
-// product.p4261.readings and the rendered report is product.p4261.report.
+// WHAT WE KNOW OF THE P4261 FROM THE BOARDS WE HOLD: the carrier-observation vocabulary, reference
+// pinouts, discriminators and our hypotheses about NVIDIA's design. NVIDIA's own assembly revisions
+// (E1, K1) are extdeps.nvidia.p4261; being stored here does not make one board's observation a fact
+// about a revision or about every P4261. Each board's records are product.p4261.e1_b and
+// product.p4261.k1_a, readings one bench session took across both boards are product.p4261.bench,
+// the derivations are product.p4261.readings and the rendered report is product.p4261.report.
 
 // ── CONNECTOR HOUSINGS ────────────────────────────────────────────────────────────────────────
 

@@ -143,7 +143,7 @@ import product.electrical.identification {
   regulator_pins,
   shared_withstand,
 }
-import product.p4261.design {
+import product.p4261.carrier {
   AwayFromLatch,
   CarrierLayoutObservation,
   ConnectorHousing,
@@ -159,7 +159,7 @@ import product.p4261.design {
   WholeBoardPhotographed,
 }
 import product.p4261.bench { inductor_pad_far_u4, inductor_pad_near_u4, inductor_pad_unrecorded }
-import product.p4261.e1 {
+import product.p4261.e1_b {
   e1_after_lift_rail_resistances,
   e1_after_short_resistances,
   e1_back_cluster,
@@ -290,7 +290,7 @@ import product.p4261.e1 {
   p4261_e1_layout,
   p4261_near_4r7_converter_hypothesis,
 }
-import product.p4261.k1 {
+import product.p4261.k1_a {
   k1_200,
   k1_beige,
   k1_converter_far,
