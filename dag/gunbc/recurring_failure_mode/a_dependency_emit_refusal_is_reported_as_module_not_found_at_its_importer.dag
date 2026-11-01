@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.a_dependency_emit_refusal_is_reported_as_module_not_found_at_its_importer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_dependency_emit_refusal_is_reported_as_module_not_found_at_its_importer: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_dependency_emit_refusal_is_reported_as_module_not_found_at_its_importer" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**When a dependency module fails to emit, the native `emit` CLI reports `resolve_module_not_found` at every module that imports it, naming the stage 'resolve', so the cause (the dependency's own emit refusal) is not shown where the reader looks.** Observed 2026-11-01 by calm-crab-645 for gunbc#15603's lane (job fold-init-red, native binary sha e7509b42, `emit --entry <module> --source-root ...`): all three fold_empty_init fixtures refused `resolve_module_not_found`, including std modules. Four controls (all exit 1) showed it was a cascade from emit failures of std.optional, std.float and std.unicode.types (generic/opaque members not realized), not a layout or source-root fault; quick-newt-573's source-root=repo-root lead was refuted. It cost this session an investigation route: the native emit run could not observe an infer defect and was abandoned for an infer-boundary claim.",
+
+    "RUNG: unread as an occurrence-grain class. Invalid state: a dependency absent from the emitted closure is recorded as a module absent from the source population. Harm: a mislabeled stage sends the reader to layout and import fixes. Next trigger: the missing dependency is recorded with its own typed emit refusal and the importer's diagnostic cites it. Ceiling not assessed here; this row files the occurrence and does not claim the repair.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.name_resolve", decl_name: "resolve_module_not_found_diagnostic_from_missing", field: WholeDeclaration },
+  ],
+}
