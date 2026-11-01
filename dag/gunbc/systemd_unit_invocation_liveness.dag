@@ -58,7 +58,7 @@ type UnitRunIdentity {
 // observation interface, not in the run identity: a run names one start of one unit, whoever else shares its id shape.
 type UnitInvocationObservation
   = UnitInvocationPresent { unit: NonEmptyStr, run: UnitRunIdentity }
-  | UnitInvocationAbsent { unit: NonEmptyStr, manager: SystemdManagerInstance }
+  | UnitInvocationAbsent { unit: NonEmptyStr, manager: SystemdManagerInstance, boot_id: Uuid, boot_started_at: EpochSecs }
   | UnitInvocationUnreadable { cause: NonEmptyStr }
 
 fn systemd_manager_wire(manager: SystemdManagerInstance) -> String {
@@ -78,7 +78,7 @@ fn unit_invocation_observation(manager: SystemdManagerInstance, unit: NonEmptySt
       BootTimeUnparseable { field: _ } => UnitInvocationUnreadable { cause: "/proc/stat btime is not an integer" as NonEmptyStr }
       BootTimeBeforeEpoch { field: _ } => UnitInvocationUnreadable { cause: "/proc/stat btime precedes the epoch" as NonEmptyStr }
       BootTimeObserved { epoch_seconds: t } =>
-        if trim(s: invocation_text) == "" { UnitInvocationAbsent { unit: unit, manager: manager } }
+        if trim(s: invocation_text) == "" { UnitInvocationAbsent { unit: unit, manager: manager, boot_id: boot, boot_started_at: t } }
         else { match systemd_invocation_id_of(text: invocation_text) {
           Absent => UnitInvocationUnreadable { cause: "InvocationID is not 32 lowercase hex digits (systemd.exec(5))" as NonEmptyStr }
           Present { value: inv } => UnitInvocationPresent { unit: unit, run: UnitRunIdentity { manager: manager, boot_id: boot, boot_started_at: t, invocation_id: inv } }
@@ -91,7 +91,8 @@ fn unit_invocation_observation(manager: SystemdManagerInstance, unit: NonEmptySt
 // holder's own unit and manager: a different unit, or a different manager, is a FOREIGN SUBJECT and is
 // HolderLivenessUnobservable, never dead. Within the right subject, a later boot ended every run of the earlier one
 // (the observed boot must START AFTER the recorded one, else the order is unobservable), a different InvocationID on
-// the same boot is a later start of the unit, and an empty InvocationID is a unit with no start. Only the full triple
+// the same boot is a later start of the unit, and an empty InvocationID is a unit with no start ON A BOOT THAT PASSES THE
+// SAME ORDER CHECK (an absent reading carries its boot, so an earlier or equal-start boot is unobservable, not dead). Only the full triple
 // matching is live.
 fn unit_invocation_holder_liveness(
   recorded: UnitRunIdentity,
@@ -100,10 +101,11 @@ fn unit_invocation_holder_liveness(
 ) -> DurableHoldHolderLiveness {
   match observed {
     UnitInvocationUnreadable { cause: c } => HolderLivenessUnobservable { cause: c }
-    UnitInvocationAbsent { unit: u, manager: m } =>
+    UnitInvocationAbsent { unit: u, manager: m, boot_id: b, boot_started_at: t } =>
       if (u as String) != (holder_unit as String) { HolderLivenessUnobservable { cause: "the observation concerns another unit than the recorded holder's" as NonEmptyStr } }
       else if systemd_manager_wire(manager: m) != systemd_manager_wire(manager: recorded.manager) { HolderLivenessUnobservable { cause: "the observation is from another systemd manager than the recorded holder's" as NonEmptyStr } }
-      else { HolderObservedDead { evidence: "the holder's unit has no InvocationID; the recorded start is gone" as NonEmptyStr } }
+      else if (b as String) != (recorded.boot_id as String) && t <= recorded.boot_started_at { HolderLivenessUnobservable { cause: "the observed boot does not start after the recorded boot" as NonEmptyStr } }
+      else { HolderObservedDead { evidence: "the holder's unit has no InvocationID on the recorded boot or a later one; the recorded start is gone" as NonEmptyStr } }
     UnitInvocationPresent { unit: u, run: o } =>
       if (u as String) != (holder_unit as String) { HolderLivenessUnobservable { cause: "the observation concerns another unit than the recorded holder's" as NonEmptyStr } }
       else if systemd_manager_wire(manager: o.manager) != systemd_manager_wire(manager: recorded.manager) { HolderLivenessUnobservable { cause: "the observation is from another systemd manager than the recorded holder's" as NonEmptyStr } }

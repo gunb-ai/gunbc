@@ -28,11 +28,13 @@ test fn a_reading_with_a_mismatched_boot_invocation_or_manager_is_not_the_same_r
       let live = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_a, stat: boot_old_stat, inv: inv_a))
       let other_inv = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_a, stat: boot_old_stat, inv: inv_b))
       let later_boot = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: stat_text, inv: inv_a))
-      let gone = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: UnitInvocationAbsent { unit: unit_a, manager: SystemManager })
+      let gone = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_a, stat: boot_old_stat, inv: ""))
+      let gone_later_boot = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: stat_text, inv: ""))
       (match live { HolderObservedLive { evidence: _ } => true  _ => false })
         && (match other_inv { HolderObservedDead { evidence: _ } => true  _ => false })
         && (match later_boot { HolderObservedDead { evidence: _ } => true  _ => false })
         && (match gone { HolderObservedDead { evidence: _ } => true  _ => false })
+        && (match gone_later_boot { HolderObservedDead { evidence: _ } => true  _ => false })
     }
     _ => false
   }
@@ -44,10 +46,14 @@ test fn a_foreign_subject_or_unordered_boot_is_unobservable_never_dead() -> Bool
     UnitInvocationPresent { unit: _, run: r } => {
       let other_mgr = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: UserManager { uid: 1000 }, unit: unit_a, boot: boot_a, stat: stat_text, inv: inv_b))
       let other_unit = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_b, boot: boot_a, stat: stat_text, inv: inv_b))
-      let other_unit_absent = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: UnitInvocationAbsent { unit: unit_b, manager: SystemManager })
-      let other_mgr_absent = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: UnitInvocationAbsent { unit: unit_a, manager: UserManager { uid: 1000 } })
+      let other_unit_absent = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_b, boot: boot_a, stat: stat_text, inv: ""))
+      let other_mgr_absent = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: UserManager { uid: 1000 }, unit: unit_a, boot: boot_a, stat: stat_text, inv: ""))
       let earlier_boot = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: boot_old_stat, inv: inv_a))
-      (match other_mgr { HolderLivenessUnobservable { cause: _ } => true  _ => false })
+      let absent_earlier_boot = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: boot_old_stat, inv: ""))
+      let absent_equal_start = unit_invocation_holder_liveness(recorded: r, holder_unit: unit_a, observed: observed(manager: SystemManager, unit: unit_a, boot: boot_b, stat: stat_text, inv: ""))
+      (match absent_earlier_boot { HolderLivenessUnobservable { cause: _ } => true  _ => false })
+        && (match absent_equal_start { HolderLivenessUnobservable { cause: _ } => true  _ => false })
+        && (match other_mgr { HolderLivenessUnobservable { cause: _ } => true  _ => false })
         && (match other_unit { HolderLivenessUnobservable { cause: _ } => true  _ => false })
         && (match other_unit_absent { HolderLivenessUnobservable { cause: _ } => true  _ => false })
         && (match other_mgr_absent { HolderLivenessUnobservable { cause: _ } => true  _ => false })
