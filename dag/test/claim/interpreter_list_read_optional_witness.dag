@@ -110,3 +110,13 @@ test fn a_field_read_off_an_absent_first_is_absent() -> Bool {
 test fn a_field_read_off_a_present_first_is_present() -> Bool {
   match ilro_rows.first().status { Present { value: s } => s == "ok"  Absent => false }
 }
+
+data ilro_ints: List<Int> = [1]
+
+data ilro_no_ints: List<Int> = []
+
+// The declared Optional eliminated by match on an Int list: Present carries the element, Absent the miss.
+test fn a_present_first_matches_its_value_and_an_absent_first_matches_absent() -> Bool {
+  (match ilro_ints.first() { Present { value: v } => v == 1  Absent => false })
+    && (match ilro_no_ints.first() { Present { value: v } => false  Absent => true })
+}
