@@ -5337,6 +5337,20 @@ pub fn lookup_item_by_leaf(
 pub fn lookup_item_for_value_ref(
     resolved_name: String,
     self_module: String,
+    binding_kind: Option<Rc<VarBindingKind>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<ItemLookup> {
+    match binding_kind.clone().as_deref().cloned() {
+        Some(VarBindingKind::LocalValueBinding) => Rc::new(ItemLookup::ItemNotFound),
+        Some(VarBindingKind::MatchBoundBinding) => Rc::new(ItemLookup::ItemNotFound),
+        _ => lookup_item_for_declared_value_ref(resolved_name, self_module, registry, emit_info),
+    }
+}
+
+pub fn lookup_item_for_declared_value_ref(
+    resolved_name: String,
+    self_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<ItemLookup> {
@@ -24841,7 +24855,7 @@ pub fn emit_value_ref_ident(
             let leaf = value_ref_qualified_leaf(name.clone());
             let qualifier = value_ref_qualifier_prefix(name.clone());
             if (qualifier.clone() != "".to_string()) {
-                match (*lookup_item_for_value_ref(name.clone(), self_module, registry.clone(), emit_info.clone())).clone() {
+                match (*lookup_item_for_declared_value_ref(name.clone(), self_module, registry.clone(), emit_info.clone())).clone() {
     ItemLookup::ItemFound { info: info, .. } => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone(), emit_info.clone()),
     ItemLookup::ItemLeafAmbiguous { leaf: ambiguous_leaf, .. } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
     ItemLookup::ItemNotFound => crate::v1_compiler_emit::emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
@@ -24976,6 +24990,7 @@ pub fn emit_var_ref(
                             std::option::Option::None => match (*lookup_item_for_value_ref(
                                 resolved_name.clone(),
                                 module_name.clone(),
+                                binding_kind.clone(),
                                 registry.clone(),
                                 emit_info.clone(),
                             ))
@@ -25136,6 +25151,7 @@ pub fn emit_typed_expr_base(
                                     match (*lookup_item_for_value_ref(
                                         resolved_name.clone(),
                                         scope.module_name.clone(),
+                                        binding_kind.clone(),
                                         registry.clone(),
                                         emit_info.clone(),
                                     ))
