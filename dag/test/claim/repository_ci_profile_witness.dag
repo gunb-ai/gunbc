@@ -738,7 +738,7 @@ test fn a_quarantine_with_no_declared_causes_is_refused_at_admission() -> Bool {
       }
     ])
   ) {
-    Present { value: reason } => string_contains(s: reason as String, pattern: "declare no expected causes")
+    Present { value: reason } => string_contains(s: reason as String, pattern: "declares no expected causes")
     Absent => false
   }
 }

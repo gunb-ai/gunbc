@@ -654,6 +654,78 @@ fn expected_repository_witnesses_yml(profile: RepositoryCiProfile, seed: PublicS
   yaml_emission_text(result: repository_witnesses_yml_emission(profile: profile, seed: seed, program: program))
 }
 
+// AN ENFORCED ROW WITHOUT AN AGGREGATE IS A GATE THAT RUNS NOTHING AND EXITS 0. The aggregate is the step
+// that reads the enforced verdicts; with it absent, aggregate_statements emits no statement for an Enforced
+// entry and every other verdict builder skips Enforced - the required job would be green while judging
+// nothing. A silent widen landing a passing gate (DESIGN §5), so the combination is refused at admission
+// rather than emitted: declare the aggregate that reads the verdicts, or drop the enforced rows.
+fn enforced_rows_need_an_aggregate_refusal(program: RosterProgram) -> Optional<NonEmptyStr> {
+  let enforced = count(
+    filter(program.entries, e => match e.kind {
+      Enforced => true
+      KnownRed { reason: _, expected_causes: _, restoration_trigger: _ } => false
+      MustNotCompile { guards: _, expected_refusals: _, dissolution: _ } => false
+    })
+  )
+  match program.aggregate {
+    Absent =>
+      if enforced > 0 {
+        Present {
+          value: "REFUSE: the roster program has enforced rows but no aggregate step, so the gate would run no enforced claim and exit 0; declare the aggregate that reads the verdicts, or remove the enforced rows"
+        }
+      } else {
+        Absent
+      }
+    Present { value: _ } => Absent
+  }
+}
+
+// A QUARANTINE WITH NO DECLARED CAUSES HOLDS ANY FAILURE, and a wall with no expected refusal text refuses
+// nothing: the verdict arms read the row's declared lists, so an empty list turns a real regression into a
+// held one. Non-empty by admission, refused before emission.
+fn declared_cause_lists_are_never_empty(program: RosterProgram) -> Optional<NonEmptyStr> {
+  let empty_quarantines = count(
+    filter(program.entries, e => match e.kind {
+      Enforced => false
+      KnownRed { reason: _, expected_causes: causes, restoration_trigger: _ } => count(causes) == 0
+      MustNotCompile { guards: _, expected_refusals: _, dissolution: _ } => false
+    })
+  )
+  let empty_walls = count(
+    filter(program.entries, e => match e.kind {
+      Enforced => false
+      KnownRed { reason: _, expected_causes: _, restoration_trigger: _ } => false
+      MustNotCompile { guards: _, expected_refusals: refusals, dissolution: _ } => count(refusals) == 0
+    })
+  )
+  if empty_quarantines > 0 {
+    Present {
+      value: "REFUSE: a KnownRed row declares no expected causes, so any failure - including an unrelated one - would read as held; name the causes the quarantine holds"
+    }
+  } else {
+    if empty_walls > 0 {
+      Present {
+        value: "REFUSE: a MustNotCompile probe declares no expected refusal text, so the probe would pass on any refusal message; name the refusal each wall must print"
+      }
+    } else {
+      Absent
+    }
+  }
+}
+
+// THE GATE'S ADMISSION, ONE CALL: the program's own shape first (a vacuous gate or a vacuously-held
+// quarantine is refused whatever the profile says), then the repository's profile, route and roster.
+fn lane_admission(profile: RepositoryCiProfile, program: RosterProgram) -> Optional<NonEmptyStr> {
+  match enforced_rows_need_an_aggregate_refusal(program: program) {
+    Present { value: reason } => Present { value: reason }
+    Absent =>
+      match declared_cause_lists_are_never_empty(program: program) {
+        Present { value: reason } => Present { value: reason }
+        Absent => repository_witness_lane_refusal(profile: profile, program: program)
+      }
+  }
+}
+
 fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> YamlEmitResult {
   match lane_admission(profile: profile, program: program) {
     Present { value: reason } => YamlEmitRefused { path: profile.roster.workflow_file as String, reason: reason as String }
