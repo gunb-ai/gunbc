@@ -146,7 +146,7 @@ fn attempt_slots_census_for_instance(instance_id: NonEmptyStr, target: SessionAt
 
 fn attempt_slots_carry_for_instance(instance_id: NonEmptyStr, target: SessionAttemptSlotsStore) -> AttemptSlotsCarry {
   match replaced_attempt_slots_root_for(instance_id: instance_id) {
-    ReplacedAttemptSlotsRootFound { row: row } => AttemptSlotsCarryReported { report: attempt_slots_carry(target: target, moved: row) }
+    ReplacedAttemptSlotsRootFound { row: row } => attempt_slots_carry(target: target, moved: row)
     ReplacedAttemptSlotsRootNoRow { instance_id: i } => AttemptSlotsCarryNoDeclaredRow { instance_id: i }
     ReplacedAttemptSlotsRootDeclaredTwice { instance_id: i, rows: rows } => AttemptSlotsCarryDeclaredTwice { instance_id: i, rows: rows }
   }

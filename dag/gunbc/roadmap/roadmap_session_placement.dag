@@ -974,12 +974,13 @@ fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservati
         AttemptExitRecordNone => UnitTerminatedCauseUnknown { detail: "the user manager has no such unit and it left no exit record" }
         AttemptExitRecordFound { record: _ } => session_unit_lifecycle(o: attempt_unit_from_exit_record(unit: unit, record: record, start: AttemptUnitStartRecorded))
         // THE ARTIFACT IS ABOUT ITS WRITER, NOT ABOUT THE HOLDER. An entry whose name still spells the
-        // stop variables was created without the manager's substitution: the hook's writer is broken,
-        // and that says nothing about whether the process ended. It cannot keep the seat -- the answer
-        // comes from the unit's standing in the manager that ran it, the same as when the spool holds
-        // nothing. (What that standing is PROOF of belongs to the holder-death arms in
-        // gunbc.systemd_unit_invocation_liveness; it is never decided by the shape of a spool name.)
-        AttemptExitRecordWriterUnsubstituted { entries, variables } => UnitTerminatedCauseUnknown { detail: join(["the manager has no such unit, and its only exit artifact names the stop variables unexpanded (", join(variables, ", "), "): a defective writer, which is not evidence that the holder lives: ", join(entries, ", ")], "") }
+        // stop variables was created without the manager's substitution: the hook's writer is broken, and
+        // that says nothing about whether the process ended. So this arm names the defect and REFUSES,
+        // exactly as an unreadable entry does -- a broken writer is not a reading of the holder, and a
+        // seat is freed only by a reading bound to the holder's identity (the arms in
+        // gunbc.systemd_unit_invocation_liveness). Naming the writer here is what makes the defect
+        // countable; it is not, by itself, licence to release.
+        AttemptExitRecordWriterUnsubstituted { entries, variables } => UnitLifecycleUnknown { detail: join(["the manager has no such unit and its only exit artifact names the stop variables unexpanded (", join(variables, ", "), "): a defective writer, which is evidence about its writer and not about the holder, so the seat is kept: ", join(entries, ", ")], "") }
         AttemptExitRecordUnreadable { reason } => UnitLifecycleUnknown { detail: reason }
       }
     AttemptUnitActive => session_unit_lifecycle(o: loaded)
