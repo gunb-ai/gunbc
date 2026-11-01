@@ -606,14 +606,18 @@ data attempt_directory_wire_frontier_rows: List<FrontierRow> = [frontier_row_dec
   dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.harness.harness_turn", decl_name: "harness_wire_log_path")),
 )]
 
-fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
-  match append_log_member_census {
+fn attempt_append_log_census_row_from(rows: List<MemberCensusRow>, name: String) -> MemberCensusRow? {
+  match rows {
     Empty {} => Absent
     Cons { head: r, tail: rest } => match r.disposition {
-      MigrateToLogStore { framing: _, principal: _ } => if r.member == (name as NonEmptyStr) { Present { value: r } } else { attempt_append_log_census_row(name: name) }
-      _ => attempt_append_log_census_row(name: name)
+      MigrateToLogStore { framing: _, principal: _ } => if r.member == (name as NonEmptyStr) { Present { value: r } } else { attempt_append_log_census_row_from(rows: rest, name: name) }
+      _ => attempt_append_log_census_row_from(rows: rest, name: name)
     }
   }
+}
+
+fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
+  attempt_append_log_census_row_from(rows: append_log_member_census, name: name)
 }
 
 fn attempt_log_names_contain(names: List<String>, target: String) -> Bool {
