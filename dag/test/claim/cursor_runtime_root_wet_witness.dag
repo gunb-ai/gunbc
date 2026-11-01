@@ -155,7 +155,7 @@ fn wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: Fil
   let custody = wet_scratch(label: "dcust")
   let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: false)
   let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
-  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetdsandbox00001", snap: join([scratch, "/P"], "")) {
+  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetdsandbox00001") {
     Absent => false
     Present { value: snapshot } => {
       let reason = wet_standing_reason(s: cursor_observed_standing_for_program(program: stand_in, presence: presence, snapshot: snapshot))
@@ -227,7 +227,7 @@ fn wet_absent_realization_reaches_no_invocation() -> Bool {
   )
   let stand_in = wet_logging_stand_in(scratch: scratch, hang_on_list_models: false)
   let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
-  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetenotinstalled1", snap: join([scratch, "/P"], "")) {
+  let verdict = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: "wetenotinstalled1") {
     Absent => false
     Present { value: snapshot } => {
       let reason = wet_standing_reason(s: cursor_observed_standing_for_program(program: stand_in, presence: presence, snapshot: snapshot))

@@ -7,7 +7,7 @@ import extdeps.tools.gnu_coreutils { cat_program }
 import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 import extdeps.llm.cursor_cli { cursor_disable_auto_update_flag }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program, cursor_agent_executable_path, cursor_agent_pinned_version }
-import gunbc.dispatch_credential_acquisition { CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config }
+import gunbc.dispatch_credential_acquisition { CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config, cursor_attempt_runtime_slots, cursor_attempt_runtime_home_dirname }
 import gunbc.cursor_harness_credential {
   cursor_worker_turn_inner_argv,
   cursor_sandbox_discriminating_preflight_command,
@@ -112,7 +112,7 @@ test fn preflight_probe_and_turn_bind_the_attempt_home_and_config() -> Bool {
       names_word(words: preflight_words(), word: home) && names_word(words: preflight_words(), word: config)
         && names_word(words: probe_words(), word: home) && names_word(words: probe_words(), word: config)
         && names_word(words: turn_words(), word: home) && names_word(words: turn_words(), word: config)
-        && string_contains(s: home, pattern: "/srv/instance/")
+        && string_contains(s: home, pattern: join([fx_witness_stable_root("pinned"), cursor_attempt_runtime_slots.member as String, "attempt-a-cursor", cursor_attempt_runtime_home_dirname], "/"))
     }
   }
 }
