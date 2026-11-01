@@ -1342,15 +1342,34 @@ fn grant_exceeded_class_dir(store: GrantExceededStore, class: WorkClass) -> Stri
   join([grant_exceeded_parent(store: store), "/", work_class_wire(c: class)], "")
 }
 
-// CREATE-ONCE, THEN READ BACK. Recorded only when the file reads back carrying exactly the bytes committed; a
-// reference already on disk is AlreadyRecorded (the exceedance was counted by an earlier run) and is never
-// overwritten. Every other refusal carries its cause.
-fn compute_grant_exceeded_record(store: GrantExceededStore, class: WorkClass, reference: NonEmptyStr, content: String) -> CreateOnceRecording {
+// CREATE-ONCE, THEN READ BACK. Recorded only when the file reads back carrying exactly the bytes committed. A reference
+// already on disk is AlreadyRecorded only when the existing record is READ and is this attempt's: its sample line names this
+// class and this work identity (occupancy alone proves nothing, a foreign record at the path would otherwise count). An
+// unreadable or disagreeing record refuses with its cause, and the existing file is never overwritten.
+fn grant_exceeded_record_is_this_attempts(existing: String, class: WorkClass, identity: String) -> Bool {
+  let wanted = join(["sample: class=", work_class_wire(c: class), " identity=", identity, " "], "")
+  split(s: existing, delimiter: "\n").any(fn(l) { starts_with(s: l, prefix: wanted) })
+}
+
+fn compute_grant_exceeded_record(store: GrantExceededStore, class: WorkClass, reference: NonEmptyStr, identity: String, content: String) -> CreateOnceRecording {
   let dir = grant_exceeded_class_dir(store: store, class: class)
   if !compute_ensure_dir(instance: store.instance, path: dir) {
     CreateOnceRefused { path: dir, cause: join(["cannot ensure ", dir], "") }
   } else {
-    create_once_record(path: join([dir, "/", reference as String], ""), content: content)
+    let path = join([dir, "/", reference as String], "")
+    match create_once_record(path: path, content: content) {
+      CreateOnceAlreadyRecorded { path: p } => {
+        let back = Filesystem.Read(path: p)
+        if !back.success {
+          CreateOnceRefused { path: p, cause: "the existing exceedance record is unreadable, so it cannot be shown to be this attempt's" }
+        } else if grant_exceeded_record_is_this_attempts(existing: back.content, class: class, identity: identity) {
+          CreateOnceAlreadyRecorded { path: p }
+        } else {
+          CreateOnceRefused { path: p, cause: "the existing exceedance record at this reference is not this attempt's (class or work identity differs)" }
+        }
+      }
+      other => other
+    }
   }
 }
 
@@ -1453,7 +1472,7 @@ fn compute_run_opened(
     let recorded = match grant_exceeded_store_open(instance: instance) {
       GrantExceededUnopened { detail: d } => CreateOnceRefused { path: "", cause: d }
       GrantExceededOpened { store: store } => compute_grant_exceeded_record(
-        store: store, class: work_class_of(op: op), reference: reference,
+        store: store, class: work_class_of(op: op), reference: reference, identity: work_outcome_identity(o: attempt.outcome),
         content: compute_peak_sample_wire(instance: instance, identity: work_outcome_identity(o: attempt.outcome), op: op, grant: grant, summary: attempt.summary),
       )
     }

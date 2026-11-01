@@ -216,7 +216,34 @@ fn claims_evidence_residue_causes(tree: HostStateTree) -> List<String> {
 }
 
 // PER STORE: the entries of every store but the hold move first and unconditionally; the hold retires after (above).
+//
+// THE LEGACY WRITER IS EXCLUDED BEFORE ANY ENTRY MOVES. The old controller writes post-start evidence only inside a pass, and a
+// pass runs only while it holds the legacy slot fleet-print-controller.<n>; the move therefore takes that slot as the declared
+// fence owner FIRST (the exclusion the writer itself must pass, printer_execution_hold_fence_begin), and refuses with nothing
+// touched when a live legacy holder occupies it. The fence then stays held through every relocation and is handed over by
+// retire_hold. A host with no legacy hold entry never ran an old pass, so it has no legacy writer to exclude. This is not the
+// roadmap LegacyWriterFence (declared systemd units observed stopped and masked): the printer's old writer has no declared unit,
+// its mutual exclusion IS the hold slot. Residual: a person who deletes the slot entries out of band is not prevented
+// (gunbc.recurring_failure_mode runner_admission_closed_by_mask_alone names the same class for the units fence).
+fn legacy_writer_exclusion_causes(tree: HostStateTree) -> List<String> {
+  match printer_execution_hold_legacy_state(tree: tree) {
+    LegacyHoldAbsent => []
+    LegacyHoldUnreadable { detail: d } => [d]
+    LegacyHoldFenced { generation: _ } => fence_taken(tree: tree)
+    LegacyHoldLive { names: _ } => fence_taken(tree: tree)
+  }
+}
+
+fn fence_taken(tree: HostStateTree) -> List<String> {
+  match printer_execution_hold_fence_begin(tree: tree) {
+    HoldFenceRefused { cause: c } => [join(["the legacy printer controller is not excluded; nothing was moved: ", c], "")]
+    HoldFenceBegun { fence: _ } => []
+  }
+}
+
 fn printer_state_move(tree: HostStateTree) -> PrinterStateMove {
+  let excluded = legacy_writer_exclusion_causes(tree: tree)
+  if count(excluded) != 0 { return PrinterStateMoveRefused { cause: join(excluded, "; ") } }
   let residue = claims_evidence_residue_causes(tree: tree)
   if count(residue) != 0 { return PrinterStateMoveRefused { cause: join(residue, "; ") } }
   printer_state_move_parent(tree: tree)

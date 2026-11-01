@@ -5,14 +5,17 @@ import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
 import std.process { ProcessExit }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census, census_exit }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_class_grant { WorkClass, WorkClassCompile }
-import gunbc.compute.work_provider_local { grant_exceeded_store_open, GrantExceededOpened, GrantExceededUnopened, compute_grant_exceeded_count, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable }
+import gunbc.compute.work_provider_local { grant_exceeded_record_is_this_attempts, grant_exceeded_store_open, GrantExceededOpened, GrantExceededUnopened, compute_grant_exceeded_count, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable }
+import std.roster_frontier { DeclSubject, frontier_subject_eq }
+import std.decl_ref { decl_ref }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.durable_create_once { create_once_record, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
 import gunbc.fleet.printer_workflow_artifact { printer_starts_path }
@@ -79,22 +82,39 @@ fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
   blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
 }
 
-data evidence_forged_source: String = "module probe_evidence_forged\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.printer_start_evidence_store { StartEvidenceStore }\nfn forge() -> StartEvidenceStore { StartEvidenceStore { root: \"/tmp/x\" as NonEmptyStr } }\n"
+data evidence_forged_source: String = "module probe_evidence_forged\nimport std.types { NonEmptyStr }\nimport gunbc.fleet.printer_start_evidence_store { StartEvidenceStore }\nfn forge(dir: NonEmptyStr) -> StartEvidenceStore { StartEvidenceStore { root: dir } }\n"
 
-data microvm_forged_source: String = "module probe_microvm_forged\nimport std.types { NonEmptyStr }\nimport gunbc.runner.runner_microvm_slot_unit { MicrovmReceiptStore }\nfn forge() -> MicrovmReceiptStore { MicrovmReceiptStore { root: \"/tmp/x\" as NonEmptyStr } }\n"
+data microvm_forged_source: String = "module probe_microvm_forged\nimport std.types { NonEmptyStr }\nimport gunbc.runner.runner_microvm_slot_unit { MicrovmReceiptStore }\nfn forge(dir: NonEmptyStr) -> MicrovmReceiptStore { MicrovmReceiptStore { root: dir } }\n"
 
-data grant_forged_source: String = "module probe_grant_forged\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.work_provider_local { GrantExceededStore }\nfn forge(i: HostDashboardInstance) -> GrantExceededStore { GrantExceededStore { root: \"/tmp/x\" as NonEmptyStr, instance: i } }\n"
+data grant_forged_source: String = "module probe_grant_forged\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.work_provider_local { GrantExceededStore }\nfn forge(dir: NonEmptyStr, i: HostDashboardInstance) -> GrantExceededStore { GrantExceededStore { root: dir, instance: i } }\n"
+
+data evidence_twin_source: String = "module probe_evidence_twin\nimport std.types { NonEmptyStr }\nimport test.fixture.sealed_createonce_stores.unsealed_plain { StartEvidenceStore }\nfn forge(dir: NonEmptyStr) -> StartEvidenceStore { StartEvidenceStore { root: dir } }\n"
+
+data microvm_twin_source: String = "module probe_microvm_twin\nimport std.types { NonEmptyStr }\nimport test.fixture.sealed_createonce_stores.unsealed_plain { MicrovmReceiptStore }\nfn forge(dir: NonEmptyStr) -> MicrovmReceiptStore { MicrovmReceiptStore { root: dir } }\n"
+
+data grant_twin_source: String = "module probe_grant_twin\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport test.fixture.sealed_createonce_stores.unsealed { GrantExceededStore }\nfn forge(dir: NonEmptyStr, i: HostDashboardInstance) -> GrantExceededStore { GrantExceededStore { root: dir, instance: i } }\n"
 
 test fn a_forged_start_evidence_store_is_refused_at_compile() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: evidence_forged_source, subject: "StartEvidenceStore"), holds: fn(n) { n == 1 }))
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: evidence_forged_source, subject: "StartEvidenceStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: total_blocking_census(source: evidence_twin_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: evidence_twin_source, subject: "StartEvidenceStore"), holds: fn(n) { n == 0 }),
+  ])
 }
 
 test fn a_forged_microvm_receipt_store_is_refused_at_compile() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: microvm_forged_source, subject: "MicrovmReceiptStore"), holds: fn(n) { n == 1 }))
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: microvm_forged_source, subject: "MicrovmReceiptStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: total_blocking_census(source: microvm_twin_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: microvm_twin_source, subject: "MicrovmReceiptStore"), holds: fn(n) { n == 0 }),
+  ])
 }
 
 test fn a_forged_grant_exceeded_store_is_refused_at_compile() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: grant_forged_source, subject: "GrantExceededStore"), holds: fn(n) { n == 1 }))
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: grant_forged_source, subject: "GrantExceededStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: seal_violations(source: grant_twin_source, subject: "GrantExceededStore"), holds: fn(n) { n == 0 }),
+  ])
 }
 
 fn grant_instance(dir: String) -> HostDashboardInstance {
@@ -130,4 +150,25 @@ test fn an_old_grant_exceeded_record_reads_through_the_sealed_store() -> Bool {
       made && old && counted && again && fresh && kept.success && kept.content == "old-code-bytes"
     }
   }
+}
+
+// A RECORD AT THE SAME PATH IS NOT AUTOMATICALLY THIS ATTEMPT'S. The retry counts AlreadyRecorded only when the existing
+// record's sample line names this class and this work identity; a foreign record (other identity, other class, empty,
+// undecodable) is refused. The effect itself (compute_ensure_dir is privileged) is not driven here; this is the decision.
+test fn a_foreign_grant_exceeded_record_at_the_same_reference_is_not_this_attempts() -> Bool {
+  let mine = "class: compile\ngrant: g\nsample: class=compile identity=abc host=h observed_at=1 peak_upper_kib=2 operation=o\n"
+  grant_exceeded_record_is_this_attempts(existing: mine, class: WorkClassCompile, identity: "abc")
+    && !grant_exceeded_record_is_this_attempts(existing: mine, class: WorkClassCompile, identity: "abd")
+    && !grant_exceeded_record_is_this_attempts(existing: "", class: WorkClassCompile, identity: "abc")
+    && !grant_exceeded_record_is_this_attempts(existing: "garbage", class: WorkClassCompile, identity: "abc")
+}
+
+test fn a_harness_wire_log_frontier_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.harness.harness_turn", decl_name: "harness_wire_log_path") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+test fn a_gcp_iam_bootstrap_journal_frontier_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_authority_record") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
 }
