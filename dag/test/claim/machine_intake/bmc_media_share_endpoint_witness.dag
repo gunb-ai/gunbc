@@ -1,0 +1,207 @@
+module test.claim.machine_intake.bmc_media_share_endpoint_witness
+
+// WHAT IS CLAIMED, IN ONE LINE. The Mtcollins1 BMC NFS share's `server_address` is produced by the fleet
+// endpoint authority -- a FabricStorageShare ServiceEndpointIdentity whose name is derived from srv2's
+// HostnameAllocation -- and NOT by a literal address. The claim exists because the alternative is a comment
+// saying "the address comes from srv2's grounded row" while a bare "192.168.1.201" sits in a binding or a
+// fixture, which is exactly the second-source DESIGN 3 forbids.
+//
+// THE CLAIM RUNS AS A CLAIM: `gunbc run --claim-run --entry dag/test/claim/machine_intake/bmc_media_share_endpoint_witness.dag`.
+//
+// WHY THESE TESTS ARE DISCRIMINATING (a witness that cannot go RED witnesses nothing -- DESIGN 4d):
+//   * the resolver is asked to resolve the SAME srv2 endpoint under three different hostname-acceptance
+//     readings, so a resolver that conflated the open question with "yes" (Unobserved -> name form) would
+//     fail the Unobserved test while still passing a naive "gives an address" test;
+//   * a FabricStorageShare endpoint for a member that is NOT the segment holder, and a non-storage-role
+//     endpoint for the holder, must both be refused -- so a resolver that skipped the role/member gate and
+//     just rendered srv2's row would hand out an address where it must not, and go RED here.
+
+import std.types { Bool, NonEmptyStr, String }
+import std.error_primitives { Err, Ok }
+import std.optional { Absent, Optional, Present }
+import gunbc.machine_intake.bmc_media_share_endpoint {
+  ByHolderIpv4,
+  bmc_media_nfs_port,
+  resolve_fabric_storage_share_server_address,
+  srv2_bmc_media_share_server_address,
+  srv2_fabric_storage_share_endpoint,
+}
+import gunbc.megarac_media_model {
+  NfsServerAddressHostnameAccepted,
+  NfsServerAddressHostnameRefused,
+  NfsServerAddressHostnameUnobserved,
+  megarac_mtcollins1_nfs_server_address_formality,
+}
+import gunbc.fleet.fleet_endpoint {
+  FabricStorageShare,
+  FleetDns,
+  NtfyNotifier,
+  service_endpoint_identity,
+}
+import gunbc.fleet.fleet_naming { provider_endpoint }
+import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
+
+// THE EXPECTED ADDRESS, the address authority's grounded row rendered -- the single source of truth the
+// resolver must agree with and the only place this witness spells the value (via the row, never a literal).
+fn expected_holder_ipv4() -> String {
+  render_ipv4_address(addr: srv2_lan_ipv4) as String
+}
+
+fn allocation_for_srv3() -> Optional<HostnameAllocation> {
+  match filter(gunbc_fleet_hostname_allocations, a => a.fleet_slot == operator_host_srv3).first() {
+    Absent => Absent
+    Present { value: row } => Present { value: row }
+  }
+}
+
+// THE SHARE IS A REAL FABRIC-STORAGE-SHARE ENDPOINT FOR srv2 (Do-step 1). The endpoint the resolver consumes is
+// the one the endpoint authority builds: FabricStorageShare role, FleetDns authority, srv2 as the member (its
+// name derived from srv2's HostnameAllocation through the naming policy), on the NFS port. If the identity were
+// not actually inhabited, every downstream resolution would be vacuous -- so this claim grounds the rest.
+test fn witness_srv2_share_inhabits_the_fabric_storage_share_role() -> Bool {
+  match srv2_fabric_storage_share_endpoint() {
+    Err { value: _ } => false
+    Ok { value: ep } =>
+      ep.service == FabricStorageShare
+        && ep.authority == FleetDns
+        && ep.member.source.fleet_slot == operator_host_srv2
+        && ep.port == bmc_media_nfs_port
+  }
+}
+
+// THE OPEN QUESTION IS ANSWERED WITH THE IPv4, NOT A NAME (Do-step 2). While hostname acceptance is Unobserved,
+// resolve_fabric_storage_share_server_address on the real srv2 endpoint yields the holder's LAN IPv4. The value
+// can only be a cited resolution: `ByHolderIpv4` has a single producer (the grounded srv2 LAN row), so the
+// result is red against any value but that row's. A resolver that silently treated "unobserved" as "the
+// firmware accepts a hostname" would fail the Accepted-vs-Unobserved discriminator below.
+test fn witness_unobserved_hostname_standing_resolves_to_holder_ipv4() -> Bool {
+  match srv2_fabric_storage_share_endpoint() {
+    Err { value: _ } => false
+    Ok { value: ep } =>
+      match resolve_fabric_storage_share_server_address(
+        share: ep,
+        formality: NfsServerAddressHostnameUnobserved { what_would_ground_it: "probe" as NonEmptyStr },
+      ) {
+        Err { value: _ } => false
+        Ok { value: ByHolderIpv4 { address: a } } => (a as String) == expected_holder_ipv4()
+      }
+  }
+}
+
+// UNOBSERVED IS NOT THE SAME AS ACCEPTED -- THE DISCRIMINATOR FOR "TREATED AS YES". Under the very same
+// endpoint, Refused resolves to the holder IPv4, but Accepted is REFUSED (no grounded name-resolution exists).
+// If the implementation folded Unobserved and Accepted onto one arm, this and the previous claim could not both
+// hold, so the reading genuinely drives the decision.
+test fn witness_unobserved_and_refused_give_address_while_accepted_is_refused() -> Bool {
+  match srv2_fabric_storage_share_endpoint() {
+    Err { value: _ } => false
+    Ok { value: ep } =>
+      match resolve_fabric_storage_share_server_address(
+        share: ep,
+        formality: NfsServerAddressHostnameRefused { observed_via: "probe" as NonEmptyStr },
+      ) {
+        Err { value: _ } => false
+        Ok { value: ByHolderIpv4 { address: a } } =>
+          (a as String) == expected_holder_ipv4()
+            && match resolve_fabric_storage_share_server_address(
+              share: ep,
+              formality: NfsServerAddressHostnameAccepted { observed_via: "probe" as NonEmptyStr },
+            ) {
+              Ok { value: _ } => false
+              Err { value: _ } => true
+            }
+      }
+  }
+}
+
+// A FABRIC-STORAGE-SHARE ENDPOINT FOR A MEMBER THAT IS NOT THE HOLDER CANNOT BORROW THE HOLDER'S ADDRESS.
+// This is the "share built from a raw address" RED: build a well-formed FabricStorageShare identity for srv3 and
+// ask the resolver for an address -- it must refuse (MemberNotSegmentHolder) rather than hand back srv2's row.
+// A resolver with no member gate would render srv2_lan_ipv4 unconditionally and go RED.
+test fn witness_foreign_member_endpoint_cannot_borrow_holder_address() -> Bool {
+  match allocation_for_srv3() {
+    Absent => false
+    Present { value: row } =>
+      match provider_endpoint(allocation: row) {
+        Err { value: _ } => false
+        Ok { value: member } =>
+          match service_endpoint_identity(
+            authority: FleetDns,
+            service: FabricStorageShare,
+            member: member,
+            port: bmc_media_nfs_port,
+          ) {
+            Err { value: _ } => false
+            Ok { value: ep } =>
+              match resolve_fabric_storage_share_server_address(
+                share: ep,
+                formality: megarac_mtcollins1_nfs_server_address_formality,
+              ) {
+                Ok { value: _ } => false
+                Err { value: _ } => true
+              }
+          }
+      }
+  }
+}
+
+// A NON-STORAGE-ROLE ENDPOINT FOR THE HOLDER IS NOT THE SHARE. Build an identity for srv2 in the NtfyNotifier
+// role and require the resolver to refuse it (RoleNotFabricStorageShare): a role gate that was never enforced
+// would resolve this to srv2's address -- the wrong share -- and go RED.
+test fn witness_non_storage_role_endpoint_is_refused() -> Bool {
+  match srv2_fabric_storage_share_endpoint() {
+    Err { value: _ } => false
+    Ok { value: holder } =>
+      match service_endpoint_identity(
+        authority: FleetDns,
+        service: NtfyNotifier,
+        member: holder.member,
+        port: bmc_media_nfs_port,
+      ) {
+        Err { value: _ } => false
+        Ok { value: ep } =>
+          match resolve_fabric_storage_share_server_address(
+            share: ep,
+            formality: megarac_mtcollins1_nfs_server_address_formality,
+          ) {
+            Ok { value: _ } => false
+            Err { value: _ } => true
+          }
+      }
+  }
+}
+
+// THE PRODUCTION BINDING AND THE FIXTURE VALUE ARE PINNED TO THE RESOLVER, AND THROUGH IT TO srv2's ROW
+// (Do-step 3, continuity). The binding's server_address, the fixture's derived server, the resolver's address
+// for the live standing, and the address authority's rendered row must all be one value. If anyone reintroduces
+// a literal "192.168.1.201" that drifts from the row -- or reroutes the binding around the endpoint authority --
+// this goes RED. It is also the invariant the convergence witness already depends on, restated here at the
+// endpoint authority so the two cannot silently diverge.
+test fn witness_production_binding_and_fixture_match_the_resolver_output() -> Bool {
+  match srv2_fabric_storage_share_endpoint() {
+    Err { value: _ } => false
+    Ok { value: ep } =>
+      match resolve_fabric_storage_share_server_address(
+        share: ep,
+        formality: megarac_mtcollins1_nfs_server_address_formality,
+      ) {
+        Err { value: _ } => false
+        Ok { value: ByHolderIpv4 { address: resolved } } =>
+          match srv2_bmc_media_share_server_address() {
+            Err { value: _ } => false
+            Ok { value: accessor } =>
+              match mtcollins1_media_share() {
+                Err { value: _ } => false
+                Ok { value: binding } =>
+                  (binding.server_address as String) == (resolved as String)
+                    && (accessor as String) == (resolved as String)
+                    && (resolved as String) == expected_holder_ipv4()
+              }
+          }
+      }
+  }
+}
