@@ -1,6 +1,6 @@
 module v2.compiler.type_declaration_use_census
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional, list_head }
 import std.types { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -138,7 +138,7 @@ fn tdc_base_read(form: TypeDeclForm, member: Node) -> TdcBaseRead {
       }
     RecordForm { fields: f } =>
       if f == 1 {
-        match first(member.children) {
+        match list_head(xs: member.children) {
           Present { value: e } => TdcBaseRead { base: type_ref_text(n: symbol_index_binder_type_or_target(target: e.target)), predicates: Empty }
           Absent => tdc_no_base()
         }
@@ -371,7 +371,7 @@ fn as_callee_param_type(index: SymbolIndex, callee: Node, param: Symbol) -> Type
       match symbol_index_lookup(index: index, qualified_path: qn) {
         Absent => NoBase
         Present { value: decl } =>
-          match first(decl.children) {
+          match list_head(xs: decl.children) {
             Absent => NoBase
             Present { value: domain_edge } =>
               fold(domain_edge.target.children, init: NoBase, f: fn(acc, e) {
@@ -387,7 +387,7 @@ fn as_callee_param_type(index: SymbolIndex, callee: Node, param: Symbol) -> Type
 }
 
 fn as_parent_of_transform(index: SymbolIndex, parent: Node, edge: Edge) -> AsParentRead {
-  match first(positional_child_target_nodes(node: parent)) {
+  match list_head(xs: positional_child_target_nodes(node: parent)) {
     Absent => ParentOther
     Present { value: op } =>
       if canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_eq())
