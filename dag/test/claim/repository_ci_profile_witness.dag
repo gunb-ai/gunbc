@@ -22,7 +22,8 @@ import gunbc.witness.witness_roster {
   RosterAggregate
 }
 import gunbc.ci.repository_mirror_frontier { repository_mirror_frontier_rows }
-import gunbc.ci.repository_compose_overlay { heal_seal_env }
+import gunbc.ci.repository_compose_overlay {
+  command_words, heal_seal_env }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
   ProjectionDriftWorkflowGenerated, ProjectionDriftWorkflowGenerationRefused,
@@ -206,8 +207,6 @@ test fn the_must_not_compile_arm_compares_the_refusal_not_the_exit_code() -> Boo
 test fn a_subject_is_invoked_through_its_own_roots_entry_and_function() -> Bool {
   match expected_projection_drift_workflow_yml(
     profile: mirror_profile(seal: true, publish: true),
-    seed: fixture_seed(),
-    overlay: fixture_overlay(),
     program: mirror_drift_program()
   ) {
     ProjectionDriftWorkflowGenerated { content: text } =>
@@ -352,7 +351,7 @@ fn fixture_seed() -> PublicSeed {
     repository: "example-org/example-public",
     checkout_path: "seed_repo",
     ref_name: "main",
-    build_command: "cargo build --release -p example --bin example",
+    build_command: command_words(rest: ["cargo", "build", "--release", "-p", "example", "--bin", "example"]),
     seed_binary_relative_path: "target/release/example",
     record_step_name: "Record the seed revision",
     build_step_name: "Build the seed compiler"
@@ -429,7 +428,6 @@ test fn a_gate_with_no_enforced_row_is_refused() -> Bool {
 test fn the_emitted_gate_carries_the_seed_receipt_the_composition_and_the_declared_cause_arms() -> Bool {
   let yml = expected_repository_witnesses_yml(
     profile: mirror_profile(seal: true, publish: true),
-    seed: fixture_seed(),
     program: gate_program(entries: fixture_roster())
   )
   yaml_emission_admitted(result: repository_witnesses_yml_emission(
@@ -466,7 +464,6 @@ test fn the_emitted_gate_prints_the_trigger_that_retires_the_copied_overlay() ->
 test fn the_gate_runs_on_the_selected_target_not_on_a_typed_label() -> Bool {
   let yml = expected_repository_witnesses_yml(
     profile: mirror_profile_on_group(group: declared_group_name()),
-    seed: fixture_seed(),
     program: gate_program(entries: fixture_roster())
   )
   string_contains(s: yml, pattern: "self-hosted")
@@ -639,8 +636,6 @@ test fn the_seal_names_every_fact_the_publisher_reads() -> Bool {
 test fn the_drift_emission_seals_at_the_head_and_uploads_the_candidate() -> Bool {
   match expected_projection_drift_workflow_yml(
     profile: mirror_profile(seal: true, publish: true),
-    seed: fixture_seed(),
-    overlay: fixture_overlay(),
     program: mirror_drift_program()
   ) {
     ProjectionDriftWorkflowGenerated { content: text } =>
@@ -697,8 +692,6 @@ fn mirror_lane_module_is_rostered(path: String) -> Bool {
 test fn a_mirror_with_no_cadence_gets_no_schedule_trigger() -> Bool {
   match expected_projection_drift_workflow_yml(
     profile: mirror_profile(seal: false, publish: false),
-    seed: fixture_seed(),
-    overlay: fixture_overlay(),
     program: mirror_drift_program()
   ) {
     ProjectionDriftWorkflowGenerated { content: text } => !string_contains(s: text, pattern: "on:") == false
@@ -773,8 +766,6 @@ test fn the_drift_entrypoint_refuses_a_repository_whose_runner_group_is_never_de
 fn drift_entrypoint_refuses(profile: RepositoryCiProfile) -> Bool {
   match expected_projection_drift_workflow_yml(
     profile: mirror_profile_on_group(group: "group-no-census-declared"),
-    seed: fixture_seed(),
-    overlay: fixture_overlay(),
     program: mirror_drift_program()
   ) {
     ProjectionDriftWorkflowGenerationRefused { reason: _ } => true
@@ -785,8 +776,6 @@ fn drift_entrypoint_refuses(profile: RepositoryCiProfile) -> Bool {
 fn drift_entrypoint_composes_for_a_declared_group() -> Bool {
   match expected_projection_drift_workflow_yml(
     profile: mirror_profile(seal: true, publish: true),
-    seed: fixture_seed(),
-    overlay: fixture_overlay(),
     program: mirror_drift_program()
   ) {
     ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
@@ -800,8 +789,6 @@ fn drift_entrypoint_composes_for_a_declared_group() -> Bool {
 test fn the_seal_step_is_invoked_through_the_rows_roots() -> Bool {
   match expected_projection_drift_workflow_yml(
     profile: mirror_profile_with_roots(roots: ["mirror_only", "src/v2"]),
-    seed: fixture_seed(),
-    overlay: fixture_overlay(),
     program: mirror_drift_program()
   ) {
     ProjectionDriftWorkflowGenerated { content: text } =>

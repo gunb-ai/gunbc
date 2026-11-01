@@ -245,7 +245,8 @@ fn projection_drift_steps(
   drift: ProjectionDrift,
   check_body: String,
   seal_body: String,
-  record_step: Step
+  record_step: Step,
+  build_step: Step
 ) -> List<Step> {
   let budget = memory_budget_rows(profile: profile)
   let check_step = RunStep {
@@ -302,7 +303,7 @@ fn projection_drift_steps(
           seed_checkout_step(seed: seed),
           record_step,
           toolchain_install_step(step_name: program.toolchain_step_name),
-          seed_build_step(seed: seed),
+          build_step,
           check_step
           ],
           seal_steps
@@ -328,7 +329,8 @@ fn projection_drift_job(
   drift: ProjectionDrift,
   check_body: String,
   seal_body: String,
-  record_step: Step
+  record_step: Step,
+  build_step: Step
 ) -> Job {
   Job {
     id: drift.job_id,
@@ -343,7 +345,8 @@ fn projection_drift_job(
       drift: drift,
       check_body: check_body,
       seal_body: seal_body,
-      record_step: record_step
+      record_step: record_step,
+      build_step: build_step
     ),
     needs: [],
     env: none,
@@ -395,7 +398,8 @@ fn projection_drift_workflow(
   drift: ProjectionDrift,
   check_body: String,
   seal_body: String,
-  record_step: Step
+  record_step: Step,
+  build_step: Step
 ) -> Workflow {
   Workflow {
     name: drift.workflow_name as String,
@@ -413,7 +417,8 @@ fn projection_drift_workflow(
         drift: drift,
         check_body: check_body,
         seal_body: seal_body,
-        record_step: record_step
+        record_step: record_step,
+        build_step: build_step
       )
     ]
   }
@@ -428,10 +433,21 @@ type ProjectionDriftWorkflowGenerationOutcome
 // regenerates the file and answers the drift check.
 fn expected_projection_drift_workflow_yml(
   profile: RepositoryCiProfile,
-  seed: PublicSeed,
-  overlay: OverlayIngest,
   program: DriftProgram
 ) -> ProjectionDriftWorkflowGenerationOutcome {
+  // THE SEED AND THE OVERLAY ARE THE PROFILE'S, READ ONCE AT THE TOP. The check step, the seed receipt,
+  // the build and the seal are all threaded from these two values, so no caller can hand the drift check
+  // one seed and the seal another. Both Absent arms refuse with the row named; nothing is invented here.
+  match profile.public_seed {
+    Absent => ProjectionDriftWorkflowGenerationRefused {
+      reason: "REFUSE gunbc.ci.repository_projection_drift_workflow: this repository's profile declares no public_seed, and the drift check compares projections judged by that seed's compiler. The row owns the seed; the emitter does not supply one."
+    }
+    Present { value: seed } =>
+      match profile_overlay(profile: profile) {
+        Absent => ProjectionDriftWorkflowGenerationRefused {
+          reason: "REFUSE gunbc.ci.repository_projection_drift_workflow: this repository's profile routes its roster through a lane with no overlay to compose, yet its drift check judges the composed root. A repository that commits no generated mirror declares no drift row at all."
+        }
+        Present { value: overlay } =>
   match drift_admission(profile: profile) {
     Present { value: reason } => ProjectionDriftWorkflowGenerationRefused { reason: reason as String }
     Absent =>
@@ -458,7 +474,13 @@ fn expected_projection_drift_workflow_yml(
               reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the seed-revision receipt step, so no workflow is emitted rather than one whose drift check judges an unnamed compiler"
             }
             Accepted { value: record_step, diagnostics: _ } =>
-          match emit_yaml(v: project_workflow_to_yaml(workflow: projection_drift_workflow(profile: profile, seed: seed, overlay: overlay, program: program, drift: drift, check_body: check_body, seal_body: seal_body, record_step: record_step))) {
+          match seed_build_step(seed: seed) {
+            Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
+              reason: "gunbc.ci.repository_projection_drift_workflow: v2.workflow.bash_emit refused the seed build command, so no workflow is emitted rather than one whose compiler is built by something the model cannot fold"
+            }
+            Accepted { value: build_step, diagnostics: _ } =>
+          match emit_yaml(v: project_workflow_to_yaml(workflow: projection_drift_workflow(profile: profile, seed: seed, overlay: overlay, program: program, drift: drift, check_body: check_body, seal_body: seal_body, record_step: record_step,
+                build_step: build_step))) {
             EmittedYaml { text: t } => ProjectionDriftWorkflowGenerated { content: t }
             YamlEmitRefused { path: p, reason: r } =>
               ProjectionDriftWorkflowGenerationRefused {
@@ -471,7 +493,10 @@ fn expected_projection_drift_workflow_yml(
         Absent => ProjectionDriftWorkflowGenerationRefused { reason: drift_no_job_refusal_reason }
       }
   }
+    }
+  }
 }
+
 
 fn drift_row(profile: RepositoryCiProfile) -> Optional<ProjectionDrift> {
   profile.drift

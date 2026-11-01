@@ -65,7 +65,35 @@ fn seed_checkout_step(seed: PublicSeed) -> Step {
 // v2.extdeps.languages.bash_build nodes folded by v2.workflow.bash_emit::bash_emit_stmts, so the shape of
 // a step is a model rather than a string that happens to be shell. The fold's Refused is carried up as the
 // emitter's own refusal, which is why these builders return Outcome.
-fn emit_run_step(name: NonEmptyStr, statements: List<Node>, set_e: Bool, env: Optional<List<YamlKeyValue>>, if_condition: Optional<String>) -> Outcome<Step> {
+fn emit_run_step(
+  name: NonEmptyStr,
+  statements: List<Node>,
+  set_e: Bool,
+  env: Optional<List<YamlKeyValue>>,
+  if_condition: Optional<String>
+) -> Outcome<Step> {
+  emit_run_step_in_directory(
+    name: name,
+    statements: statements,
+    set_e: set_e,
+    env: env,
+    if_condition: if_condition,
+    working_directory: none
+  )
+}
+
+/// Emit a `run:` step whose body is the fold of `statements` through the typed shell grammar, run in the
+/// working directory the row names. THE FOLD LIVES HERE AND ONLY HERE: a caller that names no directory
+/// passes Absent, and a step that must run in a tree checked out beside the repository passes that path -
+/// either way the script is the model's, never a string pasted out of a row.
+fn emit_run_step_in_directory(
+  name: NonEmptyStr,
+  statements: List<Node>,
+  set_e: Bool,
+  env: Optional<List<YamlKeyValue>>,
+  if_condition: Optional<String>,
+  working_directory: Optional<String>
+) -> Outcome<Step> {
   bind_outcome(
     o: bash_emit_stmts(statements: statements, set_e: set_e),
     f: fn(script) {
@@ -76,7 +104,7 @@ fn emit_run_step(name: NonEmptyStr, statements: List<Node>, set_e: Bool, env: Op
           run: script,
           shell: none,
           env: env,
-          working_directory: none,
+          working_directory: working_directory,
           if_condition: if_condition,
           continue_on_error: none,
           timeout_minutes: none
@@ -124,16 +152,16 @@ fn toolchain_install_step(step_name: NonEmptyStr) -> Step {
 // THE COMPILER IS BUILT FROM SOURCE IN THE SEED CHECKOUT rather than downloaded: the claims are about
 // this revision of the compiler's own language, and a released binary would be testing the language the
 // mirror's rows were written against rather than the one on main.
-fn seed_build_step(seed: PublicSeed) -> Step {
-  RunStep {
-    name: Present { value: seed.build_step_name },
-    id: none,
-    run: join([seed.build_command, "\n"], ""),
-    shell: none,
+fn seed_build_step(seed: PublicSeed) -> Outcome<Step> {
+  // THE BUILD IS THE ROW'S MODELLED COMMAND, folded through the same typed grammar as every other step in
+  // the lane. A row that carried a shell string here could put arbitrary script into a committed workflow
+  // without going through the grammar at all.
+  return emit_run_step_in_directory(
+    name: seed.build_step_name,
+    statements: seed.build_command,
+    set_e: true,
     env: none,
-    working_directory: Present { value: seed.checkout_path as String },
     if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
+    working_directory: Present { value: seed.checkout_path as String }
+  )
 }

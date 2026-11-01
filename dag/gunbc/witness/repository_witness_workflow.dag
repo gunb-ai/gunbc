@@ -204,20 +204,25 @@ fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, prog
           bind_outcome(
             o: annotation_steps(profile: profile, seed: seed, program: program),
             f: fn(annotation) {
-              Accepted {
-                value: concat(
-                  [
-                    repository_checkout_step(step_name: program.checkout_step_name),
-                    seed_checkout_step(seed: seed),
-                    record,
-                    toolchain_install_step(step_name: program.toolchain_step_name),
-                    seed_build_step(seed: seed),
-                    roster
-                  ],
-                  annotation
-                ),
-                diagnostics: None
-              }
+              bind_outcome(
+                o: seed_build_step(seed: seed),
+                f: fn(build) {
+                  Accepted {
+                    value: concat(
+                      [
+                        repository_checkout_step(step_name: program.checkout_step_name),
+                        seed_checkout_step(seed: seed),
+                        record,
+                        toolchain_install_step(step_name: program.toolchain_step_name),
+                        build,
+                        roster
+                      ],
+                      annotation
+                    ),
+                    diagnostics: None
+                  }
+                }
+              )
             }
           )
         }
@@ -650,8 +655,8 @@ fn repository_witness_workflow_from_job(profile: RepositoryCiProfile, job: Job) 
 // THE COMMITTED BYTES, or the refusal that explains why there are none. A YAML file that a reader believes
 // is generated is only as trustworthy as the emitter that can prove it; this is the function a drift check
 // compares the committed workflow against, and the same call is what regenerates it.
-fn expected_repository_witnesses_yml(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> String {
-  yaml_emission_text(result: repository_witnesses_yml_emission(profile: profile, seed: seed, program: program))
+fn expected_repository_witnesses_yml(profile: RepositoryCiProfile, program: RosterProgram) -> String {
+  yaml_emission_text(result: repository_witnesses_yml_emission(profile: profile, program: program))
 }
 
 // AN ENFORCED ROW WITHOUT AN AGGREGATE IS A GATE THAT RUNS NOTHING AND EXITS 0. The aggregate is the step
@@ -726,7 +731,18 @@ fn lane_admission(profile: RepositoryCiProfile, program: RosterProgram) -> Optio
   }
 }
 
-fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> YamlEmitResult {
+fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, program: RosterProgram) -> YamlEmitResult {
+  // THE SEED IS THE PROFILE'S DATA, NOT AN ARGUMENT A CALLER MAY BRING. The gate judges every claim under
+  // the compiler built from the seed checked out beside the repository, so the emitter reads the seed from
+  // the row it was admitted - a caller cannot pair one repository's profile with another's seed, and the
+  // Absent arm refuses rather than inventing a default. The lane's overlay already arrives this way,
+  // through the route on the row.
+  match profile.public_seed {
+    Absent => YamlEmitRefused {
+      path: profile.roster.workflow_file as String,
+      reason: "REFUSE gunbc.witness.repository_witness_workflow: this repository's profile declares no public_seed, and the gate judges its claims under the compiler built from that seed. The row owns the seed; the emitter does not supply one."
+    }
+    Present { value: seed } =>
   match lane_admission(profile: profile, program: program) {
     Present { value: reason } => YamlEmitRefused { path: profile.roster.workflow_file as String, reason: reason as String }
     Absent => match repository_witness_workflow(
@@ -742,7 +758,9 @@ fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, seed: PublicS
       }
     }
   }
+  }
 }
+
 
 // The overlay of the lane this profile routes its roster through; the instrument lane has none, and the
 // composition (and therefore its refusal) only exists for the composed lane.

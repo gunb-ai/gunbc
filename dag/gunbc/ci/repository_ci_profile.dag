@@ -8,6 +8,10 @@ import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.ci.ci_spec { gunbc_ci_tier_o_drift_check_target }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.std.node {
+  Node
+}
+
 import gunbc.ci.ci_runner_target {
   CiRunnerTarget,
   FleetSelfHostedInDeclaredGroup,
@@ -74,7 +78,7 @@ type PublicSeed {
   repository: NonEmptyStr
   checkout_path: NonEmptyStr
   ref_name: NonEmptyStr
-  build_command: String
+  build_command: List<Node>
   seed_binary_relative_path: NonEmptyStr
   record_step_name: NonEmptyStr
   build_step_name: NonEmptyStr
