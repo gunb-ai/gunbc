@@ -10,8 +10,8 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_worker_user, fleet_posix_worker_shared_group_name,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
-  DispatchStateInstanceOwned,
-  WorkerDedicatedAccount,
+  DispatchStateInstanceOwned, DispatchStateHostShared,
+  WorkerDedicatedAccount, WorkerIsServiceUser,
   srv1_dashboard_lab_id,
   srv1_dashboard_lab_root,
   srv1_dashboard_lab_provision_parent,
@@ -104,7 +104,7 @@ test fn dashboard_lab_instance_inhabitance_shapes() -> Bool {
     DispatchStateInstanceOwned { worktree_child: worktree_child, attempt_state_child: attempt_state_child } =>
       worktree_child == ("attempts" as NonEmptyStr)
         && attempt_state_child == ("attempt-state" as NonEmptyStr)
-    _ => false
+    DispatchStateHostShared { worktree_root: _, attempt_state_root: _ } => false
   }
   // THE OWNER AND THE GROUP, as the production row states them. These are the uid/gid legs the confinement
   // witnesses install and read back, and the reason srv2 could not run those witnesses at all: srv2 has user
@@ -117,7 +117,7 @@ test fn dashboard_lab_instance_inhabitance_shapes() -> Bool {
       && owner.user == srv1_dashboard_service_principal().name
       && match lab.worker {
         WorkerDedicatedAccount => true
-        _ => false
+        WorkerIsServiceUser => false
       }
       && fleet_posix_worker_user.name == ("gunbc-worker" as NonEmptyStr)
   // THE MODES, as the production row states them: a dedicated worker's writable directories are group-writable
@@ -244,7 +244,7 @@ test fn witness_supplied_principal_refuses_when_the_host_cannot_say() -> Bool {
     group_text: "briansrls",
   ) {
     Absent => true
-    _ => false
+    Absent => false
   }
   let refuses_an_unresolvable_uid = match witness_principal_from_texts(
     uid_text: "-1",
@@ -253,7 +253,7 @@ test fn witness_supplied_principal_refuses_when_the_host_cannot_say() -> Bool {
     group_text: "briansrls",
   ) {
     Absent => true
-    _ => false
+    Absent => false
   }
   let refuses_a_missing_group_name = match witness_principal_from_texts(
     uid_text: "1000",
@@ -262,7 +262,7 @@ test fn witness_supplied_principal_refuses_when_the_host_cannot_say() -> Bool {
     group_text: "  ",
   ) {
     Absent => true
-    _ => false
+    Absent => false
   }
   let refuses_root = match witness_principal_from_texts(
     uid_text: "0",
@@ -271,7 +271,7 @@ test fn witness_supplied_principal_refuses_when_the_host_cannot_say() -> Bool {
     group_text: "root",
   ) {
     Absent => true
-    _ => false
+    Absent => false
   }
   let accepts_an_unprivileged_account = match witness_principal_from_texts(
     uid_text: "1000\n",
@@ -283,7 +283,7 @@ test fn witness_supplied_principal_refuses_when_the_host_cannot_say() -> Bool {
       p.uid == 1000 && p.gid == 1003
         && p.user == ("briansrls" as NonEmptyStr)
         && p.group == ("gunbc-attempt" as NonEmptyStr)
-    _ => false
+    Absent => false
   }
   refuses_a_missing_uid
     && refuses_an_unresolvable_uid
