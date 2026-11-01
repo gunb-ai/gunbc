@@ -112,7 +112,7 @@ test fn w_the_rtx_5000_ada_laptop_gpu_is_soldered_with_its_tgp_range() -> Bool {
 test fn w_a_tgp_range_that_is_inverted_has_no_row() -> Bool {
   let f = gpu_board_admission_facts(admission: nvidia_rtx_5000_ada_laptop_board_catalog)
   match admit_gpu_board(facts: GpuBoardCatalogFacts {
-      vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: f.gpu_count, attachment: f.attachment,
+      vendor: f.vendor, model: f.model, gpu: f.gpu, composition: f.composition, attachment: f.attachment,
       board_power: Present { value: SystemDependentTgp { minimum: watt(count: 175), maximum: watt(count: 80) } },
       zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id, driver_listed_name: f.driver_listed_name,
       figure_citations: f.figure_citations,

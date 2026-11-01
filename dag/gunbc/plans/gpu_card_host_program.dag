@@ -67,7 +67,7 @@ data gpu_card_working_census: List<GpuCardCensusReading> = [
   GpuCardCensusReading { count: Present { value: 2 }, product: "NVIDIA RTX 2000 Ada Generation", slots: [], host: Absent, membership: InstalledInFleetHost },
   GpuCardCensusReading { count: Present { value: 2 }, product: "AMD Radeon AI PRO R9700", slots: [], host: Absent, membership: CommittedToFleetHost },
   GpuCardCensusReading { count: Present { value: 1 }, product: "NVIDIA RTX PRO 6000 Blackwell Max-Q", slots: [], host: Absent, membership: OutsideBound { because: "a rented Vast deployment on an x86 host the supplier owns, so this leg cannot converge its driver" } },
-  GpuCardCensusReading { count: Present { value: 0 }, product: "NVIDIA A2", slots: [], host: Absent, membership: OutsideBound { because: "figures from external reports; no such card is in the fleet" } },
+  GpuCardCensusReading { count: Present { value: 4 }, product: "NVIDIA A2", slots: [], host: Present { value: "srv14" }, membership: InstalledInFleetHost },
   GpuCardCensusReading { count: Present { value: 0 }, product: "NVIDIA T10", slots: [], host: Absent, membership: OutsideBound { because: "figures from external reports; no such card is in the fleet" } },
   GpuCardCensusReading { count: Absent, product: "NVIDIA GB10 (DGX Spark)", slots: [], host: Absent, membership: OutsideBound { because: "the driver ships with DGX OS on the Spark hosts and has its own program" } },
 ]

@@ -30,7 +30,7 @@ import v1.compiler.infer_types {
   child_type_node, emit_map_has, node_type_equals
 }
 import v1.compiler.artifact { Rust }
-import v1.compiler.coercion { realized_checkpoint, declaration_realization }
+import v1.compiler.coercion { realized_checkpoint, declaration_realization, coerce_container_template }
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -1029,7 +1029,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
   let is_product = item.connective == Conj
   let has_fn = item.children |> any(child =>
     match child.inferred {
-      Present { value: Resolved { node: rt } } => rt.connective == Arrow
+      Present { value: Resolved { node: rt } } => rt.connective == Arrow && !field_type_node_is_realized_container(n: rt, source_indices: source_indices)
       _ => false
     }
   )
@@ -1120,6 +1120,47 @@ fn fn_reach_target_keys(index: TypeSummaryIndex, target: String) -> List<String>
   }
 }
 
+// A FIELD WHOSE TYPE LOWERS TO A NATIVE CONTAINER CARRIES NO FUNCTION VALUE.
+//
+// The walk below decides `has_fn_fields`, and the derives and the hand-written `Debug`/`PartialEq`
+// impls that hang off it are a REALIZATION question: a record whose field is a function value cannot
+// derive them, and one whose fields are all values can. Read through a name, the question was asked of
+// the carrier's DECLARED shape, and the two spellings of one carrier got two answers. A `Set<K>` field
+// named the alias, the alias names no summary, and the holder kept its derives; a `FinitePowerSet<K>`
+// field named std.algebra's own declaration -- the carrier's canonical spelling, written on purpose for
+// exactly that reason (`canonical_spelling_sorts_ahead_of_alias_reason`) -- whose declared fields are
+// `member: fn(T) -> Bool` and three more, and the holder was marked as carrying a function value even
+// though the field renders as `Rc<BTreeSet<K>>`. It then lost the derives AND the container's own
+// Ord/Clone bound rows (`v1_emit_struct_from_capability_table` answers for a fn-field record), so the
+// emitted struct could not even be compared with `==` (E0369). One carrier, two realizations again --
+// the same fork as `node_is_finite_power_set_algebra_spelling`, one rung down.
+//
+// So the walk asks the realization roster, the same one the emitter asks
+// (`coerce_container_template`: the carrier's algebra row, then the target's own inhabitant row), and a
+// name the target realizes as a container is terminal: it holds no function value to reach. A carrier
+// with NO target inhabitant is not terminal and still propagates, which is what `PartialFunction`
+// (`dag/std/structural.dag`, `target_inhabitant_row: RowAbsent { ... }`) and the fn-field records
+// themselves are for. The spelling is not consulted, so both spellings of a carrier answer alike --
+// which is the acceptance condition, not a convenience.
+fn field_type_is_realized_container(name: String) -> Bool {
+  let leaf = qualified_last_segment(name: name)
+  match coerce_container_template(target: Rust, container_name: leaf) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE SAME FACT READ OFF THE FIELD'S TYPE NODE, for the DIRECT half of the census (`has_fn_fields` is
+// also computed from each field's RESOLVED type node, before any walk). A `FinitePowerSet<K>` field
+// resolved to the carrier's callable method surface -- connective Arrow -- so its holder was marked as
+// carrying a function value even though the field renders as `Rc<BTreeSet<K>>`; the alias spelling
+// resolved to the container and did not. Asking the roster first is not a guard bolted onto the arrow
+// test: `dyn Fn` and `BTreeSet` are not both true of one field, so a realized container simply is not a
+// function value, whichever of its spellings wrote it.
+fn field_type_node_is_realized_container(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  field_type_is_realized_container(name: authored_name_at(source_indices: source_indices, node: n))
+}
+
 fn fn_reach_holds_directly(name: String, summaries: TypeSummaryIndex, structural_alias_direct_fn_names: Set<String>) -> Bool {
   match map_get(summaries.by_key, name) {
     Present { value: s } => s.has_fn_fields
@@ -1136,7 +1177,8 @@ fn fn_reach_targets(name: String, summaries: TypeSummaryIndex, structural_alias_
         Absent => []
       }
   }
-  spelled |> fold(init: [], f: (acc, t) => concat(acc, fn_reach_target_keys(index: summaries, target: t)))
+  spelled |> filter(t => !field_type_is_realized_container(name: t))
+    |> fold(init: [], f: (acc, t) => concat(acc, fn_reach_target_keys(index: summaries, target: t)))
 }
 
 fn fn_reaching_names_fixpoint(candidates: List<String>, summaries: TypeSummaryIndex, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>, reached: Set<String>) -> Set<String> {

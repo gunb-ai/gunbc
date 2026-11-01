@@ -23,10 +23,8 @@ import extdeps.github.expressions {
 }
 import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.ci.ci_runner_target { selected_ci_runner_target, ci_runner_target_ram_speed_budget }
-import gunbc.host.host_memory_observation {
-  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
-  gunbc_ci_srv2_memtotal_measured,
-}
+import gunbc.host.host_memory_observation { gunbc_ci_srv2_memtotal_measured }
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured }
 import gunbc.instrument_targets { dependency_demand_census_label, known_red_derivation_label, regen_round_cost_label, compute_run_unit_cold_label, compute_dependency_wrong_capture_label }
 import gunbc.instruments.compute_run_unit_cold {
   compute_run_unit_cold_unit_grant_bytes, compute_run_unit_cold_job_memory_demand,
