@@ -1941,7 +1941,24 @@ fn srv13_witness_fru_fields() -> FruIdentityFields {
   }
 }
 
-fn srv13_identity_bind_inputs() -> IdentityBindInputs {
+// WHO MAY HOLD THE CARRIER. The two mints inside this helper are admitted only to it, so closing THIS helper
+// is what closes the chain: an unrestricted function that returns a sealed IdentityBindInputs would let any
+// module write `fn borrowed() -> IdentityBindInputs { srv13_identity_bind_inputs() }` and receive witness-
+// provenanced identity through a mint that saw its admitted caller (the escape the side chat named). Only the
+// witness's own observation wrapper and the six claims that run the forced-change path may call it; the
+// forged-probe claim the_witness_identity_carrier_helpers_refuse_an_outside_caller calls it from an outside
+// module and asserts the refusal, paired with the positive control that calls it legitimately.
+fn srv13_identity_bind_inputs() -> IdentityBindInputs
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_witness_fru_observation"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_forced_change_unit_sequence_converges_under_the_row"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_forced_state_from_another_run_or_controller_cannot_take_the_row"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_matching_forced_pair_from_another_run_cannot_take_the_row"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_matching_forced_pair_for_another_controller_cannot_take_the_row"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_zero_pre_write_entries_take_the_indeterminate_third_outcome_on_the_real_path"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_post_write_build_that_disagrees_with_the_forced_response_makes_bmc_secure_refuse"),
+  ]
+{
   witness_identity_bind_inputs(
     fru: FruObserved {
       observation: witness_recorded_fru_identity(
@@ -1967,7 +1984,14 @@ fn srv13_identity_bind_inputs() -> IdentityBindInputs {
 // their records to THAT subject. So the witness derives it through the same three functions the step uses,
 // from the same inputs -- otherwise the pre-write capture and the write sequence would be joined to a subject
 // the fold never binds, which is the failure class this change is about.
-fn srv13_witness_fru_observation() -> RecordedFruObservation? {
+// THE OBSERVATION WRAPPER IS CLOSED TOO: returning the sealed observation from an unrestricted helper would
+// be the same escape one level down. Its only consumer is the subject fixture below, which the two leg
+// fixtures call, and they are closed to the claims.
+fn srv13_witness_fru_observation() -> RecordedFruObservation?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_intake_for_run"),
+  ]
+{
   match srv13_identity_bind_inputs().fru {
     FruObserved { observation: o } => Present { value: o }
     FruReadRefused { gap: _ } => none
@@ -1987,7 +2011,12 @@ fn srv13_access_of_run(run: ConvergenceRunId) -> AccessDiscoverEstablished? {
   }
 }
 
-fn srv13_intake_for_run(run: ConvergenceRunId) -> MachineIntakeSubject? {
+fn srv13_intake_for_run(run: ConvergenceRunId) -> MachineIntakeSubject?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "captured_leg_for_run"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "foreign_leg_for_run"),
+  ]
+{
   match srv13_access_of_run(run: run) {
     Absent => none
     Present { value: access } =>

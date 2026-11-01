@@ -1492,13 +1492,12 @@ fn admit_forced_first_rotation_precedes_prior_life(
   // controller the access standing will name). The identity step then binds that accessed endpoint to the
   // FRU/SMBIOS session it is given (classify_board_serial_agreement refuses a session at another
   // controller), so the identity reading is joined through the access reading rather than beside it. The
-  // account observation and the application the write returned are the same intake subject -- unit,
-  // assembly, firmware AND attempt -- so a matching pair for another unit cannot borrow this unit's read.
-  // (The archive is not joined here: the fold ties it to the identity receipt by construction, and the
-  // BmcSecure step ties the account observation to that same identity subject -- re-checking it here would
-  // be a validation where construction holds, DESIGN §5.) The
-  // build confirmation in the ladder below is then confirmation of the SAME controller's inference: a
-  // matching pair from another controller (the foreign-controller RED) cannot reach it.
+  // write's attempt is the account observation's attempt AND the observation's own attempt identity, so a
+  // matching pair for another unit cannot borrow this unit's read. (The archive and the account observation
+  // are not joined to the identity receipt here: the fold ties them to it by construction, and re-checking
+  // them here would be a validation where construction holds, DESIGN §5.) The build confirmation in the
+  // ladder below is then confirmation of the SAME controller's inference: a matching pair from another
+  // controller (the foreign-controller RED) cannot reach it.
   let access_read_endpoint = match mtjade1_observed_endpoint(network: read.identity.endpoint) {
     Present { value: e } => (e.host as String)
     Absent => ""
@@ -1509,7 +1508,6 @@ fn admit_forced_first_rotation_precedes_prior_life(
       && (bmc.reading.endpoint.host as String) == access_read_endpoint
       && (write.attempt as String) == (bmc.reading.attempt as String)
       && (write.attempt as String) == (bmc.reading.subject.attempt_id as String)
-      && transition.application.plan.subject == bmc.reading.subject
       && (read.identity.subject as String) == (subject as String)
   // (4) THE WRITE TRANSITION THE PRIOR LIFE IS READ ACROSS IS THIS ADMISSION'S WRITE: the context's leg and
   // its inference name the same admission field by field, so a transition built over a different -- merely

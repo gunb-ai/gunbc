@@ -468,8 +468,8 @@ fn pre_capture_at(world: DryPriorLifeWorld, read_at: EpochMs, returned_at: Epoch
   pre_capture(world: dry_world_at(bmc: world.bmc, store: world.store, read_at: read_at, returned_at: returned_at))
 }
 
-// THE FORCED-WRITE CONTEXT, BUILT FROM THE REAL WRITE TRANSITION. The write, the plan and the application
-// come from gunbc.machine_intake.bmc_secure's own producers over srv13's admitted forced first write (see
+// THE FORCED-WRITE CONTEXT, BUILT FROM THE REAL WRITE TRANSITION. The write and its completion record come
+// from gunbc.machine_intake.bmc_secure's own producers over srv13's admitted forced first write (see
 // test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness); the inference is the row's
 // reason, typed as an inference (§4d), minted from the same admitted write. A producer that refuses returns
 // none, so no claim here can pass over a transition that was not produced.

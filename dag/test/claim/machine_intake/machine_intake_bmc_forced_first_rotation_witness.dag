@@ -17,12 +17,17 @@ import gunbc.deployment_risk { TestRisk }
 import gunbc.machine_intake.mtjade1_factory_network { srv13_bmc_observed_network }
 import gunbc.machine_intake.subject { AssemblyManifest, ComponentIdentity, FirmwareEntry, FirmwareManifest, UnitKey, MachineIntakeSubject, IntakeAttemptId, qualification_subject_of }
 import gunbc.machine_intake.bmc_secure {
-  BmcAccountPlanned, BmcAccountPlanRefused, BmcSecureGoal, PublishedAccountIsTheManagedAccount, PublishedAccountRetired,
-  dry_read_bmc_account_state, plan_bmc_account_action, dry_apply_bmc_account_plan, bmc_secure_convergence_approval,
-  dry_bmc_account_instant,
+  BmcSecureGoal, PublishedAccountRetired, dry_read_bmc_account_state,
+  dry_apply_bmc_redfish_password_write,
 }
+import gunbc.bmc_model {
+  BmcWorld, BmcRedfishAccount, BmcRedfishCredentialSharesIpmi,
+  bmc_with_redfish_accounts, bmc_redfish_change_step_world,
+}
+import extdeps.bmc.types { AccountRoleAdministrator }
 import gunbc.machine_intake.prior_life_boundary {
-  PriorLifeArchive, ForcedFirstRotationWriteTransition, forced_first_rotation_write_leg, forced_first_rotation_write_transition,
+  PriorLifeArchive, ForcedFirstRotationWriteTransition,
+  forced_first_rotation_write_leg, forced_first_rotation_write_applied, forced_first_rotation_write_transition,
 }
 import gunbc.fleet.fleet_intent { srv13_baseboard, srv4_baseboard }
 import gunbc.machine_intake.bmc_credential_policy {
@@ -37,7 +42,7 @@ import gunbc.machine_intake.bmc_rotation_route {
   ForcedStateForAnotherController, ForcedStateForAnotherBuild, ForcedStateFromAnotherAttempt, ForcedWriteIsNotTheFactoryAccountsPasswordWrite,
   ForcedRouteDoesNotNameThisWrite, ForcedWriteApprovalRefused,
   rotation_route_candidate, rotation_route_ungrounded, redfish_account_password_write, admit_forced_first_rotation,
-  rotation_route_from_citation, account_write_request_eq, AdmittedForcedFirstRotation,
+  rotation_route_from_citation, AdmittedForcedFirstRotation,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import std.content_hash { content_hash_of_value }
@@ -46,8 +51,8 @@ import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { 
 import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import test.fixture.machine_intake.bmc_lockout { lockout_both_served }
 import test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness {
-  lab_board, root_user, published_password, generation_1, generation_2, goal_v1, redfish_only, world_root, derive_over,
-  ready, generation_v2, t_read, t_store, t_fetch, t_plan, t_apply, t_readback,
+  lab_board, root_user, published_password, generation_2, goal_v1, redfish_only, world_root, derive_over,
+  t_readback,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -224,17 +229,19 @@ test fn a_qualify_by_rotation_go_naming_more_than_one_write_admits_nothing() -> 
   verdict(standing: route, request: root_write(), approval: both) == "qualify-by-rotation-is-one-write"
 }
 
-// ── THE ORDERED WRITE TRANSITION, PRODUCED BY THE REAL PLAN AND THE REAL DRY APPLY ──────────────
+// ── THE ORDERED WRITE TRANSITION, PRODUCED BY THE REAL FORCED WRITE AND THE REAL DRY TRANSPORT ──
 //
 // gunbc.machine_intake.prior_life_boundary reads the prior-life archive ACROSS the admitted forced first
 // write, and it derives that ordering itself from sealed records: the write's effect leg (begin and
-// completion on the archive's observer clock) and the application that write returned. A caller handing the
+// completion on the archive's observer clock) and the record that the write landed. A caller handing the
 // boundary a "pre-write" archive label and a write instant of its own choosing orders nothing, so the
 // witnesses need a transition the production route could actually produce. Here it IS produced by the real
-// producers: the plan by gunbc.machine_intake.bmc_secure plan_bmc_account_action over a read of a controller
-// whose root still holds the published password, the application by dry_apply_bmc_account_plan, the leg by
-// gunbc.machine_intake.prior_life_boundary forced_first_rotation_write_leg over the admitted write. Nothing
-// in this block hand-writes a plan, an application, a leg or an ordering.
+// producers: the leg by gunbc.machine_intake.prior_life_boundary forced_first_rotation_write_leg over the
+// admitted write, the write itself by gunbc.machine_intake.bmc_secure dry_apply_bmc_redfish_password_write
+// (the transport that admitted request names) over a controller whose root still holds the published
+// password and is flagged as needing the change, and the completion record by
+// forced_first_rotation_write_applied, which reads the effect off the world the transport returned. Nothing
+// in this block hand-writes a completion, a leg or an ordering.
 //
 // The unit is srv13 -- the controller whose factory 403 AND whose post-rotation authenticated Manager read
 // are both committed captures (artifacts/bmc/srv13-first-contact-2026-10-07), so the forced state and the
@@ -350,10 +357,11 @@ fn srv13_forced_write(attempt: AttemptIdentity) -> AdmittedForcedFirstRotation? 
   }
 }
 
-// THE TRANSITION. The write is srv13's own admitted forced first write under `subject`'s attempt; the plan
-// and the application come from the real planner and the real dry apply over a controller whose root still
-// holds the published password; the leg's begin and completion are the archive clock's, in the order the
-// boundary reads them. Returns none if any producer refuses, so a claim over it cannot pass by accident.
+// THE TRANSITION. The write is srv13's own admitted forced first write under `subject`'s attempt; the write
+// and its completion record come from the real transport over a controller whose root still holds the
+// published password and is flagged as needing the change; the leg's begin and completion are the archive
+// clock's, in the order the boundary reads them. Returns none if any producer refuses, so a claim over it
+// cannot pass by accident.
 // WHAT THE SEQUENCE PRODUCES: the transition the prior-life boundary reads across, the goal the write left
 // the controller under, and the AUTHENTICATED account read taken after it -- the read the BmcSecure step of
 // the arrival fold consumes. All three come out of one run of the producers, so the fold's positive control
@@ -372,9 +380,28 @@ fn forced_write_sequence(transition: ForcedFirstRotationWriteTransition, goal: B
   ForcedWriteSequence { transition: transition, goal: goal, post_read: post_read }
 }
 
-// THE SEQUENCE, AT AN ENDPOINT. One run of the real producers -- the forced admission, the account read
-// before the write, the planner, the write leg, the dry apply, the authenticated read after it, and the
-// transition the prior-life boundary reads across -- for the controller at `endpoint`, under `subject`. The
+// THE FACTORY WORLD THIS BUILD SERVES: root's one credential, shared with its IPMI user, flagged as needing
+// a password change -- the state srv13's committed 403 records. The Redfish surface is present, so the
+// authenticated census read answers the build's own 403 until the write clears the flag.
+fn srv13_factory_world(password: String, flagged: Bool) -> BmcWorld {
+  bmc_with_redfish_accounts(
+    world_root(password: password),
+    [BmcRedfishAccount {
+      name: "root",
+      credential: BmcRedfishCredentialSharesIpmi { ipmi_user: root_user },
+      role: AccountRoleAdministrator,
+      enabled: true,
+      locked: false,
+      forced_password_change: flagged,
+      failed_logins: 0,
+    }],
+  )
+}
+
+// THE SEQUENCE, AT AN ENDPOINT. One run of the real producers -- the forced admission, the write leg, the
+// Redfish Password PATCH the admitted request names, the completion record read off the world it landed in,
+// the authenticated read after it, and the transition the prior-life boundary reads across -- for the
+// controller at `endpoint`, under `subject`. The
 // witness runs it for srv13 (the positive control and the ordering REDs) and for another controller's
 // address (the matching-foreign-controller RED), where the dry model claims only that a second address
 // answers the same vendor build.
@@ -386,6 +413,7 @@ fn forced_write_sequence_at(
   began_millis: EpochMs,
   finished_millis: EpochMs,
   applied_at_millis: EpochMs,
+  flagged: Bool,
 ) -> ForcedWriteSequence?
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_forced_write_sequence"),
@@ -396,91 +424,55 @@ fn forced_write_sequence_at(
   match forced_write_at(endpoint: endpoint, attempt: attempt) {
     Absent => none
     Present { value: write } => {
-      let initial = world_root(password: published_password)
-      let before = dry_read_bmc_account_state(
-        world: initial,
-        subject: subject,
-        endpoint: endpoint,
-        board: lab_board(),
-        firmware: build_3_22(),
-        managed: goal_v1().managed,
-        managed_user: root_user,
-        managed_password: generation_1,
-        census: census,
-        published_user: root_user,
-        published_password: published_password,
-        published_account: PublishedAccountRetired,
-        break_glass: goal_v1().published_break_glass,
-        break_glass_password: generation_1,
-        published_reading: derive_over(served: redfish_only),
-        attempt: attempt,
-        read_at_millis: t_read,
-        lockout: lockout_both_served(read_at: t_read, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
-      )
-      match generation_v2(store_at: dry_bmc_account_instant(millis: t_store), fetch_at: dry_bmc_account_instant(millis: t_fetch)) {
+      // THE FACTORY WORLD OF THIS BUILD, as the captures describe it: the controller serves a Redfish
+      // account service, root's one credential is shared with its IPMI user (the build's
+      // AccountCredentialStore row), and that credential is flagged as needing a password change -- the
+      // state the committed 403 records. The write below lands in the ONE credential both surfaces read.
+      let initial = srv13_factory_world(password: published_password, flagged: flagged)
+      match forced_first_rotation_write_leg(write: write, began_millis: began_millis, finished_millis: finished_millis) {
         Absent => none
-        Present { value: g } => {
-          let route = cited_route_at(endpoint: endpoint)
-          let approval = approved_bmc_convergence(
-            approval: bmc_secure_convergence_approval(goal: goal_v1(), reading: before, managed_user: root_user, managed_route: route, published: PublishedAccountIsTheManagedAccount),
-            attempt: (attempt as NonEmptyStr),
-          )
-          match plan_bmc_account_action(
-            subject: subject,
-            goal: goal_v1(),
-            reading: before,
-            managed_user: root_user,
-            managed_route: route,
-            approval: approval,
-            managed_generation: g,
-            published: PublishedAccountIsTheManagedAccount,
-            channel_close: none,
-            planned_at: dry_bmc_account_instant(millis: t_plan),
-            declared_retries: [],
-            forced_change: Present { value: write.forced },
-          ) {
-            BmcAccountPlanRefused { cause: _ } => none
-            BmcAccountPlanned { plan: p } =>
-              match forced_first_rotation_write_leg(write: write, began_millis: began_millis, finished_millis: finished_millis) {
+        Present { value: leg } => {
+          // THE WRITE THE ADMISSION LICENSED, REALIZED ON THE TRANSPORT ITS OWN REQUEST NAMES: the Redfish
+          // Password PATCH against the served account service, not a BmcSecure plan. On a forcing build the
+          // authenticated read answers the build's own 403, so BmcSecure's conjunction refuses and no plan
+          // is due -- the write that unforces the controller is the write the forced admission licensed
+          // (gunbc.machine_intake.bmc_rotation_route forced_first_rotation_apply_frontier). The new
+          // credential is the generation the operator's secret store holds for this unit's managed account.
+          let step = dry_apply_bmc_redfish_password_write(world: initial, account: "root", new_password: generation_2)
+          let landed = bmc_redfish_change_step_world(step: step.step)
+          match forced_first_rotation_write_applied(leg: leg, step: step, before: initial, after: landed, applied_at_millis: applied_at_millis) {
+            Absent => none
+            Present { value: applied } =>
+              match forced_first_rotation_write_transition(leg: leg, applied: applied, pre_capture: pre_capture) {
                 Absent => none
-                Present { value: leg } =>
-                  let step = dry_apply_bmc_account_plan(
-                    world: initial,
-                    plan: p,
-                    managed_fetch: ready(version: "2", bytes: generation_2),
-                    published_fetch: ready(version: "2", bytes: generation_2),
-                    applied_at_millis: applied_at_millis,
-                  )
-                  // THE AUTHENTICATED READ AFTER THE WRITE, by the real producer, over the world the apply
-                  // returned: root now holds the generation the plan wrote, and this is the reading the
-                  // BmcSecure step judges secured. It is the SAME controller, subject, attempt and build the
-                  // forced state, the plan and the write name -- the join P1-a asks for is between records
-                  // this one sequence produced.
+                Present { value: tr } => {
+                  // THE AUTHENTICATED READ AFTER THE WRITE, by the real producer, over the world the write
+                  // landed in: root now holds the generation the PATCH wrote, on the surface this build
+                  // serves, and this is the reading the BmcSecure step judges secured. It is the SAME
+                  // controller, subject, attempt and build the forced state and the write name -- the join
+                  // P1-a asks for is between records this one sequence produced, not records that agree.
                   let after = dry_read_bmc_account_state(
-                    world: step.world,
+                    world: landed,
                     subject: subject,
                     endpoint: endpoint,
                     board: lab_board(),
                     firmware: build_3_22(),
-                    managed: p.goal.managed,
+                    managed: goal_v1().managed,
                     managed_user: root_user,
                     managed_password: generation_2,
                     census: census,
                     published_user: root_user,
                     published_password: published_password,
                     published_account: PublishedAccountRetired,
-                    break_glass: p.goal.published_break_glass,
+                    break_glass: goal_v1().published_break_glass,
                     break_glass_password: generation_2,
                     published_reading: derive_over(served: redfish_only),
                     attempt: attempt,
                     read_at_millis: t_readback,
                     lockout: lockout_both_served(read_at: t_readback, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
                   )
-                  match forced_first_rotation_write_transition(leg: leg, application: step.application, pre_capture: pre_capture) {
-                    Absent => none
-                    Present { value: tr } =>
-                      Present { value: forced_write_sequence(transition: tr, goal: p.goal, post_read: after) }
-                  }
+                  Present { value: forced_write_sequence(transition: tr, goal: goal_v1(), post_read: after) }
+                }
               }
           }
         }
@@ -502,21 +494,32 @@ fn srv13_forced_write_sequence(subject: MachineIntakeSubject, pre_capture: Prior
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_entries_present_none_before_the_write_are_indeterminate_across_the_forced_write"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_refusal_across_the_forced_write_stays_a_refusal"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "srv13_unflagged_forced_write_sequence"),
   ]
 {
-  forced_write_sequence_at(endpoint: srv13(), census: srv13_dry_census(), subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis)
+  forced_write_sequence_at(endpoint: srv13(), census: srv13_dry_census(), subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis, flagged: true)
 }
 
 // THE MATCHING-FOREIGN-CONTROLLER PAIR: the same producers, at another address (srv4, 192.168.1.195, the
-// other ALTRAD8UD in the fleet intent). The forced state, the admitted write, the plan, the application and
-// the readback all describe THAT controller, consistently -- which is exactly the shape the arrival
+// other ALTRAD8UD in the fleet intent). The forced state, the admitted write, the write's completion record
+// and the readback all describe THAT controller, consistently -- which is exactly the shape the arrival
 // classifier must refuse when the run's own readings are srv13's.
 fn srv4_forced_write_sequence(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs, applied_at_millis: EpochMs) -> ForcedWriteSequence?
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "forced_sequence_for_the_foreign_unit"),
   ]
 {
-  forced_write_sequence_at(endpoint: another_controller(), census: srv4_dry_census(), subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis)
+  forced_write_sequence_at(endpoint: another_controller(), census: srv4_dry_census(), subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis, flagged: true)
+}
+
+// THE SAME PRODUCERS ON A CONTROLLER WHOSE SERVED STATE NEVER SHOWED THE FLAG: srv13's address, srv13's
+// census, the same admitted write and the same PATCH -- but the served account is NOT flagged as needing a
+// password change. The completion record reads the effect off the world the transport returned, and a world
+// that never showed the state the 403 names shows no clearing of it, so nothing lands and no transition
+// mints. Paired positive: the claim the_forced_first_write_transition_is_produced_by_the_real_producers,
+// identical but for the flag.
+fn srv13_unflagged_forced_write_sequence(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs, applied_at_millis: EpochMs) -> ForcedWriteSequence? {
+  forced_write_sequence_at(endpoint: srv13(), census: srv13_dry_census(), subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis, flagged: false)
 }
 
 fn srv4_dry_census() -> IpmiControllerChannelCensus {
@@ -526,11 +529,12 @@ fn srv4_dry_census() -> IpmiControllerChannelCensus {
   )
 }
 
-// POSITIVE CONTROL FOR THE TRANSITION ITSELF. srv13's admitted forced first write, the plan the real
-// planner computes for the controller whose root still holds the published password, and the application the
-// real dry apply returns, join into one transition: the leg names the same write, the plan's managed write
-// is the root password write the admission names, and the attempt is the subject's own. A producer that
-// refused would return none here, so this claim cannot pass over a transition that was not produced.
+// POSITIVE CONTROL FOR THE TRANSITION ITSELF. srv13's admitted forced first write, the Redfish Password
+// PATCH the admitted request names over the controller whose root still holds the published password, and
+// the completion record read off the world that PATCH landed in, join into one transition: the leg names the
+// same write, the completion names the account that write names, and the attempt is the subject's own. A
+// producer that refused would return none here, so this claim cannot pass over a transition that was not
+// produced.
 fn srv13_forced_write_transition(subject: MachineIntakeSubject, pre_capture: PriorLifeArchive?, began_millis: EpochMs, finished_millis: EpochMs, applied_at_millis: EpochMs) -> ForcedFirstRotationWriteTransition? {
   match srv13_forced_write_sequence(subject: subject, pre_capture: pre_capture, began_millis: began_millis, finished_millis: finished_millis, applied_at_millis: applied_at_millis) {
     Absent => none
@@ -540,17 +544,16 @@ fn srv13_forced_write_transition(subject: MachineIntakeSubject, pre_capture: Pri
 
 test fn the_forced_first_write_transition_is_produced_by_the_real_producers() -> Bool {
   let subject = srv13_intake_subject(attempt: "attempt-1" as AttemptIdentity)
-  // The leg completes inside its 10 s budget (began 1793145630000, finished 1793145635000) and the apply
-  // the producer stamps lands INSIDE that window (1793145632000), which is what makes the transition mint
-  // accept the pair. The RED below keeps both and moves only the apply instant.
+  // The leg completes inside its 10 s budget (began 1793145630000, finished 1793145635000) and the write's
+  // completion instant lands INSIDE that window (1793145632000), which is what makes the transition mint
+  // accept the pair. The RED below keeps both and moves only the completion instant.
   match srv13_forced_write_sequence(subject: subject, pre_capture: none, began_millis: 1793145630000, finished_millis: 1793145635000, applied_at_millis: 1793145632000) {
     Absent => false
     Present { value: s } =>
       (s.transition.leg.write.attempt as String) == (subject.attempt_id as String)
-        && (s.transition.application.plan.subject.subject.unit_key as String) == "srv13"
-        && (s.transition.application.plan.endpoint.host as String) == (srv13().host as String)
-        && account_write_request_eq(a: s.transition.leg.write.request, b: s.transition.application.plan.managed_write.request)
-        && match s.transition.application.plan.managed_write.request {
+        && (s.transition.leg.write.standing.endpoint.host as String) == (srv13().host as String)
+        && (s.transition.applied.account as String) == "root"
+        && match s.transition.leg.write.request {
              RedfishAccountPasswordWrite { account: acct, transport_operation: _, action_shape: _ } => (acct as String) == "root"
              _ => false
            }
@@ -562,10 +565,11 @@ test fn the_forced_first_write_transition_is_produced_by_the_real_producers() ->
   }
 }
 
-// THE OPPOSITE-ORDER RED, at the transition mint: the same producers, the same leg, the same plan -- but the
-// application is stamped AFTER the leg it was admitted under had completed. There is no transition that can
-// carry a write its own leg never carried, so the sequence produces nothing at all. Paired positive: the claim
-// above, identical but for the apply instant (the control stamps 1793145632000, inside the window).
+// THE OPPOSITE-ORDER RED, at the transition mint: the same producers, the same leg, the same write -- but
+// its completion is stamped AFTER the leg it was admitted under had completed. There is no transition that
+// can carry a write its own leg never carried, so the sequence produces nothing at all. Paired positive: the
+// claim above, identical but for the completion instant (the control stamps 1793145632000, inside the
+// window).
 // Rung: the real producers, refusing at the transition mint.
 
 test fn a_write_applied_outside_its_leg_window_produces_no_transition() -> Bool {
@@ -576,6 +580,29 @@ test fn a_write_applied_outside_its_leg_window_produces_no_transition() -> Bool 
     began_millis: 1793145630000,
     finished_millis: 1793145635000,
     applied_at_millis: 1793145695000,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE COMPLETION RECORD IS READ OFF THE CONTROLLER, NOT ASSERTED BY THE CALLER: the same admitted write, the
+// same leg, the same PATCH transport, on a controller whose served Redfish account was never flagged as
+// needing a password change. The PATCH itself completes -- the transport does not know the premise -- but the
+// record of what landed requires the served state to show the flag BEFORE and its clearing AFTER, so the
+// sequence produces no transition at all. Without that read, a caller could pair any completed PATCH with any
+// leg and call it the forced write that landed.
+// Rung: the real producers, refusing at the completion mint. Paired positive:
+// the_forced_first_write_transition_is_produced_by_the_real_producers, identical but for the flag.
+
+test fn a_write_the_controller_never_flagged_produces_no_transition() -> Bool {
+  let subject = srv13_intake_subject(attempt: "attempt-1" as AttemptIdentity)
+  match srv13_unflagged_forced_write_sequence(
+    subject: subject,
+    pre_capture: none,
+    began_millis: 1793145630000,
+    finished_millis: 1793145635000,
+    applied_at_millis: 1793145632000,
   ) {
     Absent => true
     Present { value: _ } => false

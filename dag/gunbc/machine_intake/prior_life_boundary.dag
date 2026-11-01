@@ -67,6 +67,7 @@ import gunbc.bmc_model {
   BmcPowerOff,
   BootOverrideNone,
   BootOverrideCdromEfiNextBoot,
+  bmc_redfish_account,
 }
 import gunbc.clock_read {
   ObserverClockInstant,
@@ -103,10 +104,12 @@ import gunbc.machine_intake.bmc_credential_policy {
 }
 import gunbc.machine_intake.bmc_rotation_route {
   AdmittedForcedFirstRotation,
-  admitted_forced_first_rotation_eq,
-  account_write_request_eq,
+  RedfishAccountPasswordWrite,
 }
-import gunbc.machine_intake.bmc_secure { BmcAccountApplication }
+import gunbc.machine_intake.bmc_secure {
+  BmcRedfishPasswordWriteDryStep,
+  bmc_redfish_password_write_completed,
+}
 
 // THE PRIOR-LIFE BOUNDARY, ITS ARCHIVE ARM (docs/plans/managed-host-untangle.md, cut O1c-2;
 // docs/plans/machine-intake-design.md §5). Before anything is cleared, the controller's prior-life
@@ -243,13 +246,16 @@ type DryPriorLifeWorld {
 
 data prior_life_dry_realization_name: NonEmptyStr = "gunbc.machine_intake.prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store" as NonEmptyStr
 
-// THE DRY REALIZATION'S CLOCK, confined to the two functions of this realization that stamp a read
-// and a write.
+// THE DRY REALIZATION'S CLOCK, confined to the functions of this realization that stamp an instant: the
+// archive read, the archive write, the forced write's effect leg, and the record that that write landed.
+// Every instant the forced-write boundary orders is stamped here, so the ordering never compares two
+// realizations.
 fn dry_prior_life_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_archive_prior_life"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_leg"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_applied"),
   ]
 {
   observer_clock_modeled(millis: millis, realization: prior_life_dry_realization_name)
@@ -1108,48 +1114,105 @@ fn forced_write_instants_share_clock(instants: List<ObserverClockInstant>) -> Bo
 }
 
 // THE WRITE TRANSITION THIS RUN PERFORMED, sealed and minted only below: the write's effect leg (begin and
-// completion on one observer clock), the application the write returned (WHICH write landed, on which
-// controller, for which subject and attempt), and the archive THIS RUN read before that write -- Absent when
-// the pre-write read was refused, which on a forced-change build is the rule, not the exception. The run
-// supplies SEALED RECORDS, never a classification of them: the standing and the ordering are derived inside
-// the boundary, and the row's typed inference is attached by the driver admitted to the row (below), never
-// claimed here.
+// completion on one observer clock), the record that the write LANDED (which account, stamped when on that
+// same clock), and the archive THIS RUN read before that write -- Absent when the pre-write read was refused,
+// which on a forced-change build is the rule, not the exception. The run supplies SEALED RECORDS, never a
+// classification of them: the standing and the ordering are derived inside the boundary, and the row's typed
+// inference is attached by the driver admitted to the row (below), never claimed here.
 type ForcedFirstRotationWriteTransition sole_constructor {
   leg: ForcedFirstRotationWriteLeg
-  application: BmcAccountApplication
+  applied: ForcedFirstRotationWriteApplied
   pre_capture: PriorLifeArchive?
 }
 
-// THE JOINS, MADE AT THE MINT (§5: make the wrong state unwritable, do not validate it): the application must
-// be the write THAT leg's admission licensed (same request), on the controller THAT admission was read from
-// (same endpoint), for the attempt THAT admission was approved under (same attempt identity); and the leg's
-// deadline and completion must be the same leg. A transition whose records merely agree with each other about
-// a different write, controller or attempt does not mint. Consumers: the row admission
-// (gunbc.machine_intake.arrival_converge admit_forced_first_rotation_precedes_prior_life), which joins this to
-// the active run, and dry_archive_prior_life_across_forced_write, which orders the instants.
-fn forced_first_rotation_write_transition(leg: ForcedFirstRotationWriteLeg, application: BmcAccountApplication, pre_capture: PriorLifeArchive?) -> ForcedFirstRotationWriteTransition?
+// WHICH ACCOUNT the admission licensed to change, and WHEN its write was read back. Minted only below.
+type ForcedFirstRotationWriteApplied sole_constructor {
+  account: NonEmptyStr
+  applied_at: ObserverClockInstant
+}
+
+// THE FORCED WRITE, LANDED. The completion record of the run's own admitted forced first write: the account
+// the admission licensed to change, and the observer instant the write was read back at, STAMPED ON THE SAME
+// modeled clock that stamps the leg's begin and completion and both archive reads -- so the ordering the
+// boundary enforces is one clock end to end, with no cross-realization comparison in it.
+//
+// WHY NOT the account plan's application (gunbc.machine_intake.bmc_secure BmcAccountApplication): on a
+// forcing build the controller answers the authenticated read with the build's own 403, so BmcSecure's
+// conjunction refuses and NO plan is due -- the write that unforces the controller is not planned by
+// BmcSecure, it is the write the forced admission licensed (gunbc.machine_intake.bmc_rotation_route
+// forced_first_rotation_apply_frontier). Minting a plan for it would put a second, invented plan beside the
+// admission that actually licensed the write (§3: one authority for why a write may happen).
+//
+// WHAT THE MINT REFUSES: a write the controller did not accept (the transport's own typed refusal), and a
+// world whose served Redfish census does not show the effect the admission names -- the account present and
+// flagged as needing a password change BEFORE, present, enabled, unlocked and no longer flagged AFTER. The
+// effect is read off the world the transport returned; it is not asserted by the caller.
+fn forced_first_rotation_write_applied(
+  leg: ForcedFirstRotationWriteLeg,
+  step: BmcRedfishPasswordWriteDryStep,
+  before: BmcWorld,
+  after: BmcWorld,
+  applied_at_millis: EpochMs,
+) -> ForcedFirstRotationWriteApplied?
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "forced_write_sequence_at"),
   ]
 {
-  if !declaration_ref_eq(a: leg_deadline_leg(d: leg.deadline), b: leg_completed_leg(c: leg.completed)) {
-    none
-  } else if !account_write_request_eq(a: leg.write.request, b: application.plan.managed_write.request) {
-    none
-  } else if (application.plan.endpoint.host as String) != (leg.write.standing.endpoint.host as String) {
-    none
-  } else if (application.plan.subject.attempt_id as String) != (leg.write.attempt as String) {
-    none
-  } else if !observer_instant_precedes(earlier: leg.deadline.started, later: application.applied_at) || !observer_instant_precedes(earlier: application.applied_at, later: leg.completed.finished) {
-    // THE WRITE LANDS INSIDE THE LEG IT WAS ADMITTED UNDER: the application's own stamped instant must fall
-    // between the leg's start and its completion. An application stamped outside the window is a write the leg
-    // never carried -- the same ordering fact the boundary reads off the archives, checked where the transition
-    // is built instead of only where it is consumed. (The account producer stamps its instant under its own
-    // modeled realization; cross-clock comparability of ObserverClockInstant is a declared follow-up, not
-    // settled here.)
+  match leg.write.request {
+    RedfishAccountPasswordWrite { account: account, transport_operation: _, action_shape: _ } => {
+      let held_before = bmc_redfish_account(world: before, name: account as String)
+      let written_after = bmc_redfish_account(world: after, name: account as String)
+      match held_before {
+        Absent => none
+        Present { value: held } =>
+          match written_after {
+            Absent => none
+            Present { value: written } =>
+              if !held.forced_password_change || !bmc_redfish_password_write_completed(step: step) || written.forced_password_change || !written.enabled || written.locked || written.name != (account as String) {
+                none
+              } else {
+                Present {
+                  value: ForcedFirstRotationWriteApplied {
+                    account: account,
+                    applied_at: dry_prior_life_instant(millis: applied_at_millis),
+                  },
+                }
+              }
+          }
+      }
+    }
+    _ => none
+  }
+}
+
+// THE JOINS, MADE AT THE MINT (§5: make the wrong state unwritable, do not validate it): the completion record
+// must name the account THAT leg's admission licensed (a record minted under one leg cannot be paired with
+// another leg's write), and it must be stamped between the leg's start and its completion -- a write stamped
+// outside the window it was admitted under is a write that leg never carried. Consumers: the row admission
+// (gunbc.machine_intake.arrival_converge admit_forced_first_rotation_precedes_prior_life), which joins this to
+// the active run, and dry_archive_prior_life_across_forced_write, which orders the instants.
+fn forced_first_rotation_write_transition(leg: ForcedFirstRotationWriteLeg, applied: ForcedFirstRotationWriteApplied, pre_capture: PriorLifeArchive?) -> ForcedFirstRotationWriteTransition?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "forced_write_sequence_at"),
+  ]
+{
+  let leg_account = match leg.write.request {
+    RedfishAccountPasswordWrite { account: account, transport_operation: _, action_shape: _ } => Present { value: account }
+    _ => Absent
+  }
+  let lands_inside_the_leg = match leg_account {
+    Absent => false
+    Present { value: account } =>
+      (applied.account as String) == (account as String)
+        // THE WRITE LANDS INSIDE THE LEG IT WAS ADMITTED UNDER. Both instants are on this realization's
+        // clock, so the comparison is a same-clock ordering, not a cross-clock one.
+        && observer_instant_precedes(earlier: leg.deadline.started, later: applied.applied_at)
+        && observer_instant_precedes(earlier: applied.applied_at, later: leg.completed.finished)
+  }
+  if !declaration_ref_eq(a: leg_deadline_leg(d: leg.deadline), b: leg_completed_leg(c: leg.completed)) || !lands_inside_the_leg {
     none
   } else {
-    Present { value: ForcedFirstRotationWriteTransition { leg: leg, application: application, pre_capture: pre_capture } }
+    Present { value: ForcedFirstRotationWriteTransition { leg: leg, applied: applied, pre_capture: pre_capture } }
   }
 }
 
@@ -1248,13 +1311,15 @@ fn prior_life_indeterminate_across_forced_write(
 // the write's), stamped on the same clock as the write leg's begin and completion and the post-write read,
 // and it must sit BEFORE the leg began while the post-write read sits AFTER the leg finished. A "pre-capture"
 // that is really the post-write archive -- the shape the reviewer named -- fails the order and grounds
-// nothing, so it reaches the operator instead of establishing. The write's own completion is not compared by
-// instant to the application's applied_at: that instant is stamped by another realization's clock
-// (gunbc.machine_intake.bmc_secure's dry clock), and cross-clock comparability of ObserverClockInstant is a
-// declared follow-up (see the PR note); the application is joined to the write by IDENTITY instead, at the
-// context mint. A refusal or an incomplete from the archive is returned UNTOUCHED: this arm only re-decides
-// the ESTABLISHED arm, the one place where fresh and erased are indistinguishable from this layer. With
-// `across` Absent (every non-forced unit) the result is identical to dry_archive_prior_life.
+// nothing, so it reaches the operator instead of establishing. The write's own completion instant is on THIS
+// same clock (gunbc.machine_intake.prior_life_boundary forced_first_rotation_write_applied stamps it here, not
+// on gunbc.machine_intake.bmc_secure's dry clock), and it is ordered against the leg at the transition mint;
+// the boundary orders the two archive reads against the leg. Cross-clock comparability of ObserverClockInstant
+// across realizations stays a declared follow-up for the live producers (see the PR note); nothing in this arm
+// compares instants from two realizations. A refusal or an incomplete from the archive is returned UNTOUCHED:
+// this arm only re-decides the ESTABLISHED arm, the one place where fresh and erased are indistinguishable
+// from this layer. With `across` Absent (every non-forced unit) the result is identical to
+// dry_archive_prior_life.
 //
 // (rung: pure re-decision of one arm over the run's own sealed archives and sealed write leg. The
 // discriminating REDs are w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the_forced_write,
