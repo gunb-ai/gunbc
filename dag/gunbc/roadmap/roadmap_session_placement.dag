@@ -1211,7 +1211,10 @@ fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, nod
           attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))
         AttemptExitRecordFound { record: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
         AttemptExitRecordUnreadable { reason: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
-        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+        // Not even proof of the start: an entry that still spells the stop variables was written by
+        // something that never substituted them, and it is not known to be this unit's hook. The start
+        // standing is READ, as in the no-record arm. The observation stays indeterminate either way.
+        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))
       }
     }
     AttemptUnitActive => loaded
