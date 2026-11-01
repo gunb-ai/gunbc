@@ -1355,6 +1355,11 @@ fn list_head<T>(xs: FreeMonoid<T>) -> Optional<T> {
   }
 }
 
+// list_head's mirror at the other end: the left fold keeps the item it last saw, so Empty => Absent (never a host null).
+fn list_last<T>(xs: FreeMonoid<T>) -> Optional<T> {
+  fold_list(xs: xs, empty: Absent, cons: fn(acc, item) { Present { value: item } })
+}
+
 fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
   if n <= 0 {
     xs
