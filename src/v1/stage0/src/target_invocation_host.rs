@@ -254,9 +254,6 @@ pub enum TargetProducer {
     V2NativeFrontier,
     EmittedCrateWorkspace,
     HeadsReadingDifferential,
-    BehavioralReceiptPlan,
-    BehavioralReceiptCensus,
-    BehavioralReceiptSelftest,
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
     TypedGraphExclusiveBytes,
@@ -338,18 +335,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 target: "heads-reading-differential".to_string(),
             },
             TargetProducer::HeadsReadingDifferential,
-        ),
-        (
-            instrument_label("behavioral-receipt-plan"),
-            TargetProducer::BehavioralReceiptPlan,
-        ),
-        (
-            instrument_label("behavioral-receipt-census"),
-            TargetProducer::BehavioralReceiptCensus,
-        ),
-        (
-            instrument_label("behavioral-receipt-selftest"),
-            TargetProducer::BehavioralReceiptSelftest,
         ),
         (
             instrument_label("compile-clean-diagnostic-census"),
@@ -1058,15 +1043,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         TargetProducer::HeadsReadingDifferential => {
             run_heads_reading_differential(&heads_reading_differential_source_roots())
         }
-        TargetProducer::BehavioralReceiptPlan => behavioral_outcome(
-            cli_run::behavioral_receipt_host::run_plan(&behavioral_receipt_source_roots()),
-        ),
-        TargetProducer::BehavioralReceiptCensus => behavioral_outcome(
-            cli_run::behavioral_receipt_host::run_census(&behavioral_receipt_source_roots()),
-        ),
-        TargetProducer::BehavioralReceiptSelftest => behavioral_outcome(
-            cli_run::behavioral_receipt_host::run_selftest(&behavioral_receipt_source_roots()),
-        ),
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
@@ -2455,25 +2431,6 @@ fn run_compile_clean_diagnostic_census() -> InvocationOutcome {
             Termination::ObservationDidNotHold
         },
         message,
-    }
-}
-
-fn behavioral_receipt_source_roots() -> Vec<String> {
-    vec!["dag".to_string(), "src/v2".to_string()]
-}
-
-fn behavioral_outcome(
-    outcome: cli_run::behavioral_receipt_host::BehavioralHostOutcome,
-) -> InvocationOutcome {
-    use cli_run::behavioral_receipt_host::BehavioralHostTermination;
-    InvocationOutcome {
-        termination: match outcome.termination {
-            BehavioralHostTermination::ObservationHeld => Termination::ObservationHeld,
-            BehavioralHostTermination::ObservationDidNotHold => Termination::ObservationDidNotHold,
-            BehavioralHostTermination::SubjectUnreached => Termination::SubjectUnreached,
-            BehavioralHostTermination::Refused => Termination::Refused,
-        },
-        message: outcome.message,
     }
 }
 

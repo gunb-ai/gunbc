@@ -21,12 +21,8 @@ import v2.workflow.floor_terminal_ledger {
 }
 import gunbc.target_binding {
   TargetProducer,
-  BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
-  BehavioralReceiptSelftestProducer, HeadsReadingDifferentialProducer,
+  HeadsReadingDifferentialProducer,
   CompileCleanDiagnosticCensusProducer,
-  BehavioralReceiptPlanStanding,
-  BehavioralReceiptCensusStanding,
-  BehavioralReceiptSelftestStanding,
   HeadsReadingDifferentialStanding,
   CompileCleanDiagnosticCensusStanding,
 }
@@ -139,9 +135,6 @@ type TestStanding
   = NotATestTarget
   | TestRunByFloor { disposition: ClaimDisposition }
   | TestReportedByBazel { status: BlazeTestStatus }
-  | TestMeasuredByBehavioralReceiptPlan { standing: BehavioralReceiptPlanStanding }
-  | TestMeasuredByBehavioralReceiptCensus { standing: BehavioralReceiptCensusStanding }
-  | TestMeasuredByBehavioralReceiptSelftest { standing: BehavioralReceiptSelftestStanding }
   | TestMeasuredByHeadsReadingDifferential { standing: HeadsReadingDifferentialStanding }
   | TestMeasuredByCompileCleanDiagnosticCensus { standing: CompileCleanDiagnosticCensusStanding }
 
@@ -285,15 +278,6 @@ fn test_standing_verdict(t: TestStanding) -> StandingVerdict {
     NotATestTarget => StandingSatisfied {}
     TestRunByFloor { disposition: d } => claim_disposition_verdict(d: d)
     TestReportedByBazel { status: s } => blaze_test_status_verdict(s: s)
-    TestMeasuredByBehavioralReceiptPlan { standing: _ } => StandingUnsatisfied {
-      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptPlanProducer {} }
-    }
-    TestMeasuredByBehavioralReceiptCensus { standing: _ } => StandingUnsatisfied {
-      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptCensusProducer {} }
-    }
-    TestMeasuredByBehavioralReceiptSelftest { standing: _ } => StandingUnsatisfied {
-      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptSelftestProducer {} }
-    }
     TestMeasuredByHeadsReadingDifferential { standing: _ } => StandingUnsatisfied {
       cause: TestProducerOutsideRequiredAggregate { producer: HeadsReadingDifferentialProducer {} }
     }
@@ -714,15 +698,6 @@ fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatusExport 
     TestReportedByBazel { status: s } => BlazeTestStatusExported { status: s }
     TestRunByFloor { disposition: d } => BlazeTestStatusExported {
       status: blaze_test_status_of_claim_disposition(d: d)
-    }
-    TestMeasuredByBehavioralReceiptPlan { standing: _ } => TestStandingNotExportable {
-      producer: BehavioralReceiptPlanProducer {}
-    }
-    TestMeasuredByBehavioralReceiptCensus { standing: _ } => TestStandingNotExportable {
-      producer: BehavioralReceiptCensusProducer {}
-    }
-    TestMeasuredByBehavioralReceiptSelftest { standing: _ } => TestStandingNotExportable {
-      producer: BehavioralReceiptSelftestProducer {}
     }
     TestMeasuredByHeadsReadingDifferential { standing: _ } => TestStandingNotExportable {
       producer: HeadsReadingDifferentialProducer {}

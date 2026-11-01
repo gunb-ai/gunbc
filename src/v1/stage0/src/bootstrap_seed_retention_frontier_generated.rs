@@ -21,7 +21,6 @@ pub const SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES: &[&str] = &[
     "required_regen_host.rs",
     "evaluation_budget_consequence_falsifier_host.rs",
     "process_group.rs",
-    "behavioral_receipt_host.rs",
     "std_logic.rs",
     "bootstrap_stage0_crate_layout_generated.rs",
     "bootstrap_seed_retention_frontier_generated.rs",

@@ -1809,7 +1809,7 @@ fn write_host_facts(
 /// and requires it to accept a well-formed root and refuse a malformed one — and it is still not
 /// behavioural equivalence: DESIGN section 7 asks that the emitted
 /// module also behave as the seed does on a discriminating corpus, and that half
-/// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
+/// (the removed `--behavioral-receipt-*` entry points) is a declared drop that no required run performs. Nor is it the
 /// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
 /// refuses today because `v2.compiler.source_root_eval` declares `SourceRootEvalDriver`, whose rendered main
 /// answers `census` and `adjudicate` and has no compile mode at all. That refusal is the honest next

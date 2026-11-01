@@ -6,8 +6,7 @@
 //! base side of its own comparison window through `reconstruct_base_index` and selects the
 //! untouched consumers of declarations whose interface changed through
 //! `interface_changed_consumers` (gunbc#11194, #12120). `joint_claim_join` re-reads base-side sources
-//! through `base_records` and splits a diff through `diff_sides`. `behavioral_receipt_host` runs
-//! git through `git_stdout`.
+//! through `base_records` and splits a diff through `diff_sides`.
 //!
 //! WHERE THIS MODULE CAME FROM. It is the non-gate residue of `namespace_wave_admission.rs`,
 //! deleted with the wave-admission wall by operator ruling 2026-09-19 (the drop is declared at
@@ -2066,7 +2065,7 @@ fn operator_row_authority(
         .iter()
         // A type declaration carries no body (a function or data row does); the record connective
         // is Conj; the field names are the declaration children's names (the same node-shape facts
-        // behavioral_receipt_host's reader measured).
+        // measured on the parsed module).
         .find(|decl| {
             decl.body.is_none()
                 && decl.name == "SyntaxSpec"
