@@ -37,7 +37,8 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 // (Int against String) is therefore never judged. Source reaches it: arrow_body_does_not_inhabit_declared_return.
 //
 // SITE 7 (infer_judge_generic_formal, the InferFormalShapeMismatch arm): the first-order matcher compares heads
-// by structural equality and refuses a produced type that is a nominal refinement of the formal's applied head,
+// by structural equality and refuses a produced type that is a nominal alias of the formal's applied head (the
+// `where` refinement is retired, so the probe is a plain nominal alias),
 // where the non-generic path (declared_type_inhabitance) admits a refinement at its own base. The control is
 // the same pair at a non-generic formal.
 //
@@ -57,7 +58,7 @@ data qrc_site6_red_source: String = "module gunbc.qrc_site6_red\n\nimport std.ty
 data qrc_site6_control_source: String = "module gunbc.qrc_site6_control\n\nimport std.types { Pair }\n\nfn qrc_right<K>(p: Pair<K, Int>) -> Pair<K, Int> {\n  p\n}\n"
 
 fn qrc_refinement_probe(module_name: String, formal: String) -> String {
-  join(["module ", module_name, "\n\nimport std.types { Pair }\n\nfn qrc_positive(value: Pair<Int, Int>) -> Bool {\n  true\n}\n\ntype Tagged = Pair<Int, Int> where qrc_positive\n\nfn qrc_take<K>(p: ", formal, ") -> Int {\n  0\n}\n\nfn qrc_call(t: Tagged) -> Int {\n  qrc_take(p: t)\n}\n"], "")
+  join(["module ", module_name, "\n\nimport std.types { Pair }\n\ntype Tagged = Pair<Int, Int>\n\nfn qrc_take<K>(p: ", formal, ") -> Int {\n  0\n}\n\nfn qrc_call(t: Tagged) -> Int {\n  qrc_take(p: t)\n}\n"], "")
 }
 
 data qrc_site7_generic_source: String = qrc_refinement_probe(module_name: "gunbc.qrc_site7_generic", formal: "Pair<K, Int>")
