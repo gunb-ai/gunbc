@@ -770,18 +770,24 @@ type ControlHeapCarrier<H>
   = ControlHeapFilled { table: ControlHeapRow<H> }
   | ControlHeapEmpty
 
+// The carrier is instantiated at Int. The control fns take it at a CONCRETE element on purpose: an enum
+// arm or an empty list that carries no payload leaves a free type variable at the call site (rustc
+// E0283), and this corpus will not unify a generic enum's payload variable with a declared product type
+// inside a list literal. The point of these cases is the emitted generic type -- the carrier, the row and
+// the route are generic declarations, so their bounds are emitted and compiled exactly as in the product
+// -- and the owed side below, whose field is ill-formed if the repair over-relaxes.
 fn control_heap_rows_equal(row_a: ControlHeapRow<Int>, row_b: ControlHeapRow<Int>) -> Bool {
   row_a == row_b
 }
 
-fn control_heap_carrier_is_filled<H>(carrier: ControlHeapCarrier<H>) -> Bool {
+fn control_heap_carrier_is_filled(carrier: ControlHeapCarrier<Int>) -> Bool {
   match carrier {
     ControlHeapFilled { table: _ } => true
     ControlHeapEmpty => false
   }
 }
 
-fn control_heap_carrier_route_count<H>(carrier: ControlHeapCarrier<H>) -> Int {
+fn control_heap_carrier_route_count(carrier: ControlHeapCarrier<Int>) -> Int {
   match carrier {
     ControlHeapFilled { table: t } => t.routes |> count
     ControlHeapEmpty => 0
@@ -792,23 +798,23 @@ fn control_heap_carrier_route_count<H>(carrier: ControlHeapCarrier<H>) -> Int {
 // when the element itself needs it: ControlOwedLeaf<P> has a bare P field, so its own declaration
 // carries P: Clone, and naming ControlOwedLeaf<H> anywhere -- inside a List or not -- requires H: Clone
 // for the field to be well-formed at all. This is the Vec<DeclaredType<H>> case with a real demand: the
-// demand comes from the element type's own declared requirement, not from naming the parameter.
+// demand comes from the element type's own requirement, not from naming the parameter.
 type ControlOwedLeaf<P> { value: P }
 
 type ControlOwedRow<H> { leaves: List<ControlOwedLeaf<H>> }
 
-fn control_owed_row_leaf_count<H>(row: ControlOwedRow<H>) -> Int {
+fn control_owed_row_leaf_count(row: ControlOwedRow<Int>) -> Int {
   row.leaves |> count
 }
 
 fn heap_reference_carrier_cases() -> List<NativeEmissionCase> {
   [
-    NativeEmissionCase { identity: "heap_carrier_filled_is_filled", held: control_heap_carrier_is_filled(carrier: ControlHeapFilled { table: ControlHeapRow { routes: [ControlHeapStatic { path_label: "a" }] } }) },
+    NativeEmissionCase { identity: "heap_carrier_filled_is_filled", held: control_heap_carrier_is_filled(carrier: ControlHeapFilled { table: ControlHeapRow { routes: [ControlHeapDynamic { handler: 7 }, ControlHeapStatic { path_label: "a" }] } }) },
     NativeEmissionCase { identity: "heap_carrier_red_empty_is_not_filled", held: !control_heap_carrier_is_filled(carrier: ControlHeapEmpty) },
-    NativeEmissionCase { identity: "heap_carrier_routes_count_through_the_handle", held: control_heap_carrier_route_count(carrier: ControlHeapFilled { table: ControlHeapRow { routes: [ControlHeapStatic { path_label: "a" }, ControlHeapDynamic { handler: 7 }] } }) == 2 },
-    NativeEmissionCase { identity: "heap_carrier_red_empty_row_counts_zero", held: control_heap_carrier_route_count(carrier: ControlHeapFilled { table: ControlHeapRow { routes: [] } }) == 0 },
-    NativeEmissionCase { identity: "heap_row_over_a_non_clone_element_compares_equal", held: control_heap_rows_equal(row_a: ControlHeapRow { routes: [] }, row_b: ControlHeapRow { routes: [] }) },
-    NativeEmissionCase { identity: "heap_row_over_a_non_clone_element_red_labels_differ", held: !control_heap_rows_equal(row_a: ControlHeapRow { routes: [ControlHeapStatic { path_label: "a" }] }, row_b: ControlHeapRow { routes: [ControlHeapStatic { path_label: "b" }] }) },
+    NativeEmissionCase { identity: "heap_carrier_routes_count_through_the_handle", held: control_heap_carrier_route_count(carrier: ControlHeapFilled { table: ControlHeapRow { routes: [ControlHeapDynamic { handler: 7 }, ControlHeapStatic { path_label: "a" }] } }) == 2 },
+    NativeEmissionCase { identity: "heap_carrier_red_empty_row_counts_zero", held: control_heap_carrier_route_count(carrier: ControlHeapEmpty) == 0 },
+    NativeEmissionCase { identity: "heap_row_compares_equal_through_the_handle", held: control_heap_rows_equal(row_a: ControlHeapRow { routes: [ControlHeapDynamic { handler: 1 }, ControlHeapStatic { path_label: "a" }] }, row_b: ControlHeapRow { routes: [ControlHeapDynamic { handler: 1 }, ControlHeapStatic { path_label: "a" }] }) },
+    NativeEmissionCase { identity: "heap_row_red_labels_differ", held: !control_heap_rows_equal(row_a: ControlHeapRow { routes: [ControlHeapDynamic { handler: 1 }, ControlHeapStatic { path_label: "a" }] }, row_b: ControlHeapRow { routes: [ControlHeapDynamic { handler: 2 }, ControlHeapStatic { path_label: "a" }] }) },
     NativeEmissionCase { identity: "owed_leaf_element_still_owes_the_parameter", held: control_owed_row_leaf_count(row: ControlOwedRow { leaves: [ControlOwedLeaf { value: 1 }, ControlOwedLeaf { value: 2 }] }) == 2 },
     NativeEmissionCase { identity: "owed_leaf_red_empty_list_counts_zero", held: control_owed_row_leaf_count(row: ControlOwedRow { leaves: [] }) == 0 }
   ]
