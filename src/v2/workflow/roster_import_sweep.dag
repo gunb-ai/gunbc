@@ -462,6 +462,9 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     RosterHeadRow { call: "reverse", key: "reverse", import_name: "list_reverse", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_reverse", positional: ["xs"], appended: [] } },
     RosterHeadRow { call: "take", key: "take", import_name: "take_prefix", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "take_prefix", positional: ["xs", "n"], appended: [] } },
     RosterHeadRow { call: "flat_map", key: "flat_map", import_name: "list_flat_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_flat_map", positional: ["xs", "f"], appended: [] } },
+    // Map is a TYPE home (std.types): the KIND axis imports it at annotation and return positions, so a file spelling
+    // Map<K, V> binds it at its declared home instead of leaning on the ambient kernel spelling.
+    RosterHeadRow { call: "Map", key: "Map", import_name: "Map", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [], head: KeepHead },
   ]
 }
 
