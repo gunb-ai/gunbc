@@ -1143,21 +1143,29 @@ fn received_labels(layout: CarrierLayoutObservation) -> List<BoardMarking> {
   filter(layout.markings, m => is_received_label(m: m))
 }
 
-// WHICH REVISION A BOARD WAS BUILT TO IS READ OFF ITS OWN LABEL. The record names the NVIDIA revision
-// it claims (layout.revision, extdeps.nvidia.p4261); the received board's assembly labels and its PCB
-// print either all agree with that row or one contradicts it, so a board recorded against the wrong
-// revision says so instead of inheriting another revision's identity. A label only in a seller's
-// listing is not the received board's (is_received_label).
+// WHICH REVISION A BOARD WAS BUILT TO IS READ OFF ITS OWN LABEL AND PCB PRINT. The record names the
+// NVIDIA revision it claims (layout.revision, extdeps.nvidia.p4261). Any received-board marking that
+// disagrees with the row wins, whatever else was read, so a board recorded against the wrong revision
+// says so instead of inheriting another revision's identity. Agreement is reported only for what was
+// read: the assembly label (part number and revision code) and the PCB print (PCB code) are separate
+// evidence, and one agreeing does not stand for the other. A label only in a seller's listing is not
+// the received board's (is_received_label).
 type AssemblyRevisionStanding
   = RevisionReadOnBoard { revision: P4261AssemblyRevision }
+  | RevisionLabelReadPcbUnread { revision: P4261AssemblyRevision }
+  | RevisionPcbReadLabelUnread { revision: P4261AssemblyRevision }
   | RevisionContradictedOnBoard { revision: P4261AssemblyRevision, marking: BoardMarking }
   | RevisionUnreadOnBoard { revision: P4261AssemblyRevision }
 
-fn is_revision_marking(m: BoardMarking) -> Bool {
+fn is_received_pcb_print(m: BoardMarking) -> Bool {
   match m {
     PcbCode { code: _, printed_beside: _, evidence } => is_operator_photograph(e: evidence)
-    _ => is_received_label(m: m)
+    _ => false
   }
+}
+
+fn is_revision_marking(m: BoardMarking) -> Bool {
+  is_received_label(m: m) || is_received_pcb_print(m: m)
 }
 
 fn marking_contradicts_revision(m: BoardMarking, r: P4261AssemblyRevision) -> Bool {
@@ -1171,12 +1179,15 @@ fn marking_contradicts_revision(m: BoardMarking, r: P4261AssemblyRevision) -> Bo
 
 fn assembly_revision_standing(layout: CarrierLayoutObservation) -> AssemblyRevisionStanding {
   let read = filter(layout.markings, m => is_revision_marking(m: m))
+  let label_read = any(read, m => is_received_label(m: m))
+  let pcb_read = any(read, m => is_received_pcb_print(m: m))
   match (filter(read, m => marking_contradicts_revision(m: m, r: layout.revision))).first() {
     Present { value: m } => RevisionContradictedOnBoard { revision: layout.revision, marking: m }
-    Absent => match read.first() {
-      Absent => RevisionUnreadOnBoard { revision: layout.revision }
-      Present { value: _ } => RevisionReadOnBoard { revision: layout.revision }
-    }
+    Absent =>
+      if label_read && pcb_read { RevisionReadOnBoard { revision: layout.revision } }
+      else { if label_read { RevisionLabelReadPcbUnread { revision: layout.revision } }
+      else { if pcb_read { RevisionPcbReadLabelUnread { revision: layout.revision } }
+      else { RevisionUnreadOnBoard { revision: layout.revision } } } }
   }
 }
 
@@ -1184,6 +1195,10 @@ fn assembly_revision_text(s: AssemblyRevisionStanding) -> String {
   match s {
     RevisionReadOnBoard { revision: r } =>
       join(["NVIDIA assembly revision ", r.revision_code as String, " (", r.assembly_part_number as String, ", PCB ", r.pcb_code as String, "), as its own label and PCB print read; no NVIDIA source names it"], "")
+    RevisionLabelReadPcbUnread { revision: r } =>
+      join(["NVIDIA assembly revision ", r.revision_code as String, " (", r.assembly_part_number as String, "), as its own label reads; its PCB print is unread; no NVIDIA source names it"], "")
+    RevisionPcbReadLabelUnread { revision: r } =>
+      join(["recorded as NVIDIA assembly revision ", r.revision_code as String, ", whose PCB ", r.pcb_code as String, " its own PCB print reads; its assembly label is unread; no NVIDIA source names it"], "")
     RevisionContradictedOnBoard { revision: r, marking: _ } =>
       join(["recorded as NVIDIA assembly revision ", r.revision_code as String, " (", r.assembly_part_number as String, ", PCB ", r.pcb_code as String, "), which its own label or PCB print CONTRADICTS"], "")
     RevisionUnreadOnBoard { revision: r } =>

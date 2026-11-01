@@ -144,6 +144,7 @@ import product.electrical.identification {
   shared_withstand,
 }
 import product.p4261.carrier {
+  PcbCode,
   AwayFromLatch,
   CarrierLayoutObservation,
   ConnectorHousing,
@@ -291,6 +292,7 @@ import product.p4261.e1_b {
   p4261_near_4r7_converter_hypothesis,
 }
 import product.p4261.k1_a {
+  k1_label_photo,
   k1_200,
   k1_beige,
   k1_converter_far,
@@ -399,6 +401,10 @@ import product.p4261.readings {
   TerminalsNotPlaced,
 }
 import product.p4261.report {
+  is_received_label,
+  RevisionLabelReadPcbUnread,
+  RevisionPcbReadLabelUnread,
+  RevisionUnreadOnBoard,
   AssemblyRevisionStanding,
   assembly_revision_standing,
   RevisionReadOnBoard,
@@ -2816,12 +2822,88 @@ fn is_contradicted_on_board(s: AssemblyRevisionStanding) -> Bool {
   }
 }
 
+fn with_markings(base: CarrierLayoutObservation, markings: List<BoardMarking>) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    asset: base.asset,
+    design: base.design,
+    revision: base.revision,
+    markings: markings,
+    module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors,
+    j20: base.j20,
+    j20_calipers: base.j20_calipers,
+    edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey,
+    management_io: base.management_io,
+    components: base.components,
+    measured: base.measured,
+    input: base.input,
+    unresolved: base.unresolved,
+  }
+}
+
+fn is_pcb_marking(m: BoardMarking) -> Bool {
+  match m {
+    PcbCode { code: _, printed_beside: _, evidence: _ } => true
+    _ => false
+  }
+}
+
+fn is_label_marking(m: BoardMarking) -> Bool {
+  match m {
+    AssemblyLabel { model: _, part_number: _, revision: _, serial: _, evidence: _ } => true
+    _ => false
+  }
+}
+
+fn k1_standing_with(markings: List<BoardMarking>) -> AssemblyRevisionStanding {
+  assembly_revision_standing(layout: with_markings(base: p4261_k1_layout, markings: markings))
+}
+
+fn is_label_only(s: AssemblyRevisionStanding) -> Bool {
+  match s {
+    RevisionLabelReadPcbUnread { revision: _ } => true
+    _ => false
+  }
+}
+
+fn is_pcb_only(s: AssemblyRevisionStanding) -> Bool {
+  match s {
+    RevisionPcbReadLabelUnread { revision: _ } => true
+    _ => false
+  }
+}
+
+fn is_unread_on_board(s: AssemblyRevisionStanding) -> Bool {
+  match s {
+    RevisionUnreadOnBoard { revision: _ } => true
+    _ => false
+  }
+}
+
+// THE STANDING CLAIMS ONLY WHAT WAS READ. Over the K1's own markings: label and PCB print both read is
+// the full reading; the label alone or the PCB print alone is a partial one that names only what it
+// read; the seller's listing labels alone, or nothing, leave the board unread; and a received-board
+// marking that disagrees wins over agreeing ones whether it comes first or last.
 test fn each_board_names_its_nvidia_revision_and_its_label_holds_it() -> Bool {
+  let k1 = p4261_k1_layout.markings
+  let other_pcb = PcbCode { code: "180-14261-DAAF-B00", printed_beside: Absent, evidence: k1_label_photo }
+  let label_only = with_markings(base: p4261_k1_layout, markings: filter(k1, m => !is_pcb_marking(m: m)))
+  let pcb_only = with_markings(base: p4261_k1_layout, markings: filter(k1, m => !is_label_marking(m: m)))
   is_read_on_board(s: assembly_revision_standing(layout: p4261_k1_layout))
     && is_read_on_board(s: assembly_revision_standing(layout: p4261_e1_layout))
     && is_contradicted_on_board(s: assembly_revision_standing(layout: with_revision(base: p4261_e1_layout, revision: p4261_k1)))
     && is_contradicted_on_board(s: assembly_revision_standing(layout: with_revision(base: p4261_k1_layout, revision: p4261_e1)))
-    && carrier_label_text(layout: p4261_k1_layout).contains("NVIDIA assembly revision K1 (694-24261-0000-100, PCB 180-14261-DAAF-A01)")
+    && is_label_only(s: assembly_revision_standing(layout: label_only))
+    && is_pcb_only(s: assembly_revision_standing(layout: pcb_only))
+    && is_unread_on_board(s: k1_standing_with(markings: filter(k1, m => is_label_marking(m: m) && !is_received_label(m: m))))
+    && count(filter(k1, m => is_label_marking(m: m) && !is_received_label(m: m))) == 2
+    && is_unread_on_board(s: k1_standing_with(markings: []))
+    && is_contradicted_on_board(s: k1_standing_with(markings: concat([other_pcb], k1)))
+    && is_contradicted_on_board(s: k1_standing_with(markings: concat(k1, [other_pcb])))
+    && carrier_label_text(layout: p4261_k1_layout).contains("NVIDIA assembly revision K1 (694-24261-0000-100, PCB 180-14261-DAAF-A01), as its own label and PCB print read")
     && carrier_label_text(layout: p4261_e1_layout).contains("no NVIDIA source names it")
+    && carrier_label_text(layout: label_only).contains("its PCB print is unread") && !carrier_label_text(layout: label_only).contains("label and PCB print read")
+    && carrier_label_text(layout: pcb_only).contains("its assembly label is unread") && !carrier_label_text(layout: pcb_only).contains("label and PCB print read")
     && carrier_label_text(layout: with_revision(base: p4261_e1_layout, revision: p4261_k1)).contains("CONTRADICTS")
 }
