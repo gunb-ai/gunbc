@@ -4,9 +4,6 @@
 use self::TextJudgment::*;
 use self::TextNotAskedReason::*;
 use self::TypeResolutionVerdict::*;
-pub use crate::gunbc_structural_realization_bindings::{
-    conversion_plan_rows, kernel_grounding_rows,
-};
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
     FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
@@ -18,22 +15,15 @@ use crate::std_algebra::AlgebraTypeTemplate::{
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
-    algebra_carriers, algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate,
-    AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
+    algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile,
+    AlgebraTypeTemplate, ContainerSource,
 };
-use crate::std_coercion::ArithmeticCarrierSelection::{
-    ArithmeticCarrierAmbiguous, ArithmeticCarrierSelected, ArithmeticNoCarrier,
+use crate::std_coercion::SubtractionRefinement::{
+    SubtractionEscapesTo, SubtractionRefinementAmbiguous, SubtractionStaysInOperandAlgebra,
 };
-use crate::std_coercion::TextRepresentation::{
-    CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
-};
-pub use crate::std_coercion::{
-    injection_targets, select_arithmetic_carrier, ArithmeticCarrierSelection, TextRepresentation,
-};
+pub use crate::std_coercion::{dag_subtraction_refinement, SubtractionRefinement};
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
-pub use crate::std_literal_elaboration::IntegerExtent;
-use crate::std_literal_elaboration::IntegerExtent::UnboundedIntegers;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -50,12 +40,9 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
     container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
 };
-use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable;
 pub use crate::v1_compiler_infer_env::{
-    alias_names_settled_agree, alias_settled_agree, is_where_refinement_node, kernel_settled_name,
-    settled_type, text_crossing_by_identity, text_representation_by_identity,
-    type_reference_declaration_reading, type_reference_declaration_ref, TypeBinding, TypeEnv,
-    TypeReferenceDeclarationReading,
+    alias_names_settled_agree, alias_settled_agree, settled_type, text_crossing_by_identity,
+    type_reference_declaration_ref, TypeBinding, TypeEnv,
 };
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
@@ -155,16 +142,32 @@ pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
     }
 }
 
+pub fn node_is_finite_power_set_algebra_spelling(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((n.connective.clone() == Connective::NoConnective)
+        && match crate::std_types::container_template_algebra(
+            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                source_indices,
+                n.clone(),
+            )),
+        ) {
+            Some(algebra) => (algebra.clone() == "FinitePowerSet".to_string()),
+            std::option::Option::None => false,
+        })
+}
+
 pub fn node_is_collection(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
-        && is_declared_container_alias_spelling(crate::v1_std_core::authored_name_at(
-            source_indices,
+        && (is_declared_container_alias_spelling(crate::v1_std_core::authored_name_at(
+            source_indices.clone(),
             n.clone(),
-        )))
+        )) || node_is_finite_power_set_algebra_spelling(n.clone(), source_indices.clone())))
 }
 
 pub fn node_is_keyed_collection(
@@ -218,10 +221,7 @@ pub fn node_is_set_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
-        && (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-            source_indices.clone(),
-            n.clone(),
-        )) == "Set".to_string()))
+        && node_is_finite_power_set_algebra_spelling(n.clone(), source_indices.clone()))
 }
 
 pub fn type_is_ordered_element_run(
@@ -3912,346 +3912,19 @@ pub struct BinOpInferred {
     pub algebra_field: Option<AlgebraFieldKind>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ArithmeticRequirement {
-    pub field: String,
-    pub preserved: Rc<Vec<String>>,
-}
-
-pub fn arithmetic_requirement(op: BinOp) -> Option<Rc<ArithmeticRequirement>> {
-    match op.clone() {
-        BinOp::Add => Some(Rc::new(ArithmeticRequirement {
-            field: "add".to_string(),
-            preserved: Rc::new(vec!["add".to_string()]),
-        })),
-        BinOp::Mul => Some(Rc::new(ArithmeticRequirement {
-            field: "mul".to_string(),
-            preserved: Rc::new(vec!["mul".to_string()]),
-        })),
-        BinOp::Sub => Some(Rc::new(ArithmeticRequirement {
-            field: "negate".to_string(),
-            preserved: Rc::new(vec!["add".to_string()]),
-        })),
-        _ => std::option::Option::None,
-    }
-}
-
-pub fn carrier_in_algebra_table(carrier: Rc<DeclarationRef>) -> bool {
-    {
-        let mut __found = false;
-        for c in crate::std_algebra::algebra_carriers().iter().cloned() {
-            if (c.name.clone() == carrier.decl_name.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn carrier_defines_field(carrier: Rc<DeclarationRef>, field: String) -> bool {
-    {
-        let mut __found = false;
-        for c in crate::std_algebra::algebra_carriers().iter().cloned() {
-            if ((c.name.clone() == carrier.decl_name.clone()) && {
-                let mut __found = false;
-                for t in crate::std_algebra::algebra_templates_for_profile(c.profile.clone())
-                    .iter()
-                    .cloned()
-                {
-                    if (t.name.clone() == field.clone()) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            }) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn operand_carrier_ref(
-    mut __tco_loop_n: Rc<Node>,
-    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut __tco_loop_env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut n = __tco_loop_n;
-            #[allow(unused_mut)]
-            let mut source_indices = __tco_loop_source_indices;
-            #[allow(unused_mut)]
-            let mut env = __tco_loop_env;
-            if crate::v1_compiler_infer_env::is_where_refinement_node(n.clone()) {
-                return match n.children.clone().first().cloned() {
-                    Some(base) => {
-                        operand_carrier_ref(base.clone(), source_indices.clone(), env.clone())
-                    }
-                    std::option::Option::None => std::option::Option::None,
-                };
-            }
-            match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-                n.clone(),
-                source_indices.clone(),
-                env.clone(),
-            ) {
-                Some(d) => {
-                    break Some(d.clone());
-                }
-                std::option::Option::None => {
-                    match crate::v1_compiler_infer_env::kernel_settled_name(
-                        n.clone(),
-                        source_indices.clone(),
-                        env.clone(),
-                        16,
-                    ) {
-                        Some(kernel) => {
-                            if (kernel.clone() != "Int".to_string()) {
-                                break std::option::Option::None;
-                            } else {
-                                match Rc::new({
-                                    let mut __result = Vec::new();
-                                    for g in kernel_grounding_rows().iter().cloned() {
-                                        if match g.extent.clone() {
-                                            IntegerExtent::UnboundedIntegers => true,
-                                            _ => false,
-                                        } {
-                                            __result.push(g);
-                                        }
-                                    }
-                                    __result
-                                })
-                                .first()
-                                .cloned()
-                                {
-                                    Some(g) => {
-                                        break Some(g.carrier.clone());
-                                    }
-                                    std::option::Option::None => {
-                                        break std::option::Option::None;
-                                    }
-                                }
-                            }
-                        }
-                        std::option::Option::None => {
-                            break std::option::Option::None;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn operand_is_type_variable(
-    n: Rc<Node>,
+pub fn subtraction_refinement_of(
+    left_type: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> bool {
-    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
-        n,
+) -> Rc<SubtractionRefinement> {
+    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+        left_type,
         source_indices,
         env,
-    ))
-    .clone()
-    {
-        TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => true,
-        _ => false,
-    }
-}
-
-pub fn operand_identity_unknown(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> bool {
-    (operand_is_type_variable(n.clone(), source_indices.clone(), env)
-        || (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
-            == "".to_string()))
-}
-
-pub fn operand_is_text(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    match crate::v1_compiler_infer_env::text_representation_by_identity(n, env) {
-        TextRepresentation::HostText => true,
-        TextRepresentation::CodePointSequence => true,
-        TextRepresentation::NotText => false,
-        TextRepresentation::TextRepresentationUnidentified => false,
-    }
-}
-
-pub fn arithmetic_carrier_selection(
-    requirement: Rc<ArithmeticRequirement>,
-    left_type: Rc<Node>,
-    right_type: Option<Rc<Node>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<ArithmeticCarrierSelection>> {
-    {
-        let right_is_text = match right_type.clone() {
-            std::option::Option::None => false,
-            Some(rt) => operand_is_text(rt.clone(), env.clone()),
-        };
-        if (operand_is_text(left_type.clone(), env.clone()) || right_is_text.clone()) {
-            return std::option::Option::None;
-        }
-        match operand_carrier_ref(left_type.clone(), source_indices.clone(), env.clone()) {
-            std::option::Option::None => match right_type.clone() {
-                std::option::Option::None => std::option::Option::None,
-                Some(rt) => {
-                    match operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone()) {
-                        std::option::Option::None => std::option::Option::None,
-                        Some(r) => {
-                            if (carrier_in_algebra_table(r.clone())
-                                && !operand_identity_unknown(
-                                    left_type.clone(),
-                                    source_indices.clone(),
-                                    env.clone(),
-                                ))
-                            {
-                                Some(Rc::new(ArithmeticCarrierSelection::ArithmeticNoCarrier))
-                            } else {
-                                std::option::Option::None
-                            }
-                        }
-                    }
-                }
-            },
-            Some(left) => {
-                let rows = conversion_plan_rows();
-                let right = match right_type.clone() {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(rt) => {
-                        operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone())
-                    }
-                };
-                let right_missing = match right_type.clone() {
-                    std::option::Option::None => false,
-                    Some(_) => match right.clone() {
-                        std::option::Option::None => true,
-                        Some(_) => false,
-                    },
-                };
-                let right_outside = match right.clone() {
-                    std::option::Option::None => false,
-                    Some(r) => !carrier_in_algebra_table(r.clone()),
-                };
-                let pair_differs = match right.clone() {
-                    std::option::Option::None => false,
-                    Some(r) => !crate::std_decl_ref::declaration_ref_eq(left.clone(), r.clone()),
-                };
-                let one_outside = match right.clone() {
-                    std::option::Option::None => false,
-                    Some(r) => (right_outside.clone() || !carrier_in_algebra_table(left.clone())),
-                };
-                let right_blind = match right_type.clone() {
-                    std::option::Option::None => false,
-                    Some(rt) => {
-                        operand_identity_unknown(rt.clone(), source_indices.clone(), env.clone())
-                    }
-                };
-                if (((right_missing.clone() && carrier_in_algebra_table(left.clone()))
-                    && !right_blind.clone())
-                    || (pair_differs.clone() && one_outside.clone()))
-                {
-                    Some(Rc::new(ArithmeticCarrierSelection::ArithmeticNoCarrier))
-                } else {
-                    if ((right_missing.clone() || right_outside.clone())
-                        || !carrier_in_algebra_table(left.clone()))
-                    {
-                        std::option::Option::None
-                    } else {
-                        {
-                            let named = match right.clone() {
-                                std::option::Option::None => Rc::new(vec![left.clone()]),
-                                Some(r) => Rc::new(vec![left.clone(), r.clone()]),
-                            };
-                            let candidates = v1_rt::concat(
-                                named.clone(),
-                                Rc::new({
-                                    let mut __result = Vec::new();
-                                    for d in named.iter().cloned() {
-                                        __result.extend(
-                                            (*crate::std_coercion::injection_targets(
-                                                rows.clone(),
-                                                d.clone(),
-                                                requirement.preserved.clone(),
-                                            ))
-                                            .iter()
-                                            .cloned(),
-                                        );
-                                    }
-                                    __result
-                                }),
-                            );
-                            let definers = Rc::new({
-                                let mut __result = Vec::new();
-                                for d in candidates.iter().cloned() {
-                                    if carrier_defines_field(d.clone(), requirement.field.clone()) {
-                                        __result.push(d);
-                                    }
-                                }
-                                __result
-                            });
-                            Some(crate::std_coercion::select_arithmetic_carrier(
-                                rows.clone(),
-                                left.clone(),
-                                right.clone(),
-                                definers,
-                                requirement.preserved.clone(),
-                            ))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn arithmetic_carrier_type(
-    selected: Rc<DeclarationRef>,
-    left_type: Rc<Node>,
-    right_type: Option<Rc<Node>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<Node> {
-    {
-        let left_is =
-            match operand_carrier_ref(left_type.clone(), source_indices.clone(), env.clone()) {
-                Some(d) => crate::std_decl_ref::declaration_ref_eq(d.clone(), selected.clone()),
-                std::option::Option::None => false,
-            };
-        if left_is.clone() {
-            left_type.clone()
-        } else {
-            {
-                let right_is = match right_type.clone() {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(rt) => {
-                        match operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone()) {
-                            Some(d) => {
-                                if crate::std_decl_ref::declaration_ref_eq(
-                                    d.clone(),
-                                    selected.clone(),
-                                ) {
-                                    Some(rt.clone())
-                                } else {
-                                    std::option::Option::None
-                                }
-                            }
-                            std::option::Option::None => std::option::Option::None,
-                        }
-                    }
-                };
-                match right_is.clone() {
-                    Some(rt) => rt.clone(),
-                    std::option::Option::None => nominal_type_ref(selected.decl_name.clone()),
-                }
-            }
+    ) {
+        Some(operand) => crate::std_coercion::dag_subtraction_refinement(operand.clone()),
+        std::option::Option::None => {
+            Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
         }
     }
 }
@@ -4259,88 +3932,39 @@ pub fn arithmetic_carrier_type(
 pub fn infer_binop_type_node(
     op: BinOp,
     left_type: Rc<Node>,
-    right_type: Option<Rc<Node>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Rc<BinOpInferred> {
-    match arithmetic_requirement(op.clone()) {
-        std::option::Option::None => {
+    match op.clone() {
+        BinOp::Sub => {
+            match (*subtraction_refinement_of(left_type.clone(), source_indices.clone(), env))
+                .clone()
+            {
+                SubtractionRefinement::SubtractionEscapesTo {
+                    from_type: from_type,
+                    ..
+                } => Rc::new(BinOpInferred {
+                    result_type: nominal_type_ref(from_type.clone()),
+                    algebra_field: std::option::Option::None,
+                }),
+                SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: _, .. } => {
+                    Rc::new(BinOpInferred {
+                        result_type: error_type(),
+                        algebra_field: std::option::Option::None,
+                    })
+                }
+                SubtractionRefinement::SubtractionStaysInOperandAlgebra => {
+                    infer_arithmetic_binop_type_node(
+                        op.clone(),
+                        left_type.clone(),
+                        source_indices.clone(),
+                    )
+                }
+            }
+        }
+        _ => {
             infer_arithmetic_binop_type_node(op.clone(), left_type.clone(), source_indices.clone())
         }
-        Some(req) => match arithmetic_carrier_selection(
-            req.clone(),
-            left_type.clone(),
-            right_type.clone(),
-            source_indices.clone(),
-            env.clone(),
-        )
-        .as_deref()
-        .cloned()
-        {
-            Some(ArithmeticCarrierSelection::ArithmeticCarrierSelected { carrier: c, .. }) => {
-                infer_arithmetic_binop_type_node(
-                    op.clone(),
-                    arithmetic_carrier_type(
-                        c.clone(),
-                        left_type.clone(),
-                        right_type.clone(),
-                        source_indices.clone(),
-                        env.clone(),
-                    ),
-                    source_indices.clone(),
-                )
-            }
-            Some(ArithmeticCarrierSelection::ArithmeticCarrierAmbiguous {
-                candidates: _, ..
-            }) => Rc::new(BinOpInferred {
-                result_type: error_type(),
-                algebra_field: std::option::Option::None,
-            }),
-            Some(ArithmeticCarrierSelection::ArithmeticNoCarrier) => Rc::new(BinOpInferred {
-                result_type: error_type(),
-                algebra_field: std::option::Option::None,
-            }),
-            std::option::Option::None => infer_arithmetic_binop_type_node(
-                op.clone(),
-                left_type.clone(),
-                source_indices.clone(),
-            ),
-        },
-    }
-}
-
-pub fn infer_neg_type_node(
-    operand_type: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<Node> {
-    match arithmetic_carrier_selection(
-        Rc::new(ArithmeticRequirement {
-            field: "negate".to_string(),
-            preserved: Rc::new(vec![]),
-        }),
-        operand_type.clone(),
-        std::option::Option::None,
-        source_indices.clone(),
-        env.clone(),
-    )
-    .as_deref()
-    .cloned()
-    {
-        Some(ArithmeticCarrierSelection::ArithmeticCarrierSelected { carrier: c, .. }) => {
-            arithmetic_carrier_type(
-                c.clone(),
-                operand_type.clone(),
-                std::option::Option::None,
-                source_indices.clone(),
-                env.clone(),
-            )
-        }
-        Some(ArithmeticCarrierSelection::ArithmeticCarrierAmbiguous { candidates: _, .. }) => {
-            error_type()
-        }
-        Some(ArithmeticCarrierSelection::ArithmeticNoCarrier) => error_type(),
-        std::option::Option::None => operand_type.clone(),
     }
 }
 

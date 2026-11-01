@@ -11,7 +11,7 @@ import std.decl_ref { decl_ref }
 import gunbc.host.managed_host_unit_hold { UnitHoldProof }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_host }
 import product.host_identity { host_identity_eq }
-import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
+import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host_at_current_build, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.bmc_control_binding { bmc_control_route_endpoint, bmc_control_route_account, bmc_control_route_ipmi_cipher_suite }
 import gunbc.host.megarac_operation_standing { MegaRacVirtualMediaAttach }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
@@ -68,7 +68,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 
 // THE MEGARAC ADMISSION FOR VIRTUAL MEDIA, OF THE HOST THE PROOF HOLDS.
 fn megarac_boot_media_host(proof: UnitHoldProof) -> MegaRacHostAdmission {
-  admit_megarac_host(host: proof.subject.host, operation: MegaRacVirtualMediaAttach)
+  admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: proof.subject.host, operation: MegaRacVirtualMediaAttach)
 }
 
 // THE BOUND ON ONE ipmitool READ OF THE CONTROLLER, as `timeout --kill-after` operands.

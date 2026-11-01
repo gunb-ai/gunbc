@@ -446,7 +446,21 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   // keyed arm below could lower it (Rc<FinitelySupportedFunction<String, AlgebraProfile>> beside the
   // HashMap its callers read; E0308 at std.computation type_iteration_dimension). Ask the one
   // predicate the keyed arm asks.
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && !node_is_keyed_collection(n: n, source_indices: source_indices) {
+  //
+  // THE SAME ASK ON THE OTHER SIDE OF THE LADDER. The element arm below owns any application whose
+  // carrier spelling names a container algebra the target realizes (`coerce_container_template`), and
+  // `is_container_type` is NOT that question: its arity roster holds the ALIAS spellings only
+  // (algebra.dag `arity_row_is_alias_spellings_only_reason`), so the canonical spelling of a carrier --
+  // `FinitePowerSet<Int>`, written by std.algebra itself and deliberately given no alias row
+  // (`canonical_spelling_sorts_ahead_of_alias_reason`) -- answered false here and was rendered as the
+  // std.algebra RECORD at fn parameter, return, and nested-argument position while the field renderer
+  // one arm away lowered the same carrier to the target's `Rc<BTreeSet<i64>>`. One carrier, two Rust
+  // types (DESIGN section 3/6b; gunbc.recurring_failure_mode
+  // emitter_element_container_lowering_is_keyed_by_leaf_spelling). Asking the arm below's own predicate
+  // -- `node_is_element_collection`, which is the alias roster PLUS the carrier's algebra row -- makes
+  // the two renderers answer one question and leaves a declared carrier with no target inhabitant
+  // (`PartialFunction`, `PointwisePower`) exactly where it is today: still structural.
+  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && !node_is_keyed_collection(n: n, source_indices: source_indices) && !node_is_element_collection(n: n, source_indices: source_indices) {
     render_rust_applied_via_emit_info(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
@@ -1906,7 +1920,14 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decision: type_reference_realization(n: n, dag_name: name, target: Rust)) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
+  // THE SAME ASK, FN-SIGNATURE SIDE. This arm renders the AUTHORED base name with its arguments, which
+  // is what a canonical-spelled carrier application at a parameter or return position got: the field
+  // renderer lowered `FinitePowerSet<Int>` to the target's `Rc<BTreeSet<i64>>` while this one emitted the
+  // std.algebra record beside it (one carrier, two Rust types -- see the long note on the declared-record
+  // arm of `render_rust_type_without_applied_binding`). The alias spellings are already out of this arm
+  // through `is_container_type`; the carrier's own spelling is out only once the arm below's predicate is
+  // asked here too.
+  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && !node_is_element_collection(n: n, source_indices: source_indices) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -8192,7 +8213,7 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
     if head == "" {
       ""
     } else {
-      v1_trait_derive_refuse(concat("trait_derive_emit: generic item '", item_name, "' has a field applying type '", head, "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '", item_name, "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)"))
+      v1_trait_derive_refuse(concat("trait_derive_emit: generic item '", item_name, "' has a field applying type '", head, "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '", item_name, "' cannot be decided (see the well-formedness-propagation note in the // comments in gunbc.v1.trait_derive_emit)"))
     }
   }
 }
@@ -8507,6 +8528,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     generic_param_names: generic_param_names,
+    bounds: emit_info.clone_bounded_type_params,
     source_indices: env.source_indices,
     header_clone_param_names: header_clone_param_names,
     deserialize_forbidden: deserialize_forbidden,
@@ -8628,6 +8650,8 @@ fn enum_derives(module_path: String, name: String, children: List<Node>, has_fn_
     map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: module_path, decl_name: name)),
     deserialize_forbidden: deserialize_forbidden,
     generic_param_names: generic_param_names,
+    bounds: emit_info.clone_bounded_type_params,
+    type_decl_items: emit_info.type_decl_items,
     source_indices: source_indices
   )
 }
@@ -8650,7 +8674,7 @@ fn emit_enum_from_children(name: String, type_params: String, generic_param_name
   let tag_line = if effective_serde_policy.enum_attr == "" { "" } else { concat(effective_serde_policy.enum_attr, "\n") }
   let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, generic_param_names: generic_param_names, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
-  let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name, children: children, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, source_indices: env.source_indices)
+  let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name, children: children, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, bounds: emit_info.clone_bounded_type_params, type_decl_items: emit_info.type_decl_items, source_indices: env.source_indices)
   let with_accessors = if accessor_impl == "" { enum_def } else { concat(enum_def, "\n", accessor_impl) }
   if supplemental == "" { with_accessors } else { concat(with_accessors, supplemental) }
 }
@@ -15532,11 +15556,11 @@ fn emit_rc_deeper_inner_arm_strs(members: List<RcGroupedArmEntry>, field: String
   // would fold those into one inner match without it (E0004 over CoreEdgeLabel in v2.std.node
   // resolved_reference_kind_of_label); the ordinary lowering likewise skips grouping then.
   if posed |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a))) {
-    posed |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+    posed |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, scrutinee_unwrapped: false, present_binding: false))
   } else {
   rc_grouped_match_arm_strs(arms: posed, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: "", allow_deeper: true,
     emit_group: (inner_members, inner_plan) => emit_rc_grouped_match_arm(members: inner_members, plan: inner_plan, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
-    emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+    emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, scrutinee_unwrapped: false, present_binding: false))
   }
 }
 
@@ -15549,18 +15573,18 @@ fn emit_rc_deeper_inner_arm_strs(members: List<RcGroupedArmEntry>, field: String
 // re-emission -- and the interpreter's eval_match read that predicate and decide nothing of their
 // own, so the typing, the emitted pattern and the interpreted arm cannot disagree about which arm
 // sees the payload. The earlier `None` arm keeps the `Some(..)` arms exhaustive.
-fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node) -> List<String> {
+fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node, scrutinee_unwrapped: Bool) -> List<String> {
   let has_irrefutable = arms |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
   if has_irrefutable {
     let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
     arms |> enumerate |> map(pair =>
-      emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false,
+      emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, scrutinee_unwrapped: scrutinee_unwrapped,
         present_binding: optional_match_arm_sees_present_value(scrutinee_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
     )
   } else {
     rc_grouped_match_arm_strs(arms: arms, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, allow_deeper: true,
       emit_group: (members, rep) => emit_rc_grouped_match_arm(members: members, plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
-      emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+      emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, scrutinee_unwrapped: scrutinee_unwrapped, present_binding: false))
   }
 }
 
@@ -15614,7 +15638,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     Present { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
     Absent => type_variable_node(id: "match_result")
   }
-  let arm_strs = emit_typed_match_arm_strs(arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, scrut_rt: resolved_type(n: scrutinee))
+  let arm_strs = emit_typed_match_arm_strs(arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, scrut_rt: resolved_type(n: scrutinee), scrutinee_unwrapped: rc_match.needs_deref)
   let arms_str = arm_strs |> join(separator: "\n")
 
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
@@ -15630,7 +15654,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else if needs_string_from {
     let sf_absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
-    let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true,
+    let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true, scrutinee_unwrapped: false,
       present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)))
     let sf_arms_str = sf_arm_strs |> join(separator: "\n")
     concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
@@ -15654,7 +15678,24 @@ fn emit_typed_match_arm_body_str(arm: Node, registry: Map<String, ItemInfo>, sco
   }
 }
 
-fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, string_from_mode: Bool, present_binding: Bool) -> String {
+// A root catch-all binds the UNWRAPPED enum when match lowering used deref_clone.
+// Restore the source carrier at the binding boundary, not at each payload consumer. Ordinary
+// and TCO bodies and authored guards all use this one rule. Guard restoration clones because
+// a failed guard must leave the matched value available to later arms. Optional and nested-field
+// paths that did not unwrap this scrutinee are unchanged; neither is guessed from the name.
+fn rust_match_binding_restore(pattern: MatchPattern, scrutinee_unwrapped: Bool, expression: String) -> String {
+  if scrutinee_unwrapped {
+    match pattern {
+      Bind { declaration: declaration } => {
+        let name = emit_ident(name: declaration.name, target: Rust)
+        concat("{ let ", name, " = ", rust_shared_wrap_ctor(inner_expr: concat(name, ".clone()")), "; ", expression, " }")
+      }
+      _ => expression
+    }
+  } else { expression }
+}
+
+fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, string_from_mode: Bool, present_binding: Bool, scrutinee_unwrapped: Bool) -> String {
   let arm_pat = arm_pattern(n: arm)
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
@@ -15686,12 +15727,13 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     collect_pattern_rc_variant_guards(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
   } else { "" }
   let arm_guard_str = match arm_g {
-    Present { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    Present { value: g } => rust_match_binding_restore(pattern: arm_pat, scrutinee_unwrapped: scrutinee_unwrapped, expression: emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
     Absent => ""
   }
   let guard_parts = [field_guards, rc_variant_guards, arm_guard_str] |> filter(g => g != "")
   let guard_str = if guard_parts |> count == 0 { "" } else { concat(" if ", guard_parts |> join(separator: " && ")) }
-  let body_str = emit_typed_match_arm_body_str(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type)
+  let body_raw = emit_typed_match_arm_body_str(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type)
+  let body_str = rust_match_binding_restore(pattern: arm_pat, scrutinee_unwrapped: scrutinee_unwrapped, expression: body_raw)
   if rc_analysis.needs_rc_pattern {
     let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
@@ -15887,7 +15929,14 @@ fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, 
   // Keyed is not lowered: `PartialFunction<K, V>` is keyed by spelling but has no Rust inhabitant,
   // so it renders as its record and keeps `(p.lookup)(k)`. The exemption asks the same target fact
   // emit_keyed_container_type branches on, so this tier and the type renderer cannot disagree.
+  // The element carrier needs the SAME exemption: `FinitePowerSet` is the canonical spelling of the
+  // `Set` alias and lowers to the target OrdSet/BTreeSet, while its profile record declares
+  // member/union/intersect/diff/contains/count/length as arrow members -- taking the field tier for a
+  // canonical-spelled receiver emitted `(members.count)()` against a BTreeSet (E0609 no field `count`),
+  // exactly the keyed tier's failure one algebra over. Asking the target fact rather than a spelling is
+  // what keeps `PointwisePower` on the field tier: it has no inhabitant, so it keeps its record.
   if node_is_keyed_collection(n: receiver_type, source_indices: scope.type_env.source_indices) && keyed_container_has_target_inhabitant(container_name: qualified_last_segment(name: receiver_type_name), target: Rust) { false }
+  else if node_is_element_collection(n: receiver_type, source_indices: scope.type_env.source_indices) && keyed_container_has_target_inhabitant(container_name: qualified_last_segment(name: receiver_type_name), target: Rust) { false }
   else {
     match rust_struct_field_type_node(scope: scope, struct_name: receiver_type_name, field_name: method_name) {
       Present { value: field_type } => field_type.connective == Arrow
@@ -17777,13 +17826,13 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       let has_irrefutable = arm_list |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
       let arm_strs = if has_irrefutable {
         arm_list |> enumerate |> map(pair =>
-          emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+          emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type, scrutinee_unwrapped: rc_match.needs_deref,
             present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       } else {
         rc_grouped_match_arm_strs(arms: arm_list, scope: frame.scope, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type, allow_deeper: false,
           emit_group: (members, rep) => emit_rc_grouped_tco_match_arm(members: members, plan: rep, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info),
           emit_single: (index, arm) =>
-          emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+          emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type, scrutinee_unwrapped: rc_match.needs_deref,
             present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: arm), arm_index: index, absent_arm_index: absent_arm_index)))
       }
       let arms_str = arm_strs |> join(separator: "\n")
@@ -17879,7 +17928,7 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registr
     emit_default_return: frame => emit_rust_tco_default_return(frame: frame, fn_name: fn_name, params: params, registry: registry, shared_types: shared_types, emit_info: emit_info))
 }
 
-fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, present_binding: Bool) -> String {
+fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, present_binding: Bool, scrutinee_unwrapped: Bool) -> String {
   let arm_pat = arm_pattern(n: arm)
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
@@ -17899,12 +17948,13 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
     collect_pattern_rc_variant_guards(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
   } else { "" }
   let arm_guard_str = match arm_g {
-    Present { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+    Present { value: g } => rust_match_binding_restore(pattern: arm_pat, scrutinee_unwrapped: scrutinee_unwrapped, expression: emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
     Absent => ""
   }
   let guard_parts = [field_guards, rc_variant_guards, arm_guard_str] |> filter(g => g != "")
   let guard_str = if guard_parts |> count == 0 { "" } else { concat(" if ", guard_parts |> join(separator: " && ")) }
-  let body_str = emit_typed_tco_expr(texpr: arm_b, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let body_raw = emit_typed_tco_expr(texpr: arm_b, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let body_str = rust_match_binding_restore(pattern: arm_pat, scrutinee_unwrapped: scrutinee_unwrapped, expression: body_raw)
   if rc_analysis.needs_rc_pattern {
     let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")

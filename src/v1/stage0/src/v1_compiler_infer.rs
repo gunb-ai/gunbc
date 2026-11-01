@@ -41,9 +41,6 @@ pub use crate::std_algebra::{
     carrier_container_equality_rows, kernel_carrier_admits_numeral, AlgebraTypeTemplate,
     CollectionSizeEffect, FreeMonoid, FreeSemigroup,
 };
-use crate::std_coercion::ArithmeticCarrierSelection::{
-    ArithmeticCarrierAmbiguous, ArithmeticNoCarrier,
-};
 use crate::std_coercion::ConversionPlanJudgment::{
     ConversionPlanAbsent, ConversionPlanAdmitted, ConversionPlanAmbiguous,
     ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText,
@@ -51,6 +48,7 @@ use crate::std_coercion::ConversionPlanJudgment::{
 use crate::std_coercion::CrossingPlanSelection::{
     CrossingPlanJudged, CrossingPlanNone, CrossingPlanSeveral,
 };
+use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
 use crate::std_coercion::TextRepresentation::{
     CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
 };
@@ -59,8 +57,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
 };
 pub use crate::std_coercion::{
     dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, select_text_crossing_plan,
-    unicode_scalar_unfold, ArithmeticCarrierSelection, ConversionPlanJudgment,
-    CrossingPlanSelection, TextRepresentation, TypeDeclarationProvenance,
+    unicode_scalar_unfold, ConversionPlanJudgment, CrossingPlanSelection, SubtractionRefinement,
+    TextRepresentation, TypeDeclarationProvenance,
 };
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
@@ -172,7 +170,8 @@ pub use crate::std_termination::{
 pub use crate::std_types::container_expected_arity;
 pub use crate::std_types::{
     container_param_name, container_template_algebra, container_template_alias_algebra,
-    is_container_type, is_kernel_type, kernel_type_set, NonEmptyStr, SourceSpan,
+    is_container_algebra_carrier, is_container_type, is_kernel_type, kernel_type_set, NonEmptyStr,
+    SourceSpan,
 };
 pub use crate::v1_compiler_coercion::provenance_realizes_natively;
 pub use crate::v1_compiler_infer_access::{
@@ -218,8 +217,8 @@ pub use crate::v1_compiler_infer_env::{
     merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
     node_with_children, node_with_inferred, overlay_skips_kernel_name, put_inductive_field,
     put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
-    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_type,
-    settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_head_of_declaration,
+    settled_type, settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
     text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
@@ -277,9 +276,9 @@ pub use crate::v1_compiler_infer_patterns::{
 };
 pub use crate::v1_compiler_infer_resolve::{
     expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
-    is_user_generic_use_site, preserve_nominal_brand_on_resolve, reference_with_declaration,
-    resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
-    ItemResolveResult, NodeResolveResult,
+    is_user_generic_use_site, node_with_declaration, preserve_nominal_brand_on_resolve,
+    reference_with_declaration, resolve_generic_use_decl, resolve_item_types, resolve_node,
+    resolve_node_bounded, ItemResolveResult, NodeResolveResult,
 };
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
     ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
@@ -318,19 +317,17 @@ use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
 use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedInVariantFieldSummary;
 pub use crate::v1_compiler_infer_types::{
     alias_identity_in_judgment, alias_names_identity_in_judgment, apply_type_substitution,
-    arithmetic_carrier_selection, arithmetic_requirement, bare_map_node, bare_set_node,
-    build_type_substitution, callable_inferred, callable_return_type, canonical_template_name,
-    child_type_node, collection_carrier_node, emit_map_has, extract_optional_inner_node,
-    for_each_element_type_node, infer_arithmetic_binop_type_node, infer_binop_type_node,
-    infer_literal_node, infer_neg_type_node, is_declared_container_alias_spelling,
-    is_fully_resolved, is_product_type, is_type_expr_annotation, is_unit_like, join_element_type,
-    kernel_profile_lookup, make_callable_type, make_container_type, method_receiver_element_node,
-    node_is_collection, node_is_element_collection, node_is_keyed_collection,
-    node_is_set_collection, node_type_compatible, node_type_deps, node_type_equals,
-    node_type_shape, nominal_type_ref, normalize_access_type_node, operand_carrier_ref,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
-    structural_carrier_template_name, template_return_has_variables,
-    template_return_is_receiver_self, ArithmeticRequirement, KernelTypeBuild, TextJudgment,
+    bare_map_node, bare_set_node, build_type_substitution, callable_inferred, callable_return_type,
+    canonical_template_name, child_type_node, collection_carrier_node, emit_map_has,
+    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
+    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_product_type,
+    is_type_expr_annotation, is_unit_like, join_element_type, kernel_profile_lookup,
+    make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
+    node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
+    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
+    normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
+    resolved_type, structural_carrier_template_name, subtraction_refinement_of,
+    template_return_has_variables, template_return_is_receiver_self, KernelTypeBuild, TextJudgment,
     TextNotAskedReason,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
@@ -357,18 +354,17 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AlgebraApplicationEvidenceUnavailable, AmbiguousReference, ArithmeticAmbiguousCarrier,
-    ArithmeticWithoutCarrier, BareNoneNotAdmittedByFieldType, CallArgumentDuplicate,
-    CallArgumentNameUnknown, CallNamedArgOnFunctionValue, CallPositionalDeficit,
-    CallPositionalSurplus, ConstructorCallAdmissionRefused, EqualityMemberUnjudgeable,
-    EqualityOnFunctionMember, EqualityOnInadmissibleType, EqualityOptionalityMismatch,
-    FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError, KernelMintShapeMismatch,
-    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
-    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
-    SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
-    TextCrossingHasNoImplicitRoute, TextRepresentationUnidentifiedAtBoundary,
-    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
-    UnresolvedType, VariantCollision,
+    AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
+    CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
+    CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
+    EqualityMemberUnjudgeable, EqualityOnFunctionMember, EqualityOnInadmissibleType,
+    EqualityOptionalityMismatch, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    KernelMintShapeMismatch, MethodExistenceFrontierAdmitted, MethodExistenceUndecided,
+    MethodNotFound, MissingField, OptionalCastNotEliminated, ReceiverTypeUnestablished,
+    ServiceConfigReferenceJudgmentDeferred, SiblingOperandEffectOrderUndetermined,
+    SoleConstructorViolation, TextCrossingHasNoImplicitRoute,
+    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
+    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -1848,33 +1844,6 @@ pub fn relocated_algebra_evidence_diags(
         }
         __result
     })
-}
-
-pub fn arithmetic_operand_label(n: Rc<Node>, scope: Rc<InferScope>) -> String {
-    {
-        let t = crate::v1_compiler_infer_types::resolved_type(n);
-        let shape = crate::v1_compiler_infer_types::node_type_shape(
-            t.clone(),
-            scope.type_env.source_indices.clone(),
-        );
-        match crate::v1_compiler_infer_types::operand_carrier_ref(
-            t.clone(),
-            scope.type_env.source_indices.clone(),
-            scope.type_env.clone(),
-        ) {
-            Some(d) => v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(shape.clone(), " @ ".to_string()),
-                        d.module_path.clone(),
-                    ),
-                    ".".to_string(),
-                ),
-                d.decl_name.clone(),
-            ),
-            std::option::Option::None => v1_rt::concat(shape.clone(), " @ no carrier".to_string()),
-        }
-    }
 }
 
 pub fn inference_error(
@@ -8236,29 +8205,77 @@ pub fn structured_kernel_container_identity_verdict(
     )
 }
 
+pub fn kernel_container_carrier_declaration(
+    formal: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<DeclarationRef>> {
+    match structured_formal_carrier_declaration(formal.clone(), scope.clone()) {
+        Some(carrier) => {
+            if kernel_container_roster_carrier(carrier.clone()) {
+                Some(carrier.clone())
+            } else {
+                kernel_container_carrier_under_alias(formal.clone(), scope.clone())
+            }
+        }
+        std::option::Option::None => {
+            kernel_container_carrier_under_alias(formal.clone(), scope.clone())
+        }
+    }
+}
+
+pub fn kernel_container_roster_carrier(decl: Rc<DeclarationRef>) -> bool {
+    ((decl.module_path.clone() == kernel_container_carrier_module())
+        && crate::std_types::is_container_algebra_carrier(decl.decl_name.clone()))
+}
+
+pub fn kernel_container_carrier_under_alias(
+    formal: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let name =
+            crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), formal);
+        if ((name.clone() == "".to_string()) || crate::std_types::is_container_type(name.clone())) {
+            return std::option::Option::None;
+        }
+        match crate::v1_compiler_infer_env::declaration_named_by_type_name(
+            name.clone(),
+            scope.type_env.clone(),
+        ) {
+            Some(d) => match crate::v1_compiler_infer_env::settled_head_of_declaration(
+                d.clone(),
+                scope.type_env.source_indices.clone(),
+                scope.type_env.clone(),
+                16,
+            ) {
+                Some(head) => {
+                    if kernel_container_roster_carrier(head.clone()) {
+                        Some(head.clone())
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            },
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
 pub fn kernel_container_carrier_verdict(
     formal: Rc<Node>,
     owner: Option<Rc<DeclarationRef>>,
     scope: Rc<InferScope>,
 ) -> Option<bool> {
-    {
-        let name = crate::v1_std_core::authored_name_at(
-            scope.type_env.source_indices.clone(),
-            formal.clone(),
-        );
-        if !crate::std_types::is_container_type(name) {
-            return std::option::Option::None;
-        }
-        match structured_formal_carrier_declaration(formal.clone(), scope.clone()) {
-            Some(carrier) => match owner.clone() {
-                Some(o) => Some(crate::std_decl_ref::declaration_ref_eq(
-                    carrier.clone(),
-                    o.clone(),
-                )),
-                std::option::Option::None => std::option::Option::None,
-            },
+    match kernel_container_carrier_declaration(formal, scope) {
+        Some(carrier) => match owner.clone() {
+            Some(o) => Some(crate::std_decl_ref::declaration_ref_eq(
+                carrier.clone(),
+                o.clone(),
+            )),
             std::option::Option::None => std::option::Option::None,
-        }
+        },
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -17863,9 +17880,6 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let binop_info = crate::v1_compiler_infer_types::infer_binop_type_node(
                 op.clone(),
                 crate::v1_compiler_infer_types::resolved_type(left_typed.clone()),
-                Some(crate::v1_compiler_infer_types::resolved_type(
-                    right_typed.clone(),
-                )),
                 scope.type_env.source_indices.clone(),
                 scope.type_env.clone(),
             );
@@ -17876,62 +17890,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.clone(),
                 span.clone(),
             );
-            let refinement_diags =
-                match crate::v1_compiler_infer_types::arithmetic_requirement(op.clone()) {
-                    std::option::Option::None => Rc::new(vec![]),
-                    Some(req) => {
-                        match crate::v1_compiler_infer_types::arithmetic_carrier_selection(
-                            req.clone(),
-                            crate::v1_compiler_infer_types::resolved_type(left_typed.clone()),
-                            Some(crate::v1_compiler_infer_types::resolved_type(
-                                right_typed.clone(),
-                            )),
-                            scope.type_env.source_indices.clone(),
-                            scope.type_env.clone(),
-                        )
-                        .as_deref()
-                        .cloned()
-                        {
-                            Some(ArithmeticCarrierSelection::ArithmeticCarrierAmbiguous {
-                                candidates: cs,
-                                ..
-                            }) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                Rc::new(CompilerDiagnostic::ArithmeticAmbiguousCarrier {
-                                    operation: req.field.clone(),
-                                    candidates: Rc::new({
-                                        let mut __result = Vec::new();
-                                        for c in cs.iter().cloned() {
-                                            __result.push(c.decl_name.clone());
-                                        }
-                                        __result
-                                    }),
-                                    span: span.clone(),
-                                }),
-                                scope.module_name.clone(),
-                            )]),
-                            Some(ArithmeticCarrierSelection::ArithmeticNoCarrier) => {
-                                Rc::new(vec![crate::v1_std_core::make_error_node(
-                                    Rc::new(CompilerDiagnostic::ArithmeticWithoutCarrier {
-                                        operation: req.field.clone(),
-                                        operands: Rc::new(vec![
-                                            arithmetic_operand_label(
-                                                left_typed.clone(),
-                                                scope.clone(),
-                                            ),
-                                            arithmetic_operand_label(
-                                                right_typed.clone(),
-                                                scope.clone(),
-                                            ),
-                                        ]),
-                                        span: span.clone(),
-                                    }),
-                                    scope.module_name.clone(),
-                                )])
-                            }
-                            _ => Rc::new(vec![]),
-                        }
-                    }
-                };
+            let refinement_diags = match op.clone() {
+    BinOp::Sub => match (*crate::v1_compiler_infer_types::subtraction_refinement_of(crate::v1_compiler_infer_types::resolved_type(left_typed.clone()), scope.type_env.source_indices.clone(), scope.type_env.clone())).clone() {
+    SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: fts, .. } => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("subtraction refinement is ambiguous: std.coercion refinement_cast_rules has ".to_string(), ((fts.clone().len() as i64)).to_string()), " rows for this operand's declaration (source types ".to_string()), fts.clone().join(&", ".to_string())), "); the difference's type would depend on row order".to_string()), span.clone(), scope.module_name.clone())]),
+    _ => Rc::new(vec![]),
+},
+    _ => Rc::new(vec![]),
+};
             let bo_texpr = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprBinOp {
@@ -17969,60 +17934,8 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let operand_emissions = operand_result.emissions.clone();
             let result_type = match op.clone() {
                 UnaryOpKind::Not => bool_type(),
-                UnaryOpKind::Neg => crate::v1_compiler_infer_types::infer_neg_type_node(
-                    crate::v1_compiler_infer_types::resolved_type(operand_typed.clone()),
-                    scope.type_env.source_indices.clone(),
-                    scope.type_env.clone(),
-                ),
-            };
-            let neg_diags = match op.clone() {
-                UnaryOpKind::Not => Rc::new(vec![]),
                 UnaryOpKind::Neg => {
-                    match crate::v1_compiler_infer_types::arithmetic_carrier_selection(
-                        Rc::new(ArithmeticRequirement {
-                            field: "negate".to_string(),
-                            preserved: Rc::new(vec![]),
-                        }),
-                        crate::v1_compiler_infer_types::resolved_type(operand_typed.clone()),
-                        std::option::Option::None,
-                        scope.type_env.source_indices.clone(),
-                        scope.type_env.clone(),
-                    )
-                    .as_deref()
-                    .cloned()
-                    {
-                        Some(ArithmeticCarrierSelection::ArithmeticNoCarrier) => {
-                            Rc::new(vec![crate::v1_std_core::make_error_node(
-                                Rc::new(CompilerDiagnostic::ArithmeticWithoutCarrier {
-                                    operation: "negate".to_string(),
-                                    operands: Rc::new(vec![arithmetic_operand_label(
-                                        operand_typed.clone(),
-                                        scope.clone(),
-                                    )]),
-                                    span: span.clone(),
-                                }),
-                                scope.module_name.clone(),
-                            )])
-                        }
-                        Some(ArithmeticCarrierSelection::ArithmeticCarrierAmbiguous {
-                            candidates: cs,
-                            ..
-                        }) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::ArithmeticAmbiguousCarrier {
-                                operation: "negate".to_string(),
-                                candidates: Rc::new({
-                                    let mut __result = Vec::new();
-                                    for c in cs.iter().cloned() {
-                                        __result.push(c.decl_name.clone());
-                                    }
-                                    __result
-                                }),
-                                span: span.clone(),
-                            }),
-                            scope.module_name.clone(),
-                        )]),
-                        _ => Rc::new(vec![]),
-                    }
+                    crate::v1_compiler_infer_types::resolved_type(operand_typed.clone())
                 }
             };
             let uo_texpr = crate::v1_std_core::make_expr_node(
@@ -18036,10 +17949,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             );
             Rc::new(InferResult {
                 typed: uo_texpr.clone(),
-                emissions: infer_emissions_concat(
-                    operand_emissions,
-                    infer_emissions_of_diagnostics(neg_diags),
-                ),
+                emissions: operand_emissions.clone(),
             })
         }
         ExprData::ExprLambda => {
@@ -28598,6 +28508,7 @@ pub fn build_module_interface(
 
 pub fn local_binding_for_item(
     item: Rc<Node>,
+    module_path: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<TypeBinding>> {
     if is_namespace_alias_item(item.clone(), source_indices.clone()) {
@@ -28607,12 +28518,43 @@ pub fn local_binding_for_item(
             let has_structure = (item.connective.clone() != Connective::NoConnective);
             if has_structure.clone() {
                 {
+                    let declared_members = match item.connective.clone() {
+                        Connective::Conj => true,
+                        Connective::Disj => true,
+                        _ => false,
+                    };
+                    let children = if declared_members.clone() {
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for member in item.children.clone().iter().cloned() {
+                                __result.push(
+                                    crate::v1_compiler_infer_resolve::node_with_declaration(
+                                        member.clone(),
+                                        crate::std_decl_ref::decl_field_ref(
+                                            module_path.clone(),
+                                            crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                item.clone(),
+                                            ),
+                                            crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                member.clone(),
+                                            ),
+                                        ),
+                                    ),
+                                );
+                            }
+                            __result
+                        })
+                    } else {
+                        item.children.clone()
+                    };
                     let type_node = Rc::new(Node {
                         occurrence_identity: item.occurrence_identity.clone(),
                         name: item.name.clone(),
                         span: item.span.clone(),
                         ident_span: item.ident_span.clone(),
-                        children: item.children.clone(),
+                        children: children.clone(),
                         connective: item.connective.clone(),
                         params: item.params.clone(),
                         inferred: std::option::Option::None,
@@ -28887,7 +28829,8 @@ pub fn symbol_index_insert_item(
                 },
             }
         } else {
-            match local_binding_for_item(item.clone(), source_indices.clone()) {
+            match local_binding_for_item(item.clone(), module_path.clone(), source_indices.clone())
+            {
                 std::option::Option::None => index.clone(),
                 Some(binding) => crate::v1_compiler_infer_env::symbol_index_insert_decl(
                     index.clone(),
@@ -31274,7 +31217,11 @@ pub fn build_type_env(
                             }
                         }
                     } else {
-                        match local_binding_for_item(item.clone(), source_indices.clone()) {
+                        match local_binding_for_item(
+                            item.clone(),
+                            module_name_str.clone(),
+                            source_indices.clone(),
+                        ) {
                             Some(binding) => v1_rt::rc_map_insert(
                                 acc.clone(),
                                 crate::v1_std_core::intern(
@@ -33827,10 +33774,11 @@ pub fn grounded_binop(
     ctx: Rc<GroundCtx>,
 ) -> Rc<Node> {
     {
-        let info = crate::v1_compiler_infer_types::infer_arithmetic_binop_type_node(
+        let info = crate::v1_compiler_infer_types::infer_binop_type_node(
             op.clone(),
             crate::v1_compiler_infer_types::resolved_type(left.clone()),
             ctx.env.source_indices.clone(),
+            ctx.env.clone(),
         );
         let rt = match result_type.clone() {
             Some(t) => t.clone(),
@@ -33868,10 +33816,11 @@ pub fn grounded_reflect(
     ctx: Rc<GroundCtx>,
 ) -> Rc<Node> {
     {
-        let info = crate::v1_compiler_infer_types::infer_arithmetic_binop_type_node(
+        let info = crate::v1_compiler_infer_types::infer_binop_type_node(
             BinOp::Sub,
             carrier_type,
             ctx.env.source_indices.clone(),
+            ctx.env.clone(),
         );
         crate::v1_std_core::make_expr_node(
             occurrence_identity,
