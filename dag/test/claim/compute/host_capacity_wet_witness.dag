@@ -8,10 +8,11 @@ import product.capacity.event_chain { PartitionId }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.host.host_layout { srv1_host_layout }
 import std.types { FilePath }
+import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  ComputeCapacityLedger, ComputeBuildPool, compute_capacity_slots, host_capacity_subject_in, compute_capacity_subject, compute_capacity_root, compute_root, compute_memory_partition, compute_memory_ceiling,
+  ComputeCapacityLedger, ComputeBuildPool, compute_capacity_slots, compute_root_directory, compute_capacity_directories, host_capacity_subject_in, compute_capacity_subject, compute_capacity_root, compute_root, compute_memory_partition, compute_memory_ceiling,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   compute_reserve_on, compute_reserve_against, compute_release, ComputeRelease, ComputeNothingToRelease, ComputeReleased, ComputeReleaseRefused,
@@ -50,8 +51,16 @@ data one_gibibyte_in_kibibytes: Int = 1048576
 // and two_instances_on_one_host_resolve_to_one_pool_at_one_root reach their subjects hermetically;
 // enrolling either would be a stale_route_gap, which is its own red. So a claim added below that
 // calls fresh_root() owes a chunk_21 row, and one that does not must not have one.
+// The scenario provisions through the PRODUCTION ROWS (compute_root_directory, compute_capacity_directory:
+// the instance's directory demands), never a mkdir of its own spelling: the mint lists the declared root
+// and refuses when nothing provisioned it, so a missing demand row is a red here (the row is removed
+// -> this file stops resolving / the store answers Unready) and not a fixture that papers over it.
 fn fresh_root() -> String {
-  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_compute_capacity.XXXXXX").path
+  let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_compute_capacity.XXXXXX").path
+  let instance = instance_at(root: made)
+  let root_ok = shell.Mkdir.Parents(path: owned_directory_path(t: compute_root_directory(instance: instance)) as String).success
+  let cap_ok = all(compute_capacity_directories(instance: instance), d => shell.Mkdir.Parents(path: owned_directory_path(t: d) as String).success)
+  if root_ok && cap_ok { made } else { "" }
 }
 
 // THE HOST'S MEMORY READING IS SUPPLIED TO EVERY LEDGER CELL (DESIGN 3, a witness discriminates at

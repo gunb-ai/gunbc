@@ -12,7 +12,7 @@ import std.resource_release_law { QuiescenceRequired }
 import product.capacity.lease { LeasePolicy, LeaseGrant }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store {
-  FabricStoreStanding, FabricStoreReady, FabricStoreUnready, fabric_store_open, fabric_store_declared_root,
+  FabricStoreStanding, FabricStoreReady, FabricStoreUnready, fabric_store_open, fabric_store_declared_root, fabric_store_area_paths,
 }
 import gunbc.fabric.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused,
@@ -22,7 +22,8 @@ import gunbc.fabric.fabric_event_log {
   PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
 }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
-import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses, owned_directory_path }
+import std.types { FilePath }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_shared_directory,
   DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
@@ -132,6 +133,30 @@ data compute_root_member: NonEmptyStr = "compute"
 
 fn compute_root_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
   dashboard_instance_shared_directory(instance: instance, member: "compute-root" as NonEmptyStr, child: compute_root_member as String)
+}
+
+// THE LEDGER'S PROVISIONING ROWS, DERIVED FROM THE SAME CHAIN THE MINT READS: the declared root and the
+// objects and heads areas fabric_store_open stands the store on (fabric_store_area_paths, applied to
+// compute_capacity_slots) are demanded as owned directories, so the substrate creates them before any
+// reservation opens the store. Renaming a member of the chain moves the mint and these rows together;
+// nothing else spells the path.
+fn compute_capacity_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  let areas = fabric_store_area_paths(members: compute_capacity_slots, instance: instance)
+  [
+    dashboard_instance_shared_directory(instance: instance, member: "compute-capacity-root" as NonEmptyStr, child: join(map(compute_capacity_slots, s => s as String), "/")),
+    compute_capacity_area(instance: instance, member: "compute-capacity-objects" as NonEmptyStr, path: areas.objects),
+    compute_capacity_area(instance: instance, member: "compute-capacity-heads" as NonEmptyStr, path: areas.heads),
+  ]
+}
+
+fn compute_capacity_area(instance: HostDashboardInstance, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: member,
+    path: path,
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
+  }
 }
 
 fn compute_root(instance: HostDashboardInstance) -> NonEmptyStr {

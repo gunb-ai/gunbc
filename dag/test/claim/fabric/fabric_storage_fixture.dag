@@ -113,7 +113,9 @@ fn fabric_fixture_run(claim: String, body: fn(FabricFixture) -> Bool) -> Process
   let instance = fabric_fixture_instance(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_fixture.XXXXXX").path)
   let files = fabric_store_area_paths(members: fabric_storage_slots, instance: instance)
   let state_files = fabric_store_area_paths(members: fabric_storage_state_slots, instance: instance)
-  match fabric_storage_placed_store(instance: instance) {
+  if !(fabric_wet_provision(members: fabric_storage_slots, instance: instance) && fabric_wet_provision(members: fabric_storage_state_slots, instance: instance)) {
+    exit_failure(reason: concat(claim, ": the scenario could not stand up the declared members"))
+  } else { match fabric_storage_placed_store(instance: instance) {
     FabricStoragePlacedRootRefused { detail } => exit_failure(reason: concat(concat(claim, ": the public fabric store mint refused, so nothing was observed: "), detail as String))
     FabricStoragePlacedRootReady { store } => match fabric_state_storage_store(instance: instance) {
       FabricStateStorageUnready { detail } => exit_failure(reason: concat(concat(claim, ": the state fabric store mint refused, so nothing was observed: "), detail as String))
@@ -121,7 +123,7 @@ fn fabric_fixture_run(claim: String, body: fn(FabricFixture) -> Bool) -> Process
         if body(FabricFixture { instance: instance, store: store, state_store: state_store, files: files, state_files: state_files }) { ExitSuccess }
         else { exit_failure(reason: concat(claim, ": the claim did not hold over the minted stores")) }
     }
-  }
+  } }
 }
 
 // ONE REQUEST AT THE PUBLIC DOOR, over the store minted for the fixture's instance.
