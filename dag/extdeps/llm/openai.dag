@@ -584,7 +584,7 @@ data openai_chat_completion_wire_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiChatCompletionRequest"),
     reason: "no module reads this record yet: the only consumer today is its own witness, and a model nobody reads is not yet evidence that the shape is right",
-    dissolution: unbound_dissolution(description: "feature:s3-serving-request-read - the serving path's request read, which the approved plan gunbc.plans.fabric_serving_router puts in its S3 decisions, reads model, stream, stop and reasoning_effort out of this record, and the dashboard client builds it for the call it sends; when a production read and a production build both exist against this record this row deletes. The read belongs to that plan, not to this module: nothing here decides what to do with a request"),
+    dissolution: unbound_dissolution(description: "feature:s3-serving-request-read - the serving path's request read, which the approved plan gunbc.plans.fabric_serving_router puts in its S3 decisions, reads model, stream, stop and reasoning_effort out of this record, and the dashboard client builds it for the call it sends. It dissolves when that reader lands WITH a witness that builds a request of this shape and reads it back, so the record is paid for by an observation and not by a compile. The read belongs to that plan, not to this module: nothing here decides what to do with a request"),
   ),
   // The repeated enumerated-member pair, declared as debt with its carrier named rather than left
   // in a comment: §6b allows deferring a generalization only with a stated reason and trigger.
@@ -598,6 +598,6 @@ data openai_chat_completion_wire_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiChatCompletionChunkBody"),
     reason: "no module reads one chunk payload yet; openai_compat_sse frames the events and this record describes their content, and the two are only joined by a reader",
-    dissolution: unbound_dissolution(description: "feature:s3-streamed-answer-read - the serving path's streamed read named in the approved plan gunbc.plans.fabric_serving_router's S3 decisions reads one payload of this shape to forward it and to close the usage record at stream end; when that read exists this row deletes"),
+    dissolution: unbound_dissolution(description: "feature:s3-streamed-answer-read - the serving path's streamed read named in the approved plan gunbc.plans.fabric_serving_router's S3 decisions forwards one payload of this shape and closes the usage record at stream end. It dissolves when that reader lands WITH a witness that decodes a recorded chat.completion.chunk -- the role-only first event, a content delta, and the finish_reason-only last event -- into this record"),
   ),
 ]
