@@ -3716,90 +3716,16 @@ fn rebuild_scope_decision_with(
 
 /// The modules the host shell crate declares PLUS the shell's own root, read from the same file:
 /// the rebuild-scope fold owns a mirror through this declaration alone, so the root file is a
-/// fact this read supplies (its stem), not a spelling the fold recognises.
-///
-/// THE DECLARATION IS TRANSITIVE. A hand file a root module declares (`cli_run`'s `mod
-/// compile_clean;`, `v1_interpreter`'s `#[path = "bounded_shell_host_drain.rs"]`) is a module of
-/// this crate as much as the root's own, and a CHANGED path there has the shell as its owning
-/// package; reading only `lib.rs` left those files to refuse `MirrorHasNoOwningPackage`.
+/// fact this read supplies (its stem), not a spelling the fold recognises. `closure_modules`
+/// reads the declaration transitively, so a hand file a root module declares is owned too.
 fn host_shell_scope_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
-    let src_dir = lib_rs
-        .parent()
-        .ok_or_else(|| format!("refusal: shell root {} has no directory", lib_rs.display()))?;
-    let mut modules = Vec::new();
-    let mut pending = vec![(lib_rs.to_path_buf(), src_dir.to_path_buf())];
-    let mut seen = BTreeSet::new();
-    while let Some((file, child_dir)) = pending.pop() {
-        if !seen.insert(file.clone()) {
-            continue;
-        }
-        let content = std::fs::read_to_string(&file)
-            .map_err(|e| format!("refusal: module file {} unreadable: {e}", file.display()))?;
-        for (name, path_attr) in declared_module_files(&content) {
-            let child = match path_attr {
-                Some(rel) => src_dir.join(rel),
-                None => {
-                    let flat = child_dir.join(format!("{name}.rs"));
-                    if flat.is_file() {
-                        flat
-                    } else {
-                        child_dir.join(&name).join("mod.rs")
-                    }
-                }
-            };
-            let owned = child
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .filter(|stem| *stem != "mod")
-                .unwrap_or(&name)
-                .to_string();
-            if !modules.contains(&owned) {
-                modules.push(owned);
-            }
-            if child.is_file() {
-                let nested_dir = if child.file_name().is_some_and(|f| f == "mod.rs") {
-                    child.parent().unwrap_or(&child_dir).to_path_buf()
-                } else {
-                    child_dir.join(&name)
-                };
-                pending.push((child, nested_dir));
-            }
-        }
-    }
+    let mut modules = super::emitted_closure_compile_host::closure_modules(lib_rs)?;
     let root = lib_rs
         .file_stem()
         .and_then(|stem| stem.to_str())
         .ok_or_else(|| format!("refusal: shell root {} has no file stem", lib_rs.display()))?;
     modules.push(root.to_string());
     Ok(modules)
-}
-
-/// The `mod name;` declarations of one file (cfg(test) ones included), each with the file its
-/// `#[path = "..."]` attribute names when it carries one.
-fn declared_module_files(content: &str) -> Vec<(String, Option<String>)> {
-    let mut out = Vec::new();
-    let mut path_attr: Option<String> = None;
-    for line in content.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("#[path") {
-            path_attr = rest.split('"').nth(1).map(str::to_string);
-            continue;
-        }
-        if line.starts_with("#[") || line.starts_with("//") || line.is_empty() {
-            continue;
-        }
-        if let Some(name) = line
-            .strip_prefix("pub mod ")
-            .or_else(|| line.strip_prefix("pub(crate) mod "))
-            .or_else(|| line.strip_prefix("mod "))
-            .and_then(|rest| rest.strip_suffix(';'))
-        {
-            out.push((name.trim().to_string(), path_attr.take()));
-        } else {
-            path_attr = None;
-        }
-    }
-    out
 }
 
 fn stage_rebuild_is_whole_compiler(
@@ -10589,11 +10515,25 @@ mod host_shell_scope_modules_tests {
         )
         .unwrap();
         std::fs::write(dir.join("cli_run/compile_clean.rs"), "").unwrap();
-        std::fs::write(dir.join("drain_file.rs"), "").unwrap();
+        std::fs::write(
+            dir.join("drain_file.rs"),
+            "mod deeper;\n#[path = \"sibling.rs\"]\nmod via_sibling;\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("deeper.rs"), "").unwrap();
+        std::fs::write(dir.join("sibling.rs"), "").unwrap();
         std::fs::write(dir.join("stray.rs"), "").unwrap();
         let modules = host_shell_scope_modules(&dir.join("lib.rs")).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        for owned in ["cli_run", "plain", "compile_clean", "drain_file", "lib"] {
+        for owned in [
+            "cli_run",
+            "plain",
+            "compile_clean",
+            "drain_file",
+            "deeper",
+            "sibling",
+            "lib",
+        ] {
             assert!(
                 modules.iter().any(|m| m == owned),
                 "{owned} unowned: {modules:?}"
