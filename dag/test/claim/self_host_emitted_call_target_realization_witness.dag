@@ -994,3 +994,31 @@ test fn w_list_append_emits_the_concat_primitive_not_a_left_fold() -> Bool {
     []
   )
 }
+
+// THE PAIRED SET-ELEMENT REFUSAL, BOTH REGISTERED SPELLINGS. The element Ord validation for a set is
+// entered through v1.compiler.types node_is_set_collection (v1/compiler/emit_rust.rs,
+// rust_btree_set_element_ord_eligible -> emit_rust_compile_error_expr): an element whose declared
+// carrier is not Ord-eligible must be refused in the emitted text, never silently realized. That gate
+// used to read the alias roster alone, so the canonical spelling skipped the validation entirely --
+// a Set<Float>-shaped carrier rendered as Rc<BTreeSet<...>> under one spelling and went through
+// unchecked under its canonical one. Both spellings name ONE carrier algebra (std.types declares
+// `type Set<element> = FinitePowerSet<element>`), so both must reach the same refusal. This is the
+// pair the alias-identity row tracks: a row that is green because one spelling never reached the
+// check is the same defect as a row that is green because the two spellings lowered apart.
+test fn w_alias_set_of_an_ineligible_element_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.alias_set_ineligible_element_probe\nimport std.types { Int, Set }\nimport std.float { Float }\ntype ProbeWeight { grams: Float }\nfn probe(members: Set<ProbeWeight>) -> Int { (members |> count) }\n",
+    "src/test_claim_alias_set_ineligible_element_probe.rs",
+    ["Set element type ProbeWeight is not Ord-eligible for BTreeSet"],
+    ["Rc<BTreeSet<ProbeWeight"]
+  )
+}
+
+test fn w_canonical_set_of_an_ineligible_element_refuses_the_same_way() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.canonical_set_ineligible_element_probe\nimport std.types { Int }\nimport std.algebra { FinitePowerSet }\nimport std.float { Float }\ntype ProbeWeight { grams: Float }\nfn probe(members: FinitePowerSet<ProbeWeight>) -> Int { (members |> count) }\n",
+    "src/test_claim_canonical_set_ineligible_element_probe.rs",
+    ["Set element type ProbeWeight is not Ord-eligible for BTreeSet"],
+    ["Rc<BTreeSet<ProbeWeight"]
+  )
+}

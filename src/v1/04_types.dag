@@ -174,8 +174,31 @@ fn node_is_element_collection(n: Node, source_indices: Map<String, NewlineIndex>
   (c.children |> count) == 1 && node_is_collection(n: c, source_indices: source_indices)
 }
 
+// THE SAME ALGEBRA DECISION `node_is_element_collection` MAKES, READ ONCE MORE AND NOT TWICE. This
+// predicate and its neighbour must not answer from two different registries: `node_is_collection`
+// admits both registered spellings of the power-set carrier (the alias roster and the carrier's
+// algebra row), so a leaf-literal "Set" comparison HERE puts the two answers out of step -- the type
+// is an element collection and not a set at once, and every consumer that distinguishes the two
+// inherits the disagreement. Two of them execute, both measured (see the RFM row below):
+// `type_is_ordered_element_run` then calls a `FinitePowerSet<Int>` an ordered run, so std.algebra's
+// `ReceiverElementOrSelf` and the emitter's `rust_append_call_is_concat_form` CONCATENATE a set
+// appended to a list of sets instead of snocing it as one element; and
+// `v1.compiler.emit_rust`'s set branch reaches the element Ord validation
+// (`rust_btree_set_element_ord_eligible`) only through this predicate, so the canonical spelling
+// silently skips the refusal its alias gets. Both spellings are registered rows of ONE carrier
+// algebra (std.algebra's FinitePowerSet carrier carries the alias row `Set`), which is the fact
+// being unified here -- not a declaration identity, which is the later rung the RFM below names.
+// The element-collection shape test stays on the neighbour, so arity and the collection-carrier
+// requirement are unchanged: one argument, resolving to a collection carrier, whose algebra is
+// FinitePowerSet.
+// RESIDUE: the leaf-literal fallback in `expected_type_is_set_collection` (v1.compiler.infer
+// `last == "Set"`) still consults a spelling, and it gates the kernel `empty_set()` admission rather
+// than this renderer question; generalizing it belongs with the same roster rule as the other
+// spelling-check sites, not here. gunbc.recurring_failure_mode
+// emitter_element_container_lowering_is_keyed_by_leaf_spelling names the trigger that retires both:
+// the resolver recording a declaration reference on every type reference.
 fn node_is_set_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  node_is_element_collection(n: n, source_indices: source_indices) && qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)) == "Set"
+  node_is_element_collection(n: n, source_indices: source_indices) && node_is_finite_power_set_algebra_spelling(n: n, source_indices: source_indices)
 }
 
 // IS THIS TYPE AN ORDERED RUN OF ELEMENTS -- the free monoid's own shape? ONE QUESTION, ONE
