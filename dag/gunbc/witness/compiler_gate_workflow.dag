@@ -839,6 +839,18 @@ fn compiler_gate_row_refusal() -> Optional<NonEmptyStr> {
 }
 
 fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
+  compiler_gate_yml_for(profile: gunbc_repository_ci_profile())
+}
+
+fn compiler_gate_yml_for(profile: RepositoryCiProfile) -> WitnessFloorGenerationOutcome {
+  // THE ROW IS ADMITTED BEFORE THE REQUIRED GATE IS RENDERED. The gate is the check every pull request
+  // waits on; a workflow emitted from a row the repository's own admission refuses - a job pinned to a
+  // runner group no census declared, a duration that is not positive - would be a bug in this module,
+  // so the admission runs first and the gate is refused rather than fabricated.
+  if gunbc_profile_is_refused() {
+    return WitnessFloorGenerationRefused { reason: gunbc_profile_refusal_reason() }
+  }
+
   match compiler_gate_row_refusal() {
     Present { value: reason } => WitnessFloorGenerationRefused { reason: reason as String }
     Absent =>

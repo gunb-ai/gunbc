@@ -486,6 +486,7 @@ fn expected_projection_drift_workflow_yml(
               ProjectionDriftWorkflowGenerationRefused {
                 reason: yaml_emit_refusal_text(module_path: "gunbc.ci.repository_projection_drift_workflow", path: p, reason: r)
               }
+            }
           }
           }
           }

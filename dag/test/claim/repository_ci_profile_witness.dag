@@ -1,5 +1,11 @@
 module test.claim.repository_ci_profile_witness
 
+import gunbc.heal_workflow { heal_workflow_yml_for, HealWorkflowGenerated, HealWorkflowGenerationRefused }
+import gunbc.heal_publisher_workflow { heal_publisher_workflow_yml_for, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
+import gunbc.drift_watch_workflow { drift_watch_workflow_yml_for, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_yml_for }
+import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
+
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.measure { byte_size, Minute, minute }
 import std.optional { Optional, Present, Absent }
@@ -835,4 +841,144 @@ fn mirror_profile_with_roots(roots: List<String>) -> RepositoryCiProfile {
     drift: base.drift,
     publisher: base.publisher
   }
+}
+
+// THE SEED AND THE OVERLAY ARE THE ROW'S, NOT ARGUMENTS A CALLER MAY BRING (side-chat finding 3, second
+// half). The emitters used to take a seed and an overlay beside the profile and only check that the
+// profile declared them, so one repository's profile could be paired with another's seed. Now the values
+// are read once from the admitted row and threaded through the checkout, the receipt, the build, the check
+// and the seal - and a profile that declares no seed is refused instead of being handed a default.
+test fn the_gate_emitter_refuses_a_profile_that_declares_no_seed() -> Bool {
+  !yaml_emission_admitted(
+    result: repository_witnesses_yml_emission(
+      profile: mirror_profile_without_seed(),
+      program: fixture_program()
+    )
+  ) &&
+    yaml_emission_admitted(
+      result: repository_witnesses_yml_emission(
+        profile: mirror_profile(seal: true, publish: true),
+        program: fixture_program()
+      )
+    )
+}
+
+test fn the_drift_entrypoint_refuses_a_profile_that_declares_no_seed() -> Bool {
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile_without_seed(),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => true
+    ProjectionDriftWorkflowGenerated { content: _ } => false
+  }
+}
+
+test fn the_seed_the_lane_checks_out_is_the_rows_seed() -> Bool {
+  string_contains(
+    s: expected_repository_witnesses_yml(
+      profile: mirror_profile_with_seed_ref(ref: "rev-9-9-9"),
+      program: fixture_program()
+    ),
+    pattern: "rev-9-9-9"
+  )
+}
+
+fn mirror_profile_without_seed() -> RepositoryCiProfile {
+  let base = mirror_profile(seal: true, publish: true)
+  RepositoryCiProfile {
+    repository: base.repository,
+    default_branch: base.default_branch,
+    heal: base.heal,
+    roster: base.roster,
+    public_seed: none,
+    drift: base.drift,
+    publisher: base.publisher
+  }
+}
+
+fn mirror_profile_with_seed_ref(ref: NonEmptyStr) -> RepositoryCiProfile {
+  let base = mirror_profile(seal: true, publish: true)
+  let seed = match base.public_seed {
+    Present { value: s } => s
+    Absent => fixture_seed()
+  }
+  RepositoryCiProfile {
+    repository: base.repository,
+    default_branch: base.default_branch,
+    heal: base.heal,
+    roster: base.roster,
+    public_seed: Present {
+      value: PublicSeed {
+        repository: seed.repository,
+        ref_name: ref,
+        checkout_path: seed.checkout_path,
+        build_command: seed.build_command,
+        seed_binary_relative_path: seed.seed_binary_relative_path,
+        record_step_name: seed.record_step_name,
+        build_step_name: seed.build_step_name
+      }
+    },
+    drift: base.drift,
+    publisher: base.publisher
+  }
+}
+
+// EVERY GUNBC EMITTER ADMITS THE ROW BEFORE IT RENDERS (review 89604). The four emitters that read
+# gunbc's own row used to call no admission at all: a row pinning a job to a runner group no census
+// declared, declaring a heal with no publisher, or carrying a duration that is not positive still produced
+// committed YAML. Each emitter now admits first, and each pair below is a discriminator: the same emitter
+// function refuses the row it does not admit and composes for gunbc's own.
+test fn the_four_gunbc_emitters_admit_the_row_before_rendering() -> Bool {
+  heal_emitter_admits() &&
+    publisher_emitter_admits() &&
+    drift_emitter_admits() &&
+    gate_emitter_admits()
+}
+
+fn unadmitted_row() -> RepositoryCiProfile {
+  mirror_profile_on_group(group: "group-no-census-declared")
+}
+
+fn heal_emitter_admits() -> Bool {
+  match heal_workflow_yml_for(profile: unadmitted_row()) {
+    HealWorkflowGenerationRefused { reason: _ } => true
+    HealWorkflowGenerated { content: _ } => false
+  } &&
+    match heal_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
+      HealWorkflowGenerationRefused { reason: _ } => false
+      HealWorkflowGenerated { content: _ } => true
+    }
+}
+
+fn publisher_emitter_admits() -> Bool {
+  match heal_publisher_workflow_yml_for(profile: unadmitted_row()) {
+    HealPublisherWorkflowGenerationRefused { reason: _ } => true
+    HealPublisherWorkflowGenerated { content: _ } => false
+  } &&
+    match heal_publisher_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
+      HealPublisherWorkflowGenerationRefused { reason: r } => false
+      HealPublisherWorkflowGenerated { content: _ } => true
+    }
+}
+
+fn drift_emitter_admits() -> Bool {
+  match drift_watch_workflow_yml_for(profile: unadmitted_row()) {
+    DriftWatchWorkflowGenerationRefused { reason: _ } => true
+    DriftWatchWorkflowGenerated { content: _ } => false
+  } &&
+    match drift_watch_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
+      DriftWatchWorkflowGenerationRefused { reason: _ } => false
+      DriftWatchWorkflowGenerated { content: _ } => true
+    }
+}
+
+fn gate_emitter_admits() -> Bool {
+  match compiler_gate_yml_for(profile: unadmitted_row()) {
+    WitnessFloorGenerationRefused { reason: _ } => true
+    WitnessFloorGenerated { content: _ } => false
+  } &&
+    match compiler_gate_yml_for(profile: gunbc_repository_ci_profile()) {
+      WitnessFloorGenerationRefused { reason: _ } => false
+      WitnessFloorGenerated { content: _ } => true
+    }
 }

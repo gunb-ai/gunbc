@@ -510,3 +510,22 @@ fn profile_runner_group_is_declared(target: CiRunnerTarget) -> Bool {
     _ => true
   }
 }
+
+// THE ADMISSION THE FOUR GUNBC EMITTERS CALL BEFORE THEY RENDER A BYTE. Two reads of the one check, so an
+// emitter's refusal carries the row's own reason instead of a second copy of the rules: a profile that
+// pins a job to a runner group no census declared, declares a heal job with no publisher to publish it,
+// gives a publisher a workflow that is not this repository's, or carries a duration that is not positive
+// is refused rather than rendered.
+fn gunbc_profile_is_refused() -> Bool {
+  match repository_ci_profile_refusal(profile: gunbc_repository_ci_profile()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn gunbc_profile_refusal_reason() -> String {
+  match repository_ci_profile_refusal(profile: gunbc_repository_ci_profile()) {
+    Present { value: reason } => reason as String
+    Absent => ""
+  }
+}

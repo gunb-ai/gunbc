@@ -209,7 +209,16 @@ data drift_watch_no_cron_refusal_reason: String = "REFUSED gunbc.drift_watch_wor
 // repository whose drift check is checkout-driven gets no file from this emitter at all and takes its check
 // from gunbc.ci.repository_projection_drift_workflow, which adds no schedule trigger.
 fn expected_drift_watch_workflow_yml() -> DriftWatchWorkflowGenerationOutcome {
-  match gunbc_drift_watch_job() {
+  drift_watch_workflow_yml_for(profile: gunbc_repository_ci_profile())
+}
+
+fn drift_watch_workflow_yml_for(profile: RepositoryCiProfile) -> DriftWatchWorkflowGenerationOutcome {
+  // THE ROW IS ADMITTED BEFORE A BYTE IS RENDERED: an emitter that rendered a job the row does not admit would commit a workflow the repository's own data refuses - a runner group no census declared, a heal with nothing to publish it, a duration that is not positive.
+  if gunbc_profile_is_refused() {
+    return DriftWatchWorkflowGenerationRefused { reason: gunbc_profile_refusal_reason() }
+  }
+
+  match profile.drift {
     Absent => DriftWatchWorkflowGenerationRefused { reason: drift_watch_no_job_refusal_reason }
     Present { value: row } =>
       match row.cron {

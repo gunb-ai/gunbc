@@ -544,7 +544,16 @@ data heal_workflow_capability_refusal_reason: String = "REFUSED gunbc.heal_workf
 data heal_workflow_no_row_refusal_reason: String = "REFUSED gunbc.heal_workflow: this repository's gunbc.ci.repository_ci_profile row declares no heal job, so there is nothing to regenerate and no candidate to seal. Declare heal: Present { value: HealWorkflowPolicy { ... } } if this repository commits generated mirrors; delete heal.yml if it does not."
 
 fn expected_heal_workflow_yml() -> HealWorkflowGenerationOutcome {
-  match gunbc_heal_job() {
+  heal_workflow_yml_for(profile: gunbc_repository_ci_profile())
+}
+
+fn heal_workflow_yml_for(profile: RepositoryCiProfile) -> HealWorkflowGenerationOutcome {
+  // THE ROW IS ADMITTED BEFORE A BYTE IS RENDERED: an emitter that rendered a job the row does not admit would commit a workflow the repository's own data refuses - a runner group no census declared, a heal with nothing to publish it, a duration that is not positive.
+  if gunbc_profile_is_refused() {
+    return HealWorkflowGenerationRefused { reason: gunbc_profile_refusal_reason() }
+  }
+
+  match profile.heal {
     Absent => HealWorkflowGenerationRefused { reason: heal_workflow_no_row_refusal_reason }
     Present { value: job } =>
       match admit_workflow_checkout_refs(workflow: heal_workflow_of(job: job), declared: [heal_checkout_ref]) {

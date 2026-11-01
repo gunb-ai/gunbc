@@ -469,7 +469,16 @@ data heal_publisher_capability_refusal_reason: String = "REFUSED gunbc.heal_publ
 // runner and the trigger rendering happily. Now presence is a match, the placeholder rows are deleted, and
 // a repository with no publisher gets a refusal that says what to delete or what to declare.
 fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutcome {
-  match gunbc_heal_publisher_job() {
+  heal_publisher_workflow_yml_for(profile: gunbc_repository_ci_profile())
+}
+
+fn heal_publisher_workflow_yml_for(profile: RepositoryCiProfile) -> HealPublisherWorkflowGenerationOutcome {
+  // THE ROW IS ADMITTED BEFORE A BYTE IS RENDERED: an emitter that rendered a job the row does not admit would commit a workflow the repository's own data refuses - a runner group no census declared, a heal with nothing to publish it, a duration that is not positive.
+  if gunbc_profile_is_refused() {
+    return HealPublisherWorkflowGenerationRefused { reason: gunbc_profile_refusal_reason() }
+  }
+
+  match profile.publisher {
     Absent => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_no_job_refusal_reason }
     Present { value: job } =>
       match admit_workflow_checkout_refs(workflow: heal_publisher_workflow_of(job: job), declared: []) {
