@@ -37,7 +37,6 @@ import std.roster_frontier {
 import gunbc.auth.privileged_effect_census {
   PrivilegedEffectInterlock, privileged_effect_interlocks,
 }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.machine_intake.bmc_recovery_route_frontier {
   bmc_recovery_route_consumer_frontier_rows,
   bmc_recovery_route_onboarding_consumer_frontier_rows, bmc_recovery_route_pairing_frontier_rows,
@@ -721,10 +720,6 @@ fn recovery_frontier_subject_declared(row: FrontierRow) -> Bool {
   }
 }
 
-fn recovery_frontier_enrolled(row: FrontierRow) -> Bool {
-  any(xs: census_closure_frontier_rows(), predicate: fn(c) { c == row })
-}
-
 fn recovery_frontier_trigger_module(row: FrontierRow) -> String {
   match row.dissolution {
     BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t).module_path as String
@@ -732,9 +727,7 @@ fn recovery_frontier_trigger_module(row: FrontierRow) -> String {
   }
 }
 
-// Each group yields EXACTLY ONE row (a silently-dropped row is the failure mode of a list); each is
-// enrolled in gunbc.census_closure_frontier.census_closure_frontier_rows, the roster the dissolution
-// census folds -- a row nobody concatenates is the same absence in a new file; each is pending against
+// Each group yields EXACTLY ONE row (a silently-dropped row is the failure mode of a list); each is pending against
 // the census's own declaration population; and each subject is a declaration the tree has. THREE groups
 // since the side-chat verdict: the fold's consumer, the reset pairing, and the success side's onboarding
 // consumer -- the third is what replaced the module's "re-enters onboarding" prose, and its trigger
@@ -747,20 +740,17 @@ test fn the_recovery_obligations_are_rostered_as_pending_frontiers() -> Bool {
     && list_length(items: pairing) == 1
     && list_length(items: onboarding) == 1
     && any(xs: consumer, predicate: fn(row) {
-         recovery_frontier_enrolled(row: row)
-           && recovery_frontier_pending(row: row)
+         recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
            // the named consumer is a future arrival entry, in the module that owns arrivals
            && recovery_frontier_trigger_module(row: row) == "gunbc.machine_intake.arrival_converge"
        })
     && any(xs: pairing, predicate: fn(row) {
-         recovery_frontier_enrolled(row: row)
-           && recovery_frontier_pending(row: row)
+         recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
        })
     && any(xs: onboarding, predicate: fn(row) {
-         recovery_frontier_enrolled(row: row)
-           && recovery_frontier_pending(row: row)
+         recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
            // the dissolve trigger is the fold this row exists to demand: a bmc_secure fold, which does
            // not exist today -- if someone repoints the trigger at a live declaration, this goes red and

@@ -4,9 +4,6 @@ import std.types { String, NonEmptyStr, Bool, Int, List, Timestamp }
 import std.optional { Present, Absent }
 import std.algebra { list_append }
 import std.apply_mode { ApplyMode, Plan, Apply }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import std.scoped_authorization { ScopedAuthorization, AuthorizationPending, AuthorizationGranted, AuthorizationDenied }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { rm_force_command }
@@ -437,26 +434,3 @@ fn rented_release_receipt(
   }
 }
 
-// DECLARED FRONTIERS (DESIGN 3c, 4b).
-data rented_release_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_grant_standing"),
-    reason: "std.scoped_authorization models no early end of a grant, so release reports when the operator grant for the card expires and revokes nothing",
-    dissolution: unbound_dissolution(description: "a std.scoped_authorization early-end transition on ScopedAuthorization, sufficient for release to end a held grant and read the end back"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_release_receipt"),
-    reason: "no flex caller invokes rented_release_receipt yet: binding product.fabric.flex_market FlexOwnedCard to its RentedServingAllocation is the flex lane's step",
-    dissolution: unbound_dissolution(description: "trigger:the flex wet create produces RentedAllocationAcquired allocations per card and calls rented_release_receipt, resolving flex_release_pass's FlexDestroy to its allocation and passing the FlexPolicy actuation as mode"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "product.fabric.flex_vast_loop", decl_name: "flex_vast_destroy_perform"),
-    reason: "no claim executes flex_vast_destroy_perform: vast_ai.InstanceLifecycle Destroy is Bearer-authenticated, and extdeps.transports.rest RestAuthenticated replay is unexecuted because the invocation input_digest limbs still use a host hash, so only the decisions are witnessed",
-    dissolution: unbound_dissolution(description: "trigger:an authenticated REST replay route in extdeps.transports.rest executes (RestExchangeFixture matched against a RestAuthenticated invocation), and a claim drives flex_vast_destroy_perform over it asserting the route"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_drain_decision"),
-    reason: "no producer yet supplies RentedHostReading: the vantage control and the ssh answer are read by the flex caller, not by this module",
-    dissolution: unbound_dissolution(description: "trigger:the flex caller that resolves a FlexDestroy to its allocation supplies the host reading from an ssh attempt and a control to a second endpoint"),
-  ),
-]

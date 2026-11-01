@@ -3,9 +3,6 @@ module gunbc.provisioning.public_nocloud_seed
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.algebra { FreeSemigroup, list_head, skip }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping, yaml_mapping, yaml_string, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import extdeps.ssh.keys { ssh_canonical_public_key_line_admitted }
@@ -319,33 +316,3 @@ fn admit_public_nocloud_seed(client_mac: Eui48Address, user_data: YamlValue) -> 
   }
 }
 
-// THE FIRST PRODUCTION MINT IS THE x86 SEED RENDERER. As of 2026-10-28 the BMC netboot edge DOES admit its
-// seed through this contract in production (gunbc.bmc.bmc_netboot_serve.bmc_netboot_user_seed_admission, keyed
-// on the measured srv4 NIC MAC — dashboard node adhoc-dfa3a487), but that route is not the dissolution below:
-// the frontier asks for the SITE PXE EDGE. Its first request (gunbc.fleet.site_pxe_edge_converge
-// site_pxe_edge_install_requests, srv14) is admitted through this contract, but no readback of the user-data the
-// edge served has been taken yet, and that readback is what the dissolution names.
-// THE DECLARED srv3 GAP (review of #15318, DESIGN.md §4b rung honesty). srv3's install documents are
-// key-only BY DATA today; they are not contract-gated, because srv3 has no measured boot-NIC row —
-// there is no client MAC on record to key an instance-id on (gunbc.host.host_network_diagnosis.boot_nic_inventory
-// carries only srv4). The seeded-ISO rendering goes from gunbc.srv3.srv3_seeded_install_media_artifact straight
-// through autoinstall_user_data with no admission step, and the NoCloudNet payload renders the same way. A
-// witness pins the bytes (no identity:, lock_passwd true, canonical keys), which EXPOSES a regression but does
-// not BLOCK one. Saying so here is the contract: this row is the debt, and a WithIdentity posture restored on
-// an srv3 payload is a red witness AND an unclosed frontier, not a silent pass.
-data public_nocloud_seed_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.provisioning.public_nocloud_seed", decl_name: "admit_public_nocloud_seed"),
-    reason: "the site PXE edge binds srv14 from an admitted seed (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_install_requests), but no readback of the user-data the edge served has been taken, so the served bytes are not yet known to be the admitted seed's (the BMC netboot route admits srv4's seed since 2026-10-28 and does not dissolve this row)",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a site_pxe_edge_converge install binding for a roster MAC carries a PublicNoCloudSeed admitted from the seed renderer's documents (autoinstall_user_data_document), and the edge's readback of the served user-data agrees with that seed's bytes; a witness over a hand-built tree does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.srv3.srv3_seeded_install_media_artifact", decl_name: "srv3_seeded_install_media_derivation"),
-    reason: "srv3's install documents are key-only by data and pinned by witness bytes, but NOT gated by this contract: srv3 has no measured boot-NIC row (gunbc.host.host_network_diagnosis.boot_nic_inventory has only srv4), so the seeded-ISO and NoCloudNet renderings cannot yet be keyed on a client MAC and run through admit_public_nocloud_seed",
-    dissolution: unbound_dissolution(
-      description: "dissolves when (a) gunbc.host.host_network_diagnosis.boot_nic_inventory carries a boot-NIC assignment for gunbc.fleet.fleet_host_identity.operator_host_srv3 with a mac that parses, AND (b) srv3's seeded-ISO user-data reaches the ISO only after admit_public_nocloud_seed accepts it keyed on that NIC (the instance-id derived, never hand-written). A witness over a hand-built tree does not fire this"
-    )
-  ),
-]

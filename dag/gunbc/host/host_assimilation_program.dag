@@ -43,9 +43,6 @@ import gunbc.host.host_standup {
   host_standup_p3_gunbc_pinned_tree_landed,
   assimilation_input_is_required,
 }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution, bound_dissolution }
 import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, ProviderGuest }
 import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
@@ -72,7 +69,6 @@ import gunbc.fleet.fleet_enrollment {
 // every consumer to remember to filter. A host's participation instead SELECTS which obligations
 // exist at all, so an obligation that does not apply is not a cell with a label -- it is not a
 // cell.
-
 
 // The one place a standup phase is bound to what requires it -- an assimilation phase to the
 // participations that need it, a prefix phase to the provisioning that owes it -- kept HERE rather
@@ -155,8 +151,6 @@ fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<Fl
   }
 }
 
-
-
 fn step_serves_participation(step: HostStandupStep, wanted: FleetParticipation) -> Bool {
   match step.phase {
     Prefix { phase: _ } => false
@@ -192,19 +186,6 @@ fn step_phase_awaits_a_real_enrollment(step: HostStandupStep, awaiting: List<Hos
     Assimilation { phase: p } => any(awaiting, q => q == p)
   }
 }
-
-data host_assimilation_program_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.host.host_assimilation_program", decl_name: "phases_awaiting_a_real_enrollment"),
-    reason: "InferenceServingProvision maps to InferenceServingParticipation, and no real gunbc.fleet.fleet_enrollment fleet_enrollments entry carries that participation (the Sparks were sold), so the phase is in no real host program; the spine-claimed claim admits it only through this row",
-    dissolution: unbound_dissolution(description: "a real enrollment carries InferenceServingParticipation: the flex wet create (product.fabric.flex_market) produces a RentedAllocationAcquired allocation whose intent gunbc.serving.rented_allocation_host_enrollment derives, or the owned RTX PRO 6000 enrollment lands. SUFFICIENT FOR deleting this row and the phase from phases_awaiting_a_real_enrollment, after which witness_every_spine_step_is_claimed_by_some_participation needs no exception"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "runner_image_baked_deployment_plan"),
-    reason: "the image-baked arm (RamImageBoot hosts: fleet_image_baked_offers, ConvergePolicyDerived.image_baked) is derived but no image build input reads it yet: the runner_host_medium publish that bakes a host's slots and knobs into its seeded image is a later change, so the arm's only readers today are its witnesses. The trigger is the declaration gunbc.runner.runner_host_medium runner_host_image_slot_roster that folds runner_image_baked_deployment_plan into that image-build input; it must be executed by a claim that a RamImageBoot host's image carries the derived runner count before this row is deleted",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_image_slot_roster")),
-  ),
-]
 
 type HostAssimilationProgram {
   identity: NonEmptyStr
@@ -278,7 +259,6 @@ fn host_enrollment_program_identity(intent: HostEnrollmentIntent) -> NonEmptyStr
 fn program_step_count(program: HostAssimilationProgram) -> Int {
   program.steps.length()
 }
-
 
 // Completion inputs derive as the union over enrolled participations, deduplicated by
 // AssimilationCompleteInput identity, not as a priority chain over participation kinds. A host

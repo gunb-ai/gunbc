@@ -26,9 +26,6 @@ import gunbc.roadmap.roadmap_execution_contract {
   attempt_path_scope_identity_json,
 }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 
 // A dispatch's destination is a per-NODE fact. The slug is a String: "gunbc" or owner/name.
 // It is read from the node's WorkItemDispatch: destination_from_dispatch matches Dispatchable,
@@ -355,19 +352,6 @@ type AttemptSubjectRefusal
 type AttemptSubjectAdmission
   = AttemptSubjectAdmitted { subject: AttemptAdmissionSubject }
   | AttemptSubjectRefused { node: RoadmapNodeIdentity, cause: AttemptSubjectRefusal }
-
-// Public executing route: test.claim.roadmap.attempt_admission_subject_witness calls admission,
-// identity and join through the same functions the consumers will import. This establishes
-// runtime refusal only, not private production consumption or an unforgeable record constructor.
-// The frontier covers the types above and the mint/field/identity/join functions below.
-// census_closure_frontier_row_groups enrolls these rows for dissolution_census to fold.
-data attempt_admission_subject_frontier_rows: List<FrontierRow> = [frontier_row_decl(
-  ref: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_destination", decl_name: "AttemptAdmissionSubject"),
-  reason: "The sealed subject is executed by public witnesses. No public production attempt currently stores or reads the sealed contract fields; gunbc-private#60 finding 4 is the named later consumer, after its coordinated recut, not in this closure",
-  dissolution: unbound_dissolution(
-    description: "gunbc-private#60 finding 4 recuts strategy.plan_item_dispatch to store AttemptAdmissionSubject as its durable admitted subject, consume sealed_validations, sealed_path_scope and sealed_extra_capabilities for grant/oracle/publication identity, import PublicRevisionStanding and public_revision_standing_text instead of defining them, derive contract identity from attempt_admission_subject_fields, and join through join_attempt_subject. The public belt follow-up binds worktree creation and publication to this subject's destination and admitted base, persists the subject at admission, and reads it at verify. A witness-only caller or a rendered parallel string contract does not satisfy this production trigger"
-  ),
-)]
 
 fn admit_attempt_subject(
   node: RoadmapNodeIdentity,

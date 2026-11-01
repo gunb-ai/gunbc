@@ -1,21 +1,3 @@
 module gunbc.sort_by_migration_frontier
 
-import std.dissolution { unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_path }
 
-// THE sort_by -> list_sort_by_key MIGRATION'S DECLARED FRONTIER (#15426): the five src/v2/std/node.dag occurrences (four sites; one line holds two) are generator
-// output; these five N7-closure occurrences are not yet migrated. Sweeping them exceeds the generator's 16G envelope on
-// infer.dag (pass sort_by/symbol, keys 4361:15 4362:16, was killed EXIT=137 at 1h41m), and the cap is not raised.
-// Rows sort_by/symbol and sort_by/string exist in roster_import_sweep; sort_by/int and the string/int order KeepHeads are added with the sites.
-data sort_by_migration_frontier_rows: List<FrontierRow> = [
-  frontier_row_path(
-    path: "src/v2/compiler/infer.dag",
-    reason: "four bare sort_by sites remain, by enclosing function: two in infer_formals_in_declared_order (Symbol keys, row sort_by/symbol, order symbol_total_order()), one in infer_pairings_in_declared_order and one in infer_formal_args_by_plan (Int keys, row sort_by/int, order int_total_order()); the sweep's occurrence keys are 4361:15 4362:16 4398:16 6214:12 at this revision, selectors only; the OnlyOccurrences sweep over infer.dag exceeded MemoryMax=16G (EXIT=137)",
-    dissolution: unbound_dissolution(description: "the roster sweep's per-file cost fits its declared envelope, so the infer.dag passes run to completion as generator output and no bare sort_by remains in the file")
-  ),
-  frontier_row_path(
-    path: "src/v2/compiler/source_authority.dag",
-    reason: "one bare sort_by site remains in derived_roster_select (occurrence key 1683:48 at this revision, a selector only; String key, row sort_by/string, order string_total_order()); not swept, because the sweep-cost fix that unblocks infer.dag gates the chain",
-    dissolution: unbound_dissolution(description: "the roster sweep's per-file cost fits its declared envelope, so the source_authority.dag pass runs as generator output and no bare sort_by remains in the file")
-  ),
-]

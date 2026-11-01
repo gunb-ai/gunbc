@@ -4,9 +4,6 @@ import std.types { String, NonEmptyStr, Bool, Int, List, EpochMs }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.algebra { list_head, list_tail }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure {
   MoneyAmountMicro, money_amount_micro, measure_add, measure_le, measure_scale_fraction_ceil,
@@ -318,19 +315,3 @@ fn rented_settle(allocation: RentedServingAllocation, readings: RentedSettlement
   }
 }
 
-// DECLARED FRONTIER (DESIGN 3c). Consumers: the release receipt (gunbc.serving.rented_release
-// RentedReleaseReceiptV1 is keyed by the same rented_allocation_wire and has no settlement leg), a fleet spend
-// roll-up, and flex's budget (product.fabric.budget) each read a RentedSettlement; none does yet, and the wet
-// Charges.Show caller that produces RentedSettlementReadings is unwired.
-data rented_settlement_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_settlement", decl_name: "rented_settle"),
-    reason: "no caller invokes rented_settle yet: the release receipt carries no settlement leg and neither a fleet spend roll-up nor flex's budget reads a RentedSettlement, so only the witnesses execute it",
-    dissolution: unbound_dissolution(description: "trigger:the flex lane that calls rented_release_receipt also reads the allocation's charges through vast_ai.Charges Show with a day range covering its lifetime, folds them with flex_fold_charge_pages, and passes the standing to rented_settle; sufficient for deleting this row once a claim drives that route"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "vast_ai_charges_refusal"),
-    reason: "no caller maps a non-200 vast_ai.Charges Show answer to a VastAiChargesRefusal yet: the wet read of GET /charges is unwired, so only the witnesses construct the refusal",
-    dissolution: unbound_dissolution(description: "trigger:the wet caller that executes vast_ai.Charges Show maps a RestStatusRefused status and its VastAiApiError error text through vast_ai_charges_refusal into RentedChargesRefused; sufficient for deleting this row once a claim drives that route"),
-  ),
-]

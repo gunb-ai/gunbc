@@ -1,13 +1,9 @@
 module gunbc.githooks.githooks_pre_push_frontier
 
 // THE PRE-PUSH CONCAT BODY ON THE CLOSURE'S FRONTIER. This registers the residual in the
-// production roster fold — gunbc.census_closure_frontier.census_closure_frontier_rows() — so
-// the row is read by something other than tests: gunbc.dissolution_census.dissolution_census_verdict()
-// and dissolution_census_holds() resolve every registered row's trigger against the live
-// declaration index and refuse what they cannot decide, and frontier_rows_well_formed() checks
-// every row's shape. That is the same route that carries every other dissolution in the closure
-// (the extdeps.tools.sha256sum shell-only row is the closest sibling: an unbound capability
-// trigger over a foreign-executor body). The trigger row itself lives once, in
+// FrontierRow list, read by frontier_rows_well_formed(), which checks every row's shape; the roster fold
+// (gunbc.census_closure_frontier) that once enrolled it was retired.
+// The trigger row itself lives once, in
 // gunbc.githooks.githooks_pre_push_emit (githooks_pre_push_emit_concat_body_dissolution), next
 // to the body it names; this module is its registration, not a second statement of it.
 //
@@ -33,14 +29,5 @@ module gunbc.githooks.githooks_pre_push_frontier
 // with dissolves_to RealizationDispatch). A Scaffold carries no trigger, so no second statement
 // of the dissolution exists: mechanism+bind in the Scaffold, reason+trigger here.
 
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
 import gunbc.githooks.githooks_pre_push_emit { githooks_pre_push_emit_concat_body_dissolution }
 
-data githooks_pre_push_concat_body_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.githooks.githooks_pre_push_emit", decl_name: "expected_githooks_pre_push_sh"),
-    reason: "gunbc.githooks.githooks_pre_push_emit|expected_githooks_pre_push_sh:concat-assembled shell — git executes the hook permanently (foreign executor); the frontier is the assembly, not the language",
-    dissolution: githooks_pre_push_emit_concat_body_dissolution,
-  ),
-]

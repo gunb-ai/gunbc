@@ -1,11 +1,9 @@
 module extdeps.github.app
 
 import std.types { NonEmptyStr, String, Bool, Int, List, Map, Secret, brand }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.credentials { EnvVar }
-import std.dissolution { unbound_dissolution }
 import std.list { first_duplicate_by_key }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https, uri_from_wire, uri_wire }
 import extdeps.uri.percent_encoding { UriPercentComponentEncoded, UriPercentComponentRefused, UriPercentEncodeRefusalCause, uri_percent_encode_component }
@@ -29,7 +27,6 @@ import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serial
 import std.algebra { fold_list, map_lookup }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
-
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -1647,16 +1644,6 @@ fn installation_token_request_body(request: GitHubInstallationTokenRequest) -> S
     installation_token_permission_members(narrowing: request.permissions)
   )))
 }
-
-data modeled_webhook_event_vocabulary_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.github.app", decl_name: "GitHubWebhookEvent"),
-    reason: "TWO FACTS, ONE ROW, because they retire together. FIRST, partiality: GitHubWebhookEvent spells twelve of the events webhook_events_citation documents, chosen because they are the ones an App-acquisition and census manifest can subscribe to; the write side is closed by construction (an unmodeled event cannot be rendered into a manifest) and the read side stays List<NonEmptyStr> on GitHubAppInstallation, so the partiality costs expressiveness rather than safety. SECOND, overlap: extdeps.github.actions_token GitHubWorkflowEvent independently spells push and pull_request for a different question (which event triggered a workflow run), so one upstream catalogue currently has two partial cuts in this corpus",
-    dissolution: unbound_dissolution(
-      description: "dissolves when ONE cited carrier for GitHub's webhook-event catalogue exists and BOTH consumers derive from it -- this module's manifest default_events and extdeps.github.actions_token GitHubWorkflowEvent's push/pull_request arms -- so that adding an event is one row rather than two. Adding an arm to THIS type alone does not fire it, and neither does a witness that the fold exists. Until then a consumer that declares an event this coproduct cannot spell adds that arm with its wire name from webhook_events_citation; transcribing the whole documented catalogue with no consumer would be the dangling modeling DESIGN 3c refuses"
-    )
-  )
-]
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

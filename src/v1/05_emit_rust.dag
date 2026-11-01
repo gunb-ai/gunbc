@@ -17361,8 +17361,8 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
 // The invariant that makes plain subtraction safe: the cursor only advances by L inside an arm whose
 // condition proved `len - cursor >= L`, so `cursor <= len` always holds.
 //
-// v2's own emission makes this decision nowhere yet: the debt is the row for `rust_simple_method_specs`
-// in `gunbc.resolver_cost_frontier` `resolver_cost_frontier_rows`.
+// v2's own emission makes this decision nowhere yet: the debt is the unimplemented
+// `rust_simple_method_specs`; its frontier ledger was retired.
 type CursorTail {
   name: String
   depth: Int
