@@ -859,7 +859,7 @@ fn acquisition_requests_ok(front: AcquisitionFrontEnd, sites: ScopedReferenceSit
   AcquisitionMemberReadOk {
     requests: MemberRequests {
       imports: imported,
-      members: concat(acquisition_uncovered_binding_texts(tree: front.tree, imported: imported), acquisition_sugar_member_texts(references: references), acquisition_generated_head_member_texts(root: front.tree.root)),
+      members: concat(acquisition_uncovered_binding_texts(tree: front.tree, imported: imported), acquisition_sugar_member_texts(references: references), acquisition_generated_head_member_texts(root: front.parse_root)),
       references: references
     },
     test_markers: list_map(xs: front.tree.test_markers.marked, f: fn(marked) { symbol_lexeme(sym: marked.name) })
