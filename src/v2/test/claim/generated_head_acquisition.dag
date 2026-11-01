@@ -50,7 +50,7 @@ fn map_subject() -> String {
 }
 
 fn template_subject() -> String {
-  "module v2.test.subject\n\nfn subject(x: String) -> String {\n  \"n=${x}\"\n}\n"
+  "module v2.test.subject\n\nfn subject(x: String) -> String {\n  \"n=$\{x\}\"\n}\n"
 }
 
 fn plain_subject() -> String {
