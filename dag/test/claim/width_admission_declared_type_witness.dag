@@ -17,6 +17,9 @@ import gunbc.compile_diagnostic_census {
 // expecting-red until the width arm lands on bold-dove-340's carrier (#15571 and its implementation). Enrolment
 // (a ci_layer_roots row) waits for that wiring; a cell is not evidence before it has been run on a binary.
 //
+// ARM OWNERSHIP: the literal cells (300 and 200) belong to literal introduction (E1b grounded_literal_boundary) and depend on E1b;
+// the type cells (Int32, Int8, UInt8 at UInt16) belong to the declared_type_inhabitance width arm and depend on the carrier wiring.
+//
 // Shape: one source per (position, case). The typed cases take their value from a module-level constant
 // `c` declared at the source type with the literal 5, which is inside every width here, so the constant is not itself
 // a RED. Positions: declared argument, record field, declared return, parameter default (the default route is the

@@ -19,29 +19,29 @@ Fixtures: `dag/test/claim/width_admission_declared_type_witness.dag` (20 cells, 
    and never handed to ordinary grounding. `integer_standard_type_from_width` is the roster-free reverse lookup where a standard name is needed.
    #15571's frontier names this seed realization as this lane's.
 
-## Which arm of `declared_type_inhabitance` reads which
+## Two arms, not three (redirect from keen-heron-809): literal INTRODUCTION plus relation CROSSING, one shared identity bridge
 
-Today (origin/main `src/v1/04_infer.dag`) a width type reaches the verdict through two ADMITTING arms, neither width-aware:
-`produced_is_kernel_grounded_carrier_or_its_alias` (keyed on `env_name_is_kernel_grounded_carrier`) and `declared_realizes_as_kernel_numeric`
-(`kernel_carrier_admits_numeral`, which answers true for any numeral at a corpus-declared type). Hence the REDs are expected accepted today.
+- **Literal arm lives in literal introduction, not the relation.** Judging a literal against its expected type's extent is introduction's job:
+  E1b's `grounded_literal_boundary` (`literal_boundary_elaboration`, branch `q1b-e1b-grounded-literal`, sunny-newt-661, landing bundled with E1) already
+  sees the literal's value AND the expected type through `kernel_grounding_admits`. Width literals join THERE once the consolidated `IntegerExtent` gives a
+  width its bounded extent (authority (2), `integer_width_grounding` of the destination's reading via the bridge (3)): 300 at UInt8 refuses at introduction;
+  200 at UInt8 types as UInt8. No value-carrying field is added to `DeclaredTypeObligation` (that would be a second literal path, DESIGN section 3);
+  the earlier "obligation carries no value" gap is therefore dissolved, not closed.
+- **Relation arm judges TYPES only.** In `declared_type_inhabitance`, placed BEFORE the two admitting arms (`produced_is_kernel_grounded_carrier_or_its_alias`,
+  `declared_realizes_as_kernel_numeric`, which today admits any numeral at a width type): declared and produced both `WidthReadable` (bridge (3) on both sides)
+  then `kernel_grounding_pair_crossing` (1): `CrossingTotalWidening` => Inhabits; `WidthSignednessChange` / `WidthExtentNotIncluded` => `InhabitanceRefused`.
+  Either side `WidthUnreadable` => typed `InhabitanceRefused`, never falling through to the kernel-numeric arm. `NotWidthConstrained` on both: unchanged.
+  New refusal reasons are rows on `InhabitanceRefusedReason`. A kernel `Int`/`Nat` produced at a width type refuses by the same pair fold (unbounded extent not within).
+- **Shared:** the identity bridge (3), one v1 seed realization of `infer_machine_width_of`, read by both arms.
 
-| obligation shape | arm (new, placed BEFORE both admitting arms, after alias identity) | authority |
+## Which arm owns which fixture cell (20 cells, all unrun)
+
+| cells | owner | depends on |
 |---|---|---|
-| declared reads `WidthReadable`, produced reads `WidthReadable` | width crossing arm | (3) bridge on both sides, then (1) pair fold: `CrossingTotalWidening` => Inhabits; `WidthSignednessChange` / `WidthExtentNotIncluded` => `InhabitanceRefused` |
-| declared reads `WidthReadable`, produced is an Int literal | literal extent arm | (3) on declared, then (2) `kernel_grounding_admits`; outside => `InhabitanceRefused` |
-| declared or produced reads `WidthUnreadable` | unreadable arm | typed `InhabitanceRefused`; never falls through to the kernel-numeric arm |
-| `NotWidthConstrained` on both | unchanged | existing arms |
+| RED literal 300 at UInt8 (argument, field, return, default); CONTROL literal 200 at UInt8 (same four) | literal introduction (E1b `grounded_literal_boundary`) | E1b (q1b-e1b-grounded-literal) plus the consolidated extent |
+| RED Int32 at UInt8; RED Int8 at UInt8 (sign change); CONTROL UInt8 at UInt16 (each at the four positions) | relation crossing (`declared_type_inhabitance` width arm) | the carrier plus the relation wiring |
 
-A kernel `Int` / `Nat` produced at a width declared type is NOT this arm's: it is the unbounded-to-bounded direction and refuses by the same pair fold
-(`Int` extent is not within the width extent). New refusal reasons extend `InhabitanceRefusedReason`; each is a row, not a branch.
-
-## Two carrier gaps the wiring must close (stated, not fixed here)
-
-- **The obligation carries types, not values.** `DeclaredTypeObligation { position, subject, declared, produced, span }`: an Int literal's value is not in
-  `produced`, so arm (2) needs the literal's value delivered to the judgment. Smallest honest change: one optional field on the obligation (the literal's
-  value when the producer is a kernel Int literal) filled by each producer, not a per-position check. DESIGN §3: the field is read by this one relation.
-- **Positions.** Argument = `PositionDirectCallArgument`; record field = `PositionRecordLiteralField`; declared return = `PositionDeclaredReturn`;
-  parameter default = `PositionParameterDefault` (#15547). The fixtures cover exactly these four; other positions inherit by the same relation.
+Positions: argument = `PositionDirectCallArgument`; field = `PositionRecordLiteralField`; declared return = `PositionDeclaredReturn`; default = `PositionParameterDefault` (#15547).
 
 ## Pairing obligation (DESIGN §3)
 
