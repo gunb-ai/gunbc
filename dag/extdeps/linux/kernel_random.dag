@@ -1,6 +1,9 @@
 module extdeps.linux.kernel_random
 
 import std.types { String }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import extdeps.uuid { Uuid, uuid_of }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -15,3 +18,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data kernel_boot_id_path: String = "/proc/sys/kernel/random/boot_id"
+
+// DECODE: the file is the UUID plus one newline (random(4) prints it with a trailing newline), so the reading is
+// trim then extdeps.uuid uuid_of; any other content is no boot id and decodes to Absent, never to a default.
+fn kernel_boot_id_of(text: String) -> Uuid? {
+  uuid_of(text: trim(s: text))
+}

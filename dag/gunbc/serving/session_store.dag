@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { TokenCount }
 import std.optional { Present, Absent }
-import product.fabric.work { identity_frame }
+import std.content_hash { identity_frame }
 import gunbc.serving.turn_admission {
   ServingTurnReuse, TurnReuseRead, TurnReuseUnread, ServingSessionRecord, NoSessionRecord, SessionRecord,
 }

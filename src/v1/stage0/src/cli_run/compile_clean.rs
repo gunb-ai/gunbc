@@ -928,7 +928,6 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
             reason: "predicate not enforced at compile time".to_string(),
             span: no_span(),
         },
-        OwnershipViolation { binding: s(), fn_name: s(), consumers: 0, span: no_span() },
         VariantCollision { variant: s(), enum1: s(), enum2: s(), span: no_span() },
         SoleConstructorViolation { type_name: s(), span: no_span() },
         KernelMintShapeMismatch { declaration_name: s(), cause: s(), span: no_span() },
@@ -945,6 +944,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         AdmitCallersEntryNotDeclRef { constructor_decl_name: s(), span: no_span() },
         DeclaredTypeNotInhabited { position: s(), expected: s(), got: s(), span: no_span() },
         DeclaredTypeInhabitanceUndecided { position: s(), reason: s(), span: no_span() },
+        DeclaredTypeInhabitanceUnmodeled { position: s(), span: no_span() },
         UnlistedImportUse { name: s(), span: no_span() },
         ReferenceDerivedImportProviderUnknown { name: s(), referencing_module: s(), span: no_span() },
         ReferenceDerivedImportExportUnproven { name: s(), referencing_module: s(), provider_module: s(), span: no_span() },
@@ -1400,7 +1400,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::InternalError { .. } => "InternalError",
         CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
         CompilerDiagnostic::WhereRefinementUnenforced { .. } => "WhereRefinementUnenforced",
-        CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
         CompilerDiagnostic::KernelMintShapeMismatch { .. } => "KernelMintShapeMismatch",
@@ -1413,6 +1412,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => "AdmitCallersEntryNotDeclRef",
         CompilerDiagnostic::DeclaredTypeNotInhabited { .. } => "DeclaredTypeNotInhabited",
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => {
+            "DeclaredTypeInhabitanceUnmodeled"
+        }
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => {
             "DeclaredTypeInhabitanceUndecided"
         }
@@ -1524,7 +1526,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::WhereRefinementUnenforced {
             predicate, reason, ..
         } => format!("{predicate}: {reason}"),
-        CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::KernelMintShapeMismatch {
@@ -1542,6 +1543,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         } => constructor_decl_name.clone(),
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
@@ -1657,6 +1659,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => None,
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => None,
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => None,
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => None,
         CompilerDiagnostic::DeclaredTypeNotInhabited { expected, got, .. } => {
             Some((expected.clone(), got.clone()))
         }
@@ -1689,7 +1692,6 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::NonExhaustiveMatch { .. } => None,
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => None,
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => None,
-        CompilerDiagnostic::OwnershipViolation { .. } => None,
         CompilerDiagnostic::ParseError { .. } => None,
         CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => None,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => None,
@@ -1749,7 +1751,6 @@ pub(crate) fn compile_clean_diags_from_resolved_stages(
     resolve_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
     norm_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
     typed: &Rc<v1_compiler_compile::ResolvedGraph>,
-    ownership_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
 ) -> Rc<im::Vector<Rc<ErrorNode>>> {
     let mut acc = im::Vector::new();
     for d in resolve_diags.iter() {
@@ -1759,7 +1760,6 @@ pub(crate) fn compile_clean_diags_from_resolved_stages(
     for d in typed.diagnostics.iter() {
         acc.push_back(d.clone());
     }
-    acc.extend(ownership_diags.iter().cloned());
     Rc::new(acc)
 }
 

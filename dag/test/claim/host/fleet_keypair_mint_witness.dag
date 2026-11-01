@@ -22,7 +22,7 @@ import gunbc.design_ruling { the_mint_of_a_fleet_ssh_keypair_is_account_creation
 import extdeps.github.actions { Step, RunStep, UsesStep, workflow_dispatch_max_inputs }
 import extdeps.filesystem.filesystem_io
 import gunbc.repo.repo_self_build { repo_self_build_command }
-import gunbc.shell_command_text { shell_command_text_refused_poison }
+import gunbc.shell_command_text { shell_command_text_refusal_marker }
 import gunbc.fleet.fleet_workflow_steps { gunbc_ci_release_build_step_timeout_minutes }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fleet_keypair_mint_job, fleet_converge_fleet_keypair_mint_step_if,
@@ -561,10 +561,19 @@ fn header_occurrences(step_name: String) -> Int {
   count(filter(committed_workflow_lines(), l => l == header))
 }
 
+// A YAML block scalar keeps empty lines, and the emitted build bodies HAVE one: the seed preamble and the
+// command are separated by a blank line (site g of the fleet-converge regen specimen is exactly the text
+// after that blank). This reader used to stop at the first line that did not carry the body indent, which
+// for every build step meant it collected the preamble and stopped before the blank -- so the blank line
+// and everything after it (the build command, and any marker a regen might write there) was invisible to
+// every claim in this module that reads a body. An empty line is part of the block; the block ends at the
+// first NON-empty line that is not indented to the body.
 fn collect_body(lines: List<String>, from: Int, acc: List<String>) -> List<String> {
   match get(xs: lines, index: from) {
     Present { value: l } => if l.starts_with("          ") {
       collect_body(lines: lines, from: from + 1, acc: append(acc, items: [l.substring(start: 10, end: l.length())]))
+    } else if l == "" {
+      collect_body(lines: lines, from: from + 1, acc: append(acc, items: [""]))
     } else { acc }
     Absent => acc
   }
@@ -631,12 +640,67 @@ test fn the_committed_build_step_skeleton_is_the_builders_field_list() -> Bool {
 test fn where_the_fold_can_render_the_committed_body_is_the_builders_run_itself() -> Bool {
   let model = model_build_run(purpose: "the fleet keypair mint")
   let committed = concat(join(committed_body(step_name: fleet_keypair_mint_build_step_name), "\n"), "\n")
-  if starts_with(s: model, prefix: shell_command_text_refused_poison) {
-    // This interpreter predates the seed-build fold, so the model side cannot be rendered HERE -- disclosed,
-    // not hidden: the marker itself must name the fold that refused, and legs 1 and 2 carry the equality.
-    model.contains(needle: "bash_command_fold_serialize")
-      && model.contains(needle: "bash_fold_serialize_stmt_list_shape_refused")
-  } else {
-    model == committed
+  // Plain equality, with no branch for a refused fold. The branch that used to sit here passed the
+  // claim whenever the model side came back as refusal poison, provided the poison text named the
+  // fold -- a grep over the marker's own wording instead of a check on what the route produced. It
+  // was disclosed as a crutch for an interpreter that predated the seed-build fold; that interpreter
+  // is not the one that evaluates claims any more, so the branch had exactly one remaining effect:
+  // turning a serialization refusal into a green. A refusal now reddens this claim, which is where it
+  // belongs. The class has an owning row:
+  // gunbc.recurring_failure_mode.a_serializer_drops_admitted_children_from_a_malformed_body, whose
+  // 2026-10-20 and 2026-10-28 receipts are this same boundary -- a marker standing in for a refused
+  // emission, with no claim reading the producer's output; this specimen is recorded there. Stated plainly
+  // so the citation is not over-claimed: gunbc.recurring_failure_mode.seed_sha256_is_runner_relative's
+  // named deferral is a DIFFERENT check (the hand-run #[ignore]d seed-build reproducibility test, the arm
+  // #15235 sent to Manager 2's lane), not this falsifier, and no row claimed this one before it was
+  // written. The escape branch itself was not in the original witness: it came from #15329 (commit
+  // 8bbf41599c4a), which turned a refusal into a green. The seam that mints the poison text is the next
+  // rung, and the rung with its seam list is declared on the carrier that owns the token:
+  // gunbc.shell_command_text, beside shell_command_text_refused_poison.
+  model == committed
+}
+
+// THE CONTROL READS THE MARKER, NOT A SOURCE SPELLING. No seam's constant is quoted here: the needle is
+// derived, in gunbc.shell_command_text ::shell_command_text_refusal_marker, from the authority this
+// route already mints from -- shell_command_text_refused_poison -- as its first word. Derivation failing is not a pass: the carrier is
+// Optional<String> and Absent makes this claim FALSE. A weaker needle silently stops matching: each of these
+// constants begins with its own token and then diverges, so the full sentence of one seam does not contain
+// another seam's marker -- that is inspection of the constants' own texts, not a measurement, and the
+// unsplit constant is the weakest needle the derivation could produce. The arm is unreachable for a
+// non-empty constant, so failing closed costs nothing and removes the trap (review 89520).
+// What it covers, and what it does not: the tree declares twenty *_refused_poison constants across eight
+// distinct tokens. The five that begin with THIS token are the bash-fold family that can reach a hosted build
+// step: shell_command_text_refused_poison and shell_command_text_refused_with_cause in gunbc.shell_command_text,
+// ci_floor_build_verify_refused_poison in gunbc.ci.ci_spec, fleet_converge_locked_apply_emit_refused_poison in
+// gunbc.fleet.fleet_converge_plan, bash_emit_program_sequence_refused_poison in v2.workflow.bash_emit, and
+// ci_release_build_refused_poison in v2.workflow.ci_release_build_emit. The needle is that token because the
+// seam that renders the bodies read below is gunbc.repo.repo_self_build repo_self_build_env_preamble, whose
+// refusal is shell_command_text_refused_with_cause -- the same token, with the serializer's reasons appended.
+// Other seams mint other tokens (__GUNBC_ORCH_EMIT_REFUSED__, as in helper_snapshot_readback_emit_refused_poison
+// in gunbc.live_deploy.emit; __GUNBC_SOL_HOLD_RENDER_REFUSED__ in gunbc.machine_intake.sol_hold;
+// __GUNBC_EFFECT_PLAN_BASH_REFUSED__; __GUNBC_INVOKE_EMIT_REFUSED__; and others), and this claim does not read
+// those. That each constant re-types the token in its own prose instead of spelling it from one declared
+// token is a fork, and it is declared where it lives: on gunbc.shell_command_text, beside
+// shell_command_text_refused_poison, with its next-rung trigger and the typed-refusal seam list.
+// THE CONTROL THAT READS THE MARKER, NOT THE SOURCE. A refused bash fold mints that token in place of a step
+// body. A committed-workflow EQUALITY check cannot see a family-wide refusal: when a regen installs a refused
+// step, both sides of the comparison carry the token and equality still holds. So this claim reads the token
+// out of what the route PRODUCES and out of what the committed artifact CARRIES, and it fails if either side
+// ever does -- or if the token cannot be derived at all. The first two legs are the non-vacuity arm: if a
+// route rendered an empty body, every contains-check below would pass by saying nothing, so the preamble's own
+// first line must be present on both model sides.
+test fn refusal_poison_never_reaches_a_build_step_body() -> Bool {
+  let mint_model = model_build_run(purpose: "the fleet keypair mint")
+  let wait_model = model_build_run(purpose: "the grant wait")
+  match shell_command_text_refusal_marker() {
+    // No needle, no verdict: refuse rather than check against a weaker string.
+    Absent => false
+    Present { value: marker } =>
+      starts_with(s: mint_model, prefix: "GUNBC_SEED_CHECKOUT=")
+        && starts_with(s: wait_model, prefix: "GUNBC_SEED_CHECKOUT=")
+        && !mint_model.contains(needle: marker)
+        && !wait_model.contains(needle: marker)
+        && !any(xs: committed_body(step_name: fleet_keypair_mint_build_step_name), line => line.contains(needle: marker))
+        && !any(xs: committed_body(step_name: grant_wait_build_step_name), line => line.contains(needle: marker))
   }
 }
