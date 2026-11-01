@@ -8600,7 +8600,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let si = ctx.si();
     match (*node.expr_data).clone() {
-        ExprData::ExprLiteral { value } => eval_literal(&value),
+        ExprData::ExprLiteral { value } => eval_literal(&value, ctx),
 
         // An elaborated literal (std.literal_elaboration) carries its image under the declared
         // homomorphism as its one child. A Peano unfolding's destination is STRUCTURAL on every
@@ -8619,7 +8619,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     crate::std_literal_elaboration::LiteralUnfolding::PeanoUnfold { .. },
                     Some(image),
                 ) => eval_expr(image, env, ctx),
-                _ => eval_literal(&value),
+                _ => eval_literal(&value, ctx),
             }
         }
 
@@ -8753,7 +8753,9 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     }
 }
 
-fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
+// `none` and `null` lower to one LitNull (extdeps.languages.dag syntax table); the value it
+// denotes is the optional's Absent, built by the one constructor, not a host Null.
+fn eval_literal(lit: &LiteralValue, ctx: &InterpContext) -> InterpResult<Value> {
     match lit {
         LiteralValue::LitBool { value } => Ok(Value::Bool(*value)),
         LiteralValue::LitInt { value } => Ok(Value::Int(*value)),
@@ -8765,7 +8767,7 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
         }
         LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
         LiteralValue::LitSymbol { value } => Ok(str_value(value.clone())),
-        LiteralValue::LitNull => Ok(Value::Null),
+        LiteralValue::LitNull => Ok(optional_absent(ctx)),
     }
 }
 
@@ -10804,7 +10806,7 @@ fn match_pattern(
             }
 
             MatchPattern::LitPattern { value: lit } => {
-                let lit_val = eval_literal(lit).ok()?;
+                let lit_val = eval_literal(lit, ctx).ok()?;
                 if *value == lit_val {
                     Some(HashMap::new())
                 } else {
