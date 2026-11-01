@@ -23,6 +23,9 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
   filesystem_established_absence_detail,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemWritten, FilesystemWriteRefused,
+  filesystem_listing_observation, filesystem_write_outcome,
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
@@ -133,23 +136,114 @@ type ServedObservationRead
 
 data served_observation_schema: String = "roadmap-served-observation/v2"
 
-data served_observation_index_file_name: String = "served-observation.json"
-
-fn served_observation_path_for_instance(instance: HostDashboardInstance) -> String {
-  join([
-    instance_receipts_dir(instance_root: instance.instance_root as String),
-    "/",
-    served_observation_index_file_name,
-  ], "")
+// THE SERVED OBSERVATION IS A RECORD DIRECTORY STORE, SEALED IN PLACE (ruling stern-ram-763
+// 2026-10-24): one index entry plus one body entry per surface, the same names and the same bytes the
+// pre-seal code wrote, written by this module through Filesystem.Write. Moving the format onto SlotStore
+// is this store's FormatConsolidation follow-up, not this change.
+//
+// THE DECLARATION: the entry names this store owns inside the instance's receipts directory
+// (gunbc.host.host_layout instance_receipts_dir), which is already created and enrolled for the belt's
+// receipts (gunbc.roadmap.roadmap_belt_receipt_store_root) — so this store declares its names under that
+// parent, and nothing else. One place spells them; the mint and both entry names below read this
+// declaration, and no other module can name a served-observation file at all.
+type ServedObservationFileDeclaration {
+  index_stem: NonEmptyStr
+  index_suffix: NonEmptyStr
+  body_prefix: NonEmptyStr
+  body_suffix: NonEmptyStr
 }
 
-fn served_observation_body_path_for_instance(instance: HostDashboardInstance, kind: ServedObservationKind) -> String {
-  join([
-    instance_receipts_dir(instance_root: instance.instance_root as String),
-    "/served-observation-",
-    served_observation_kind_key(kind: kind),
-    ".body",
-  ], "")
+data served_observation_slots: ServedObservationFileDeclaration = ServedObservationFileDeclaration {
+  index_stem: "served-observation" as NonEmptyStr,
+  index_suffix: ".json" as NonEmptyStr,
+  body_prefix: "served-observation-" as NonEmptyStr,
+  body_suffix: ".body" as NonEmptyStr,
+}
+
+type ServedObservationRootReading
+  = ServedObservationRootListed
+  | ServedObservationRootUnlistable { detail: String }
+
+type ServedObservationWrite
+  = ServedObservationWritten
+  | ServedObservationWriteRefused { error: String }
+
+fn served_observation_root_reading(root: String) -> ServedObservationRootReading {
+  let listed = Filesystem.List(path: root)
+  match filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+      ServedObservationRootUnlistable { detail: join(["the served observation directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } =>
+      ServedObservationRootUnlistable { detail: join(["the served observation directory could not be listed: ", root, " (", e, ")"], "") }
+    FilesystemDirectoryListed(_) => ServedObservationRootListed
+  }
+}
+
+// THE SEALED STORE, A DATA-ONLY VALUE MINTED FROM THE DECLARATION ABOVE: the instance it was minted for
+// and the receipts directory derived from that instance. sole_constructor, non-generic, never a variant
+// arm. Field reads are not sealed (gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module); what IS sealed is construction — no consumer
+// can be handed a forged store, or one over another instance's receipts. NOT established: a store minted
+// for instance A refused where B is required.
+type ServedObservationStore sole_constructor {
+  instance: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type ServedObservationStoreReading
+  = ServedObservationStoreReady { store: ServedObservationStore }
+  | ServedObservationStoreUnready { detail: String }
+
+// THE ONE MINT, AND IT TAKES NO PATH. The business key is the instance; the root comes from the
+// declaration and the directory has to list for a store to exist.
+fn served_observation_store(instance: HostDashboardInstance) -> ServedObservationStoreReading {
+  let root = instance_receipts_dir(instance_root: instance.instance_root as String)
+  match served_observation_root_reading(root: root) {
+    ServedObservationRootUnlistable { detail } => ServedObservationStoreUnready { detail: detail }
+    ServedObservationRootListed => ServedObservationStoreReady { store: ServedObservationStore { instance: instance.instance_id, root: root as NonEmptyStr } }
+  }
+}
+
+// THE ENTRY NAMES, derived from the store's root and the declared names. This module is the only place
+// either name exists; the two per-instance path routes the pre-seal code exported are deleted.
+fn served_observation_index_entry(store: ServedObservationStore) -> String {
+  join([store.root as String, "/", served_observation_slots.index_stem as String, served_observation_slots.index_suffix as String], "")
+}
+
+fn served_observation_body_entry(store: ServedObservationStore, kind: ServedObservationKind) -> String {
+  join([store.root as String, "/", served_observation_slots.body_prefix as String, served_observation_kind_key(kind: kind), served_observation_slots.body_suffix as String], "")
+}
+
+// THE OBSERVATIONS. Each runs its own effect and hands back the observation sum; the decode of that sum
+// into a served-observation answer is done here too (served_observation_read_from_observation below),
+// and a refused read answers Unreadable — never the absent case a caller could serve as "nothing
+// published".
+fn served_observation_index_observe(store: ServedObservationStore) -> FilesystemFileObservation {
+  filesystem_file_observation_of_path(path: served_observation_index_entry(store: store))
+}
+
+fn served_observation_body_observe(store: ServedObservationStore, kind: ServedObservationKind) -> FilesystemFileObservation {
+  filesystem_file_observation_of_path(path: served_observation_body_entry(store: store, kind: kind))
+}
+
+// THE WRITES. Each effect runs and is matched here; a caller sees Written or Refused-with-error and has
+// no filesystem write outcome to read a success out of.
+fn served_observation_index_put(store: ServedObservationStore, content: String) -> ServedObservationWrite {
+  let entry = served_observation_index_entry(store: store)
+  let write = Filesystem.Write(path: entry, content: content)
+  match filesystem_write_outcome(path: entry, success: write.success, error: write.error) {
+    FilesystemWritten { path: _ } => ServedObservationWritten
+    FilesystemWriteRefused { path: _, error: e } => ServedObservationWriteRefused { error: e }
+  }
+}
+
+fn served_observation_body_put(store: ServedObservationStore, kind: ServedObservationKind, content: String) -> ServedObservationWrite {
+  let entry = served_observation_body_entry(store: store, kind: kind)
+  let write = Filesystem.Write(path: entry, content: content)
+  match filesystem_write_outcome(path: entry, success: write.success, error: write.error) {
+    FilesystemWritten { path: _ } => ServedObservationWritten
+    FilesystemWriteRefused { path: _, error: e } => ServedObservationWriteRefused { error: e }
+  }
 }
 
 fn served_observation_kind_key(kind: ServedObservationKind) -> String {
@@ -553,45 +647,36 @@ fn served_observation_read_from_observation(observation: FilesystemFileObservati
 }
 
 fn served_observation_read_for_instance(instance: HostDashboardInstance) -> ServedObservationRead {
-  served_observation_read_from_observation(
-    observation: filesystem_file_observation_of_path(
-      path: served_observation_path_for_instance(instance: instance),
-    ),
-  )
+  match served_observation_store(instance: instance) {
+    ServedObservationStoreUnready { detail } => ServedObservationUnreadable { reason: detail }
+    ServedObservationStoreReady { store } => served_observation_read_from_observation(observation: served_observation_index_observe(store: store))
+  }
 }
 
 // Bodies first, index last: a reader that races the writer sees either the previous complete
 // snapshot or the new one, and a body that does not hash to its index entry is refused.
 fn served_observation_write_bodies_for_instance(instance: HostDashboardInstance, surfaces: List<ServedObservationSurface>) -> BeltPassOutcome {
-  fold(surfaces, init: BeltPassRecorded, f: (acc, s) => match acc {
-    BeltPassRecorded => {
-      let write = Filesystem.Write(
-        path: served_observation_body_path_for_instance(instance: instance, kind: s.kind),
-        content: s.body,
-      )
-      if write.success {
-        BeltPassRecorded
-      } else {
-        BeltPassFailed { reason: join(["the served observation ", served_observation_kind_key(kind: s.kind), " body could not be written: ", write.error], "") }
+  match served_observation_store(instance: instance) {
+    ServedObservationStoreUnready { detail } => BeltPassRefused { reason: detail }
+    ServedObservationStoreReady { store } => fold(surfaces, init: BeltPassRecorded, f: (acc, s) => match acc {
+      BeltPassRecorded => match served_observation_body_put(store: store, kind: s.kind, content: s.body) {
+        ServedObservationWritten => BeltPassRecorded
+        ServedObservationWriteRefused { error } => BeltPassFailed { reason: join(["the served observation ", served_observation_kind_key(kind: s.kind), " body could not be written: ", error], "") }
       }
-    }
-    BeltPassDeferred { reason: _ } => acc
-    BeltPassRefused { reason: _ } => acc
-    BeltPassFailed { reason: _ } => acc
-  })
+      BeltPassDeferred { reason: _ } => acc
+      BeltPassRefused { reason: _ } => acc
+      BeltPassFailed { reason: _ } => acc
+    })
+  }
 }
 
 fn served_observation_write_for_instance(instance: HostDashboardInstance, snapshot: ServedObservationSnapshot) -> BeltPassOutcome {
   match served_observation_write_bodies_for_instance(instance: instance, surfaces: snapshot.surfaces) {
-    BeltPassRecorded => {
-      let write = Filesystem.Write(
-        path: served_observation_path_for_instance(instance: instance),
-        content: served_observation_index_wire(index: served_observation_index_of_snapshot(snapshot: snapshot)),
-      )
-      if write.success {
-        BeltPassRecorded
-      } else {
-        BeltPassFailed { reason: join(["the served observation index could not be written: ", write.error], "") }
+    BeltPassRecorded => match served_observation_store(instance: instance) {
+      ServedObservationStoreUnready { detail } => BeltPassRefused { reason: detail }
+      ServedObservationStoreReady { store } => match served_observation_index_put(store: store, content: served_observation_index_wire(index: served_observation_index_of_snapshot(snapshot: snapshot))) {
+        ServedObservationWritten => BeltPassRecorded
+        ServedObservationWriteRefused { error } => BeltPassFailed { reason: join(["the served observation index could not be written: ", error], "") }
       }
     }
     other => other
@@ -650,12 +735,13 @@ fn served_observation_body_read_from_observation(entry: ServedObservationEntry, 
 }
 
 fn served_observation_body_read_for_instance(instance: HostDashboardInstance, entry: ServedObservationEntry) -> ServedObservationBodyRead {
-  served_observation_body_read_from_observation(
-    entry: entry,
-    observation: filesystem_file_observation_of_path(
-      path: served_observation_body_path_for_instance(instance: instance, kind: entry.kind),
-    ),
-  )
+  match served_observation_store(instance: instance) {
+    ServedObservationStoreUnready { detail } => ServedObservationBodyUnreadable { cause: detail }
+    ServedObservationStoreReady { store } => served_observation_body_read_from_observation(
+      entry: entry,
+      observation: served_observation_body_observe(store: store, kind: entry.kind),
+    )
+  }
 }
 
 fn served_observation_refusal_body(refusal: String, detail: String) -> String {

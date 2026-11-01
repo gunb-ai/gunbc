@@ -1,11 +1,16 @@
 module gunbc.roadmap.roadmap_attempt_request_record
 
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptRequestBindingFile, attempt_state_create_new_at, attempt_state_observe_at }
+import gunbc.roadmap.roadmap_attempt_state_store {
+  AttemptRequestBindingFile, attempt_state_create_new_at, attempt_state_observe_at, attempt_state_directory_text, AttemptDirectoryRoot,
+}
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
+  Filesystem,
   FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
   FilesystemCreateKindUnrecognized,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation,
   FilesystemFileObservation, FilesystemFileRead, FilesystemFileAbsent, FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
@@ -109,23 +114,83 @@ type AttemptRequestBindingCommit
   = RequestBindingCommitted { binding: AttemptRequestBinding }
   | RequestBindingCommitRefused { step: String, detail: String }
 
-// THE CREATE-ONLY WRITE: publish the binding with a create that fails when the file exists, then
-// decide with attempt_request_binding_commit_of over what the create answered and, only when the
-// target was occupied, what is recorded there.
-fn attempt_request_binding_create_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, binding: AttemptRequestBinding) -> AttemptRequestBindingCommit {
-  let created = attempt_state_create_new_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptRequestBindingFile, content: attempt_request_binding_json(binding: binding))
+// ══ THE SEALED BINDING STORE ═════════════════════════════════════════════════════════════════════════
+// THE RECORD IS ONE SEALED VALUE AND ONE MINT. The business key is (instance, node, attempt key); the
+// entry name and the directory come from the attempt-state declaration's OWN member row for it
+// (AttemptRequestBindingFile in gunbc.roadmap.roadmap_attempt_state_store) -- this store declares no path
+// and re-declares no root, and the mint refuses when the attempt directory cannot be listed.
+//
+// THE EXCLUSION IS A RECORD, NOT A LOCK. A binding is created once per attempt and never released: the
+// create-only create is what makes the first commit stand, and there is no holder to die. It therefore
+// stays a create-once record INSIDE this store module rather than moving onto
+// gunbc.durable_exclusive_hold_file_store (ruling, this cohort: split by kind -- exclusion goes to the hold
+// library, create-once records are sealed in place). gunbc.durable_create_once (#15564) is not on main yet,
+// so the create-once procedure stays here and this PR says so; when it lands this module adopts it.
+//
+// ESTABLISHED: a consumer cannot be handed a forged store or one for another attempt, since construction
+// is sealed. NOT established: a holder cannot read `attempt_key` (field reads are not module-private; the
+// declared residual in gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
+type AttemptRequestBindingStore sole_constructor {
+  instance: HostDashboardInstance
+  node: String
+  attempt_key: NonEmptyStr
+}
+
+type AttemptRequestBindingStoreReading
+  = AttemptRequestBindingStoreReady { store: AttemptRequestBindingStore }
+  | AttemptRequestBindingStoreUnready { detail: String }
+
+// THE ONE MINT, AND IT TAKES NO PATH.
+fn attempt_request_binding_store(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptRequestBindingStoreReading {
+  let directory = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
+  let listed = Filesystem.List(path: directory)
+  match filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => AttemptRequestBindingStoreUnready { detail: join(["the attempt directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptRequestBindingStoreUnready { detail: join(["the attempt directory could not be listed: ", directory, " (", e, ")"], "") }
+    FilesystemDirectoryListed(_) => AttemptRequestBindingStoreReady { store: AttemptRequestBindingStore { instance: instance, node: node_id as String, attempt_key: attempt_key as NonEmptyStr } }
+  }
+}
+
+// THE READ, over the sealed store: the observation runs here, is matched here, and the caller sees the
+// typed three-way answer only.
+fn attempt_request_binding_read(store: AttemptRequestBindingStore) -> AttemptRequestBindingRead {
+  attempt_request_binding_read_from_observation(
+    observation: attempt_state_observe_at(instance: store.instance, node: store.node, attempt_key: store.attempt_key as String, member: AttemptRequestBindingFile),
+  )
+}
+
+// THE COMMIT, over the sealed store: the create effect and the occupied read-back both run and are matched
+// in this module.
+fn attempt_request_binding_commit(store: AttemptRequestBindingStore, binding: AttemptRequestBinding) -> AttemptRequestBindingCommit {
+  let created = attempt_state_create_new_at(instance: store.instance, node: store.node, attempt_key: store.attempt_key as String, member: AttemptRequestBindingFile, content: attempt_request_binding_json(binding: binding))
   match created {
     FilesystemCreated { path: _ } => RequestBindingCommitted { binding: binding }
     FilesystemCreateRefused { path: _, kind: _, error } => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: error }
     FilesystemCreateKindUnrecognized { path: _, observed, error } => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: join([observed, ": ", error], "") }
     FilesystemCreateTargetOccupied { path: _ } =>
-      match attempt_request_binding_read_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+      match attempt_request_binding_read(store: store) {
         RequestBindingRead { binding: recorded } =>
           if recorded == binding { RequestBindingCommitted { binding: recorded } }
           else { RequestBindingCommitRefused { step: "attempt-request-binding-conflict", detail: join(["the attempt is already bound (", attempt_request_binding_json(binding: recorded), ") and cannot be re-bound (", attempt_request_binding_json(binding: binding), ")"], "") } }
         RequestBindingAbsent => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: "the binding could not be created because the target was occupied, and then could not be found" }
         RequestBindingUnreadable { reason } => RequestBindingCommitRefused { step: "attempt-request-binding-conflict", detail: join(["the attempt already has a binding that cannot be read, which is not replaced: ", reason], "") }
       }
+  }
+}
+
+// THE CALLER-SIDE ENTRIES, unchanged in name: they take the business key, mint through the one mint, and
+// hand the mint's refusal to the caller's own refusal arm.
+fn attempt_request_binding_create_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, binding: AttemptRequestBinding) -> AttemptRequestBindingCommit {
+  match attempt_request_binding_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptRequestBindingStoreUnready { detail } => RequestBindingCommitRefused { step: "attempt-request-binding-store", detail: detail }
+    AttemptRequestBindingStoreReady { store } => attempt_request_binding_commit(store: store, binding: binding)
+  }
+}
+
+fn attempt_request_binding_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptRequestBindingRead {
+  match attempt_request_binding_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptRequestBindingStoreUnready { detail } => RequestBindingUnreadable { reason: detail }
+    AttemptRequestBindingStoreReady { store } => attempt_request_binding_read(store: store)
   }
 }
 
@@ -151,8 +216,3 @@ fn attempt_request_binding_read_from_observation(observation: FilesystemFileObse
   }
 }
 
-fn attempt_request_binding_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptRequestBindingRead {
-  attempt_request_binding_read_from_observation(
-    observation: attempt_state_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptRequestBindingFile),
-  )
-}
