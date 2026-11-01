@@ -1,0 +1,42 @@
+module test.claim.to_string_decimal_equivalence_witness
+
+import std.types { Bool, Int, String }
+import std.nat { Nat, nat_to_decimal_string }
+import std.integer { int_to_decimal_string }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INT/NAT to_string WAVE MOVES A CALL TO A DECLARED CONVERSION, SO TYPING IS NOT ENOUGH: the rewritten site must MEAN the
+// same text. Each claim runs the kernel to_string and the declared conversion on the SAME value and compares the strings,
+// and also pins the authored spelling, so neither side can drift together and still pass. Values are the shapes a digit
+// loop gets wrong: negative, zero, one digit, the digit-count boundary, and the host extremes (the minimum has no
+// representable negation, which int_digits_to_decimal_string exists for).
+
+fn int_text_agrees(v: Int, want: String) -> Bool {
+  to_string(v) == want && int_to_decimal_string(value: v) == want
+}
+
+fn nat_text_agrees(v: Nat, want: String) -> Bool {
+  to_string(v) == want && nat_to_decimal_string(value: v) == want
+}
+
+test fn int_equivalence_zero_and_one_digit_holds() -> Bool {
+  int_text_agrees(v: 0, want: "0") && int_text_agrees(v: 7, want: "7") && int_text_agrees(v: -5, want: "-5")
+}
+
+test fn int_equivalence_digit_boundaries_holds() -> Bool {
+  int_text_agrees(v: 9, want: "9") && int_text_agrees(v: 10, want: "10") && int_text_agrees(v: -10, want: "-10") && int_text_agrees(v: 100, want: "100")
+}
+
+test fn int_equivalence_host_extremes_holds() -> Bool {
+  int_text_agrees(v: 9223372036854775807, want: "9223372036854775807") && int_text_agrees(v: -9223372036854775807 - 1, want: "-9223372036854775808")
+}
+
+test fn nat_equivalence_zero_and_boundaries_holds() -> Bool {
+  nat_text_agrees(v: 0, want: "0") && nat_text_agrees(v: 9, want: "9") && nat_text_agrees(v: 10, want: "10") && nat_text_agrees(v: 12345, want: "12345")
+}
+
+test fn nat_equivalence_large_holds() -> Bool {
+  nat_text_agrees(v: 9223372036854775807, want: "9223372036854775807")
+}
