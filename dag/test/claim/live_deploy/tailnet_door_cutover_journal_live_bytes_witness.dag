@@ -1,0 +1,129 @@
+module test.claim.live_deploy.tailnet_door_cutover_journal_live_bytes_witness
+
+// ONE RECORD OFF srv1's LIVE STATE CAS, READ BACK THROUGH THE SEALED STORE.
+//
+// What was read on the live host (read-only) at release c22acb768176d52c6b431cdf309cdd6cb06a409d:
+//   state/heads/cas-slot-tailnet-door-cutover-fcbf6c38a060697b.1   16 B  sha256 c7a651f0c9e17700271d43412928720d94520871ef7afddb5a4535db76133448
+//   state/objects/cbfd159bd6abaf7d                                 305 B sha256 4322401e1e6b22b909a3d6ffa1bdd86d0fc115628ce8f538f69627c4a93ba280
+// Those bytes are the journal as it was WRITTEN BEFORE the store was sealed (#15396 planted the
+// seal; the record predates it). The claim plants them verbatim at the root the declaration derives
+// -- head name and object name come from the store's own naming functions, never spelled here --
+// and then reads the record back through the sealed store's own read. If the seal had moved the
+// layout, renamed the slot, or changed the framing, the read would come back absent or unreadable.
+//
+// The paired witness breaks the realization: the declared member is never stood up, and the mint
+// refuses, so there is no store to read at all.
+
+import std.types { Bool, String, NonEmptyStr, Int, Optional, Absent, Present, none }
+import std.cas { CasGeneration }
+import std.durable_compare_and_set { cas_generation_first, cas_generation_count, ExpectSlotAbsent }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store {
+  FabricStorageOperations, fabric_storage_slots, fabric_storage_state_slots,
+  fabric_storage_object_create, fabric_storage_object_path,
+}
+import gunbc.fabric.durable_cas_fabric_storage { cas_slot_head }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
+import std.fabric_storage { fabric_object_ref_of_wire }
+import gunbc.live_deploy.tailnet_door_cutover {
+  CutoverBinding, CutoverJournalRecord, CutoverJournalPresent, CutoverJournalAbsent, CutoverJournalUnreadable,
+  CutoverPrepared, CapturedRestorableBackend, CapturedNoRoute,
+}
+import gunbc.live_deploy.tailnet_door_cutover_host {
+  tailnet_door_cutover_store, tailnet_door_cutover_journal_key, tailnet_door_cutover_journal_read,
+}
+import extdeps.tailscale.serve { tailscale_serve_backend_of_proxy_target }
+import test.claim.fabric.fabric_storage_fixture {
+  FabricWetStore, FabricWetStoreReady, FabricWetStoreUnready,
+  FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_scenario, fabric_wet_store, fabric_wet_store_unprovisioned,
+}
+
+data live_journal_head_name: NonEmptyStr = "cas-slot-tailnet-door-cutover-fcbf6c38a060697b"
+data live_journal_object_wire: NonEmptyStr = "cbfd159bd6abaf7d"
+data live_journal_object_bytes: String = "fabric_storage.object;B278:{\"value\": \"{\\\"route\\\": \\\"srv1 443:/\\\", \\\"door_target\\\": \\\"unix:/opt/gunbc/tailnet-door/door.sock\\\", \\\"release\\\": \\\"c22acb768176d52c6b431cdf309cdd6cb06a409d\\\", \\\"prior_target\\\": \\\"http://127.0.0.1:8080\\\", \\\"phase\\\": \\\"prepared\\\"}\", \"content\": \"40ce90d58539ca97\", \"generation\": 1}"
+
+fn live_journal_binding() -> CutoverBinding {
+  CutoverBinding {
+    route: "srv1 443:/" as NonEmptyStr,
+    door_target: "unix:/opt/gunbc/tailnet-door/door.sock" as NonEmptyStr,
+    release_revision: "c22acb768176d52c6b431cdf309cdd6cb06a409d" as NonEmptyStr,
+  }
+}
+
+test fn the_live_host_slot_name_is_the_name_this_stores_key_gives() -> Bool {
+  let journal = tailnet_door_cutover_store(binding: FabricStorageLocalFiles { operations: FabricStorageOperations {
+    objects: "/unused/objects" as NonEmptyStr, heads: "/unused/heads" as NonEmptyStr, entry_mode: none,
+  } })
+  cas_slot_head(key: tailnet_door_cutover_journal_key(store: journal, binding: live_journal_binding())) == live_journal_head_name
+}
+
+test fn the_live_host_journal_bytes_read_through_the_sealed_state_store() -> Bool {
+  let scenario = fabric_wet_scenario(template: "/tmp/gunbc_journal_live.XXXXXX" as NonEmptyStr)
+  match scenario {
+    FabricWetScenarioUnready { detail: _ } => false
+    FabricWetScenarioReady { instance: instance, root: _ } =>
+      match fabric_wet_store(members: fabric_storage_state_slots, instance: instance) {
+        FabricWetStoreUnready { area: _, detail: _ } => false
+        FabricWetStoreReady { store: ops } =>
+          let journal = tailnet_door_cutover_store(binding: FabricStorageLocalFiles { operations: ops })
+          let key = tailnet_door_cutover_journal_key(store: journal, binding: live_journal_binding())
+          match fabric_object_ref_of_wire(wire: live_journal_object_wire) {
+            Absent => false
+            Present { value: reference } =>
+              let planted_object = fabric_storage_object_create(
+                root: ops,
+                path: fabric_storage_object_path(root: ops, object: reference),
+                content: live_journal_object_bytes)
+              let planted_head = Filesystem.WriteCreateNew(
+                path: cas_file_slot_path(root: ops.heads, key: cas_slot_head(key: key), generation: cas_generation_first()),
+                content: live_journal_object_wire as String)
+              planted_object.success && planted_head.success
+                && match tailnet_door_cutover_journal_read(store: journal, binding: live_journal_binding()) {
+                  CutoverJournalAbsent => false
+                  CutoverJournalUnreadable { detail: _ } => false
+                  CutoverJournalPresent { record: record, generation: generation } =>
+                    record.route == "srv1 443:/"
+                      && record.door_target == "unix:/opt/gunbc/tailnet-door/door.sock"
+                      && record.release_revision == "c22acb768176d52c6b431cdf309cdd6cb06a409d"
+                      && record.phase == CutoverPrepared
+                      && cas_generation_count(g: generation) == 1
+                      && (match record.prior {
+                           CapturedNoRoute => false
+                           CapturedRestorableBackend { target: target, backend: backend } =>
+                             target == "http://127.0.0.1:8080"
+                               && (match tailscale_serve_backend_of_proxy_target(target: "http://127.0.0.1:8080") {
+                                    Absent => false
+                                    Present { value: expected } => backend == expected
+                                  })
+                         })
+                }
+          }
+      }
+  }
+}
+
+// THE PAIRED RED: the realization broken. The declared member is never stood up, so the mint refuses
+// and there is no store to read -- a journal that is merely absent would be the wrong answer here,
+// because the scenario never gave the store a root at all.
+test fn the_journal_refuses_where_the_declared_member_is_never_stood_up() -> Bool {
+  let scenario = fabric_wet_scenario(template: "/tmp/gunbc_journal_broken.XXXXXX" as NonEmptyStr)
+  match scenario {
+    FabricWetScenarioUnready { detail: _ } => false
+    FabricWetScenarioReady { instance: instance, root: _ } =>
+      match fabric_wet_store_unprovisioned(members: fabric_storage_state_slots, instance: instance) {
+        FabricWetStoreReady { store: _ } => false
+        FabricWetStoreUnready { area: _, detail: _ } =>
+          match tailnet_door_cutover_journal_read(
+            store: tailnet_door_cutover_store(binding: FabricStorageLocalFiles { operations: FabricStorageOperations {
+              objects: "/nonexistent/gunbc-journal-broken/objects" as NonEmptyStr,
+              heads: "/nonexistent/gunbc-journal-broken/heads" as NonEmptyStr,
+              entry_mode: none,
+            } }),
+            binding: live_journal_binding()) {
+            CutoverJournalUnreadable { detail: _ } => true
+            CutoverJournalAbsent => false
+            CutoverJournalPresent { record: _, generation: _ } => false
+          }
+      }
+  }
+}

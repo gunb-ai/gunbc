@@ -113,9 +113,9 @@ test fn waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_reti
             other => false
           })
         other => false
-      }
-    }
+        }
       other => false
+      }
     }
     other => false
   } }
@@ -135,7 +135,6 @@ test fn enrolled_roster_discovers_a_customer_request_the_operator_pass_misses() 
       let store = FabricStorageLocalFiles { operations: ops }
       match workspace_record_request_at(store: workspace_allocation_store(binding: store), request: request, observed_at: "2026-09-27T12:00:00Z") {
       WorkspaceStoreWritten { allocation: _ } =>
-    }
         (match workspace_consumer_reconcile_enrolled(store: store, owners: [operator, request.owner], observed_at: "2026-09-27T12:01:00Z") {
           WorkspaceConsumerPrepare { allocation: found } => found.request == request
           other => false
