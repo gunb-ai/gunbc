@@ -16,7 +16,7 @@ import gunbc.fabric.fabric_writer_identity_observe {
 }
 
 // THE ROW'S BINDING IS OBTAINED, NOT SPELLED. The srv1 receipt used to name the store's directory
-// (fabric_storage_file_root over fabric_storage_store_root) -- a caller-chosen directory is exactly the
+// (the deleted fabric_storage_file_root over fabric_storage_store_root) -- a caller-chosen directory is exactly the
 // route this lane deletes -- so the row now goes through the ONE mint, over the declared member chain and
 // the placed instance. That makes reading the roster an OBSERVATION: if the declared store is not standing
 // the roster is unread, and the refusal is carried out with its area and its cause. It is not projected
