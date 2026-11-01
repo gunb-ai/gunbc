@@ -566,6 +566,26 @@ fn spool_declared_roles(kind: SpoolKind) -> List<SpoolRole> {
   [RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused] |> filter(r => spool_role_is_declared(kind: kind, role: r) && spool_role_has_dir(kind: kind, role: r))
 }
 
+// THE ROLES A PATH UNIT WATCHES, by kind, as a LEVEL: non-empty means an entry no drain has claimed.
+// live_deploy.emit reads this and nothing else for DirectoryNotEmpty=, so the watched set is declared once.
+fn spool_watched_roles(kind: SpoolKind) -> List<SpoolRole> {
+  match kind {
+    SpoolAttemptExit => [RolePending, RoleHandedOff]
+    SpoolAttemptUnit => [RolePending]
+    SpoolPublication => [RolePending]
+  }
+}
+
+// The directories of the named roles under one instance root, in role order. A role the kind declares no
+// directory for contributes nothing: that is declared absence, pinned by the declaration control that every
+// watched and every owned role yields exactly one directory.
+fn spool_role_dirs(kind: SpoolKind, instance_root: String, roles: List<SpoolRole>) -> List<String> {
+  roles |> flat_map(r => match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: r) {
+    Present { value: d } => [d]
+    Absent => [] as List<String>
+  })
+}
+
 // OBSERVE one key across every role that has a directory. An unreadable role makes the whole observation
 // unavailable (it is never read as absent); two roles holding the key is Ambiguous.
 fn spool_queue_observe(store: SpoolStore, key: SpoolEntryKey) -> SpoolEntryState {
