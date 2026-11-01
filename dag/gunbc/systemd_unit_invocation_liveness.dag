@@ -68,33 +68,12 @@ fn systemd_manager_wire(manager: SystemdManagerInstance) -> String {
   }
 }
 
-// THE HOST PAIR, read once. Which boot the reading was taken from, and when that boot began. It is one
-// function because the run reading below and the boot-only reading further down must not be able to
-// disagree about what a non-UUID boot_id or a malformed btime MEANS: two spellings of the same refusal are
-// two chances to get it wrong, and the refusal is the value a consumer acts on (DESIGN 3, one fact in one
-// place). The refusals are this function's; nothing here invents a default.
-type UnitBootPair
-  = BootPair { boot_id: Uuid, boot_started_at: EpochSecs }
-  | BootPairUnreadable { cause: NonEmptyStr }
-
-fn unit_boot_pair(boot_id_text: String, proc_stat_text: String) -> UnitBootPair {
-  match kernel_boot_id_of(text: boot_id_text) {
-    Absent => BootPairUnreadable { cause: "boot_id is not a UUID (random(4))" as NonEmptyStr }
-    Present { value: boot } => match proc_stat_boot_time(content: proc_stat_text) {
-      BootTimeLineAbsent => BootPairUnreadable { cause: "/proc/stat has no btime line" as NonEmptyStr }
-      BootTimeUnparseable { field: _ } => BootPairUnreadable { cause: "/proc/stat btime is not an integer" as NonEmptyStr }
-      BootTimeBeforeEpoch { field: _ } => BootPairUnreadable { cause: "/proc/stat btime precedes the epoch" as NonEmptyStr }
-      BootTimeObserved { epoch_seconds: t } => BootPair { boot_id: boot, boot_started_at: t }
-    }
-  }
-}
-
 // ADMISSION from the raw readings. An empty InvocationID is a unit that has not run (Absent: observed
 // gone); any other component that fails its wire decode is Unreadable.
 fn unit_invocation_observation(manager: SystemdManagerInstance, unit: NonEmptyStr, boot_id_text: String, proc_stat_text: String, invocation_text: String) -> UnitInvocationObservation {
-  match unit_boot_pair(boot_id_text: boot_id_text, proc_stat_text: proc_stat_text) {
-    BootPairUnreadable { cause: c } => UnitInvocationUnreadable { cause: c }
-    BootPair { boot_id: boot, boot_started_at: t } =>
+  match unit_boot_observation(boot_id_text: boot_id_text, proc_stat_text: proc_stat_text) {
+    BootUnreadable { cause: c } => UnitInvocationUnreadable { cause: c }
+    BootObserved { boot_id: boot, boot_started_at: t } =>
       if trim(s: invocation_text) == "" { UnitInvocationAbsent { unit: unit, manager: manager, boot_id: boot, boot_started_at: t } }
       else { match systemd_invocation_id_of(text: invocation_text) {
         Absent => UnitInvocationUnreadable { cause: "InvocationID is not 32 lowercase hex digits (systemd.exec(5))" as NonEmptyStr }
@@ -203,14 +182,25 @@ fn unit_run_manager_of_wire(text: String) -> SystemdManagerInstance? {
 // module), and it is why the arm below is a conjunction and never either half alone: a bare not-found by
 // name, with no boot relation, is exactly the "recovered by age" mistake wearing an observation costume.
 // Where a run identity WAS recorded, use unit_invocation_holder_liveness instead; it is strictly stronger.
+// THE HOST PAIR, read once and typed once: which boot a reading was taken from, and when that boot began.
+// It is ONE type and ONE function because the run reading above and the boot-order reading below must not
+// be able to disagree about what a non-UUID boot_id or a malformed btime MEANS -- two spellings of the same
+// refusal are two chances to get it wrong, and the refusal is the value a consumer acts on (DESIGN 3, one
+// fact in one place; DESIGN 2, no second name for one concept). The refusals are this function's; nothing
+// here invents a default.
 type UnitBootObservation
   = BootObserved { boot_id: Uuid, boot_started_at: EpochSecs }
   | BootUnreadable { cause: NonEmptyStr }
 
 fn unit_boot_observation(boot_id_text: String, proc_stat_text: String) -> UnitBootObservation {
-  match unit_boot_pair(boot_id_text: boot_id_text, proc_stat_text: proc_stat_text) {
-    BootPairUnreadable { cause: c } => BootUnreadable { cause: c }
-    BootPair { boot_id: boot, boot_started_at: t } => BootObserved { boot_id: boot, boot_started_at: t }
+  match kernel_boot_id_of(text: boot_id_text) {
+    Absent => BootUnreadable { cause: "boot_id is not a UUID (random(4))" as NonEmptyStr }
+    Present { value: boot } => match proc_stat_boot_time(content: proc_stat_text) {
+      BootTimeLineAbsent => BootUnreadable { cause: "/proc/stat has no btime line" as NonEmptyStr }
+      BootTimeUnparseable { field: _ } => BootUnreadable { cause: "/proc/stat btime is not an integer" as NonEmptyStr }
+      BootTimeBeforeEpoch { field: _ } => BootUnreadable { cause: "/proc/stat btime precedes the epoch" as NonEmptyStr }
+      BootTimeObserved { epoch_seconds: t } => BootObserved { boot_id: boot, boot_started_at: t }
+    }
   }
 }
 
