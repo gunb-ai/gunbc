@@ -22,7 +22,7 @@ import v2.test.claim.compiler.width_literal_admission { wla_source, wla_p_artifa
 // Both adapters consume compiler-produced alias environments from the SAME source
 // fixtures. These are bounded producer-inhabitance claims, not a corpus census.
 // Neither a failed compilation nor two missing readings can count as agreement.
-data width_reading_subject_source: String = "module p\n\nimport std.integer { UInt8, Int64 }\nimport std.machine_constraints { Compose, MachineWidth, PointerWidth }\n\ntype AliasWidth = UInt8\ntype OtherConstraint\ntype Unrelated = Compose<Int64, OtherConstraint>\ntype Dynamic = Compose<Int64, MachineWidth<PointerWidth>>\n"
+data width_reading_subject_source: String = "module p\n\nimport std.integer { UInt8, Int64 }\nimport std.machine_constraints { Compose, MachineWidth, PointerWidth }\n\ntype AliasWidth = UInt8\ntype OtherConstraint\ntype Unrelated = Compose<Int64, OtherConstraint>\ntype Dynamic = Compose<Int64, MachineWidth<PointerWidth>>\ntype NegativeWidth = Compose<Int64, MachineWidth<-8>>\n"
 
 data width_reading_integer_source: String = "module std.integer\n\nimport std.nat { Nat }\nimport std.algebra { AbelianGroup, GroupCompletion }\nimport std.machine_constraints { Compose, MachineWidth }\n\ntype Int = AbelianGroup<GroupCompletion<Nat>>\ntype UInt = Nat\ntype UInt8 = Compose<UInt, MachineWidth<8>>\ntype Int64 = Compose<Int, MachineWidth<64>>\n"
 
@@ -103,4 +103,11 @@ fn width_reading_is_unreadable(reading: Optional<MachineWidthReading>) -> Bool {
 test fn width_reading_pointer_width_stays_unresolved() -> Bool {
   width_reading_is_unreadable(reading: width_reading_seed(module_path: "p", name: "Dynamic"))
     && width_reading_is_unreadable(reading: width_reading_v2(module_path: "p", name: "Dynamic"))
+}
+
+// The base v2 logic was observed on the interpreted route to refuse the unary
+// negative literal as not-static; this claim requires both real adapters to refuse.
+test fn width_reading_negative_width_is_unreadable() -> Bool {
+  width_reading_is_unreadable(reading: width_reading_seed(module_path: "p", name: "NegativeWidth"))
+    && width_reading_is_unreadable(reading: width_reading_v2(module_path: "p", name: "NegativeWidth"))
 }
