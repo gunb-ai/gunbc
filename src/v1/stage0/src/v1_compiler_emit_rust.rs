@@ -24558,32 +24558,37 @@ pub fn effective_variant_parent(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    {
-        let leaf_name = value_ref_qualified_leaf(name);
-        let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone()) {
-            Some(p) => {
-                if (p.clone() != "".to_string()) {
-                    Some(crate::v1_std_core::qualified_last_segment(p.clone()))
-                } else {
-                    std::option::Option::None
+    match binding_kind.clone().as_deref().cloned() {
+        Some(VarBindingKind::LocalValueBinding) => std::option::Option::None,
+        Some(VarBindingKind::MatchBoundBinding) => std::option::Option::None,
+        _ => {
+            let leaf_name = value_ref_qualified_leaf(name);
+            let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone())
+            {
+                Some(p) => {
+                    if (p.clone() != "".to_string()) {
+                        Some(crate::v1_std_core::qualified_last_segment(p.clone()))
+                    } else {
+                        std::option::Option::None
+                    }
                 }
+                std::option::Option::None => std::option::Option::None,
+            };
+            match cached.clone() {
+                Some(parent) => Some(parent.clone()),
+                std::option::Option::None => match resolved_type.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        effective_variant_parent_from_resolved(
+                            leaf_name.clone(),
+                            rt.clone(),
+                            binding_kind.clone(),
+                            emit_info.clone(),
+                            source_indices,
+                        )
+                    }
+                    _ => variant_parent_from_binding_kind(binding_kind.clone()),
+                },
             }
-            std::option::Option::None => std::option::Option::None,
-        };
-        match cached.clone() {
-            Some(parent) => Some(parent.clone()),
-            std::option::Option::None => match resolved_type.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    effective_variant_parent_from_resolved(
-                        leaf_name.clone(),
-                        rt.clone(),
-                        binding_kind.clone(),
-                        emit_info.clone(),
-                        source_indices,
-                    )
-                }
-                _ => variant_parent_from_binding_kind(binding_kind.clone()),
-            },
         }
     }
 }
