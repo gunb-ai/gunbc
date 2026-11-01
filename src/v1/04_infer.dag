@@ -119,7 +119,7 @@ import v1.compiler.infer_types {
   bare_map_node, bare_set_node,
   callable_inferred,
   normalize_access_type_node,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, alias_identity_in_judgment, alias_names_identity_in_judgment,
+  node_type_shape, node_type_compatible, canonical_template_name, join_element_type, is_unit_like, node_type_equals, prefer_specific_type, alias_identity_in_judgment, alias_names_identity_in_judgment,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   is_product_type,
   node_type_deps,
@@ -1576,21 +1576,8 @@ fn conformance_ground_kernel_scalar(n: Node, source_indices: Map<String, Newline
   plain_shape && required && kernel_named
 }
 
-fn conformance_ground_element_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let shaped_container = n.connective == NoConnective
-    && node_is_element_collection(n: n, source_indices: source_indices)
-    && node_is_keyed_collection(n: n, source_indices: source_indices) == false
-  let required = n.return_cardinality == Required
-  let element_ground = match n.children |> first {
-    Present { value: el } => conformance_ground_kernel_scalar(n: child_type_node(ch: el), source_indices: source_indices)
-    Absent => false
-  }
-  shaped_container && required && element_ground
-}
-
 fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   conformance_ground_kernel_scalar(n: n, source_indices: source_indices)
-    || conformance_ground_element_collection(n: n, source_indices: source_indices)
 }
 
 // A PLAIN KERNEL VALUE WHERE A DECLARED STRUCTURED TYPE IS REQUIRED, at any position that carries a
@@ -1639,83 +1626,6 @@ fn declared_type_kernel_inhabitance_mismatch(declared: Node, produced: Node, sco
   }
 }
 
-// ONE element peel, and exactly one. A `List<KOuter>` declaration whose value is `[5]` reaches this
-// judgment as a container pair, so the kernel sits one level below the declared name and the check
-// above sees a container on the declared side and never fires. Peeling one level covers the
-// container position the census measured; a NESTED container (`List<List<KOuter>>`) is not judged,
-// which is a narrowing stated rather than implied. It is written out rather than self-recursed
-// because the measured depth is one, and an unbounded recursion here would owe a descent proof for
-// a frontier nobody has measured.
-fn declared_type_kernel_inhabitance_mismatch_at_element(
-  declared: Node,
-  produced: Node,
-  scope: InferScope
-) -> Bool {
-  let si = scope.type_env.source_indices
-  let both_element_collections = node_is_element_collection(n: declared, source_indices: si)
-    && node_is_element_collection(n: produced, source_indices: si)
-    && node_is_keyed_collection(n: declared, source_indices: si) == false
-    && node_is_keyed_collection(n: produced, source_indices: si) == false
-  if both_element_collections == false {
-    false
-  } else {
-    match declared.children |> first {
-      Absent => false
-      Present { value: dl } =>
-        match produced.children |> first {
-          Absent => false
-          Present { value: pr } =>
-            declared_type_kernel_inhabitance_mismatch(
-              declared: child_type_node(ch: dl),
-              produced: child_type_node(ch: pr),
-              scope: scope)
-        }
-    }
-  }
-}
-
-// A FUNCTION TYPE AT THE ELEMENT POSITION IS JUDGED BY THE ARROW AUTHORITY, one peel deep like the
-// kernel check above. `List<fn() -> Int>` returned where `List<fn() -> String>` is declared was
-// refused only BY ACCIDENT while v1.compiler.infer_types child_type_node erased an Arrow type
-// argument to its codomain -- the pair read as List<Int> against List<String>, both ground. With the
-// arrow kept, neither side is ground and the pair fell to the unjudged arm. The judgment is
-// callable_signature_mismatch, the same relation the top-level arrow arm consults, so a parameter
-// or arity difference now refuses too, where before it was accepted under the erasure.
-fn callable_element_signature_mismatch(declared: Node, produced: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let both_element_collections = node_is_element_collection(n: declared, source_indices: source_indices)
-    && node_is_element_collection(n: produced, source_indices: source_indices)
-    && node_is_keyed_collection(n: declared, source_indices: source_indices) == false
-    && node_is_keyed_collection(n: produced, source_indices: source_indices) == false
-    && declared.return_cardinality == Required
-    && produced.return_cardinality == Required
-  if both_element_collections == false {
-    false
-  } else {
-    match declared.children |> first {
-      Absent => false
-      Present { value: dl } =>
-        match produced.children |> first {
-          Absent => false
-          Present { value: pr } =>
-            let declared_element = child_type_node(ch: dl)
-            let produced_element = child_type_node(ch: pr)
-            type_node_is_arrow(n: declared_element) && type_node_is_arrow(n: produced_element)
-              && callable_signature_mismatch(formal: declared_element, actual: produced_element, env: env, source_indices: source_indices)
-        }
-    }
-  }
-}
-
-fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
-  declared: Node,
-  produced: Node,
-  scope: InferScope
-) -> Bool {
-  declared_type_kernel_inhabitance_mismatch(declared: declared, produced: produced, scope: scope)
-    || declared_type_kernel_inhabitance_mismatch_at_element(
-      declared: declared, produced: produced, scope: scope)
-}
-
 // A FOREIGN VARIANT WHERE A DECLARED COPRODUCT IS REQUIRED. `data v: B = X` with `X` an arm of
 // `type A = X | Y` produces `A` (variant_reference_inferred_node keeps the owner the binder chose
 // when the expected coproduct does not own the arm), and this seam judged coproduct pairs by
@@ -1754,7 +1664,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
   else if text_crossing_by_identity(left: declared, right: produced, env: scope.type_env) {
     [text_crossing_or_type_mismatch_error(expected: declared, got: produced, env: scope.type_env, span: span, module_name: scope.module_name)]
   }
-  else if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+  else if declared_type_kernel_inhabitance_mismatch(
       declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
@@ -1822,13 +1732,12 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
-  else if callable_element_signature_mismatch(declared: declared, produced: produced, env: scope.type_env, source_indices: si) {
-    [type_mismatch_error(
-      expected: node_type_shape(n: declared, source_indices: si),
-      got: node_type_shape(n: produced, source_indices: si),
-      span: span,
-      module_name: scope.module_name
-    )]
+  else if application_pair(declared: declared, produced: produced, source_indices: si) {
+    declared_type_obligation_diags(
+      obligation: DeclaredTypeObligation {
+        position: position, subject: subject, declared: declared, produced: produced, span: span
+      },
+      scope: scope)
   }
   else if !both_ground { [] }
   else if node_type_compatible(left: declared, right: produced, source_indices: si, text: TextJudgedIn { env: scope.type_env }) { [] }
@@ -4379,7 +4288,10 @@ fn foreign_concrete_coproduct_where_parent_required(
 // the declared-return chain and the whole relation already consume -- for a NON-LITERAL field value
 // (gunbc.recurring_failure_mode record_field_admits_a_distinct_product_value). That is two verdicts
 // judged there through the shared authorities, still not the position judged: the trigger below
-// stands for it unchanged.
+// stands for it unchanged. A field whose declared and produced types are one container application
+// (application_pair) runs the WHOLE relation instead, through declared_type_obligation_diags, as
+// the conformance chain does for let and return: a head-only node_type_compatible would admit
+// Map<String, Int> at Map<String, Bool>.
 //
 // NO PRODUCER: PositionMapValue, PositionVariantPayload, PositionCastTarget,
 // PositionCallableReturn. These occur solely in
@@ -4698,6 +4610,99 @@ fn produced_is_kernel_grounded_carrier_or_its_alias(declared_name: String, produ
   }
 }
 
+// A DECLARED APPLICATION IS JUDGED AT EVERY ARGUMENT POSITION, NOT BY ITS HEAD. Two applications of one
+// container template (List<A> against List<B>, Map<K, V> against Map<K2, V2>) inhabit one another only when
+// every argument pair does, positionally and recursively. The judgment is declared_type_inhabitance itself,
+// built as ONE DeclaredTypeObligation per argument position (PositionGenericTypeArgument), so an argument
+// inherits every arm of the relation (arrows, kernel-at-structured, optional layers, products) instead of
+// a container-specific test. The arguments are read through the one routed read (generic_actual_position_type
+// over join_element_type, the read #15132 put at the generic binding). The only leaf this fold decides itself
+// is two ground kernel scalars, which compare by node_type_compatible exactly as the position judgment's own
+// ground arm does (declared_type_inhabitance has no arm for a scalar against a scalar).
+// STATED DIVERGENCE: v2.std.inhabitance owns the relation and the seed cannot import src/v2; this is the seed's
+// realization of it, the same as declared_type_inhabitance.
+// THREE-VALUED: an argument holding a type variable, a compiler error or the unit-like conjunction is
+// Undecidable (the existing reasons), but a concrete refusal at a SIBLING position still refuses -- an unsolved
+// K does not license a wrong V. A refusal keeps its typed reason. The recursion descends the finite type tree,
+// one child per step.
+// application_pair is the whole precondition: two collections of one canonical template and one arity at one
+// cardinality. Any other pair is not an application pair and is judged by the arms it always was.
+fn application_pair(declared: Node, produced: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_is_collection(n: declared, source_indices: source_indices)
+    && node_is_collection(n: produced, source_indices: source_indices)
+    && declared.return_cardinality == produced.return_cardinality
+    && canonical_template_name(n: declared, source_indices: source_indices) == canonical_template_name(n: produced, source_indices: source_indices)
+    && (declared.children |> count) == (produced.children |> count)
+}
+
+fn application_argument_is_opaque(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: v } => is_type_variable(inferred: v) || is_compiler_error(inferred: v)
+    Absent => false
+  }
+}
+
+fn application_argument_inhabitance(declared: Node, produced: Node, scope: InferScope) -> InhabitanceVerdict {
+  let si = scope.type_env.source_indices
+  if application_argument_is_opaque(n: declared) || is_unit_like(n: declared) {
+    InhabitanceUndecidable { reason: UndecidableGenericFormal }
+  } else if application_argument_is_opaque(n: produced) || is_unit_like(n: produced) {
+    InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if conformance_ground_type(n: declared, source_indices: si) && conformance_ground_type(n: produced, source_indices: si) {
+    if node_type_compatible(left: declared, right: produced, source_indices: si, text: TextJudgedIn { env: scope.type_env }) { Inhabits }
+    else { InhabitanceRefused { reason: RefusedDistinctAppliedTypeArgument } }
+  } else {
+    declared_type_inhabitance(
+      obligation: DeclaredTypeObligation {
+        position: PositionGenericTypeArgument, subject: "", declared: declared, produced: produced, span: produced.span
+      },
+      scope: scope)
+  }
+}
+
+fn application_arguments_inhabitance(declared: Node, produced: Node, scope: InferScope) -> InhabitanceVerdict {
+  application_argument_pairs_inhabitance(declared: declared.children, produced: produced.children, acc: Inhabits, scope: scope)
+}
+
+fn application_argument_pairs_inhabitance(declared: List<Node>, produced: List<Node>, acc: InhabitanceVerdict, scope: InferScope) -> InhabitanceVerdict {
+  match declared |> first {
+    Absent => acc
+    Present { value: d } =>
+      match produced |> first {
+        Absent => acc
+        Present { value: p } =>
+          match application_argument_inhabitance(
+              declared: generic_actual_position_type(slot: join_element_type(slot: d)),
+              produced: generic_actual_position_type(slot: join_element_type(slot: p)),
+              scope: scope) {
+            InhabitanceRefused { reason: r } => InhabitanceRefused { reason: r }
+            InhabitanceUndecidable { reason: r } =>
+              application_argument_pairs_inhabitance(
+                declared: declared |> skip(1), produced: produced |> skip(1),
+                acc: match acc {
+                  Inhabits => InhabitanceUndecidable { reason: r }
+                  InhabitanceRefused { reason: _ } => acc
+                  InhabitanceUndecidable { reason: _ } => acc
+                  InhabitanceUnmodeled => acc
+                },
+                scope: scope)
+            InhabitanceUnmodeled =>
+              application_argument_pairs_inhabitance(
+                declared: declared |> skip(1), produced: produced |> skip(1),
+                acc: match acc {
+                  Inhabits => InhabitanceUnmodeled
+                  InhabitanceRefused { reason: _ } => acc
+                  InhabitanceUndecidable { reason: _ } => acc
+                  InhabitanceUnmodeled => acc
+                },
+                scope: scope)
+            Inhabits =>
+              application_argument_pairs_inhabitance(declared: declared |> skip(1), produced: produced |> skip(1), acc: acc, scope: scope)
+          }
+      }
+  }
+}
+
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferScope) -> InhabitanceVerdict {
   let declared = obligation.declared
   let produced = obligation.produced
@@ -4732,6 +4737,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if application_pair(declared: declared, produced: produced, source_indices: source_indices) {
+    application_arguments_inhabitance(declared: declared, produced: produced, scope: scope)
   } else if alias_identity_in_judgment(
       left: declared, right: produced, source_indices: source_indices,
       text: TextJudgedIn { env: scope.type_env }) {
@@ -12904,6 +12911,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             span: ar_typed.span,
             module_name: scope.module_name
           )]
+        } else if application_pair(declared: expected_node, produced: got_node, source_indices: scope.type_env.source_indices) {
+          declared_type_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_node, span: ar_typed.span
+            },
+            scope: scope)
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
           []

@@ -257,6 +257,11 @@ data megarac_firmware_0_45_reported: BmcFirmwareReleaseIdentity = bmc_firmware_r
 // shows 0 or 100, so they are NOT carried over from 0.32: a stopped or connecting session on 0.45.3
 // reads as an uncatalogued wire until a reading grounds it. Boot run 40038339650 read 19 on a
 // session left over from an earlier attempt; what 19 means is unread, and it stays uncatalogued.
+// CODE 16 IS NOT IN THIS WIRE TABLE, and must not be added to it: 16 was never read as a bare code, it was
+// read as a ROW -- that status beside the no-session marker -- so its meaning lives in
+// megarac_redirection_status_of_row below, keyed to that triple and to this release only. A caller holding
+// the row reads through that fold; a caller holding only a wire gets the uncatalogued answer, which is
+// exactly what the evidence supports.
 type MegaRacRedirectionStatus
   = RedirectionStopped
   | RedirectionStartedConnectionAccepted
@@ -300,6 +305,55 @@ fn megarac_redirection_status_of_wire(
     RedirectionStatusKnown { firmware: firmware, status: status }
   } else {
     RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
+  }
+}
+
+// THE NO-SESSION MARKER, AS THIS CONTROLLER REPORTS IT. A media row carries the redirection SESSION index
+// beside its status, and this controller answers 255 there when NO redirection session is active: boot run
+// 40258937016's end-of-attempt rows read session_index 255 on the CD row left from the attempt, while the
+// session that same run STARTED read session_index 0 (handoff_media, same capture:
+// artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt). So 255 marks "no
+// session" and a smaller index marks a live one. Read on the release the controller reports as raw
+// "0.45"; the marker is not claimed for any other release.
+data megarac_no_redirection_session_index: Int = 255
+
+// WHAT CODE 16 MEANS, AND ONLY AS FAR AS IT WAS READ. On the release the controller reports ("0.45"), a
+// row that reads redirection_status 16 AND carries the no-session marker is the vendor's STOPPED - DEVICE
+// EJECTED state: the row is there, and it is NOT presenting. The reads that ground the triple, and the one
+// vendor-side label that corroborates it, are retained as receipts in the observing layer at
+// gunbc.machine_intake.megarac_media_row_reading:
+//   boot_run_40258937016_end_media_row -- boot run 40258937016, read back at 1792983408184: media_type 1,
+//     media_index 0, session_index 255, image_name the runner medium, redirection_status 16
+//     (artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt line 2055). That read
+//     also carries cd_error_code 16; WHAT THAT ERROR CODE MEANS IS NOT ESTABLISHED, is not claimed here,
+//     and no row reading is re-read through it.
+//   boot_run_40264233543_end_media_row -- the next attempt met the identical triple and REFUSED at media
+//     attach on it (artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-diagnostics.txt lines
+//     117 and 2055).
+//   mtcollins1_cd_row_ui_attestation -- THE VENDOR'S OWN WORDS, as an operator read the controller's web
+//     UI on 2026-10-26: "CD/DVD 0, gunbc-runner-host-ubuntu-24.04.3-arm64-31aef9394d9e58c3.iso,
+//     Stopped - Device Ejected, N/A". Typed as a dated attestation, not a machine read, and kept in the
+//     observing layer: a person reading a vendor page is an observation this repository makes, not a fact
+//     of the upstream product (DESIGN.md §3). It corroborates the state; it does not supply the code.
+// WHAT IS NOT CLAIMED, and the SHAPE of this fold is what keeps the claim inside its evidence: 16 beside
+// an ACTIVE session index is not this state -- the only started session read at this build carried index 0
+// (boot_run_40258937016_started_session_marker) with status started -- so it stays an uncatalogued wire;
+// 16 on any other release stays uncatalogued (0.32 never returned 16); and a row whose reading did not
+// carry a session index is not promoted either. test.claim.machine_intake.megarac_media_0_45_3_witness
+// pins each of those separations.
+fn megarac_redirection_status_of_row(
+  firmware: BmcFirmwareReleaseIdentity,
+  wire: Int,
+  session_index: Int?,
+) -> MegaRacRedirectionStatusLookup {
+  let no_session = match session_index {
+    Present { value: i } => i == megarac_no_redirection_session_index
+    Absent => false
+  }
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) && wire == 16 && no_session {
+    RedirectionStatusKnown { firmware: firmware, status: RedirectionStopped }
+  } else {
+    megarac_redirection_status_of_wire(firmware: firmware, wire: wire)
   }
 }
 

@@ -184,13 +184,11 @@ fn host_standup_prefix_gap_step(
 }
 
 data host_standup_spine: List<HostStandupStep> = [
-  host_standup_prefix_step(
+  host_standup_prefix_gap_step(
     phase: BmcCredentialConverge,
     label: "prefix:bmc-credential-converge",
-    authorities: [
-      decl_ref(module_path: "gunbc.bmc.bmc_onboarding", decl_name: "bmc_credential_probe_to_phase"),
-      decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
-    ],
+    interim_realization: "gunbc.machine_intake.bmc_secure (state-shaped BmcSecure, dry: plan_bmc_account_action under one approval per controller, consumed by gunbc.machine_intake.arrival_converge bmc_secure); the live readers and the converge entry that runs it for a fleet host are not built (bmc_secure_state_live_read_frontier, bmc_secure_state_live_apply_frontier). The legacy gunbc.tools.bmc_onboard rotation entries are deleted",
+    refusal: "host_standup:prefix:bmc-credential-converge:unexecuted — refuse assimilation until the BmcSecure converge entry has run live for this host and its standing reads BmcSecure",
     effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_step(
@@ -378,8 +376,8 @@ data host_standup_spine: List<HostStandupStep> = [
 data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "prefix:bmc-credential-converge",
-    modeling: "modeled",
-    authority_or_interim: "gunbc.bmc.bmc_onboarding.bmc_credential_probe_to_phase + gunbc.tools.bmc_onboard.bmc_converge_credential (per-host; srv3_converge_credential / srv4_converge_credential entries)"
+    modeling: "gap",
+    authority_or_interim: "gunbc.machine_intake.bmc_secure (dry; live readers and the converge entry not built) — the gunbc.tools.bmc_onboard rotation entries are deleted"
   },
   GapLedgerRow {
     phase_label: "prefix:os-install-mechanism",

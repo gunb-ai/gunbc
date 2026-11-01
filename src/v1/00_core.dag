@@ -405,7 +405,6 @@ type CompilerDiagnostic
   | InternalError      { message: String, span: SourceSpan }
   | ComplexityUnknown  { func_name: String, reason: String, span: SourceSpan }
   | WhereRefinementUnenforced { predicate: String, formal_type: String, reason: String, span: SourceSpan }
-  | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
   | KernelMintShapeMismatch { declaration_name: String, cause: String, span: SourceSpan }
@@ -664,7 +663,6 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     InternalError      { message: _, span: s }                 => s
     ComplexityUnknown  { func_name: _, reason: _, span: s }    => s
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: _, span: s } => s
-    OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
     KernelMintShapeMismatch { declaration_name: _, cause: _, span: s } => s
@@ -758,7 +756,6 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ComplexityUnknown  { func_name: f, reason: r, span: _ }      => concat("complexity: ", f, ": ", r)
     WhereRefinementUnenforced { predicate: p, formal_type: t, reason: r, span: _ } =>
       concat("where-refinement unenforced: predicate '", p, "' on '", t, "' — ", r)
-    OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
     KernelMintShapeMismatch { declaration_name: d, cause: c, span: _ } => concat("kernel mint binding: '", d, "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ", c)
@@ -939,7 +936,6 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
       } else {
         DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
       }
-    OwnershipViolation { binding: _, fn_name: _, consumers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     SoleConstructorViolation { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     KernelMintShapeMismatch { declaration_name: _, cause: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
