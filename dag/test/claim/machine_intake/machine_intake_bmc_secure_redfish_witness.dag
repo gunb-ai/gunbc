@@ -245,7 +245,7 @@ fn served_accounts(reading: BmcRedfishAccountCensusReading) -> List<BmcRedfishAc
 }
 
 fn has_entry(reading: BmcRedfishAccountCensusReading, name: String, enabled: Bool, managed: Bool) -> Bool {
-  list_length(items: filter(served_accounts(reading), a => a.name == name && a.enabled == enabled && a.credential_is_managed == managed)) > 0
+  list_length(items: filter(served_accounts(reading), a => a.name == name && a.enabled == enabled && a.is_managed_account == managed)) > 0
 }
 
 fn is_refused(reading: BmcRedfishAccountCensusReading) -> Bool {

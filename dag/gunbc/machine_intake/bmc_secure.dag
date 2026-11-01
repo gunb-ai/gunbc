@@ -24,7 +24,6 @@ import extdeps.board_authority { BoardAuthorityRef }
 import gunbc.machine_intake.bmc_credential_policy {
   BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces, bmc_credential_policy_for, bmc_credential_policy_key_eq,
   PublishedCredentialChangeForced,
-  ForcedBuildInferredFromTheResponse, ForcedBuildRead,
   FactoryLoginAccepted, FactoryLoginForcesPasswordChange, FactoryLoginNotMeasured,
 }
 import extdeps.bmc.redfish {
@@ -1386,13 +1385,15 @@ fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef,
 // read from here, never supplied beside the reading, and an undeclared board grounds no derivation.
 // THE REDFISH ACCOUNT CENSUS, AS READ. One entry per ManagerAccount the collection listed, carrying only
 // the facts the served bytes published (the name, whether it is Enabled) plus the join fact the fold needs:
-// whether THAT account's credential is the managed one. On the shared-store build (ALTRAD8UD 03.22.00) the
-// managed account is named by the goal, so `credential_is_managed` is whether this account IS that one --
-// any OTHER enabled account therefore holds a credential we do not manage, and the conjunction refuses.
+// whether this account IS the managed account. The census GET authenticates as the managed account before any
+// member is enumerated (RedfishAuthAccepted), so an entry whose name equals the managed account IS that one;
+// `is_managed_account` states exactly that identity, not a separate credential fact. On the shared-store build
+// (ALTRAD8UD 03.22.00) the managed account is named by the goal, so any OTHER enabled account holds a credential
+// we do not manage, and the conjunction refuses.
 type BmcRedfishAccountCensusEntry {
   name: String
   enabled: Bool
-  credential_is_managed: Bool
+  is_managed_account: Bool
 }
 
 // The census is a TYPED reading, never a list that stands in for "we did not look". A controller that serves
@@ -1852,8 +1853,9 @@ fn dry_read_bmc_redfish_census_members(world: BmcWorld, managed_account: String)
   }
 }
 
-// READ AND PARSE ONE member resource. credential_is_managed is whether this account IS the managed account the
-// read is authenticating as: on the shared-store build the managed credential is that one account's password,
+// READ AND PARSE ONE member resource. is_managed_account is whether this account IS the managed account the
+// read authenticates as: the census GET only reaches member enumeration after that account authenticated, so
+// a name match IS that identity. On the shared-store build the managed credential is that one account's password,
 // so every OTHER account holds a credential we do not manage, and the fold refuses another ENABLED one.
 fn dry_read_bmc_redfish_one_member(world: BmcWorld, managed_account: String, id: String, seen: List<BmcRedfishAccountCensusEntry>) -> BmcRedfishAccountCensusReading {
   match redfish_manager_account_name_from_odata_id(id: id) {
@@ -1866,7 +1868,7 @@ fn dry_read_bmc_redfish_one_member(world: BmcWorld, managed_account: String, id:
         RedfishAccountResource { account: account } => match account.enabled {
           FieldRead { value: enabled } => match account.role_id {
             RedfishRoleIdServed { role: _ } =>
-              BmcRedfishCensusServed { accounts: seen.append(BmcRedfishAccountCensusEntry { name: name, enabled: enabled, credential_is_managed: name == managed_account }) }
+              BmcRedfishCensusServed { accounts: seen.append(BmcRedfishAccountCensusEntry { name: name, enabled: enabled, is_managed_account: name == managed_account }) }
             RedfishRoleIdAbsent {} => BmcRedfishCensusRefused { detail: join(["an enumerated ManagerAccount served no RoleId: ", name], "") }
             RedfishRoleIdUnknown { word: word } => BmcRedfishCensusRefused { detail: join(["an enumerated ManagerAccount served an unknown RoleId: ", word], "") }
             RedfishRoleIdMalformed { cause: cause } => BmcRedfishCensusRefused { detail: join(["an enumerated ManagerAccount served a malformed RoleId: ", cause], "") }
@@ -1885,7 +1887,7 @@ fn dry_read_bmc_redfish_one_member(world: BmcWorld, managed_account: String, id:
 fn bmc_redfish_census_foreign_enabled_account(reading: BmcRedfishAccountCensusReading) -> String? {
   match reading {
     BmcRedfishCensusServed { accounts: accounts } =>
-      filter(accounts, a => a.enabled && !a.credential_is_managed)
+      filter(accounts, a => a.enabled && !a.is_managed_account)
         |> fold(init: none, f: (acc, a) => match acc { Absent => Present { value: a.name }  Present { value: _ } => acc })
     BmcRedfishCensusUnmodeled => none
     BmcRedfishCensusRefused { detail: _ } => none
@@ -1962,21 +1964,10 @@ fn confirm_forced_first_rotation_build(
 {
   if (admitted.forced.endpoint.host as String) != (post_read.endpoint.host as String) {
     ForcedFirstRotationBuildRefused { cause: ForcedRotationControllerDiffers { expected: admitted.forced.endpoint, found: post_read.endpoint } }
+  } else if bmc_firmware_release_identity_eq(a: admitted.forced.key.firmware, b: post_read.firmware) {
+    ForcedFirstRotationBuildConfirmed
   } else {
-    match admitted.forced.build {
-      ForcedBuildInferredFromTheResponse =>
-        if bmc_firmware_release_identity_eq(a: admitted.forced.key.firmware, b: post_read.firmware) {
-          ForcedFirstRotationBuildConfirmed
-        } else {
-          ForcedFirstRotationBuildRefused { cause: ForcedRotationBuildDiffers { expected: admitted.forced.key.firmware, answered: post_read.firmware } }
-        }
-      ForcedBuildRead { evidence: _ } =>
-        if bmc_firmware_release_identity_eq(a: admitted.forced.key.firmware, b: post_read.firmware) {
-          ForcedFirstRotationBuildConfirmed
-        } else {
-          ForcedFirstRotationBuildRefused { cause: ForcedRotationBuildDiffers { expected: admitted.forced.key.firmware, answered: post_read.firmware } }
-        }
-    }
+    ForcedFirstRotationBuildRefused { cause: ForcedRotationBuildDiffers { expected: admitted.forced.key.firmware, answered: post_read.firmware } }
   }
 }
 
