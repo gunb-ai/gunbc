@@ -3,33 +3,30 @@ module std.kernel_declaration_binding
 import std.types { List, String }
 import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.std.node { Symbol }
 
 // Declaration-to-kernel facts extracted from v2.extdeps.languages.dag.
-// Symbol is the existing kernel binding identity; no Node denotation or grammar
-// production is imported or reconstructed here. KernelTypeName is not this
-// carrier: Symbol is a v2 kernel binding but not in std.types.kernel_type_set.
+// Existing kernel spellings and their declaration identities live here once.
+// Node denotations and symbol binding identities remain in the v2 consumer.
 type KernelDeclarationBinding {
-  binding: Symbol
   spelling: String
   declarations: List<DeclarationRef>
 }
 
 data kernel_declaration_bindings: List<KernelDeclarationBinding> = [
   KernelDeclarationBinding {
-    binding: ^dag_binding_type_int, spelling: "Int",
+    spelling: "Int",
     declarations: [decl_ref(module_path: "v2.std.integer", decl_name: "Int"), decl_ref(module_path: "std.integer", decl_name: "Int")]
   },
   KernelDeclarationBinding {
-    binding: ^bool_node_symbol, spelling: "Bool",
+    spelling: "Bool",
     declarations: [decl_ref(module_path: "std.types", decl_name: "Bool")]
   },
   KernelDeclarationBinding {
-    binding: ^symbol_node_symbol, spelling: "Symbol",
+    spelling: "Symbol",
     declarations: [decl_ref(module_path: "v2.std.node", decl_name: "Symbol")]
   },
   KernelDeclarationBinding {
-    binding: ^string_node_symbol, spelling: "String",
+    spelling: "String",
     declarations: [decl_ref(module_path: "v2.std.node", decl_name: "String"), decl_ref(module_path: "std.host_text", decl_name: "HostText")]
   }
 ]
@@ -40,8 +37,8 @@ fn kernel_binding_for_declaration(declaration: DeclarationRef) -> Optional<Kerne
   first(filter(kernel_declaration_bindings, row => any(row.declarations, d => d == declaration)))
 }
 
-fn kernel_binding_spelling(binding: Symbol) -> Optional<String> {
-  match first(filter(kernel_declaration_bindings, row => row.binding == binding)) {
+fn kernel_binding_spelling(declaration: DeclarationRef) -> Optional<String> {
+  match kernel_binding_for_declaration(declaration: declaration) {
     Present { value: row } => Present { value: row.spelling }
     Absent => Absent
   }

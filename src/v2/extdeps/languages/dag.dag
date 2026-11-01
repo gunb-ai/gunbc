@@ -4904,25 +4904,25 @@ type KernelValueType {
 data dag_kernel_value_type_roster: List<KernelValueType> = [
   KernelValueType {
     value_type: integer_int_type_node(),
-    spelling: kernel_binding_spelling(binding: ^dag_binding_type_int),
+    spelling: kernel_binding_spelling(declaration: decl_ref(module_path: "v2.std.integer", decl_name: "Int")),
     converges_on: optional_absent()
     foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: bool_node(),
-    spelling: kernel_binding_spelling(binding: ^bool_node_symbol),
+    spelling: kernel_binding_spelling(declaration: decl_ref(module_path: "std.types", decl_name: "Bool")),
     converges_on: optional_absent()
     foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: symbol_type_node(),
-    spelling: kernel_binding_spelling(binding: ^symbol_node_symbol),
+    spelling: kernel_binding_spelling(declaration: decl_ref(module_path: "v2.std.node", decl_name: "Symbol")),
     converges_on: optional_absent()
     foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: host_text_type_node(),
-    spelling: kernel_binding_spelling(binding: ^string_node_symbol),
+    spelling: kernel_binding_spelling(declaration: decl_ref(module_path: "v2.std.node", decl_name: "String")),
     // std.host_text HostText is the carrier's declaration (operator ruling H2, 2026-10-17); the
     // v2.std.node String row is its migration-time projection, kept until the String-to-HostText
     // wave respells every authored String and deletes it. Both name ONE kernel value type, so a
@@ -5142,7 +5142,7 @@ fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional
       decl_name: symbol_lexeme(sym: leaf)
     )) {
       Absent => optional_absent()
-      Present { value: row } => optional_present(value: row.binding)
+      Present { value: row } => dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: row.spelling))
     }
   }
 }
