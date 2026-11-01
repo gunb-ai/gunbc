@@ -150,8 +150,6 @@ test fn the_lawful_census_receipt_route_is_admitted() -> ProcessExit {
   ])
 }
 
-data sealed_twin_view_preference_store_source: String = "module probe_twin_view_preference_store\nimport std.types { NonEmptyStr }\ntype IssueViewPreferenceStore sole_constructor { instance: NonEmptyStr, slots: NonEmptyStr }\nfn f() -> IssueViewPreferenceStore { IssueViewPreferenceStore { instance: \"probe-instance\" as NonEmptyStr, slots: \"probe-slots\" as NonEmptyStr } }\n"
-data stripped_twin_view_preference_store_source: String = "module probe_twin_view_preference_store\nimport std.types { NonEmptyStr }\ntype IssueViewPreferenceStore { instance: NonEmptyStr, slots: NonEmptyStr }\nfn f() -> IssueViewPreferenceStore { IssueViewPreferenceStore { instance: \"probe-instance\" as NonEmptyStr, slots: \"probe-slots\" as NonEmptyStr } }\n"
 
 data sealed_twin_view_preference_store_source: String = "module probe_twin_view_preference_store_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.definer { IssueViewPreferenceStore }\nfn forged() -> IssueViewPreferenceStore { IssueViewPreferenceStore { instance: \"probe-instance\" as NonEmptyStr, slots: \"probe-slots\" as NonEmptyStr } }\n"
 data stripped_twin_view_preference_store_source: String = "module probe_twin_view_preference_store_stripped_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.stripped_definer { IssueViewPreferenceStore }\nfn forged() -> IssueViewPreferenceStore { IssueViewPreferenceStore { instance: \"probe-instance\" as NonEmptyStr, slots: \"probe-slots\" as NonEmptyStr } }\n"

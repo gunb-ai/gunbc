@@ -1147,6 +1147,16 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
+
+  // THE C-ROADMAP-2 srv1-BYTES WITNESSES (this cohort): the records the DEPLOYED code wrote on srv1, read
+  // back through the sealed readers after their sha256 is re-checked against the operator relay's hashes.
+  // Same shape as the row above -- an isolated instance under its own mktemp directory, mkdir/write/read/
+  // unlink there and nothing else; no network, no cargo, no remote host.
+  WitnessExclusionRow {
+    pattern: "c_roadmap2_srv1_bytes_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "workspace_acquisition_storage_wet_witness.dag",
     classification: LocalRepoWetLane,

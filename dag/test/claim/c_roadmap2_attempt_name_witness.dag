@@ -6,6 +6,9 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.roadmap.roadmap_attempt_metering { MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metered_role_key, metering_launch_entry_name }
 import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptMeteringRecordFile, AttemptMeteringRosterSealed, AttemptMeteringLaunch, AttemptRequestBindingFile, attempt_state_member_name }
+import gunbc.roadmap.roadmap_event_snapshot_census { snapshot_census_receipt_slots }
+import gunbc.roadmap.roadmap_served_observation { served_observation_slots }
+import gunbc.roadmap.roadmap_view_preference_store { issue_view_preference_slots }
 
 // THE ENTRY NAMES OF THE ATTEMPT METERING AND REQUEST-BINDING STORES ARE READ FROM THEIR ONE DECLARATION,
 // AND THEY ARE THE NAMES srv1 ACTUALLY HOLDS. Before this cohort the record name, the roster's closing
@@ -34,6 +37,8 @@ type NameCase {
 
 // The verdict is a universal over the cases, so a case that cannot fail cannot carry the claim; the reason
 // concatenates only the mismatching labels, so a red run says which name drifted.
+fn yes_no(ok: Bool) -> String { if ok { "yes" } else { "no" } }
+
 fn names_agree(cases: List<NameCase>) -> ProcessExit {
   if all(cases, c => c.actual == c.expected) {
     ExitSuccess
@@ -145,9 +150,62 @@ test fn reviewer_and_auditor_launch_shapes_stay_distinguishable() -> ProcessExit
   let reviewer = metering_launch_entry_name(role: MeteredReviewer { criterion_key: srv1_reviewer_criterion, head: srv1_reviewer_head })
   let auditor = metering_launch_entry_name(role: MeteredAuditor { head: srv1_auditor_head })
   names_agree(cases: [
-    NameCase { label: "reviewer carries the token-criterion stem", actual: if string_contains(reviewer, srv1_reviewer_criterion as String) { "yes" } else { "no" }, expected: "yes" },
-    NameCase { label: "auditor carries no token-criterion stem", actual: if string_contains(auditor, srv1_reviewer_criterion as String) { "yes" } else { "no" }, expected: "no" },
-    NameCase { label: "a launch entry is not the roster seal", actual: if auditor == attempt_metering_slots.roster_sealed_basename as String { "same" } else { "distinct" }, expected: "distinct" },
-    NameCase { label: "both shapes carry the declared launch prefix", actual: if string_contains(reviewer, attempt_metering_slots.launch_prefix as String) && string_contains(auditor, attempt_metering_slots.launch_prefix as String) { "yes" } else { "no" }, expected: "yes" },
+    NameCase { label: "reviewer carries the token-criterion stem", actual: yes_no(ok: string_contains(reviewer, srv1_reviewer_criterion as String)), expected: "yes" },
+    NameCase { label: "auditor carries no token-criterion stem", actual: yes_no(ok: string_contains(auditor, srv1_reviewer_criterion as String)), expected: "no" },
+    NameCase { label: "a launch entry is not the roster seal", actual: yes_no(ok: auditor != attempt_metering_slots.roster_sealed_basename as String), expected: "yes" },
+    NameCase { label: "both shapes carry the declared launch prefix", actual: yes_no(ok: string_contains(reviewer, attempt_metering_slots.launch_prefix as String) && string_contains(auditor, attempt_metering_slots.launch_prefix as String)), expected: "yes" },
+  ])
+}
+
+
+// THE RECEIPT AND PREFERENCE NAMES ARE THE NAMES THE HOST AND THE PRE-SEAL CODE HOLD. These are the
+// declaration-mode controls for the three stores whose entries live under the instance (rather than under
+// one attempt): the expected strings below are literals copied from the srv1 read-back the operator relay
+// returned on 2026-11-01 (the census receipt, the served-observation index and body) and from the pre-seal
+// path the view preference store wrote (its slot directory). If a declaration is renamed, or a name stops
+// being built from the declaration, the claim goes red — the witnesses would not notice, because they
+// compose both sides from the same declaration.
+data srv1_census_receipt_name: String = "roadmap-event-snapshot-census.json"
+data srv1_served_index_name: String = "served-observation.json"
+data srv1_served_body_name: String = "served-observation-attempts_json.body"
+data pre_seal_view_preference_member: String = "issue-view-preferences"
+
+test fn the_census_receipt_name_is_the_name_the_host_holds() -> ProcessExit {
+  names_agree(cases: [
+    NameCase {
+      label: "census receipt name = the declared stem + suffix = what srv1 holds",
+      actual: join([snapshot_census_receipt_slots.stem as String, snapshot_census_receipt_slots.suffix as String], ""),
+      expected: srv1_census_receipt_name,
+    },
+    NameCase {
+      label: "the declared stem is not the served-observation stem",
+      actual: yes_no(ok: snapshot_census_receipt_slots.stem as String != served_observation_slots.index_stem as String),
+      expected: "yes",
+    },
+  ])
+}
+
+test fn the_served_observation_names_are_the_names_the_host_holds() -> ProcessExit {
+  names_agree(cases: [
+    NameCase {
+      label: "served-observation index name = the declared stem + suffix = what srv1 holds",
+      actual: join([served_observation_slots.index_stem as String, served_observation_slots.index_suffix as String], ""),
+      expected: srv1_served_index_name,
+    },
+    NameCase {
+      label: "served-observation body name = the declared prefix + the surface + the declared suffix = what srv1 holds",
+      actual: join([served_observation_slots.body_prefix as String, "attempts_json", served_observation_slots.body_suffix as String], ""),
+      expected: srv1_served_body_name,
+    },
+  ])
+}
+
+test fn the_view_preference_slot_member_is_the_pre_seal_directory() -> ProcessExit {
+  names_agree(cases: [
+    NameCase {
+      label: "the preference slot directory member = the name the pre-seal path wrote",
+      actual: issue_view_preference_slots.member as String,
+      expected: pre_seal_view_preference_member,
+    },
   ])
 }

@@ -1,8 +1,8 @@
 module gunbc.roadmap.roadmap_attempt_request_record
 
 
-import gunbc.roadmap.roadmap_attempt_state_store {
 import extdeps.shell
+import gunbc.roadmap.roadmap_attempt_state_store {
   AttemptRequestBindingFile, attempt_state_create_new_at, attempt_state_observe_at, attempt_state_directory_text, AttemptDirectoryRoot,
 }
 import std.types { String, Bool, List, NonEmptyStr , FilePath}

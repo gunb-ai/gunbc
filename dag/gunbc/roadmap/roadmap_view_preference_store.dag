@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_view_preference_store
 
 import std.types { String, List, Int, Bool, NonEmptyStr, FilePath }
+import extdeps.shell
 import gunbc.roadmap.roadmap_view_preferences { IssueViewPreferences, issue_view_preferences_json, issue_view_preferences_of }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
@@ -52,7 +53,13 @@ type IssueViewPreferenceStoreReading
 
 // THE ONE MINT, AND IT TAKES NO PATH. The business key is the instance.
 fn issue_view_preference_store(instance: HostDashboardInstance) -> IssueViewPreferenceStoreReading {
-  match listed_slot_store(member: issue_view_preference_slots.member as String, root: issue_view_preference_slots_path(instance: instance)) {
+  // THE MINT ENSURES THE SLOT DIRECTORY AND THEN OBSERVES IT, as #15445's print-runtime store and the four
+  // sibling mints in this cohort do. The directory is the one this store's own declaration names, so the
+  // mint never hands out a store over a root it has not observed, and the provisioning target
+  // (issue_view_store_directory) stays a second VIEW of the same declaration rather than a second literal.
+  let root = issue_view_preference_slots_path(instance: instance)
+  if !shell.Mkdir.Parents(path: root as FilePath).success { return IssueViewPreferenceStoreUnready { detail: concat("Cannot create the issue view preference directory ", root) } }
+  match listed_slot_store(member: issue_view_preference_slots.member as String, root: root) {
     SlotStoreRefused { detail: d } => IssueViewPreferenceStoreUnready { detail: d }
     SlotStoreListed { root: r } => IssueViewPreferenceStoreReady { store: IssueViewPreferenceStore { instance: instance.instance_id, slots: file_slot_store(root: r) } }
   }

@@ -1,8 +1,8 @@
 module gunbc.roadmap.roadmap_attempt_metering
 
 
-import gunbc.roadmap.roadmap_attempt_state_store {
 import extdeps.shell
+import gunbc.roadmap.roadmap_attempt_state_store {
   AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents,
   AttemptMeteringRecordFile, AttemptMeteringRosterSealed, AttemptMeteringLaunch,
   attempt_state_directory_text, attempt_state_text, attempt_state_member_name,
