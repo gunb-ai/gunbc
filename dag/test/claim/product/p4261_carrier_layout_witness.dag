@@ -2619,7 +2619,7 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
     && count(filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(BST)") && (o.second.terminal as String).contains("(SW)") && match o.display { DisplayOverRange => true, DisplayValue { ohms: _, approximate: _ } => false, DisplayZeroWithoutBaseline { reported: _ } => false, DisplayAtProbeBaseline { shown: _, baseline: _ } => false, DisplayAboveBaseline => false })) == 1
     && all(e1_converter_pair_resistances, o => after_both_incidents(o: o))
     && count(k1_converter_pair_resistances) == 1 && all(k1_converter_pair_resistances, o => is_reported_zero(o: o) && (o.first.terminal as String).contains("(SW)"))
-    && p4261_near_4r7_converter_hypothesis.claim.contains("joined at 0 ohm, which nothing in the datasheet's circuit but the device's high-side switch can do")
+    && p4261_near_4r7_converter_hypothesis.claim.contains("VIN and SW leads read 0 ohm to each other") && p4261_near_4r7_converter_hypothesis.claim.contains("two separate paths to the return")
   let in_records = vin_sw
     && count(filter(e1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: e1_converter_near))) > count(e1_converter_lead_resistances)
     && count(filter(k1_measured.bench.resistances, o => component_identity_eq(a: o.first.component, b: k1_converter_far))) == count(k1_converter_lead_resistances)
