@@ -3,7 +3,7 @@ module extdeps.electronic_component.types
 import std.logic { Bool }
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { Volt, Millivolt, Milliampere, Micrometer }
+import std.measure { Volt, Millivolt, Milliampere, Micrometer, Ampere, Hertz }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -156,6 +156,40 @@ type HotSwapControllerSpecification {
   pins: List<ControllerPin>
   enable_threshold: ThresholdWindow
   overvoltage_threshold: ThresholdWindow
+}
+
+// A SWITCHING REGULATOR WITH ITS SWITCHES INSIDE: the pins a bench reading lands on are named by what
+// the datasheet says each one does, so a lead that reads to the return is read as GND, SW, VIN or
+// BST by the row and not by the reader. The switch node is the pin the inductor hangs on; the
+// bootstrap pin is the high-side driver's floating supply, joined to the switch node outside the part
+// through a capacitor (and often a series resistor); power-good is an open drain that needs an
+// external pull-up, which is why it reads as a resistance to some rail. On-resistances are the
+// datasheet's typical milliohm figures (no shared Ohm measure exists in std.measure, which carries
+// resistance only per length; a Nat of milliohms is this roster's existing convention for a marked
+// resistance code).
+type RegulatorPinRole
+  = RegulatorSupplyInput
+  | SwitchNode
+  | RegulatorGround
+  | BootstrapSupply
+  | EnableInput
+  | SoftStartProgram
+  | FeedbackInput
+  | PowerGoodOpenDrain
+
+type RegulatorPin {
+  number: Nat
+  name: NonEmptyStr
+  role: RegulatorPinRole
+}
+
+type SwitchingRegulatorSpecification {
+  pins: List<RegulatorPin>
+  input: MillivoltRange
+  continuous_output_current: Ampere
+  switching_frequency: Hertz
+  high_side_on_resistance_milliohm: Nat
+  low_side_on_resistance_milliohm: Nat
 }
 
 type ConnectorOrientation
@@ -426,6 +460,7 @@ type ComponentSpecification
   | ProgrammableLogicSpec { logic: ProgrammableLogicSpecification }
   | RootOfTrustSpec { root_of_trust: RootOfTrustSpecification }
   | SerialFlashSpec { flash: SerialFlashSpecification }
+  | SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification }
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -464,5 +499,6 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     ProgrammableLogicSpec { logic: _ } => Absent
     RootOfTrustSpec { root_of_trust: _ } => Absent
     SerialFlashSpec { flash: _ } => Absent
+    SwitchingRegulatorSpec { regulator: _ } => Absent
   }
 }

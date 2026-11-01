@@ -1,0 +1,17 @@
+module gunbc.roadmap.roadmap_dogfood_start_slots
+
+import std.types { NonEmptyStr }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, CarryBytes }
+
+// THE DOGFOOD START RECEIPT STORE'S MEMBER DECLARATION under the shared dispatch attempt-state root (row
+// Sa7192064), in a leaf that imports no instance so the move rows can read it without a cycle through the route.
+// The receipt IS the entry, so the move carries its bytes (CarryBytes) and keeps its slot name, hence the generation
+// it was written at. The receipt is create-only (a valid receipt is never rewritten), so its readers see one
+// generation; observe_cas_slot_state reads the slot by key and a moved slot keeps that key and generation.
+type DogfoodStartSlotsDeclaration { mode: DeclaredDirectoryMode, move: MoveRow }
+
+data dogfood_start_slots: DogfoodStartSlotsDeclaration = DogfoodStartSlotsDeclaration {
+  mode: DirectoryOwnerOnly,
+  move: MoveRow { member: "dogfood-start-receipts" as NonEmptyStr, legacy_flat_prefix: "dogfood-start-receipt." as NonEmptyStr, content: CarryBytes },
+}
