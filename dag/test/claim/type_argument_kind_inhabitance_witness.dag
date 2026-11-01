@@ -184,3 +184,27 @@ test fn a_generic_function_not_misusing_its_parameter_still_compiles() -> Bool {
   type_param_value_position_blocking_count(source: generic_fn_positive_source()) == 0
     && compile_dag_rust_emit_check(generic_fn_positive_source(), "src/kindprobe_pos_generic_fn.rs", [], [])
 }
+
+fn kind_binder_in_decl_field_source() -> String {
+  "module kindprobe.pos_binder_decl_field\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype Holder<K: WidthResolution> {\n  w: Width<K>\n}\n\ntype Choice<K: WidthResolution>\n  = Left { w: Width<K> }\n  | Right\n\n"
+}
+
+// A KINDED BINDER PASSED ON IN A DECLARATION FIELD, record and variant payload alike. The declaration's
+// own type parameter is a bound variable at that position, as it is in a fn signature; the env builder
+// resolves a declaration through resolve_node_bounded, which therefore binds the declaration's params
+// (the same env_with_type_variable_bindings resolve_item_types uses). Before that binding this refused
+// `K` as a non-inhabitant of WidthResolution (the std.measure kinding: Measure<Q, S, Int> in a field).
+test fn a_kinded_binder_passed_on_in_a_declaration_field_must_be_admitted() -> Bool {
+  kind_mismatch_blocking_count(source: kind_binder_in_decl_field_source()) == 0
+    && compile_dag_rust_emit_check(kind_binder_in_decl_field_source(), "src/kindprobe_pos_binder_decl_field.rs", [], [])
+}
+
+fn kind_non_inhabitant_in_decl_field_source() -> String {
+  "module kindprobe.neg_decl_field\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype Holder<K: WidthResolution> {\n  w: Width<String>\n}\n\n"
+}
+
+// THE RED FOR THE SAME POSITION: binding the declaration's params must not widen the wall. A non-inhabitant
+// in a declaration field still refuses even when the declaration binds a kinded parameter of its own.
+test fn a_non_inhabitant_in_a_declaration_field_must_still_refuse() -> Bool {
+  kind_mismatch_blocking_count(source: kind_non_inhabitant_in_decl_field_source()) >= 1
+}

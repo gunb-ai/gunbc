@@ -627,6 +627,15 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       diagnostics: concat(param_diags, return_diags)
     }
   } else if has_structure {
+    // A DECLARATION'S FIELD TYPES ARE RESOLVED UNDER THE DECLARATION'S OWN TYPE PARAMETERS. The env builder
+    // (resolve_type_bindings) resolves every type declaration through this arm with the MODULE env, and
+    // resolve_item_types binds the item's params only for its own later pass, so a kinded binder passed on in a
+    // field (`type Wrap<S: Scale> { m: Measure<Memory, S, Int> }`) reached type_param_kind_diagnostics unbound
+    // and was refused as a non-inhabitant. One binding mechanism, the one resolve_item_types uses for the same
+    // names: env_with_type_variable_bindings over generic_param_name_at.
+    let env = if n.transport == none {
+      env_with_type_variable_bindings(env: env, tp_names: n.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)))
+    } else { env }
     let is_product = n.connective == Conj
     if is_product {
       if n.type_annotation != none {

@@ -8,7 +8,7 @@ import product.fabric.provider_admission {
   ProviderUseRefusal,
 }
 import std.types { NonEmptyStr, List, Int, Timestamp }
-import std.measure { Measure }
+import std.measure { Measure, Quantity, Scale }
 import std.nat { Nat }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.identity {
@@ -117,7 +117,7 @@ import std.algebra { Cons, Empty }
 // idiom product.fabric.selection's witness already uses for a helper that cannot invent a value on
 // a refusal arm. If a production resolver ever needs to REPORT that absence in this vocabulary, the
 // arm returns with a producer and a red on the same commit.
-type GrantIssueRefusal<P, Q, S>
+type GrantIssueRefusal<P, Q: Quantity, S: Scale>
   = AttemptNamesAnotherWork {
       attempt_work: FabricIdentity<P, WorkKey>,
       subject_work: FabricIdentity<P, WorkKey>,
@@ -174,7 +174,7 @@ type CommittedReservations sole_constructor {
   lease: LeaseIdentity
 }
 
-type ReservationJoin<Q, S>
+type ReservationJoin<Q: Quantity, S: Scale>
   = ReservationsCommitted {
       account: MoneyAccount,
       ledger: EncumbranceLedger<Q, S>,
@@ -183,7 +183,7 @@ type ReservationJoin<Q, S>
   | MoneyLedgerRefused { refusal: MoneyRefusal }
   | ResourceLedgerRefused { refusal: EncumbranceRefusal<Q, S> }
 
-fn commit_reservations<Q, S>(
+fn commit_reservations<Q: Quantity, S: Scale>(
   account: MoneyAccount,
   money_request: MoneyReservationRequest,
   ledger: EncumbranceLedger<Q, S>,
@@ -300,7 +300,7 @@ fn grants_for_attempt<P>(
   grants |> filter(g => fabric_identity_eq(left: g.context.attempt, right: attempt))
 }
 
-type GrantIssue<P, Q, S>
+type GrantIssue<P, Q: Quantity, S: Scale>
   = GrantCommitted {
       grant: ExecutionGrant<P>,
       account: MoneyAccount,
@@ -399,7 +399,7 @@ type GrantIssue<P, Q, S>
 // issuing Work: a winner bound and ranked for work A must not issue for work B. The offer and route
 // arms of permit_standing cannot fire on a sealed candidate -- bind_candidate already refused those
 // -- and are mapped rather than dropped only because permit_standing is one shared coproduct.
-fn issue_grant<P, Q, S>(
+fn issue_grant<P, Q: Quantity, S: Scale>(
   work: Work<P>,
   attempt: Attempt<P>,
   selected: SelectedOffer<P>,

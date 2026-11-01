@@ -1,5 +1,6 @@
 module std.realization
 
+import std.measure { Scale }
 import std.types { Bool, String, List }
 import std.effects {
   KeySource,
@@ -104,14 +105,14 @@ type Placement
 
 type Materialization = Recompute | Memoize | Share
 
-type RealizedStep<S> {
+type RealizedStep<S: Scale> {
   shape: EffectShape<KeySource>
   placement: Placement
   materialization: Materialization
   cost: CostAccount<S>
 }
 
-fn mark_collapsible_share<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> List<RealizedStep<S>> {
+fn mark_collapsible_share<S: Scale>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> List<RealizedStep<S>> {
   acc |> map(e =>
     if create_double_init_collapsible(a: e.shape, b: s.shape) {
       RealizedStep {
@@ -126,12 +127,12 @@ fn mark_collapsible_share<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> 
   )
 }
 
-fn has_collapsible_peer<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> Bool {
+fn has_collapsible_peer<S: Scale>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> Bool {
   let peers = acc |> filter(e => create_double_init_collapsible(a: e.shape, b: s.shape))
   !((peers |> length) == 0)
 }
 
-fn reconcile<S>(steps: List<RealizedStep<S>>) -> List<RealizedStep<S>> {
+fn reconcile<S: Scale>(steps: List<RealizedStep<S>>) -> List<RealizedStep<S>> {
   reverse(steps |> fold(init: [], f: fn(acc, s) {
     if has_collapsible_peer(acc: acc, s: s) {
       mark_collapsible_share(acc: acc, s: s)

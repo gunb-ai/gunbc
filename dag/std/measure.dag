@@ -243,42 +243,42 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
   }
 }
 
-type Measure<Q, S, M> {
+type Measure<Q: Quantity, S: Scale, M> {
   count: M
 }
 
-fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
+fn measure_count<Q: Quantity, S: Scale, M>(m: Measure<Q, S, M>) -> M {
   m.count
 }
 
-fn measure_scale_fraction_floor<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
+fn measure_scale_fraction_floor<Q: Quantity, S: Scale>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
 
   Measure { count: if den == 0 { den } else { (m.count * num) / den } }
 }
 
-fn measure_fit_count_floor<Q, S>(capacity: Measure<Q, S, Nat>, each: Measure<Q, S, Nat>) -> Nat {
+fn measure_fit_count_floor<Q: Quantity, S: Scale>(capacity: Measure<Q, S, Nat>, each: Measure<Q, S, Nat>) -> Nat {
 
   let each_count = each.count
   if each_count == 0 { each_count } else { capacity.count / each_count }
 }
 
-fn measure_scale_fraction_ceil<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
+fn measure_scale_fraction_ceil<Q: Quantity, S: Scale>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
 
   Measure { count: if den == 0 { m.count * num } else { ((m.count * num) + (den - 1)) / den } }
 }
 
-fn measure_add<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
+fn measure_add<Q: Quantity, S: Scale>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
   Measure { count: a.count + b.count }
 }
 
 // Truncated subtraction is not the default. Naturals are not closed under subtraction; the
 // Peano form is v2.std.nat nat_sub (NatDifference | NatSubtrahendExceedsMinuend). A floor at
 // zero would fabricate a difference of equal measures.
-type MeasureSubtraction<Q, S>
+type MeasureSubtraction<Q: Quantity, S: Scale>
   = MeasureDifference { value: Measure<Q, S, Nat> }
   | MeasureSubtrahendExceedsMinuend
 
-fn measure_sub<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> MeasureSubtraction<Q, S> {
+fn measure_sub<Q: Quantity, S: Scale>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> MeasureSubtraction<Q, S> {
   if a.count < b.count {
     MeasureSubtrahendExceedsMinuend
   } else {
@@ -286,11 +286,11 @@ fn measure_sub<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> MeasureSub
   }
 }
 
-fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
+fn measure_le<Q: Quantity, S: Scale>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
   a.count <= b.count
 }
 
-fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
+fn time_measure<S: Scale>(count: Nat) -> Measure<Time, S, Nat> {
   Measure { count: count }
 }
 
@@ -1107,7 +1107,7 @@ fn rpm_count(r: RevolutionsPerMinute) -> Nat {
   measure_count(r)
 }
 
-type MoneyAmount<S> = Measure<Currency, S, Nat>
+type MoneyAmount<S: Scale> = Measure<Currency, S, Nat>
 
 type MoneyAmountMicro = MoneyAmount<Micro>
 

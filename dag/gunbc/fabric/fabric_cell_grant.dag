@@ -2,7 +2,7 @@ module gunbc.fabric.fabric_cell_grant
 
 import std.types { NonEmptyStr, String, Timestamp, List, Int }
 import std.decl_ref { decl_ref }
-import std.measure { Measure }
+import std.measure { Measure, Quantity, Scale }
 import std.nat { Nat }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact }
@@ -89,7 +89,7 @@ import extdeps.accounting.budget { Appropriation }
 // - The re-read is gunbc.fabric.fabric_required_build_cell judge_cell_holder, over cell_grant_owner_at
 //   below; the slot controller calls it in a later process before planning anything.
 
-type CellGrant<Q, S>
+type CellGrant<Q: Quantity, S: Scale>
   = CellGranted { grant: ExecutionGrant<NonEmptyStr>, account: MoneyAccount, ledger: EncumbranceLedger<Q, S> }
   // The slot is held. Re-issuing against a held cell is the duplicate-grant case, whatever holds it.
   | CellAlreadyGranted { slot_key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration }
@@ -115,7 +115,7 @@ fn cell_grant_owner(grant: ExecutionGrant<NonEmptyStr>) -> DurableHoldOwnerRef {
   (grant.id.key as String) as DurableHoldOwnerRef
 }
 
-fn grant_selected_cell<Q, S>(
+fn grant_selected_cell<Q: Quantity, S: Scale>(
   store: FabricAllocationStore,
   work: Work<NonEmptyStr>,
   attempt: Attempt<NonEmptyStr>,
@@ -143,7 +143,7 @@ fn grant_selected_cell<Q, S>(
   }
 }
 
-fn grant_selected_cell_under_exclusion<Q, S>(
+fn grant_selected_cell_under_exclusion<Q: Quantity, S: Scale>(
   store: FabricAllocationStore,
   slot_key: NonEmptyStr,
   work: Work<NonEmptyStr>,

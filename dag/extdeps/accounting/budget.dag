@@ -1,6 +1,6 @@
 module extdeps.accounting.budget
 
-import std.measure { Measure, measure_add, measure_le }
+import std.measure { Measure, measure_add, measure_le, Quantity, Scale }
 import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -14,26 +14,26 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type BudgetingMethod = ZeroBased | Incremental | ActivityBased
 
-type Appropriation<Q, S> {
+type Appropriation<Q: Quantity, S: Scale> {
   ceiling: Measure<Q, S, Nat>
 }
 
-type LineItem<Q, S> {
+type LineItem<Q: Quantity, S: Scale> {
   purpose: String
   amount: Measure<Q, S, Nat>
 }
 
 type BudgetBalance = Surplus | Balanced | Deficit
 
-fn line_items_total<Q, S>(items: List<LineItem<Q, S>>) -> Measure<Q, S, Nat> {
+fn line_items_total<Q: Quantity, S: Scale>(items: List<LineItem<Q, S>>) -> Measure<Q, S, Nat> {
   fold(items, init: Measure { count: 0 }, f: (acc, it) => measure_add(a: acc, b: it.amount))
 }
 
-fn within_appropriation<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem<Q, S>>) -> Bool {
+fn within_appropriation<Q: Quantity, S: Scale>(appropriation: Appropriation<Q, S>, items: List<LineItem<Q, S>>) -> Bool {
   measure_le(a: line_items_total(items: items), b: appropriation.ceiling)
 }
 
-fn budget_balance<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem<Q, S>>) -> BudgetBalance {
+fn budget_balance<Q: Quantity, S: Scale>(appropriation: Appropriation<Q, S>, items: List<LineItem<Q, S>>) -> BudgetBalance {
   let spent = line_items_total(items: items)
   let ceiling = appropriation.ceiling
   return if measure_le(a: spent, b: ceiling) {
@@ -43,14 +43,14 @@ fn budget_balance<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem
   }
 }
 
-type AdmissionState<Q, S> {
+type AdmissionState<Q: Quantity, S: Scale> {
   appropriation: Appropriation<Q, S>
   committed: List<LineItem<Q, S>>
   used: Measure<Q, S, Nat>
   refused: List<LineItem<Q, S>>
 }
 
-fn admit_line_item<Q, S>(st: AdmissionState<Q, S>, candidate: LineItem<Q, S>) -> AdmissionState<Q, S> {
+fn admit_line_item<Q: Quantity, S: Scale>(st: AdmissionState<Q, S>, candidate: LineItem<Q, S>) -> AdmissionState<Q, S> {
   let next_used = measure_add(a: st.used, b: candidate.amount)
   return if measure_le(a: next_used, b: st.appropriation.ceiling) {
     AdmissionState {
@@ -69,7 +69,7 @@ fn admit_line_item<Q, S>(st: AdmissionState<Q, S>, candidate: LineItem<Q, S>) ->
   }
 }
 
-fn admit_all<Q, S>(appropriation: Appropriation<Q, S>, candidates: List<LineItem<Q, S>>) -> AdmissionState<Q, S> {
+fn admit_all<Q: Quantity, S: Scale>(appropriation: Appropriation<Q, S>, candidates: List<LineItem<Q, S>>) -> AdmissionState<Q, S> {
   fold(
     candidates,
     init: AdmissionState { appropriation: appropriation, committed: [], used: Measure { count: 0 }, refused: [] },
