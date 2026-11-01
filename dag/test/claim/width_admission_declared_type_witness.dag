@@ -1,0 +1,89 @@
+module test.claim.width_admission_declared_type_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// WIDTH ADMISSION AT DECLARED POSITIONS (v1.compiler.infer declared_type_inhabitance; contract in
+// docs/plans/width-admission-contract.md). A machine-width integer (std.integer Compose<Int, MachineWidth<N>>) is
+// inhabited only by a literal inside its extent or by a value whose own extent lies inside it with no sign change.
+//
+// AUTHORED, UNRUN, NOT ENROLLED. No cell here has been executed. The three REDs are EXPECTED TO BE ACCEPTED TODAY
+// (declared_type_inhabitance has no width arm; the kernel-numeric arm admits any numeral), so they are
+// expecting-red until the width arm lands on bold-dove-340's carrier (#15571 and its implementation). Enrolment
+// (a ci_layer_roots row) waits for that wiring; a cell is not evidence before it has been run on a binary.
+//
+// Shape: one source per (position, case). The typed cases take their value from a module-level constant
+// `c` declared at the source type with the literal 5, which is inside every width here, so the constant is not itself
+// a RED. Positions: declared argument, record field, declared return, parameter default (the default route is the
+// PositionParameterDefault obligation of rfm-param-default-never-inferred).
+//
+// REDs (target UInt8): out-of-range literal 300; Int32 value (no conversion named); Int8 value (sign change, which
+// is refused whatever the extents). CONTROLS: UInt8 value at UInt16 (widening, same signedness); in-range literal 200 at
+// UInt8. A blanket refusal of widths or of literals goes red on a control.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn wad_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// `constant` is "" for a literal case, else the source type name of `c`.
+fn wad_head(constant: String) -> String {
+  "module wad.probe\n\nimport std.integer { Int8, Int32, UInt8, UInt16 }\n\n" + (if constant == "" { "" } else { "data c: " + constant + " = 5\n\n" })
+}
+
+fn wad_argument(constant: String, target: String, expr: String) -> String {
+  wad_head(constant: constant) + "fn take(v: " + target + ") -> " + target + " {\n  v\n}\n\nfn probe() -> " + target + " {\n  take(v: " + expr + ")\n}\n"
+}
+
+fn wad_field(constant: String, target: String, expr: String) -> String {
+  wad_head(constant: constant) + "type Box {\n  n: " + target + "\n}\n\nfn probe() -> Box {\n  Box { n: " + expr + " }\n}\n"
+}
+
+fn wad_return(constant: String, target: String, expr: String) -> String {
+  wad_head(constant: constant) + "fn probe() -> " + target + " {\n  " + expr + "\n}\n"
+}
+
+fn wad_default(constant: String, target: String, expr: String) -> String {
+  wad_head(constant: constant) + "fn probe(v: " + target + " = " + expr + ") -> " + target + " {\n  v\n}\n"
+}
+
+// ---- RED 1: an out-of-range literal at UInt8 ------------------------------------------------------------------
+test fn a_literal_300_at_a_uint8_argument_must_refuse() -> Bool { wad_refusal_count(source: wad_argument(constant: "", target: "UInt8", expr: "300")) >= 1 }
+test fn a_literal_300_at_a_uint8_record_field_must_refuse() -> Bool { wad_refusal_count(source: wad_field(constant: "", target: "UInt8", expr: "300")) >= 1 }
+test fn a_literal_300_at_a_uint8_declared_return_must_refuse() -> Bool { wad_refusal_count(source: wad_return(constant: "", target: "UInt8", expr: "300")) >= 1 }
+test fn a_literal_300_at_a_uint8_parameter_default_must_refuse() -> Bool { wad_refusal_count(source: wad_default(constant: "", target: "UInt8", expr: "300")) >= 1 }
+
+// ---- RED 2: an Int32 value at UInt8 with no conversion named ------------------------------------------------
+test fn an_int32_value_at_a_uint8_argument_must_refuse() -> Bool { wad_refusal_count(source: wad_argument(constant: "Int32", target: "UInt8", expr: "c")) >= 1 }
+test fn an_int32_value_at_a_uint8_record_field_must_refuse() -> Bool { wad_refusal_count(source: wad_field(constant: "Int32", target: "UInt8", expr: "c")) >= 1 }
+test fn an_int32_value_at_a_uint8_declared_return_must_refuse() -> Bool { wad_refusal_count(source: wad_return(constant: "Int32", target: "UInt8", expr: "c")) >= 1 }
+test fn an_int32_value_at_a_uint8_parameter_default_must_refuse() -> Bool { wad_refusal_count(source: wad_default(constant: "Int32", target: "UInt8", expr: "c")) >= 1 }
+
+// ---- RED 3: an Int8 value at UInt8 (a sign change, refused whatever the extents) ------------------------------
+test fn an_int8_value_at_a_uint8_argument_must_refuse() -> Bool { wad_refusal_count(source: wad_argument(constant: "Int8", target: "UInt8", expr: "c")) >= 1 }
+test fn an_int8_value_at_a_uint8_record_field_must_refuse() -> Bool { wad_refusal_count(source: wad_field(constant: "Int8", target: "UInt8", expr: "c")) >= 1 }
+test fn an_int8_value_at_a_uint8_declared_return_must_refuse() -> Bool { wad_refusal_count(source: wad_return(constant: "Int8", target: "UInt8", expr: "c")) >= 1 }
+test fn an_int8_value_at_a_uint8_parameter_default_must_refuse() -> Bool { wad_refusal_count(source: wad_default(constant: "Int8", target: "UInt8", expr: "c")) >= 1 }
+
+// ---- CONTROL 1: a UInt8 value at UInt16 (total widening, same signedness) ---------------------------------------
+test fn a_uint8_value_at_a_uint16_argument_is_accepted() -> Bool { wad_refusal_count(source: wad_argument(constant: "UInt8", target: "UInt16", expr: "c")) == 0 }
+test fn a_uint8_value_at_a_uint16_record_field_is_accepted() -> Bool { wad_refusal_count(source: wad_field(constant: "UInt8", target: "UInt16", expr: "c")) == 0 }
+test fn a_uint8_value_at_a_uint16_declared_return_is_accepted() -> Bool { wad_refusal_count(source: wad_return(constant: "UInt8", target: "UInt16", expr: "c")) == 0 }
+test fn a_uint8_value_at_a_uint16_parameter_default_is_accepted() -> Bool { wad_refusal_count(source: wad_default(constant: "UInt8", target: "UInt16", expr: "c")) == 0 }
+
+// ---- CONTROL 2: an in-range literal at UInt8 ------------------------------------------------------------------------
+test fn a_literal_200_at_a_uint8_argument_is_accepted() -> Bool { wad_refusal_count(source: wad_argument(constant: "", target: "UInt8", expr: "200")) == 0 }
+test fn a_literal_200_at_a_uint8_record_field_is_accepted() -> Bool { wad_refusal_count(source: wad_field(constant: "", target: "UInt8", expr: "200")) == 0 }
+test fn a_literal_200_at_a_uint8_declared_return_is_accepted() -> Bool { wad_refusal_count(source: wad_return(constant: "", target: "UInt8", expr: "200")) == 0 }
+test fn a_literal_200_at_a_uint8_parameter_default_is_accepted() -> Bool { wad_refusal_count(source: wad_default(constant: "", target: "UInt8", expr: "200")) == 0 }
