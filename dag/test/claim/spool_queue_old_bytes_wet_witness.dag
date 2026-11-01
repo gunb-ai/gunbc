@@ -1,0 +1,94 @@
+module test.claim.spool_queue_old_bytes_wet_witness
+
+import extdeps.shell
+import std.optional { Present, Absent }
+import std.types { Bool, String, List, Int }
+import gunbc.spool_queue {
+  SpoolKind, SpoolAttemptUnit, SpoolAttemptExit, SpoolPublication, SpoolRole, RolePending, RoleClaimed,
+  spool_open, spool_role_path, spool_declared_roles, spool_queue_list, spool_queue_observe, spool_entry_key_of_name,
+  SpoolListed, SpoolListingUnreadable, SpoolKeyMinted, SpoolKeyRefused, EntryStanding, EntryAbsent, EntryAmbiguous, EntryObservationUnavailable,
+}
+
+// OLD-BYTES READBACK (wet): entries as the PRE-MIGRATION writers left them on a live host -- the stop hook's
+// `mkdir <node>+<key>+<role>+<id>+<result>+<state>+<code>` in the exit inbox, the launcher's staged directory
+// `<node>+<key>` (node ids carry hyphens) in the unit spool's requests/, and the publication helper's
+// `<key>.json` file in the publication requests/. Each is listed and observed through gunbc.spool_queue as
+// Standing in the role whose directory holds it; none is refused, none is ambiguous.
+data old_exit_entry: String = "wet-node+feedfacefeedface+worker+0123456789abcdef0123456789abcdef+success+exited+0"
+data old_unit_entry: String = "wet-node-2+feedfacefeedface"
+data old_publication_key: String = "0123456789abcdef"
+
+fn dir_of(kind: SpoolKind, root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: root), role: role) {
+    Present { value: d } => d
+    Absent => "/nonexistent-role-dir"
+  }
+}
+
+// A live host carries every role directory its installer made; the fixture makes the same set.
+fn make_role_dirs(kind: SpoolKind, root: String) -> Bool {
+  spool_declared_roles(kind: kind) |> all(r => shell.Mkdir.Parents(path: dir_of(kind: kind, root: root, role: r) as FilePath).success)
+}
+
+fn standing_in_pending(kind: SpoolKind, root: String, name: String) -> Bool {
+  let store = spool_open(kind: kind, instance_root: root)
+  match spool_entry_key_of_name(kind: kind, name: name) {
+    SpoolKeyRefused { detail: _ } => false
+    SpoolKeyMinted { key } =>
+      (match spool_queue_observe(store: store, key: key) {
+        EntryStanding { role } => role == RolePending
+        EntryAbsent => false
+        EntryAmbiguous { roles: _ } => false
+        EntryObservationUnavailable { detail: _ } => false
+      })
+  }
+}
+
+test fn an_old_exit_hook_entry_reads_back_as_pending() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_old_bytes.XXXXXX").path
+  if root == "" {
+    false
+  } else {
+    let unused = 0
+    let dir = dir_of(kind: SpoolAttemptExit, root: root, role: RolePending)
+    let made = make_role_dirs(kind: SpoolAttemptExit, root: root) && shell.Mkdir.Parents(path: join([dir, "/", old_exit_entry], "") as FilePath).success
+    made && standing_in_pending(kind: SpoolAttemptExit, root: root, name: old_exit_entry)
+      && (match spool_queue_list(store: spool_open(kind: SpoolAttemptExit, instance_root: root), role: RolePending) {
+        SpoolListed { names } => count(names) == 1
+        SpoolListingUnreadable { reason: _ } => false
+      })
+  }
+}
+
+test fn an_old_unit_spool_entry_with_a_hyphenated_node_reads_back_as_pending() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_old_bytes.XXXXXX").path
+  if root == "" {
+    false
+  } else {
+    let unused = 0
+    let dir = dir_of(kind: SpoolAttemptUnit, root: root, role: RolePending)
+    let made = make_role_dirs(kind: SpoolAttemptUnit, root: root) && shell.Mkdir.Parents(path: join([dir, "/", old_unit_entry], "") as FilePath).success
+    made && standing_in_pending(kind: SpoolAttemptUnit, root: root, name: old_unit_entry)
+      && (match spool_queue_list(store: spool_open(kind: SpoolAttemptUnit, instance_root: root), role: RolePending) {
+        SpoolListed { names } => count(names) == 1
+        SpoolListingUnreadable { reason: _ } => false
+      })
+  }
+}
+
+test fn an_old_publication_request_file_reads_back_as_pending() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_old_bytes.XXXXXX").path
+  if root == "" {
+    false
+  } else {
+    let unused = 0
+    let dir = dir_of(kind: SpoolPublication, root: root, role: RolePending)
+    let made = make_role_dirs(kind: SpoolPublication, root: root) && shell.Mkdir.Parents(path: dir as FilePath).success && Filesystem.Write(path: join([dir, "/", old_publication_key, ".json"], ""), content: "{}").success
+    made && standing_in_pending(kind: SpoolPublication, root: root, name: old_publication_key)
+      && (match spool_queue_list(store: spool_open(kind: SpoolPublication, instance_root: root), role: RolePending) {
+        SpoolListed { names } => count(names) == 1
+        SpoolListingUnreadable { reason: _ } => false
+      })
+  }
+}
+
