@@ -87,7 +87,7 @@ import v1.compiler.emit_core_support {
   escape_json_string, module_to_filename, make_indent,
   to_snake, to_screaming_snake, is_upper,
   sanitize_service_name, capitalize_first, service_var_name, to_pascal,
-  escape_string_literal_body, unique_strings, to_string, to_string_helper,
+  escape_string_literal_body, to_string, to_string_helper,
   test_function_name,
   apply_type_template1, apply_type_template2, apply_type_template3,
   apply_named_template, apply_named_template_nested,
@@ -781,27 +781,10 @@ fn emit_node_type(n: Node, target: RenderTarget, source_indices: Map<String, New
   render_node_type(n: n, target: target, shared_types: empty_set(), source_indices: source_indices)
 }
 
-fn named_type_vars_in_inferred(inferred: InferredNode?) -> List<String> {
-  match inferred {
-    Present { value: TypeVariable { id: var_id } } => [var_id]
-    Present { value: Resolved { node: rt } } => named_type_vars_in_node(n: rt)
-    _ => []
-  }
-}
-
-fn named_type_vars_in_node(n: Node) -> List<String> {
-  let self_vars = named_type_vars_in_inferred(inferred: n.inferred)
-  let child_vars = n.children |> flat_map(ch => named_type_vars_in_node(n: ch))
-  let param_vars = n.params |> flat_map(p => named_type_vars_in_node(n: param_node_type_expr(n: p)))
-  unique_strings(items: concat(self_vars, child_vars, param_vars))
-}
-
 fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
   let base = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: tn, target: target), dag_name: tn)
-  let explicit_params = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
-  let inferred_params = if explicit_params |> count == 0 { named_type_vars_in_node(n: n) } else { [] }
-  let param_names = concat(explicit_params, inferred_params)
+  let param_names = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
   if param_names |> count == 0 {
     base
   } else {
