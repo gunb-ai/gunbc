@@ -125,9 +125,6 @@ fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_wor
 // `duplicate session` has no spelling here. A unit that has exited stays loaded in `failed` or
 // `inactive` carrying its Result, which is the evidence the next step reads; clearing it is an
 // explicit act rather than a side effect of starting the next attempt.
-fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
-  join(["gunbc-attempt-", node_id, "-", attempt_key], "")
-}
 
 // THE WORKER'S OWN STDOUT IS A LOG, NOT AN EVENT STREAM, and separating them is the repair for a
 // conflation this lane shipped. provider-events.jsonl is not "where the attempt's output goes": it

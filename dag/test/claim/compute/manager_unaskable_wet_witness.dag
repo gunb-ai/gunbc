@@ -5,10 +5,11 @@ import std.types { Bool, NonEmptyStr, String }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended }
 import gunbc.compute.work_provider_local {
   UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
-  observe_unit_termination, observe_unit_lifecycle, unit_termination_frees_capacity, compute_unit_name,
+  observe_unit_termination, observe_unit_lifecycle, unit_termination_frees_capacity, 
   UnitPropertyReading, unit_property_from_shell,
 }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
+import gunbc.systemd_unit_names { compute_unit_name }
 
 // A HOST WITH NO USER MANAGER TO ASK, and the arm the settlement and recovery routes reach there.
 // The subject is the boundary between the shell transport and the two readings that consume the

@@ -309,7 +309,7 @@ fn attempt_exit_entry_names_subject(matches: fn(String, String, String) -> Bool,
 
 // THE SAME DECISION OVER ANY SUBJECT PREDICATE: the placement settlement knows a worker by its unit
 // name, and the unit name is minted above this module (gunbc.roadmap.roadmap_dispatch_actuator
-// dispatch_attempt_unit_name), so the caller supplies the predicate rather than this module
+// gunbc.systemd_unit_names dispatch_attempt_unit_name), so the caller supplies the predicate rather than this module
 // re-deriving the name.
 fn attempt_exit_record_matching(
   matches: fn(String, String, String) -> Bool,

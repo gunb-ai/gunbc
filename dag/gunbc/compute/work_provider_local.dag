@@ -137,6 +137,8 @@ import gunbc.compute.work_request {
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
+import gunbc.systemd_unit_names { compute_unit_name }
+
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
 // realization and knows nothing the contract does not: it resolves the subject, observes the
@@ -463,9 +465,6 @@ fn compute_dependency_program(dependency: ComputeDependency, bin: GunbcBinary) -
   }
 }
 
-fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
-  join(["gunbc-compute-", identity_hex], "") as NonEmptyStr
-}
 
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a

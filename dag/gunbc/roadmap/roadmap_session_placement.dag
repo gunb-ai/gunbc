@@ -52,7 +52,6 @@ import extdeps.systemd {
   SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_unit_name,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation, attempt_unit_property,
   attempt_unit_manager, attempt_unit_manager_is_system,
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
@@ -73,6 +72,8 @@ import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_nat, json_field_int, json_field_string_list,
 }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_name }
+
 
 // G5 OF THE DOGFOOD ROUTE: THE AGENT SESSION HOLDS A PLACEMENT GRANT AND RUNS INSIDE ITS BOUNDS.
 //

@@ -70,7 +70,7 @@ type DurableAttemptRecord {
 }
 
 // THE NAME PARSES, one per realization shape. The constructors that mint these names own them
-// (dispatch_tmux_session_name, dispatch_attempt_unit_name, dispatch_supervisor_unit_name); the
+// (dispatch_tmux_session_name, gunbc.systemd_unit_names dispatch_attempt_unit_name and dispatch_supervisor_unit_name); the
 // argv witnesses pin the minted shape and the occurrence witnesses pin this parse of it, so the
 // two ends cannot drift silently. A unit name that starts gunbc-attempt-/gunbc-supervisor- but
 // does not parse is malformed, never silently dropped.
