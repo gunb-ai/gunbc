@@ -275,6 +275,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "exit-return-ownership".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/exit_return_ownership_native.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "cons-tail-recursion".to_string(),
             },
             TargetProducer::NativeClaimProgram {
