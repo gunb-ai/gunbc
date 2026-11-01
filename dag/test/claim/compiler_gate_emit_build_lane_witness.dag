@@ -2,6 +2,7 @@ module test.claim.compiler_gate_emit_build_lane_witness
 
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
+import gunbc.shell_command_text { shell_command_text_refusal_marker }
 import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.witness.compiler_gate_workflow {
@@ -56,11 +57,12 @@ import gunbc.runner.runner_slot_desired {
   JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup, gunbc_runner_slot_job_cgroup_ownership
 }
 import extdeps.exec.command { shell_command_render }
-import std.algebra { length, list_head, skip }
+import std.algebra { length, list_head, skip, string_contains }
 import gunbc.action_use_admission { cache_save_action }
 import extdeps.github.action_release { action_release_uses_text }
 import extdeps.filesystem.filesystem_io
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
+import gunbc.repo.repo_self_build { repo_self_seed_build_step_run }
 
 // WHAT THIS FILE DISCRIMINATES, after the operator ruling of 2026-10-09 collapsed the emit-build
 // lane and the aggregate that read it into ONE required job (now `v2-bootstrap`): that the workflow
@@ -598,4 +600,23 @@ test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
   string_contains(s: k, pattern: join(["gunbc-materialization-", parse_verdict_request_family, "-"], ""))
     && string_contains(s: k, pattern: join(["steps.", emitted_subject_v2_native_cli_step_id, ".outputs.", parse_verdict_compiler_output], ""))
     && string_contains(s: k, pattern: "github.sha")
+}
+
+// THE BUILD STEP'S RUN BLOCK IS THE FOLDED SEED PREAMBLE, NOT A REFUSAL MARKER. The required job
+// builds the compiler with gunbc.repo.repo_self_build's seed preamble, and this lane's other claims
+// read the steps beside it — none of them read THIS step's text, so when the preamble's parameter
+// default took a shape the serializer refuses, the marker went into all nine generated files and no
+// claim reddened (DESIGN section 5: a refused emission is refused; a marker standing in for a build
+// block is a build block that silently stopped building). The folded half names the three things the
+// block exists to pin: the checkout root, both remap prefixes, and the pinned tree identity.
+test fn the_seed_build_step_run_block_is_the_folded_preamble_not_a_refusal_marker() -> Bool {
+  let run = repo_self_seed_build_step_run(command: "cargo build --release -p v1-compiler --bin gunbc")
+  match shell_command_text_refusal_marker() {
+    Absent => false
+    Present { value: refused_marker } =>
+      string_contains(s: run, pattern: "GUNBC_SEED_CHECKOUT=")
+        && string_contains(s: run, pattern: "--remap-path-prefix=")
+        && string_contains(s: run, pattern: "GUNBC_MATERIALIZED_TREE_IDENTITY")
+        && (string_contains(s: run, pattern: refused_marker) == false)
+  }
 }

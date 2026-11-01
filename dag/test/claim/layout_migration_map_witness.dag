@@ -236,11 +236,13 @@ test fn planner_refuses_a_decision_for_a_module_no_file_declares() -> Bool {
   ) == "refused:decision-unused"
 }
 
+// `v2` is the namespace this layout elides: a directory of its tree with no file of its own (module_file
+// refuses it). A bare `x` is NOT unplaceable: an undeclared first segment falls to the default tree (dag/x.dag).
 test fn planner_refuses_a_decision_whose_name_the_rule_cannot_place() -> Bool {
   planned_with(
     sites: [site(path: "dag/a/b/c_test.dag", module: "a.b.c_test")],
     occupied: ["dag/a/b/c_test.dag"],
     name_wins: [],
-    decisions: [SuffixDecision { module: "a.b.c_test", takes: "x" }]
+    decisions: [SuffixDecision { module: "a.b.c_test", takes: "v2" }]
   ) == "refused:site-refused"
 }
