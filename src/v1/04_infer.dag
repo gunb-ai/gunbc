@@ -173,7 +173,9 @@ import std.induction {
 import std.computation {
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
 }
+import v1.compiler.complexity { derive_edge_evidence }
 import std.termination {
+  DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   positive_descent_amount_from_positive_int,
   proportional_divisor_from_int_at_least_two,
   OneStep
@@ -15292,6 +15294,51 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
   ResolvedFuncEnv { name: func_env.name, local: updated_local, parents: func_env.parents }
 }
 
+// SelfCallWithoutDescent (DESIGN section 3c: annotate_descent_evidence's output had no acceptance-path
+// reader, so a non-Strict self-call was computed and discarded). The evidence is the SAME authority the
+// complexity census folds, `derive_edge_evidence` over the one call's relations (a Strict dimension anywhere
+// in the argument list is enough, the lexicographic reading), so a second descent rule is not coined here.
+// ADVISORY first: a counted, typed, located diagnostic of its own class; refusal by class is the later step.
+// Scope: module-level items; a mutual-recursion cycle is the named residual of
+// gunbc.recurring_failure_mode a_self_recursive_call_without_a_descending_argument_is_accepted.
+fn descent_evidence_label(e: DescentEvidence) -> String {
+  match e {
+    Strict => "Strict"
+    NonIncreasing => "NonIncreasing"
+    DescentUnknown => "DescentUnknown"
+  }
+}
+
+fn self_call_without_descent_diags_in(body: Node, fn_name: String, module_name: String, si: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  let own = match body.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: de } =>
+      match de {
+        Present { value: evidence } =>
+          if expr_call_func_at(texpr: body, source_indices: si) == fn_name {
+            let call_evidence = derive_edge_evidence(all_calls: [evidence])
+            match call_evidence {
+              Strict => []
+              _ => [make_error_node(
+                diagnostic: SelfCallWithoutDescent { function: fn_name, evidence: descent_evidence_label(e: call_evidence), span: body.span },
+                module_name: module_name
+              )]
+            }
+          } else { [] }
+        Absent => []
+      }
+    _ => []
+  }
+  concat(own, body.children |> flat_map(child => self_call_without_descent_diags_in(body: child, fn_name: fn_name, module_name: module_name, si: si)))
+}
+
+fn self_call_without_descent_diags(items: List<Node>, module_name: String, si: Map<String, NewlineIndex>) -> List<ErrorNode> {
+  items |> flat_map(item =>
+    if item.is_self_recursive && item.body != none {
+      self_call_without_descent_diags_in(body: item.body.value, fn_name: authored_name_at(source_indices: si, node: item), module_name: module_name, si: si)
+    } else { [] }
+  )
+}
+
 fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_env: ResolvedFuncEnv) -> Node {
   let param_name_map = params |> fold(init: empty_map(), f: (acc, p) =>
     let pname = param_node_name_at(n: p, source_indices: type_env.source_indices)
@@ -19474,7 +19521,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     diagnostics: frontier_occurrence_budget_checked(
       module_name: resolved_module_name,
       module_span: resolved.module.span,
-      diagnostics: concat(env_diags, ctx.diagnostics, infer_emissions.diagnostics, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
+      diagnostics: concat(env_diags, ctx.diagnostics, infer_emissions.diagnostics, self_call_without_descent_diags(items: reannotated_items, module_name: resolved_module_name, si: source_indices), grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
     provider_demands: infer_emissions.provider_demands,
     binding_forks: env_result.binding_forks
   }
