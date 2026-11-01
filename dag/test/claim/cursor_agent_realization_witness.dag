@@ -57,7 +57,7 @@ import gunbc.dispatch_credential_acquisition { cursor_attempt_runtime_root }
 import extdeps.exec.command { argv_words }
 import extdeps.access.posix { FileOwnership, file_mode_of_octal_text }
 
-import test.claim.dispatch_credential_acquisition_witness { fx_credentials_required, fx_witness_stable_root, fx_cursor_parent }
+import test.claim.dispatch_credential_acquisition_witness { fx_cursor_root, fx_witness_stable_root, fx_cursor_parent }
 // SUPPLIED VALUES AT ONE INTERFACE. The expected profile below is typed out, not derived, so a renderer
 // that leaks the vendor glob, drops `userns,`, or attaches a different path fails here.
 
@@ -254,10 +254,19 @@ test fn the_preflight_leg_holds_only_on_native_and_each_other_reading_fails_with
     && (match full(preflight: PreflightUnobserved { reason: "no ssh" }) { CursorAgentReadbackUnobserved { reason: _ } => true, _ => false })
 }
 
-// The command runs the pinned exact path under the discriminating sentinel, never the PATH name.
+// The command runs the pinned exact path under the discriminating sentinel, never the PATH name. The root is
+// minted the production way through the one witness route (test.claim.dispatch_credential_acquisition_witness
+// fx_cursor_root) -- CursorAttemptRuntimeRoot is sealed and the pre-seal
+// cursor_attempt_runtime_root(instance_root:, reference:) is gone -- and a store that cannot be minted REFUSES
+// this claim (none => false) rather than being minted over another root to keep a pass.
 test fn the_preflight_command_runs_the_pinned_exact_path_under_the_sentinel() -> Bool {
-  let words = argv_words(command: cursor_agent_preflight_command(root: cursor_attempt_runtime_root(credentials: fx_credentials_required(instance_root: fx_witness_stable_root("realization")), reference: "readback-cursor" as NonEmptyStr)))
-  any(words, w => w == "/opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent")
-    && any(words, w => string_contains(s: w, pattern: "CURSOR_SANDBOX=gunbc-outside-the-cursor-sandbox"))
-    && !any(words, w => w == "cursor-agent")
+  match fx_cursor_root(instance_root: fx_witness_stable_root("realization"), reference: "readback-cursor") {
+    none => false
+    Present { value: root } => {
+      let words = argv_words(command: cursor_agent_preflight_command(root: root))
+      any(words, w => w == "/opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent")
+        && any(words, w => string_contains(s: w, pattern: "CURSOR_SANDBOX=gunbc-outside-the-cursor-sandbox"))
+        && !any(words, w => w == "cursor-agent")
+    }
+  }
 }
