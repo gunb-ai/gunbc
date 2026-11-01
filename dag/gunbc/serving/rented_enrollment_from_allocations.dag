@@ -1,0 +1,91 @@
+module gunbc.serving.rented_enrollment_from_allocations
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationIdentity, RentedAllocationEnrollable, RentedAllocationNotEnrollable, rented_allocation_enrollment }
+import gunbc.serving.rented_enrollment { RentedEnrollment, RentedEnrollmentIndex, rented_enrollment_index }
+
+// THE ROSTER OF RENTED ENROLLMENTS IS A FOLD OVER THE ALLOCATIONS THE FLEET HOLDS, NOT A LIST SOMEONE TYPES.
+//
+// The row shape already exists and is already derived per allocation: gunbc.serving.rented_allocation
+// rented_allocation_enrollment answers, for one accepted allocation, the enrollment row it implies --
+// endpoint from the card's access route, ceiling from the engine's own concurrency flag, host access from the
+// allocation, engine pattern from the engine's program name. What was missing is the step that turns a
+// POPULATION of held allocations into the roster the harness reads, so the roster in production
+// (gunbc.serving.rented_enrollment rented_cohort_enrollments) stayed a literal list and stayed empty: an
+// authored roster of rentals cannot disagree with what is rented, which is exactly the disagreement this
+// module exists to make impossible.
+//
+// WHY THIS LIVES HERE AND NOT IN gunbc.serving.rented_enrollment, where the name was cited before: the
+// enrollment module is imported BY rented_allocation (it supplies RentedEnrollment), and this fold consumes
+// RentedServingAllocation, so the cited home would be a module cycle. The two carriers that cited it --
+// gunbc.serving.router_dev_scaffold's scaffold row 3 dissolution and the decl-ref census disposition that held
+// it as a capability not yet authored -- are re-pointed here in the same change, to ONE obligation. Their
+// trigger names the FED fold (rented_cohort_enrollments_from_production_allocations) rather than this
+// derivation, for the reason stated at the frontier row below: a trigger that this same PR satisfies is a
+// debt that pays itself off.
+//
+// WHAT THIS MODULE DOES NOT CLAIM: it does not dissolve the empty production roster. A fold nobody calls with
+// a real population enrolls nothing, and `rented_cohort_enrollments` stays empty and stays declared frontier
+// below. Production has no allocations to fold yet: the flex pass still answers its allocation step with
+// FlexPlacementUnread (gunbc.fleet.flex_pass_run), so no RentedServingAllocation reaches any consumer. This
+// module is therefore called by its witnesses only, and the frontier row says so in those words rather than
+// letting a green fold imply a live route.
+
+// ONE ALLOCATION EITHER IMPLIES A ROW OR CARRIES ITS REFUSAL. Both halves are returned: a roster built by
+// dropping the refusals would be a roster that silently under-enrols, and the obligation each refusal
+// carries is the only thing that says WHY a rented card is serving nothing.
+type RentedEnrollmentRefusal { allocation: RentedAllocationIdentity, obligation: NonEmptyStr }
+
+type RentedCohortFold { enrollments: List<RentedEnrollment>, refusals: List<RentedEnrollmentRefusal> }
+
+// THE FOLD. Every held allocation is asked what row it implies; an allocation that cannot answer keeps its
+// obligation in the fold instead of vanishing. The fold conses, so the roster reads newest-first: nothing
+// downstream depends on that order, because the index is keyed by replica identity (a host node plus device
+// plus served name) and rented_enrollment_for resolves by identity, never by position.
+fn rented_cohort_enrollments_from_allocations(held: List<RentedServingAllocation>) -> RentedCohortFold {
+  fold(held, init: RentedCohortFold { enrollments: [] as List<RentedEnrollment>, refusals: [] as List<RentedEnrollmentRefusal> }, f: (acc, a) =>
+    match rented_allocation_enrollment(a: a) {
+      RentedAllocationEnrollable { allocation: _, enrollment: e } =>
+        RentedCohortFold { enrollments: cons(e, acc.enrollments), refusals: acc.refusals }
+      RentedAllocationNotEnrollable { allocation: id, obligation: o } =>
+        RentedCohortFold { enrollments: acc.enrollments, refusals: cons(RentedEnrollmentRefusal { allocation: id, obligation: o }, acc.refusals) }
+    }
+  )
+}
+
+// THE CONSUMER SHAPE: the harness reads an INDEX, not a list (gunbc.harness.harness_backend
+// harness_observe_roster and gunbc.harness.harness_seat ask the index for a replica's enrollment and routes).
+// Feeding production is that fold over this -- once a population exists.
+fn rented_cohort_index_from_allocations(held: List<RentedServingAllocation>) -> RentedEnrollmentIndex {
+  let folded = rented_cohort_enrollments_from_allocations(held: held)
+  rented_enrollment_index(rows: folded.enrollments)
+}
+
+// THE REFUSALS AS THEY ARE REPORTED: the allocation's own contract id plus the obligation the derivation
+// named. An allocation identity is a provider declaration plus the provider's contract id, so a report never
+// collapses two providers' numeric ids into one line.
+fn rented_cohort_refusal_reports(folded: RentedCohortFold) -> List<NonEmptyStr> {
+  map(folded.refusals, r => concat([r.allocation.contract, ": ", r.obligation], ""))
+}
+
+// DECLARED FRONTIER (DESIGN 3c). The subject is the production roster that stays a literal. The trigger is
+// bound -- the corpus convention for these rows and a TYPE rather than prose -- but to the FED fold, not to
+// this derivation: std.dissolution bound_dissolution is DeclarationAppears, so citing
+// rented_cohort_enrollments_from_allocations here would let the PR that writes the fold also dissolve the
+// debt, and an unexecuted fold enrolls nothing. The name cited below appears when the roster is actually
+// built from the allocations the fleet holds, which is the thing that has to change.
+
+data rented_enrollment_from_allocations_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_enrollment", decl_name: "rented_cohort_enrollments"),
+    reason: "The production roster of rented enrollments is a literal list and is EMPTY in production, so a rented card reaches the harness roster only if someone authors a row for it; the row shape is already derived per allocation (gunbc.serving.rented_allocation rented_allocation_enrollment) and folded here, but nothing feeds the fold a real population: the flex pass still answers its allocation step with FlexPlacementUnread (gunbc.fleet.flex_pass_run), so no RentedServingAllocation reaches any consumer and this module is called only by its witnesses.",
+    // The trigger names the FED fold, not this derivation. bound_dissolution is std.dissolution
+    // DeclarationAppears, so citing rented_cohort_enrollments_from_allocations here would be satisfied by
+    // this very PR -- an unexecuted fold enrolls nothing, and a debt that pays itself off is not tracked.
+    // The cited name appears when the roster is actually built from the allocations the fleet holds.
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment_from_allocations", decl_name: "rented_cohort_enrollments_from_production_allocations"))
+  ),
+]
