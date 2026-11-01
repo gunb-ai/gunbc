@@ -9573,9 +9573,8 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     // `v1.compiler.infer` `optional_match_arm_sees_present_value` (a bare binding after an
     // unguarded Absent arm; a non-null literal arm), and every Rust match rendering reads the same
     // predicate. The interpreter reads it too and decides nothing of its own. What is interpreter
-    // specific is only HOW the payload is reached: an optional's value has two runtime
-    // representations -- a bare value (host builtins) or an `Optional.Present` variant (an authored
-    // `Present { value }`) -- and `optional_present_payload` peels either.
+    // specific is only HOW the payload is reached: an optional's value has ONE runtime
+    // representation, the `Optional` variant, and `optional_present_payload` peels it.
     // An untyped scrutinee cannot be asked the predicate. That is harmless while its value is a
     // bare value (every arm then sees the same value either way) and a silent wrong answer when it
     // is an `Optional.Present` variant (the literal arm would miss, the binding would hold the
@@ -13349,6 +13348,31 @@ fn eval_field_access(
 
     let access_style = summary.map(|s| &s.access_style);
 
+    // The checker DECLARES the unwrap: `04_lookup` `field_summary_for_type` styles `.value` on an
+    // optional `OptionalUnwrap` and every other field read off an optional with value shape
+    // `OptionalValue`. The interpreter realizes that declaration: peel `Present { value }`,
+    // refuse `Absent` with a typed error. It never reads a field off the variant itself.
+    let reads_off_optional = matches!(access_style, Some(FieldAccessStyle::OptionalUnwrap))
+        || matches!(
+            summary.map(|s| &s.value_shape),
+            Some(FieldValueShape::OptionalValue)
+        );
+    let base_val = if reads_off_optional {
+        match optional_present_payload(&base_val, ctx)? {
+            Some(payload) => payload,
+            None => {
+                return Err(locate_field_access_error(
+                    InterpError::TypeError {
+                        msg: format!("field '{}' read off an Absent optional", field_name),
+                    },
+                    node,
+                ))
+            }
+        }
+    } else {
+        base_val
+    };
+
     match access_style {
         Some(FieldAccessStyle::TupleFirst) => match expect_list(&base_val, "tuple.first") {
             Ok(items) => Ok(items.front().cloned().unwrap_or(Value::Null)),
@@ -13358,7 +13382,7 @@ fn eval_field_access(
             Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
             Err(_) => extract_field(&base_val, &field_name, env, ctx),
         },
-        Some(FieldAccessStyle::OptionalUnwrap) => Ok(base_val),
+        Some(FieldAccessStyle::OptionalUnwrap) => Ok(base_val), // already peeled above
         Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx)
             .map_err(|e| locate_field_access_error(e, node)),
         _ => extract_field(&base_val, &field_name, env, ctx)
