@@ -18,6 +18,9 @@
     unused_variables,  // 1
 )]
 
+use crate::v1_interpreter::bounded_shell_host_drain::{
+    default_shell_stderr_capture_policy, drain_stream, StreamCapturePolicy,
+};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
@@ -2263,31 +2266,41 @@ mod tests {
         path
     }
 
-    /// THE CONTROL FOR "DO NOT DISCARD THE CHILD'S OUTPUT". `run_built_seed_regen` used to spawn
-    /// the rebuilt-seed child with `Command::output()`: the child's stdout and stderr went into
-    /// two `String`s that nobody read unless a refusal fired, so its own per-phase `started ...`
-    /// and `... done in ...` marks and every cargo or rustc diagnostic it printed were dropped --
-    /// which is how the one phase whose cost moves (5 minutes on a runner, 53 on another) printed
-    /// nothing at all. This fixture runs the SAME function production calls, against a child that
-    /// prints a phase line and then fails: the phase line must have reached the destination the
-    /// parent handed over by the time the refusal text is built, and the refusal's `stderr_tail`
-    /// must be exactly the 12 lines it has always been. Revert the spawn to `output()`, or hand
-    /// the child a destination nobody reads, and this goes red -- nothing else in the tree reads
-    /// that output, so this test is what admits the behaviour.
+    /// THE CONTROL FOR "FORWARD THE CHILD'S OUTPUT, DO NOT BUFFER AND DROP IT".
+    /// `run_built_seed_regen` used to spawn the rebuilt-seed child with `Command::output()`: its
+    /// stdout and stderr went into two `String`s that nobody read unless a refusal fired, so the
+    /// child's own per-phase `started …`/`… done in …` marks -- which come out of
+    /// `v1_rt::trace_mark`, and that writes with `eprintln!`, i.e. on STDERR -- and every cargo and
+    /// rustc diagnostic were dropped. That is how the one phase whose cost moves (5 minutes on one
+    /// runner, 53 on another) printed nothing at all.
+    ///
+    /// The fixture runs the SAME function production calls, against a child that prints a line on
+    /// stdout, prints a phase line on stderr, writes 20 more stderr lines, sleeps, then fails. Three
+    /// legs, each pinning one way the deliverable can regress:
+    /// ONE (streaming): an observer thread must see the child's phase line in the destination while
+    ///   the child is still alive. A buffer-and-flush-at-exit implementation -- `output()` restored
+    ///   -- cannot satisfy this leg, and nothing else in the tree reads that stream.
+    /// TWO (policy): production's own choice must still be the job log. Move
+    ///   `rebuilt_seed_regen_child_output_policy()` off it and this leg goes red.
+    /// THREE (refusals byte-identical): the bounded tail is the last 12 lines in the child's own
+    ///   order, both refusal texts are spelled exactly as they were before this change, no truncation
+    ///   marker appears on an un-truncated stream, and neither text may fabricate the child's line.
     #[test]
     #[cfg(unix)]
     fn rebuilt_seed_child_output_reaches_the_job_log_before_the_refusal() {
         use std::os::unix::fs::PermissionsExt;
-        let temp = temp_dir("rebuilt-seed-child-stdio");
+        let temp = temp_dir("rebuilt-seed-child-forwarding");
         let script = temp.join("child.sh");
         let stdout_path = temp.join("child-stdout.log");
         let stderr_path = temp.join("child-stderr.log");
         fs::write(
             &script,
             "#!/bin/sh\n\
-             echo 'started round.built_seed_regen child phase line'\n\
+             echo 'child stdout line'\n\
+             echo 'started round.built_seed_regen child phase line' >&2\n\
              n=1\n\
              while [ $n -le 20 ]; do echo \"child stderr line $n\" >&2; n=$((n+1)); done\n\
+             sleep 6\n\
              exit 7\n",
         )
         .expect("write the fixture child");
@@ -2296,65 +2309,89 @@ mod tests {
 
         assert!(
             matches!(
-                rebuilt_seed_regen_child_stdio_policy(),
-                RebuiltSeedChildStdio::InheritStdoutToJobLog
+                rebuilt_seed_regen_child_output_policy(),
+                RebuiltSeedChildOutput::ForwardToJobLog
             ),
-            "production no longer hands the rebuilt-seed child our stdout; the phase whose cost \
-             moves would print nothing again"
+            "production no longer hands the rebuilt-seed child's output to the job log; the phase \
+             whose cost moves would print nothing again"
         );
 
-        let status = spawn_rebuilt_seed_regen_child(
+        // ONE: read the destination from another thread while the child is still running. The child
+        // sleeps 6s after printing, so a line seen within 3s of the call starting is strictly before
+        // the child can have exited -- which is the whole claim: the reader sees the child working.
+        let started = std::time::Instant::now();
+        let watched = stderr_path.clone();
+        let observer = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            loop {
+                if fs::read_to_string(&watched)
+                    .unwrap_or_default()
+                    .contains("started round.built_seed_regen child phase line")
+                {
+                    return Some(started.elapsed());
+                }
+                if std::time::Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        });
+        let run = spawn_rebuilt_seed_regen_child(
             &script,
             &[],
-            RebuiltSeedChildStdio::CaptureStdoutTo(stdout_path.clone()),
+            RebuiltSeedChildOutput::ForwardToFiles {
+                stdout: stdout_path.clone(),
+                stderr: stderr_path.clone(),
+            },
             &temp,
-            &stderr_path,
         )
         .expect("spawn the fixture child");
+        let observed_at = observer
+            .join()
+            .expect("join the destination observer")
+            .expect("the child's phase line never reached the destination while it was alive");
         assert_eq!(
-            status.code(),
+            run.status.code(),
             Some(7),
             "the fixture child must fail the way a refused regeneration pass fails"
         );
-
-        // ONE: the child's own phase line reached the destination the parent handed over. The
-        // assertion is read BEFORE either refusal string is constructed, which is the ordering
-        // claim: a reader of the job log sees the child's work, and only then the refusal.
-        let shown = fs::read_to_string(&stdout_path).expect("the child's stdout destination");
         assert!(
-            shown.contains("started round.built_seed_regen child phase line"),
-            "the child's phase line never reached the destination the parent handed over: {shown}"
+            observed_at.as_millis() < 6000,
+            "the phase line only appeared after the child could have exited: {observed_at:?}"
         );
 
-        // TWO: the bounded tail, byte for byte: the LAST 12 lines, in the child's own order.
-        let tail = rebuilt_seed_regen_stderr_tail(&stderr_path);
+        // THREE: read before anything else can rewrite the destinations.
+        let shown = fs::read_to_string(&stdout_path).expect("the child's stdout destination");
+        assert!(
+            shown.contains("child stdout line"),
+            "the child's stdout never reached the destination the parent handed over: {shown}"
+        );
+        assert!(
+            !run.stderr_truncated,
+            "a 21-line stream must not report a truncated tail"
+        );
         let expected_tail = (9..=20)
             .map(|line| format!("child stderr line {line}"))
             .collect::<Vec<_>>()
             .join(" | ");
         assert_eq!(
-            tail, expected_tail,
-            "the tail is not the last 12 lines in the child's order"
+            run.stderr_tail, expected_tail,
+            "the tail is not the last 12 lines in the child's own order"
         );
-
-        // THREE: both refusal arms, spelled exactly as they were before this change, and neither
-        // one fakes the phase line the child printed.
         let receipt_path = temp.join("target/stage0-regen-receipt.json");
-        let missing = rebuilt_seed_regen_missing_receipt_refusal(&receipt_path, &status, &tail);
         assert_eq!(
-            missing,
+            rebuilt_seed_regen_missing_receipt_refusal(&receipt_path, &run),
             format!(
                 "rebuilt seed produced no fresh generation receipt at {}; status=exit status: 7 stderr_tail={expected_tail}",
                 receipt_path.display()
             )
         );
-        let failed = rebuilt_seed_regen_failed_refusal(&status, &tail);
         assert_eq!(
-            failed,
+            rebuilt_seed_regen_failed_refusal(&run),
             "rebuilt seed exited exit status: 7; expected a successful regeneration pass stderr_tail=child stderr line 9 | child stderr line 10 | child stderr line 11 | child stderr line 12 | child stderr line 13 | child stderr line 14 | child stderr line 15 | child stderr line 16 | child stderr line 17 | child stderr line 18 | child stderr line 19 | child stderr line 20"
         );
         assert!(
-            !missing.contains("phase line") && !failed.contains("phase line"),
+            !rebuilt_seed_regen_failed_refusal(&run).contains("phase line"),
             "a refusal must not fabricate the child's output; the child printed it, to the log"
         );
     }
@@ -5520,32 +5557,31 @@ fn run_built_seed_regen(
         argv.push("--source-root".to_string());
         argv.push(root.clone());
     }
-    // THE CHILD'S OUTPUT IS NO LONGER DISCARDED. This used to run on `Command::output()`, which
-    // buffers stdout AND stderr in memory and hands them to nobody unless a refusal fires. The
-    // child is another `gunbc --required-regen`, so it prints its own per-phase `started ...` and
-    // `... done in ...` marks through `v1_rt::trace_mark`, and any cargo or rustc diagnostic goes
-    // to its stderr; under `output()` all of that went into two `String`s which were dropped, and
-    // the only reader was the 12-line tail inside the refusal arms below. That is how a 53-minute
-    // phase could sit completely silent in the job log while the child worked: the lines existed,
-    // we were not forwarding them. stdout now goes to OUR stdout, which is the job log; stderr
-    // goes to a file beside the receipt so a refusal still carries the same bounded tail. Both
-    // ends are handed to ONE function, so the fixture test drives the call production makes --
-    // see `rebuilt_seed_child_output_reaches_the_job_log_before_the_refusal`.
-    let stderr_path = rebuilt_seed_regen_stderr_path(&receipt_path)?;
-    let status = spawn_rebuilt_seed_regen_child(
+    // THE CHILD'S OUTPUT IS FORWARDED, NOT BUFFERED-AND-DROPPED. This used to run on
+    // `Command::output()`, which buffers stdout AND stderr in memory and hands them to nobody
+    // unless a refusal fires. The child is another `gunbc --required-regen`, and its per-phase
+    // `started …`/`… done in …` marks come out of `v1_rt::trace_mark` on STDERR -- `eprintln!`,
+    // verified at `src/v1/stage0/src/v1_rt.rs` `trace_mark`, not assumed -- along with every cargo
+    // and rustc diagnostic. Under `output()` all of it sat in two `String`s that only the refusal
+    // arms read (12 stderr lines), and everything else was dropped. That is how a 53-minute phase
+    // could sit completely silent in the job log while the child worked: the lines existed on the
+    // child's stderr and we were throwing that stream away. Both ends are now piped and forwarded
+    // to OUR stderr and stdout AS THEY ARRIVE, through one `drain_stream` call each from
+    // `gunbc.bounded_shell_host_drain` -- the crate's single authority for capture semantics -- so
+    // nothing is buffered on our side, no scratch file is left behind, and the bounded tail the
+    // refusal arms need comes from the same authority's ring rather than a second implementation.
+    let run = spawn_rebuilt_seed_regen_child(
         &on_disk,
         &argv,
-        rebuilt_seed_regen_child_stdio_policy(),
+        rebuilt_seed_regen_child_output_policy(),
         workspace,
-        &stderr_path,
     )?;
     // Drift makes --required-regen exit one after it has written the candidate and receipt. The
     // receipt, not the process code, distinguishes ordinary drift from a production refusal.
     if !receipt_path.is_file() {
         return Err(rebuilt_seed_regen_missing_receipt_refusal(
             &receipt_path,
-            &status,
-            &rebuilt_seed_regen_stderr_tail(&stderr_path),
+            &run,
         ));
     }
     let receipt = read_first_generation_receipt(&receipt_path);
@@ -5553,92 +5589,157 @@ fn run_built_seed_regen(
         Ok(value) => Ok(value),
         Err(reason) => Err(format!(
             "{reason}; {}",
-            rebuilt_seed_regen_failed_refusal(
-                &status,
-                &rebuilt_seed_regen_stderr_tail(&stderr_path)
-            )
+            rebuilt_seed_regen_failed_refusal(&run)
         )),
     }
 }
-
-/// Where the rebuilt-seed child's stderr goes: beside the receipt it is asked to write, under
-/// `target/`, which the workspace already ignores as a `v1_compiler.required_regen_host`
-/// footprint. Only stderr needs a destination on disk; stdout is inherited.
-fn rebuilt_seed_regen_stderr_path(receipt_path: &Path) -> Result<PathBuf, String> {
-    let dir = receipt_path.parent().ok_or_else(|| {
-        format!(
-            "refusal: receipt path {} has no parent directory to hold the rebuilt-seed child's stderr",
-            receipt_path.display()
-        )
-    })?;
-    if let Err(error) = fs::create_dir_all(dir) {
-        return Err(format!("create {}: {error}", dir.display()));
-    }
-    Ok(dir.join(format!(
-        "built-seed-regen-stderr-{}.log",
-        std::process::id()
-    )))
-}
-
 /// Where the rebuilt-seed child's two output ends go.
-enum RebuiltSeedChildStdio {
-    /// Production: the child writes to OUR stdout, which the job log collects. This is the whole
-    /// deliverable -- the child's phase marks were being read by nobody.
-    InheritStdoutToJobLog,
-    /// Test seam: the same call with stdout pointed at a file, so a fixture can assert what the
-    /// parent would have shown. The destination is the only difference.
+enum RebuiltSeedChildOutput {
+    /// Production: every byte the child writes is forwarded to OUR stdout and stderr the moment it
+    /// arrives, which is the job log. This is the deliverable -- the child's phase marks live on its
+    /// stderr (`v1_rt::trace_mark` uses `eprintln!`) and were being read by nobody.
+    ForwardToJobLog,
+    /// Test seam: the same forwarding, pointed at two files, so a fixture can assert what the
+    /// parent would have shown and WHEN it showed it. The destination is the only difference.
     #[cfg(test)]
-    CaptureStdoutTo(PathBuf),
+    ForwardToFiles { stdout: PathBuf, stderr: PathBuf },
 }
 
-/// What the rebuilt-seed child's stdout is handed. Production inherits our stdout -- the job log.
-/// Named as a function so the fixture test can assert the CHOICE, and not only that the forwarding
-/// path works: the two ways this deliverable regresses are (a) the policy moved off inherit, and
-/// (b) the forwarding dropped back to a buffer nobody reads. One leg goes red for each.
-fn rebuilt_seed_regen_child_stdio_policy() -> RebuiltSeedChildStdio {
-    RebuiltSeedChildStdio::InheritStdoutToJobLog
+/// What the rebuilt-seed child's output is handed. Named as a function so the fixture test can
+/// assert the CHOICE and not only that the forwarding path works: the two ways this deliverable
+/// regresses are (a) the policy moved off the job log, and (b) the forwarding dropped back to a
+/// buffer nobody reads. One leg of the test goes red for each.
+fn rebuilt_seed_regen_child_output_policy() -> RebuiltSeedChildOutput {
+    RebuiltSeedChildOutput::ForwardToJobLog
 }
 
-/// Spawn the rebuilt-seed regeneration child and wait for it. One function owns both output ends,
-/// so the fixture test can exercise the production call rather than a copy of it.
+/// Read from `source`, write to `sink`, hand the bytes on untouched. A sink that cannot be written
+/// (a log pipe that closed) must not fail the regeneration pass, so write errors are dropped: the
+/// caller is paid to regenerate the seed, not to guarantee a log.
+struct TeeReader<R: std::io::Read> {
+    source: R,
+    sink: Box<dyn std::io::Write + Send>,
+}
+
+impl<R: std::io::Read> std::io::Read for TeeReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.source.read(buf)?;
+        if read > 0 {
+            let _ = self.sink.write_all(&buf[..read]);
+            let _ = self.sink.flush();
+        }
+        Ok(read)
+    }
+}
+
+/// What one rebuilt-seed regeneration pass left behind: the child's exit status, and the bounded
+/// stderr evidence its refusals quote.
+struct RebuiltSeedChildRun {
+    status: std::process::ExitStatus,
+    stderr_tail: String,
+    stderr_truncated: bool,
+}
+
+/// Spawn the rebuilt-seed regeneration child, forward both of its output ends as they arrive, and
+/// wait for it. One function owns both ends, so the fixture test exercises the production call
+/// rather than a copy of it, and the capture semantics come from `bounded_shell_host_drain` -- the
+/// crate's single authority -- rather than a second drain written here.
 fn spawn_rebuilt_seed_regen_child(
     program: &Path,
     argv: &[String],
-    stdout_policy: RebuiltSeedChildStdio,
+    output_policy: RebuiltSeedChildOutput,
     working_dir: &Path,
-    stderr_path: &Path,
-) -> Result<std::process::ExitStatus, String> {
-    let stderr_file = fs::File::create(stderr_path)
-        .map_err(|error| format!("create {}: {error}", stderr_path.display()))?;
+) -> Result<RebuiltSeedChildRun, String> {
+    let (stdout_sink, stderr_sink): (
+        Box<dyn std::io::Write + Send>,
+        Box<dyn std::io::Write + Send>,
+    ) = match output_policy {
+        RebuiltSeedChildOutput::ForwardToJobLog => {
+            (Box::new(std::io::stdout()), Box::new(std::io::stderr()))
+        }
+        #[cfg(test)]
+        RebuiltSeedChildOutput::ForwardToFiles { stdout, stderr } => (
+            Box::new(
+                fs::File::create(&stdout)
+                    .map_err(|error| format!("create {}: {error}", stdout.display()))?,
+            ),
+            Box::new(
+                fs::File::create(&stderr)
+                    .map_err(|error| format!("create {}: {error}", stderr.display()))?,
+            ),
+        ),
+    };
     let mut command = Command::new(program);
     command
         .args(argv)
         .current_dir(working_dir)
         .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::from(stderr_file));
-    match stdout_policy {
-        RebuiltSeedChildStdio::InheritStdoutToJobLog => {
-            command.stdout(std::process::Stdio::inherit());
-        }
-        #[cfg(test)]
-        RebuiltSeedChildStdio::CaptureStdoutTo(path) => {
-            let file = fs::File::create(&path)
-                .map_err(|error| format!("create {}: {error}", path.display()))?;
-            command.stdout(std::process::Stdio::from(file));
-        }
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("spawn rebuilt seed {}: {error}", program.display()))?;
+    let stdout_pipe = child.stdout.take();
+    let stderr_pipe = child.stderr.take();
+    // Drain on our side while the child runs: a pipe nobody reads would eventually block it, and
+    // reading here is also what makes the forwarding live rather than post-mortem.
+    let stdout_handle = stdout_pipe.map(|pipe| {
+        std::thread::spawn(move || {
+            drain_stream(
+                TeeReader {
+                    source: pipe,
+                    sink: stdout_sink,
+                },
+                StreamCapturePolicy::Discarded,
+            )
+        })
+    });
+    let stderr_handle = stderr_pipe.map(|pipe| {
+        std::thread::spawn(move || {
+            drain_stream(
+                TeeReader {
+                    source: pipe,
+                    sink: stderr_sink,
+                },
+                default_shell_stderr_capture_policy(),
+            )
+        })
+    });
+    let status = child
+        .wait()
+        .map_err(|error| format!("wait for rebuilt seed {}: {error}", program.display()))?;
+    if let Some(handle) = stdout_handle {
+        handle
+            .join()
+            .map_err(|_| "the rebuilt-seed child's stdout drain panicked".to_string())?
+            .map_err(|error| format!("drain the rebuilt-seed child's stdout: {error}"))?;
     }
-    command
-        .status()
-        .map_err(|error| format!("spawn rebuilt seed {}: {error}", program.display()))
+    let observation = stderr_handle
+        .map(|handle| {
+            handle
+                .join()
+                .map_err(|_| "the rebuilt-seed child's stderr drain panicked".to_string())?
+                .map_err(|error| format!("drain the rebuilt-seed child's stderr: {error}"))
+        })
+        .transpose()?
+        .ok_or("the rebuilt-seed child's stderr pipe is missing")?;
+    Ok(RebuiltSeedChildRun {
+        status,
+        stderr_tail: rebuilt_seed_regen_stderr_tail(&observation),
+        stderr_truncated: observation.truncated,
+    })
 }
 
-/// The bounded tail both refusal arms render, kept as ONE construction so a refusal reads the
-/// same whichever arm fired: the LAST 12 lines of the child's stderr, in the child's own order.
-/// The double reverse is load-bearing -- it is the spelling the text has always carried, and the
-/// fixture test pins it.
-fn rebuilt_seed_regen_stderr_tail(stderr_path: &Path) -> String {
-    let captured = fs::read_to_string(stderr_path).unwrap_or_default();
-    captured
+/// The bounded tail both refusal arms render, kept as ONE construction so a refusal reads the same
+/// whichever arm fired: the LAST 12 lines the authority's ring retained, in the child's own order.
+/// The double reverse is the spelling the text has always carried and the fixture test pins it. The
+/// ring keeps `DEFAULT_SHELL_STDERR_TAIL_BYTES`; if the tail was cut, `stderr_truncated` says so in
+/// the refusal instead of the reader finding out by counting lines.
+fn rebuilt_seed_regen_stderr_tail(
+    observation: &crate::v1_interpreter::bounded_shell_host_drain::StreamCaptureObservation,
+) -> String {
+    observation
+        .retained_utf8_lossy_trimmed()
         .lines()
         .rev()
         .take(12)
@@ -5649,23 +5750,35 @@ fn rebuilt_seed_regen_stderr_tail(stderr_path: &Path) -> String {
         .join(" | ")
 }
 
+/// The truncation marker, and only when the authority's ring actually overflowed -- so the ordinary
+/// refusal text stays byte-for-byte what it has always been.
+fn rebuilt_seed_regen_truncation_note(truncated: bool) -> &'static str {
+    if truncated {
+        " stderr_truncated=true"
+    } else {
+        ""
+    }
+}
+
 fn rebuilt_seed_regen_missing_receipt_refusal(
     receipt_path: &Path,
-    status: &std::process::ExitStatus,
-    stderr_tail: &str,
+    run: &RebuiltSeedChildRun,
 ) -> String {
     format!(
-        "rebuilt seed produced no fresh generation receipt at {}; status={status} stderr_tail={stderr_tail}",
-        receipt_path.display()
+        "rebuilt seed produced no fresh generation receipt at {}; status={} stderr_tail={}{}",
+        receipt_path.display(),
+        run.status,
+        run.stderr_tail,
+        rebuilt_seed_regen_truncation_note(run.stderr_truncated)
     )
 }
 
-fn rebuilt_seed_regen_failed_refusal(
-    status: &std::process::ExitStatus,
-    stderr_tail: &str,
-) -> String {
+fn rebuilt_seed_regen_failed_refusal(run: &RebuiltSeedChildRun) -> String {
     format!(
-        "rebuilt seed exited {status}; expected a successful regeneration pass stderr_tail={stderr_tail}"
+        "rebuilt seed exited {}; expected a successful regeneration pass stderr_tail={}{}",
+        run.status,
+        run.stderr_tail,
+        rebuilt_seed_regen_truncation_note(run.stderr_truncated)
     )
 }
 
