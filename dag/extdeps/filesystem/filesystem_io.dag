@@ -4,6 +4,12 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Bytes, FilePath, Int, List, String, NonEmptyStr }
 import std.algebra { collection_join_shape }
+import std.filesystem.types { SymlinkTarget }
+import extdeps.filesystem.posix { PosixFileIdentity, PosixFileStat }
+import std.content_hash { Sha256Digest }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -256,6 +262,63 @@ fn filesystem_link_create_new(
     }
   }
 }
+
+// ── THE OPENED-FILE HANDLE: A NAME IS RESOLVED ONCE, AND EVERY LATER OPERATION IS ON WHAT IT RESOLVED TO ──
+//
+// gunbc.recurring_failure_mode a_pathname_reresolves_its_ancestry_between_calls: a check on a path is
+// itself a resolution, so check-then-open and open-then-reopen both leave a window in which the name is
+// repointed. The repair is construction, not a better check: `FilesystemHandle` is sole_constructor. THE MINT DOES NOT
+// EXIST YET: no `Filesystem.Open` operation or handler is declared, and nothing constructs `FilesystemOpened`.
+// The realization change must make that handler (open(path, O_NOFOLLOW)) the one mint, inline over the host
+// channel, so a handle exists only for a descriptor the host actually returned. Until then the seal holds
+// because no handle can be built at all. Every handle operation below takes the
+// HANDLE and never a path, so validate-then-reopen has no spelling: there is no path parameter to pass.
+//
+// The final component is never followed (O_NOFOLLOW; O_PATH where the file itself must not be read), so
+// a symlink is opened AS a symlink and is observed through `FilesystemHandleSymlink` rather than
+// silently becoming its target.
+//
+// REALIZATION IS A DECLARED FRONTIER (DESIGN 3c). This module owns the interface and the folds. The
+// host operations that produce their scalar channels (open, fstat, readlinkat, copy to a new file, hash
+// on the copy's descriptor) are realized by extdeps.filesystem.rust_realization in the change that
+// follows this one; its consumers are std.fabric_blob read_staged_fabric_blob (via
+// extdeps.realization.materialization_store_local), the capacity-recovery symlink reader and the
+// executor's staged-file intake. 
+type FilesystemHandle sole_constructor {
+  fd: Int
+  identity: PosixFileIdentity
+}
+
+fn filesystem_handle_identity(handle: FilesystemHandle) -> PosixFileIdentity {
+  handle.identity
+}
+
+type FilesystemOpen
+  = FilesystemOpened(FilesystemHandle)
+  | FilesystemOpenRefused { path: String, kind: FilesystemFailureKind, error: String }
+  | FilesystemOpenKindUnrecognized { path: String, observed: String, error: String }
+  | FilesystemOpenIdentityUnrepresentable { path: String, st_dev: Int, st_ino: Int }
+
+// fstat ON THE HANDLE: owner, mode, type and identity of the inode the handle holds.
+type FilesystemHandleStat
+  = FilesystemHandleStatted { identity: PosixFileIdentity, stat: PosixFileStat }
+  | FilesystemHandleStatRefused { identity: PosixFileIdentity, kind: FilesystemFailureKind, error: String }
+
+// readlinkat(fd, "") ON THE HANDLE. A handle that is not a symlink is its own arm, never an empty
+// target: the absence of a link is a fact about the inode, not a default text.
+type FilesystemHandleSymlink
+  = FilesystemSymlinkObserved { identity: PosixFileIdentity, target: SymlinkTarget, text: String }
+  | FilesystemNotASymlink { identity: PosixFileIdentity }
+  | FilesystemHandleSymlinkRefused { identity: PosixFileIdentity, kind: FilesystemFailureKind, error: String }
+
+// A COPY OF THE HANDLE'S BYTES INTO A DESTINATION THIS PROCESS CREATED, with the identity of the COPY
+// and the SHA-256 computed on the copy's own descriptor. The digest describes the destination the
+// caller will use, not a path the staging principal can still rewrite; the source handle's identity is
+// carried so a caller can show the copy came from the inode it checked.
+type FilesystemHandleCopy
+  = FilesystemCopied { dest: String, source: PosixFileIdentity, identity: PosixFileIdentity, digest: Sha256Digest }
+  | FilesystemCopyDestinationOccupied { dest: String, source: PosixFileIdentity }
+  | FilesystemCopyRefused { dest: String, source: PosixFileIdentity, kind: FilesystemFailureKind, error: String }
 
 data filesystem_read_outcome_adoption_standing: String ="RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. SUBJECT: an unconverted consumption site is a Filesystem Read call whose bound result has any success, error, or content projection outside the three arguments of filesystem_read_outcome. The call and those three projections remain after conversion because they supply the fold; adoption changes where they are consumed, not whether they exist. CLASSES EXCLUDED FROM THE TARGET POPULATION, recorded so exclusion is a decision and not a blind spot: a site whose read projections already flow through the separate exact-read authority filesystem_exact_read's own typed shape is exact_read_typed and is not a target of this lane -- that authority owns it; a site that routes a raw read through a domain-specific fold of the same shape -- gunbc.machine_intake proc_read_outcome into ProcRead | ProcReadRefused, which additionally carries error_kind -- is domain_read_fold: it is a typed outcome, not a silent default, but a second read-outcome fold beside this one is a DESIGN 3 fork, recorded to be unified later by growing the shared fold, and those sites are targets of that unification, not of this lane; a site whose two read-result branches take the same action at every remaining caller is argued_collapse -- absent and unreadable change the message, not the behaviour, and the argument is owned at the site, not by this row: gunbc.roadmap.roadmap_served_observation attempt_launch_revision_hex, whose argument is the presentation note in gunbc.roadmap.roadmap_presentation that an unreadable launch record dims nothing, pinned by dag/test/claim/roadmap/roadmap_presentation_witness.dag -- if a caller is found where the two branches would now act differently, that falsifies the argument and the site becomes a target: report it, do not convert silently. Counted, not excluded: gunbc.roadmap.roadmap_belt_actuate's admission and spawn-failure evidence reads in belt_workflow_attempt_evidence_for_key are debt -- a read refusal is carried in the attempt evidence wire's text field because that wire has no cause slot; they stay in the remainder below, unconverted and counted, until the wire gains a typed evidence outcome, and the wire and its consumers are owned by gunbc.roadmap.roadmap_belt_actuate, which owes that shape change. BASELINE measured on origin/main b21b710d5378387ae0c841f07323292c5d72faba with the recipe below; the run's numbers live with the run that measured them, not in this authority, and #13106 verified the recipe's parity at that anchor. REMAINDER: no committed producer supplies a live remainder. The node-grain census over decl_facts is PARKED, and it will not name an automated producer: its park state, structural trigger and population are the typed guarantee stall gunbc.guarantee_stall.filesystem_read_outcome_node_grain_census_stall, and its irreducible rationale is the annotation above that stall. The recipe below remains the named manual recount procedure, comparable at the baseline grain; a regex census over source is the heuristic DESIGN 5/6 rules out and is not adopted as a producer. dag/test/claim fixtures are not corpus and are not targets. RE-DERIVATION: enumerate Filesystem Read assignment calls in tracked .dag source, excluding this adoption-standing data declaration so the instrument cannot count its own prose; for each bound result, classify it converted only when every success, error, and content projection is an argument of filesystem_read_outcome, otherwise classify it unconverted; count unconverted rows and distinct paths. NEXT-RUNG TRIGGER: the unconverted population reaches zero -- every Filesystem Read result projection occurs only as an argument to filesystem_read_outcome. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
 
@@ -907,3 +970,31 @@ service Filesystem {
     transport file { path: "{path}", verb: "list" }
   }
 }
+
+// ── THE HANDLE'S REALIZATION IS A DECLARED FRONTIER, ENROLLED IN gunbc.census_closure_frontier (§3c) ──
+//
+// Both dissolutions are UNBOUND because their triggers are declarations the tree does not carry yet (a bound
+// dissolution may only cite a declaration it already has). Each description names the change that discharges it, so
+// the row becomes bindable in that change. The negative-identity refusal is likewise an OBLIGATION on the mint, not
+// earned evidence: nothing here executes it.
+
+data filesystem_handle_mint_frontier_reason: String = "FilesystemHandle is sole_constructor and nothing mints one: the Filesystem.Open operation and its host-derived handler (open(path, O_NOFOLLOW), minting inline over the host channel and refusing a negative st_dev/st_ino reading) are not declared. Named consumers once it exists: the capacity-recovery symlink reader and the executor's staged-file intake."
+
+data filesystem_handle_mint_frontier_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the Filesystem.Open operation and its handler are declared in extdeps.filesystem (the realization change that mints FilesystemHandle from the host's returned descriptor), together with the symlink-swap RED and the lawful positive control executed against it")
+
+data filesystem_handle_consumer_frontier_reason: String = "std.fabric_blob read_staged_fabric_blob verifies a staged blob through path-based sha256sum and stat reads that re-resolve the path between calls (gunbc.recurring_failure_mode a_pathname_reresolves_its_ancestry_between_calls); its consumer is extdeps.realization.materialization_store_local. It migrates to FilesystemHandle copy_to_new with the digest taken on the copy's descriptor, delete-first."
+
+data filesystem_handle_consumer_frontier_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: read_staged_fabric_blob no longer reads the staged path through sha256sum or stat and every consumer by name (extdeps.realization.materialization_store_local among them) reads through a FilesystemHandle, with the path-based route deleted rather than kept beside it")
+
+data filesystem_handle_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "FilesystemOpen"),
+    reason: filesystem_handle_mint_frontier_reason,
+    dissolution: filesystem_handle_mint_frontier_dissolution
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.fabric_blob", decl_name: "read_staged_fabric_blob"),
+    reason: filesystem_handle_consumer_frontier_reason,
+    dissolution: filesystem_handle_consumer_frontier_dissolution
+  ),
+]

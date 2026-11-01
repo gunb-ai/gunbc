@@ -77,6 +77,7 @@ import gunbc.provisioning.network_install_receipt { network_install_receipt_fron
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
 import extdeps.backblaze.b2 { backblaze_b2_frontier_rows }
 import extdeps.cloud.gcp.storage { gcs_storage_frontier_rows }
+import extdeps.filesystem.filesystem_io { filesystem_handle_frontier_rows }
 import extdeps.ebay.browse { ebay_browse_frontier_rows }
 import extdeps.ebay.marketplace_account_deletion { ebay_account_deletion_frontier_rows }
 import gunbc.serving.rented_release { rented_release_frontier_rows }
@@ -176,6 +177,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_r2_supplier_frontier_rows,
     backblaze_b2_frontier_rows,
     gcs_storage_frontier_rows,
+    filesystem_handle_frontier_rows,
     ebay_browse_frontier_rows,
     ebay_account_deletion_frontier_rows,
     cloudflare_permission_group_observation_frontier_rows,
