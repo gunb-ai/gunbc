@@ -3875,9 +3875,9 @@ fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>,
             if (peeled.connective == Arrow) {
               equality_walk_refused(r: equality_refused(carrier: name, member: "function value", member_judged: true))
             } else if (peeled.connective == Conj) {
-              equality_product_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: false, name: name, fields: peeled.children, scope: scope, visited: visited2, depth: depth)
+              equality_product_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: equality_declaration_is_generic(rt: peeled, peeled: peeled), name: name, fields: peeled.children, scope: scope, visited: visited2, depth: depth)
             } else if (peeled.connective == Disj) {
-              equality_coproduct_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: false, name: name, variants: peeled.children, scope: scope, visited: visited2, depth: depth)
+              equality_coproduct_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: equality_declaration_is_generic(rt: peeled, peeled: peeled), name: name, variants: peeled.children, scope: scope, visited: visited2, depth: depth)
             } else if is_kernel_type(name: leaf) {
               equality_walk_by_target()
             } else {
@@ -3974,13 +3974,22 @@ fn equality_reference_applies_arguments(peeled: Node) -> Bool {
   peeled.connective != Conj && peeled.connective != Disj && (peeled.children |> count) > 0
 }
 
+// THE ONE PREDICATE FOR "IS THIS DECLARATION GENERIC", read at every site that builds a plan row. The plan row's
+// generic flag is what equality_plan_synthesizable reads on BOTH sides: the call lowers to
+// equality_derived_<decl> only when the plan is synthesizable, and equality_synthesized_for defines that function
+// from the same plan, so a call is written iff its definition is. A generic declaration would need one function
+// per instance, so it is never synthesized and any plan reaching it refuses.
+fn equality_declaration_is_generic(rt: Node, peeled: Node) -> Bool {
+  (rt.params |> count) > 0 || equality_reference_applies_arguments(peeled: peeled)
+}
+
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
   if (rt.connective == Arrow) {
     equality_walk_refused(r: equality_refused(carrier: name, member: "function value", member_judged: true))
   } else if (rt.connective == Conj) {
-    equality_product_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0 || equality_reference_applies_arguments(peeled: peeled), name: name, fields: rt.children, scope: scope, visited: visited, depth: depth)
+    equality_product_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: equality_declaration_is_generic(rt: rt, peeled: peeled), name: name, fields: rt.children, scope: scope, visited: visited, depth: depth)
   } else if (rt.connective == Disj) {
-    equality_coproduct_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0 || equality_reference_applies_arguments(peeled: peeled), name: name, variants: rt.children, scope: scope, visited: visited, depth: depth)
+    equality_coproduct_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: equality_declaration_is_generic(rt: rt, peeled: peeled), name: name, variants: rt.children, scope: scope, visited: visited, depth: depth)
   } else if (rt.children |> count) > 0 || type_reference_identity(n: rt, source_indices: scope.type_env.source_indices) != type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices) {
     equality_operand_walk(n: rt, scope: scope, visited: visited, depth: depth + 1, at_root: at_root)
   } else {
@@ -19734,7 +19743,7 @@ fn equality_synthesis_scope(env: TypeEnv, module_name: String) -> InferScope {
 }
 
 fn equality_synthesized_for(item: Node, scope: InferScope) -> List<Node> {
-  let is_type_decl = (item.connective == Conj || item.connective == Disj) && item.transport == none && (item.params |> count) == 0
+  let is_type_decl = (item.connective == Conj || item.connective == Disj) && item.transport == none
   if !is_type_decl { [] } else {
     let si = scope.type_env.source_indices
     let name = authored_name_at(source_indices: si, node: item)

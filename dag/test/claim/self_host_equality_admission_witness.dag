@@ -248,6 +248,25 @@ test fn a_planned_equality_call_has_its_definition_in_the_emitted_module() -> Bo
   )
 }
 
+// (A plan exists only where a routed member such as Node is reachable; without one `==` is the target structural equality and needs no function.)
+// A generic declaration is never synthesized (one function per instance would be needed), so a record reaching
+// one as a field has no derived equality: comparing it refuses with the typed member cause, and the emitted
+// module defines no function for it and calls none. Measured red before the fix: the record's synthesized body
+// called equality_derived_gen, which no module defines (E0425). The positive control is
+// a_planned_equality_call_has_its_definition_in_the_emitted_module.
+test fn comparing_a_record_with_a_generic_applied_field_refuses_blocking() -> Bool {
+  eq_blocking_count(source: "module test.claim.deq_generic_field_red\nimport v2.std.node { Node }\ntype DeqGen<C> = DeqGenHolds { value: C } | DeqGenNode { n: Node }\ntype DeqGenHolder { g: DeqGen<Int> }\nfn same(a: DeqGenHolder, b: DeqGenHolder) -> Bool { a == b }\n", wanted: "EqualityMemberUnjudgeable") >= 1
+}
+
+test fn a_record_with_a_generic_applied_field_gets_no_derived_equality_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_generic_field_emit\nimport v2.std.node { Node }\ntype DeqGen<C> = DeqGenHolds { value: C } | DeqGenNode { n: Node }\ntype DeqGenHolder { g: DeqGen<Int> }\nfn make(g: DeqGen<Int>) -> DeqGenHolder { DeqGenHolder { g: g } }\n",
+    "src/test_claim_deq_generic_field_emit.rs",
+    ["fn make("],
+    ["equality_derived_deq_gen", "fn equality_derived_deq_gen_holder("]
+  )
+}
+
 test fn presence_test_stays_admitted() -> Bool {
   eq_census_clean(source: presence_test_green_source)
 }

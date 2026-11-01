@@ -5777,7 +5777,10 @@ pub fn equality_operand_walk(
                                                         peeled.clone(),
                                                         scope.clone(),
                                                     ),
-                                                    false,
+                                                    equality_declaration_is_generic(
+                                                        peeled.clone(),
+                                                        peeled.clone(),
+                                                    ),
                                                     name.clone(),
                                                     peeled.children.clone(),
                                                     scope.clone(),
@@ -5792,7 +5795,10 @@ pub fn equality_operand_walk(
                                                             peeled.clone(),
                                                             scope.clone(),
                                                         ),
-                                                        false,
+                                                        equality_declaration_is_generic(
+                                                            peeled.clone(),
+                                                            peeled.clone(),
+                                                        ),
                                                         name.clone(),
                                                         peeled.children.clone(),
                                                         scope.clone(),
@@ -6104,6 +6110,10 @@ pub fn equality_reference_applies_arguments(peeled: Rc<Node>) -> bool {
         && ((peeled.children.clone().len() as i64) > 0))
 }
 
+pub fn equality_declaration_is_generic(rt: Rc<Node>, peeled: Rc<Node>) -> bool {
+    (((rt.params.clone().len() as i64) > 0) || equality_reference_applies_arguments(peeled))
+}
+
 pub fn equality_resolved_declaration_structure(
     rt: Rc<Node>,
     peeled: Rc<Node>,
@@ -6125,8 +6135,7 @@ pub fn equality_resolved_declaration_structure(
             equality_product_walk(
                 identity.clone(),
                 equality_structure_reference(rt.clone(), peeled.clone(), scope.clone()),
-                (((rt.params.clone().len() as i64) > 0)
-                    || equality_reference_applies_arguments(peeled.clone())),
+                equality_declaration_is_generic(rt.clone(), peeled.clone()),
                 name.clone(),
                 rt.children.clone(),
                 scope.clone(),
@@ -6138,8 +6147,7 @@ pub fn equality_resolved_declaration_structure(
                 equality_coproduct_walk(
                     identity.clone(),
                     equality_structure_reference(rt.clone(), peeled.clone(), scope.clone()),
-                    (((rt.params.clone().len() as i64) > 0)
-                        || equality_reference_applies_arguments(peeled.clone())),
+                    equality_declaration_is_generic(rt.clone(), peeled.clone()),
                     name.clone(),
                     rt.children.clone(),
                     scope.clone(),
@@ -36343,10 +36351,9 @@ pub fn equality_synthesis_scope(env: Rc<TypeEnv>, module_name: String) -> Rc<Inf
 
 pub fn equality_synthesized_for(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
     {
-        let is_type_decl = ((((item.connective.clone() == Connective::Conj)
+        let is_type_decl = (((item.connective.clone() == Connective::Conj)
             || (item.connective.clone() == Connective::Disj))
-            && (item.transport.clone() == std::option::Option::None))
-            && ((item.params.clone().len() as i64) == 0));
+            && (item.transport.clone() == std::option::Option::None));
         if !is_type_decl.clone() {
             Rc::new(vec![])
         } else {
