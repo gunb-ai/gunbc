@@ -105,6 +105,33 @@ fn attempt_exit_entry_parts(inbox: String, node_id: String, attempt_key: String,
   ]
 }
 
+// THE SPELLING THE MANAGER SUBSTITUTES, rebuilt rather than written as a literal so this file's own
+// string interpolation cannot be mistaken for it.
+fn attempt_exit_stop_variable_spelling(variable: ServiceStopVariable) -> String {
+  join(["$", "{", service_stop_variable_name(variable: variable) as String, "}"], "")
+}
+
+// WHICH STOP VARIABLES AN ENTRY NAME STILL CARRIES UNEXPANDED. A name that still spells one of them
+// was NOT written through the manager's substitution: the stop hook ran with the variables literal.
+// THAT IS A FACT ABOUT ITS WRITER, NOT ABOUT THE HOLDER: a malformed artifact cannot show that a
+// process is alive, and a settlement that reads it as "the holder's end is unknown" keeps a seat for
+// something that has already ended. srv1 2026-10-28, attempt 6ea61c671002a6d4: the worker unit's ONLY
+// exit artifact is such a name -- its audit, obligation and review units wrote expanded records in the
+// same minute -- and the seat has been held ever since.
+fn attempt_exit_entry_unexpanded_variables(entry_name: String) -> List<String> {
+  [InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable]
+    |> filter(v => string_contains(s: entry_name, pattern: attempt_exit_stop_variable_spelling(variable: v)))
+    |> map(v => service_stop_variable_name(variable: v) as String)
+}
+
+// THE DISTINCT STOP VARIABLES ACROSS A SET OF SUCH NAMES, so the reader can name what the writer left
+// unsubstituted instead of the caller re-deriving it.
+fn attempt_exit_unexpanded_variables_of(entries: List<String>) -> List<String> {
+  fold(entries |> flat_map(name => attempt_exit_entry_unexpanded_variables(entry_name: name)),
+    init: [] as List<String>,
+    f: fn(acc, name) { if any(acc, a => a == name) { acc } else { concat(acc, [name]) } })
+}
+
 // THE RECORD IS CREATED OWNED BY ITS CONSUMER. The hook runs as the system manager (root) for a unit with
 // a foreign User=, so a bare mkdir leaves a root:root record that the drain -- the service user -- cannot
 // rename from inbox to queued (renaming a directory needs write permission on the directory itself).
@@ -236,6 +263,14 @@ fn attempt_exit_spool_stage_dir(instance_root: String, stage: HostSpoolStage) ->
 type AttemptExitRecordObservation
   = AttemptExitRecordFound { record: AttemptExitRecord }
   | AttemptExitRecordNone
+  // AN ENTRY FOR THIS SUBJECT WHOSE NAME STILL SPELLS THE STOP VARIABLES UNEXPANDED. The arm names
+  // its WRITER as defective -- whatever created the entry never went through the manager's
+  // substitution -- and it is NOT an answer about the holder: a broken artifact cannot show that a
+  // process is alive. A reader that treats it as "the end is unobserved" keeps a seat held for a
+  // holder that has already ended (srv1 2026-10-28, attempt 6ea61c671002a6d4: a 22 GiB seat held for
+  // twelve days on nothing but this artifact). Where this arm answers, the unit's standing in the
+  // manager that ran it is what decides.
+  | AttemptExitRecordWriterUnsubstituted { entries: List<String>, variables: List<String> }
   | AttemptExitRecordUnreadable { reason: String }
 
 type AttemptExitStageListing
@@ -265,6 +300,13 @@ fn attempt_exit_record_from_listings(
   attempt_exit_record_matching(matches: (n, a, r) => n == node_id && a == attempt_key && r == attempt_unit_role_token(role: role), listings: listings)
 }
 
+// DOES THIS ENTRY NAME IDENTIFY THE SUBJECT? An entry is for the subject when its first three parts
+// are its node, attempt and role -- the parts every writer must put there, expanded or not.
+fn attempt_exit_entry_names_subject(matches: fn(String, String, String) -> Bool, name: String) -> Bool {
+  let parts = name.split(delimiter: attempt_exit_entry_separator)
+  count(parts) >= 3 && matches(attempt_exit_entry_part(parts: parts, index: 0), attempt_exit_entry_part(parts: parts, index: 1), attempt_exit_entry_part(parts: parts, index: 2))
+}
+
 // THE SAME DECISION OVER ANY SUBJECT PREDICATE: the placement settlement knows a worker by its unit
 // name, and the unit name is minted above this module (gunbc.roadmap.roadmap_dispatch_actuator
 // dispatch_attempt_unit_name), so the caller supplies the predicate rather than this module
@@ -280,22 +322,21 @@ fn attempt_exit_record_matching(
   match unreadable.first() {
     Present { value: why } => AttemptExitRecordUnreadable { reason: why }
     Absent => {
-      let malformed = listings
-        |> flat_map(l => match l {
-          AttemptExitStageNames { names } => names
-          AttemptExitStageUnreadable { reason: _ } => [] as List<String>
-        })
-        |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
-          AttemptExitEntryDecoded { record: _ } => [] as List<String>
-          AttemptExitEntryMalformed { entry_name: _, reason: why } => {
-            let parts = name.split(delimiter: attempt_exit_entry_separator)
-            if count(parts) >= 3 && matches(attempt_exit_entry_part(parts: parts, index: 0), attempt_exit_entry_part(parts: parts, index: 1), attempt_exit_entry_part(parts: parts, index: 2)) {
-              [join([name, ": ", why], "")]
-            } else {
-              [] as List<String>
-            }
-          }
-        })
+      let names = listings |> flat_map(l => match l {
+        AttemptExitStageNames { names } => names
+        AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+      })
+      let malformed = names |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+        AttemptExitEntryDecoded { record: _ } => [] as List<String>
+        AttemptExitEntryMalformed { entry_name: _, reason: why } =>
+          if attempt_exit_entry_names_subject(matches: matches, name: name) { [join([name, ": ", why], "")] } else { [] as List<String> }
+      })
+      // NAMES WHOSE OWN STOP-VARIABLE PARTS ARE STILL SPELLINGS. They are malformed, but they are
+      // malformed in a way that says something specific: the writer ran the hook with the variables
+      // literal, so the manager never substituted them.
+      let unsubstituted = names |> filter(name =>
+        attempt_exit_entry_names_subject(matches: matches, name: name)
+          && count(attempt_exit_entry_unexpanded_variables(entry_name: name)) > 0)
       let records = listings
         |> flat_map(l => match l {
           AttemptExitStageNames { names } => names
@@ -305,15 +346,23 @@ fn attempt_exit_record_matching(
           AttemptExitEntryDecoded { record } => if matches(record.node_id, record.attempt_key, record.role) { [record] } else { [] as List<AttemptExitRecord> }
           AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<AttemptExitRecord>
         })
-      if count(malformed) > 0 {
-        AttemptExitRecordUnreadable { reason: join(["the attempt-exit spool holds an exit entry for this attempt that cannot be decoded, so its end is unobserved rather than absent: ", join(malformed, "; ")], "") }
-      } else if count(records) > 1 {
+      // A DECODABLE RECORD ANSWERS THE END, and it outranks a broken sibling artifact: the end is
+      // known, and the broken name is still visible where it belongs -- the drain refuses it. With
+      // nothing decodable, a name that spells the stop variables unexpanded is its own answer about
+      // its WRITER, and only a malformed name that says nothing that specific is a plain "unobserved".
+      if count(records) > 1 {
         AttemptExitRecordUnreadable { reason: join(["the attempt-exit spool holds ", to_string(value: count(records)), " exit records for one attempt, and its unit runs once: ", join(records |> map(r => r.entry_name), ", ")], "") }
-      } else {
+      } else if count(records) == 1 {
         match records.first() {
           Present { value: r } => AttemptExitRecordFound { record: r }
           Absent => AttemptExitRecordNone
         }
+      } else if count(unsubstituted) > 0 && count(unsubstituted) == count(malformed) {
+        AttemptExitRecordWriterUnsubstituted { entries: unsubstituted, variables: attempt_exit_unexpanded_variables_of(entries: unsubstituted) }
+      } else if count(malformed) > 0 {
+        AttemptExitRecordUnreadable { reason: join(["the attempt-exit spool holds an exit entry for this attempt that cannot be decoded, so its end is unobserved rather than absent: ", join(malformed, "; ")], "") }
+      } else {
+        AttemptExitRecordNone
       }
     }
   }
@@ -433,6 +482,25 @@ fn attempt_exit_vendor_pane_entry_name_of_death(node_id: String, attempt_key: St
 // dead pane when the write fails. Create-only mkdir is `host_spool_create_only_command`: the spool must
 // already exist; a missing or read-only inbox is a failed write, not a parent-creating success.
 fn attempt_exit_record_put_mkdir_name(instance_root: String, entry_name: String) -> AttemptExitRecordPut {
+  // A NAME THE WRITER NEVER EXPANDED IS NOT AN ENTRY. This mkdir route takes the entry name as TEXT
+  // (the belt's vendor-pane route, a replay, a hand call), and a name still carrying the stop-hook
+  // variable spelling is the writer's defect, not an exit fact: only the service manager substitutes
+  // those variables, so no modeled writer may mint one and none may write one. srv1 2026-10-28
+  // 06:17:02Z is exactly that artifact -- attempt-exit-spool/refused/debt-exclusion-frontier-
+  // excludes-nothing+6ea61c671002a6d4+worker+${INVOCATION_ID}+${SERVICE_RESULT}+${EXIT_CODE}+
+  // ${EXIT_STATUS}, mode 0755 owned by briansrls (not gunbc-worker), written outside the unit's
+  // ExecStopPost by a path that carried the hook's dollar sign protected from the manager's own
+  // expansion. Refusing it here is what makes that entry unwritable through any modeled route; the
+  // reader arm (AttemptExitRecordWriterUnsubstituted) is what refuses to read one that already exists.
+  let unexpanded = attempt_exit_entry_unexpanded_variables(entry_name: entry_name)
+  if !unexpanded.is_empty() {
+    AttemptExitRecordPutFailed {
+      reason: join(
+        ["the entry name carries service-manager variables that were never substituted (", join(unexpanded, ", "), "); a stop hook whose substitution did not run is a writer defect, not an exit record"],
+        "",
+      ),
+    }
+  } else {
   let path = join([attempt_exit_inbox_dir(instance_root: instance_root), "/", entry_name], "")
   let command = host_spool_create_only_command(path: path)
   let ran = shell.Exec.RunArgv(
@@ -446,11 +514,24 @@ fn attempt_exit_record_put_mkdir_name(instance_root: String, entry_name: String)
       reason: join(["mkdir -- ", path, " failed: ", ran.stderr], ""),
     }
   }
+  }
 }
 
 fn attempt_exit_record_put_vendor_pane_death(instance_root: String, node_id: String, attempt_key: String, death: VendorPaneDeath) -> AttemptExitRecordPut {
   match attempt_exit_record_observe(instance_root: instance_root, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
     AttemptExitRecordFound { record: _ } => AttemptExitRecordPutOk
+    AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } =>
+      // The spool holds only names the writer never expanded. Writing the real record here IS the
+      // repair: a decodable record outranks a malformed sibling in attempt_exit_record_matching, so the
+      // subject becomes answerable and the broken name stops being read as anything about the attempt.
+      match attempt_exit_vendor_pane_entry_name_of_death(node_id: node_id, attempt_key: attempt_key, death: death) {
+        Absent =>
+          AttemptExitRecordPutFailed {
+            reason: "vendor pane signal is not a standard Linux signal name",
+          }
+        Present { value: entry_name } =>
+          attempt_exit_record_put_mkdir_name(instance_root: instance_root, entry_name: entry_name)
+      }
     AttemptExitRecordUnreadable { reason } => AttemptExitRecordPutFailed { reason: reason }
     AttemptExitRecordNone =>
       match attempt_exit_vendor_pane_entry_name_of_death(node_id: node_id, attempt_key: attempt_key, death: death) {

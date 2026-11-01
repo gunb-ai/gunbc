@@ -883,6 +883,16 @@ fn last_use_move_binding() -> TargetBinding {
   TargetBinding { target: last_use_move_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/last_use_move_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
+fn exit_return_ownership_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "exit-return-ownership" } }
+}
+
+// A value returned at an early `return` and again in tail position compiles, and the emitted function
+// returns it on both paths (gunbc.recurring_failure_mode an_exit_only_edge_counted_as_a_double_consume).
+fn exit_return_ownership_binding() -> TargetBinding {
+  TargetBinding { target: exit_return_ownership_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/exit_return_ownership_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
 fn cons_tail_recursion_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "cons-tail-recursion" } }
 }
@@ -1390,7 +1400,7 @@ fn instrument_targets() -> List<Label> {
     cardinality_realization_label(),
     regen_round_cost_label(),
     credential_acquisition_systemd_rows_label(),
-    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), last_use_move_label(), member_home_cost_label(), cons_tail_recursion_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), last_use_move_label(), exit_return_ownership_label(), member_home_cost_label(), cons_tail_recursion_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
@@ -1413,7 +1423,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

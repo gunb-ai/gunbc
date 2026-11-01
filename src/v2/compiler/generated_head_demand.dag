@@ -1,0 +1,77 @@
+module v2.compiler.generated_head_demand
+
+import std.types { List }
+import std.algebra { list_snoc_item }
+import std.list { list_member }
+import std.optional { Absent, Present }
+import v2.std.node { Node }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.list_introduction { list_introduction_head_path }
+import v2.std.map_introduction { map_introduction_entry_path, map_introduction_head_path }
+import v2.extdeps.languages.dag { string_template_optional }
+import v2.compiler.fold_lowering { collection_concat_shape_declaration_path }
+import v2.std.compilers.sugar { sugar_field_init_is_string_keyed, sugar_list_literal_items_capture_optional }
+
+// THE DECLARATIONS A SURFACE TREE OWES BECAUSE THE COMPILER WILL GENERATE A REFERENCE TO THEM
+// (operator ruling 2026-10-15, v2-namespace-cutover N2b; gunbc.roadmap.roadmap_authority). A list
+// literal lowers to a head referencing std.algebra FreeMonoid, a string-keyed brace to the map
+// introduction's head and entry tag, a string template to its concat: none is spelled in the source, so
+// the parse tree's reference sites request nothing and a closure acquired without the declaring
+// module refuses the generated reference as resolve_reason_generated_reference_declaration_absent.
+// The reader asks the SAME recognizers lowering uses (v2.compiler.body_lowering_fold), never a second
+// shape test, and answers the declaring paths from the path functions that name them, never a respelling.
+// Consumed by v2.compiler.module_acquisition, which promotes each path to an imported member exactly as
+// it does for `T?`.
+fn generated_head_demand(root: Node) -> List<QualifiedName> {
+  generated_head_demand_in_node(acc: [], node: root)
+}
+
+fn generated_head_demand_in_node(acc: List<QualifiedName>, node: Node) -> List<QualifiedName> {
+  fold(
+    node.children,
+    init: generated_head_demand_add_all(acc: acc, paths: generated_head_paths_of(node: node)),
+    f: fn(walk, edge) { generated_head_demand_in_node(acc: walk, node: edge.target) }
+  )
+}
+
+fn generated_head_demand_add_all(acc: List<QualifiedName>, paths: List<QualifiedName>) -> List<QualifiedName> {
+  fold(paths, init: acc, f: fn(walk, path) {
+    if list_member(xs: walk, x: path, eq: fn(held, wanted) { held == wanted }) {
+      walk
+    } else {
+      list_snoc_item(xs: walk, item: path)
+    }
+  })
+}
+
+fn generated_head_paths_of(node: Node) -> List<QualifiedName> {
+  concat(
+    generated_list_head_paths(node: node),
+    generated_map_head_paths(node: node),
+    generated_template_head_paths(node: node)
+  )
+}
+
+fn generated_list_head_paths(node: Node) -> List<QualifiedName> {
+  match sugar_list_literal_items_capture_optional(captured: node) {
+    Present { value: _ } => [list_introduction_head_path()]
+    Absent => []
+  }
+}
+
+// A string-keyed field init is the grammar's own production (^dag_surface_field_init_string_key); a record
+// literal refuses it, so one anywhere in a tree is a map literal's entry.
+fn generated_map_head_paths(node: Node) -> List<QualifiedName> {
+  if sugar_field_init_is_string_keyed(item: node) {
+    [map_introduction_head_path(), map_introduction_entry_path()]
+  } else {
+    []
+  }
+}
+
+fn generated_template_head_paths(node: Node) -> List<QualifiedName> {
+  match string_template_optional(node: node) {
+    Present { value: _ } => [collection_concat_shape_declaration_path()]
+    Absent => []
+  }
+}
