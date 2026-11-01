@@ -163,6 +163,72 @@ fn control_shadow_table_beside_binder(found: Bool?) -> Int {
   }
 }
 
+// A COPRODUCT whose arm spelling collides with the local binders below (DESIGN section 6b, the
+// #15565 second link). v1.compiler.emit_info derive_variant_to_enum folds every coproduct arm in the
+// closure into emit_info.variant_to_enum keyed by the BARE arm leaf, whichever module declared it, so
+// the collision is decided by spelling alone. The carriers bind a LOCAL `Red` (function parameter or
+// `let`) of an unrelated Int type and read it as a plain value. Before the fix,
+// v1.compiler.emit_rust effective_variant_parent consulted that flat map before
+// asking what the occurrence is bound to, and rendered `ShadowColor::Red` where the local was meant --
+// a type error in an Int position, so the emitted program does not build, let alone answer correctly.
+// The binder's own spelling is what must survive.
+//
+// WHY THE SPELLINGS LOOK LIKE THIS. Both sides must be equal as AUTHORED text while each still emits
+// to lint-clean Rust, and the casing lints that decide this are NOT in v1.compiler.emit_rust
+// generated_rust_lint_relaxations, so the native route's `-D warnings` build enforces them as errors:
+//   * a variant is emitted VERBATIM, so a lowercase arm is a `non_camel_case_types` error -- the arms
+//     are written UpperCamel.
+//   * a binder is emitted with its first letter lower-cased (verified: `fn probe(Red: Int)` renders
+//     `pub fn probe(red: i64)`), so an UpperCamel binder passes `non_snake_case` while its AUTHORED
+//     name -- the string effective_variant_parent looks up -- is still the arm's spelling. A lowercase
+//     binder could only collide with a lowercase arm, which the line above rules out.
+//   * the arms CARRY PAYLOADS. A UNIT arm also owes a phantom ZST marker in its declaring module
+//     (`pub struct Red;`, v1.compiler.emit_rust rust_phantom_zst_marker_def), and a module-level unit
+//     struct is a Rust VALUE item, so rustc reads a same-spelled parameter / `let` / field PATTERN as
+//     that struct rather than as a fresh binder (E0308, "interpreted as a unit struct, not a new
+//     binding") -- a separate hazard, recorded in the census, that would swallow this one before the
+//     link under test is ever reached. A payload arm emits as an enum variant with no module-level
+//     value item of the arm's name, which isolates the registry read controlled here.
+//
+// THE GATE NAMES TWO KINDS AND ONLY ONE HAS A BUILDABLE COLLIDING FORM. A MATCH-BOUND binder cannot carry
+// an UpperCamel authored spelling: v1 reads an uppercase PATTERN atom as a VARIANT, so
+// `ControlRedBox { red: Red }` is refused as "missing required field 'rank' in literal of type 'Red'"
+// instead of binding a variable, and a snake_case field binder could only collide with a lowercase arm --
+// which the casing rule above rules out. The MatchBoundBinding arm of the gate is therefore defensive,
+// unreachable in a program the native route can build; the third row below holds the other side of the
+// gate instead, that a GENUINE arm reference still elects its parent.
+type ShadowColor
+  = Red { rank: Int }
+  | Green { rank: Int }
+
+fn control_arm_shadow_param(Red: Int) -> Int {
+  Red + 1
+}
+
+fn control_arm_shadow_let() -> Int {
+  let Red = 10
+  Red + Red
+}
+
+fn control_arm_rank_of(shade: ShadowColor) -> Int {
+  match shade {
+    Red { rank: v } => v
+    Green { rank: v } => 0
+  }
+}
+
+fn control_arm_genuine_reference() -> Int {
+  control_arm_rank_of(shade: Red { rank: 3 })
+}
+
+fn local_binder_shadows_coproduct_arm_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "local_param_shadowing_a_coproduct_arm_renders_the_local", held: control_arm_shadow_param(Red: 41) == 42 },
+    NativeEmissionCase { identity: "local_let_shadowing_a_coproduct_arm_renders_the_local", held: control_arm_shadow_let() == 20 },
+    NativeEmissionCase { identity: "genuine_coproduct_arm_reference_still_elects_its_parent_beside_the_local_gate", held: control_arm_genuine_reference() == 3 }
+  ]
+}
+
 fn local_binder_shadow_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_match_arm", held: control_shadow_match_arm(found: Present { value: true }) == 5 },
@@ -774,26 +840,89 @@ fn list_payload_enum_cases() -> List<NativeEmissionCase> {
 
 // RULE: the Set carrier is recognised by the algebra roster too (v1_type_expr_is_finite_power_set_carrier):
 // a direct Set<K> payload beside a List<K> field needs the FreeMonoid impls to keep K: Ord, on the struct
-// and the enum route alike. A FinitePowerSet<K> spelling lowers to the std.algebra record, not an OrdSet,
-// and is not exercised here.
+// and the enum route alike. The canonical FinitePowerSet<K> spelling is exercised beside it below -- same
+// carrier, same realization (04_types node_is_finite_power_set_algebra_spelling).
 type ControlMixedSetEnum<K> = ControlMixedSetNone | ControlMixedSetPresent { sequence: List<K>, members: Set<K> }
 type ControlMixedSetRecord<K> { sequence: List<K> members: Set<K> }
 
 type ControlOnlySetRecord<K> { members: Set<K> }
 
-// The canonical FinitePowerSet<K> spelling renders the structural record, not an OrdSet, so a fn over it
-// owes its element no Ord. ControlOpaqueElement holds a callable and has none; the body is emitted and
-// type-checked by rustc even though no case runs it, which is the control (K: Ord on the fn would refuse
-// at the ControlOpaqueElement call).
-type ControlOpaqueElement { run: fn(Int) -> Int }
+// ONE CARRIER, ONE RUST TYPE (DESIGN section 3): `FinitePowerSet<K>` is the canonical spelling of the
+// declared alias `Set<K>` (std.types `type Set<element> = FinitePowerSet<element>`), so the two spellings
+// lower to the SAME Rust type -- the target's OrdSet/BTreeSet realization -- and a value built at a `Set`
+// position is accepted at a `FinitePowerSet` position with no conversion. Before the renderer asked the
+// algebra roster, `Set` lowered to the OrdSet while the canonical name rendered the std.algebra profile
+// RECORD (its own alias in std_types.rs read `pub type Set<Element> =
+// Rc<crate::std_algebra::FinitePowerSet<Element>>`), so `control_forward_power(value: members)` below was
+// E0308: expected FinitePowerSet<i64>, found BTreeSet<i64>. The keyed algebra's #14880 closed that fork for
+// Map/FinitelySupportedFunction; this is the element half.
+// One carrier is also one BOUND SET: a canonical-spelled payload owes its element generic the container's
+// own Ord + Clone (rust_btree_set_supplemental_generic_bound_rows), on the struct route, on the enum route,
+// and on the fn that only forwards it. The method call is the third consumer of the decision: `members |>
+// count` must reach the FinitePowerSet templates, not the profile record's `count` arrow member -- the
+// callable-field tier would emit `(members.count)()` against a BTreeSet (E0609), which is what the keyed
+// tier had to be disabled for at #15037.
+type ControlCanonicalSetRecord<K> { members: FinitePowerSet<K> }
+type ControlCanonicalSetProbePair<K> { members: FinitePowerSet<K> other: FinitePowerSet<K> }
+type ControlCanonicalMixedProbe<K> { members: FinitePowerSet<K> others: Set<K> }
+type ControlCanonicalSetEnum<K> = ControlCanonicalSetNone | ControlCanonicalSetPresent { members: FinitePowerSet<K>, twin: Set<K> }
 
 fn control_forward_power<K>(value: FinitePowerSet<K>) -> FinitePowerSet<K> {
   value
 }
 
-fn control_forward_power_over_opaque(value: FinitePowerSet<ControlOpaqueElement>) -> Bool {
-  let forwarded = control_forward_power(value: value)
-  true
+// The alias spelled at the parameter, the carrier name at the call: the argument is only well-typed if the
+// two spellings lowered to one Rust type. `count` then runs on the generic payload, so the header owes K
+// the Ord + Clone the container itself requires (E0277 on a header that stayed `<K>`).
+fn control_canonical_set_size<K>(members: Set<K>) -> Int {
+  (control_forward_power(value: members) |> count)
+}
+
+fn canonical_set_carrier_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "canonical_set_spelling_counts_a_set_built_value", held: control_canonical_set_size(members: control_int_set(xs: [1, 1, 2])) == 2 },
+    NativeEmissionCase { identity: "canonical_set_spelling_red_count_is_not_the_element_count", held: control_canonical_set_size(members: control_int_set(xs: [1, 1, 2])) != 3 },
+    NativeEmissionCase { identity: "canonical_set_probe_pair_equal", held: ControlCanonicalSetProbePair { members: control_int_set(xs: [1, 2]), other: control_int_set(xs: [2, 1]) } == ControlCanonicalSetProbePair { members: control_int_set(xs: [2, 1]), other: control_int_set(xs: [1, 2]) } },
+    NativeEmissionCase { identity: "canonical_set_probe_mixed_equal", held: ControlCanonicalMixedProbe { members: control_int_set(xs: [1, 2]), others: control_int_set(xs: [2, 1]) } == ControlCanonicalMixedProbe { members: control_int_set(xs: [2, 1]), others: control_int_set(xs: [1, 2]) } },
+    NativeEmissionCase { identity: "canonical_set_struct_equal_members_in_another_order", held: ControlCanonicalSetRecord { members: control_int_set(xs: [1, 2]) } == ControlCanonicalSetRecord { members: control_int_set(xs: [2, 1]) } },
+    NativeEmissionCase { identity: "canonical_set_struct_red_member_differs", held: !(ControlCanonicalSetRecord { members: control_int_set(xs: [1, 2]) } == ControlCanonicalSetRecord { members: control_int_set(xs: [1, 3]) }) },
+    NativeEmissionCase { identity: "canonical_set_forwarded_payload_equals_the_alias", held: control_forward_power(value: control_int_set(xs: [1, 2])) == control_int_set(xs: [2, 1]) },
+    NativeEmissionCase { identity: "canonical_set_forwarded_payload_red_dropped_a_member", held: !(control_forward_power(value: control_int_set(xs: [1, 2])) == control_int_set(xs: [1])) },
+    NativeEmissionCase { identity: "canonical_set_enum_payloads_equal_across_spellings", held: ControlCanonicalSetPresent { members: control_int_set(xs: [1, 2]), twin: control_int_set(xs: [2, 1]) } == ControlCanonicalSetPresent { members: control_int_set(xs: [2, 1]), twin: control_int_set(xs: [1, 2]) } },
+    NativeEmissionCase { identity: "canonical_set_enum_red_twin_differs", held: !(ControlCanonicalSetPresent { members: control_int_set(xs: [1, 2]), twin: control_int_set(xs: [1, 2]) } == ControlCanonicalSetPresent { members: control_int_set(xs: [1, 2]), twin: control_int_set(xs: [1, 3]) }) },
+    NativeEmissionCase { identity: "canonical_set_appended_as_one_element_of_a_list_of_sets", held: control_canonical_set_append_shape() == 222 },
+    NativeEmissionCase { identity: "alias_set_appended_as_one_element_of_a_list_of_sets", held: control_alias_set_append_shape() == 222 },
+    NativeEmissionCase { identity: "canonical_and_alias_set_append_keep_the_same_shape", held: control_canonical_set_append_shape() == control_alias_set_append_shape() },
+    NativeEmissionCase { identity: "canonical_set_append_red_is_not_a_concatenation", held: control_canonical_set_append_shape() != 321 },
+  ]
+}
+
+// THE APPEND SEAM, BOTH SPELLINGS (v1 node_is_set_collection, which now reads the same algebra row as
+// node_is_collection). A set is an ELEMENT of a List of sets, not a run to concatenate: appending one
+// set onto a list of sets must keep the outer count and both inner memberships.
+// rust_append_call_is_concat_form chooses push-one-element versus concat from
+// v1.compiler.emit_rust.type_is_ordered_element_run, which excludes a set collection -- so a set whose
+// registered spelling the set census did not recognise was classified as an ordered element RUN, and
+// the alias-spelled row held while the canonical-spelled row merged the members into the outer list.
+// Both fixtures are built from control_int_set, the one set constructor this file already has, so no
+// row here waits on the empty_set() seed admission that lands separately.
+fn control_canon_set(xs: List<Int>) -> FinitePowerSet<Int> {
+  control_forward_power(value: control_int_set(xs: xs))
+}
+
+// The shape of a list of sets as one number: outer count, then the first two inner counts. Two
+// spellings of the same carrier algebra must answer the same number, and a concatenation cannot
+// produce 222 from two pairs.
+fn control_set_append_shape_code(sets: List<Set<Int>>) -> Int {
+  (sets |> count) * 100 + (sets[0] |> count) * 10 + (sets[1] |> count)
+}
+
+fn control_canonical_set_append_shape() -> Int {
+  control_set_append_shape_code(sets: append([control_canon_set(xs: [1, 2])], control_canon_set(xs: [3, 4])))
+}
+
+fn control_alias_set_append_shape() -> Int {
+  control_set_append_shape_code(sets: append([control_int_set(xs: [1, 2])], control_int_set(xs: [3, 4])))
 }
 
 fn control_int_set(xs: List<Int>) -> Set<Int> {
@@ -894,6 +1023,9 @@ data native_emission_expected_identities: List<String> = [
   "local_binder_shadows_ambiguous_global_leaf_match_arm",
   "local_binder_shadows_ambiguous_global_leaf_lambda_parameter",
   "local_binder_shadows_ambiguous_global_leaf_red_not_the_global",
+  "local_param_shadowing_a_coproduct_arm_renders_the_local",
+  "local_let_shadowing_a_coproduct_arm_renders_the_local",
+  "genuine_coproduct_arm_reference_still_elects_its_parent_beside_the_local_gate",
   "top_level_data_reference_beside_a_local_binder_is_a_call",
   "fn_value_stored_generic_fn_answers",
   "fn_value_red_stored_generic_fn_is_not_another_answer",
@@ -980,6 +1112,20 @@ data native_emission_expected_identities: List<String> = [
   "only_set_record_equal_members_in_another_order",
   "only_set_record_red_member_differs",
   "mixed_set_record_red_sequence_differs",
+  "canonical_set_spelling_counts_a_set_built_value",
+  "canonical_set_spelling_red_count_is_not_the_element_count",
+  "canonical_set_probe_pair_equal",
+  "canonical_set_probe_mixed_equal",
+  "canonical_set_struct_equal_members_in_another_order",
+  "canonical_set_struct_red_member_differs",
+  "canonical_set_forwarded_payload_equals_the_alias",
+  "canonical_set_forwarded_payload_red_dropped_a_member",
+  "canonical_set_enum_payloads_equal_across_spellings",
+  "canonical_set_enum_red_twin_differs",
+  "canonical_set_appended_as_one_element_of_a_list_of_sets",
+  "alias_set_appended_as_one_element_of_a_list_of_sets",
+  "canonical_and_alias_set_append_keep_the_same_shape",
+  "canonical_set_append_red_is_not_a_concatenation",
 ]
 
 // RULE: a match whose only coverage of an outer variant is nested two levels deep is emitted
@@ -1111,7 +1257,7 @@ fn empty_list_cast_cases() -> List<NativeEmissionCase> {
 }
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(imported_result_capture_cases(), concat(local_binder_shadow_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), mixed_set_carrier_cases()))))))))
+  concat(imported_result_capture_cases(), concat(local_binder_shadow_cases(), concat(local_binder_shadows_coproduct_arm_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), concat(mixed_set_carrier_cases(), canonical_set_carrier_cases()))))))))))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

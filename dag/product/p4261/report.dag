@@ -1,0 +1,1293 @@
+module product.p4261.report
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure {
+  ampere_count,
+  Micrometer,
+  micrometer,
+  micrometer_count,
+  millivolt_count,
+  volt_count,
+}
+import extdeps.electronic_component.types {
+  ActiveSerial,
+  AddressSelect,
+  AlertOutput,
+  AvalonStreaming,
+  CapacitorRatedVoltage,
+  CapacitorSpec,
+  configuration_done_signal,
+  ConfigurationScheme,
+  ConnectorSpec,
+  ControlIntoTheTranslator,
+  ControllerPin,
+  ControlOrClockIntoThePart,
+  DataPortOfChannel,
+  DrainSourceMaximum,
+  DrivenByThePart,
+  ElectronicComponentRow,
+  FuseInterruptRating,
+  gate_pin_standing,
+  GateInputPin,
+  GateOutputPin,
+  GateSupplyOrReturn,
+  GroundReturn,
+  guards_boot,
+  HighImpedance,
+  HotSwapControllerSpec,
+  HotSwapControllerSpecification,
+  initialization_done_signal,
+  JtagDownload,
+  LevelTranslatorSpec,
+  logic_pin_direction,
+  LogicGateSpec,
+  MosfetSpec,
+  NoGatePinNumbered,
+  NoLogicPinNumbered,
+  NonVolatileConfiguration,
+  NoTranslatorPinNumbered,
+  ProgrammableLogicSpec,
+  PullUpByStrap,
+  ReadByThePart,
+  RootOfTrustSpec,
+  SensorPinRole,
+  SerialClock,
+  SerialData,
+  SerialFlashSpec,
+  ShiftRegisterSpec,
+  SupplyInput,
+  SupplyOrReturn,
+  SwitchingRegulatorSpec,
+  TemperatureSensorSpec,
+  translator_pin_standing,
+  TranslatorSupplyOrReturn,
+  TvsDiodeSpec,
+  TvsReverseStandoff,
+  VolatileConfiguration,
+  VoltageWithstandKind,
+  WeakPullUp,
+}
+import product.electrical.carrier_phase {
+  is_bus_read,
+  is_phase_classified,
+  phase_standing_text,
+  phases_text,
+  pole_closures_text,
+  protected_bus_text,
+}
+import product.electrical.connectivity { component_identity_eq, component_local_label, ComponentInstanceIdentity, terminal_ref_equal }
+import product.electrical.source_draw { source_draw_text }
+import product.electrical.bench_session {
+  AssetAlteration,
+  DisplayOverRange,
+  incident_text,
+  is_before_incidents,
+  is_hedged,
+  is_reported_zero,
+  millivolt_text,
+  node_voltage_text,
+  NodeVoltageObservation,
+  pair_polarity_standing,
+  pair_polarity_text,
+  pair_range_standing,
+  pair_range_text,
+  PartRemoved,
+  ProbeAttachment,
+  resistance_text,
+  ResistanceObservation,
+  thermal_interface_text,
+  ThermalInterfaceChanged,
+  valued_ohms,
+}
+import product.electrical.continuity {
+  continuity_text,
+  evidence_grade_text,
+  evidence_ref_text,
+  EvidenceRef,
+  OperatorPhotograph,
+  terminal_text,
+}
+import product.electrical.measured_netlist { netlist_text }
+import product.electrical.identification {
+  FootprintUnpopulated,
+  identification_text,
+  IdentifiedByMarking,
+  InstalledComponent,
+  MarkingCandidate,
+  MarkingReading,
+  MarkingSharedByMakers,
+  MarkingUnresolved,
+  names,
+  RatingPrintedOnBody,
+  ResistanceCodeRead,
+}
+import product.electrical.investigation_hypothesis { hypothesis_text }
+import product.p4261.carrier {
+  AssemblyLabel,
+  AwayFromLatch,
+  BoardMarking,
+  PcbCode,
+  CaliperSpan,
+  CarrierLayoutObservation,
+  CensusComplete,
+  CensusPartial,
+  CountedFromPhotograph,
+  EdgeReceptacle,
+  FlatCableConnectors,
+  LatchSide,
+  ManagementIoObservation,
+  MappedOnHousing,
+  MicroUsbPlugFits,
+  p4261_grey_path_hypothesis,
+  p4261_j20_main_input_hypothesis,
+  p4261_local_control_hypothesis,
+  p4261_q4_temperature_diode_hypothesis,
+  p4261_vdd_bypass_hypothesis,
+  PartlyPhotographed,
+  PinHeader,
+  PlugFitUntried,
+  ReadOnAsset,
+  ReadOnUnit,
+  ReceptacleCandidate,
+  RowSide,
+  SideUnrecorded,
+  UnitUnrecorded,
+  UsbMicroB,
+  UsbSuperSpeedMicroB,
+  WholeBoardPhotographed,
+}
+import product.p4261.e1_b {
+  e1_ground_ref,
+  e1_j24,
+  e1_j24_pin,
+  e1_j24_pitch,
+  e1_j68,
+  e1_j68_points,
+  e1_q300_lead_b,
+  e1_rw251_bga,
+  e1_terminal,
+  e1_u2_2,
+  e1_u3_2,
+  e1_u4,
+  e1_u43,
+  e1_u500,
+  e1_u500_contacts,
+  e1_u500_pad,
+  e1_u51,
+  e1_u51_pin,
+  e1_u55,
+  e1_u55_pins,
+  e1_u5_2,
+  e1_vector_all_on,
+  p4261_enable_network_hypothesis,
+  p4261_near_4r7_converter_hypothesis,
+}
+import product.p4261.readings {
+  AccessPointUnseparated,
+  across_input,
+  AcrossInput,
+  AcrossInputContradicted,
+  AcrossInputStanding,
+  AcrossInputUnestablished,
+  attachment_of,
+  attachment_standing,
+  AttachmentDisputed,
+  AttachmentJoined,
+  AttachmentRuled,
+  attachments_of,
+  AttachmentStanding,
+  AttachmentUnconfirmed,
+  bench_of,
+  bias_ceiling,
+  board_netlist,
+  BoundContradicted,
+  BoundEstablished,
+  BoundNotBelowMinimum,
+  BoundUnestablished,
+  CandidateByResistanceFingerprint,
+  controller_enable_standing,
+  controller_of,
+  controller_overvoltage_standing,
+  controller_pin_terminal,
+  ControllerNotIdentified,
+  ControllerPinStanding,
+  downstream_terminals,
+  DrainUnread,
+  DrawPolarityNotEstablished,
+  e1_j68_chain_scans,
+  enable_projection,
+  EnablePin,
+  EnableProjection,
+  EnableProjectionUnestablished,
+  EnableReachableWithinInputBound,
+  EnableUnreachableWithinInputBound,
+  FewerThanTwoSourceSettings,
+  flash_of,
+  FunctionallyIdentified,
+  FusedSideNotReached,
+  gate_of,
+  identified_row,
+  input_bound,
+  input_draw,
+  input_polarity,
+  input_switch_standing,
+  InputBoundStanding,
+  InputDrawBounded,
+  InputDrawContradicted,
+  InputDrawGap,
+  InputDrawStanding,
+  InputDrawUnestablished,
+  InputPolarity,
+  InputPolarityNotEstablished,
+  InputReadingsInconclusive,
+  InputSwitchStanding,
+  InputUnmapped,
+  is_access_point,
+  is_regulator_output,
+  IsolationUnread,
+  j68_jtag_standing,
+  j68_plain_volts,
+  joined_at_baseline,
+  JtagFingerprintAbsent,
+  JtagHeaderStanding,
+  logic_of,
+  mosfet_of,
+  nat_min_of,
+  neighbour_terminals,
+  NoEnergizedInputReading,
+  NoInputBound,
+  NoMeasuredBoard,
+  NoSuchPin,
+  NotProportionalToSource,
+  NotTwoTerminals,
+  ObservedRating,
+  OvervoltagePin,
+  phase_standing_in,
+  PinAboveThreshold,
+  PinBelowThreshold,
+  PinThresholdUnestablished,
+  PinUnread,
+  polarity_grade,
+  PolarityContradicted,
+  PolarityEstablished,
+  PolarityGap,
+  PolarityUnestablished,
+  PoweredCorroborated,
+  ProjectionControllerNotIdentified,
+  ProjectionReadOnlyAtAttachment,
+  protected_bus_in,
+  readings_at,
+  ReadOnlyAtAttachment,
+  ReadWithinWindow,
+  register_of,
+  reported_zero_to,
+  ReturnSideNotJoined,
+  root_of_trust_of,
+  SidesUnrecorded,
+  SourcesBetweenStates,
+  SourcesUnread,
+  SwitchBlocking,
+  SwitchConducting,
+  SwitchNotIdentified,
+  SwitchStateUnestablished,
+  terminals_reading_at_most,
+  TerminalsNotPlaced,
+  ThresholdPin,
+  translator_of,
+}
+import extdeps.nvidia.p4261 { P4261AssemblyRevision }
+
+// THE RENDERED REPORT (diagnostics only): text over the records and their derivations, and the
+// narrow findings for consumers that cite one fact.
+
+fn netlist_reading(layout: CarrierLayoutObservation) -> String {
+  match layout.measured {
+    Absent => "no board measured, so no measured netlist"
+    Present { value: b } => netlist_text(net: board_netlist(b: b))
+  }
+}
+
+fn input_draw_gap_text(g: InputDrawGap) -> String {
+  match g {
+    NoEnergizedInputReading => "no energized reading across the input"
+    DrawPolarityNotEstablished => "the input's polarity is not established, so no reading is placed across it"
+    InputReadingsInconclusive { standings } => join(map(standings, s => source_draw_text(s: s)), "; ")
+  }
+}
+
+fn input_draw_text(d: InputDrawStanding) -> String {
+  match d {
+    InputDrawBounded { bounded, observed: _ } => join(["energized across its fused and return rows, module removed: ", join(map(bounded, s => source_draw_text(s: s)), "; ")], "")
+    InputDrawContradicted { contradicted, observed: _ } => join(["energized across its fused and return rows, the draw bound is CONTRADICTED: ", join(map(contradicted, s => source_draw_text(s: s)), "; ")], "")
+    InputDrawUnestablished { gaps } => join(["no energized draw established (", join(map(gaps, g => input_draw_gap_text(g: g)), "; "), ")"], "")
+  }
+}
+
+fn translator_pin_text(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> String {
+  match installed(layout: layout, c: c) {
+    Absent => join([component_text(c: c), " is not a component of this carrier's observation"], "")
+    Present { value: x } => match translator_of(c: x) {
+      Absent => join([component_text(c: c), " carries no level-translator row, so its pin ", to_string(number), " has no role to read"], "")
+      Present { value: t } => {
+        let basis = match identified_row(c: x) { Present { value: _ } => "", Absent => "under the candidate pinout, " }
+        match translator_pin_standing(spec: t, number: number) {
+          DataPortOfChannel { pin, channel, b_side } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is the ", if b_side { "B" } else { "A" }, " end of channel ", to_string(channel), ": a data port whose direction is that channel's direction input, a live fact"], "")
+          ControlIntoTheTranslator { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is a direction or enable input into the part"], "")
+          TranslatorSupplyOrReturn { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its supply or return"], "")
+          NoTranslatorPinNumbered { number: n } => join([component_text(c: c), " has no pin ", to_string(n)], "")
+        }
+      }
+    }
+  }
+}
+
+fn configuration_scheme_text(s: ConfigurationScheme) -> String {
+  match s {
+    ActiveSerial { data_lanes, flash_family } => join(["active serial x", to_string(data_lanes), " from a ", flash_family as String, " flash"], "")
+    AvalonStreaming => "Avalon streaming from a host"
+    JtagDownload => "JTAG download"
+  }
+}
+
+// WHAT U4 IS, AND WHERE WHETHER IT IS DOING ANYTHING IS READ. An identified programmable-logic row says
+// how its configuration arrives and what its pins do until it is configured; the text names the signal
+// that reports configuration, because a volatile device whose pins are weak pull-ups until then drives
+// nothing on the board, Q300's gate included, before that signal goes high.
+fn u4_configuration_text(layout: CarrierLayoutObservation) -> String {
+  match installed(layout: layout, c: e1_u4) {
+    Absent => join([component_text(c: e1_u4), " is not a component of this carrier's observation"], "")
+    Present { value: x } => match identified_row(c: x) {
+      Absent => join([component_text(c: e1_u4), "'s marking is unread or unresolved, so what drives Q300's gate stays a candidate"], "")
+      Present { value: row } => match logic_of(c: x) {
+        Absent => join([component_text(c: e1_u4), " reads ", row.ordering_code as String, ", a row that carries no programmable-logic specification"], "")
+        Present { value: l } => join([
+          component_text(c: e1_u4), " reads ", row.ordering_code as String, ": programmable logic, ", to_string(l.logic_elements), " logic elements, ",
+          match l.memory { VolatileConfiguration => "its configuration volatile and loaded at every power-up", NonVolatileConfiguration => "its configuration held without power" },
+          " over one of ", to_string(count(l.schemes)), " schemes (", join(map(l.schemes, s => configuration_scheme_text(s: s)), "; "), "); its user pins are ",
+          match l.io_before_configuration { WeakPullUp => "weak pull-ups", HighImpedance => "high impedance", PullUpByStrap { strap } => join(["weak pull-ups if its ", strap as String, " strap enables them, else high impedance"], "") },
+          " until it is configured, so whether it drives anything is read at ",
+          match configuration_done_signal(spec: l) { Present { value: s } => s.name as String, Absent => "a status signal the row does not name" },
+          match initialization_done_signal(spec: l) { Present { value: s } => join([" and user mode at ", s.name as String, " where enabled"], ""), Absent => "" },
+          if count(l.por_monitored_supplies) == 0 { "" } else { join(["; its power-on reset also holds until ", join(map(l.por_monitored_supplies, r => r as String), ", "), " is present"], "") },
+        ], "")
+      }
+    }
+  }
+}
+
+// J24 AS THE RECORD HAS IT: its positions, the photographic pitch, and how many positions read a value
+// to the return, none near zero.
+fn j24_text(layout: CarrierLayoutObservation) -> String {
+  match installed(layout: layout, c: e1_j24) {
+    Absent => join([component_text(c: e1_j24), " is not a component of this carrier's observation"], "")
+    Present { value: x } => match layout.measured {
+      Absent => join(["J24 has ", to_string(count(x.terminals)), " positions and no reading"], "")
+      Present { value: b } => {
+        let rs = filter(b.bench.resistances, o => any(x.terminals, t => terminal_ref_equal(a: o.first, b: e1_j24_pin(n: t)) && terminal_ref_equal(a: o.second, b: e1_ground_ref)))
+        let valued = filter(rs, o => match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
+        join([
+          "J24 has ", to_string(count(x.terminals)), " positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about ", to_string(e1_j24_pitch.along_row_tenths_mm), "/10 mm along a row and ", to_string(e1_j24_pitch.between_rows_tenths_mm), "/10 mm between rows, within ", to_string(e1_j24_pitch.tolerance_tenths_mm), "/10 mm, by a photograph against a tape aligned to neither axis; ",
+          to_string(count(rs)), " read to J20's black lead, ", to_string(count(valued)), " with a value (", to_string(nat_min_of(filter(map(valued, o => match valued_ohms(o: o) { Present { value: v } => v, Absent => 0 }), v => v > 0))), " ohm the least), none near zero, so no position is read as the return",
+        ], "")
+      }
+    }
+  }
+}
+
+// J68 BY ITS UNPOWERED SHAPE: which positions read as the return, which are open, and whether two
+// positions of the other row read alike, the facts a JTAG header's layout predicts.
+fn j68_shape_from(all: List<ResistanceObservation>) -> String {
+  let rs = filter(all, o => any(e1_j68_points, n => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref)))
+  let zeros = filter(rs, o => is_reported_zero(o: o))
+  let open = filter(rs, o => match o.display { DisplayOverRange => true, _ => false })
+  let alike = any(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: "L3")) && match valued_ohms(o: o) { Present { value: v } => any(rs, p => terminal_ref_equal(a: p.first, b: e1_terminal(c: e1_j68, name: "L5")) && match valued_ohms(o: p) { Present { value: w } => w == v, Absent => false }), Absent => false })
+  join([
+    "J68 unpowered: ", to_string(count(rs)), " positions read to J20's black lead; ", to_string(count(zeros)), " report zero without a baseline (", join(map(zeros, o => terminal_text(t: o.first)), ", "), "), ", to_string(count(open)), " over range (", join(map(open, o => terminal_text(t: o.first)), ", "), ")",
+    "; L3 and L5 ", if alike { "read alike" } else { "do not read alike" },
+    ": the shape of Intel's ten-pin JTAG layout with L as the odd pins and R the even, a candidate the powered re-read decides",
+  ], "")
+}
+
+fn jtag_standing_text(s: JtagHeaderStanding) -> String {
+  match s {
+    JtagFingerprintAbsent => "the unpowered readings do not fit the layout"
+    CandidateByResistanceFingerprint => "a candidate by its resistance fingerprint; the labelled powered re-read (R1 and R5 at 0 V, R2 near 1.8 V) and a read-only chain scan are not yet taken"
+    PoweredCorroborated => "corroborated powered (returns at 0 V, the reference near 1.8 V); a read-only chain scan returning an IDCODE is not yet taken"
+    FunctionallyIdentified => "functionally identified by a chain scan"
+  }
+}
+
+fn j68_shape_text(layout: CarrierLayoutObservation) -> String {
+  match layout.measured {
+    Absent => "J68 has no unpowered reading"
+    Present { value: b } => join([j68_shape_from(all: b.bench.resistances), ". J68 as a JTAG header is ", jtag_standing_text(s: j68_jtag_standing(rs: b.bench.resistances, vs: j68_plain_volts(phases: b.phases), scans: e1_j68_chain_scans)), "; under the candidate map R2 is the reference rail and R1, R5 the returns, so no bridge is placed between any two of its positions again"], "")
+  }
+}
+
+fn alteration_text(a: AssetAlteration) -> String {
+  match a.change {
+    ThermalInterfaceChanged { removed, applied } => join([
+      a.key as String, ": ", component_text(c: a.part), " had ", thermal_interface_text(t: removed), " removed",
+      match applied { Present { value: t } => join([" and ", thermal_interface_text(t: t), " applied"], ""), Absent => ", and no refit is yet reported" },
+      " (", evidence_ref_text(e: a.evidence), ")",
+    ], "")
+    PartRemoved { refitted } => join([
+      a.key as String, ": ", component_text(c: a.part), " was lifted off the board",
+      if refitted { " and refitted" } else { " and not refitted, so its footprint is bare and readings there are of the board without it" },
+      " (", evidence_ref_text(e: a.evidence), ")",
+    ], "")
+  }
+}
+
+fn alterations_text(layout: CarrierLayoutObservation) -> String {
+  match layout.measured {
+    Absent => "no alteration of the asset is recorded"
+    Present { value: b } => if count(b.bench.alterations) == 0 { "no alteration of the asset is recorded" } else { join(map(b.bench.alterations, a => alteration_text(a: a)), "; ") }
+  }
+}
+
+// THE FLASHES BESIDE U5_2, BY CAPACITY. Which image each holds is unread; the text gives the sizes the
+// record identifies so that a later reading of the bus can be set against them.
+fn island_flash_text(layout: CarrierLayoutObservation) -> String {
+  let parts = [e1_u3_2, e1_u2_2, e1_rw251_bga]
+  let texts = map(parts, c => match installed(layout: layout, c: c) {
+    Absent => join([component_text(c: c), " is not a component of this carrier's observation"], "")
+    Present { value: x } => match flash_of(c: x) {
+      Absent => join([component_text(c: c), " carries no serial-flash row"], "")
+      Present { value: f } => join([component_text(c: c), " ", to_string(f.capacity_mbit), " Mbit (", to_string(f.data_lanes), " lanes, signature ", f.jedec_signature as String, ")"], "")
+    }
+  })
+  join(["Serial flashes beside U5_2: ", join(texts, "; "), "; which image each holds is unread"], "")
+}
+
+// WHAT MAY STAND BETWEEN U4 AND ITS FLASH. An identified root-of-trust row with secure boot among its
+// protections says what U5_2 can do: authenticate a flash before the part it guards runs. Whether it
+// guards U4, and which of the three flashes beside it belongs to U4, to U5_2 or to another consumer, is
+// unread; the text says so, and the relation stays a candidate until a bus capture, a traced release
+// line or a configuration-status read decides it.
+fn u5_2_root_of_trust_text(layout: CarrierLayoutObservation) -> String {
+  match installed(layout: layout, c: e1_u5_2) {
+    Absent => join([component_text(c: e1_u5_2), " is not a component of this carrier's observation"], "")
+    Present { value: x } => match identified_row(c: x) {
+      Absent => join([component_text(c: e1_u5_2), "'s marking is unread or unresolved"], "")
+      Present { value: row } => match root_of_trust_of(c: x) {
+        Absent => join([component_text(c: e1_u5_2), " reads ", row.ordering_code as String, ", a row that carries no root-of-trust specification"], "")
+        Present { value: r } => join([
+          component_text(c: e1_u5_2), " reads ", row.ordering_code as String, ": a platform root of trust (", r.core as String, ") with ", to_string(count(r.protections)), " protections",
+          if guards_boot(spec: r) { ", secure boot among them, so it can authenticate a flash before the part it guards runs; whether it guards U4, and which flash is whose, is unread, so U4's configuration has that release as a condition only under that candidate relation" } else { ", secure boot not among them" },
+        ], "")
+      }
+    }
+  }
+}
+
+fn gate_pin_text(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> String {
+  match installed(layout: layout, c: c) {
+    Absent => join([component_text(c: c), " is not a component of this carrier's observation"], "")
+    Present { value: x } => match gate_of(c: x) {
+      Absent => join([component_text(c: c), " carries no logic-gate row, so its pin ", to_string(number), " has no role to read"], "")
+      Present { value: g } => {
+        let basis = match identified_row(c: x) { Present { value: _ } => "", Absent => "under the candidate pinout, " }
+        match gate_pin_standing(spec: g, number: number) {
+          GateInputPin { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is an input the gate reads"], "")
+          GateOutputPin { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its output, the AND of its inputs"], "")
+          GateSupplyOrReturn { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its supply or return"], "")
+          NoGatePinNumbered { number: n } => join([component_text(c: c), " has no pin ", to_string(n)], "")
+        }
+      }
+    }
+  }
+}
+
+// Which way a net meeting one of a shift register's pins runs, from the pin's datasheet role; a part not
+// identified as one has no pin roles to read.
+fn register_pin_direction_text(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> String {
+  match installed(layout: layout, c: c) {
+    Absent => join([component_text(c: c), " is not a component of this carrier's observation"], "")
+    Present { value: x } => match register_of(c: x) {
+      Absent => join([component_text(c: c), " is not identified as a shift register, so its pin ", to_string(number), " has no role to read"], "")
+      Present { value: r } => match logic_pin_direction(spec: r, number: number) {
+        ReadByThePart { pin } => join([component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is READ by the part: a net there is an input it samples"], "")
+        DrivenByThePart { pin } => join([component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is DRIVEN by the part: a net there could be driven or forwarded by it"], "")
+        ControlOrClockIntoThePart { pin } => join([component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is a control or clock into the part: a net there is shared with whatever clocks it"], "")
+        SupplyOrReturn { pin } => join([component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its supply or return"], "")
+        NoLogicPinNumbered { number: n } => join([component_text(c: c), " has no pin ", to_string(n)], "")
+      }
+    }
+  }
+}
+
+fn projection_text(p: EnableProjection) -> String {
+  match p {
+    EnableUnreachableWithinInputBound { component, readings, turn_on_millivolts, bound } => join([
+      component_text(c: component), "'s enable tracks the input and would reach its threshold minimum only near ", millivolt_text(n: turn_on_millivolts),
+      ", above the input's ", to_string(volt_count(v: bound)), " V bound (a rated working limit, not a clamp level): the input alone does not enable it within its rating (", join(map(readings, o => node_voltage_text(o: o)), "; "), readings_caveat(vs: readings), ")",
+    ], "")
+    EnableReachableWithinInputBound { component, readings, turn_on_millivolts, bound } => join([
+      component_text(c: component), "'s enable tracks the input and reaches its threshold minimum near ", millivolt_text(n: turn_on_millivolts),
+      ", within the input's ", to_string(volt_count(v: bound)), " V bound (", join(map(readings, o => node_voltage_text(o: o)), "; "), readings_caveat(vs: readings), ")",
+    ], "")
+    EnableProjectionUnestablished { component, gap } => join([component_text(c: component), "'s enable is not projected onto the input (",
+      match gap {
+        ProjectionControllerNotIdentified => "not identified as a hot-swap controller"
+        FewerThanTwoSourceSettings => "no two values read under different source settings"
+        NotProportionalToSource => "its readings do not scale with the source"
+        NoInputBound => "the input has no established upper bound"
+        ProjectionReadOnlyAtAttachment { attachments } => join(["its only readings are at ", attachment_points_text(attachments: attachments)], "")
+      }, ")"], "")
+  }
+}
+
+fn readings_caveat(vs: List<NodeVoltageObservation>) -> String {
+  join([
+    if any(vs, o => !is_before_incidents(o: o.order)) { "; rests on readings taken after an incident or of unrecorded order" } else { "" },
+    if any(vs, o => is_hedged(c: o.certainty)) { "; rests on a hedged statement" } else { "" },
+  ], "")
+}
+
+fn switch_text(s: InputSwitchStanding) -> String {
+  match s {
+    SwitchBlocking { component, drain, sources } => join([
+      component_text(c: component), " is BLOCKING: drain ", join(map(drain, o => node_voltage_text(o: o)), "; "), "; sources ", join(map(sources, o => node_voltage_text(o: o)), "; "), readings_caveat(vs: concat(drain, sources)),
+    ], "")
+    SwitchConducting { component, drain, sources } => join([
+      component_text(c: component), " is CONDUCTING: drain ", join(map(drain, o => node_voltage_text(o: o)), "; "), "; sources ", join(map(sources, o => node_voltage_text(o: o)), "; "), readings_caveat(vs: concat(drain, sources)),
+    ], "")
+    SwitchStateUnestablished { component, gap } => join([component_text(c: component), " state not established (",
+      match gap {
+        SwitchNotIdentified => "not identified as a MOSFET, so no terminal roles"
+        DrainUnread => "no drain value read"
+        SourcesUnread => "no source read"
+        SourcesBetweenStates => "sources neither far below nor near the drain"
+      }, ")"], "")
+  }
+}
+
+fn pin_word(which: ThresholdPin) -> String {
+  match which {
+    EnablePin => "enable (UVLO/EN)"
+    OvervoltagePin => "overvoltage lockout (OVLO)"
+  }
+}
+
+fn below_meaning(which: ThresholdPin) -> String {
+  match which {
+    EnablePin => "HELD BELOW its threshold, so the gate is held off"
+    OvervoltagePin => "BELOW its threshold, so it does not lock the input out"
+  }
+}
+
+fn above_meaning(which: ThresholdPin) -> String {
+  match which {
+    EnablePin => "ABOVE its threshold, so it does not hold the gate off"
+    OvervoltagePin => "ABOVE its threshold, so it locks the input out"
+  }
+}
+
+fn pin_standing_text(s: ControllerPinStanding, which: ThresholdPin) -> String {
+  match s {
+    PinBelowThreshold { component, readings, minimum } => join([
+      component_text(c: component), "'s ", pin_word(which: which), " is ", below_meaning(which: which), " (minimum ", millivolt_text(n: millivolt_count(v: minimum)), "): ", join(map(readings, o => node_voltage_text(o: o)), "; "), readings_caveat(vs: readings),
+    ], "")
+    PinAboveThreshold { component, readings, maximum } => join([
+      component_text(c: component), "'s ", pin_word(which: which), " is ", above_meaning(which: which), " (maximum ", millivolt_text(n: millivolt_count(v: maximum)), "): ", join(map(readings, o => node_voltage_text(o: o)), "; "), readings_caveat(vs: readings),
+    ], "")
+    PinThresholdUnestablished { component, readings, gap } => join([component_text(c: component), "'s ", pin_word(which: which), " state not established (",
+      match gap {
+        ControllerNotIdentified => "not identified as a hot-swap controller"
+        NoSuchPin => "its datasheet names no such pin"
+        PinUnread => "the pin is unread"
+        BoundNotBelowMinimum { bound, minimum } => join(["the reading is a stated bound of ", millivolt_text(n: millivolt_count(v: bound)), ", not below the threshold minimum of ", millivolt_text(n: millivolt_count(v: minimum)), ": read the pin's value"], "")
+        ReadWithinWindow => "the value read lies within the threshold window"
+        ReadOnlyAtAttachment { attachments } => join(["its only readings are at ", attachment_points_text(attachments: attachments), ": read that point's resistance to the pin's own lead"], "")
+        AccessPointUnseparated { points, neighbours } => join([
+          "the readings are at ", join(map(points, x => terminal_text(t: x)), ", "), ", joined to the pin at the shorted-probe baseline but not separated from its neighbouring ",
+          join(map(neighbours, x => terminal_text(t: x)), " and "), ", so they may be a neighbour's: read the point's resistance to each neighbour",
+        ], "")
+      },
+      match readings.first() {
+        Absent => ""
+        Present { value: _ } => join(["; ", join(map(readings, o => node_voltage_text(o: o)), "; ")], "")
+      },
+      ")"], "")
+  }
+}
+
+fn attachment_word(s: AttachmentStanding) -> String {
+  match s {
+    AttachmentJoined { attachment: _, joins: _ } => "joined"
+    AttachmentRuled { attachment: _ } => "ruled on by the operator"
+    AttachmentDisputed { attachment: _ } => "disputed"
+    AttachmentUnconfirmed { attachment: _ } => "unconfirmed"
+  }
+}
+
+fn attachment_points_text(attachments: List<AttachmentStanding>) -> String {
+  join([
+    join(map(attachments, s => join([terminal_text(t: attachment_of(s: s).point), " (attachment ", attachment_word(s: s), ")"], "")), " and "),
+    ", which no reading joins to the pin at the shorted-probe baseline",
+  ], "")
+}
+
+fn disputes_text(a: ProbeAttachment) -> String {
+  match a.disputes.first() {
+    Absent => ""
+    Present { value: _ } => join(["; the operator has since doubted where it sat: ", join(map(a.disputes, e => evidence_ref_text(e: e)), "; ")], "")
+  }
+}
+
+fn attachment_text(s: AttachmentStanding) -> String {
+  let a = attachment_of(s: s)
+  join([
+    terminal_text(t: a.point), ", attached at ", terminal_text(t: a.intended), " on the operator's word (", evidence_ref_text(e: a.statement), "), is ",
+    match s {
+      AttachmentJoined { attachment: _, joins } => join(["JOINED to it at the shorted-probe baseline (", join(map(joins, o => resistance_text(o: o)), "; "), ")"], "")
+      AttachmentRuled { attachment: _ } => join(["RULED on by the operator (", join(map(a.ruling, e => evidence_ref_text(e: e)), "; "), "): settled in the record, though no reading joins it to ", terminal_text(t: a.intended), " at the shorted-probe baseline"], "")
+      AttachmentDisputed { attachment: _ } => join(["DISPUTED: no reading joins it to ", terminal_text(t: a.intended), " at the shorted-probe baseline"], "")
+      AttachmentUnconfirmed { attachment: _ } => join(["UNCONFIRMED: no reading joins it to ", terminal_text(t: a.intended), " at the shorted-probe baseline"], "")
+    },
+    disputes_text(a: a),
+  ], "")
+}
+
+fn attachments_text(layout: CarrierLayoutObservation) -> String {
+  match attachments_of(layout: layout).first() {
+    Absent => ""
+    Present { value: _ } => join(["Probe attachments: ", join(map(attachments_of(layout: layout), a => attachment_text(s: attachment_standing(layout: layout, a: a))), "; ")], "")
+  }
+}
+
+fn enable_text(s: ControllerPinStanding) -> String {
+  pin_standing_text(s: s, which: EnablePin)
+}
+
+fn overvoltage_text(s: ControllerPinStanding) -> String {
+  pin_standing_text(s: s, which: OvervoltagePin)
+}
+
+fn regulator_pin_text(layout: CarrierLayoutObservation, c: InstalledComponent, ctl: HotSwapControllerSpecification, pin: ControllerPin) -> String {
+  let t = controller_pin_terminal(c: c, p: pin)
+  let neighbours = neighbour_terminals(c: c, ctl: ctl, pin: pin)
+  let joined = concat([t], joined_at_baseline(layout: layout, t: t))
+  let readings = readings_at(vs: bench_of(layout: layout), ts: joined)
+  let unseparated = filter(readings, o => !terminal_ref_equal(a: o.at, b: t) && !is_access_point(layout: layout, x: o.at, neighbours: neighbours))
+  let reported = readings_at(vs: bench_of(layout: layout), ts: filter(reported_zero_to(layout: layout, t: t), x => !any(joined, j => terminal_ref_equal(a: j, b: x))))
+  join([
+    component_text(c: c.component), " ", pin.name as String, " (pin ", to_string(pin.number), ", internal-regulator output): ",
+    match (concat(readings, reported)).first() {
+      Absent => "unread"
+      Present { value: _ } => join([
+        join(map(concat(readings, reported), o => node_voltage_text(o: o)), "; "),
+        match unseparated.first() {
+          Absent => ""
+          Present { value: _ } => join(["; read at a point joined to the pin at the baseline that no reading separates from ", join(map(neighbours, n => terminal_text(t: n)), " and "), ", so not yet the pin's access point"], "")
+        },
+        match reported.first() {
+          Absent => ""
+          Present { value: _ } => "; read at a point reported at zero to the pin with no shorted-probe baseline recorded, so not joined to it"
+        },
+        "; no window is read from it",
+      ], "")
+    },
+  ], "")
+}
+
+fn regulator_output_text(layout: CarrierLayoutObservation, c: InstalledComponent) -> String {
+  match controller_of(c: c) {
+    Absent => ""
+    Present { value: ctl } => match (filter(ctl.pins, p => is_regulator_output(p: p))).first() {
+      Absent => ""
+      Present { value: pin } => regulator_pin_text(layout: layout, c: c, ctl: ctl, pin: pin)
+    }
+  }
+}
+
+fn bench_record_text(layout: CarrierLayoutObservation) -> String {
+  match layout.measured {
+    Absent => ""
+    Present { value: b } => join([
+      join(map(b.bench.incidents, i => incident_text(i: i)), ". "),
+      match b.bench.resistances.first() {
+        Absent => ""
+        Present { value: _ } => join([". Unpowered resistance: ", join(map(b.bench.resistances, o => resistance_text(o: o)), "; ")], "")
+      },
+    ], "")
+  }
+}
+
+fn phases_reading(layout: CarrierLayoutObservation) -> String {
+  match layout.measured {
+    Absent => "no carrier phase recorded"
+    Present { value: b } => join([phases_text(phases: b.phases, transitions: b.transitions, bias_ceiling: bias_ceiling(b: b), downstream: downstream_terminals(layout: layout)), ". ", pole_closures_text(closures: b.pole_closures, vector: e1_vector_all_on)], "")
+  }
+}
+
+// ── RENDERING (diagnostics only) ──────────────────────────────────────────────────────────────
+
+fn component_text(c: ComponentInstanceIdentity) -> String {
+  component_local_label(c: c) as String
+}
+
+fn withstand_kind_text(k: VoltageWithstandKind) -> String {
+  match k {
+    TvsReverseStandoff => "TVS reverse standoff"
+    CapacitorRatedVoltage => "capacitor rated voltage"
+    DrainSourceMaximum => "drain-source maximum"
+    FuseInterruptRating => "fuse voltage rating"
+  }
+}
+
+fn row_side_text(s: RowSide) -> String {
+  match s {
+    LatchSide => "on the latch side"
+    AwayFromLatch => "away from the latch"
+    SideUnrecorded => "side unrecorded"
+  }
+}
+
+fn polarity_gap_text(g: PolarityGap) -> String {
+  match g {
+    SidesUnrecorded => "a contact's side is unrecorded"
+    NoMeasuredBoard => "no measured board"
+    InputUnmapped => "J20's contacts are not mapped on this board"
+    FusedSideNotReached => "not every fused-side contact is read to the fuse"
+    ReturnSideNotJoined => "the return-side contacts are not read joined"
+    IsolationUnread => "no reading separates the two sides"
+  }
+}
+
+fn polarity_text(p: InputPolarity) -> String {
+  match p {
+    PolarityEstablished { fused_side, return_side, fused: _, returns: _, isolation: _ } => join([
+      "polarity established ", evidence_grade_text(g: polarity_grade(p: p)), ": fused contacts ", row_side_text(s: fused_side), ", return contacts ", row_side_text(s: return_side),
+    ], "")
+    PolarityContradicted { readings } => join(["polarity CONTRADICTED (", join(map(readings, o => continuity_text(o: o)), "; "), "): re-read before any connection"], "")
+    PolarityUnestablished { gaps } => join(["polarity UNESTABLISHED (", join(map(gaps, g => polarity_gap_text(g: g)), "; "), "): re-read before any connection"], "")
+  }
+}
+
+fn across_text(s: AcrossInputStanding) -> String {
+  match s {
+    AcrossInput { component, on_fused, on_return, fused_path: _, return_path: _ } => join([
+      component_text(c: component), " across the input ('", terminal_text(t: on_fused), "' on the fused side, '", terminal_text(t: on_return), "' on the return side)",
+    ], "")
+    AcrossInputContradicted { component, readings } => join([component_text(c: component), " placement CONTRADICTED (", join(map(readings, o => continuity_text(o: o)), "; "), ")"], "")
+    AcrossInputUnestablished { component, gap } => join([component_text(c: component), " not placed across the input (",
+      match gap {
+        InputPolarityNotEstablished => "the input polarity is not established"
+        NotTwoTerminals => "not a two-terminal part"
+        TerminalsNotPlaced => "its terminals are not read to the two sides"
+      }, ")"], "")
+  }
+}
+
+fn observed_rating_text(o: ObservedRating) -> String {
+  join([component_text(c: o.component), ": ", to_string(volt_count(v: o.rated.maximum)), " V ", withstand_kind_text(k: o.rated.kind), "; ", across_text(s: o.placement)], "")
+}
+
+fn bound_text(b: InputBoundStanding) -> String {
+  match b {
+    BoundEstablished { bound, equally_limiting, observed: _ } => join([
+      "at most ", to_string(volt_count(v: bound.rated.maximum)), " V, limited by ", component_text(c: bound.limiting_component), "'s ", withstand_kind_text(k: bound.rated.kind),
+      " (", across_text(s: bound.placement), "; ", evidence_grade_text(g: bound.grade), ")",
+      match equally_limiting.first() {
+        Absent => ""
+        Present { value: _ } => join(["; equally limited by ", join(map(equally_limiting, x => component_text(c: x.limiting_component)), ", ")], "")
+      },
+    ], "")
+    BoundContradicted { contradicted, observed: _ } => join(["bound CONTRADICTED: ", join(map(contradicted, o => observed_rating_text(o: o)), "; ")], "")
+    BoundUnestablished { observed } => match observed.first() {
+      Absent => "no rated part read, and no input bound"
+      Present { value: _ } => join(["no input bound established; observed ratings (", join(map(observed, o => observed_rating_text(o: o)), "; "), ") bound nothing"], "")
+    }
+  }
+}
+
+fn j20_position_count(layout: CarrierLayoutObservation) -> Nat {
+  match layout.j20 {
+    CountedFromPhotograph { positions: n, evidence: _ } => n
+    MappedOnHousing { housing } => count(housing.positions)
+  }
+}
+
+fn span_fits(s: CaliperSpan, pitch: Micrometer, cavity_min: Micrometer, cavity_max: Micrometer) -> Bool {
+  micrometer_count(m: s.measured) >= s.pitches * micrometer_count(m: pitch) + s.cavities * micrometer_count(m: cavity_min)
+    && micrometer_count(m: s.measured) <= s.pitches * micrometer_count(m: pitch) + s.cavities * micrometer_count(m: cavity_max)
+}
+
+// Whether every caliper span is consistent with a pitch, given bounds on the cavity width.
+fn calipers_fit_pitch(spans: List<CaliperSpan>, pitch: Micrometer, cavity_min: Micrometer, cavity_max: Micrometer) -> Bool {
+  count(spans) > 0 && all(spans, s => span_fits(s: s, pitch: pitch, cavity_min: cavity_min, cavity_max: cavity_max))
+}
+
+fn fit_word(b: Bool) -> String {
+  if b { "fit" } else { "do not fit" }
+}
+
+fn caliper_text(spans: List<CaliperSpan>) -> String {
+  match spans.first() {
+    Absent => ""
+    Present { value: _ } => join([
+      "; caliper spans ", fit_word(b: calipers_fit_pitch(spans: spans, pitch: micrometer(count: 3000), cavity_min: micrometer(count: 2000), cavity_max: micrometer(count: 2600))),
+      " a 3.0 mm pitch and ", fit_word(b: calipers_fit_pitch(spans: spans, pitch: micrometer(count: 4200), cavity_min: micrometer(count: 2000), cavity_max: micrometer(count: 2600))),
+      " a 4.2 mm pitch, for a cavity of 2.0 to 2.6 mm",
+    ], "")
+  }
+}
+
+fn j20_text(layout: CarrierLayoutObservation) -> String {
+  match layout.j20 {
+    CountedFromPhotograph { positions: n, evidence: _ } => join([to_string(n), " positions counted from a photograph; pin continuity unread", caliper_text(spans: layout.j20_calipers)], "")
+    MappedOnHousing { housing } => join([to_string(count(housing.positions)), " positions mapped on the housing", caliper_text(spans: layout.j20_calipers)], "")
+  }
+}
+
+// ── NARROW FINDINGS, for consumers that cite one fact ─────────────────────────────────────────
+//
+// A consumer that records "this was established" cites ONE finding, not the whole carrier report, so
+// that removing or contradicting that fact in this model reopens the consumer and nothing else. Each
+// finding's standing is derived here from the typed model; its text is this module's own rendering.
+type CarrierFinding
+  = J20ContactInventory
+  | J20Polarity
+  | ComponentAcrossInput { component: ComponentInstanceIdentity }
+  | ComponentIdentified { component: ComponentInstanceIdentity }
+  | InputUpperBound
+  | J20EnergizedDraw
+  | InputSwitchState { component: ComponentInstanceIdentity }
+  | ControllerEnableState { component: ComponentInstanceIdentity }
+  | ControllerOvervoltageState { component: ComponentInstanceIdentity }
+  | EnableInputProjection { component: ComponentInstanceIdentity }
+  | CarrierPhaseObserved { key: NonEmptyStr }
+  | ProtectedInputBusInPhase { key: NonEmptyStr }
+
+type FindingStanding
+  = FindingEstablished { text: String }
+  | FindingNotEstablished { reason: String }
+
+fn installed(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> InstalledComponent? {
+  (filter(layout.components, x => component_identity_eq(a: x.component, b: c))).first()
+}
+
+fn not_a_component(c: ComponentInstanceIdentity) -> FindingStanding {
+  FindingNotEstablished { reason: join([component_text(c: c), " is not a component of this carrier's observation"], "") }
+}
+
+fn across_finding(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> FindingStanding {
+  match installed(layout: layout, c: c) {
+    Absent => not_a_component(c: c)
+    Present { value: x } => match across_input(layout: layout, c: x) {
+      AcrossInput { component, on_fused, on_return, fused_path, return_path } =>
+        FindingEstablished { text: across_text(s: AcrossInput { component: component, on_fused: on_fused, on_return: on_return, fused_path: fused_path, return_path: return_path }) }
+      AcrossInputContradicted { component, readings } => FindingNotEstablished { reason: across_text(s: AcrossInputContradicted { component: component, readings: readings }) }
+      AcrossInputUnestablished { component, gap } => FindingNotEstablished { reason: across_text(s: AcrossInputUnestablished { component: component, gap: gap }) }
+    }
+  }
+}
+
+fn identified_finding(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> FindingStanding {
+  match installed(layout: layout, c: c) {
+    Absent => not_a_component(c: c)
+    Present { value: x } => match identification_text(i: x.identification) {
+      Present { value: t } => FindingEstablished { text: join([component_text(c: c), " is ", t], "") }
+      Absent => FindingNotEstablished { reason: join([component_text(c: c), "'s marking is not resolved"], "") }
+    }
+  }
+}
+
+fn carrier_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> FindingStanding {
+  match f {
+    J20ContactInventory => match layout.j20 {
+      MappedOnHousing { housing: _ } => FindingEstablished { text: join(["J20: ", j20_text(layout: layout)], "") }
+      CountedFromPhotograph { positions: _, evidence: _ } => FindingNotEstablished { reason: join(["J20 is only counted from a photograph: ", j20_text(layout: layout)], "") }
+    }
+    J20Polarity => match input_polarity(layout: layout) {
+      PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => FindingEstablished { text: join(["J20 ", polarity_text(p: input_polarity(layout: layout))], "") }
+      PolarityContradicted { readings: _ } => FindingNotEstablished { reason: polarity_text(p: input_polarity(layout: layout)) }
+      PolarityUnestablished { gaps: _ } => FindingNotEstablished { reason: polarity_text(p: input_polarity(layout: layout)) }
+    }
+    ComponentAcrossInput { component } => across_finding(layout: layout, c: component)
+    ComponentIdentified { component } => identified_finding(layout: layout, c: component)
+    InputUpperBound => match input_bound(layout: layout) {
+      BoundEstablished { bound: _, equally_limiting: _, observed: _ } => FindingEstablished { text: join(["J20 input ", bound_text(b: input_bound(layout: layout))], "") }
+      BoundContradicted { contradicted: _, observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
+      BoundUnestablished { observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
+    }
+    InputSwitchState { component } => match installed(layout: layout, c: component) {
+      Absent => not_a_component(c: component)
+      Present { value: x } => match input_switch_standing(layout: layout, c: x) {
+        SwitchStateUnestablished { component: _, gap: _ } => FindingNotEstablished { reason: switch_text(s: input_switch_standing(layout: layout, c: x)) }
+        _ => FindingEstablished { text: switch_text(s: input_switch_standing(layout: layout, c: x)) }
+      }
+    }
+    ControllerEnableState { component } => match installed(layout: layout, c: component) {
+      Absent => not_a_component(c: component)
+      Present { value: x } => match controller_enable_standing(layout: layout, c: x) {
+        PinThresholdUnestablished { component: _, readings: _, gap: _ } => FindingNotEstablished { reason: enable_text(s: controller_enable_standing(layout: layout, c: x)) }
+        _ => FindingEstablished { text: enable_text(s: controller_enable_standing(layout: layout, c: x)) }
+      }
+    }
+    ControllerOvervoltageState { component } => match installed(layout: layout, c: component) {
+      Absent => not_a_component(c: component)
+      Present { value: x } => match controller_overvoltage_standing(layout: layout, c: x) {
+        PinThresholdUnestablished { component: _, readings: _, gap: _ } => FindingNotEstablished { reason: overvoltage_text(s: controller_overvoltage_standing(layout: layout, c: x)) }
+        _ => FindingEstablished { text: overvoltage_text(s: controller_overvoltage_standing(layout: layout, c: x)) }
+      }
+    }
+    EnableInputProjection { component } => match installed(layout: layout, c: component) {
+      Absent => not_a_component(c: component)
+      Present { value: x } => match enable_projection(layout: layout, c: x) {
+        EnableProjectionUnestablished { component: _, gap: _ } => FindingNotEstablished { reason: projection_text(p: enable_projection(layout: layout, c: x)) }
+        _ => FindingEstablished { text: projection_text(p: enable_projection(layout: layout, c: x)) }
+      }
+    }
+    J20EnergizedDraw => match input_draw(layout: layout) {
+      InputDrawBounded { bounded: _, observed: _ } => FindingEstablished { text: join(["J20 ", input_draw_text(d: input_draw(layout: layout))], "") }
+      InputDrawContradicted { contradicted: _, observed: _ } => FindingNotEstablished { reason: input_draw_text(d: input_draw(layout: layout)) }
+      InputDrawUnestablished { gaps: _ } => FindingNotEstablished { reason: input_draw_text(d: input_draw(layout: layout)) }
+    }
+    CarrierPhaseObserved { key } => match phase_standing_in(layout: layout, key: key) {
+      Absent => FindingNotEstablished { reason: join(["no phase '", key as String, "' is recorded on this carrier"], "") }
+      Present { value: s } => if is_phase_classified(s: s) { FindingEstablished { text: phase_standing_text(s: s) } } else { FindingNotEstablished { reason: phase_standing_text(s: s) } }
+    }
+    ProtectedInputBusInPhase { key } => match protected_bus_in(layout: layout, key: key) {
+      Absent => FindingNotEstablished { reason: join(["no phase '", key as String, "' is recorded on this carrier"], "") }
+      Present { value: s } => if is_bus_read(s: s) { FindingEstablished { text: protected_bus_text(s: s) } } else { FindingNotEstablished { reason: protected_bus_text(s: s) } }
+    }
+  }
+}
+
+fn is_finding_established(s: FindingStanding) -> Bool {
+  match s {
+    FindingEstablished { text: _ } => true
+    FindingNotEstablished { reason: _ } => false
+  }
+}
+
+// The input switches and controllers this observation identifies, rendered from their standings.
+fn input_stage_text(layout: CarrierLayoutObservation) -> String {
+  let switches = filter(layout.components, c => match mosfet_of(c: c) {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let controllers = filter(layout.components, c => match controller_of(c: c) {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let bench = bench_record_text(layout: layout)
+  let attached = attachments_text(layout: layout)
+  join([
+    match switches.first() {
+      Absent => "no input switch identified"
+      Present { value: _ } => join(map(switches, c => switch_text(s: input_switch_standing(layout: layout, c: c))), ". ")
+    },
+    match controllers.first() {
+      Absent => ""
+      Present { value: _ } => join([". ", join(map(controllers, c => join([enable_text(s: controller_enable_standing(layout: layout, c: c)), ". ", overvoltage_text(s: controller_overvoltage_standing(layout: layout, c: c)), ". ", projection_text(p: enable_projection(layout: layout, c: c)), ". ", regulator_output_text(layout: layout, c: c)], "")), ". ")], "")
+    },
+    if attached == "" { "" } else { join([". ", attached], "") },
+    if bench == "" { "" } else { join([". ", bench], "") },
+  ], "")
+}
+
+// Q300'S LEAD B TOWARD U51: what the pair reads across ranges, derived from the record, never from the
+// trace followed by eye. Rendered only where U51 is a component of the observation.
+fn q300_gate_path_reading(layout: CarrierLayoutObservation) -> String {
+  match installed(layout: layout, c: e1_u51) {
+    Absent => join([component_text(c: e1_u51), " is not a component of this carrier's observation"], "")
+    Present { value: _ } => match layout.measured {
+      Absent => "no reading from Q300 lead b toward U51"
+      Present { value: b } => join([
+        "Q300 lead b to U51 pin 8 ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8"))),
+        "; Q300 lead b to J20's black lead ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_ground_ref)),
+        "; no U51 pin is read as Q300 lead b's node. On the front, ", to_string(count(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500))), " of U500's contacts read at or below 500 ohm from Q300 lead b on the 2k range (", join(map(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500), n => n as String), ", "), "), against 800 ohm to its ground contact and to the via beside the U43 chain; the pad above U500 to J20's black lead ", pair_polarity_text(s: pair_polarity_standing(os: b.bench.resistances, a: e1_u500_pad, b: e1_ground_ref), a: e1_u500_pad, b: e1_ground_ref), "; Q300 lead b to that pad ", pair_polarity_text(s: pair_polarity_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_u500_pad), a: e1_q300_lead_b, b: e1_u500_pad), ". Of U55's pins, ", to_string(count(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u55, names: e1_u55_pins, ceiling_ohms: 500))), " read at or below 500 ohm from Q300 lead b on the 2k range (", join(map(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u55, names: e1_u55_pins, ceiling_ohms: 500), n => n as String), ", "), "). ", gate_pin_text(layout: layout, c: e1_u43, number: 4), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 13), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 16), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 12),
+      ], "")
+    }
+  }
+}
+
+fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
+  join([
+    "J20 (", j20_text(layout: layout), "; ", polarity_text(p: input_polarity(layout: layout)), "): ", bound_text(b: input_bound(layout: layout)),
+    ". J20 ", input_draw_text(d: input_draw(layout: layout)),
+    ". ", input_stage_text(layout: layout),
+    ". ", netlist_reading(layout: layout),
+    ". ", phases_reading(layout: layout),
+    ". ", q300_gate_path_reading(layout: layout),
+    ". ", u4_configuration_text(layout: layout),
+    ". ", u5_2_root_of_trust_text(layout: layout),
+    ". ", island_flash_text(layout: layout),
+    ". ", j24_text(layout: layout),
+    ". ", j68_shape_text(layout: layout),
+    ". ", alterations_text(layout: layout),
+    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis), ". ", hypothesis_text(h: p4261_near_4r7_converter_hypothesis),
+    ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
+  ], "")
+}
+
+fn sensor_role_text(r: SensorPinRole) -> String {
+  match r {
+    SerialData { bus: _, open_drain: _ } => "serial data"
+    SerialClock { bus: _ } => "serial clock"
+    AlertOutput { open_drain: _ } => "alert output"
+    GroundReturn => "ground"
+    SupplyInput => "supply"
+    AddressSelect { bit } => join(["address bit ", to_string(bit)], "")
+  }
+}
+
+fn is_trace_target(r: SensorPinRole) -> Bool {
+  match r {
+    SerialData { bus: _, open_drain: _ } => true
+    SerialClock { bus: _ } => true
+    AlertOutput { open_drain: _ } => true
+    GroundReturn => false
+    SupplyInput => false
+    AddressSelect { bit: _ } => false
+  }
+}
+
+fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking: MarkingReading) -> List<String> {
+  match row.specification {
+    TemperatureSensorSpec { sensor } => [join([
+      component_text(c: c.component), " ('", marking.text as String, "') is ", row.ordering_code as String,
+      "; trace pins ", join(map(filter(sensor.pins, p => is_trace_target(r: p.role)), p => join([to_string(p.number), " ", p.name as String, " (", sensor_role_text(r: p.role), ")"], "")), ", "),
+    ], "")]
+    TvsDiodeSpec { tvs: _ } => []
+    CapacitorSpec { capacitor: _ } => []
+    MosfetSpec { mosfet: _ } => []
+    ConnectorSpec { connector: _ } => []
+    HotSwapControllerSpec { controller: _ } => []
+    ShiftRegisterSpec { register: _ } => []
+    LevelTranslatorSpec { translator: _ } => []
+    LogicGateSpec { gate: _ } => []
+    ProgrammableLogicSpec { logic: _ } => []
+    RootOfTrustSpec { root_of_trust: _ } => []
+    SerialFlashSpec { flash: _ } => []
+    SwitchingRegulatorSpec { regulator: _ } => []
+  }
+}
+
+// A part identified as a temperature sensor renders its bus pins as trace targets, from its typed roles.
+fn sensor_trace_text(c: InstalledComponent) -> List<String> {
+  match c.identification {
+    IdentifiedByMarking { row, marking } => sensor_pins_text(c: c, row: row, marking: marking)
+    MarkingSharedByMakers { rows: _, marking: _ } => []
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => []
+    RatingPrintedOnBody { rating: _, marking: _ } => []
+    ResistanceCodeRead { milliohms: _, marking: _ } => []
+    MarkingUnresolved { marking: _, discriminator: _ } => []
+    FootprintUnpopulated { evidence: _ } => []
+  }
+}
+
+fn candidate_text(c: ReceptacleCandidate) -> String {
+  match c {
+    UsbMicroB => "USB Micro-B"
+    UsbSuperSpeedMicroB => "USB 3.0 SuperSpeed Micro-B"
+  }
+}
+
+fn width_text(w: Micrometer) -> String {
+  join([to_string(micrometer_count(m: w)), " um"], "")
+}
+
+fn management_io_item_text(o: ManagementIoObservation) -> String {
+  match o {
+    PinHeader { designator, rows, columns, pin_one_marked, evidence: _ } => join([
+      match designator {
+        Absent => "a"
+        Present { value: d } => d as String
+      },
+      " ", to_string(rows), " x ", to_string(columns), " pin header", if pin_one_marked { " with a pin-1 mark" } else { "" }, ", function and pinout unread",
+    ], "")
+    EdgeReceptacle { marking, opening_widths, plug_fit, candidates, evidence: _ } => join([
+      "an edge receptacle",
+      match marking {
+        Absent => ""
+        Present { value: m } => join([" marked '", m as String, "'"], "")
+      },
+      match opening_widths.first() {
+        Absent => ""
+        Present { value: _ } => join([" with openings of about ", join(map(opening_widths, w => width_text(w: w)), " and ")], "")
+      },
+      match plug_fit {
+        MicroUsbPlugFits => ", into which a micro-USB plug fits"
+        PlugFitUntried => ""
+      },
+      "; candidate families ", join(map(candidates, c => candidate_text(c: c)), ", "), " (part number, protocol and role unestablished)",
+    ], "")
+    FlatCableConnectors { count: n, evidence: _ } => join([to_string(n), " thin flat-cable connectors, function unread"], "")
+  }
+}
+
+// THE RECEIVED BOARD IS NAMED BY ITS OWN LABEL. A label in a listing photograph names what was sold,
+// possibly a sibling unit; only the operator's photograph of the board in hand names this one, so every
+// consumer that labels the carrier reads it here rather than restating it.
+fn is_operator_photograph(e: EvidenceRef) -> Bool {
+  match e {
+    OperatorPhotograph { taken_on: _, locator: _ } => true
+    _ => false
+  }
+}
+
+fn is_received_label(m: BoardMarking) -> Bool {
+  match m {
+    AssemblyLabel { model: _, part_number: _, revision: _, serial: _, evidence } => is_operator_photograph(e: evidence)
+    _ => false
+  }
+}
+
+fn received_labels(layout: CarrierLayoutObservation) -> List<BoardMarking> {
+  filter(layout.markings, m => is_received_label(m: m))
+}
+
+// WHICH REVISION A BOARD WAS BUILT TO IS READ OFF ITS OWN LABEL AND PCB PRINT. The record names the
+// NVIDIA revision it claims (layout.revision, extdeps.nvidia.p4261). Any received-board marking that
+// disagrees with the row wins, whatever else was read, so a board recorded against the wrong revision
+// says so instead of inheriting another revision's identity. Agreement is reported only for what was
+// read: the assembly label (part number and revision code) and the PCB print (PCB code) are separate
+// evidence, and one agreeing does not stand for the other. A label only in a seller's listing is not
+// the received board's (is_received_label).
+type AssemblyRevisionStanding
+  = RevisionReadOnBoard { revision: P4261AssemblyRevision }
+  | RevisionLabelReadPcbUnread { revision: P4261AssemblyRevision }
+  | RevisionPcbReadLabelUnread { revision: P4261AssemblyRevision }
+  | RevisionContradictedOnBoard { revision: P4261AssemblyRevision, marking: BoardMarking }
+  | RevisionUnreadOnBoard { revision: P4261AssemblyRevision }
+
+fn is_received_pcb_print(m: BoardMarking) -> Bool {
+  match m {
+    PcbCode { code: _, printed_beside: _, evidence } => is_operator_photograph(e: evidence)
+    _ => false
+  }
+}
+
+fn is_revision_marking(m: BoardMarking) -> Bool {
+  is_received_label(m: m) || is_received_pcb_print(m: m)
+}
+
+fn marking_contradicts_revision(m: BoardMarking, r: P4261AssemblyRevision) -> Bool {
+  match m {
+    AssemblyLabel { model, part_number, revision, serial: _, evidence: _ } =>
+      !(model == r.model && part_number == r.assembly_part_number && revision == r.revision_code)
+    PcbCode { code, printed_beside: _, evidence: _ } => !(code == r.pcb_code)
+    _ => false
+  }
+}
+
+fn assembly_revision_standing(layout: CarrierLayoutObservation) -> AssemblyRevisionStanding {
+  let read = filter(layout.markings, m => is_revision_marking(m: m))
+  let label_read = any(read, m => is_received_label(m: m))
+  let pcb_read = any(read, m => is_received_pcb_print(m: m))
+  match (filter(read, m => marking_contradicts_revision(m: m, r: layout.revision))).first() {
+    Present { value: m } => RevisionContradictedOnBoard { revision: layout.revision, marking: m }
+    Absent =>
+      if label_read && pcb_read { RevisionReadOnBoard { revision: layout.revision } }
+      else { if label_read { RevisionLabelReadPcbUnread { revision: layout.revision } }
+      else { if pcb_read { RevisionPcbReadLabelUnread { revision: layout.revision } }
+      else { RevisionUnreadOnBoard { revision: layout.revision } } } }
+  }
+}
+
+fn assembly_revision_text(s: AssemblyRevisionStanding) -> String {
+  match s {
+    RevisionReadOnBoard { revision: r } =>
+      join(["NVIDIA assembly revision ", r.revision_code as String, " (", r.assembly_part_number as String, ", PCB ", r.pcb_code as String, "), as its own label and PCB print read; no NVIDIA source names it"], "")
+    RevisionLabelReadPcbUnread { revision: r } =>
+      join(["NVIDIA assembly revision ", r.revision_code as String, " (", r.assembly_part_number as String, "), as its own label reads; its PCB print is unread; no NVIDIA source names it"], "")
+    RevisionPcbReadLabelUnread { revision: r } =>
+      join(["recorded as NVIDIA assembly revision ", r.revision_code as String, ", whose PCB ", r.pcb_code as String, " its own PCB print reads; its assembly label is unread; no NVIDIA source names it"], "")
+    RevisionContradictedOnBoard { revision: r, marking: _ } =>
+      join(["recorded as NVIDIA assembly revision ", r.revision_code as String, " (", r.assembly_part_number as String, ", PCB ", r.pcb_code as String, "), which its own label or PCB print CONTRADICTS"], "")
+    RevisionUnreadOnBoard { revision: r } =>
+      join(["recorded as NVIDIA assembly revision ", r.revision_code as String, ", unread on the board itself"], "")
+  }
+}
+
+fn carrier_label_text(layout: CarrierLayoutObservation) -> String {
+  let texts = flat_map(received_labels(layout: layout), m => match m {
+    AssemblyLabel { model, part_number, revision, serial, evidence: _ } =>
+      [join([model as String, " ", part_number as String, " rev ", revision as String, ", S/N ", serial as String], "")]
+    _ => []
+  })
+  let revision = assembly_revision_text(s: assembly_revision_standing(layout: layout))
+  match texts.first() {
+    Absent => join(["a carrier whose label is unread on the received unit; ", revision], "")
+    Present { value: _ } => join([join(texts, "; "), "; ", revision], "")
+  }
+}
+
+fn carrier_model_text(layout: CarrierLayoutObservation) -> String {
+  let models = flat_map(received_labels(layout: layout), m => match m {
+    AssemblyLabel { model, part_number: _, revision: _, serial: _, evidence: _ } => [model as String]
+    _ => []
+  })
+  match models.first() {
+    Absent => "unlabelled"
+    Present { value: m } => m
+  }
+}
+
+fn management_io_text(layout: CarrierLayoutObservation) -> String {
+  let items = join(map(layout.management_io, o => management_io_item_text(o: o)), "; ")
+  let io = match layout.management_io_survey {
+    WholeBoardPhotographed => match layout.management_io.first() {
+      Absent => "the photographed P4261 shows no RJ45, USB, video, console header or coin cell"
+      Present { value: _ } => join(["the photographed P4261 shows no RJ45, video or coin cell; it shows ", items], "")
+    }
+    PartlyPhotographed { not_covered } => match layout.management_io.first() {
+      Absent => join(["this P4261's management I/O is unsurveyed: ", not_covered as String], "")
+      Present { value: _ } => join(["this P4261 is partly photographed, so no absence of management I/O is established (", not_covered as String, "); it shows ", items], "")
+    }
+  }
+  let sensors = flat_map(layout.components, c => sensor_trace_text(c: c))
+  match sensors.first() {
+    Absent => io
+    Present { value: _ } => join([io, ". Identified management-bus parts: ", join(sensors, "; ")], "")
+  }
+}
+
+fn family_spec_text(row: ElectronicComponentRow) -> String {
+  match row.specification {
+    ConnectorSpec { connector } => join([" (", connector.series as String, ", ", to_string(connector.positions), " positions)"], "")
+    TvsDiodeSpec { tvs: _ } => ""
+    CapacitorSpec { capacitor: _ } => ""
+    MosfetSpec { mosfet: _ } => ""
+    TemperatureSensorSpec { sensor: _ } => ""
+    HotSwapControllerSpec { controller: _ } => ""
+    ShiftRegisterSpec { register: _ } => ""
+    LevelTranslatorSpec { translator: _ } => ""
+    LogicGateSpec { gate: _ } => ""
+    ProgrammableLogicSpec { logic: _ } => ""
+    RootOfTrustSpec { root_of_trust: _ } => ""
+    SerialFlashSpec { flash: _ } => ""
+    SwitchingRegulatorSpec { regulator } => join([" (synchronous step-down converter, ", millivolt_text(n: millivolt_count(v: regulator.input.minimum)), " to ", millivolt_text(n: millivolt_count(v: regulator.input.maximum)), " in, ", to_string(ampere_count(a: regulator.continuous_output_current)), " A, ", to_string(count(regulator.pins)), " pins)"], "")
+  }
+}
+
+fn read_on_text(r: ReadOnUnit) -> String {
+  match r {
+    ReadOnAsset { asset } => asset as String
+    UnitUnrecorded => "one of the operator's two carriers, which one unrecorded"
+  }
+}
+
+fn edge_connector_text(layout: CarrierLayoutObservation) -> String {
+  match layout.edge_high_speed_connectors {
+    CensusComplete { count: n, family } => join([to_string(n), " ", family.ordering_code as String, " connectors"], "")
+    CensusPartial { counted_at_least: n, designators_read, family_candidate, obligation } => join([
+      "at least ", to_string(n), " cabled high-speed connectors",
+      match designators_read.first() {
+        Absent => ""
+        Present { value: _ } => join([" (", join(map(designators_read, d => d as String), ", "), " read)"], "")
+      },
+      " (", obligation as String, ")",
+      match family_candidate {
+        Absent => ""
+        Present { value: fc } => join(["; family candidate ", fc.row.ordering_code as String, family_spec_text(row: fc.row), ", marking '", fc.marking as String, "' read on ", read_on_text(r: fc.read_on)], "")
+      },
+    ], "")
+  }
+}

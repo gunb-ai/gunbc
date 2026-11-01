@@ -26,6 +26,8 @@ data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringF
 
     "SITE — retry_hint_from_http maps a real HttpRetryAfter into RetryHint on the hosted 429 classify path (hosted_http_failure_wire), and retry_admissibility refuses RetryHintUnresolved, but no retrying client yet feeds that hint into a retry decision. Hosted POST /chat/completions is not idempotent and must not. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the first retrying idempotent HTTP client (not chat POST) passes retry_hint_from_http into retry_admissibility; spark RestartSec is not that client.",
 
+    "SITE — about thirty runner sites thread a caller-minted `invocation_id` parameter (AttemptIdentity.invocation_id, the slot controller and neighbours). It is gunbc's attempt token, not systemd's InvocationID; the observation-side reading is gunbc.runner.runner_microvm_lifecycle UnitAttemptBindingReading, and systemd's is gunbc.systemd_unit_invocation_liveness UnitRunIdentity. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the slot create-once binding (bold-dove-340) and the srv1 session-memory holder-death proof (snappy-carp-24) adopt UnitRunIdentity, after which each caller-minted parameter is either renamed attempt token or replaced by the observed run.",
+
     "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration. Age-based recovery at four sites is a different class: gunbc.recurring_failure_mode.hold_recovered_by_age_not_observed_holder_death.",
   ],
 
