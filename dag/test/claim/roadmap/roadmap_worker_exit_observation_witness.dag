@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_worker_exit_observation_witness
 
-import std.types { Bool, String, List, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
   AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
@@ -12,7 +12,11 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_from_listings, SpoolListed, SpoolListingUnreadable,
 }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown }
-import gunbc.roadmap.roadmap_session_placement { session_worker_unit_lifecycle }
+import gunbc.roadmap.roadmap_session_placement { session_worker_unit_lifecycle, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused }
+import gunbc.systemd_unit_invocation_liveness {
+  SystemManager, UnitInvocationObservation, UnitBootObservation,
+  unit_invocation_observation, unit_boot_observation,
+}
 
 // The worker unit's observation now that the unit is collected when its process ends (the
 // 2026-09-05 RemainAfterExit is reversed). Each claim supplies the manager's answer and the spool's
@@ -68,21 +72,71 @@ test fn a_loaded_unit_is_read_from_the_manager() -> Bool {
     && (match evidence(loaded: AttemptUnitActive, names: ["n-1+k1+worker+inv+success+exited+0"], start_recorded: true) { WorkerProcessRunning { command: _ } => true _ => false })
 }
 
+// THE HOLDER'S IDENTITY, SEEDED. The two facts a not-found reading must be bound to are the host's boot
+// and the instant the ledger acquired the hold. A hermetic witness supplies the same TEXTS the
+// production reader feeds the authority -- the boot id, the /proc/stat line, the InvocationID the
+// manager reports -- and never reaches the host for them.
+data witness_boot_id_text: String = "11111111-1111-1111-1111-111111111111"
+data witness_acquired_at: EpochSecs = 1000
+
+fn holder_evidence(proc_stat_text: String, invocation_text: String) -> SessionHolderEvidenceReading {
+  SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
+    standing: unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: witness_boot_id_text, proc_stat_text: proc_stat_text, invocation_text: invocation_text),
+    boot: unit_boot_observation(boot_id_text: witness_boot_id_text, proc_stat_text: proc_stat_text),
+    acquired_at: witness_acquired_at,
+  } }
+}
+
+// The boot began after the hold was acquired, and the manager that ran the unit has no such unit: the
+// holder is observed dead.
+fn holder_observed_dead() -> SessionHolderEvidenceReading { holder_evidence(proc_stat_text: "cpu 1 2 3\nbtime 2000\n", invocation_text: "") }
+
+// The boot is the one the hold was acquired in: the process can still be running.
+fn boot_predates_the_hold() -> SessionHolderEvidenceReading { holder_evidence(proc_stat_text: "cpu 1 2 3\nbtime 500\n", invocation_text: "") }
+
+// The unit still reports an InvocationID: it is the same run, whatever the spool holds.
+fn the_unit_still_reports_its_run() -> SessionHolderEvidenceReading { holder_evidence(proc_stat_text: "cpu 1 2 3\nbtime 2000\n", invocation_text: "22222222222222222222222222222222") }
+
+// The boot and the acquisition are too close to order at all.
+fn the_boot_cannot_be_ordered() -> SessionHolderEvidenceReading { holder_evidence(proc_stat_text: "cpu 1 2 3\nbtime 1030\n", invocation_text: "") }
+
 // The settlement's read: a collected worker that exited 0 settles as SUCCESS (it read cause-unknown
-// before the record existed); a gone unit with no record keeps cause-unknown, the arm that still frees
-// only after the launch deadline; an unreadable spool frees nothing.
+// before the record existed); a gone unit with no record frees the seat only when the holder's identity
+// binds the reading -- the boot that began after the acquisition -- and even then only as cause-unknown,
+// the arm that frees only after the launch deadline (session_settle_decide); an unreadable spool frees
+// nothing.
 test fn settlement_reads_the_record_and_keeps_cause_unknown_without_one() -> Bool {
-  let success = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: ["n-1+k1+worker+inv+success+exited+0"] }])) {
+  let success = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: ["n-1+k1+worker+inv+success+exited+0"] }]), evidence: holder_observed_dead()) {
     UnitTerminatedSuccess { detail: _ } => true
     _ => false
   }
-  let unknown = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: [] }])) {
+  let unknown = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: [] }]), evidence: holder_observed_dead()) {
     UnitTerminatedCauseUnknown { detail: _ } => true
     _ => false
   }
-  let unreadable = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListingUnreadable { reason: "EACCES" }])) {
+  let unreadable = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListingUnreadable { reason: "EACCES" }]), evidence: holder_observed_dead()) {
     UnitLifecycleUnknown { detail: _ } => true
     _ => false
   }
   success && unknown && unreadable
+}
+
+// A not-found unit is NOT a verdict on its own. With the boot predating the acquisition, with the unit
+// still reporting an InvocationID, with the boot too close to the acquisition to order, or with the
+// evidence unreadable, the seat is kept: the settlement does not recover a hold because the evidence is
+// old (gunbc.recurring_failure_mode hold_recovered_by_age_not_observed_holder_death).
+fn seat_kept_under(record: AttemptExitRecordObservation, reading: SessionHolderEvidenceReading) -> Bool {
+  match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: record, evidence: reading) {
+    UnitStillRunning { detail: _ } => true
+    UnitLifecycleUnknown { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn a_gone_unit_without_bound_death_evidence_keeps_the_seat() -> Bool {
+  let no_record = attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [] }])
+  seat_kept_under(record: no_record, reading: boot_predates_the_hold())
+    && seat_kept_under(record: no_record, reading: the_unit_still_reports_its_run())
+    && seat_kept_under(record: no_record, reading: the_boot_cannot_be_ordered())
+    && seat_kept_under(record: no_record, reading: SessionHolderEvidenceRefused { detail: "the ledger holds no acquisition for this unit" })
 }
