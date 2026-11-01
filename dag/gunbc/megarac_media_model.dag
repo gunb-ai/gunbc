@@ -3,6 +3,8 @@ module gunbc.megarac_media_model
 import std.types { Bool, Int, List, String }
 import std.measure { Second, second, second_count }
 import std.algebra { list_snoc_item }
+import extdeps.bmc.megarac { megarac_no_redirection_session_index }
+import gunbc.machine_intake.megarac_media_row_reading { megarac_cleared_cd_wire_status_at_the_build_this_repository_read }
 
 // THE BMC's VIRTUAL-MEDIA SUBSYSTEM (AMI MegaRAC SP-X, firmware 0.32): the same controller as
 // gunbc.bmc_model, held as its own record because its state -- web sessions, the NFS share binding,
@@ -59,6 +61,27 @@ type MegaRacMediaWorld {
   stop_at_ready: Int?
 }
 
+// THE CLEARED CD ROW AS THE BUILD THIS REPOSITORY READ REPORTS IT. The same physical state -- nothing
+// redirected, no session open -- reaches the wire differently per release: the 2026-09-05 probe saw
+// redirection_status 0 at 0.32, and boot runs 40258937016 and 40264233543 saw 16 beside session_index 255 at
+// the build the committed hpm check reads. A boot fixture that runs the production route at THIS build has to
+// put this wire in its CD row, or the attach policy refuses on a code the build never reported and the route
+// never reaches the attach the claim is about. Status and marker come from the reads themselves (see
+// gunbc.machine_intake.megarac_media_row_reading), so the fixture cannot drift from what was read.
+fn megarac_cleared_cd_at_the_current_build() -> MegaRacCdRow {
+  MegaRacCdRow {
+    image_name: "",
+    redirection_status: megarac_cleared_cd_wire_status_at_the_build_this_repository_read(),
+    media_index: 0,
+    session_index: megarac_no_redirection_session_index,
+    ready_at: none,
+  }
+}
+
+// THE CLEARED CD ROW AS THE 2026-09-05 PROBE SAW IT, AT 0.32: redirection_status 0 with no session. Kept
+// because 0 is what that release reported and claims that model that build need it; it is NOT what the build
+// this repository now reads reports for a drive that is not presenting (see
+// megarac_cleared_cd_at_the_current_build), and at this build status 0 is an unread code.
 fn megarac_cleared_cd() -> MegaRacCdRow {
   MegaRacCdRow { image_name: "", redirection_status: 0, media_index: 0, session_index: 255, ready_at: none }
 }
@@ -131,7 +154,7 @@ fn megarac_start_media(world: MegaRacMediaWorld, image_name: String, image_index
 // cd_error_code 16 standing with nothing presented, and no read after a stop was retained. The model
 // takes it as a scenario parameter rather than electing an answer, so the matrix runs both.
 fn megarac_stop_media(world: MegaRacMediaWorld) -> MegaRacMediaWorld {
-  let stopped = megarac_with_cd(world: world, cd: megarac_cleared_cd())
+  let stopped = megarac_with_cd(world: world, cd: megarac_cleared_cd_at_the_current_build())
   if world.error_clears_on_stop { megarac_with_error(world: stopped, code: 0) } else { stopped }
 }
 
@@ -149,7 +172,7 @@ fn megarac_media_advance(world: MegaRacMediaWorld, now: Second) -> MegaRacMediaW
     Absent => readied
     Present { value: at } =>
       if second_count(s: at) <= second_count(s: now) {
-        MegaRacMediaWorld { sessions: readied.sessions, next_session: readied.next_session, share: readied.share, mount_cd: readied.mount_cd, cd_error_code: readied.cd_error_code, images: readied.images, cd: megarac_cleared_cd(), ready_after: readied.ready_after, withdraw_at: none, withdraw_after_ready: readied.withdraw_after_ready, error_after_ready: readied.error_after_ready, error_clears_on_stop: readied.error_clears_on_stop, stop_at_ready: readied.stop_at_ready }
+        MegaRacMediaWorld { sessions: readied.sessions, next_session: readied.next_session, share: readied.share, mount_cd: readied.mount_cd, cd_error_code: readied.cd_error_code, images: readied.images, cd: megarac_cleared_cd_at_the_current_build(), ready_after: readied.ready_after, withdraw_at: none, withdraw_after_ready: readied.withdraw_after_ready, error_after_ready: readied.error_after_ready, error_clears_on_stop: readied.error_clears_on_stop, stop_at_ready: readied.stop_at_ready }
       } else { readied }
   }
 }
@@ -163,7 +186,7 @@ fn megarac_media_ready(world: MegaRacMediaWorld, now: Second) -> MegaRacMediaWor
     Present { value: at } =>
       if second_count(s: at) <= second_count(s: now) {
         match world.stop_at_ready {
-          Present { value: code } => megarac_with_error(world: megarac_with_cd(world: world, cd: megarac_cleared_cd()), code: code)
+          Present { value: code } => megarac_with_error(world: megarac_with_cd(world: world, cd: megarac_cleared_cd_at_the_current_build()), code: code)
           Absent => megarac_withdrawal_armed(world: megarac_with_cd(world: world, cd: MegaRacCdRow { image_name: world.cd.image_name, redirection_status: 1, media_index: world.cd.media_index, session_index: 0, ready_at: none }), ready: at)
         }
       } else { world }

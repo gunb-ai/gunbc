@@ -32,6 +32,7 @@ import extdeps.bmc.ipmitool_observed_output {
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
 import gunbc.machine_intake.megarac_media_row_reading {
+  megarac_cleared_cd_wire_status_at_the_build_this_repository_read,
   boot_run_40258937016_end_media_row, boot_run_40264233543_end_media_row,
   boot_run_40258937016_started_session_marker, mtcollins1_cd_row_ui_attestation,
   attestation_labels_a_stopped_and_ejected_row, attestation_and_read_name_the_same_row,
@@ -793,5 +794,31 @@ test fn w_code_16_is_not_catalogued_on_the_releases_that_never_reported_it() -> 
   } && match megarac_redirection_status_of_row(firmware: firmware_0_99, wire: 16, session_index: Present { value: megarac_no_redirection_session_index }) {
     RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } => w == 16 && bmc_firmware_release_identity_eq(a: f, b: firmware_0_99)
     _ => false
+  }
+}
+
+// THE FIXTURE AND THE READ AGREE, AND THE 0.32 WIRE IS NOT KNOWLEDGE HERE. The cleared row a boot fixture
+// puts in the world is stopped at this build, so the attempt reaches the attach it is about; the row the
+// 2026-09-05 probe wrote is stopped at 0.32 and is an UNREAD CODE at this build, which is why a fixture
+// cannot keep using it once the route reads this build. If the current-build row were a global default
+// instead of a per-release reading, the last arm would go red.
+test fn w_the_boot_fixture_renders_the_cleared_cd_on_the_wire_the_current_build_reports() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      megarac_cleared_cd_wire_status_at_the_build_this_repository_read() == boot_run_40264233543_end_media_row.redirection_status
+        && boot_run_40264233543_end_media_row.session_index == megarac_no_redirection_session_index
+        && match megarac_redirection_status_of_row(firmware: read, wire: boot_run_40264233543_end_media_row.redirection_status, session_index: Present { value: megarac_no_redirection_session_index }) {
+          RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: read)
+          _ => false
+        }
+        && match megarac_redirection_status_of_wire(firmware: mtcollins1_identity.firmware, wire: 0) {
+          RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: mtcollins1_identity.firmware)
+          _ => false
+        }
+        && match megarac_redirection_status_of_row(firmware: read, wire: 0, session_index: Present { value: megarac_no_redirection_session_index }) {
+          RedirectionStatusKnown { firmware: f, status: RedirectionWireUncatalogued { wire: w } } => w == 0 && bmc_firmware_release_identity_eq(a: f, b: read)
+          _ => false
+        }
   }
 }
