@@ -5843,13 +5843,9 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &st
     "cli_run_compile_clean_diagnostic_histogram";
 
 // DELETE WHEN dissolved: `UnlistedImportBindingSource`,
-// `classify_unlisted_import_binding_source`, `unlisted_import_rows_from_resolved`,
-// `UnlistedImportCensusRow`, and the unlisted-import-specific census helpers. The standalone bin
-// this marker once named was swept in gunbc#9160, and the dead `compile_clean_unlisted_import_census`
-// wrapper deleted when the per-class `compile_clean_diagnostic_census` subsumed it (its
-// `unlisted_import_rows` carries the same rows); what remains is the binding-source classification
-// the diagnostic census consumes. The census itself is NOT in this list: per DESIGN section 4b(4) it
-// stays enrolled after each class's climb as the executing evidence that the class stays at zero.
+// `classify_unlisted_import_binding_source`, and the unlisted-import-specific helpers. The
+// standalone bin this marker once named was swept in gunbc#9160; what remains is the
+// binding-source classification the emit host and the interpreter bridge consume.
 // Receipt: the marker const below is itself the receipt -- present until deletion, gone with the
 // scaffold (a count receipt over the marker STRING counts this comment and the marker test too,
 // so the count form can never read what it claims).
@@ -5881,22 +5877,6 @@ impl UnlistedImportBindingSource {
             Self::AmbiguousLeaf => "ambiguous-leaf",
         }
     }
-}
-
-/// One attributed row of the UnlistedImportUse census. `position` is the diagnostic's own span
-/// start within `file` — the occurrence grain the burndown worklist groups and counts at. It is
-/// NOT the occurrence identity the Step 0 binding-provenance census
-/// (gunbc.namespace_cut.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
-/// edits: (file, position) locates the charge, but does not name the selected declaration, the
-/// producing rule, or the pre/post-edit targets.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnlistedImportCensusRow {
-    pub file: String,
-    pub position: i64,
-    pub referenced_name: String,
-    pub referencing_module: String,
-    pub definer_module: Option<String>,
-    pub binding_source: UnlistedImportBindingSource,
 }
 
 fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String> {
@@ -6000,23 +5980,6 @@ pub fn classify_unlisted_import_binding_source(
         return (UnlistedImportBindingSource::DefinerResolvable, definer);
     }
     (UnlistedImportBindingSource::PoolCoincidence, definer)
-}
-
-fn diagnostic_decl_file_for_census(d: &Rc<ErrorNode>) -> String {
-    let raw = diagnostic_to_span(d.diagnostic.clone()).file.clone();
-    normalize_repo_relative_path_for_census(&raw)
-}
-
-fn normalize_repo_relative_path_for_census(path: &str) -> String {
-    let p = path.replace('\\', "/");
-    if let Ok(root) = workspace_root().canonicalize() {
-        if let Ok(abs) = std::path::Path::new(&p).canonicalize() {
-            if let Ok(rel) = abs.strip_prefix(&root) {
-                return rel.to_string_lossy().replace('\\', "/");
-            }
-        }
-    }
-    p
 }
 
 fn truncate_histogram_label(s: &str, max: usize) -> String {

@@ -310,7 +310,6 @@ fn producer_named_identities(producer: TargetProducer, index: Map<String, String
     BehavioralReceiptCensusProducer {} => []
     BehavioralReceiptSelftestProducer {} => []
     HeadsReadingDifferentialProducer {} => []
-    CompileCleanDiagnosticCensusProducer {} => []
     V2NativeCliProducer {} => []
     V2NativeFrontierProducer {} => []
     EmittedCrateWorkspaceProducer {} => []
