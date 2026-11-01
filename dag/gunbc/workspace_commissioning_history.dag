@@ -2,11 +2,9 @@ module gunbc.workspace_commissioning_history
 
 import std.types { String, NonEmptyStr }
 import std.algebra { trim }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner.runner_microvm_slot_unit { microvm_slot_controller_receipt_dir }
-import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
-import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.runner.runner_microvm_slot_unit { MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, MicrovmReceiptHistoryRead, MicrovmReceiptHistoryRefused, microvm_receipt_history }
+import gunbc.host_state_root { host_state_tree }
 
 // A receipt which says the controller never acquired a reservation carries no attempt subject.
 // Any executed attempt, unknown receipt or unreadable file requires recovery, not generation zero.
@@ -21,31 +19,16 @@ fn workspace_initial_receipt_refusal(content: String) -> String? {
 }
 
 fn workspace_initial_controller_history_refusal(slot: RunnerSlotIdentity) -> String? {
-  match read_store_ownership(path: microvm_slot_controller_receipt_dir) {
-    OwnershipRead { ownership: StoreRootOwned } => {
-      let names = Filesystem.List(path: microvm_slot_controller_receipt_dir)
-      if !names.success { Present { value: "slot controller receipt history could not be enumerated" } }
-      else {
-        let prefix = concat(runner_slot_instance_name(slot: slot) as String, "-")
-        let selected = filter(split(s: names.entries, delimiter: "\n"), name => starts_with(s: name, prefix: prefix))
-        fold(selected, init: none, f: (prior, name) => match prior {
-          Present { value: _ } => prior
-          Absent => {
-            let path = join([microvm_slot_controller_receipt_dir, "/", name], "")
-            match read_store_ownership(path: path) {
-              OwnershipRead { ownership: StoreRootOwned } => {
-                let read = Filesystem.Read(path: path)
-                if !read.success { Present { value: "a slot controller receipt is unreadable" } }
-                else { workspace_initial_receipt_refusal(content: read.content) }
-              }
-              OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => Present { value: "a slot controller receipt is not root-authoritative" }
-              OwnershipUnread { reason: _ } => Present { value: "a slot controller receipt is not root-authoritative" }
-            }
-          }
-        })
+  match microvm_receipt_store(tree: host_state_tree()) {
+    MicrovmReceiptStoreUnready { detail } => Present { value: join(["slot controller history is absent, unreadable or outside root custody: ", detail], "") }
+    MicrovmReceiptStoreReady { store } =>
+      match microvm_receipt_history(store: store, instance: runner_slot_instance_name(slot: slot) as String) {
+        MicrovmReceiptHistoryRefused { detail } => Present { value: detail }
+        MicrovmReceiptHistoryRead { texts } =>
+          fold(texts, init: none, f: (prior, text) => match prior {
+            Present { value: _ } => prior
+            Absent => workspace_initial_receipt_refusal(content: text)
+          })
       }
-    }
-    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => Present { value: "slot controller history is absent, unreadable or outside root custody" }
-    OwnershipUnread { reason: _ } => Present { value: "slot controller history is absent, unreadable or outside root custody" }
   }
 }

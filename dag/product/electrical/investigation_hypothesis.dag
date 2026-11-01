@@ -1,0 +1,18 @@
+module product.electrical.investigation_hypothesis
+
+import std.types { List, NonEmptyStr, String }
+
+// A HYPOTHESIS IS PROSE OVER RECORDED DATA, and no deduction reads it: it names its claim, the
+// observations it rests on, and the reading that would decide it.
+
+// ── HYPOTHESES (prose leads, consumed by no deduction) ───────────────────────────────────────
+
+type InvestigationHypothesis {
+  claim: NonEmptyStr
+  sources: List<NonEmptyStr>
+  decided_by: NonEmptyStr
+}
+
+fn hypothesis_text(h: InvestigationHypothesis) -> String {
+  join(["hypothesis, not a derivation: ", h.claim as String, " (", join(map(h.sources, x => x as String), "; "), "); decided by ", h.decided_by as String], "")
+}

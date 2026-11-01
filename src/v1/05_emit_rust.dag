@@ -446,7 +446,21 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   // keyed arm below could lower it (Rc<FinitelySupportedFunction<String, AlgebraProfile>> beside the
   // HashMap its callers read; E0308 at std.computation type_iteration_dimension). Ask the one
   // predicate the keyed arm asks.
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && !node_is_keyed_collection(n: n, source_indices: source_indices) {
+  //
+  // THE SAME ASK ON THE OTHER SIDE OF THE LADDER. The element arm below owns any application whose
+  // carrier spelling names a container algebra the target realizes (`coerce_container_template`), and
+  // `is_container_type` is NOT that question: its arity roster holds the ALIAS spellings only
+  // (algebra.dag `arity_row_is_alias_spellings_only_reason`), so the canonical spelling of a carrier --
+  // `FinitePowerSet<Int>`, written by std.algebra itself and deliberately given no alias row
+  // (`canonical_spelling_sorts_ahead_of_alias_reason`) -- answered false here and was rendered as the
+  // std.algebra RECORD at fn parameter, return, and nested-argument position while the field renderer
+  // one arm away lowered the same carrier to the target's `Rc<BTreeSet<i64>>`. One carrier, two Rust
+  // types (DESIGN section 3/6b; gunbc.recurring_failure_mode
+  // emitter_element_container_lowering_is_keyed_by_leaf_spelling). Asking the arm below's own predicate
+  // -- `node_is_element_collection`, which is the alias roster PLUS the carrier's algebra row -- makes
+  // the two renderers answer one question and leaves a declared carrier with no target inhabitant
+  // (`PartialFunction`, `PointwisePower`) exactly where it is today: still structural.
+  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && !node_is_keyed_collection(n: n, source_indices: source_indices) && !node_is_element_collection(n: n, source_indices: source_indices) {
     render_rust_applied_via_emit_info(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
@@ -1906,7 +1920,14 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decision: type_reference_realization(n: n, dag_name: name, target: Rust)) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
+  // THE SAME ASK, FN-SIGNATURE SIDE. This arm renders the AUTHORED base name with its arguments, which
+  // is what a canonical-spelled carrier application at a parameter or return position got: the field
+  // renderer lowered `FinitePowerSet<Int>` to the target's `Rc<BTreeSet<i64>>` while this one emitted the
+  // std.algebra record beside it (one carrier, two Rust types -- see the long note on the declared-record
+  // arm of `render_rust_type_without_applied_binding`). The alias spellings are already out of this arm
+  // through `is_container_type`; the carrier's own spelling is out only once the arm below's predicate is
+  // asked here too.
+  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && !node_is_element_collection(n: n, source_indices: source_indices) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -15887,7 +15908,14 @@ fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, 
   // Keyed is not lowered: `PartialFunction<K, V>` is keyed by spelling but has no Rust inhabitant,
   // so it renders as its record and keeps `(p.lookup)(k)`. The exemption asks the same target fact
   // emit_keyed_container_type branches on, so this tier and the type renderer cannot disagree.
+  // The element carrier needs the SAME exemption: `FinitePowerSet` is the canonical spelling of the
+  // `Set` alias and lowers to the target OrdSet/BTreeSet, while its profile record declares
+  // member/union/intersect/diff/contains/count/length as arrow members -- taking the field tier for a
+  // canonical-spelled receiver emitted `(members.count)()` against a BTreeSet (E0609 no field `count`),
+  // exactly the keyed tier's failure one algebra over. Asking the target fact rather than a spelling is
+  // what keeps `PointwisePower` on the field tier: it has no inhabitant, so it keeps its record.
   if node_is_keyed_collection(n: receiver_type, source_indices: scope.type_env.source_indices) && keyed_container_has_target_inhabitant(container_name: qualified_last_segment(name: receiver_type_name), target: Rust) { false }
+  else if node_is_element_collection(n: receiver_type, source_indices: scope.type_env.source_indices) && keyed_container_has_target_inhabitant(container_name: qualified_last_segment(name: receiver_type_name), target: Rust) { false }
   else {
     match rust_struct_field_type_node(scope: scope, struct_name: receiver_type_name, field_name: method_name) {
       Present { value: field_type } => field_type.connective == Arrow
