@@ -98,7 +98,7 @@ import gunbc.runner.runner_microvm_lifecycle {
   AttemptTeardownReadback,
   TeardownReadbackBinding, TeardownReadbackBound, TeardownReadbackForeignSubject,
   TeardownReadbackSubjectUnobservable,
-  UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
+  UnitAttemptBindingReading, UnitAttemptBindingRead, UnitAttemptBindingUnread,
   attempt_teardown_readback, settle_teardown, TeardownSettlement,
 }
 
@@ -624,12 +624,12 @@ fn force_stop_outcome_of_holding(asked: Bool, ask_detail: String, h: CgroupNotQu
 data workflow_effect_sequencing_frontier: DissolutionCondition = unbound_dissolution(
   description: "DECLARED FRONTIER (DESIGN 3c/4b). std carries NO effect-sequencing authority: whether a function's let-chain lowers to a Bind continuation -- which would order these effects structurally -- or whether source position is only a seed-realization property, is undecided and has no home module. The two lawful constructions gunbc.recurring_failure_mode readback_ordered_only_by_statement_position names are the effect's Bind continuation and an explicit after: receipt; statement position is neither. TRIGGER, at capability grain: an effect-sequencing authority in std that says whether a let-chain orders its effects, sufficient to decide whether this read is ordered against the stop by construction. SUFFICIENT FOR deleting this row and stating the ordering as a guarantee. NOT satisfied by this comment, by the seed continuing to evaluate in source order, or by a witness that happens to observe the read first." as NonEmptyStr,
 )
-data attempt_invocation_env_key: String = "GUNBC_ATTEMPT_INVOCATION_ID"
+data attempt_binding_env_key: String = "GUNBC_ATTEMPT_TOKEN"
 
-fn attempt_invocation_env_setting(invocation_id: NonEmptyStr) -> SystemdRunProperty {
+fn attempt_binding_env_setting(attempt_token: NonEmptyStr) -> SystemdRunProperty {
   NamedUnitSetting {
     property: EnvironmentProperty,
-    value: join([attempt_invocation_env_key, "=", invocation_id as String], "") as NonEmptyStr,
+    value: join([attempt_binding_env_key, "=", attempt_token as String], "") as NonEmptyStr,
   }
 }
 
@@ -645,18 +645,18 @@ fn attempt_invocation_env_setting(invocation_id: NonEmptyStr) -> SystemdRunPrope
 // asked: a failure arm that neither refuses nor is located, on the exact path this module exists to
 // make observable (review 69057). The three states are separated here, where they are produced, and
 // the empty string has no way out of this function.
-fn observe_unit_attempt_invocation(unit: NonEmptyStr) -> UnitInvocationReading
+fn observe_unit_attempt_binding(unit: NonEmptyStr) -> UnitAttemptBindingReading
 {
   let shown = systemd.Systemctl.ShowProperty(
     unit: unit,
     property: systemd_unit_property_wire(property: EnvironmentProperty),
   )
   if shown.success == false {
-    UnitInvocationUnread {
+    UnitAttemptBindingUnread {
       reason: join(["the unit's Environment could not be read, so the attempt it was started for is unknown: ", unit as String], "") as NonEmptyStr,
     }
   } else {
-    invocation_of_environment(unit: unit, environment: trim(s: shown.value))
+    attempt_binding_of_environment(unit: unit, environment: trim(s: shown.value))
   }
 }
 
@@ -664,19 +664,19 @@ fn observe_unit_attempt_invocation(unit: NonEmptyStr) -> UnitInvocationReading
 // property as space-separated `KEY=VALUE` words, so the reading splits on whitespace and takes the
 // assignment whose key is ours. A missing key and an EMPTY value are the same answer here -- neither
 // names an attempt -- and both are Unread rather than a value nothing can equal.
-fn invocation_of_environment(unit: NonEmptyStr, environment: String) -> UnitInvocationReading {
+fn attempt_binding_of_environment(unit: NonEmptyStr, environment: String) -> UnitAttemptBindingReading {
   let found = fold(split(s: environment, delimiter: " "), init: "", f: (acc, word) =>
-    if starts_with(s: word, prefix: join([attempt_invocation_env_key, "="], "")) {
-      substring(s: word, start: string_length(s: attempt_invocation_env_key) + 1, end: string_length(s: word))
+    if starts_with(s: word, prefix: join([attempt_binding_env_key, "="], "")) {
+      substring(s: word, start: string_length(s: attempt_binding_env_key) + 1, end: string_length(s: word))
     } else {
       acc
     })
   if found == "" {
-    UnitInvocationUnread {
-      reason: join(["the unit carries no ", attempt_invocation_env_key, " assignment, so it names no attempt: ", unit as String], "") as NonEmptyStr,
+    UnitAttemptBindingUnread {
+      reason: join(["the unit carries no ", attempt_binding_env_key, " assignment, so it names no attempt: ", unit as String], "") as NonEmptyStr,
     }
   } else {
-    UnitInvocationRead { invocation_id: found as NonEmptyStr }
+    UnitAttemptBindingRead { attempt_token: found as NonEmptyStr }
   }
 }
 
@@ -831,7 +831,7 @@ fn perform_teardown_and_observe(
   let attempt = bound.attempt.attempt
   let unit = in_flight_attempt_unit(attempt: bound.attempt)
   let slice = fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr
-  let invocation = observe_unit_attempt_invocation(unit: unit)
+  let invocation = observe_unit_attempt_binding(unit: unit)
   let outcome = stop_attempt(unit: unit, slice: slice)
   let jail = runner_microvm_attempt_jail_base(attempt: attempt)
   let dir = runner_microvm_attempt_dir(attempt: attempt)
@@ -847,7 +847,7 @@ fn perform_teardown_and_observe(
     observed: ObservedTeardown {
       host: attempt.slot.host as String,
       generation: bound.generation,
-      stop: ObservedStop { unit: unit, invocation_id: invocation, outcome: outcome },
+      stop: ObservedStop { unit: unit, attempt_binding: invocation, outcome: outcome },
       cgroup: ObservedCgroup { root: slice, readback: observe_cgroup_subtree(slice: slice) },
       mounts: ObservedPath { path: jail, readback: observe_resource_absence(path: jail) },
       attempt_storage: ObservedPath { path: dir, readback: observe_resource_absence(path: dir) },
@@ -1198,7 +1198,7 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
         properties: concat([
           runner_microvm_attempt_slice_property(attempt: attempt),
           runner_microvm_attempt_part_of_property(attempt: attempt),
-          attempt_invocation_env_setting(invocation_id: invocation_id),
+          attempt_binding_env_setting(attempt_token: invocation_id),
         ], receipt.runtime_properties),
         command_argv: argv_words(command: jailer),
       ) {
@@ -1407,7 +1407,7 @@ fn run_launched_attempt(
 // invocation_id is the controller's own, written into the transient unit's Environment at launch
 // (launch_attempt); the journal keys its entries by systemd's _SYSTEMD_INVOCATION_ID, a trusted field
 // the guest cannot set. So the join is made while the unit is alive, right after the VMM starts: the
-// unit's Environment must name THIS attempt's invocation_id (observe_unit_attempt_invocation, the
+// unit's Environment must name THIS attempt's invocation_id (observe_unit_attempt_binding, the
 // reading the teardown already uses), and in the same moment the unit's systemd InvocationID is
 // captured. The console read after the terminal trigger is then restricted to entries carrying that
 // systemd invocation (extdeps.systemd.journalctl UnitInvocationLog), so a line from any other runtime
@@ -1426,7 +1426,7 @@ fn bind_attempt_console(identity: AttemptIdentity, launch: AttemptLaunch) -> Att
       attempt_console_binding_of(
         identity: identity,
         unit: u,
-        environment: observe_unit_attempt_invocation(unit: u),
+        environment: observe_unit_attempt_binding(unit: u),
         systemd_invocation: if shown.success { trim(s: shown.value) } else { "" },
       )
     }
@@ -1441,12 +1441,12 @@ fn bind_attempt_console(identity: AttemptIdentity, launch: AttemptLaunch) -> Att
 fn attempt_console_binding_of(
   identity: AttemptIdentity,
   unit: NonEmptyStr,
-  environment: UnitInvocationReading,
+  environment: UnitAttemptBindingReading,
   systemd_invocation: String,
 ) -> AttemptConsoleBinding {
   match environment {
-    UnitInvocationUnread { reason: r } => AttemptConsoleUnbound { reason: r as String }
-    UnitInvocationRead { invocation_id: i } =>
+    UnitAttemptBindingUnread { reason: r } => AttemptConsoleUnbound { reason: r as String }
+    UnitAttemptBindingRead { attempt_token: i } =>
       if (i as String) != (identity.invocation_id as String) {
         AttemptConsoleUnbound { reason: join(["the unit's environment names attempt invocation ", i as String, ", not this attempt's ", identity.invocation_id as String], "") }
       } else if systemd_invocation == "" {
