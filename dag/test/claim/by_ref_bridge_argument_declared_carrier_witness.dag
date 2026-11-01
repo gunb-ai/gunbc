@@ -12,12 +12,26 @@ module test.claim.by_ref_bridge_argument_declared_carrier_witness
 // first measured on #15164 at 47612d0cb20d (v2-bootstrap run 40968160998, in
 // v2.compiler.occurrence_resolution_census).
 //
+// THE FORM, EXACTLY. `rust_by_ref_bridge_argument` emits
+// `v1_rt::sorted_map_keys({ let __by_ref_arg: &<carrier> = &<expr>; __by_ref_arg })`. The binding is a
+// REFERENCE to the carrier, not the carrier itself, because `render_node_type` spells the modelled type
+// while the emitted expression may carry it behind a pointer (`Rc<im::HashMap<..>>` for a model
+// `Map<String, Bool>`): a typed `let` is a coercion site, so `&<expr>` reaches `&<carrier>` by deref
+// coercion exactly as the plain borrow did at the call, and the annotation still names the carrier,
+// which is the only reason the binding exists. An earlier revision bound the value itself and the seed
+// rebuild of run 41299024017 said so: `expected im::HashMap<_, _>, found Rc<im::HashMap<_, bool>>` in
+// the `std.types` mirror. The same failure made a second rule necessary -- an annotation whose rendering
+// still has an inference hole pins nothing, so `rust_by_ref_carrier_is_named` declines to write one and
+// the site keeps the plain borrow. That guard's input is a program the checker left partially resolved,
+// which cannot be spelled here without inventing one; its evidence is that seed rebuild and its rerun,
+// named rather than papered over.
+//
 // THE REPAIR IS AT THE BORROW, NOT AT THE NAME, AND THESE CLAIMS PIN THAT. In
 // `src/v1/05_emit_rust.dag`, `rust_by_ref_bridge_argument` now binds a CALL argument at the carrier
 // `Node.inferred` already resolved for it — the type v1 derived, rendered by `render_node_type`, the
 // same authority every other type position in the emitted program goes through — and borrows the
 // binding:
-// `v1_rt::sorted_map_keys(&{ let __by_ref_arg: Rc<HashMap<i64, bool>> = fold_list(..); __by_ref_arg })`.
+// `v1_rt::sorted_map_keys({ let __by_ref_arg: &Rc<HashMap<i64, bool>> = &fold_list(..); __by_ref_arg })`.
 // Claim one asserts that form and forbids the old one, so deleting the rule reddens it twice over:
 // the required text disappears and the forbidden text returns.
 //
@@ -52,7 +66,7 @@ test fn by_ref_bridge_over_a_call_argument_is_bound_at_its_declared_carrier() ->
   compile_dag_rust_emit_check(
     by_ref_generic_call_argument_source(),
     "src/byrefgenericarg.rs",
-    ["v1_rt::sorted_map_keys(&{ let __by_ref_arg: ", "; __by_ref_arg }"],
+    ["v1_rt::sorted_map_keys({ let __by_ref_arg: &", "; __by_ref_arg }"],
     ["v1_rt::sorted_map_keys(&crate::std_algebra::fold_list("]
   )
 }

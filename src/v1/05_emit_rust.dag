@@ -12332,7 +12332,10 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>, source_indices: 
 // borrow, not to a name, so no name list grows.
 //
 // WHERE NO CARRIER EXISTS, NOTHING IS INVENTED. An argument whose inference is a TypeVariable, a
-// CompilerError or Divergent has no type to name, and the site keeps today's `&<expr>`: declining
+// CompilerError or Divergent has no type to name, and a rendering that still contains an inference hole
+// (`im::HashMap<String, _>`) names nothing either -- rustc would unify the hole with the initializer and
+// the annotation meant to pin inference would become a constraint it cannot satisfy, which is the failure
+// measured on run 41299024017 in the `std.types` mirror. Both cases keep today's `&<expr>`: declining
 // reproduces the previous emission exactly, it does not fabricate an annotation.
 fn rust_by_ref_bridge_argument(value: Node, base: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   // Only a CALL has type arguments for rustc to invent. A name, a field or an index is already a
@@ -12343,13 +12346,29 @@ fn rust_by_ref_bridge_argument(value: Node, base: String, shared_types: Set<Stri
     ExprMethodCall { method_semantics: _ } => rust_node_carrier_decl(value: value, shared_types: shared_types, source_indices: source_indices)
     _ => ""
   }
-  if declared == "" {
+  if declared == "" || !rust_by_ref_carrier_is_named(carrier: declared) {
     concat("&", base)
   } else {
     // A block, so the binding cannot escape the borrow it was made for: it shadows nothing outside,
-    // and the value it names dies at the end of the call that borrows it.
-    concat("&{ let __by_ref_arg: ", declared, " = ", base, "; __by_ref_arg }")
+    // and the value it names dies at the end of the call that borrows it. It is bound as a REFERENCE
+    // to the carrier (`let x: &T = &v`), not as the carrier itself, because `render_node_type` names
+    // the MODELLED type while the emitted expression may carry it behind a pointer -- `Rc<im::HashMap<..>>`
+    // where the model says `Map<String, Bool>`. A typed `let` is a coercion site, so `&v` reaches `&T`
+    // by deref coercion exactly as the plain `&<expr>` did at the call, and the annotation still names
+    // T, which is the whole point of the binding.
+    concat("{ let __by_ref_arg: &", declared, " = &", base, "; __by_ref_arg }")
   }
+}
+
+// IS THIS CARRIER A NAME? An annotation exists to hand rustc the type arguments the borrow was the only
+// evidence for, so a rendering that still contains an inference hole (`im::HashMap<String, _>`) names
+// nothing: rustc unifies the hole with the initializer instead, and what was meant to pin inference
+// becomes a constraint it cannot satisfy. Measured, not hypothetical -- the seed rebuild of run
+// 41299024017 failed with `expected im::HashMap<_, _>, found Rc<im::HashMap<_, bool>>` on exactly such
+// an annotation in the `std.types` mirror. An uninferable annotation is not a carrier this rule is
+// entitled to write, so the caller keeps the plain `&<expr>` it emitted before this change existed.
+fn rust_by_ref_carrier_is_named(carrier: String) -> Bool {
+  !string_contains(s: carrier, pattern: "<_,") && !string_contains(s: carrier, pattern: "<_>") && !string_contains(s: carrier, pattern: ", _>")
 }
 
 // THE ONE AUTHORITY FOR "declare a local at this value's carrier": the same `Node.inferred` the
