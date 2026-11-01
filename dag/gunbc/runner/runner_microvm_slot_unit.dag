@@ -1,5 +1,6 @@
 module gunbc.runner.runner_microvm_slot_unit
 
+import gunbc.durable_create_once { create_once_record, CreateOnceRecording, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused, directory_admission, DirectoryAdmitted, DirectoryNotAdmitted }
 import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, identity_is_workspace_execution_member }
 import gunbc.workspace_commissioning_start_identity { workspace_commissioning_submitter_credential_id, workspace_commissioning_submitter_credential_prefix }
 
@@ -207,13 +208,9 @@ type MicrovmReceiptStoreReading
 // by a mint or a write.
 fn microvm_receipt_store(tree: HostStateTree) -> MicrovmReceiptStoreReading {
   let root = microvm_receipt_store_path(tree: tree)
-  let listing = Filesystem.List(path: root as String)
-  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
-      MicrovmReceiptStoreUnready { detail: join(["the microVM receipt store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } =>
-      MicrovmReceiptStoreUnready { detail: join(["the microVM receipt store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => MicrovmReceiptStoreReady { store: MicrovmReceiptStore { root: root } }
+  match directory_admission(directory: root as String, label: "microVM receipt store's directory") {
+    DirectoryNotAdmitted { detail: d } => MicrovmReceiptStoreUnready { detail: d }
+    DirectoryAdmitted => MicrovmReceiptStoreReady { store: MicrovmReceiptStore { root: root } }
   }
 }
 
@@ -231,28 +228,11 @@ fn microvm_receipt_file(store: MicrovmReceiptStore, writer: MicrovmReceiptWriter
   join([store.root as String, "/", prefix, invocation_id as String, ".txt"], "")
 }
 
-type MicrovmReceiptRecording
-  = MicrovmReceiptRecorded { path: String }
-  | MicrovmReceiptAlreadyRecorded { path: String }
-  | MicrovmReceiptRecordRefused { path: String, cause: String }
-
 // CREATE-ONCE: an incarnation's receipt is written once and never overwritten (the InvocationID systemd
 // minted is unique to the incarnation). The effect and its readback run here; a collision is a typed
 // arm, never a success.
-fn microvm_receipt_record(store: MicrovmReceiptStore, writer: MicrovmReceiptWriter, invocation_id: NonEmptyStr, content: String) -> MicrovmReceiptRecording
-{
-  let path = microvm_receipt_file(store: store, writer: writer, invocation_id: invocation_id)
-  let w = Filesystem.WriteCreateNew(path: path, content: content)
-  match filesystem_create_new(path: w.path, success: w.success, error: w.error, error_kind: w.error_kind) {
-    FilesystemCreateTargetOccupied { path: _ } => MicrovmReceiptAlreadyRecorded { path: path }
-    FilesystemCreateRefused { path: _, kind: _, error: e } => MicrovmReceiptRecordRefused { path: path, cause: e }
-    FilesystemCreateKindUnrecognized { path: _, observed: o, error: e } => MicrovmReceiptRecordRefused { path: path, cause: join([o, ": ", e], "") }
-    FilesystemCreated { path: _ } => {
-      let back = Filesystem.Read(path: path)
-      if back.success && back.content == content { MicrovmReceiptRecorded { path: path } }
-      else { MicrovmReceiptRecordRefused { path: path, cause: "did not read back as written" } }
-    }
-  }
+fn microvm_receipt_record(store: MicrovmReceiptStore, writer: MicrovmReceiptWriter, invocation_id: NonEmptyStr, content: String) -> CreateOnceRecording {
+  create_once_record(path: microvm_receipt_file(store: store, writer: writer, invocation_id: invocation_id), content: content)
 }
 
 type MicrovmReceiptReading

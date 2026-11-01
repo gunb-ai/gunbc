@@ -7,10 +7,17 @@ import std.process { ProcessExit }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.compute.host_capacity { compute_root }
+import gunbc.compute.work_class_grant { WorkClass, WorkClassCompile }
+import gunbc.compute.work_provider_local { grant_exceeded_store_open, GrantExceededOpened, GrantExceededUnopened, compute_grant_exceeded_count, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable }
+import gunbc.durable_create_once { create_once_record, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
 import gunbc.fleet.printer_workflow_artifact { printer_starts_path }
-import gunbc.fleet.printer_start_evidence_store { start_evidence_path, start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready, start_evidence_record, StartEvidenceRecorded, StartEvidenceAlreadyRecorded, StartEvidenceRecordRefused }
-import gunbc.runner.runner_microvm_slot_unit { microvm_receipt_store_path, microvm_receipt_store, MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_record, microvm_receipt_read, MicrovmReceiptRecorded, MicrovmReceiptAlreadyRecorded, MicrovmReceiptRecordRefused, MicrovmReceiptRead, MicrovmReceiptUnreadable, ControllerReceipts, ReserveReceipts }
+import gunbc.fleet.printer_start_evidence_store { start_evidence_path, start_evidence_store, StartEvidenceStoreReady, StartEvidenceStoreUnready, start_evidence_record }
+import gunbc.runner.runner_microvm_slot_unit { microvm_receipt_store_path, microvm_receipt_store, MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_record, microvm_receipt_read, MicrovmReceiptRead, MicrovmReceiptUnreadable, ControllerReceipts, ReserveReceipts }
 
 // THE CREATE-ONCE RECORD STORES (cohort C-createonce) over throwaway host-state trees: a record is written once, a
 // second write for the same key refuses without touching the first, and bytes planted in the old layout read back.
@@ -29,9 +36,9 @@ test fn the_start_evidence_is_written_once_and_a_rerun_does_not_clobber() -> Boo
       StartEvidenceStoreUnready { detail: _ } => false
       StartEvidenceStoreReady { store: s } => {
         let key = "printer-attempt-k1" as NonEmptyStr
-        let first = match start_evidence_record(store: s, claim_key: key, read: 1, content: "first") { StartEvidenceRecorded { path: _ } => true StartEvidenceAlreadyRecorded { path: _ } => false StartEvidenceRecordRefused { path: _, cause: _ } => false }
-        let second = match start_evidence_record(store: s, claim_key: key, read: 1, content: "second") { StartEvidenceRecorded { path: _ } => false StartEvidenceAlreadyRecorded { path: _ } => true StartEvidenceRecordRefused { path: _, cause: _ } => false }
-        let next = match start_evidence_record(store: s, claim_key: key, read: 2, content: "other") { StartEvidenceRecorded { path: _ } => true StartEvidenceAlreadyRecorded { path: _ } => false StartEvidenceRecordRefused { path: _, cause: _ } => false }
+        let first = match start_evidence_record(store: s, claim_key: key, read: 1, content: "first") { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
+        let second = match start_evidence_record(store: s, claim_key: key, read: 1, content: "second") { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => true CreateOnceRefused { path: _, cause: _ } => false }
+        let next = match start_evidence_record(store: s, claim_key: key, read: 2, content: "other") { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
         let kept = Filesystem.Read(path: join([start_evidence_path(tree: tree) as String, "/printer-attempt-k1.after-start-1.json"], ""))
         first && second && next && kept.success && kept.content == "first"
       }
@@ -60,8 +67,8 @@ test fn a_controller_receipt_is_written_once_and_old_bytes_read_back() -> Bool {
         let writer = ControllerReceipts { instance: "slot1" }
         let old = Filesystem.WriteCreateNew(path: join([microvm_receipt_store_path(tree: tree) as String, "/slot1-inv-123.txt"], ""), content: "exit 0")
         let read_old = match microvm_receipt_read(store: s, writer: writer, invocation_id: inv) { MicrovmReceiptRead { path: _, text: t } => t == "exit 0" MicrovmReceiptUnreadable { path: _, detail: _ } => false }
-        let again = match microvm_receipt_record(store: s, writer: writer, invocation_id: inv, content: "new") { MicrovmReceiptRecorded { path: _ } => false MicrovmReceiptAlreadyRecorded { path: _ } => true MicrovmReceiptRecordRefused { path: _, cause: _ } => false }
-        let fresh = match microvm_receipt_record(store: s, writer: ReserveReceipts, invocation_id: inv, content: "r") { MicrovmReceiptRecorded { path: _ } => true MicrovmReceiptAlreadyRecorded { path: _ } => false MicrovmReceiptRecordRefused { path: _, cause: _ } => false }
+        let again = match microvm_receipt_record(store: s, writer: writer, invocation_id: inv, content: "new") { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => true CreateOnceRefused { path: _, cause: _ } => false }
+        let fresh = match microvm_receipt_record(store: s, writer: ReserveReceipts, invocation_id: inv, content: "r") { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
         old.success && read_old && again && fresh
       }
     }
@@ -88,4 +95,53 @@ test fn a_forged_microvm_receipt_store_is_refused_at_compile() -> ProcessExit {
 
 test fn a_forged_grant_exceeded_store_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: grant_forged_source, subject: "GrantExceededStore"), holds: fn(n) { n == 1 }))
+}
+
+fn grant_instance(dir: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "createonce-wet" as NonEmptyStr),
+    instance_id: "createonce-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+// A grant-exceeded record written by the OLD code (a bare create-new file under grant-exceeded/<class>/<reference>) reads
+// back through the sealed store: it counts as one, bytes unchanged, a second record for that reference is AlreadyRecorded
+// and leaves the old bytes alone, and a new reference records.
+test fn an_old_grant_exceeded_record_reads_through_the_sealed_store() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_grantexceeded.XXXXXX").path
+  let instance = grant_instance(dir: dir)
+  let class_dir = join([compute_root(instance: instance) as String, "/grant-exceeded/compile"], "")
+  let made = shell.Mkdir.Parents(path: class_dir as FilePath).success
+  let old = Filesystem.WriteCreateNew(path: join([class_dir, "/ref-old"], ""), content: "old-code-bytes").success
+  match grant_exceeded_store_open(instance: instance) {
+    GrantExceededUnopened { detail: _ } => false
+    GrantExceededOpened { store: s } => {
+      let counted = match compute_grant_exceeded_count(store: s, class: WorkClassCompile) { GrantExceededCounted { count: n } => n == 1 GrantExceededNeverRecorded => false GrantExceededUnreadable { detail: _ } => false }
+      let again = match create_once_record(path: join([class_dir, "/ref-old"], ""), content: "new") { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => true CreateOnceRefused { path: _, cause: _ } => false }
+      let fresh = match create_once_record(path: join([class_dir, "/ref-new"], ""), content: "n") { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
+      let kept = Filesystem.Read(path: join([class_dir, "/ref-old"], ""))
+      made && old && counted && again && fresh && kept.success && kept.content == "old-code-bytes"
+    }
+  }
+}
+
+// STRIPPED TWINS. These assert zero violations and are meant to PASS only on a tree whose declarations have had
+// `sole_constructor` removed; on the sealed tree they are RED. Together with the three REDs above they attribute each refusal to the seal.
+test fn twin_a_forged_start_evidence_store_draws_no_violation_once_unsealed() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: evidence_forged_source, subject: "StartEvidenceStore"), holds: fn(n) { n == 0 }))
+}
+
+test fn twin_a_forged_microvm_receipt_store_draws_no_violation_once_unsealed() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: microvm_forged_source, subject: "MicrovmReceiptStore"), holds: fn(n) { n == 0 }))
+}
+
+test fn twin_a_forged_grant_exceeded_store_draws_no_violation_once_unsealed() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: grant_forged_source, subject: "GrantExceededStore"), holds: fn(n) { n == 0 }))
 }

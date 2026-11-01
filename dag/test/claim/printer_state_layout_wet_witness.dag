@@ -228,3 +228,63 @@ test fn w_the_new_hold_store_refuses_until_the_handover_completes() -> Bool {
     }
   }
 }
+
+// AFTER-START EVIDENCE LEFT INSIDE claims/ by a host that ran the claim-store layout before the evidence store: the move
+// carries it into start-evidence/ byte for byte and removes it from claims/, and the evidence mint reads Ready after.
+test fn w_after_start_evidence_left_in_claims_moves_into_the_evidence_store() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let claims = printer_start_claim_path(tree: tree) as String
+      let planted = Filesystem.WriteCreateNew(path: join([claims, "/printer-start-cc.claimed.after-start-2.json"], ""), content: "a2").success
+      let ok = match printer_state_move(tree: tree) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
+      let moved = carried(dir: start_evidence_path(tree: tree) as String, name: "printer-start-cc.after-start-2.json", content: "a2")
+      let gone = !Filesystem.Read(path: join([claims, "/printer-start-cc.claimed.after-start-2.json"], "")).success
+      planted && ok && moved && gone && evidence_ready(tree: tree)
+    }
+  }
+}
+
+// RED: the same stray evidence file with a DIFFERENT file already under its new name refuses the move naming the collision, and
+// neither file is touched.
+test fn w_stray_evidence_in_claims_colliding_with_a_different_record_refuses_the_move() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let claims = printer_start_claim_path(tree: tree) as String
+      let stray = join([claims, "/printer-start-cc.claimed.after-start-2.json"], "")
+      let planted = Filesystem.WriteCreateNew(path: stray, content: "stray").success
+        && Filesystem.WriteCreateNew(path: join([start_evidence_path(tree: tree) as String, "/printer-start-cc.after-start-2.json"], ""), content: "different").success
+      let refused = match printer_state_move(tree: tree) { PrinterStateMoved => false PrinterStateMoveRefused { cause: _ } => true }
+      let kept = Filesystem.Read(path: stray)
+      let other = Filesystem.Read(path: join([start_evidence_path(tree: tree) as String, "/printer-start-cc.after-start-2.json"], ""))
+      planted && refused && kept.success && kept.content == "stray" && other.success && other.content == "different"
+    }
+  }
+}
+
+// SRV1 SHAPE (live read 2026-10-31): printer-starts holds exactly five <key>.claimed.after-start-1.json files, no claims/, no start-evidence/.
+// The evidence mint is Unready before the move; the move carries all five byte for byte into start-evidence/ and removes the originals; the mint is Ready after.
+test fn w_the_srv1_shaped_five_after_start_files_move_into_the_evidence_store() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let planted = plant(tree: tree, name: "printer-start-295c9dbe.claimed.after-start-1.json", content: "e0")
+        && plant(tree: tree, name: "printer-start-5105118e.claimed.after-start-1.json", content: "e1")
+        && plant(tree: tree, name: "printer-start-6f679392.claimed.after-start-1.json", content: "e2")
+        && plant(tree: tree, name: "printer-start-c2b15415.claimed.after-start-1.json", content: "e3")
+        && plant(tree: tree, name: "printer-start-cc1b78dc.claimed.after-start-1.json", content: "e4")
+      let before = !evidence_ready(tree: tree)
+      let ok = match printer_state_move(tree: tree) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
+      let dir = start_evidence_path(tree: tree) as String
+      let moved = carried(dir: dir, name: "printer-start-295c9dbe.after-start-1.json", content: "e0")
+        && carried(dir: dir, name: "printer-start-5105118e.after-start-1.json", content: "e1")
+        && carried(dir: dir, name: "printer-start-6f679392.after-start-1.json", content: "e2")
+        && carried(dir: dir, name: "printer-start-c2b15415.after-start-1.json", content: "e3")
+        && carried(dir: dir, name: "printer-start-cc1b78dc.after-start-1.json", content: "e4")
+      let gone = !Filesystem.Read(path: join([printer_starts_path(tree: tree) as String, "/printer-start-295c9dbe.claimed.after-start-1.json"], "")).success
+        && !Filesystem.Read(path: join([printer_starts_path(tree: tree) as String, "/printer-start-cc1b78dc.claimed.after-start-1.json"], "")).success
+      planted && before && ok && moved && gone && evidence_ready(tree: tree)
+    }
+  }
+}

@@ -10,7 +10,8 @@ import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printe
 import gunbc.fleet.printer_report {report_once_using_session}
 import gunbc.fleet.printer_receipt {write_receipt,write_receipt_at}
 import gunbc.auth.access_token_source {AccessTokenSource}
-import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_record,StartEvidenceRecorded,StartEvidenceAlreadyRecorded,StartEvidenceRecordRefused}
+import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_record}
+import gunbc.durable_create_once { CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 
 // Observing activity is not proof of application-level exactly-once delivery. The
 // pre-start idle check and retained durable claim remain the actuation boundary.
@@ -50,9 +51,9 @@ fn reconcile_reads(session:PrinterCredentialSession,remote:NonEmptyStr,version:S
  let text=match response {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:e}=>serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e))]))}
  let read=9-remaining
  let evidence=match start_evidence_record(store:evidence_store,claim_key:claim_key,read:read,content:text) {
-  StartEvidenceRecorded {path:p}=>p
-  StartEvidenceAlreadyRecorded {path:p}=>return exit_failure(reason:concat("Post-start evidence already retained at ",concat(p,"; refusing to overwrite; claim retained, DO NOT REPLAY")))
-  StartEvidenceRecordRefused {path:p,cause:c}=>return exit_failure(reason:join(["Cannot retain post-start evidence at ",p,": ",c,"; claim retained, DO NOT REPLAY"],""))
+  CreateOnceRecorded {path:p}=>p
+  CreateOnceAlreadyRecorded {path:p}=>return exit_failure(reason:concat("Post-start evidence already retained at ",concat(p,"; refusing to overwrite; claim retained, DO NOT REPLAY")))
+  CreateOnceRefused {path:p,cause:c}=>return exit_failure(reason:join(["Cannot retain post-start evidence at ",p,": ",c,"; claim retained, DO NOT REPLAY"],""))
  }
  match reconcile_step(observation:observe_start(text:text,remote:remote as String),remaining:remaining) {
   ReadAgain {remaining:n}=>{

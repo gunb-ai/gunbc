@@ -1,5 +1,6 @@
 module gunbc.runner.runner_microvm_slot_controller
 
+import gunbc.durable_create_once { CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import std.optional { Absent, Present }
 import gunbc.runner.runner_microvm_network_receipt_store { read_network_receipt, NetworkReceiptAbsent, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
 
@@ -97,7 +98,7 @@ import gunbc.runner.runner_microvm_host_ready {
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_env_name, microvm_release_dir_env_name,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
-  MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, ControllerReceipts, MicrovmReceiptRecorded, MicrovmReceiptAlreadyRecorded, MicrovmReceiptRecordRefused, microvm_receipt_record,
+  MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, ControllerReceipts, microvm_receipt_record,
 }
 import gunbc.runner.runner_guest_image {
   runner_guest_image_root, runner_guest_image_path, runner_guest_base_artifact_path, runner_guest_kernel_artifact,
@@ -660,11 +661,11 @@ fn controller_exit(instance: String, invocation_id: NonEmptyStr, outcome: SlotCo
       exit_failure(reason: join(["microvm_slot_controller ", instance, ": the receipt store is unready: ", detail, " -- outcome was: ", text], ""))
     MicrovmReceiptStoreReady { store } =>
       match microvm_receipt_record(store: store, writer: ControllerReceipts { instance: instance }, invocation_id: invocation_id, content: concat(text, "\n")) {
-        MicrovmReceiptRecordRefused { path, cause } =>
+        CreateOnceRefused { path, cause } =>
           exit_failure(reason: join(["microvm_slot_controller ", instance, ": receipt write refused at ", path, ": ", cause, " -- outcome was: ", text], ""))
-        MicrovmReceiptAlreadyRecorded { path } =>
+        CreateOnceAlreadyRecorded { path } =>
           exit_failure(reason: join(["microvm_slot_controller ", instance, ": a receipt already exists at ", path, " and is never overwritten -- outcome was: ", text], ""))
-        MicrovmReceiptRecorded { path: _ } => controller_exit_code(instance: instance, text: text, outcome: outcome)
+        CreateOnceRecorded { path: _ } => controller_exit_code(instance: instance, text: text, outcome: outcome)
       }
   }
 }

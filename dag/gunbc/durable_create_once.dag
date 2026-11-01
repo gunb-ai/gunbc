@@ -1,0 +1,45 @@
+module gunbc.durable_create_once
+
+import std.types { String, Bool }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_create_new, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
+
+// THE ONE CREATE-ONCE PROCEDURE and the one directory admission, shared by every sealed create-once record store
+// (the grant-exceeded, microVM receipt and post-start evidence stores). Each store keeps its own seal, mint and key in its
+// declaring module and passes the path it derived; the effect, its typed classification and the readback live here once
+// (DESIGN section 6b: the second local implementation of one rule is the trigger, and there were three). This module takes a
+// path and runs its own effect; it takes no outcome and returns no success from one.
+type CreateOnceRecording
+  = CreateOnceRecorded { path: String }
+  | CreateOnceAlreadyRecorded { path: String }
+  | CreateOnceRefused { path: String, cause: String }
+
+// CREATE-ONCE, THEN READ BACK. Recorded only when the file reads back carrying exactly the bytes committed; an occupied
+// path is AlreadyRecorded and is never overwritten; every other refusal carries its cause.
+fn create_once_record(path: String, content: String) -> CreateOnceRecording {
+  let w = Filesystem.WriteCreateNew(path: path, content: content)
+  match filesystem_create_new(path: w.path, success: w.success, error: w.error, error_kind: w.error_kind) {
+    FilesystemCreateTargetOccupied { path: _ } => CreateOnceAlreadyRecorded { path: path }
+    FilesystemCreateRefused { path: _, kind: _, error: e } => CreateOnceRefused { path: path, cause: e }
+    FilesystemCreateKindUnrecognized { path: _, observed: o, error: e } => CreateOnceRefused { path: path, cause: join([o, ": ", e], "") }
+    FilesystemCreated { path: _ } => {
+      let back = Filesystem.Read(path: path)
+      if back.success && back.content == content { CreateOnceRecorded { path: path } }
+      else { CreateOnceRefused { path: path, cause: "did not read back as written" } }
+    }
+  }
+}
+
+type DirectoryAdmission
+  = DirectoryAdmitted
+  | DirectoryNotAdmitted { detail: String }
+
+// The listing a mint hands its seal comes from the real read: the directory subject is admitted and listed, and a
+// refusal at either step is a typed detail naming the directory by `label`.
+fn directory_admission(directory: String, label: String) -> DirectoryAdmission {
+  let listing = Filesystem.List(path: directory)
+  match filesystem_listing_observation(directory: directory, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => DirectoryNotAdmitted { detail: join(["the ", label, " is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => DirectoryNotAdmitted { detail: join(["the ", label, " could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => DirectoryAdmitted
+  }
+}

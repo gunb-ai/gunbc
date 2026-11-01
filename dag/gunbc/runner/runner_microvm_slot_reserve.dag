@@ -1,5 +1,6 @@
 module gunbc.runner.runner_microvm_slot_reserve
 
+import gunbc.durable_create_once { CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 import std.types { String, NonEmptyStr, Bool, List, Timestamp }
 import std.measure { money_amount_micro, MoneyPerSecond, MoneyOnce, second, Count, One }
 import std.durable_compare_and_set { cas_generation_count }
@@ -66,7 +67,7 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_name, microvm_slot_reserve_wait_bound,
   microvm_slot_reserve_receipt_path,
   MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, ReserveReceipts,
-  MicrovmReceiptRecorded, MicrovmReceiptAlreadyRecorded, MicrovmReceiptRecordRefused, microvm_receipt_record,
+  microvm_receipt_record,
 }
 import gunbc.runner.runner_microvm_slot_start {
   MicrovmUnitStartSubject, MicrovmSlotStartRun, microvm_unit_start_run, microvm_slot_start_text,
@@ -340,11 +341,11 @@ fn microvm_slot_reserve_main() -> ProcessExit {
           exit_failure(reason: join(["microvm_slot_reserve: the receipt store is unready: ", detail, " -- outcome was: ", text], ""))
         MicrovmReceiptStoreReady { store } =>
           match microvm_receipt_record(store: store, writer: ReserveReceipts, invocation_id: invocation as NonEmptyStr, content: concat(text, "\n")) {
-            MicrovmReceiptRecordRefused { path, cause } =>
+            CreateOnceRefused { path, cause } =>
               exit_failure(reason: join(["microvm_slot_reserve: receipt write refused at ", path, ": ", cause, " -- outcome was: ", text], ""))
-            MicrovmReceiptAlreadyRecorded { path } =>
+            CreateOnceAlreadyRecorded { path } =>
               exit_failure(reason: join(["microvm_slot_reserve: a receipt already exists at ", path, " and is never overwritten -- outcome was: ", text], ""))
-            MicrovmReceiptRecorded { path: _ } =>
+            CreateOnceRecorded { path: _ } =>
               if !shakedown_broker_reserved(outcome: outcome) {
                 exit_failure(reason: join(["microvm_slot_reserve: ", text], ""))
               } else {

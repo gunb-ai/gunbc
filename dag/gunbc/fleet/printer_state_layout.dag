@@ -7,7 +7,7 @@ import gunbc.owned_directory { OwnedDirectoryTarget }
 import gunbc.host_state_root { HostStateTree }
 import gunbc.fleet.printer_workflow_artifact { printer_starts_path, printer_starts_directory, print_run_directory_target, printer_starts_legacy_scan, PrinterStartsClean, PrinterStartsLegacyEntries, PrinterStartsUnreadable }
 import gunbc.fleet.print_record_stores { print_request_directory_target, print_completion_directory_target, print_completion_path, completion_record_name, legacy_completed_suffix }
-import gunbc.fleet.printer_actuation { printer_start_claim_directory_target, printer_start_claim_path }
+import gunbc.fleet.printer_actuation { printer_start_claim_directory_target, printer_start_claim_path, printer_start_claim_slots }
 import gunbc.fleet.printer_start_evidence_store { start_evidence_legacy_entry, start_evidence_name_from_legacy, start_evidence_path, start_evidence_directory_target }
 import gunbc.fleet.printer_execution_hold { printer_execution_hold_directory_target, printer_execution_hold_path, hold_key, printer_execution_hold_legacy_entry, printer_execution_hold_legacy_state, LegacyHoldAbsent, LegacyHoldFenced, LegacyHoldLive, LegacyHoldUnreadable, printer_execution_hold_fence_begin, HoldFenceBegun, HoldFenceRefused, printer_execution_hold_fence_entry, printer_execution_hold_fence_handover, HoldHandedOver, HoldHandoverRefused }
 import product.printed_chassis.assembly_inventory_store { cassette_inventory_directory_target, cassette_inventory_path }
@@ -188,8 +188,41 @@ fn finish_move(tree: HostStateTree, other_causes: List<String>) -> PrinterStateM
   }
 }
 
+// AFTER-START EVIDENCE LEFT INSIDE THE CLAIM MEMBER by hosts that ran the claim-store layout before the evidence
+// store existed: <key>.claimed.after-start-<n>.json in claims/ is carried into start-evidence/ the same way the flat
+// parent's entries are (create-new, byte-equal readback, delete the source; a collision with different bytes refuses).
+// This module is the one place the claim and evidence declarations meet.
+fn claims_evidence_residue_causes(tree: HostStateTree) -> List<String> {
+  let parent = printer_starts_path(tree: tree)
+  let claims = printer_start_claim_path(tree: tree)
+  let parent_listing = Filesystem.List(path: parent as String)
+  match filesystem_listing_observation(directory: parent as String, success: parent_listing.success, entries: parent_listing.entries, error: parent_listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => [join(["the printer-starts directory is not admissible: ", c], "")]
+    FilesystemDirectoryListingRefused { directory: _, error: e } => [join(["the printer-starts directory could not be listed: ", e], "")]
+    FilesystemDirectoryListed(listed_parent) => {
+      let claims_member = filesystem_listing_entry_names(listing: listed_parent).filter(n => n == printer_start_claim_slots.member as String)
+      if count(claims_member) == 0 { return [] }
+      let listing = Filesystem.List(path: claims as String)
+      match filesystem_listing_observation(directory: claims as String, success: listing.success, entries: listing.entries, error: listing.error) {
+        FilesystemDirectorySubjectRefused { directory: _, cause: c } => [join(["the claim member is not admissible: ", c], "")]
+        FilesystemDirectoryListingRefused { directory: _, error: e } => [join(["the claim member could not be listed for stray after-start evidence: ", e], "")]
+        FilesystemDirectoryListed(listed) => filesystem_listing_entry_names(listing: listed).filter(n => start_evidence_legacy_entry(name: n)).flat_map(n => match start_evidence_name_from_legacy(name: n) {
+          Absent => [join(["after-start evidence in claims/ has an unreadable name: ", n], "")]
+          Present { value: moved } => match relocate_file(from: join([claims as String, "/", n], ""), to: join([start_evidence_path(tree: tree) as String, "/", moved], "")) { RelocationRefused { cause: c } => [c] RelocationDone => [] }
+        })
+      }
+    }
+  }
+}
+
 // PER STORE: the entries of every store but the hold move first and unconditionally; the hold retires after (above).
 fn printer_state_move(tree: HostStateTree) -> PrinterStateMove {
+  let residue = claims_evidence_residue_causes(tree: tree)
+  if count(residue) != 0 { return PrinterStateMoveRefused { cause: join(residue, "; ") } }
+  printer_state_move_parent(tree: tree)
+}
+
+fn printer_state_move_parent(tree: HostStateTree) -> PrinterStateMove {
   match printer_starts_legacy_scan(tree: tree, owns: n => !printer_execution_hold_legacy_entry(name: n)) {
     PrinterStartsUnreadable { detail: d } => PrinterStateMoveRefused { cause: d }
     PrinterStartsClean => finish_move(tree: tree, other_causes: [])
