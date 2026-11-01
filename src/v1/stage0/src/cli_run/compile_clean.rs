@@ -596,6 +596,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => "AdmitCallersEntryNotDeclRef",
         CompilerDiagnostic::DeclaredTypeNotInhabited { .. } => "DeclaredTypeNotInhabited",
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => {
+            "DeclaredTypeInhabitanceUnmodeled"
+        }
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => {
             "DeclaredTypeInhabitanceUndecided"
         }
@@ -725,6 +728,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         } => constructor_decl_name.clone(),
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
@@ -840,6 +844,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => None,
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => None,
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => None,
+        CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => None,
         CompilerDiagnostic::DeclaredTypeNotInhabited { expected, got, .. } => {
             Some((expected.clone(), got.clone()))
         }
