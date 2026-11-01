@@ -1,0 +1,131 @@
+module v2.test.claim.fold_empty_init_element_type
+
+import std.types { Bool, List }
+import std.algebra { Cons, Empty, is_empty }
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { InferredTree, infer, infer_produced_open_type_params }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.list_introduction { list_introduction_elements_optional }
+import v2.std.node { Node, node_subtree_nodes }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.test.claim.type_param_binder_frame { tpb_artifact, tpb_std_artifact }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.cross_tree.import_model { V2Tree }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the element type of an EMPTY list literal used as a fold's init (`init: []`). BOUNDARY: source
+// text in, v2.compiler.infer's recorded type of the `[]` node out, through the production route
+// (assemble_program_from_ingest then infer) -- no emitter, so the claim observes the defect at its own
+// interface rather than behind native emission (which cannot yet emit std).
+// RED: the untyped init keeps the constructor-use element variable. CONTROLS: a typed init (a declared
+// position closes the variable) and a non-fold empty list at a declared let type are unchanged.
+
+fn fei_peer_algebra() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n", fidelity: Lossless },
+    artifact: tpb_std_artifact,
+    compilation_unit: ^type_param_binder_frame_cu,
+    source_root: V2Tree
+  }
+}
+
+fn fei_ingest(src: String) -> List<DagSourceReadWitness> {
+  Cons { head: DagSourceReadWitness { source: Medium { carried: src, fidelity: Lossless }, artifact: tpb_artifact, compilation_unit: ^type_param_binder_frame_cu, source_root: V2Tree }, tail: Cons { head: fei_peer_algebra(), tail: Empty } }
+}
+
+fn fei_infer(src: String) -> Optional<InferredTree> {
+  match assemble_program_from_ingest(
+    ingest: fei_ingest(src: src),
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: t, diagnostics: _ } => Present { value: t }
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+type FeiScan {
+  empties: Int
+  open: Int
+}
+
+fn fei_empty_literal_open(t: InferredTree, n: Node) -> Bool {
+  match t.facts.lookup(n) {
+    Absent => true
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _, site: _ } => true
+        DerivedGrounding { grounding: g } => !is_empty(xs: infer_produced_open_type_params(produced: g.witness.structural.evidence))
+      }
+  }
+}
+
+fn fei_scan(t: InferredTree) -> FeiScan {
+  fold(node_subtree_nodes(root: t.root), init: FeiScan { empties: 0, open: 0 }, f: fn(acc, n) {
+    match list_introduction_elements_optional(node: n) {
+      Absent => acc
+      Present { value: elements } =>
+        if is_empty(xs: elements) {
+          FeiScan { empties: acc.empties + 1, open: if fei_empty_literal_open(t: t, n: n) { acc.open + 1 } else { acc.open } }
+        } else {
+          acc
+        }
+    }
+  })
+}
+
+// True only when the source infers, carries at least `want` empty-literal nodes, and no empty literal is
+// left open without its closed record: infer records each `[]` open first, and a declared position adds
+// the closed record (the control shape is one open and one closed node), so open > closed means a
+// literal whose variable nothing closed. (`open_want` is kept for call-site readability.)
+fn fei_empties(src: String, want: Int, open_want: Int) -> Bool {
+  match fei_infer(src: src) {
+    Absent => false
+    Present { value: t } => {
+      let s = fei_scan(t: t)
+      s.empties >= want && s.open <= s.empties - s.open
+    }
+  }
+}
+
+fn fei_prelude() -> String {
+  "module p\n\nimport std.algebra { FreeMonoid }\n\nfn push(xs: FreeMonoid<Int>, x: Int) -> FreeMonoid<Int> {\n  xs\n}\n\n"
+}
+
+// RED: untyped init. Expected closed (0 open); on main the variable stays (1 open).
+test fn an_untyped_fold_init_empty_list_is_closed_by_the_fold() -> Bool {
+  fei_empties(
+    src: concat(fei_prelude(), "fn f(values: FreeMonoid<Int>) -> Int {\n  let ids = fold(values, init: [], f: fn(acc, v) { push(xs: acc, x: v) })\n  0\n}\n"),
+    want: 1,
+    open_want: 0
+  )
+}
+
+// CONTROL: typed init is closed by the declared let type.
+test fn a_typed_fold_init_empty_list_stays_closed() -> Bool {
+  fei_empties(
+    src: concat(fei_prelude(), "fn f(values: FreeMonoid<Int>) -> Int {\n  let seed: FreeMonoid<Int> = []\n  let ids = fold(values, init: seed, f: fn(acc, v) { push(xs: acc, x: v) })\n  0\n}\n"),
+    want: 1,
+    open_want: 0
+  )
+}
+
+// CONTROL: a non-fold empty list at a declared position is unchanged.
+test fn a_non_fold_empty_list_at_a_declared_type_stays_closed() -> Bool {
+  fei_empties(
+    src: "module p\n\nimport std.algebra { FreeMonoid }\n\nfn f() -> Int {\n  let xs: FreeMonoid<Int> = []\n  0\n}\n",
+    want: 1,
+    open_want: 0
+  )
+}
