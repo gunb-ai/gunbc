@@ -115,10 +115,12 @@ data ilro_ints: List<Int> = [1]
 
 data ilro_no_ints: List<Int> = []
 
+data ilro_no_int: Optional<Int> = none
+
 // `??` is the optional's elimination: Absent takes the right operand, Present peels to its value.
 // Each RED is false before the change (host-Null-only `??` returned Absent / the Present wrapper).
 test fn none_coalesced_takes_the_right_operand() -> Bool {
-  (none ?? 1) == 1
+  (ilro_no_int ?? 1) == 1
 }
 
 test fn a_present_first_coalesces_to_its_value_not_the_wrapper() -> Bool {
