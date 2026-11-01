@@ -3,8 +3,6 @@ module gunbc.durable_handoff_host
 import std.types { String, Bool, List }
 import std.measure { Second, second_count }
 import std.optional { Present, Absent }
-import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
 import gunbc.spool_queue { SpoolAttemptExit, SpoolRole, RolePending, RoleHandedOff, RoleClaimed, spool_role_label }
 
 // ONE HOST SPOOL, over an entry codec. The belt exit spool
@@ -17,31 +15,7 @@ import gunbc.spool_queue { SpoolAttemptExit, SpoolRole, RolePending, RoleHandedO
 // Standings of the item the entry names are Wave C's projection; this module does not invent
 // them. A stage is responsibility for the ENTRY, not the work's standing.
 //
-// ENQUEUE IS CREATE-ONLY. A second write of the same name does not replace the first. The
-// publication request disk write is Filesystem.WriteCreateNew (gunbc.roadmap_publication_helper
-// publication_request_enqueue), assessed here.
-
-type HostSpoolCreateObservation
-  = HostSpoolNameAbsent
-  | HostSpoolNamePresent
-  | HostSpoolNameUnreadable { detail: String }
-
-type HostSpoolEnqueue
-  = HostSpoolEntryCreated { name: String }
-  | HostSpoolEntryAlreadyPresent { name: String }
-  | HostSpoolEnqueueRefused { name: String, detail: String }
-
-fn host_spool_enqueue_assess(name: String, observed: HostSpoolCreateObservation) -> HostSpoolEnqueue {
-  match observed {
-    HostSpoolNameAbsent => HostSpoolEntryCreated { name: name }
-    HostSpoolNamePresent => HostSpoolEntryAlreadyPresent { name: name }
-    HostSpoolNameUnreadable { detail: d } => HostSpoolEnqueueRefused { name: name, detail: d }
-  }
-}
-
-fn host_spool_create_only_command(path: String) -> ArgvCommand {
-  mkdir_create_only_command(path: path)
-}
+// ENQUEUE IS CREATE-ONLY, and is gunbc.spool_queue spool_enqueue_assess: this module keeps no second enqueue law.
 
 // QUEUE HEALTH: depth by stage and the oldest owed age, with bounds as per-queue rows.
 // gunbc.roadmap_launch_deployment_observe event_backlog_judge is the first reading of this.

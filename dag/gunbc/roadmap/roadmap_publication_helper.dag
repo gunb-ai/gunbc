@@ -18,11 +18,6 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied,
   FilesystemCreateRefused, FilesystemCreateKindUnrecognized, filesystem_create_new,
 }
-import gunbc.durable_handoff_host {
-  HostSpoolNameAbsent, HostSpoolNamePresent, HostSpoolNameUnreadable,
-  HostSpoolEntryCreated, HostSpoolEntryAlreadyPresent, HostSpoolEnqueueRefused,
-  host_spool_enqueue_assess,
-}
 import extdeps.languages.json.emit {
   JsonValue,
   json_string,
