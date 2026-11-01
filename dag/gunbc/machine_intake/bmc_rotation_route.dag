@@ -1222,7 +1222,10 @@ fn redfish_account_password_write(account: NonEmptyStr) -> BmcAccountWriteReques
 //
 // The admitted write is not consumed yet: forced_first_rotation_apply_frontier. Its readback is the
 // ordinary BmcSecure read under the new generation; the forced state proves nothing about the
-// controller after the write.
+// controller after the write. The firmware join the live apply must perform (read build == the forced
+// state's build, same controller) is realized by gunbc.machine_intake.bmc_secure
+// confirm_forced_first_rotation_build, which the dry end-to-end cycle already calls; the live apply calls
+// that same function when this frontier dissolves.
 
 data forced_first_rotation_apply_frontier: DissolutionCondition = unbound_dissolution(
   description: "dissolves when a live apply consumes AdmittedForcedFirstRotation -- materializing the generation's bytes through gunbc.auth.secret_ref_credential fetch_secret_ref_credential at its pinned version, writing them under the published credential the forced state admits, grounding the route through qualify_rotation_route from that write's own request and response receipts, and reading back with the ordinary BmcSecure read under the new generation, whose firmware must be the forced state's build (on a build unreadable before the write, gunbc.machine_intake.bmc_credential_policy ForcedBuildInferredFromTheResponse, that read is the inference's only confirmation, and a different build refuses BmcSecure) -- so that on a forcing build that write is the first rotation and the converge then reads the controller as secured, a Noop; NOT satisfied by the dry realization or by a write whose bytes were supplied out of band" as NonEmptyStr,
