@@ -609,6 +609,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 entry: "dag/gunbc/instruments/member_home_cost_native.dag",
             },
         ),
+        (
+            instrument_label("roster-rehome-controls"),
+            TargetProducer::CliWireProgram {
+                entry: "src/v2/workflow/roster_rehome.dag",
+                function: "rehome_controls_wire",
+            },
+        ),
         // Second home for a binding `gunbc.instrument_targets` `known_red_derivation_binding` already
         // owns: this table is hand-maintained -- `heal` never regenerates it -- so a rostered label with
         // no row here exits 2 'no such target' whatever the .dag registry says. Adding the row is the
