@@ -4444,10 +4444,14 @@ type InhabitanceRefusalReason
   | RefusedCallableMismatch
 
 
+// InhabitanceUnmodeled is NOT a property of the facts: no arm of the relation judges the pair yet. It is a
+// separate verdict, not an InhabitanceUndecidableReason, because 'undecidable' is a property of the facts and
+// never of the wiring (DESIGN section 3: a materially different contract needs a materially different name).
 type InhabitanceVerdict
   = Inhabits
   | InhabitanceRefused { reason: InhabitanceRefusalReason }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
+  | InhabitanceUnmodeled
 
 fn declared_type_position_label(position: DeclaredTypePosition, subject: String) -> String {
   match position {
@@ -4757,9 +4761,15 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
         } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
           InhabitanceRefused { reason: RefusedPayloadAtParent }
         } else {
+          // THE TERMINAL ARM IS NOT ACCEPTANCE (DESIGN section 5). A pair no arm above judged used to
+          // answer Inhabits here, so a record or a rigid type parameter at a grounded Int compiled with no
+          // diagnostic. Until each such class is dispositioned it answers a COUNTED, typed
+          // InhabitanceUnmodeled verdict, whose population and trigger are carried by
+          // gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel; then this
+          // arm refuses.
           match nominal_product_inhabitance_refusal(declared: declared, produced: produced, scope: scope) {
             Present { value: r } => InhabitanceRefused { reason: r }
-            Absent => Inhabits
+            Absent => InhabitanceUnmodeled
           }
         }
     }
@@ -5659,6 +5669,14 @@ fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: Inf
         diagnostic: DeclaredTypeInhabitanceUndecided {
           position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
           reason: inhabitance_undecidable_reason_label(reason: r),
+          span: obligation.span
+        },
+        module_name: scope.module_name
+      )]
+    InhabitanceUnmodeled =>
+      [make_error_node(
+        diagnostic: DeclaredTypeInhabitanceUnmodeled {
+          position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
           span: obligation.span
         },
         module_name: scope.module_name
