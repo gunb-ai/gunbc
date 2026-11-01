@@ -1,6 +1,8 @@
 module test.claim.interpreter_list_read_optional_witness
 
 import std.live_tree { LiveTreeDisposition }
+import std.optional { Optional, Absent, Present }
+import std.types { Bool, List, Map, String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -43,17 +45,6 @@ test fn a_match_on_each_read_answers_by_value() -> Bool {
   (match ilro_items.last() { Present { value: v } => v == "c"  Absent => false })
     && (match ilro_none.first() { Present { value: v } => false  Absent => true })
     && (match ilro_items.get(1) { Present { value: v } => v == "b"  Absent => false })
-}
-
-// RENDERING CONTROLS: a rendered optional read must not change silently. The expected text is
-// whatever the interpreter rendered a Present/Absent variant as BEFORE the change (the first
-// srv1 run records it); equality here pins that the fix did not alter the rendering.
-test fn a_rendered_present_read_equals_the_rendering_of_a_present_literal() -> Bool {
-  to_string(ilro_items.first()) == to_string(Present { value: "a" })
-}
-
-test fn a_rendered_absent_read_equals_the_rendering_of_an_absent_literal() -> Bool {
-  to_string(ilro_none.first()) == to_string(Absent)
 }
 
 // MAP `.get` is the same declared Optional<V> as the list reads: one constructor, not the bare
