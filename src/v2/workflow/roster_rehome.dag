@@ -26,6 +26,7 @@ import std.optional { Absent, Optional, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.types { List, Bool }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.source_layout { layout_governed_roots }
 import v2.workflow.roster_import_sweep {
   ImportDeclFact,
   RosterHeldLock,
@@ -178,8 +179,9 @@ type RehomePairVerdict
   = RehomePairSame
   | RehomePairRefused { reason: RehomeRefusal }
 
+// The governed trees, read from the one layout authority rather than restated here.
 fn rehome_pool_roots() -> List<String> {
-  ["dag", "src/v2"]
+  layout_governed_roots()
 }
 
 fn rehome_pair_verdict(row: RehomeRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> RehomePairVerdict {
