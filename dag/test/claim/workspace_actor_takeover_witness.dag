@@ -113,11 +113,11 @@ test fn prior_actor_standing_follows_the_slot_invocation() -> Bool {
         Absent => false
         Present { value: r } =>
           (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: fixture_slot(unit: u, invocation: new)) { PriorActorTerminal => true _ => false })
-          && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: UnitInvocationAbsent { unit: u, manager: SystemManager }) { PriorActorTerminal => true _ => false })
+          && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: fixture_slot(unit: u, invocation: "")) { PriorActorTerminal => true _ => false })
           && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: fixture_slot(unit: u, invocation: old)) { PriorActorRunning => true _ => false })
           && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: UnitInvocationUnreadable { cause: "fixture" as NonEmptyStr }) { PriorActorUnobservable { reason: _ } => true _ => false })
           && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: fixture_slot(unit: foreign, invocation: new)) { PriorActorUnobservable { reason: _ } => true _ => false })
-          && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: UnitInvocationAbsent { unit: foreign, manager: SystemManager }) { PriorActorUnobservable { reason: _ } => true _ => false })
+          && (match workspace_prior_actor_standing(recorded: r, plan: plan, slot: fixture_slot(unit: foreign, invocation: "")) { PriorActorUnobservable { reason: _ } => true _ => false })
       }
     }
   }
