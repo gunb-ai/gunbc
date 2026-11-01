@@ -18,11 +18,15 @@ import std.durable_exclusive_hold { HolderObservedLive }
 // test.claim.systemd_unit_invocation_liveness_witness). Run on a systemd host, naming a unit that is
 // currently active:
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/test/manual/systemd_unit_run_live_observation.dag \
-//     --function systemd_unit_run_live_observation --arg unit=<active unit name, e.g. ssh.service>
+//     --function systemd_unit_run_live_observation --arg unit=<active unit name, e.g. ssh.service> \
+//     --arg expected_invocation=<systemctl show -p InvocationID --value> --arg expected_boot_id=<boot_id> --arg expected_btime=<btime>
 // It reads the unit's InvocationID through systemd, /proc/sys/kernel/random/boot_id and /proc/stat from the host,
-// builds the run twice and asserts that the second reading is judged the same live run. A refusal (exit 1) names
+// builds the run twice and asserts that the second reading is judged the same live run. With an expected_invocation it
+// also exits 0 only if the observed run equals that independently read referent (a mismatch prints the observed triple
+// in the exit reason); an empty expected_invocation skips the referent comparison. Pass all three expected_* args or
+// leave all empty. A refusal (exit 1) names
 // the located cause; it never defaults a component.
-fn systemd_unit_run_live_observation(unit: String) -> ProcessExit
+fn systemd_unit_run_live_observation(unit: String, expected_invocation: String, expected_boot_id: String, expected_btime: String) -> ProcessExit
   uses fs: Filesystem
 {
   let inv = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
@@ -34,7 +38,13 @@ fn systemd_unit_run_live_observation(unit: String) -> ProcessExit
     match first {
       UnitInvocationPresent { run: r } => {
         let again = unit_invocation_observation(manager: SystemManager, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: inv.value)
-        match unit_invocation_holder_liveness(recorded: r, observed: again) { HolderObservedLive { evidence: _ } => ExitSuccess  _ => exit_failure(reason: "the unit run was not observed as the same live run") }
+        match unit_invocation_holder_liveness(recorded: r, observed: again) {
+          HolderObservedLive { evidence: _ } =>
+            if expected_invocation == "" { ExitSuccess }
+            else if (r.invocation_id as String) == expected_invocation && (r.boot_id as String) == expected_boot_id && concat("", r.boot_started_at) == expected_btime { ExitSuccess }
+            else { exit_failure(reason: join(["the observed run differs from the referent: invocation=", r.invocation_id as String, " boot_id=", r.boot_id as String, " btime=", concat("", r.boot_started_at)], "")) }
+          _ => exit_failure(reason: "the unit run was not observed as the same live run")
+        }
       }
       UnitInvocationAbsent => exit_failure(reason: "the unit run was not observed as the same live run")
       UnitInvocationUnreadable { cause: _ } => exit_failure(reason: "the unit run was not observed as the same live run")
