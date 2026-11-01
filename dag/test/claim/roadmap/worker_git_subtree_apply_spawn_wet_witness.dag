@@ -183,17 +183,20 @@ fn wet_group_token() -> String {
 // `test.claim.roadmap.dashboard_lab_instance_inhabitance_witness` is the pairing claim that keeps that row's
 // derivation executed, as a pure derivation, so "the witness supplies its root" has not quietly become "nobody
 // derives it any more".
-fn wet_lab_local_instance(root: String) -> HostDashboardInstance {
+fn wet_lab_local_instance(scratch_parent: String, repo: String) -> HostDashboardInstance {
   witness_supplied_instance(
-    scratch_parent: root as FilePath,
-    repo: root as FilePath,
+    // THE SCRATCH PARENT IS THE CLAIM'S OWN MKTEMP LEAF, and the repository is a tree beside it
+    // (`<leaf>/source`), so the instance root -- `<leaf>/<lab id>` -- is never inside the repository the claims
+    // run `git` in, and both trees are one leaf the claim can remove.
+    scratch_parent: scratch_parent as FilePath,
+    repo: repo as FilePath,
     // THE GUARD, AT THE ONE PLACE A WITNESS ROOT ENTERS THESE CLAIMS. A root the fixture refuses -- the live
     // lab root, a child of it, the fleet's install root, or anything outside the declared scratch prefix --
     // is carried by a principal that cannot exist, so every claim that would have run at that target goes RED
     // instead of writing there. That is the BROKEN run the PR body names: point the supplied root back at the
     // live derivation and the claims refuse.
     principal:
-      if witness_supplied_root_is_refused(root) {
+      if witness_supplied_root_is_refused(scratch_parent) || witness_supplied_root_is_refused(repo) {
         wet_unnameable_principal()
       } else {
         wet_principal()
@@ -507,7 +510,7 @@ test fn the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_post
   } else {
     let repo = join([root, "/source"], "")
     let config = join([repo, "/.git/config"], "")
-    let instance = wet_lab_local_instance(root: repo)
+    let instance = wet_lab_local_instance(scratch_parent: root, repo: repo)
     let planted = wet_ok(command: mkdir_parents_command(path: repo))
       && wet_plant_repository(git: join([repo, "/.git"], ""), uid: uid, gid: gid, instance: instance)
       && wet_ok(command: git_init_quiet_command(repository_dir: repo))
@@ -576,7 +579,7 @@ test fn the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not() -> B
     let objects = join([git, "/objects"], "")
     let refs = join([git, "/refs"], "")
     let logs = join([git, "/logs"], "")
-    let instance = wet_lab_local_instance(root: repo)
+    let instance = wet_lab_local_instance(scratch_parent: root, repo: repo)
     let planted = wet_ok(command: mkdir_parents_command(path: repo))
       && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
     // THE CONTROL, AND WHY IT IS THIS STATE. "Require the migration to refuse a plain ungranted tree" LOOKS
@@ -720,7 +723,7 @@ test fn the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_onl
     let objects = join([git, "/objects"], "")
     let logs = join([git, "/logs"], "")
     let object_path = "f9/0123456789abcdef0123456789abcdef01234567"
-    let instance = wet_lab_local_instance(root: repo)
+    let instance = wet_lab_local_instance(scratch_parent: root, repo: repo)
     let planted = wet_ok(command: mkdir_parents_command(path: repo))
       && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
       // git's OWN mode for a loose object, where one lives.
@@ -831,7 +834,7 @@ test fn the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it()
       join([git, "/hooks/pre-commit"], ""), join([git, "/info/exclude"], ""), join([git, "/config"], ""),
       join([git, "/packed-refs"], ""),
     ]
-    let instance = wet_lab_local_instance(root: repo)
+    let instance = wet_lab_local_instance(scratch_parent: root, repo: repo)
     let planted = wet_ok(command: mkdir_parents_command(path: repo))
       && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
     // THE PRUNES ARE THE CLAIM. .git ITSELF is confined and must not move, but it CONTAINS the three
@@ -931,7 +934,7 @@ test fn the_worktree_grant_makes_the_checkout_editable_and_its_proof_refuses_wit
   } else {
     let repo = join([root, "/source"], "")
     let worktree = join([root, "/attempt"], "")
-    let instance = wet_lab_local_instance(root: repo)
+    let instance = wet_lab_local_instance(scratch_parent: root, repo: repo)
     let seeded = wet_ok(command: mkdir_parents_command(path: repo))
       && wet_repo_with_a_commit(repo: repo)
       && wet_ok(command: git_worktree_add_detached_command(repository_dir: repo, path: worktree, revision: "HEAD"))
@@ -964,7 +967,7 @@ test fn the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without
   } else {
     let repo = join([root, "/source"], "")
     let worktree = join([root, "/attempt"], "")
-    let instance = wet_lab_local_instance(root: repo)
+    let instance = wet_lab_local_instance(scratch_parent: root, repo: repo)
     let entry = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: worktree)
     let seeded = wet_ok(command: mkdir_parents_command(path: repo))
       && wet_repo_with_a_commit(repo: repo)
@@ -1040,7 +1043,7 @@ test fn a_linked_worktree_commit_writes_the_derived_write_set_and_nothing_confin
     let repo = join([root, "/source"], "")
     let git = join([repo, "/.git"], "")
     let worktree = join([root, "/attempt"], "")
-    let instance = wet_lab_local_instance(root: repo)
+    let instance = wet_lab_local_instance(scratch_parent: root, repo: repo)
     let seeded = wet_ok(command: mkdir_parents_command(path: repo))
       && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
       && wet_repo_with_a_commit(repo: repo)
@@ -1154,7 +1157,7 @@ test fn the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit() -> 
     let git = join([repo, "/.git"], "")
     let ungranted_worktree = join([root, "/attempt-ungranted"], "")
     let granted_worktree = join([root, "/attempt-granted"], "")
-    let instance = wet_lab_local_instance(root: repo)
+    let instance = wet_lab_local_instance(scratch_parent: root, repo: repo)
     let seeded = wet_ok(command: mkdir_parents_command(path: repo))
       && wet_plant_repository(git: git, uid: uid, gid: gid, instance: instance)
       && wet_repo_with_a_commit(repo: repo)
@@ -1326,7 +1329,7 @@ test fn the_posture_observer_reads_an_absent_source_as_absence_and_the_plan_carr
   if root == "" || wet_self_uid() < 0 {
     false
   } else {
-    let inst = wet_lab_local_instance(root: source)
+    let inst = wet_lab_local_instance(scratch_parent: root, repo: source)
     let obs = observe_repository_shared_posture(arm: OnTheHostItself, instance: inst)
     let is_absence = match obs {
       MemberAbsentOnHost { member } => converged_member_eq(a: member, b: wre3_posture_member(root: source))
@@ -1353,7 +1356,7 @@ test fn the_posture_observer_refuses_a_present_but_unreadable_repository_naming_
     false
   } else {
     let planted = wet_ok(command: mkdir_parents_command(path: source))
-    let inst = wet_lab_local_instance(root: source)
+    let inst = wet_lab_local_instance(scratch_parent: root, repo: source)
     let obs = observe_repository_shared_posture(arm: OnTheHostItself, instance: inst)
     let named = match obs {
       MemberUnobservable { member, cause } =>

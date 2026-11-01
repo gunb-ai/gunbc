@@ -1,14 +1,12 @@
 module test.claim.roadmap.witness_supplied_instance
 
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
-import std.algebra { string_contains }
+import std.algebra { string_contains, trim }
 import std.optional { Optional, Present, Absent }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.command { ArgvCommand }
 import extdeps.posix.identity { PosixOwnerNames }
-import extdeps.tools.gnu_coreutils { mktemp_directory_command }
-import extdeps.tools.id {
-  id_program, id_uid_command, id_gid_command, id_group_name_command, id_user_name_argv,
-}
+import extdeps.tools.gnu_coreutils { mktemp_directory_command, whoami_command }
+import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardLocalProvision,
@@ -106,16 +104,15 @@ type WitnessSuppliedPrincipal {
   group: NonEmptyStr
 }
 
-// THE COMMANDS THAT ASK. Four separate processes, deliberately: one `id -u -g -n` collapses the answers into a
-// single line, and then a missing group name is indistinguishable from a missing uid — the conflation that lets
-// a witness "pass" on a host that has no such account.
+// THE FOUR QUESTIONS, IN FOUR PROCESSES, deliberately: one `id -u -g -n` collapses the answers into a single
+// line, and then a missing group name is indistinguishable from a missing uid, which is the conflation that lets
+// a witness "pass" on a host that has no such account. The first three are the sealed builders
+// `extdeps.tools.id` provides for a CALLING PROCESS's own credentials (no operand: the account database cannot
+// say what a running process holds); the fourth is `gunbc`'s own effective-principal read, the same
+// `whoami_command` `gunbc.fleet.fleet_host_key_enrollment` asks when it must know which account a transport
+// actually reached rather than which account the database names.
 fn witness_principal_commands() -> List<ArgvCommand> {
-  [
-    id_uid_command(),
-    id_gid_command(),
-    id_group_name_command(),
-    argv_command(program: id_program(), arguments: id_user_name_argv()),
-  ]
+  [id_uid_command(), id_gid_command(), id_group_name_command(), whoami_command()]
 }
 
 type PrincipalNumbers {
