@@ -35,14 +35,16 @@ import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_oper
 // reporting the same raw version is refused, and so is Mt. Jade's MegaRAC at 2.11, which none of these
 // operations was ever run on.
 //
-// TWO ADMISSIONS, AND ONE OF THEM IS A DECLARED RUNG DROP (gunbc.rung_drop
-// megarac_operations_admitted_through_a_superseded_build_observation). admit_megarac_host grounds the
-// operation at the build the binding's access observation read, and that observation can be historical:
-// mtcollins1's reads 0.32 (2026-09-05) and the controller was reflashed to 0.45.3 on 2026-10-02.
-// admit_megarac_host_at_current_build is the gate that closes it -- it admits only when the observation
-// is the controller's CURRENT build and the operation is grounded at that build -- and it is built in
-// shadow: cutting production over to it refuses mtcollins1's boot until a reading of 0.45.3 and
-// executed evidence at it are committed, so the cut-over is one later transition (staging ruling C).
+// TWO ADMISSIONS, AND THE DIFFERENCE BETWEEN THEM WAS A DECLARED RUNG DROP (gunbc.rung_drop
+// megarac_operations_admitted_through_a_superseded_build_observation, RETIRED by the 2026-11-01 cutover
+// in gunbc#15591). admit_megarac_host grounds the operation at the build the binding's access observation
+// read, and that observation can be historical: mtcollins1's read 0.32 (2026-09-05) while the controller
+// was reflashed to 0.45.3 on 2026-10-02. admit_megarac_host_at_current_build is the gate that closes it
+// -- it admits only when the observation is the controller's CURRENT build and the operation is grounded
+// at that build -- and PRODUCTION RUNS ON IT. It was held in shadow deliberately: cutting over before the
+// boot had committed its own reading of the build (#14982, #15065) refused mtcollins1's boot, so the
+// switch and the observation moved in one transition (staging ruling C). The older admission survives only
+// as test evidence, and its header says so.
 type AdmittedMegaRacHost sole_constructor {
   host: ManagedHost
   route: BmcControlBoundRoute
@@ -106,9 +108,18 @@ fn megarac_grounded_admission(evidence: MegaRacOperationEvidence, host: ManagedH
   }
 }
 
-// SUPERSEDED BY admit_megarac_host_at_current_build, WHICH NO PRODUCTION CALLER HAS MOVED AWAY FROM: the
-// row it keyed on now carries the build the evidence READS. Retained, frozen, for the witnesses that show
-// what the superseded build-observation key used to refuse, and for the declared drop that covers it.
+// SUPERSEDED BY admit_megarac_host_at_current_build, AND NO PRODUCTION CALLER USES IT ANY MORE: the
+// 2026-11-01 cutover (gunbc#15591) moved all five -- gunbc.host.megarac_managed_host's own three below,
+// gunbc.machine_intake.megarac_boot_media_attach megarac_boot_media_host, and
+// gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_screen_start -- onto the current-build gate,
+// whose row carries the build the evidence READS. git grep "admit_megarac_host(" outside dag/test finds
+// this definition and nothing else, so it stands as TEST-ONLY EVIDENCE: its one caller is
+// refused_for_every_operation in test.claim.host.megarac_managed_host_witness, which shows what the
+// superseded build-observation key used to refuse. The declared drop that covers that key is
+// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation
+// megarac_operations_admitted_through_a_superseded_build_observation, and that same cutover is what
+// fired its restoration_trigger and retired the row. Deleting this function would delete the witness's
+// subject, so the evidence stays and the authority does not: it is not a caller's option any more.
 fn admit_megarac_host(host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
   admit_megarac_host_observed_in(evidence: megarac_operation_evidence(), host: host, operation: operation)
 }
