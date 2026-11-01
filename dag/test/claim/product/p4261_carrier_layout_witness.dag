@@ -2684,7 +2684,8 @@ test fn a_lifted_parts_footprint_is_its_own_state() -> Bool {
   let figures = count(vin_sw) == 2 && all(vin_sw, o => match valued_ohms(o: o) { Present { value: v } => v == 13300, Absent => false })
     && count(filter(k1_footprint_resistances, o => (o.first.terminal as String).contains("(EN)") && match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 2
     && count(e1_footprint_before_cleaning_resistances) == 1 && all(e1_footprint_before_cleaning_resistances, o => is_reported_zero(o: o) && after_key(o: o, key: e1_u10p2_lift.key) && match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })
-    && count(filter(e1_footprint_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 0
+    && count(filter(e1_footprint_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })) == 1
+    && all(filter(e1_footprint_resistances, o => match o.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false }), o => terminal_ref_equal(a: o.second, b: terminal_ref(component: e1_l_4r7_near, terminal: inductor_pad_near_u4 as TerminalIdentity)))
   let e1_vin_lead = filter(e1_converter_pair_resistances, o => (o.first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: o.second, b: e1_ground_ref))
   let e1_vin_pad = filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: o.second, b: e1_ground_ref))
   let k1_vin_pad = filter(k1_footprint_resistances, o => (o.first.terminal as String).contains("(VIN)") && terminal_ref_equal(a: o.second, b: k1_return))
@@ -2692,6 +2693,7 @@ test fn a_lifted_parts_footprint_is_its_own_state() -> Bool {
     && all(e1_vin_pad, o => match valued_ohms(o: o) { Present { value: v } => v >= 1000, Absent => false })
     && all(e1_vin_lead, o => match valued_ohms(o: o) { Present { value: v } => v <= 30, Absent => false })
     && count(e1_after_lift_rail_resistances) == 1 && all(e1_after_lift_rail_resistances, o => after_key(o: o, key: e1_u10p2_lift.key) && match valued_ohms(o: o) { Present { value: v } => v <= 10, Absent => false })
-    && count(filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(SW)") && is_reported_zero(o: o))) == 2
+    && count(filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(SW)") && is_reported_zero(o: o))) == 3
+    && count(filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(SW)") && terminal_ref_equal(a: o.second, b: terminal_ref(component: e1_l_4r7_near, terminal: inductor_pad_near_u4 as TerminalIdentity)) && is_reported_zero(o: o) && !is_at_baseline(o: o))) == 1
   rows && ordered && figures && separation
 }
