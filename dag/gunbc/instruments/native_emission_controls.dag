@@ -146,10 +146,27 @@ fn control_shadow_lambda(flags: List<Bool>) -> Int {
   })
 }
 
+// A top-level data declaration is a reference to a declaration, not a binder: it is emitted as a call
+// (`control_shadow_table()`) even beside a local binder in the same fn. Classifying it as a local
+// dropped the parens and rustc refused the iteration (E0599 on a fn item).
+data control_shadow_table: List<Int> = [1, 2, 3]
+
+fn control_shadow_table_beside_binder(found: Bool?) -> Int {
+  match found {
+    Present { value: control_shadowed_leaf } =>
+      match control_shadowed_leaf {
+        true => control_shadow_table |> fold(init: 0, f: (acc, n) => acc + n)
+        false => 0
+      }
+    Absent => 0
+  }
+}
+
 fn local_binder_shadow_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_match_arm", held: control_shadow_match_arm(found: Present { value: true }) == 5 },
     NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_lambda_parameter", held: control_shadow_lambda(flags: [true, false, true]) == 4 },
+    NativeEmissionCase { identity: "top_level_data_reference_beside_a_local_binder_is_a_call", held: control_shadow_table_beside_binder(found: Present { value: true }) == 6 },
     NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_red_not_the_global", held: control_shadow_match_arm(found: Present { value: false }) == 3 && control_leaf_a_probe() + control_leaf_b_probe() == 303 }
   ]
 }
@@ -826,6 +843,7 @@ data native_emission_expected_identities: List<String> = [
   "local_binder_shadows_ambiguous_global_leaf_match_arm",
   "local_binder_shadows_ambiguous_global_leaf_lambda_parameter",
   "local_binder_shadows_ambiguous_global_leaf_red_not_the_global",
+  "top_level_data_reference_beside_a_local_binder_is_a_call",
   "fn_value_stored_generic_fn_answers",
   "fn_value_red_stored_generic_fn_is_not_another_answer",
   "fn_value_passed_fn_answers_beside_it",

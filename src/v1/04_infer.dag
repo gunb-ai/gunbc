@@ -1121,6 +1121,13 @@ fn expected_type_is_arrow(expected: Node?) -> Bool {
   }
 }
 
+// LOCAL MEANS LEXICAL. scope.locals also carries module-level names (top-level data declarations and
+// other declarations the module scope registers), so a hit there is not a binder. body_locals is the
+// corpus's shadowing authority (extend_scope, build_params_scope, lambda and match binders insert into
+// it in lockstep with locals), so only a name in both is a LocalValueBinding; a module-level hit is a
+// reference to a declaration and stays FunctionValueBinding, which is what emission needs to keep the
+// call parens of a zero-argument declaration. Consumers that read LocalValueBinding as "lexically bound"
+// (the emitter's declaration lookup) are then right by construction.
 fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   match lookup_variant_parent_enum(scope: scope, name: name) {
     Present { value: parent_enum } => VariantValueBinding { parent_enum: parent_enum, parent_identity: variant_parent_identity_of(owner: variant_owner_node(scope: scope, name: name), scope: scope) }
@@ -1129,7 +1136,8 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
         Present { value: binding } =>
           if map_has(scope.match_bound_names, name) { MatchBoundBinding }
           else if local_is_service_root_binding(scope: scope, name: name, binding: binding) { ServiceValueBinding }
-          else { LocalValueBinding }
+          else if map_has(scope.body_locals, name) { LocalValueBinding }
+          else { FunctionValueBinding }
         Absent => FunctionValueBinding
       }
   }
