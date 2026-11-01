@@ -3,6 +3,8 @@ module test.claim.seed_build_preamble_no_marker_witness
 import std.types { Bool, String }
 import std.algebra { string_contains }
 import gunbc.repo.repo_self_build { repo_self_build_env_preamble }
+import gunbc.shell_command_text { shell_command_text_refusal_marker }
+import std.optional { Present, Absent }
 
 data claim_subject: String = "the seed-build preamble serializes to shell that carries every statement the producer authored, in a shape that evaluates the way it reads: no refusal marker anywhere in it, both arms of each parameter default present, and the identity guard testing a quoted variable rather than a bare expansion"
 
@@ -37,12 +39,17 @@ data real_execution_home_doc: String = "Floor-enrolled (a newly added test fn in
 
 // THE MARKER THE EMITTER SUBSTITUTES WHEN IT REFUSES A STATEMENT. A generated step that carries it
 // is not valid shell, which is the point -- but a generated WORKFLOW that carries it has already
-// lost a statement, and nothing in the step's own text says so.
-data refused_marker: String = "__GUNBC_BASH_EMIT_REFUSED__"
+// lost a statement, and nothing in the step's own text says so. The needle is DERIVED from the
+// authority that mints it (gunbc.shell_command_text ::shell_command_text_refusal_marker); this module
+// used to re-type the token, and a hand copy can drift from the thing it copies without any check
+// noticing. Absent fails the claim instead of passing it on a weaker needle.
 
 // THE PREAMBLE EMITS: no statement in it is refused.
 test fn the_seed_build_preamble_emits_without_a_refusal_marker() -> Bool {
-  !string_contains(s: repo_self_build_env_preamble(), pattern: refused_marker)
+  match shell_command_text_refusal_marker() {
+    Absent => false
+    Present { value: refused_marker } => !string_contains(s: repo_self_build_env_preamble(), pattern: refused_marker)
+  }
 }
 
 // BOTH ARMS OF EACH DEFAULT SURVIVE THE FOLD. A refusal is not the only way to lose a statement --
