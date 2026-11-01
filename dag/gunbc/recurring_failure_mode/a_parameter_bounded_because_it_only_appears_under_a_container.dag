@@ -1,4 +1,4 @@
-module gunbc.recurring_failure_mode.a_heap_reference_borrows_its_pointees_clone_impl
+module gunbc.recurring_failure_mode.a_parameter_bounded_because_it_only_appears_under_a_container
 
 import std.types { NonEmptyStr }
 import std.decl_ref { decl_ref }
@@ -42,12 +42,13 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // declared element that carries no bound of its own, because the handle is already there. A control that
 // asks for a demand through the second shape is asking for the repair's own red, and a control that asks
 // for one through the third shape is asking for something rustc does not require.
-data a_heap_reference_borrows_its_pointees_clone_impl: RecurringFailureMode = RecurringFailureMode {
-  identity: "a_heap_reference_borrows_its_pointees_clone_impl" as NonEmptyStr,
+data a_parameter_bounded_because_it_only_appears_under_a_container: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_parameter_bounded_because_it_only_appears_under_a_container" as NonEmptyStr,
 
   rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "a required route that emits every product on the release-bins roster and compiles each emitted crate, so a bound no use site can satisfy refuses on every pull request rather than on the fleet lane" } },
 
   receipts: [
+    "POPULATION, stated honestly after review 89748's observation, checked against the source: the break that led here was NOT an authored heap reference. The product type is authored as dag/extdeps/http/server.dag type ServedRouteTable<H> { routes: List<ServedRoute<H>> } -- no Rc anywhere in the source -- and the emitter adds the Rc<Vec<Rc<...>>> wrapping at emission. What bounded H: Clone was the walk asking whether the parameter merely APPEARS inside the element of a free-monoid template, and the repair that turns the build green is the switch to asking what the element type's own Clone impl requires. The heap-reference rows complete the SAME rule for a shape the corpus does not currently author in a field position: git grep over dag/, src/v1 and src/v2 finds an authored Rc< or Arc< only inside witness assertions about emitted text and inside comments. So that half of the rule is preventive -- exercised through the emitted shape of this branch's controls, never through an authored heap reference -- and it is named here rather than presented as the cause of the red build.",
     "INVALID STATE: a generic item with a heap-referenced container of a generic element is emitted with a Clone demand on its parameter that nothing in the item requires -- in the serde bound, in the hand-written Debug and PartialEq impl headers, in the accessor impl header and in the fn headers that name the type. The bound is satisfiable only where the parameter happens to be Clone, so the emitted crate refuses at the first use site that cannot prove it: 5x rustc E0277 'the trait bound H: Clone is not satisfied' plus 1x E0369 'binary operation == cannot be applied to &Rc<ServedRouteTable<H>>', in the emitted crate for gunbc.auth.approval_device_crypto_serve.",
     "EARLIEST UNJUSTIFIED LINK (DESIGN section 6b): not the emitted file, and not the product. v1.compiler.trait_derive_emit v1_type_expr_clone_impl_needs_param modelled every type former as bounding its argument, and a heap reference is not one: impl<T: ?Sized> Clone for Rc<T> and impl<T: ?Sized> Clone for Arc<T> are unconditional in T, cited at std_rc_clone_impl_authority and std_arc_clone_impl_authority. The walk descended through the handle and demanded the pointee's capability for the handle's own capability.",
     "HOW IT STAYED HIDDEN: the over-bound is only unnecessary, never wrong, until a use site cannot satisfy it, and it propagates -- once a type is recorded as bounding a parameter, every item naming that type inherits the demand, so one wrong model at one type former reaches four kinds of emitted header at once. The shape was also unreachable until the FreeMonoid carrier test was widened from the literal spelling to the std.algebra roster (which made List a carrier): a repair to one predicate activated a dormant neighbour, and the neighbour's bug is what this row files.",
