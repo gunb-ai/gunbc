@@ -812,7 +812,7 @@ fn publication_helper_record_subject_outcome(
                 },
               )
             } else {
-              let consumed = Filesystem.Delete(path: path)
+              let consumed = Filesystem.Delete(path: join([publication_pending_dir_text(instance_root: instance_root), "/", entry], ""))
               if consumed.success {
                 HelperAnswered {
                   key: key,
