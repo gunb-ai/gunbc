@@ -1,6 +1,6 @@
 module extdeps.systemd.journalctl
 
-import std.types { NonEmptyStr, Bool, Unit, List, String }
+import std.types { NonEmptyStr, Bool, Unit, List, String, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -98,4 +98,20 @@ fn journalctl_kernel_current_boot_argv() -> List<String> {
 // for the named unit; `-b` the current boot. Same consumer-side filtering rule as above.
 fn journalctl_unit_current_boot_argv(unit: NonEmptyStr) -> List<String> {
   ["journalctl", "-u", unit as String, "-b", "--no-pager", "-o", "short-unix"]
+}
+
+// A USER MANAGER'S UNIT JOURNAL, READ BY ROOT. journalctl(1) -M names a local CONTAINER, not a
+// `UID@` user manager, so the systemctl `--machine=UID@` connector has no journalctl spelling. What
+// does select a user unit is `--user-unit=` (matches _SYSTEMD_USER_UNIT and USER_UNIT, per
+// systemd.journal-fields(7)) ANDed with the trusted `_UID=` field, so another account's unit of the same
+// name cannot be read as this one. `-n` bounds the tail; it is a parameter, not a literal.
+fn journalctl_user_unit_tail_argv(unit: NonEmptyStr, uid: Int, lines: Int) -> List<String> {
+  ["journalctl", concat("--user-unit=", unit as String), concat("_UID=", to_string(uid)), "-n", to_string(lines), "--no-pager", "-o", "short-unix"]
+}
+
+// EVERYTHING THE JOURNAL HOLDS FOR ONE UID, NO UNIT MATCH. When a unit-keyed read is empty this separates
+// "the unit logged nothing" from "the journal holds nothing for this account": _UID is a trusted field,
+// and a user manager that stores no per-user journal leaves no entry under it at all.
+fn journalctl_uid_tail_argv(uid: Int, lines: Int) -> List<String> {
+  ["journalctl", concat("_UID=", to_string(uid)), "-n", to_string(lines), "--no-pager", "-o", "short-unix"]
 }

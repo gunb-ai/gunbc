@@ -1,0 +1,63 @@
+module extdeps.gpu.gigabyte
+
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.gpu.types { GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, PcieAddInBoard, SingleGpu }
+import extdeps.gpu.amd { amd_radeon_ai_pro_r9700_catalog }
+import extdeps.storage.types { Gen5, PcieLink }
+import extdeps.vendor.gigabyte { gigabyte }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// GIGABYTE'S OWN CARDS. A partner board is its own product (DESIGN section 3, external upstream
+// decomposition): Gigabyte's clocks, connector and cooler are Gigabyte's facts, while the GPU it carries is
+// AMD's device row (extdeps.gpu.amd amd_radeon_ai_pro_r9700_catalog), bound here rather than restated.
+//
+// The operator's two R9700 cards are this board (operator 2026-10-30: "GIGABYTE AI TOP Radeon AI PRO
+// R9700"). Gigabyte sells it as GV-R9700AI TOP-32GD in Rev. 1.0 and Rev. 1.1 with the same listed figures;
+// which revision the operator holds is unread.
+//
+// TRANSCRIBED, NOT YET CITED. The figures below are the ones a search read off Gigabyte's specification
+// page (2026-10-30), not a fetch of it: 32 GB GDDR6 on 256 bits at 640 GB/s (the device row's), 4096 stream
+// processors, boost 2920 MHz, game 2350 MHz, one 16-pin connector, a 750 W recommended PSU, dual slot,
+// 267 mm. Gigabyte's page states neither a total board power nor the cooler type, so board_power and
+// thermal stay absent; a retailer's "300 W" or "blower" is not Gigabyte's statement.
+
+data gigabyte_r9700_ai_top_spec_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gigabyte.com/Graphics-Card/GV-R9700AI-TOP-32GD-rev-11/sp"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.gigabyte", decl_name: "gigabyte_board_catalogs", field: WholeDeclaration
+  } },
+  first_citation: gigabyte_r9700_ai_top_spec_authority,
+  further_citations: []
+}
+
+data gigabyte_r9700_ai_top_figures_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Fetch Gigabyte's GV-R9700AI TOP-32GD specification page (Rev. 1.0 and 1.1) and cite the PCIe interface, clocks and power connector to it; read the revision off the operator's cards.",
+}
+
+data gigabyte_r9700_ai_top_32g_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: gigabyte,
+  model: "Radeon AI PRO R9700 AI TOP 32G",
+  gpu: amd_radeon_ai_pro_r9700_catalog,
+  composition: SingleGpu,
+  attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+  board_power: none,
+  zero_power: none,
+  thermal: none,
+  pci_device_id: none,
+  driver_listed_name: none,
+  figure_citations: [],
+}
+
+data gigabyte_r9700_ai_top_32g_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: gigabyte_r9700_ai_top_32g_board_facts)
+
+// Every board this module declares, in declaration order: this module's model-scope subject.
+data gigabyte_board_catalogs: List<GpuBoardAdmission> = [gigabyte_r9700_ai_top_32g_board_catalog]

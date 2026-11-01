@@ -25,6 +25,9 @@ module extdeps.shadow.subordinate_ids
 import std.types { NonEmptyStr, String, List, Int, Bool }
 import std.algebra { trim }
 import std.optional { Absent, Present }
+import std.integer { qualified_octet_members }
+import std.encoding { ascii_decode_octets, AsciiDecoded, AsciiNonAscii }
+import extdeps.numeric.base16 { base16_decode_lower }
 
 // Which of the two files. They are separate files with separate contents and shadow maintains them
 // separately (`-v/-V` add uid ranges, `-w/-W` add gid ranges); conflating them would let a caller that
@@ -100,6 +103,28 @@ fn parse_subordinate_file(path: String, exit_code: Int, stdout: String, stderr: 
         ranges: map(filter(parsed, p => match p { Absent => false Present { value: _ } => true }),
                     p => match p { Absent => SubordinateRange { account: "unparsed" as NonEmptyStr, first: 0, count: 0 } Present { value: r } => r }),
       }
+    }
+  }
+}
+
+// THE EXACT-BYTES READING. The transport trims captured stdout, so a `cat` reading's `bytes` is the file
+// minus its trailing whitespace: the re-read compare (cmp -s - <path>) was fed a file one newline short of
+// the destination and refused on every converge, and subordinate_file_final_newline read the lost newline
+// as the file's convention. The reading therefore comes from `od -An -v -tx1`, whose stdout ends in a hex
+// digit, and is decoded here to the file's own bytes. A non-ASCII byte or a malformed dump is Unreadable:
+// shadow's files are ASCII, and a reading that cannot carry exact bytes must not stand as one.
+fn parse_subordinate_file_exact(path: String, exit_code: Int, od_stdout: String, stderr: String) -> SubordinateFileReading {
+  if exit_code != 0 {
+    parse_subordinate_file(path: path, exit_code: exit_code, stdout: "", stderr: stderr)
+  } else {
+    let digits = join(filter(split(s: join(split(s: od_stdout, delimiter: "\n"), " "), delimiter: " "), w => w != ""), "")
+    match base16_decode_lower(hex: digits) {
+      Absent => SubordinateFileUnreadable { path: path, cause: concat(path, " od output is not a hex dump of whole bytes") }
+      Present { value: q } =>
+        match ascii_decode_octets(octets: qualified_octet_members(q: q)) {
+          AsciiNonAscii { at: _, octet: _ } => SubordinateFileUnreadable { path: path, cause: concat(path, " holds a non-ASCII byte") }
+          AsciiDecoded { text: t } => parse_subordinate_file(path: path, exit_code: 0, stdout: t, stderr: stderr)
+        }
     }
   }
 }

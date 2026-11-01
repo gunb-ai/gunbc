@@ -1,0 +1,18 @@
+module test.claim.keyed_applied_return_type_lowers_to_host_container_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The keyed algebra's own spelling in a fn's DECLARED RETURN TYPE and PARAMETER lowers to the host
+// keyed container, exactly as its callers' bodies do. RED without render_rust_applied_nonpeeling_type's
+// keyed arm: the signature spells Rc<FinitelySupportedFunction<String, i64>> beside the
+// Rc<HashMap<String, i64>> a body or caller passes (rustc E0308).
+test fn w_keyed_algebra_spelling_in_a_signature_lowers_to_the_host_container() -> Bool {
+  compile_dag_rust_emit_check(
+    "module keyed_return_probe\nimport std.algebra { FinitelySupportedFunction }\n\nfn probe_table(m: FinitelySupportedFunction<String, Int>) -> FinitelySupportedFunction<String, Int> {\n  m\n}\n",
+    "src/keyed_return_probe.rs",
+    ["-> Rc<HashMap<String, i64>>"],
+    ["Rc<FinitelySupportedFunction<"]
+  )
+}
