@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.a_total_accessor_maps_a_type_variable_to_error_type
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data a_total_accessor_maps_a_type_variable_to_error_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_total_accessor_maps_a_type_variable_to_error_type" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "A type-parameter leaf carries inferred TypeVariable, not Resolved. v1.compiler.infer_types child_type_node, the accessor documented as the TOTAL read of a type (the inferred type when present, the node itself otherwise), reads through resolved_type, whose _ arm answers the nameless error_type, so a TypeVariable leaf is read as a fabricated empty type: plausible-looking, unjudgeable, located nowhere. SPECIMEN, found 2026-11-01 (gunbc#15612, royal-seal-647): once a type declaration's fields resolve under its own parameters, the equality walk read a generic member through child_type_node and refused six `!= none` sites in 04_infer with 'declaration identity unavailable'; the Stuck cause, extended to carry the node, located name='' span_file='<synthetic>' inferred=CompilerError(unresolved type) (heal run 41332788949).",
+
+    "REPAIR TAKEN, SCOPED: v1.compiler.infer equality_member_type_node hands a TypeVariable member on as itself at the equality walk's two member reads. SIBLING GAP, DEFERRED WITH ITS TRIGGER (DESIGN 6b root generalization): child_type_node has callers across 04_infer, 04_types, 05_emit_rust, 04_emit_info and trait_derive_emit, and a seed-wide change has no evidence but heal at about 40 minutes per round. FOLLOW-UP: child_type_node returns a TypeVariable-stamped node as itself (node_type_compatible already defers on a type variable), and equality_member_type_node dissolves into it, as its own PR. TRIGGER: gunbc#15612 heal green. resolved_type is the PARTIAL accessor by its recorded contract (error_type means unknown) and is not the defect."
+  ],
+
+  evidence: [],
+}
