@@ -180,7 +180,7 @@ import std.termination {
 }
 import std.algebra { FreeSemigroup, CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, NamedTemplate, ReceiverSelf }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
+  node_with_declaration, resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -17205,9 +17205,29 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
     f: (acc, nm) => map_insert(acc, nm, true)
   )
   let env = census_declaration_type_env(census: census, module_path: module_path, tp_names: param_names, source_indices: source_indices)
+  // Stamp members while their declaring owner is known, before the environment
+  // lends this structure to a reference in another scope. These children are
+  // declarations, not type references: a nullary arm Shared does not denote an
+  // unrelated type Shared. Keep payload type references on the qualification
+  // walk; the emitter's existing NamedField route consumes the member identity.
+  let qualified = qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded)
+  let declared_members = match node.connective {
+    Conj => true
+    Disj => true
+    _ => false
+  }
+  let resolved = if declared_members {
+    node_with_children(n: qualified, children: qualified.children |> map(member =>
+      node_with_declaration(n: member, declaration: decl_field_ref(
+        module_path: module_path,
+        decl_name: binding.name,
+        field_name: authored_name_at(source_indices: source_indices, node: member)
+      ))
+    ))
+  } else { qualified }
   TypeBinding {
     name: binding.name,
-    resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),
+    resolved: resolved,
     provenance: binding.provenance, alias_rhs: binding.alias_rhs
   }
 }

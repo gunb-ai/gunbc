@@ -9,6 +9,7 @@ data accepted_source_emits_uncompilable_target: RecurringFailureMode = Recurring
   rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
+    "OCCURRENCE, 2026-11-01 (bold-dove-340, enum-member identity). Native-emission-controls on srv2 aarch64 at ddc51f48142 refused trait_derive_emit for local enum member Shared beside two foreign Shared type aliases; the renamed-alias control at 6f832f87c64 held all 103 cases. Merging PR 15171 and regenerating at fixed point left the same RED and the same 103-case GREEN control. Receipt: calm-crab-645, ep-ddc51f4, 06:01-07:01Z. Candidate repair stamps Conj/Disj members with their declaring owner in v1.compiler.infer census_upgrade_type_decl_binding, consumed by the existing NamedField arm of resolve_type_decl_routed. It does not suppress the ambiguous-reference refusal or rename the enum. AFTER IS UNEXECUTED: modeled regen, native controls and self-host at the model head are still required; no rung is raised.",
     "**accepted source emits uncompilable target** (INVALID STATE: a .dag construction the front end accepts with zero blocking diagnostics, whose emission is a target program the target compiler refuses.",
 
     "The instance filed here is a coproduct's UNIT VARIANT standing in a NON-APPLIED TYPE POSITION -- a field, parameter or return type spelled with a constructor rather than a type.",
