@@ -655,9 +655,11 @@ test fn where_the_fold_can_render_the_committed_body_is_the_builders_run_itself(
 // THE CONTROL READS THE MARKER, NOT A SOURCE SPELLING. No seam's constant is quoted here: the needle is
 // derived from the authority this route already mints from -- gunbc.shell_command_text
 // shell_command_text_refused_poison -- as its first word. Derivation failing is not a pass: the carrier is
-// Optional<String> and Absent makes this claim FALSE, because a weaker needle is exactly the measured false
-// green -- with the needle set to one constant's full sentence, this claim returned TRUE against a committed
-// body carrying a DIFFERENT seam's marker.
+// Optional<String> and Absent makes this claim FALSE. A weaker needle silently stops matching: each of these
+// constants begins with its own token and then diverges, so the full sentence of one seam does not contain
+// another seam's marker -- that is inspection of the constants' own texts, not a measurement, and the
+// unsplit constant is the weakest needle the derivation could produce. The arm is unreachable for a
+// non-empty constant, so failing closed costs nothing and removes the trap (review 89520).
 // What it covers, and what it does not: the tree declares twenty *_refused_poison constants across eight
 // distinct tokens. The five that begin with THIS token are the bash-fold family that can reach a hosted build
 // step: shell_command_text_refused_poison and shell_command_text_refused_with_cause in gunbc.shell_command_text,
