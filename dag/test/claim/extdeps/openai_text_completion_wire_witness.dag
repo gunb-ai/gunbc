@@ -1,0 +1,38 @@
+// What the legacy /v1/completions wire's `object` constraint must never do: let a response from
+// ANOTHER endpoint read as a text completion.
+//
+// The two text-completion bodies type `object` as `OpenAiTextCompletionObject`, a `String` refined by
+// `openai_text_completion_object_is_documented`, which is the documented constant and nothing else.
+// These rows EXECUTE that predicate -- the constraint's only other consumer is a decoder that does not
+// exist yet (S3 of `gunbc.plans.fabric_serving_router`) -- so a constant that drifted, or a predicate
+// widened to `value == value`, has a red row to answer.
+//
+// Each row says, in the words below its name, the mutation that turns it red, and every row has a
+// counterpart to the OTHER side: a set that only ever returns true is indistinguishable from a
+// placeholder (`gunbc.recurring_failure_mode` a_green_case_set_that_counts_row_identities_and_never_the_branches_those_rows_take).
+//
+// These are `test fn`, not `@test fn`: `@test` is the Rust seed's annotation (the compiler reports
+// `expected item declaration` for it in a .dag), and the claim harness collects these by declaration
+// through the dag-file-target filegroup beside this file.
+
+import extdeps.llm.openai {
+  openai_text_completion_object_is_documented,
+  openai_chat_completion_chunk_object_wire
+}
+
+// The documented value satisfies its own constraint. RED WHEN: `openai_text_completion_object_wire`
+// is changed away from "text_completion" -- which is what the counterpart row below exists to catch,
+// since a constant edited to a chat value would otherwise stay green here too.
+test fn the_documented_object_value_satisfies_the_refinement() -> Bool {
+  openai_text_completion_object_is_documented("text_completion")
+}
+
+// A response from either chat endpoint is REFUSED as a text completion: the non-streaming chat body
+// (`chat.completion`) and the streamed chunk (`chat.completion.chunk`) both carry an `object` member,
+// and both bodies type it as a plain `String`, so this predicate is the only thing that keeps one
+// endpoint's answer out of the other's type. RED WHEN: the predicate is widened to accept anything, or
+// the text-completion constant is set to a chat value.
+test fn another_endpoints_object_value_is_refused() -> Bool {
+  !openai_text_completion_object_is_documented("chat.completion")
+    && !openai_text_completion_object_is_documented(openai_chat_completion_chunk_object_wire)
+}

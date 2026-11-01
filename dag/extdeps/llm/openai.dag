@@ -622,6 +622,25 @@ data extdeps_completions_external_authority_anchor: ExternalAuthority = External
 // whole text-completion answer with one event of a streamed chat answer.
 data openai_text_completion_object_wire: String = "text_completion"
 
+// THE `object` MEMBER IS A CONSTANT IN THE SPEC, SO IT IS TYPED AS ONE, NOT AS A FREE STRING: the
+// value is the wire constant above, and the constraint is this module's where-predicate. std.types
+// spells NonEmptyStr exactly this way (`type NonEmptyStr = String where string_non_empty`, with the
+// predicate as an ordinary fn beside it at std/types.dag:264-277), so the where atom binds to a
+// declaration in the same module. It lives here rather than as a bare `String` because the two
+// endpoints' bodies are otherwise indistinguishable at the type: a `chat.completion`, a
+// `chat.completion.chunk` and an error envelope would each type-check as a text completion, which is
+// the confusion the constant exists to prevent. A reader decoding a response must therefore REFUSE
+// when `object` is not this constant, and that refusal is the consumer this constant exists for --
+// its executing route is //test/claim/extdeps/openai_text_completion_wire_witness, which calls the
+// predicate with the documented value and with each chat endpoint's value, so a constant that drifted
+// goes red. Where-refinements are enforced at literal sites today, so the decoder is where the
+// constraint bites in practice; declaring it is the model fact, exactly as NonEmptyStr is.
+fn openai_text_completion_object_is_documented(value: String) -> Bool {
+  value == openai_text_completion_object_wire
+}
+
+type OpenAiTextCompletionObject = String where openai_text_completion_object_is_documented
+
 // The prompt member as the endpoint document gives it. Four arms, each cited to the one member's union
 // in the anchor above (platform.openai.com/docs/api-reference/completions/create, member
 // `completions-prompt`, read 2026-11-01), which lists exactly these four shapes and no others:
@@ -674,7 +693,7 @@ type OpenAiTextCompletionChoice {
 // is a string, there it is a message.
 type OpenAiTextCompletion200Body {
   id: String
-  object: String
+  object: OpenAiTextCompletionObject
   created: Int
   model: String
   choices: List<OpenAiTextCompletionChoice>
@@ -695,7 +714,7 @@ type OpenAiTextCompletionChunkChoice {
 
 type OpenAiTextCompletionChunkBody {
   id: String
-  object: String
+  object: OpenAiTextCompletionObject
   created: Int
   model: String
   choices: List<OpenAiTextCompletionChunkChoice>
@@ -741,12 +760,12 @@ data openai_text_completion_wire_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiTextCompletion200Body"),
-    reason: "no module reads a non-streaming text-completion answer yet",
+    reason: "no module reads a non-streaming text-completion answer yet, and none refuses a body whose `object` member is not the documented constant",
     dissolution: unbound_dissolution(description: "feature:s3-completions-answer-read - the serving path's read in the approved plan gunbc.plans.fabric_serving_router's S3 decisions closes a usage record from one body of this shape. It dissolves when that reader lands WITH a witness that decodes a recorded completions 200 body into this record and asserts its choices and usage, so a shape nobody has fed real bytes through is not carried as truth"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiTextCompletionChunkBody"),
-    reason: "no module reads one streamed text-completion event yet; openai_compat_sse frames such events but does not interpret their content",
+    reason: "no module reads one streamed text-completion event yet, and none refuses a payload whose `object` member is not the documented constant; openai_compat_sse frames such events but does not interpret their content",
     dissolution: unbound_dissolution(description: "feature:s3-completions-chunk-read - the serving path's streamed read in the approved plan gunbc.plans.fabric_serving_router's S3 decisions forwards one payload of this shape and finishes the answer at the sentinel. It dissolves when that reader lands WITH a witness that decodes a recorded completions chunk into this record -- including the final event, which carries a finish_reason and no text"),
   ),
 ]
