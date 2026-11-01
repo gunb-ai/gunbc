@@ -1,7 +1,7 @@
 module v1.compiler.infer
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_template_alias_algebra, is_container_type, kernel_type_set, is_kernel_type }
+import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_template_alias_algebra, is_container_type, is_container_algebra_carrier, kernel_type_set, is_kernel_type }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -133,7 +133,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { generic_actual_position_type, is_unsolved_type_variable, settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
+import v1.compiler.infer_env { generic_actual_position_type, is_unsolved_type_variable, settled_type, settled_type_of_declaration, declaration_named_by_type_name, settled_head_of_declaration, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -5831,11 +5831,12 @@ fn structured_literal_constructs_formal_carrier(formal_peeled: Node, lit_name: S
 }
 
 // A KERNEL CONTAINER FORMAL IS DECIDED BY IDENTITY BEFORE ANY SPELLING IS COMPARED. When the formal
-// is a kernel container spelling (List/Set/Map) and the literal's owning declaration is recoverable,
-// the literal is a value of the container exactly when that owner IS the container's std.algebra
-// carrier declaration. Equal leaf spellings never stand in: a module's own `type FreeMonoid<T> {..}`
-// owns a different declaration and is refused at List<Int>. Absent when the formal is not a kernel
-// container or the owner cannot be recovered, so the existing route decides as before.
+// DENOTES a kernel container (see `kernel_container_carrier_declaration` -- a roster spelling or a
+// module-local alias of one) and the literal's owning declaration is recoverable, the literal is a
+// value of the container exactly when that owner IS the container's std.algebra carrier declaration.
+// Equal leaf spellings never stand in: a module's own `type FreeMonoid<T> {..}` owns a different
+// declaration and is refused at List<Int>. Absent when the formal denotes no kernel container or the
+// owner cannot be recovered, so the existing route decides as before.
 fn structured_kernel_container_identity_verdict(formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool? {
   kernel_container_carrier_verdict(
     formal: formal_peeled,
@@ -5843,14 +5844,71 @@ fn structured_kernel_container_identity_verdict(formal_peeled: Node, lit_name: S
     scope: scope)
 }
 
-// THE ONE DECISION BOTH SEAMS ASK (the record-literal application site and the declared-type
-// obligation): is this owning declaration the kernel container's std.algebra carrier? Present only
-// when the formal is a kernel container spelling AND the owner is recoverable; the answer is then
-// identity alone. Absent leaves the calling seam's existing route to decide.
-fn kernel_container_carrier_verdict(formal: Node, owner: DeclarationRef?, scope: InferScope) -> Bool? {
-  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
-  if !is_container_type(name: name) { return none }
+// WHICH KERNEL CONTAINER CARRIER, IF ANY, A FORMAL DENOTES -- asked of the DENOTED DECLARATION, never
+// of the spelling the author wrote, and held once for both seams so neither can drift from the other
+// (DESIGN section 3). The roster (`std.types container_template_algebra`) answers for `List`, `Set`
+// and `Map` -- the spellings it has rows for. A module that declares its own alias of a carrier
+// (`type KcAlias<T> = FreeMonoid<T>`, `type KcSetAlias<T> = Set<T>`) writes a name no roster row
+// mentions, so a gate keyed on the spelling answers that the formal denotes no container at all: this
+// verdict withdraws, the calling seam's spelling route then refuses, and the carrier's OWN constructor
+// is refused at a spelling that denotes that carrier -- one carrier, two spellings, DESIGN section 3
+// (the witness rows `kc_local_alias_of_the_carrier_admits_its_constructor` and
+// `kc_local_alias_of_the_set_carrier_admits_its_constructor` hold the two directions, and were
+// measured red on origin/main 14346557686 before this rule existed). Per DESIGN section 6b this is a
+// DIFFERENT rule than the roster read, not the same rule at another site: the roster read keys on a
+// spelling a module-local alias does not have, so no site of it can answer this. The authored name is
+// therefore followed to the declaration it aliases -- `settled_head_of_declaration`, the head-only
+// face of the chain walk, which is what reaches a PARAMETERIZED alias's head where the name-only
+// settle stops -- and the roster is asked whether THAT declaration is one it serves.
+//
+// A module that declares its own `type FreeMonoid<T> { items: Int }`, or an unrelated record, settles
+// to its own declaration, which no roster row names: the answer stays Absent and the calling seam's
+// existing route decides -- which is what `kc_own_freemonoid_is_not_a_list_value` and the two
+// `..._refuses_an_unrelated_record` rows hold. An alias is not a licence.
+fn kernel_container_carrier_declaration(formal: Node, scope: InferScope) -> DeclarationRef? {
   match structured_formal_carrier_declaration(formal_peeled: formal, scope: scope) {
+    Present { value: carrier } =>
+      if kernel_container_roster_carrier(decl: carrier) {
+        Present { value: carrier }
+      } else {
+        kernel_container_carrier_under_alias(formal: formal, scope: scope)
+      }
+    Absent => kernel_container_carrier_under_alias(formal: formal, scope: scope)
+  }
+}
+
+// IS THIS DECLARATION ONE THE CONTAINER ROSTER SERVES? The module is the one the carriers live in
+// (`kernel_container_carrier_module`, written once above for the same cycle reason); the name is read
+// from the roster's own carrier face, `std.types is_container_algebra_carrier`, so no second list of
+// carrier names stands here to drift from the roster the spelling read uses.
+fn kernel_container_roster_carrier(decl: DeclarationRef) -> Bool {
+  decl.module_path == kernel_container_carrier_module && is_container_algebra_carrier(name: decl.decl_name)
+}
+
+// THE ALIAS SIDE OF THE GATE. The formal's authored name is not a container spelling, so ask whether it
+// names an alias whose settled HEAD is a carrier the roster serves. A name that IS a container spelling
+// already had its answer from the roster above; asking it again through the alias chain would let a
+// module shadow a kernel spelling with a declaration of its own and have that shadow answer.
+fn kernel_container_carrier_under_alias(formal: Node, scope: InferScope) -> DeclarationRef? {
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+  if name == "" || is_container_type(name: name) { return none }
+  match declaration_named_by_type_name(name: name, env: scope.type_env) {
+    Present { value: d } =>
+      match settled_head_of_declaration(d: d, source_indices: scope.type_env.source_indices, env: scope.type_env, fuel: 16) {
+        Present { value: head } =>
+          if kernel_container_roster_carrier(decl: head) { Present { value: head } } else { none }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+// THE ONE DECISION BOTH SEAMS ASK (the record-literal application site and the declared-type
+// obligation): is this owning declaration the kernel container's std.algebra carrier? Present only when
+// the formal DENOTES a kernel container carrier (the gate above) AND the owner is recoverable; the
+// answer is then identity alone. Absent leaves the calling seam's existing route to decide.
+fn kernel_container_carrier_verdict(formal: Node, owner: DeclarationRef?, scope: InferScope) -> Bool? {
+  match kernel_container_carrier_declaration(formal: formal, scope: scope) {
     Present { value: carrier } =>
       match owner {
         Present { value: o } => Present { value: declaration_ref_eq(a: carrier, b: o) }

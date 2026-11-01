@@ -158,6 +158,37 @@ pub fn container_template_alias_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_alias_rows(), name.clone())
 }
 
+pub fn container_algebra_carrier_rows() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            container_algebra_carrier_rows_value()
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+}
+
+pub fn container_algebra_carrier_rows_value() -> Rc<HashMap<String, bool>> {
+    {
+        let carrier_seed = v1_rt::rc_empty_map::<String, bool>();
+        Rc::new(v1_rt::sorted_map_keys(&container_template_algebra_rows()))
+            .iter()
+            .cloned()
+            .fold(
+                carrier_seed.clone(),
+                |acc: Rc<HashMap<String, bool>>, spelling: String| match container_template_algebra(
+                    spelling.clone(),
+                ) {
+                    Some(carrier) => v1_rt::rc_map_insert(acc.clone(), carrier.clone(), true),
+                    std::option::Option::None => acc.clone(),
+                },
+            )
+    }
+}
+
+pub fn is_container_algebra_carrier(name: String) -> bool {
+    v1_rt::map_contains_key(&container_algebra_carrier_rows(), name.clone())
+}
+
 pub fn canonical_container_names() -> Rc<Vec<String>> {
     Rc::new(v1_rt::sorted_map_keys(&v1_rt::rc_map_insert(
         crate::std_algebra::carrier_container_roster_map(),
