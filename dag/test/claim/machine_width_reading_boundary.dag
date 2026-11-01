@@ -1,0 +1,78 @@
+module test.claim.machine_width_reading_boundary
+
+import std.types { Bool, List }
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import std.nat { Nat }
+import std.integer { Signed, Unsigned }
+import std.measure { bit_width }
+import std.machine_width_reading {
+  MachineWidthApplicationFacts, MachineWidthArgumentFacts,
+  read_machine_width, NotWidthConstrained, WidthReadable, WidthUnreadable,
+  MachineWidthComposeMalformed, MachineWidthNotStatic,
+  MachineWidthCarrierSignednessUndeclared
+}
+
+// Supplied-boundary discriminators; producer inhabitance is in the separate
+// machine_width_reading_agreement claims. These do not stand in for that run.
+fn width_boundary_carrier(signed: Bool) -> MachineWidthArgumentFacts {
+  MachineWidthArgumentFacts {
+    declaration: if signed { Absent } else { Present { value: decl_ref(module_path: "std.nat", decl_name: "Nat") } },
+    is_kernel_int: signed, natural_arguments: []
+  }
+}
+
+fn width_boundary_constraint(arguments: List<Nat?>) -> MachineWidthArgumentFacts {
+  MachineWidthArgumentFacts {
+    declaration: Present { value: decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth") },
+    is_kernel_int: false, natural_arguments: arguments
+  }
+}
+
+fn width_boundary_application(arguments: List<MachineWidthArgumentFacts>) -> MachineWidthApplicationFacts {
+  MachineWidthApplicationFacts {
+    head: Present { value: decl_ref(module_path: "std.machine_constraints", decl_name: "Compose") },
+    arguments: arguments
+  }
+}
+
+test fn width_boundary_signed64_reads() -> Bool {
+  read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: true), width_boundary_constraint(arguments: [Present { value: 64 }])]))
+    == WidthReadable { signedness: Signed, bits: bit_width(count: 64) }
+}
+
+test fn width_boundary_unsigned8_reads() -> Bool {
+  read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: false), width_boundary_constraint(arguments: [Present { value: 8 }])]))
+    == WidthReadable { signedness: Unsigned, bits: bit_width(count: 8) }
+}
+
+test fn width_boundary_unknown_literal_never_defaults() -> Bool {
+  read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: false), width_boundary_constraint(arguments: [Absent])]))
+    == WidthUnreadable { reason: MachineWidthNotStatic }
+}
+
+test fn width_boundary_extra_width_argument_refuses() -> Bool {
+  read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: false), width_boundary_constraint(arguments: [Present { value: 8 }, Present { value: 16 }])]))
+    == WidthUnreadable { reason: MachineWidthNotStatic }
+}
+
+test fn width_boundary_missing_compose_argument_refuses() -> Bool {
+  read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: false)]))
+    == WidthUnreadable { reason: MachineWidthComposeMalformed }
+}
+
+test fn width_boundary_foreign_nat_does_not_gain_signedness() -> Bool {
+  let carrier = MachineWidthArgumentFacts {
+    declaration: Present { value: decl_ref(module_path: "test.foreign", decl_name: "Nat") },
+    is_kernel_int: false, natural_arguments: []
+  }
+  read_machine_width(application: width_boundary_application(arguments: [carrier, width_boundary_constraint(arguments: [Present { value: 8 }])]))
+    == WidthUnreadable { reason: MachineWidthCarrierSignednessUndeclared }
+}
+
+test fn width_boundary_foreign_compose_is_unconstrained() -> Bool {
+  read_machine_width(application: MachineWidthApplicationFacts {
+    head: Present { value: decl_ref(module_path: "test.foreign", decl_name: "Compose") },
+    arguments: [width_boundary_carrier(signed: false), width_boundary_constraint(arguments: [Present { value: 8 }])]
+  }) == NotWidthConstrained
+}
