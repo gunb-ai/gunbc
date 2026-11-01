@@ -208,6 +208,57 @@ data rust_btree_set_supplemental_generic_bound_rows: List<RustVecSupplementalGen
   },
 ]
 
+// A HEAP REFERENCE OWES ITS ARGUMENT NOTHING FOR Clone. `impl<T: ?Sized> Clone for Rc<T>` and
+// `impl<T: ?Sized> Clone for Arc<T>` are unconditional in T: cloning the reference clones the
+// count and never touches the pointee. Every other head this emitter knows bounds its parameters
+// -- im::Vector and im::OrdSet per the row lists above, a declared generic item by its own
+// declared bounds -- which is exactly why the clone-requirement walk in
+// v1.compiler.trait_derive_emit (v1_type_expr_clone_impl_needs_param) could afford to recurse
+// through EVERY non-declared head: for those heads the recursion is the requirement. For Rc and
+// Arc it is not a requirement, it is an invention. The invention is not academic: it put
+// `H: Clone` into the serde bound and into the hand-written Debug and PartialEq impl headers of a
+// struct whose FreeMonoid field holds a heap reference (`Rc<Vec<Rc<ServedRoute<H>>>>`), and the
+// generic enum that carries that struct in a variant payload derives with serde's DEFAULT bound,
+// so the emitted crate refused -- 5x E0277 'the trait bound H: Clone is not satisfied' plus 1x
+// E0369 on `&Rc<ServedRouteTable<H>>` in v2-emitted-policy-unit-4 of
+// gunbc.auth.approval_device_crypto_serve at main 70e952cbfbc8.
+// These rows are that fact. The walk ASKS them; it does not branch on the spelling.
+data std_rc_clone_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/std/rc/struct.Rc.html#impl-Clone-for-Rc%3CT%3E"
+  }
+}
+
+data std_arc_clone_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/std/sync/struct.Arc.html#impl-Clone-for-Arc%3CT%3E"
+  }
+}
+
+// `carrier_leaf` is the last segment of the authored name, the same test the renderer's own
+// Rc/Arc peel uses (v1.compiler.emit_rust rust_peel_one_rc_type_node), so the row and the
+// renderer agree on which heads are heap references.
+type RustHeapReferenceUnconditionalBoundRow {
+  carrier_leaf: String
+  capability: RustCapability
+  authority: ExternalAuthority
+}
+
+data rust_heap_reference_unconditional_bound_rows: List<RustHeapReferenceUnconditionalBoundRow> = [
+  RustHeapReferenceUnconditionalBoundRow {
+    carrier_leaf: "Rc"
+    capability: RustClone
+    authority: std_rc_clone_impl_authority
+  },
+  RustHeapReferenceUnconditionalBoundRow {
+    carrier_leaf: "Arc"
+    capability: RustClone
+    authority: std_arc_clone_impl_authority
+  },
+]
+
 type RustSupplementalGenericBoundContractCoverageDisposition {
   owner: DeclarationRef
   lane: DeclarationRef

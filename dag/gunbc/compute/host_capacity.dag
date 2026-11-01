@@ -20,6 +20,8 @@ import gunbc.fabric.fabric_event_log {
   SeatStandingObservation, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved, SeatStandingStoreRefused, fabric_seat_observe,
   SeatRelease, SeatReleased, SeatNotHeld, SeatReleaseContended, SeatReleaseRefused, fabric_seat_release, seat_release_wire,
   PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
+  SeatAcquisitionObservation, SeatAcquisitionObserved, SeatAcquisitionNoTerm, SeatAcquisitionAmbiguous,
+  SeatAcquisitionUnobserved, SeatAcquisitionStoreRefused, fabric_seat_acquisition_of, event_log_refusal_wire,
 }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses, owned_directory_path }
@@ -600,6 +602,56 @@ fn compute_release_on(
         SeatReleaseContended { attempts: a } => ComputeReleaseRefused { detail: seat_release_wire(r: SeatReleaseContended { attempts: a }) }
         SeatReleaseRefused { step: st, reason: rs } => ComputeReleaseRefused { detail: seat_release_wire(r: SeatReleaseRefused { step: st, reason: rs }) }
       }
+  }
+}
+
+// WHEN THE LEDGER ACQUIRED A GIVEN REFERENCE, read rather than remembered.
+//
+// A holder-death proof has to be bound to the holder's identity, and one leg of that binding is a TIME:
+// the instant the hold was acquired, against the instant the host's current boot began. Until now the
+// ledger could answer "is this reference held?" only by trying to release it, and "how much room is
+// left?" by folding the partition -- never "when did THIS encumbrance begin?". A consumer that needed
+// that instant had its own clock, which is the instant of the reading, and comparing a reading's own
+// instant to a boot says nothing about when the hold began. That is the unbound inference gunbc.recurring_failure_mode
+// hold_recovered_by_age_not_observed_holder_death exists to stop, and the arm that would stop it
+// (gunbc.systemd_unit_invocation_liveness unit_reboot_holder_liveness) cannot be written without this
+// question being answerable. So this is the same chain-minus-append walk the standing reading already
+// runs, asking a second question of the same fold -- a second question, not a second authority: the
+// answer is the folded pool's own LeaseTerm.acquired_at for that reference.
+//
+// THE CEILING TRAVELS WITH THE POOL ROOT AND CHANGES NOTHING HERE. product.capacity.pool ruled that
+// replay never adjudicates the ceiling, so the folded terms do not depend on it; the ceiling is passed
+// because the root type carries one, and it is the caller's real appropriation rather than a minted
+// number.
+//
+// NOT HELD IS ITS OWN ANSWER. A reference with no term is not held, and that is reported as such: a zero
+// would read as "acquired at the epoch", older than every hold, which would make any boot look like it
+// began after the acquisition -- a default that manufactures death evidence. More than one term naming one
+// reference is a pool defect and is refused, not resolved by picking one.
+type ComputeSeatAcquisition
+  = SeatAcquisitionRead { reference: NonEmptyStr, acquired_at: EpochSecs, generation: Nat }
+  | SeatAcquisitionNotHeld { reference: NonEmptyStr }
+  | SeatAcquisitionRefused { detail: String }
+
+fn compute_seat_acquisition_at(store: FabricStorageBinding, partition: PartitionId, ceiling: Kibibyte, reference: NonEmptyStr) -> ComputeSeatAcquisition {
+  match fabric_seat_acquisition_of(
+    store: store,
+    partition: partition,
+    root: pool_of(
+      identity: partition as String as NonEmptyStr,
+      ceiling: ceiling,
+      replenishment: NoReplenishment,
+      release_law: QuiescenceRequired,
+    ),
+    reference: reference,
+    budget: compute_partition_read_budget,
+  ) {
+    SeatAcquisitionObserved { reference: r, acquired_at: at, generation: g } => SeatAcquisitionRead { reference: r, acquired_at: at, generation: g }
+    SeatAcquisitionNoTerm { reference: r } => SeatAcquisitionNotHeld { reference: r }
+    SeatAcquisitionAmbiguous { reference: r, terms: c } =>
+      SeatAcquisitionRefused { detail: join(["the pool carries ", to_string(value: c), " terms for ", r as String, "; which one governs this reference is not decided here"], "") }
+    SeatAcquisitionUnobserved { step: st, reason: rs } => SeatAcquisitionRefused { detail: join(["the acquisition instant could not be read (", st, "): ", rs], "") }
+    SeatAcquisitionStoreRefused { cause: c } => SeatAcquisitionRefused { detail: event_log_refusal_wire(cause: c) }
   }
 }
 
