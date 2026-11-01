@@ -94,27 +94,38 @@ fn router_dev_comparison_row_line(q: RouterDevComparisonQuote) -> String {
     + "', input_micro=" + money_micro_text(a: q.input_per_million)
     + ", cached_micro=" + money_micro_text(a: q.cached_per_million)
     + ", output_micro=" + money_micro_text(a: q.output_per_million)
-    + ", input=" + money_micro_text(a: q.input_per_million) + "/1000000"
-    + ", cached=" + money_micro_text(a: q.cached_per_million) + "/1000000"
-    + ", output=" + money_micro_text(a: q.output_per_million) + "/1000000"
     + ", estimated=" + bool_text(b: q.estimated)
     + ", currency='" + currency_alphabetic_code(c: q.currency)
     + "', unit='" + comparison_token_unit
     + "', source='" + (uri_wire(uri: q.authority.uri) as String)
     + "', read_on='" + (q.read_on as String)
-    + "', as_of='" + (q.read_on as String)
     + "', method='" + q.method + "'\}"
 }
 
+// THE ONE RENDERING BOUNDARY from the quote row to the wire shape the live router publishes (float figures per
+// million, `as_of`, `estimated`). The row above is the only stored shape: micro integers and `read_on`. The wire
+// table is derived from it here, once at init, and read by the response headers, /v1/models and the stats
+// documents; the meter reads the row. Header figures are Lua tostring of the derived float, the live rule
+// (nginx.conf 375-376), applied at this one place; a price with more than 14 significant digits would round,
+// and the cited quotes carry at most 6. End condition: this boundary and the wire names are deleted when the
+// dashboard and ctrl pool router read the row's own names (their readers are unverified from this session,
+// so the live names stay until the cutover confirms them).
 fn router_dev_comparison_lines() -> List<String> {
   list_append(
-    left: [
-      "ROUTER_COMPARISON = \{}",
-      // A model with no row is unpriced: the lookup answers nil and the meter counts the turn unpriced
-      // rather than inventing a figure to fill the gap.
-      "function router_comparison(model) return ROUTER_COMPARISON[model] end",
+    left: list_append(
+      left: [
+        "ROUTER_COMPARISON = \{}",
+        // A model with no row is unpriced: the lookup answers nil and the meter counts the turn unpriced
+        // rather than inventing a figure to fill the gap.
+        "function router_comparison(model) return ROUTER_COMPARISON[model] end",
+      ],
+      right: map(router_dev_comparison_quotes(), q => router_dev_comparison_row_line(q: q)),
+    ),
+    right: [
+      "ROUTER_COMPARISON_WIRE = \{}",
+      "for model, q in pairs(ROUTER_COMPARISON) do ROUTER_COMPARISON_WIRE[model] = \{model=q.model, quantization=q.quantization, reference_model=q.reference_model, input=q.input_micro / 1000000, cached=q.cached_micro / 1000000, output=q.output_micro / 1000000, estimated=q.estimated, currency=q.currency, unit=q.unit, source=q.source, as_of=q.read_on, method=q.method} end",
+      "function router_comparison_wire(model) return ROUTER_COMPARISON_WIRE[model] end",
     ],
-    right: map(router_dev_comparison_quotes(), q => router_dev_comparison_row_line(q: q))
   )
 }
 
@@ -200,8 +211,8 @@ fn router_dev_models_lines() -> List<String> {
     "  end",
     "end",
     "local data = \{}",
-    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len, comparison_pricing = router_comparison(ROUTER_ALIAS)}",
-    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil, comparison_pricing = router_comparison(m)} end",
+    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len, comparison_pricing = router_comparison_wire(ROUTER_ALIAS)}",
+    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil, comparison_pricing = router_comparison_wire(m)} end",
     "for _, entry in ipairs(data) do",
     "  entry.routes = \{}",
     "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
@@ -444,7 +455,7 @@ fn router_dev_header_lines() -> List<String> {
   [
     "local u = ngx.ctx.route",
     "if u then",
-    "  local p = router_comparison(u.model)",
+    "  local p = router_comparison_wire(u.model)",
     "  ngx.header['X-Gunbc-Upstream'] = u.name",
     "  ngx.header['X-Gunbc-Model'] = u.model",
     // What the engine was actually told, after the row's dialect -- not what the client asked for.
@@ -462,7 +473,7 @@ fn router_dev_header_lines() -> List<String> {
     "    ngx.header['X-Gunbc-Comparison-Estimated'] = tostring(p.estimated)",
     "    ngx.header['X-Gunbc-Comparison-Currency'] = p.currency",
     "    ngx.header['X-Gunbc-Comparison-Unit'] = p.unit",
-    "    ngx.header['X-Gunbc-Comparison-Read-On'] = p.read_on",
+    "    ngx.header['X-Gunbc-Comparison-Read-On'] = p.as_of",
     "    ngx.header['X-Gunbc-Comparison-Source'] = p.source",
     "  end",
     "end",
@@ -670,8 +681,8 @@ fn router_dev_stats_lines() -> List<String> {
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  if u.in_service ~= false then",
     "    local billing = u.overflow and 'rented' or 'owned'",
-    "    if billing == 'owned' and not seen[u.model] then seen[u.model] = true meter.models[#meter.models + 1] = row(u.model, 'owned', router_comparison(u.model)) end",
-    "    if not seen_all[billing .. ':' .. u.model] then seen_all[billing .. ':' .. u.model] = true all.models[#all.models + 1] = row(u.model, billing, router_comparison(u.model)) end",
+    "    if billing == 'owned' and not seen[u.model] then seen[u.model] = true meter.models[#meter.models + 1] = row(u.model, 'owned', router_comparison_wire(u.model)) end",
+    "    if not seen_all[billing .. ':' .. u.model] then seen_all[billing .. ':' .. u.model] = true all.models[#all.models + 1] = row(u.model, billing, router_comparison_wire(u.model)) end",
     "  end",
     "end",
     "out.usage = meter",
