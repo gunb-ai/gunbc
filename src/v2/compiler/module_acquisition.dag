@@ -1871,8 +1871,8 @@ fn acquisition_refusal_text(refusal: AcquisitionRefusal) -> String {
       concat("module ", name, " at ", module_file_key(file: file), " lowered but its reference sites are not all readable")
     AcquisitionMemberIdentityDisagrees { module: name, file: file, declared: declared } =>
       concat("module ", name, " at ", module_file_key(file: file), " parses as module ", declared)
-    AcquisitionDerivedRosterRefused { module: name, refusal: refusal } =>
-      concat("derived roster ", name, ": ", derived_roster_refusal_text(refusal: refusal))
+    AcquisitionDerivedRosterRefused { module: name, refusal: carried_refusal } =>
+      concat("derived roster ", name, ": ", derived_roster_refusal_text(refusal: carried_refusal))
   }
 }
 
