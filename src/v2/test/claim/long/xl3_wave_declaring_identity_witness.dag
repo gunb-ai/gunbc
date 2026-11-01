@@ -1,0 +1,175 @@
+module v2.test.claim.long.xl3_wave_declaring_identity_witness
+
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_snoc_item, map_support_keys, map_lookup }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.optional { Absent, Optional, Present }
+import std.types { List }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_with_admission_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.resolve { OccurrenceResolutionRecord, ResolvedToDeclaration, BoundToDeclaration, ResolvedTree }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.resolution_policy { ImportScoped }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// XL-3 PER-WAVE IDENTITY WITNESS, wave 1 (UNRUN -- written, never executed; see
+// docs/plans/2026-11-01-xl3-identity-witness-shape.md on this branch for the shape and what a run owes).
+//
+// THE CLAIM: for the touched module std.declaring_identity_spelling, resolved through the
+// production resolver (v2.compiler.name_resolve resolve_with_admission_policy over the real ingest
+// of the module and its five import providers), the DECLARING PATH each named reference binds to
+// is the pinned table below -- whatever the reference is SPELLED as. XL-3 changes the spelling
+// (`Bool` -> `std.types.Bool`) and not the resolution, so this claim is run at base (bare spellings)
+// and at head (qualified spellings) and must answer the same at both.
+//
+// The table is KEYED BY DECLARING PATH and carries a count of occurrences: a respelling that moved a
+// reference to another declaration changes a path's count or introduces a path outside the table.
+
+type ExpectedBinding {
+  declaring: String
+  occurrences: Int
+}
+
+// Pinned at origin/main 345d6077fc4a by reading dag/std/declaring_identity_spelling.dag; the module
+// is the authority for what it references, this table is the authority for what each reference means.
+// Counts are the non-comment, non-import mentions by `git grep -w` at that revision (command in the design note); they are UNVERIFIED against the resolver until the first run, which may correct a count (an unread arm of a record, a mention the resolver does not mint).
+fn expected_bindings() -> List<ExpectedBinding> {
+  [
+    ExpectedBinding { declaring: "std.types.Bool", occurrences: 1 },
+    ExpectedBinding { declaring: "std.decl_ref.DeclarationRef", occurrences: 2 },
+    ExpectedBinding { declaring: "std.decl_ref.decl_ref", occurrences: 1 },
+    ExpectedBinding { declaring: "std.dissolution.DissolutionCondition", occurrences: 1 },
+    ExpectedBinding { declaring: "std.dissolution.retires_dissolution", occurrences: 1 },
+    ExpectedBinding { declaring: "std.algebra.is_prefix_of", occurrences: 1 },
+    ExpectedBinding { declaring: "std.algebra.list_reverse", occurrences: 2 },
+    ExpectedBinding { declaring: "v2.std.qualified_name.QualifiedName", occurrences: 10 }
+  ]
+}
+
+data module_path: String = "dag/std/declaring_identity_spelling.dag"
+
+data provider_paths: List<String> = [
+  "dag/std/types.dag",
+  "dag/std/decl_ref.dag",
+  "dag/std/dissolution.dag",
+  "dag/std/algebra.dag",
+  "src/v2/std/qualified_name.dag"
+]
+
+fn read_of(path: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path }
+  }
+}
+
+fn wave_ingest() -> SourceRootIngest {
+  Cons {
+    head: read_of(path: module_path, unit: ^xl3w1_subject),
+    tail: Cons {
+      head: read_of(path: "dag/std/types.dag", unit: ^xl3w1_types),
+      tail: Cons {
+        head: read_of(path: "dag/std/decl_ref.dag", unit: ^xl3w1_decl_ref),
+        tail: Cons {
+          head: read_of(path: "dag/std/dissolution.dag", unit: ^xl3w1_dissolution),
+          tail: Cons {
+            head: read_of(path: "dag/std/algebra.dag", unit: ^xl3w1_algebra),
+            tail: Cons { head: read_of(path: "src/v2/std/qualified_name.dag", unit: ^xl3w1_qualified_name), tail: Empty }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn wave_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^std, tail: Cons { head: ^declaring_identity_spelling, tail: Empty } } },
+    imports: Empty
+  }
+}
+
+// The declaring paths the subject module's occurrence records bind to, one dotted string per record,
+// in map-key order. Records bound to anything but a declaration (a lexical binder, a parameter) are
+// not references to a declaring identity and are not read.
+fn declaring_paths(tree: ResolvedTree) -> List<String> {
+  fold_list(
+    xs: map_support_keys(m: tree.occurrence_resolutions),
+    empty: [],
+    cons: fn(acc, id) {
+      match map_lookup(m: tree.occurrence_resolutions, key: id) {
+        Present { value: r } =>
+          match r.binding {
+            BoundToDeclaration { identity: ResolvedToDeclaration { path: p } } =>
+              list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(name: p))
+            _ => acc
+          }
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn count_of(paths: List<String>, declaring: String) -> Int {
+  fold_list(xs: paths, empty: 0, cons: fn(acc, p) { if p == declaring { acc + 1 } else { acc } })
+}
+
+fn table_holds(paths: List<String>, table: List<ExpectedBinding>) -> Bool {
+  fold_list(
+    xs: table,
+    empty: true,
+    cons: fn(acc, row) { acc && count_of(paths: paths, declaring: row.declaring) == row.occurrences }
+  )
+}
+
+fn resolved_paths(table_roots_ok: Bool) -> Optional<List<String>> {
+  match module_roots_from_source_root_ingest(ingest: wave_ingest(), lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_with_admission_policy(
+        lm: dag_language_model(),
+        roots: roots,
+        admission: wave_admission(),
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: ImportScoped
+      ) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: tree, diagnostics: _ } => Present { value: declaring_paths(tree: tree) }
+      }
+  }
+}
+
+// The GREEN arm: every pinned declaring path is bound exactly as often as the table says. Run at base
+// and at head with `gunbc run --claim-run --entry <this file>`; a respelling that preserved resolution
+// answers the same at both.
+test fn wave1_every_reference_binds_its_declaring_identity_holds() -> Bool {
+  match resolved_paths(table_roots_ok: true) {
+    Present { value: paths } => table_holds(paths: paths, table: expected_bindings())
+    Absent => false
+  }
+}
+
+// The RED arm: the SAME producer read against a table whose `Bool` row names the wrong declaration
+// (v2.std.logic.Bool, a real declaration with the same leaf). Must answer false: this is what a
+// respelling that rebound `Bool` to the wrong declaration would look like, and it proves the green
+// claim discriminates by declaration identity rather than by leaf name.
+fn wrong_declaration_table() -> List<ExpectedBinding> {
+  [ExpectedBinding { declaring: "v2.std.logic.Bool", occurrences: 1 }]
+}
+
+test fn wave1_wrong_declaration_table_is_refused_holds() -> Bool {
+  match resolved_paths(table_roots_ok: true) {
+    Present { value: paths } => !table_holds(paths: paths, table: wrong_declaration_table())
+    Absent => false
+  }
+}
