@@ -4,22 +4,41 @@ import std.types { Bool, String }
 import std.optional { Present, Absent }
 import std.measure { bit_width }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
-import v2.compiler.infer { infer_machine_width_of, infer_machine_width_bits, WidthUnreadable, WidthReadable, NotWidthConstrained }
+import v2.compiler.infer { InferMachineWidth, infer_machine_width_of, infer_machine_width_bits, WidthUnreadable, WidthReadable, NotWidthConstrained }
 import v2.std.node { Atom, TypeNode, node_synthetic }
 import v2.std.compilers.body_lowering { lower_unary_prefix }
 import v2.test.claim.compiler.width_literal_admission { wla_literal, wla_instantiation, wla_decl, wla_int_carrier }
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 
-fn native_claim_report() -> NativeClaimReport {
+fn negative_width_reading() -> InferMachineWidth {
   let negative = lower_unary_prefix(operator: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_minus } }, children: []), operand: wla_literal(lexeme: "8"))
   let width = wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.MachineWidth"), args: [negative])
   let subject = wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.Compose"), args: [wla_int_carrier(), width])
-  let reading = infer_machine_width_of(t: subject)
-  let refused = match reading { WidthUnreadable { reason: _ } => true _ => false }
-  let not_static = match reading { WidthUnreadable { reason: cause } => cause == ^infer_reason_machine_width_not_static _ => false }
-  let read_eight = match reading { WidthReadable { signedness: _, bits: b } => b == bit_width(count: 8) _ => false }
-  let positive = infer_machine_width_bits(t: wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.MachineWidth"), args: [wla_literal(lexeme: "8")])) == Present { value: bit_width(count: 8) }
+  infer_machine_width_of(t: subject)
+}
+
+fn negative_unreadable() -> Bool {
+  match negative_width_reading() { WidthUnreadable { reason: _ } => true _ => false }
+}
+
+fn negative_not_static() -> Bool {
+  match negative_width_reading() { WidthUnreadable { reason: cause } => cause == ^infer_reason_machine_width_not_static _ => false }
+}
+
+fn negative_reads_eight() -> Bool {
+  match negative_width_reading() { WidthReadable { signedness: _, bits: b } => b == bit_width(count: 8) _ => false }
+}
+
+fn positive_reads_eight() -> Bool {
+  infer_machine_width_bits(t: wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.MachineWidth"), args: [wla_literal(lexeme: "8")])) == Present { value: bit_width(count: 8) }
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let refused = negative_unreadable()
+  let not_static = negative_not_static()
+  let read_eight = negative_reads_eight()
+  let positive = positive_reads_eight()
   NativeClaimReport {
     stdout: concat("negative_unreadable=", if refused { "true" } else { "false" }, " not_static=", if not_static { "true" } else { "false" }, " negative_reads_eight=", if read_eight { "true" } else { "false" }, " positive_reads_eight=", if positive { "true" } else { "false" }, "\n"),
     terminal: if refused && positive { NativeClaimHeld } else { NativeClaimNotHeld { reason: "base negative-width observation differs from refusal plus positive-eight control" } }
