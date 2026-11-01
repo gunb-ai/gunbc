@@ -14,7 +14,7 @@ import gunbc.documentary_refs {
   documentary_cited_p, documentary_cited_li, documentary_ul, documentary_blocks_refs,
 }
 import gunbc.design_document { expected_design_md, generated_document_declaration_refs }
-import gunbc.design_ruling { DesignRuling, design_rulings }
+import gunbc.design_ruling { design_rulings }
 
 // THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES.
 // cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the
@@ -162,11 +162,16 @@ test fn documentary_refs_ruling_references_name_live_declarations() -> Bool {
 // A missing ledger declaration that the document does not cite is not a broken citation.
 // Both used systems and ruling citations retain unique-resolution checks.
 test fn documentary_refs_unused_ruling_does_not_require_rendering() -> Bool {
-  let used = generated_document_declaration_refs()
-  let unused = filter(design_rulings(), r => !any(used, u => u == r.reference))
-  count(unused) > 0 && all(unused, r => refusals_against(
-    facts: facts_without(qualified_name: concat("gunbc.design_ruling.", r.reference.decl_name as String))
-  ) == 0)
+  let used = decl_ref(module_path: "gunbc.design_ruling", decl_name: "used")
+  let unused = decl_ref(module_path: "gunbc.design_ruling", decl_name: "unused")
+  let text = DocumentaryCitation { reference: used }
+  let refs = documentary_blocks_refs(blocks: [documentary_cited_p(text: text)])
+  let used_fact = fixture_fact(qualified_name: "gunbc.design_ruling.used", name: "used", path: "dag/gunbc/design_ruling.dag")
+  let unused_fact = fixture_fact(qualified_name: "gunbc.design_ruling.unused", name: "unused", path: "dag/gunbc/design_ruling.dag")
+  refs == [used] &&
+  !string_contains(s: documentary_text_render(text: text), pattern: documentary_ref_symbol_text(reference: unused)) &&
+  cited_declaration_ref_refusal_count(refs: refs, facts: [used_fact], modules: fixture_modules()) == 0 &&
+  cited_declaration_ref_refusal_count(refs: refs, facts: [used_fact, unused_fact], modules: fixture_modules()) == 0
 }
 
 test fn documentary_refs_cited_rename_moves_text_and_resolution() -> Bool {
