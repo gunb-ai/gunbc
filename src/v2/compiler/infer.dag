@@ -711,6 +711,42 @@ fn infer_formation_facts_from_entries(
   }
 }
 
+// THE INTERIM CARRIER GROUNDING AT A DECLARED TYPE POSITION (authorized by the rung-drop row
+// gunbc.rung_drop.non_literal_crossings_ground_to_the_refinement_carrier, which carries the operator
+// decision of 2026-10-23, the prior rung, the reason and the dissolution trigger): at a declared TYPE
+// position, `T where p` grounds to its carrier T for
+// inference, with NO predicate judgment -- this row judges nothing. The predicate is a declared
+// frontier already carried by RefinementDeclaration.where_clause (v2.compiler.infer
+// refinement_declaration; the same frontier the where-predicate-call arm names), never a second one.
+// WHY HERE: the product-introduction and wrapper rows demand a derived entry for EVERY child, and the
+// where-clause child is never walked (its calls are unjudged by design), so every refinement node
+// refused at ProductEvidenceEdgesAbsent / DeclarationWrapperEvidenceEdgesAbsent and every consumer of
+// its type position refused behind it (measured: std.decl_ref's whole chain, first root).
+// A MISS IS ABSENT AND ABSENT NEVER ADMITS: refinement_declaration answers Absent for anything that is
+// not a refinement -- an ordinary type, a reference whose path resolves to no unambiguous declaration,
+// a declaration with no where clause -- and the dispatch below runs UNTOUCHED, so today's refusals stand
+// for every non-refinement (v2.test.claim.body_cast_node bcn_a_refinement_lookup_miss_refuses is the
+// posture this row copies). The derived type is the carrier node itself, the way the roster row types a
+// reference by its row's signature node (infer_roster_reference_facts): no entries lookup is demanded
+// of the carrier's own derivation, and the use-side normalizers (infer_type_alias_normalized_at,
+// infer_close_produced_at_declared) read references through the index at use time.
+// THIS ROW DOES NOT DISCHARGE THE CROSSING: a VALUE entering such a position is counted and located by
+// infer_refinement_carrier_grounding_decision at the one declared-position judge, and the bounded
+// population is declared by gunbc.rung_drop.non_literal_crossings_ground_to_the_refinement_carrier.
+// LIFETIME: deleted with where-refinement clauses when the NonEmptyStr structural cut lands
+// (gunbc.design_ruling where_refinements_retire_for_checked_constructors).
+fn infer_refinement_carrier_grounding_row(node: Node, carrier: Node) -> Outcome<InferredFacts> {
+  match infer_descent_witness_for_node(n: node) {
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: descent_proof } =>
+      inferred_facts_from_derived_type(
+        node: node,
+        derived_type: carrier,
+        descent: Holds { value: descent_proof }
+      )
+  }
+}
+
 // THE CARRIER REACHES THE PRODUCT ROW THROUGH THIS DISPATCHER, which is a merge seam worth naming. main
 // introduced this function while this lane widened infer_product_facts_from_entries to take the
 // ResolvedTree its projection arm needs, so main's caller passed three arguments to a row that now requires
@@ -4602,11 +4638,12 @@ fn infer_judge_declared_position(
                 Accepted { value: _, diagnostics: d } => Accepted { value: closed, diagnostics: d }
               }
             InhabitanceRefused { find_witness_reason: fw_reason } =>
-              outcome_rejected(
-                application_argument_does_not_inhabit_diagnostic(
-                  obligation: obligation,
-                  find_witness_reason: fw_reason
-                )
+              infer_refinement_carrier_grounding_decision(
+                produced_at: produced_at,
+                closed: closed,
+                declarations: declarations,
+                obligation: obligation,
+                fw_reason: fw_reason
               )
           }
           }
@@ -5028,6 +5065,129 @@ fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
           Absent => optional_absent()
         }
     }
+  }
+}
+
+// THE CROSSING SIDE OF THE INTERIM CARRIER GROUNDING (authorized by the rung-drop row
+// gunbc.rung_drop.non_literal_crossings_ground_to_the_refinement_carrier, which carries the operator
+// decision of 2026-10-23; the type side is infer_refinement_carrier_grounding_row). A NON-LITERAL value crossing
+// INTO a where-refined declared type position is GROUNDED TO THE CARRIER and counted -- accepted with a
+// located advisory diagnostic, never silently. The reason rides as the ordinary accepted-with-diagnostic
+// (infer_inhabitance_undecidable_accepted is the same posture), so it never abandons the module: the
+// module ACCEPTS and the population is the census row gunbc.rung_drop
+// .non_literal_crossings_ground_to_the_refinement_carrier, which names the bounded population, the prior
+// rung, the reason, and the dissolution trigger (the NonEmptyStr structural cut,
+// gunbc.design_ruling where_refinements_retire_for_checked_constructors).
+// KEYED ON LITERAL-NESS, NOT ON DEMAND ABSENCE: the literal-ness test is the
+// ONE predicate main already has, infer_node_is_literal -- a literal stays a REFUSAL here exactly as
+// today (the admitted-literal judgment is a separate lane's program; a literal at a position that
+// program does not cover yet -- cast, return, let -- must remain a refusal, not be miscounted as a
+// non-literal crossing).
+// A POSITION IS REFINED WHEN THE ONE AUTHORITY SAYS SO: refinement_declaration on the alias-normalized
+// declared type. A MISS IS ABSENT AND ABSENT NEVER ADMITS -- the refusal below is returned untouched, so
+// every non-refinement refusal of today stands. The predicate is NEVER JUDGED here; this function says
+// nothing about whether the value satisfies it.
+fn infer_refinement_carrier_grounding_decision(
+  produced_at: Node,
+  closed: List<TypeVariableInstance>,
+  declarations: SymbolIndex,
+  obligation: DeclaredTypeObligation,
+  fw_reason: Symbol,
+) -> Outcome<List<TypeVariableInstance>> {
+  match refinement_declaration(index: declarations, reference: obligation.declared) {
+    Absent =>
+      outcome_rejected(
+        application_argument_does_not_inhabit_diagnostic(
+          obligation: obligation,
+          find_witness_reason: fw_reason
+        )
+      )
+    Present { value: refinement } =>
+      match infer_node_is_literal(node: produced_at) {
+        true =>
+          outcome_rejected(
+            application_argument_does_not_inhabit_diagnostic(
+              obligation: obligation,
+              find_witness_reason: fw_reason
+            )
+          )
+        false =>
+          let carrier_obligation = DeclaredTypeObligation {
+            position: obligation.position,
+            parameter_identity: obligation.parameter_identity,
+            declared: refinement.carrier,
+            produced: obligation.produced,
+            produced_declared_carrier: obligation.produced_declared_carrier,
+            application: obligation.application,
+            type_variables: obligation.type_variables
+          }
+          match declared_type_inhabitance(obligation: carrier_obligation) {
+            Inhabits { homomorphism: _ } =>
+              Accepted {
+                value: closed,
+                diagnostics: Some {
+                  diagnostics: diagnostics_singleton(
+                    d: refinement_carrier_grounding_crossing_diagnostic(
+                      obligation: obligation,
+                      crossing: produced_at
+                    )
+                  )
+                }
+              }
+            InhabitanceUndecidable { reason: reason } =>
+              match infer_inhabitance_undecidable_accepted(
+                application: obligation.application,
+                reason: reason
+              ) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: _, diagnostics: d } =>
+                  Accepted {
+                    value: closed,
+                    diagnostics: diagnostics_merge(
+                      outer: Some {
+                        diagnostics: diagnostics_singleton(
+                          d: refinement_carrier_grounding_crossing_diagnostic(
+                            obligation: obligation,
+                            crossing: produced_at
+                          )
+                        )
+                      },
+                      inner: d
+                    )
+                  }
+              }
+            InhabitanceRefused { find_witness_reason: carrier_fw } =>
+              outcome_rejected(
+                application_argument_does_not_inhabit_diagnostic(
+                  obligation: carrier_obligation,
+                  find_witness_reason: carrier_fw
+                )
+              )
+          }
+      }
+  }
+}
+
+fn refinement_carrier_grounding_crossing_reason() -> Symbol {
+  ^refinement_carrier_grounding_crossing
+}
+
+// THE ADVISORY IS LOCATED AND COUNTED: anchored at the crossing value itself, correction Unavailable --
+// the fix is the checked constructor at the value's producer (the ruling's dissolution), not an edit at
+// this position. It is NOT an error: a module carrying crossings ACCEPTS, and the count is the emitted
+// reading: the native census serializes the accepted diagnostics into the [native-census-infer] line's
+// accepted_frontier.advisories list as {reason, count} rows (NativeInferAcceptedFrontier /
+// native_infer_advisory_counts, v2.compiler.source_root_eval), so this advisory appears there as the
+// row with reason refinement_carrier_grounding_crossing -- the same generic fold that counts every
+// other accepted-path advisory, no per-reason emitter change.
+fn refinement_carrier_grounding_crossing_diagnostic(
+  obligation: DeclaredTypeObligation,
+  crossing: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: refinement_carrier_grounding_crossing_reason(),
+    at: node_locus(node: crossing),
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 
@@ -7278,6 +7438,25 @@ fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, kinds: List<Rost
 // -- a grounding this fold does not derive -- and it takes that arm. Deriving the reference's type
 // FROM its declaration by path is the end-state the roster lookups above already name as their
 // dissolution, not this arm.
+// THE ONE TYPE-SIDE DECISION OF THE INTERIM CARRIER GROUNDING (rung
+// gunbc.rung_drop.non_literal_crossings_ground_to_the_refinement_carrier; the crossing side is
+// infer_refinement_carrier_grounding_decision at the one declared-position judge). A fold-init type
+// position whose node declares a refinement grounds to the carrier row; a miss takes today's
+// not-derived refusal. Both reference-shaped arms of infer_gather_fold_init consult THIS one block --
+// no second spelling of the decision (DESIGN 3, one concept one home).
+fn infer_gather_fold_refinement_carrier_or_not_derived(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>, rigid_binders: List<Symbol>) -> InferGatherFoldAcc {
+  match refinement_declaration(index: resolved.resolved_declarations, reference: n) {
+    Present { value: refinement } =>
+      infer_gather_formed_facts_row(
+        node: n,
+        formed: infer_refinement_carrier_grounding_row(node: n, carrier: refinement.carrier),
+        entries: empty_map(),
+        pending: None
+      )
+    Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
+  }
+}
+
 fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>, rigid_binders: List<Symbol>) -> InferGatherFoldAcc {
   match n.kind {
     ComputationNode { behavior: Branch } =>
@@ -7380,10 +7559,12 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           }
       }
       }
-    TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
+    TypeNode { connective: Atom { identity: _ } } =>
+      infer_gather_fold_refinement_carrier_or_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
     TypeNode { connective: Conj } =>
       match declaration_reference_path_optional(node: n) {
-        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
+        Present { value: _ } =>
+          infer_gather_fold_refinement_carrier_or_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
         Absent =>
       match parameter_reference_path_optional(node: n) {
         Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)

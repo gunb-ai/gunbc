@@ -238,6 +238,13 @@ data literal_only_refinement_judgment_is_interim: DesignRuling = DesignRuling {
   provenance: "Operator decision, 2026-10-23, relayed by keen-heron-809 (Manager 3, N7 infer wall) to Seat 17: a one-obligation-per-literal judgment is admitted as an INTERIM exception to where_refinements_retire_for_checked_constructors. A literal at a call argument or record field whose declared type is a where-refinement of the literal's own type is admitted by v2.compiler.infer and owed to v2.compiler.refinement_discharge, the one judge; non-literals still refuse. It is a declared scaffold, gunbc.rung_drop literal_only_where_refinement_judgment, and the PR states the divergence. Retirement trigger: the NonEmptyStr structural cut lands, sufficient for no where-refinement clause to reach infer; the demand producer and post-pass are then deleted with the clause.",
 }
 
+data interim_carrier_grounding_admits_non_literal_crossings: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "interim_carrier_grounding_admits_non_literal_crossings"),
+  decided: "2026-10-23",
+  section: "4",
+  provenance: "Operator decision, 2026-10-23, default-approved on the Manager 3 escalation of the std.decl_ref first root (the recommendation it approved: at a declared TYPE position, `T where p` grounds to its carrier T for inference with NO predicate judgment -- the 2026-10-02 retirement ruling above stands and this judges nothing; every NON-LITERAL value crossing into such a position is accepted with one counted, located advisory, never silently, so the population is a census row; LITERALS keep refusing with the position's own reason, because no general refinement-literal judgment exists yet; a refinement-declaration MISS keeps today's refusal untouched). Bounded population, prior rung, reason and restoration trigger: gunbc.rung_drop non_literal_crossings_ground_to_the_refinement_carrier. Dissolution with the NonEmptyStr structural cut of the refinement-deletion program.",
+}
+
 data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
   decided: "2026-10-13",
@@ -623,6 +630,7 @@ fn design_rulings() -> List<DesignRuling> {
     nonemptiness_is_constructed_or_proved,
     where_refinements_retire_for_checked_constructors,
     literal_only_refinement_judgment_is_interim,
+    interim_carrier_grounding_admits_non_literal_crossings,
     native_first_complete_cuts,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
