@@ -1,0 +1,149 @@
+module gunbc.roadmap.reconcile_wake
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import extdeps.units.iso8601_calendar { iso8601_utc_text, iso8601_floor_div, iso8601_seconds_per_day, iso8601_seconds_per_hour }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, NotInstallable, Installable,
+  Description, ServiceType, OneshotMode, ExecStart, ServiceUser, ServiceGroup,
+  OnCalendar, Persistent, WantedBy,
+}
+
+// THE RECONCILE WAKE: every declared slot, one message to one recipient naming WHICH SLOT it is for.
+//
+// POLICY IS DATA (DESIGN 3). The calendar, the recipient and the body template are rows; the unit
+// argv carries only their identifiers, never the text. Changing the cadence edits `reconcile_wake_slot_hours`
+// and nothing else: the OnCalendar expression and the slot derivation are both read from it.
+data reconcile_wake_recipient: NonEmptyStr = "keen-otter-392"
+data reconcile_wake_slot_hours_utc: List<Int> = [0, 8, 16]
+data reconcile_wake_body_prefix: String = "reconcile-slot "
+
+// THE SLOT MECHANISM, AND WHY. systemd offers no %-specifier carrying a trigger time, and the manager
+// renders ExecStart without a shell (extdeps.systemd.service_exec exec_command_line), so the identity
+// cannot be computed in the unit. It is computed by the helper from the instant it starts, as
+//     slot = the latest declared grid point <= that instant, on the UTC day containing it.
+// A timer never fires BEFORE a scheduled elapse, so the latest grid point at or before the start
+// instant is exactly the latest scheduled elapse -- which is the one a Persistent catch-up fires for
+// (systemd runs a missed timer once, for the latest elapse). Hence a run at 09:07 names 08Z, and a
+// wall-clock-rounded label ("now") is never used. It is exact while the start delay stays below the gap to
+// the next grid point (8h here); a longer delay names a LATER slot, the one that is then current, never an
+// earlier or invented one. The timer's LastTriggerUSec is the same instant read through systemctl, which would
+// add a privilege, an extra process and a race for no more information.
+//
+// DEDUPLICATION is keen-otter-392's, on this identity. The oneshot service prevents overlap DURING THE
+// SEND only; it says nothing about the refresh the message triggers.
+fn reconcile_wake_grid_point_at_or_before(grid: List<Int>, hour: Int, best: Int) -> Int {
+  match grid {
+    Empty => best
+    Cons { head: h, tail: rest } =>
+      reconcile_wake_grid_point_at_or_before(grid: rest, hour: hour, best: if h <= hour && h > best { h } else { best })
+  }
+}
+
+// The grid must contain hour 0 so every instant has a slot on its own UTC day; without it the slot would
+// live on the previous day and this fold refuses rather than guessing.
+fn reconcile_wake_grid_has_midnight(grid: List<Int>) -> Bool {
+  match grid {
+    Empty => false
+    Cons { head: h, tail: rest } => h == 0 || reconcile_wake_grid_has_midnight(grid: rest)
+  }
+}
+
+type ReconcileSlotDerivation
+  = ReconcileSlotNamed { slot_unix: Int, identity: String }
+  | ReconcileSlotRefused { reason: String }
+
+fn reconcile_slot_of(unix: Int, grid: List<Int>) -> ReconcileSlotDerivation {
+  if !reconcile_wake_grid_has_midnight(grid: grid) {
+    ReconcileSlotRefused { reason: "the declared slot grid has no hour 0, so an instant just after midnight has no slot on its own UTC day" }
+  } else {
+    let day = iso8601_floor_div(a: unix, b: iso8601_seconds_per_day())
+    let hour = (unix - day * iso8601_seconds_per_day()) / iso8601_seconds_per_hour()
+    let point = reconcile_wake_grid_point_at_or_before(grid: grid, hour: hour, best: 0)
+    let slot_unix = day * iso8601_seconds_per_day() + point * iso8601_seconds_per_hour()
+    // iso8601_utc_text prints YYYY-MM-DDThh:mm:ssZ; the slot identity is its hour grain, YYYY-MM-DDThhZ.
+    let full = iso8601_utc_text(unix: slot_unix)
+    ReconcileSlotNamed { slot_unix: slot_unix, identity: join([substring(s: full, start: 0, end: 13), "Z"], "") }
+  }
+}
+
+fn reconcile_wake_body(prefix: String, derivation: ReconcileSlotDerivation) -> String {
+  match derivation {
+    ReconcileSlotNamed { slot_unix: _, identity: id } => join([prefix, id], "")
+    ReconcileSlotRefused { reason: r } => r
+  }
+}
+
+// THE OnCalendar EXPRESSION IS DERIVED FROM THE SAME ROW as the slot grid, so the two cannot drift.
+fn reconcile_wake_hours_text(grid: List<Int>) -> String {
+  join(map(grid, h => iso8601_two_digits_of(n: h)), ",")
+}
+fn iso8601_two_digits_of(n: Int) -> String {
+  if n < 10 { join(["0", to_string(n)], "") } else { to_string(n) }
+}
+fn reconcile_wake_on_calendar(grid: List<Int>) -> NonEmptyStr {
+  join(["*-*-* ", reconcile_wake_hours_text(grid: grid), ":00:00 UTC"], "") as NonEmptyStr
+}
+
+// THE SENDER IS AN INTERFACE; dashboard-message is ONE TRANSPORT BOUND TO IT (DESIGN 3: interface vs
+// transport). What the wake needs is "deliver this body to this recipient, or refuse with a typed cause".
+// The delivery host and the credential route are chosen outside this module (the dashboard's own delivery
+// identity is preferred over copying session credentials onto a host), so neither is named here.
+type ReconcileSender
+  = SenderDashboardMessageCli
+  | SenderDashboardOwnIdentity
+
+// THE TYPED REFUSAL. Absence of any dependency is a distinct nonzero exit, never a silent no-op: a unit
+// that exits 0 without delivering would read as a delivered slot. 70 (EX_SOFTWARE) is reserved for a
+// derivation refusal, 69 (EX_UNAVAILABLE) / 78 (EX_CONFIG) for dependencies, 0 only for a delivered send.
+type ReconcileSenderRefusal
+  = GunbcBinaryAbsent
+  | SenderClientAbsent { client: String }
+  | DeliveryEndpointUnset { variable: String }
+  | CredentialAbsent
+  | SlotDerivationRefused { reason: String }
+
+fn reconcile_sender_refusal_exit_code(cause: ReconcileSenderRefusal) -> Int {
+  match cause {
+    GunbcBinaryAbsent => 69
+    SenderClientAbsent { client: _ } => 69
+    DeliveryEndpointUnset { variable: _ } => 78
+    CredentialAbsent => 78
+    SlotDerivationRefused { reason: _ } => 70
+  }
+}
+
+fn reconcile_sender_refusal_text(cause: ReconcileSenderRefusal) -> String {
+  match cause {
+    GunbcBinaryAbsent => "reconcile-wake refused: the gunbc binary is absent on this host"
+    SenderClientAbsent { client: c } => join(["reconcile-wake refused: the sender client is absent: ", c], "")
+    DeliveryEndpointUnset { variable: v } => join(["reconcile-wake refused: the delivery endpoint is unset: ", v], "")
+    CredentialAbsent => "reconcile-wake refused: no delivery credential is available to this service user"
+    SlotDerivationRefused { reason: r } => join(["reconcile-wake refused: ", r], "")
+  }
+}
+
+// THE UNIT PAIR. The host and the service user are PARAMETERS (the host is not chosen here). The helper
+// verb takes identifier-only words, which is all the exec renderer admits.
+fn reconcile_wake_service_unit_file(service_user: NonEmptyStr, gunbc_path: NonEmptyStr) -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [Description { text: "gunbc dashboard reconcile wake (one slot-identified message)" as NonEmptyStr }],
+    service: [
+      ServiceType { mode: OneshotMode },
+      ServiceUser { name: service_user },
+      ServiceGroup { name: service_user },
+      ExecStart { command: join([gunbc_path as String, " reconcile-wake"], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }
+}
+
+fn reconcile_wake_timer_unit_file() -> SystemdUnitFile {
+  TimerUnitFile {
+    unit: [Description { text: "gunbc dashboard reconcile wake, every declared UTC slot" as NonEmptyStr }],
+    timer: [
+      OnCalendar { expression: reconcile_wake_on_calendar(grid: reconcile_wake_slot_hours_utc) },
+      Persistent { enabled: true },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }
+}
