@@ -1,6 +1,7 @@
 module v2.test.claim.char_at_unicode_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { collection_concat_shape }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
