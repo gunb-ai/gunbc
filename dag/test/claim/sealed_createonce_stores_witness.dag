@@ -3,6 +3,7 @@ module test.claim.sealed_createonce_stores_witness
 import extdeps.shell
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import std.algebra { string_contains }
 import std.process { ProcessExit }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census, census_exit }
@@ -12,7 +13,7 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_class_grant { WorkClass, WorkClassCompile }
-import gunbc.compute.work_provider_local { grant_exceeded_record_is_this_attempts, grant_exceeded_store_open, GrantExceededOpened, GrantExceededUnopened, compute_grant_exceeded_count, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable }
+import gunbc.compute.work_provider_local { grant_exceeded_record_is_this_attempts, compute_grant_exceeded_record, grant_exceeded_store_open, GrantExceededOpened, GrantExceededUnopened, compute_grant_exceeded_count, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable }
 import std.roster_frontier { DeclSubject, frontier_subject_eq }
 import std.decl_ref { decl_ref }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
@@ -171,4 +172,25 @@ test fn a_harness_wire_log_frontier_row_is_in_the_census_aggregate() -> Bool {
 test fn a_gcp_iam_bootstrap_journal_frontier_row_is_in_the_census_aggregate() -> Bool {
   let want = DeclSubject { ref: decl_ref(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_authority_record") }
   any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+// THE EFFECT PATH, DRIVEN. compute_grant_exceeded_record runs compute_ensure_dir (which execs /usr/bin/install -d from the
+// instance's repo_root, so the witness creates that workdir and the compute root; no privilege is involved) and then the create-once write. Under an isolated instance over a witness-made
+// root: a first record is Recorded, the same reference with the same identity is AlreadyRecorded, and the same reference
+// carrying ANOTHER identity (a foreign record at the path) is refused and the file is untouched.
+test fn a_grant_exceeded_retry_is_counted_only_over_its_own_record_through_the_store() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_grantexceeded.XXXXXX").path
+  let instance = grant_instance(dir: dir)
+  let workdir = shell.Mkdir.Parents(path: instance.repo_root).success
+  let compute = shell.Mkdir.Parents(path: compute_root(instance: instance) as String as FilePath).success
+  match grant_exceeded_store_open(instance: instance) {
+    GrantExceededUnopened { detail: _ } => false
+    GrantExceededOpened { store: s } => {
+      let line = "sample: class=compile identity=abc host=h observed_at=1 peak_upper_kib=2 operation=o\n"
+      let first = match compute_grant_exceeded_record(store: s, class: WorkClassCompile, reference: "ref-1" as NonEmptyStr, identity: "abc", content: line) { CreateOnceRecorded { path: _ } => true CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: _ } => false }
+      let retry = match compute_grant_exceeded_record(store: s, class: WorkClassCompile, reference: "ref-1" as NonEmptyStr, identity: "abc", content: line) { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => true CreateOnceRefused { path: _, cause: _ } => false }
+      let foreign = match compute_grant_exceeded_record(store: s, class: WorkClassCompile, reference: "ref-1" as NonEmptyStr, identity: "zzz", content: line) { CreateOnceRecorded { path: _ } => false CreateOnceAlreadyRecorded { path: _ } => false CreateOnceRefused { path: _, cause: c } => string_contains(s: c, pattern: "not this attempt's") }
+      workdir && compute && first && retry && foreign
+    }
+  }
 }
