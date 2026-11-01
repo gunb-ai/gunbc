@@ -186,7 +186,7 @@ pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
 
-pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
+pub type Set<Element> = Rc<BTreeSet<Element>>;
 
 pub type Map<Key, Value> = Rc<HashMap<Key, Value>>;
 

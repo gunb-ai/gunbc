@@ -39,7 +39,7 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     } }
     HealWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.heal_workflow expected_heal_workflow_yml",
-      authority: "gunbc.heal_workflow heal_workflow",
+      authority: "gunbc.heal_workflow heal_workflow_of",
     } }
     BranchRunGrantBrokerWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet.branch_run_grant_broker_workflow expected_branch_run_grant_broker_workflow_yml",
@@ -47,11 +47,11 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     } }
     HealPublisherWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.heal_publisher_workflow expected_heal_publisher_workflow_yml",
-      authority: "gunbc.heal_publisher_workflow heal_publisher_workflow",
+      authority: "gunbc.heal_publisher_workflow heal_publisher_workflow_of",
     } }
     DriftWatchWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.drift_watch_workflow expected_drift_watch_workflow_yml",
-      authority: "gunbc.drift_watch_workflow drift_watch_workflow",
+      authority: "gunbc.drift_watch_workflow drift_watch_workflow_of",
     } }
     _ => none
   }

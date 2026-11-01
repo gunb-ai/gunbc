@@ -11,7 +11,7 @@ import gunbc.auth.mtjade1_arrival_federation {
 }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_privileged_effect }
 import std.types { Bool, List, NonEmptyStr, String }
-import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_write_scope, srv1_root_apt_get_scope, srv1_root_mutation_approved_scopes, microvm_controller_install_root_scopes }
+import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_write_scope, srv1_root_apt_get_scope, srv1_root_mutation_approved_scopes, microvm_controller_install_root_scopes, approval_ntfy_retire_root_scopes }
 import std.scoped_authorization { AuthorizationScope }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
@@ -20,10 +20,6 @@ import std.dissolution {
 }
 import std.human_intervention { HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import gunbc.spark.bootstrap_provision {
-  fleet_cloud_principal_standing,
-  CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
-}
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client_intervention }
 import gunbc.cloudflare.r2_origin { cloudflare_bootstrap_custody_intervention, cloudflare_account_allocation_intervention }
@@ -34,10 +30,6 @@ import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
 import gunbc.fleet.mtcollins_firmware_converge { mtcollins1_ac_power_cycle_effect }
 import gunbc.host.anchored_host_transport { anchored_host_key_scan_effect }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.auth.approval_ntfy_deployment {
-  approval_ntfy_account_intervention, approval_ntfy_server_install_intervention,
-  approval_ntfy_publisher_token_mint_intervention, approval_ntfy_subscriber_grant_intervention,
-}
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.managed_host_boot_federation {
@@ -48,6 +40,7 @@ import gunbc.auth.branch_dispatch_federation {
   boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
+import gunbc.auth.fleet_workload_identity { convergence_principal }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
@@ -101,7 +94,11 @@ import gunbc.auth.authorization_pattern_selection {
 //     install (gunbc.live_deploy.apply microvm_controller_install_wet): it re-reads the decision of
 //     the job's gate (gunbc.fleet.srv1_root_mutation_approval_run srv1_root_mutation_inherited_grant),
 //     refuses unless the grant covers microvm_controller_install_root_scopes, and performs every
-//     elevated leg as the fleet administrator over its SSH edge, never under a job-user grant.
+//     elevated leg as the fleet administrator over its SSH edge, never under a job-user grant. The
+//     second is the ntfy retirement (gunbc.fleet.approval_ntfy_retirement approval_ntfy_retire_wet),
+//     which inherits the same job gate against approval_ntfy_retire_root_scopes -- a set of REMOVAL
+//     and service-stop scopes, because an approval to put something on the host is not an approval
+//     to take it off.
 type OperatorSessionArm
   = GcloudInteractive
   | OperatorTokenFile
@@ -248,18 +245,6 @@ fn site_verdict(row: PrivilegedEffectSite) -> SiteVerdict {
 // ── Shared characteristics ───────────────────────────────────────────────────────────────────
 fn site(module_path: String, decl_name: String) -> DeclarationRef {
   decl_ref(module_path: module_path, decl_name: decl_name)
-}
-
-// THE MEMBER IS RESOLVED FROM THE STANDING, never spelled: an unallocated principal is an
-// unbindable identity, which is the truthful input to the selection rather than a member string
-// that cannot exist (the same refusal gunbc.auth.gcp_secret_access makes before writing a policy).
-fn convergence_principal() -> WorkloadIdentityStanding {
-  match fleet_cloud_principal_standing() {
-    CloudPrincipalAllocated { principal: _, member: m, readback: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
-    CloudPrincipalReported { principal: _, reported_member: m, source: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
-    CloudPrincipalUnallocated { principal: _ } =>
-      WorkloadIdentityUnbindable { cause: "no allocated member is recorded for the fleet cloud principal" as NonEmptyStr }
-  }
 }
 
 // THE GRANT ADMINISTRATOR IS UNBINDABLE BY CONSTRUCTION, not by omission: a principal that can both
@@ -1072,7 +1057,7 @@ data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
 data srv1_root_mutation_approval_row: PrivilegedEffectSite = PrivilegedEffectSite {
   site: decl_ref(module_path: "gunbc.fleet.srv1_root_mutation_approval_run", decl_name: "srv1_root_mutation_after_gate"),
   effect: PrivilegedEffect {
-    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), the job files one access request with the approval broker and proceeds only on the operator's device-redeemed approval" as NonEmptyStr,
+    subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install, ntfy retirement), the job files one access request with the approval broker and proceeds only on the operator's device-redeemed approval" as NonEmptyStr,
     frequency: EveryOperatorRequest,
     reversibility: ReversibleByReapply,
     surface: ApiSurface,
@@ -1130,15 +1115,6 @@ fn manual_srv1_root_effect(subject: NonEmptyStr, step: HumanIntervention) -> Pri
     billing: NoBillingConsequence,
     witness_discharge: NoWitnessDischarge,
   }
-}
-
-// THE srv1 ROOT STEPS THE OPERATOR RUNS BY HAND AND THE PER-DISPATCH ENVIRONMENT GATE. Operator ruling
-// 2026-10-22 (gunbc.design_ruling one_approval_route_for_every_privileged_action): host-root reach that a
-// human can attend is approved through the broker route alone, so each row selects
-// OperatorApprovedCapability and diverges because the realization is a person or a GitHub click.
-data srv1_root_step_by_hand_beside_the_broker_route: DivergenceReason = DivergenceReason {
-  statement: "the effect is a host-root write on srv1 that the operator performs by hand over ssh from rendered instructions; the operator ruling of 2026-10-22 names the approval broker route as its only approval, and no authority adapter requests a capability for it, so the instruction text is the only record that it happened" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the step's entry point files an access_request (gunbc.auth.access_request) for its re-derived effect and the host-root write executes only on a redeemed ApprovalCapability (gunbc.auth.approval_device_redemption redeem_device_over_store) delivered by the iOS approval app, with post-apply readback. NOT satisfied by modeling the instruction or by the administrator edge" as NonEmptyStr),
 }
 
 // THE FLEET HOST FILE CONVERGE (gunbc.runner.runner_host_file_converge). Its root writes -- the teardown and
@@ -1226,24 +1202,6 @@ fn manual_physical_effect(subject: NonEmptyStr, step: HumanIntervention) -> Priv
 }
 
 data privileged_effect_census: List<PrivilegedEffectSite> = [
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_account_intervention"),
-    effect: manual_srv1_root_effect(step: approval_ntfy_account_intervention(), subject: "create the gunbc-ntfy system account on srv1 (operator runs the rendered command over ssh)" as NonEmptyStr),
-    realized: RealizedHumanStep,
-    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_server_install_intervention"),
-    effect: manual_srv1_root_effect(step: approval_ntfy_server_install_intervention(), subject: "install the ntfy server binary and its systemd unit on srv1 and configure listen, base-url, cache and upstream relay (the approval notification path itself)" as NonEmptyStr),
-    realized: RealizedHumanStep,
-    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_subscriber_grant_intervention"),
-    effect: manual_srv1_root_effect(step: approval_ntfy_subscriber_grant_intervention(), subject: "set the ntfy server default access to deny and grant write-only to the publisher and read-only to the operator on the approval topic" as NonEmptyStr),
-    realized: RealizedHumanStep,
-    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
-  },
   srv1_root_mutation_approval_row,
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
@@ -1304,6 +1262,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "microvm_controller_staged_write_steps"),
     effect: srv1_host_root_effect(subject: "stage and install the microVM controller's units, slice, dispatch grant, release locus and revision-job state as root, then check the grant and reload the manager (host_effect_apply MicrovmControllerInstall; run 39284886844 was refused at 'controller slice unit (stage)' under the job user's sudo)" as NonEmptyStr, required: microvm_controller_install_root_scopes),
+    realized: RealizedUnderApprovedConvergence,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.approval_ntfy_retirement", decl_name: "approval_ntfy_retire_wet"),
+    effect: srv1_host_root_effect(subject: "retire the approval ntfy server on srv1: stop and disable its unit BY NAME, remove the unit file, its service account, its config directory and its state root, its hand-installed binary, and its tailscale front door on 8443, then read every one of them absent (the operator's GO of 2026-10-30, work item adhoc-7b7b9aef)" as NonEmptyStr, required: approval_ntfy_retire_root_scopes),
     realized: RealizedUnderApprovedConvergence,
     divergence_reason: none,
   },
@@ -1567,7 +1531,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
-    effect: recurring_credential_read(subject: "read one rostered custody credential over WIF -- the gunbai-ci App key for the microVM lifecycle controller, the approval ntfy publisher token, the fabric state writer key, the Claude Code subscription OAuth token the roadmap belt's explicit Claude dispatch reads, or a worker-turn credential (cursor-api-key-harness, codex-auth-harness) -- and place it on one fleet host at its row's owner, group and mode; for the host-authoritative codex row, read the placed file back and add it to codex-auth-harness as a new version when codex rotated its refresh token" as NonEmptyStr),
+    effect: recurring_credential_read(subject: "read one rostered custody credential over WIF -- the gunbai-ci App key for the microVM lifecycle controller, the publication signing key, the fabric state writer key, the Claude Code subscription OAuth token the roadmap belt's explicit Claude dispatch reads, or a worker-turn credential (cursor-api-key-harness, codex-auth-harness) -- and place it on one fleet host at its row's owner, group and mode; for the host-authoritative codex row, read the placed file back and add it to codex-auth-harness as a new version when codex rotated its refresh token" as NonEmptyStr),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
@@ -1580,21 +1544,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.tools.bmc_health_reader_converge", decl_name: "bmc_health_reader_converge"),
     effect: recurring_credential_read(subject: "BMC health reader credential read" as NonEmptyStr),
-    realized: RealizedRunSelected,
-    divergence_reason: none,
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential_selected"),
-    effect: PrivilegedEffect {
-      subject: "converge a BMC credential: add a version, read it back, apply it to the BMC" as NonEmptyStr,
-      frequency: DeviceOnce,
-      reversibility: ReversibleByReapply,
-      surface: ApiSurface,
-      workload_identity: convergence_principal(),
-      minted_reach: MintsResourceScopedCredential,
-      billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
-    },
     realized: RealizedRunSelected,
     divergence_reason: none,
   },
@@ -1817,21 +1766,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.instruments.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
     effect: recurring_credential_read(subject: "read the R2 origin credential for the M0 origin-object probe" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
-    divergence_reason: none,
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
-    effect: PrivilegedEffect {
-      subject: "srv3/srv4 onboarding credential converge on the interactive entries" as NonEmptyStr,
-      frequency: DeviceOnce,
-      reversibility: ReversibleByReapply,
-      surface: ApiSurface,
-      workload_identity: convergence_principal(),
-      minted_reach: MintsResourceScopedCredential,
-      billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
-    },
-    realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
   },
   PrivilegedEffectSite {
@@ -2091,12 +2025,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_publisher_token_mint_intervention"),
-    effect: manual_operator_api_effect(step: approval_ntfy_publisher_token_mint_intervention(), subject: "create the ntfy publisher user, issue its access token on srv1 and add it as a Secret Manager version of approval-ntfy-publisher-token" as NonEmptyStr, cause: "the token does not exist until a person creates it on the ntfy server, and no fleet principal holds Secret Manager addVersion for this secret" as NonEmptyStr, reach: MintsResourceScopedCredential),
-    realized: RealizedHumanStep,
-    divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
-  },
-  PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.github_deployment_environment", decl_name: "srv1_production_protection_standing"),
     // No HumanIntervention models this setting (the standing is Unobserved), so the frequency has no
     // authority to be read from; it is stated here as the one fact this row owns.
@@ -2184,7 +2112,6 @@ data follow_up_sites: List<DeclarationRef> = [
   site(module_path: "gunbc.auth.credentials", decl_name: "gcp_secret_credential"),
   site(module_path: "gunbc.bmc.bmc_fan_converge", decl_name: "bmc_fan_run"),
   site(module_path: "gunbc.srv3.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
-  site(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
   site(module_path: "gunbc.spark.managed_access_apply", decl_name: "spark_managed_access_apply_wet"),
   site(module_path: "gunbc.fleet.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
   site(module_path: "gunbc.fleet.printer_delivery_wet_run", decl_name: "run"),

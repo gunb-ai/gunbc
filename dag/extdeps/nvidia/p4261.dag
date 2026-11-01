@@ -1,0 +1,44 @@
+module extdeps.nvidia.p4261
+
+import std.types { NonEmptyStr }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+// NVIDIA'S P4261, THE GH200 MODULE CARRIER, AND ITS ASSEMBLY REVISIONS. A revision is NVIDIA's design
+// fact: every board built to it carries its assembly part number, revision code and PCB code, whoever
+// holds the board. No NVIDIA document naming the P4261 has been found, so every row here is
+// TranscribedUncited: transcribed from the assembly label and PCB print of a board this repository
+// holds, and grounded only when an NVIDIA source names it. One subject, revisions as rows
+// (extdeps.external_authority ExternalModelScope carries no revision field for this reason).
+//
+// What a held board reads, and which revision it was built to, are that board's records
+// (product.p4261.e1_b, product.p4261.k1_a); a revision row holds no reading.
+
+type P4261AssemblyRevision {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  assembly_part_number: NonEmptyStr
+  revision_code: NonEmptyStr
+  pcb_code: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data p4261_k1: P4261AssemblyRevision = P4261AssemblyRevision {
+  vendor: nvidia,
+  model: "P4261",
+  assembly_part_number: "694-24261-0000-100",
+  revision_code: "K1",
+  pcb_code: "180-14261-DAAF-A01",
+  standing: TranscribedUncited { read_obligation: "an NVIDIA source naming P4261 assembly 694-24261-0000-100 revision K1 and its PCB 180-14261-DAAF-A01" },
+}
+
+data p4261_e1: P4261AssemblyRevision = P4261AssemblyRevision {
+  vendor: nvidia,
+  model: "P4261",
+  assembly_part_number: "694-24261-0000-201",
+  revision_code: "E1",
+  pcb_code: "180-14261-DAAF-B00",
+  standing: TranscribedUncited { read_obligation: "an NVIDIA source naming P4261 assembly 694-24261-0000-201 revision E1 and its PCB 180-14261-DAAF-B00" },
+}

@@ -8,7 +8,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, token_count,
   kibibyte, kibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
 }
-import gunbc.host.host_memory_observation { HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
+import gunbc.host.host_memory_carrier { HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import gunbc.serving.serving_host_memory {
   ServingMemoryReading, ServingMemoryRead, ServingMemoryUnread,
   ServingEngineMemory, ServingDedicatedHostMemory,
