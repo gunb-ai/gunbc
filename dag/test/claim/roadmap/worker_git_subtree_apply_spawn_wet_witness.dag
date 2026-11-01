@@ -86,8 +86,9 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 }
 import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir }
 import test.claim.roadmap.witness_supplied_instance {
-  WitnessSuppliedPrincipal, witness_supplied_instance, witness_principal_commands,
-  witness_principal_from_texts, witness_supplied_root_is_refused,
+  WitnessSuppliedPrincipal, witness_supplied_instance, witness_principal_from_texts,
+  witness_uid_command, witness_gid_command, witness_group_name_command,
+  witness_effective_user_command, witness_supplied_root_is_refused,
 }
 import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, ExecStepFailed }
 
@@ -215,17 +216,14 @@ fn wet_lab_local_instance(scratch_parent: String, repo: String) -> HostDashboard
 // durable state no scratch tree contains, the mint needs root, and the production names (`node`, gid 1003,
 // `gunbc-attempt`) are srv1's account database, which srv2 does not have — see the fixture's header.
 fn wet_principal() -> WitnessSuppliedPrincipal {
-  match witness_principal_commands() {
-    [uid_cmd, gid_cmd, group_cmd, user_cmd] => match witness_principal_from_texts(
-      uid_text: wet_out(command: uid_cmd),
-      gid_text: wet_out(command: gid_cmd),
-      user_text: wet_out(command: user_cmd),
-      group_text: wet_out(command: group_cmd),
-    ) {
-      Present { value: principal } => principal
-      Absent => wet_unnameable_principal()
-    }
-    _ => wet_unnameable_principal()
+  match witness_principal_from_texts(
+    uid_text: wet_out(command: witness_uid_command()),
+    gid_text: wet_out(command: witness_gid_command()),
+    user_text: wet_out(command: witness_effective_user_command()),
+    group_text: wet_out(command: witness_group_name_command()),
+  ) {
+    Present { value: principal } => principal
+    Absent => wet_unnameable_principal()
   }
 }
 

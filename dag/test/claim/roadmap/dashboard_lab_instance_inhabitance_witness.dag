@@ -57,7 +57,7 @@ import test.claim.roadmap.witness_supplied_instance {
 // child: "source")` and friends), not against a literal this file could restat. So if the real derivation stops
 // deriving — if `repo_root` stops being `source` under the instance root, or the bundle stops being
 // `inbox/source.bundle`, or the dedicated worker's group stops being the shared attempt group, or the mode stops
-// being 2775 — this claim goes red. Deleting `srv1_dashboard_lab_provision_parent` from the row takes this file
+// being 2770 — this claim goes red. Deleting `srv1_dashboard_lab_provision_parent` from the row takes this file
 // with it, which is the failure that is supposed to happen.
 
 // A SCRATCH PARENT FOR THE SUPPLIED SIDE OF THE PAIR. A pure string here: this file never asks the host to
@@ -121,7 +121,7 @@ test fn dashboard_lab_instance_inhabitance_shapes() -> Bool {
       }
       && fleet_posix_worker_user.name == ("gunbc-worker" as NonEmptyStr)
   // THE MODES, as the production row states them: a dedicated worker's writable directories are group-writable
-  // and setgid (2775), and the granted subtree children carry the model's own granted octal. Asserting the
+  // and setgid, group-writable, with no bits for anyone else (2770), and the granted subtree children carry the model's own granted octal. Asserting the
   // octal as a literal is the point — a claim that only compared two model functions to each other could not
   // fail.
   let worker_writable_mode = dashboard_instance_worker_writable_mode(
@@ -129,8 +129,8 @@ test fn dashboard_lab_instance_inhabitance_shapes() -> Bool {
     staged: dashboard_git_worker_subtree_declared_directory_mode(child: "objects" as NonEmptyStr),
   )
   let modes_are_the_declared_octals =
-    declared_directory_mode_octal(m: worker_writable_mode) == "2775"
-      && declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid) == "2775"
+    declared_directory_mode_octal(m: worker_writable_mode) == "2770"
+      && declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid) == "2770"
       && string_contains(
         s: dashboard_git_worker_directory_mode_octal(mode: dashboard_git_worker_granted_directory_mode),
         pattern: "7",

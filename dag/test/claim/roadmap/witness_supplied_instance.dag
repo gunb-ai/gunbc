@@ -1,7 +1,7 @@
 module test.claim.roadmap.witness_supplied_instance
 
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
-import std.algebra { starts_with, trim }
+import std.algebra { trim }
 import std.optional { Optional, Present, Absent }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.posix.identity { PosixOwnerNames }
@@ -111,8 +111,30 @@ type WitnessSuppliedPrincipal {
 // say what a running process holds); the fourth is `gunbc`'s own effective-principal read, the same
 // `whoami_command` `gunbc.fleet.fleet_host_key_enrollment` asks when it must know which account a transport
 // actually reached rather than which account the database names.
+fn witness_uid_command() -> ArgvCommand {
+  id_uid_command()
+}
+
+fn witness_gid_command() -> ArgvCommand {
+  id_gid_command()
+}
+
+fn witness_group_name_command() -> ArgvCommand {
+  id_group_name_command()
+}
+
+fn witness_effective_user_command() -> ArgvCommand {
+  whoami_command()
+}
+
+// THE FOUR, IN ORDER, for the claim that pins that all four are asked.
 fn witness_principal_commands() -> List<ArgvCommand> {
-  [id_uid_command(), id_gid_command(), id_group_name_command(), whoami_command()]
+  [
+    witness_uid_command(),
+    witness_gid_command(),
+    witness_group_name_command(),
+    witness_effective_user_command(),
+  ]
 }
 
 type PrincipalNumbers {
