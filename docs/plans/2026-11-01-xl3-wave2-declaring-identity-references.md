@@ -255,6 +255,11 @@ would edit it. It survived the census retirement: `git show --name-only 15172708
 files whose names contain "census" and NONE containing "declaring_identity". So it stays in wave 2 unless
 swift-ibex-475 lists it; the one-line ask was sent. If it is on that list, the wave-2 population shrinks
 to 2 site-bearing modules and this note's table 1 is dropped rather than edited.
+**Answer received (swift-ibex-475, msg_5963d334): it is NOT on the removal list and not in flight** --
+`v2.compiler.declaring_identity_spelling_census` is outside their starting set (the named labels in
+`gunbc.instrument_targets`), no census-removal PR of theirs touches it, and it is cited by
+`dag/gunbc/compiler_frontend_program_status.dag` (`DeclaringIdentitySpellingCensus` rows) plus a
+production_ingest claim, so removing it would be a later slice they have not judged. So table 1 stands.
 
 ## What a run owes (unrun, and expected to refuse first)
 
