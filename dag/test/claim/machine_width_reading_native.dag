@@ -1,0 +1,42 @@
+module test.claim.machine_width_reading_native
+
+import std.types { Bool, String, List }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
+import test.claim.machine_width_reading_boundary { width_boundary_signed64_reads, width_boundary_unsigned8_reads, width_boundary_unknown_literal_never_defaults, width_boundary_extra_width_argument_refuses, width_boundary_missing_compose_argument_refuses, width_boundary_foreign_nat_does_not_gain_signedness, width_boundary_foreign_compose_is_unconstrained }
+import test.claim.machine_width_reading_agreement { width_reading_uint8_agrees, width_reading_int64_agrees, width_reading_alias_agrees, width_reading_unrelated_compose_agrees, width_reading_pointer_width_stays_unresolved, width_reading_negative_width_is_unreadable }
+
+// Native qualification entry for the shared reader's supplied boundary and
+// real-producer agreement. No execution or scheduled gate is claimed by this file.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type WidthReadingCase {
+  name: String
+  held: Bool
+}
+
+fn width_reading_cases() -> List<WidthReadingCase> {
+  [
+    WidthReadingCase { name: "width_boundary_signed64_reads", held: width_boundary_signed64_reads() },
+    WidthReadingCase { name: "width_boundary_unsigned8_reads", held: width_boundary_unsigned8_reads() },
+    WidthReadingCase { name: "width_boundary_unknown_literal_never_defaults", held: width_boundary_unknown_literal_never_defaults() },
+    WidthReadingCase { name: "width_boundary_extra_width_argument_refuses", held: width_boundary_extra_width_argument_refuses() },
+    WidthReadingCase { name: "width_boundary_missing_compose_argument_refuses", held: width_boundary_missing_compose_argument_refuses() },
+    WidthReadingCase { name: "width_boundary_foreign_nat_does_not_gain_signedness", held: width_boundary_foreign_nat_does_not_gain_signedness() },
+    WidthReadingCase { name: "width_boundary_foreign_compose_is_unconstrained", held: width_boundary_foreign_compose_is_unconstrained() },
+    WidthReadingCase { name: "width_reading_uint8_agrees", held: width_reading_uint8_agrees() },
+    WidthReadingCase { name: "width_reading_int64_agrees", held: width_reading_int64_agrees() },
+    WidthReadingCase { name: "width_reading_alias_agrees", held: width_reading_alias_agrees() },
+    WidthReadingCase { name: "width_reading_unrelated_compose_agrees", held: width_reading_unrelated_compose_agrees() },
+    WidthReadingCase { name: "width_reading_pointer_width_stays_unresolved", held: width_reading_pointer_width_stays_unresolved() },
+    WidthReadingCase { name: "width_reading_negative_width_is_unreadable", held: width_reading_negative_width_is_unreadable() }
+  ]
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = width_reading_cases()
+  let failed = filter(cases, c => !c.held)
+  NativeClaimReport {
+    stdout: join(map(cases, c => concat("case ", c.name, if c.held { " held\n" } else { " not_held\n" })), ""),
+    terminal: if count(failed) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: "Shared width reader boundary or adapter agreement failed" } }
+  }
+}
