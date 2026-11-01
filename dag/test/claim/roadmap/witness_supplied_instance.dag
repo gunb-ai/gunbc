@@ -296,6 +296,35 @@ fn witness_supplied_writable_roots(instance: HostDashboardInstance) -> List<File
   ]
 }
 
+// THE TARGET A CLAIM GETS WHEN ITS ROOT IS REFUSED. A witness has no `raise`; what it has is the target it
+// hands the claim. So when a witness row resolves any of its roots to a refused location, the fixture builds
+// it under a prefix that cannot be written at all -- `/proc`, which is not under the scratch prefix and so is
+// itself refused by the same decision -- and the claim goes RED at its first `git`/`install` instead of
+// touching a tree it has no business touching. Refusing by VALUE, at the one place the target is chosen, is
+// how a `Bool`-valued claim says "I will not run here".
+data witness_refused_scratch_parent: NonEmptyStr = "/proc/gunbc-witness-root-refused" as NonEmptyStr
+
+fn witness_refused_instance(repo: FilePath) -> HostDashboardInstance {
+  witness_supplied_instance(
+    scratch_parent: witness_refused_scratch_parent as FilePath,
+    repo: repo,
+    principal: witness_unnameable_principal(),
+  )
+}
+
+// THE PRINCIPAL THAT CANNOT EXIST, in one place: negative ids and a `?` name, which `install -o/-g` and
+// `chgrp` refuse and which no `find -printf '%u %g'` readback can match. A host that cannot say its own
+// account, or a witness whose target was refused, gets this -- so a claim passes only on a principal the
+// host actually named.
+fn witness_unnameable_principal() -> WitnessSuppliedPrincipal {
+  WitnessSuppliedPrincipal {
+    uid: -1,
+    gid: -1,
+    user: "?" as NonEmptyStr,
+    group: "?" as NonEmptyStr,
+  }
+}
+
 // EVERY ONE OF THOSE ROOTS IS OFF THE LIVE HOST. The claim form of the guard, so the assertion lives with the
 // fixture it guards and a witness cannot opt out of it by forgetting to check.
 fn witness_supplied_roots_are_off_the_live_host(instance: HostDashboardInstance) -> Bool {

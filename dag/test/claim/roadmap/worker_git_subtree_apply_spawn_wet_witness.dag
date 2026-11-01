@@ -89,6 +89,8 @@ import test.claim.roadmap.witness_supplied_instance {
   WitnessSuppliedPrincipal, witness_supplied_instance, witness_principal_from_texts,
   witness_uid_command, witness_gid_command, witness_group_name_command,
   witness_effective_user_command, witness_supplied_root_is_refused,
+  witness_supplied_roots_are_off_the_live_host, witness_refused_instance,
+  witness_unnameable_principal,
 }
 import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, ExecStepFailed }
 
@@ -185,25 +187,28 @@ fn wet_group_token() -> String {
 // derivation executed, as a pure derivation, so "the witness supplies its root" has not quietly become "nobody
 // derives it any more".
 fn wet_lab_local_instance(scratch_parent: String, repo: String) -> HostDashboardInstance {
-  // THE GUARD, AT THE ONE PLACE A WITNESS ROOT ENTERS THESE CLAIMS. A root the fixture refuses -- the live
-  // lab root, a child of it, the fleet's install root, or anything outside the declared scratch prefix -- is
-  // carried by a principal that cannot exist, so every claim that would have run at that target goes RED
-  // instead of writing there. That is the BROKEN run the PR body names: point the supplied root back at the
-  // live derivation and the claims refuse.
-  let principal =
-    if witness_supplied_root_is_refused(scratch_parent) || witness_supplied_root_is_refused(repo) {
-      wet_unnameable_principal()
-    } else {
-      wet_principal()
-    }
-  witness_supplied_instance(
+  // THE GUARD, AT THE ONE PLACE A WITNESS ROOT ENTERS THESE CLAIMS. Two checks, because the claim's own tree
+  // and the row it is testing are two different things: the scratch leaf and repository the claim supplied must
+  // be accepted, AND every root the built row resolves to must be off the live host. Either failing hands the
+  // claim a target it cannot write at (`witness_refused_instance`), so it goes RED at its first `git`/`install`
+  // rather than writing into a tree it has no business touching -- a `Bool`-valued claim has no other way to
+  // say "I will not run here". That is the BROKEN run the PR body names: point the supplied root back at the
+  // live derivation, or drop the account provisioning, and these claims refuse.
+  let candidate = witness_supplied_instance(
     // THE SCRATCH PARENT IS THE CLAIM'S OWN MKTEMP LEAF, and the repository is a tree beside it
     // (`<leaf>/source`), so the instance root -- `<leaf>/<lab id>` -- is never inside the repository the claims
     // run `git` in, and both trees are one leaf the claim can remove.
     scratch_parent: scratch_parent as FilePath,
     repo: repo as FilePath,
-    principal: principal,
+    principal: wet_principal(),
   )
+  if witness_supplied_root_is_refused(scratch_parent)
+    || witness_supplied_root_is_refused(repo)
+    || !witness_supplied_roots_are_off_the_live_host(instance: candidate) {
+    witness_refused_instance(repo: repo as FilePath)
+  } else {
+    candidate
+  }
 }
 
 // THE PRINCIPAL THE CLAIMS INSTALL AND READ BACK AS: the host's own account, four separate questions, all four
@@ -228,12 +233,7 @@ fn wet_principal() -> WitnessSuppliedPrincipal {
 }
 
 fn wet_unnameable_principal() -> WitnessSuppliedPrincipal {
-  WitnessSuppliedPrincipal {
-    uid: -1,
-    gid: -1,
-    user: "?" as NonEmptyStr,
-    group: "?" as NonEmptyStr,
-  }
+  witness_unnameable_principal()
 }
 
 // THE PRINCIPAL THE WITNESS RUNS UNDER IS ONE THE HOST NAMED. The refusal arm above is otherwise a claim about
