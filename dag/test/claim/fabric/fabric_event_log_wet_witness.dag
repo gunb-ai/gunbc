@@ -53,17 +53,17 @@ fn append_id(store: FabricStorageBinding, parent: HeadExpectation, at: EpochSecs
 // first, with ids equal to what each append was answered.
 test fn three_chained_appends_read_back_whole_oldest_first_by_real_execution() -> Bool {
   fabric_wet_run(members: fabric_storage_slots, instance: fresh_instance(), body: fn(ops) {
-  
-  match append_id(store: ops, parent: HeadAbsent, at: 1000, payload: acquired(reference: "a")) {
+    let store = FabricStorageLocalFiles { operations: ops }
+    match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "a")) {
     Absent => false
     Present { value: a } =>
-      match append_id(store: ops, parent: HeadAt { id: a }, at: 1001, payload: acquired(reference: "b")) {
+          match append_id(store: store, parent: HeadAt { id: a }, at: 1001, payload: acquired(reference: "b")) {
         Absent => false
         Present { value: b } =>
-          match append_id(store: ops, parent: HeadAt { id: b }, at: 1002, payload: PoolReleased { reference: "a" as NonEmptyStr, reason: "done" as NonEmptyStr }) {
+              match append_id(store: store, parent: HeadAt { id: b }, at: 1002, payload: PoolReleased { reference: "a" as NonEmptyStr, reason: "done" as NonEmptyStr }) {
             Absent => false
             Present { value: c } =>
-              match event_log_read_partition(store: ops, partition: witness_partition(), budget: 16) {
+                match event_log_read_partition(store: store, partition: witness_partition(), budget: 16) {
                 PartitionReadRefused { cause: _ } => false
                 PartitionReadOk { head: _, walk: w } =>
                   match w {
@@ -80,11 +80,11 @@ test fn three_chained_appends_read_back_whole_oldest_first_by_real_execution() -
 
 test fn a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real_execution() -> Bool {
   fabric_wet_run(members: fabric_storage_slots, instance: fresh_instance(), body: fn(ops) {
-  
-  match append_id(store: ops, parent: HeadAbsent, at: 1000, payload: acquired(reference: "first")) {
+    let store = FabricStorageLocalFiles { operations: ops }
+    match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "first")) {
     Absent => false
     Present { value: first } =>
-      match event_log_append(store: ops, partition: witness_partition(), event: event(parent: HeadAbsent, at: 1001, payload: acquired(reference: "racer")), expected: HeadAbsent) {
+        match event_log_append(store: store, partition: witness_partition(), event: event(parent: HeadAbsent, at: 1001, payload: acquired(reference: "racer")), expected: HeadAbsent) {
         EventAppendStale { expected: _, observed: o } => match o { HeadAt { id: h } => (h as String) == (first as String)  HeadAbsent => false }
         EventAppended { id: _ } => false
         EventAppendRefused { cause: _ } => false
@@ -95,13 +95,15 @@ test fn a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real
 
 test fn an_admitted_event_is_stored_as_exactly_its_wire_text_by_real_execution() -> Bool {
   fabric_wet_run(members: fabric_storage_slots, instance: fresh_instance(), body: fn(ops) {
-    match event_log_append(store: FabricStorageLocalFiles { operations: ops }, partition: witness_partition(), event: e, expected: HeadAbsent) {
+    let store = FabricStorageLocalFiles { operations: ops }
+    let recorded = event(parent: HeadAbsent, at: 1000, payload: acquired(reference: "wire-text"))
+    match event_log_append(store: store, partition: witness_partition(), event: recorded, expected: HeadAbsent) {
     EventAppended { id: i } =>
       match fabric_object_ref_of_wire(wire: i as String) {
         Absent => false
         Present { value: r } =>
-          match fabric_storage_file_get(root: files, object: r) {
-            FabricObjectFetched { stored: s } => (s.content.body as String) == pool_event_wire_text(event: e)
+          match fabric_storage_file_get(root: ops, object: r) {
+            FabricObjectFetched { stored: s } => (s.content.body as String) == pool_event_wire_text(event: recorded)
             FabricObjectGetRefused { fault: _ } => false
           }
       }

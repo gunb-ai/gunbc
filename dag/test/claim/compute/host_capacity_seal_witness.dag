@@ -52,7 +52,7 @@ test fn no_capacity_subject_mint_takes_a_path() -> ProcessExit {
 // reachable is the business key -- the resolved instance -- and a holder could rebuild a path from it: the
 // same declared residual (field reads are not module-private), now on the instance rather than on a root.
 test fn no_root_is_reachable_through_a_capacity_subject_and_the_instance_is() -> ProcessExit {
-  census_exit(blocking_delta(hostile: capacity_root_out_source, safe: capacity_baseline_source, holds: fn(n) { n <= 0 }))
+  census_exit(blocking_delta(hostile: capacity_root_out_source, safe: capacity_baseline_source, holds: fn(n) { n == 1 }))
 }
 
 test fn the_lawful_capacity_subject_mint_is_admitted() -> ProcessExit {

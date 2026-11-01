@@ -67,8 +67,7 @@ test fn live_unplanned_request_selects_preparation_without_extending_lease() -> 
 // are supplied: expiry before planning has no capacity dependency.
 test fn persisted_expired_request_settles_after_reader_restart_without_offers() -> Bool {
   let directory = shell.Mktemp.Dir()
-  let root_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path))
-  let passed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as NonEmptyStr)) {
+  let passed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
     FabricWetStoreReady { store: ops } => {
       let request = recorded().request
       match workspace_record_request_at(store: workspace_allocation_store(binding: FabricStorageLocalFiles { operations: ops }), request: request,
@@ -97,11 +96,11 @@ test fn persisted_expired_request_settles_after_reader_restart_without_offers() 
 
 test fn waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement() -> Bool {
   let directory = shell.Mktemp.Dir()
-  let root_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path))
-  let store = FabricStorageLocalFiles { operations: ops }
   let request = recorded().request
-  let passed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as NonEmptyStr)) {
-    FabricWetStoreReady { store: ops } => match workspace_record_request_at(store: workspace_allocation_store(binding: store), request: request, observed_at: "2026-09-27T12:00:00Z") {
+  let passed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
+    FabricWetStoreReady { store: ops } => {
+      let store = FabricStorageLocalFiles { operations: ops }
+      match workspace_record_request_at(store: workspace_allocation_store(binding: store), request: request, observed_at: "2026-09-27T12:00:00Z") {
       WorkspaceStoreWritten { allocation: original } => match workspace_record_preparation_wait(store: workspace_allocation_store(binding: store), request: request, reason: "no commissioned offers") {
         WorkspaceStoreWritten { allocation: waiting } => waiting.reason == "no commissioned offers"
           && waiting.observed_at == original.observed_at && waiting.connection == original.connection
@@ -115,6 +114,7 @@ test fn waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_reti
           })
         other => false
       }
+    }
       other => false
     }
     other => false
@@ -128,13 +128,14 @@ test fn waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_reti
 // owner -- reports Idle, which is the obligation the single-owner consumer silently missed.
 test fn enrolled_roster_discovers_a_customer_request_the_operator_pass_misses() -> Bool {
   let directory = shell.Mktemp.Dir()
-  let root_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path))
-  let store = FabricStorageLocalFiles { operations: ops }
   let operator = PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "operator-test" }
   let request = recorded().request
-  let passed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as NonEmptyStr)) {
-    FabricWetStoreReady { store: ops } => match workspace_record_request_at(store: workspace_allocation_store(binding: store), request: request, observed_at: "2026-09-27T12:00:00Z") {
+  let passed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
+    FabricWetStoreReady { store: ops } => {
+      let store = FabricStorageLocalFiles { operations: ops }
+      match workspace_record_request_at(store: workspace_allocation_store(binding: store), request: request, observed_at: "2026-09-27T12:00:00Z") {
       WorkspaceStoreWritten { allocation: _ } =>
+    }
         (match workspace_consumer_reconcile_enrolled(store: store, owners: [operator, request.owner], observed_at: "2026-09-27T12:01:00Z") {
           WorkspaceConsumerPrepare { allocation: found } => found.request == request
           other => false

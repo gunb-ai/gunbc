@@ -179,14 +179,15 @@ fn shared_lifecycle(store: CheckpointStore, a: NonEmptyStr, b: NonEmptyStr, addr
 test fn shared_roots_replacement_and_terminal_release() -> Bool {
   let scratch = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX")
   let root = scratch.path
-  let metadata_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: root))
-  let ensured = metadata_wet
+  let metadata = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: root))
   let blob_directory = shell.Mkdir.Parents(path: concat(root, "/blobs"))
   let source_a = "dag/test/fixture/fabric_blob/capture-a.bin" as NonEmptyStr
   let source_b = "dag/test/fixture/fabric_blob/capture-b.bin" as NonEmptyStr
   let oversized = concat(root, "/oversized") as NonEmptyStr
   let large_written = Filesystem.Write(path: oversized as String, content: repeat_string(s: "x", n: 4097))
-  let verdict = match local_store_initialize(root: WitnessScratchRoot { root: concat(root, "/blobs") }, instance_label: "retained-test",
+  let verdict = match metadata {
+    FabricWetStoreUnready { area: _, detail: _ } => false
+    FabricWetStoreReady { store: ops } => match local_store_initialize(root: WitnessScratchRoot { root: concat(root, "/blobs") }, instance_label: "retained-test",
     budgets: [LocalStoreFamilyBudget { family: fabric_blob_artifact_kind, budget: byte_size(count: 4096), at_capacity: RefuseNewStore }]) {
     LocalStoreInitialized { opening: LocalStoreOpened { capability: blobs, durability: _ } } => {
       let store = CheckpointStore { blobs: blobs, metadata: FabricStorageLocalFiles { operations: ops }, registry: "checkpoint-roots" }
@@ -207,10 +208,11 @@ test fn shared_roots_replacement_and_terminal_release() -> Bool {
         }
       }
     }
-    _ => false
+      _ => false
+    }
   }
   let cleaned = shell.Remove.RecursiveForce(path: root)
-  scratch.success && blob_directory.success && large_written.success && (match ensured { FabricWetStoreReady { store: ops } => true _ => false }) && verdict && cleaned.success
+  scratch.success && blob_directory.success && large_written.success && verdict && cleaned.success
 }
 
 test fn retention_metadata_refuses_incomplete_or_ambiguous_roots() -> Bool {

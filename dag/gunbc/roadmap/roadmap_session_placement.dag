@@ -27,6 +27,7 @@ import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, compute_reservation_wire,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, compute_capacity_store,
+  ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
   compute_memory_ceiling,
 }
 import gunbc.compute.work_class_grant {
@@ -237,12 +238,18 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
           match session_attempt_slots_store(instance: instance) {
             SessionAttemptSlotsStoreUnready { detail } => SessionStoresUnresolved { detail: detail }
             SessionAttemptSlotsStoreReady { store: slots } =>
-              SessionStoresResolved { stores: SessionPlacementStores {
-                slots: slots,
-                records_dir: session_placement_records_dir(instance: instance),
-                store: compute_capacity_store(subject: subject),
-                partition: subject.partition,
-              } }
+              // THE LEDGER ARRIVES AS A STANDING. An unstanding ledger is an unresolved store set -- the
+              // evidence and settle readers already carry a SessionStoresUnresolved path, so no default
+              // store is invented and no seat is freed on a store nobody opened.
+              match compute_capacity_store(subject: subject) {
+                ComputeCapacityStoreUnready { area: area, detail: detail } => SessionStoresUnresolved { detail: join(["the capacity ledger is not standing at ", area, ": ", detail], "") }
+                ComputeCapacityStoreReady { store: ledger } => SessionStoresResolved { stores: SessionPlacementStores {
+                  slots: slots,
+                  records_dir: session_placement_records_dir(instance: instance),
+                  store: ledger,
+                  partition: subject.partition,
+                } }
+              }
           }
       }
   }

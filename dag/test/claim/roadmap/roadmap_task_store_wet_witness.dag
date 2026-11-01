@@ -25,11 +25,12 @@ fn titled(n: RoadmapNode, headline: String) -> RoadmapNode {
 // supersession retires the task from the listing.
 test fn task_store_create_replay_and_conflicting_key() -> Bool {
   let directory = shell.Mktemp.Dir()
-  let root_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path))
-  let store = FabricStorageLocalFiles { operations: ops }
-  if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as NonEmptyStr)) {
+  if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
     FabricWetStoreReady { store: ops } => {
+      let store = FabricStorageLocalFiles { operations: ops }
+      {
       let actor = "briansrls" as NonEmptyStr
+    }
       let k1 = "op-1" as NonEmptyStr
       let k2 = "op-2" as NonEmptyStr
       let first = roadmap_task_create(store: store, actor: actor, at: 1, operation_key: k1, draft: sample_task())
@@ -49,11 +50,12 @@ test fn task_store_create_replay_and_conflicting_key() -> Bool {
 
 test fn task_store_revise_stale_and_supersede() -> Bool {
   let directory = shell.Mktemp.Dir()
-  let root_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path))
-  let store = FabricStorageLocalFiles { operations: ops }
-  if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as NonEmptyStr)) {
+  if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
     FabricWetStoreReady { store: ops } => {
+      let store = FabricStorageLocalFiles { operations: ops }
+      {
       let actor = "briansrls" as NonEmptyStr
+    }
       let created = roadmap_task_create(store: store, actor: actor, at: 1, operation_key: "op-1" as NonEmptyStr, draft: sample_task())
       match created {
         RuntimeTaskCommitted { task: t, events: _ } => match roadmap_task_definition_digest(task: t) {

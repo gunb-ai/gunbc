@@ -197,7 +197,7 @@ fn real_grant(dir: String, lease: LeaseGrant, slot: AttemptRecord, generation: C
     node_id: node_a, attempt_key: key_a, unit: unit_a() as NonEmptyStr, lease: lease,
     partition: subject_at(dir: dir).partition, amount: kibibyte(count: 1024),
     class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 1024), reason: ClassUnmeasured },
-    store: compute_capacity_store(subject: subject_at(dir: dir)), slot: slot, slot_generation: generation,
+    slot: slot, slot_generation: generation,
   }
 }
 

@@ -91,7 +91,12 @@ fn observed_login(o: FabricWriterIdentityObservation) -> List<NonEmptyStr> {
   }
 }
 
-fn roster_logins(rows: List<FabricWriterIdentityObservation>) -> List<NonEmptyStr> {
+// THE PROJECTION, OVER AN ALREADY-READ ROSTER. The decision "which logins may write" is a function of
+// the readings; it takes them, never a store. The one place that reads the store is
+// fabric_served_writer_roster below, and it projects through this same function -- so a witness of the
+// decision supplies readings, and one wet claim on the store proves those readings are what the real
+// roster holds.
+fn fabric_served_writer_roster_of(observations: List<FabricWriterIdentityObservation>) -> List<NonEmptyStr> {
   fold(flat_map(rows, o => observed_login(o: o)), init: [], f: (acc, l) =>
     if any(acc, a => (a as String) == (l as String)) { acc } else { concat(acc, [l]) })
 }
@@ -106,7 +111,7 @@ type FabricServedWriterRoster
 fn fabric_served_writer_roster() -> FabricServedWriterRoster {
   match fabric_writer_identity_observations() {
     WriterRosterUnread { area: a, detail: d } => ServedWriterRosterUnread { detail: join(["at ", a, ": ", d], "") }
-    WriterRosterRead { rows: rows } => ServedWriterRosterListed { logins: roster_logins(rows: rows) }
+    WriterRosterRead { rows: rows } => ServedWriterRosterListed { logins: fabric_served_writer_roster_of(observations: rows) }
   }
 }
 

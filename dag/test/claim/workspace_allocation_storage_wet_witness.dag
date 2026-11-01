@@ -17,8 +17,7 @@ import test.claim.workspace_allocation_lifecycle_witness { allocation_test_reque
 test fn workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head() -> Bool {
   let directory = shell.Mktemp.Dir()
   let path = join([directory.path as String, "/fabric"], "") as NonEmptyStr
-  let root_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: path))
-  let observed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir as NonEmptyStr)) {
+  let observed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
     FabricWetStoreReady { store: ops } => workspace_storage_admission_cycle(
       first: FabricStorageLocalFiles { operations: ops },
       second: FabricStorageLocalFiles { operations: ops },
