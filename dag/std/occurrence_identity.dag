@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { FreeMonoid, collection_concat_shape }
+import std.algebra { FreeMonoid, collection_concat_shape, is_prefix_of }
 import std.content_hash { Fnv1a64Structural }
 import std.types { Bool, Int, String, SourceSpan, List, Map }
 
@@ -575,55 +575,14 @@ fn occurrence_containment_ancestors_as_list(
   ))
 }
 
-type OccurrenceIdListPrefixAcc {
-  path_remaining: List<OccurrenceId>
-  ok: Bool
-}
-
-fn occurrence_id_list_is_prefix_of(
-  prefix: List<OccurrenceId>,
-  path: List<OccurrenceId>
-) -> Bool {
-  fold(
-    prefix,
-    init: OccurrenceIdListPrefixAcc {
-      path_remaining: path,
-      ok: true,
-    },
-    f: (acc, expected) =>
-      if !acc.ok {
-        acc
-      } else {
-        match acc.path_remaining.first() {
-          Absent =>
-            OccurrenceIdListPrefixAcc {
-              path_remaining: [],
-              ok: false,
-            }
-          Present { value: head } =>
-            if occurrence_id_eq(left: head, right: expected) {
-              OccurrenceIdListPrefixAcc {
-                path_remaining: acc.path_remaining.skip(n: 1),
-                ok: true,
-              }
-            } else {
-              OccurrenceIdListPrefixAcc {
-                path_remaining: acc.path_remaining,
-                ok: false,
-              }
-            }
-        }
-      },
-  ).ok
-}
-
 fn occurrence_containment_ancestors_are_prefix_of(
   prefix_ancestors: FreeMonoid<OccurrenceId>,
   path_ancestors: FreeMonoid<OccurrenceId>
 ) -> Bool {
-  occurrence_id_list_is_prefix_of(
+  is_prefix_of(
     prefix: occurrence_containment_ancestors_as_list(ancestors: prefix_ancestors),
-    path: occurrence_containment_ancestors_as_list(ancestors: path_ancestors),
+    xs: occurrence_containment_ancestors_as_list(ancestors: path_ancestors),
+    eq: fn(a, b) { occurrence_id_eq(left: a, right: b) },
   )
 }
 

@@ -9,6 +9,7 @@ import std.access {
 import std.authorization_profile {
   EffectAuthorizationAction, EffectRequest, effect_access_request,
 }
+import std.algebra { is_prefix_of }
 // P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned
 // silent-ibex-417). An effect target is a POSITION in a containment tree that already exists;
 // permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace
@@ -72,20 +73,9 @@ type NamespacePosition {
   path: List<String>
 }
 
-fn path_is_prefix(prefix: List<String>, path: List<String>) -> Bool {
-  match prefix.first() {
-    Absent => true
-    Present { value: ph } => match path.first() {
-      Absent => false
-      Present { value: xh } =>
-        ph == xh && path_is_prefix(prefix: prefix.skip(n: 1), path: path.skip(n: 1))
-    }
-  }
-}
-
 fn position_under(target: NamespacePosition, root: NamespacePosition) -> Bool {
   target.tree == root.tree
-    && path_is_prefix(prefix: root.path, path: target.path)
+    && is_prefix_of(prefix: root.path, xs: target.path, eq: fn(a, b) { a == b })
 }
 
 // ModeledRealization names an operation realization (v2.std.operation_realization) active in the

@@ -3030,71 +3030,6 @@ pub fn list_find_first<T: Clone>(
     }
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-#[serde(bound(
-    serialize = "T: Clone + serde::Serialize",
-    deserialize = "T: Clone + serde::Deserialize<'de>"
-))]
-pub struct ListPrefixState<T> {
-    pub rest: Rc<FreeMonoid<T>>,
-    pub matched: bool,
-    pub _phantom: std::marker::PhantomData<T>,
-}
-
-impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListPrefixState<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ListPrefixState")
-            .field("rest", &self.rest)
-            .field("matched", &self.matched)
-            .finish()
-    }
-}
-
-impl<T: Clone + PartialEq> PartialEq for ListPrefixState<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.rest == other.rest && self.matched == other.matched
-    }
-}
-
-pub fn list_starts_with<T: Clone>(
-    xs: Rc<FreeMonoid<T>>,
-    prefix: Rc<FreeMonoid<T>>,
-    eq: impl Fn(T, T) -> bool + Clone,
-) -> bool {
-    {
-        let state = fold_list(
-            prefix,
-            Rc::new(ListPrefixState {
-                rest: xs.clone(),
-                matched: true,
-                _phantom: std::marker::PhantomData,
-            }),
-            |acc, item| match acc.matched.clone() {
-                false => acc.clone(),
-                true => {
-                    let __fm = acc.rest.clone();
-                    if __fm.is_empty() {
-                        Rc::new(ListPrefixState {
-                            rest: Rc::new(vec![]),
-                            matched: false,
-                            _phantom: std::marker::PhantomData,
-                        })
-                    } else {
-                        let h = (*__fm)[0].clone();
-                        let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                        Rc::new(ListPrefixState {
-                            rest: t.clone(),
-                            matched: eq(h.clone(), item),
-                            _phantom: std::marker::PhantomData,
-                        })
-                    }
-                }
-            },
-        );
-        state.matched.clone()
-    }
-}
-
 pub fn non_empty_singleton<T: Clone>(item: T) -> Rc<FreeSemigroup<T>> {
     Rc::new(FreeSemigroup {
         head: item.clone(),
@@ -3358,6 +3293,14 @@ pub fn is_prefix_of<T: Clone>(
             }
         }
     })
+}
+
+pub fn is_suffix_of<T: Clone>(
+    suffix: Rc<FreeMonoid<T>>,
+    xs: Rc<FreeMonoid<T>>,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> bool {
+    is_prefix_of(list_reverse(suffix), list_reverse(xs), eq)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -19,6 +19,7 @@ import std.cache_interface {
   CapacityUnobserved,
 }
 import std.optional { Absent, Present }
+import std.algebra { is_prefix_of }
 
 data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness.dag."
@@ -308,18 +309,6 @@ fn frame_eq(a: Frame, b: Frame) -> Bool {
   (a.name == b.name) && frame_kind_eq(a: a.kind, b: b.kind)
 }
 
-fn frame_path_is_prefix(prefix: List<Frame>, path: List<Frame>) -> Bool {
-  match prefix.first() {
-    Absent => true
-    Present { value: ph } => match path.first() {
-      Absent => false
-      Present { value: xh } =>
-        frame_eq(a: ph, b: xh)
-          && frame_path_is_prefix(prefix: prefix.skip(n: 1), path: path.skip(n: 1))
-    }
-  }
-}
-
 fn frame_path_lca(a: List<Frame>, b: List<Frame>) -> List<Frame> {
   match a.first() {
     Absent => empty_frame_path
@@ -591,7 +580,7 @@ fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CachePr
   let content_covering = providers |> filter(p =>
     provider_is_store_tier(p: p)
       && provider_covers_identity(p: p, identity: identity)
-      && frame_path_is_prefix(prefix: p.scope, path: lca)
+      && is_prefix_of(prefix: p.scope, xs: lca, eq: fn(a, b) { frame_eq(a: a, b: b) })
       && provider_is_content_keyed(p: p)
   )
   let admitted = content_covering |> filter(p => retention_is_admitted(r: p.retention))
@@ -605,7 +594,7 @@ fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CachePr
         let scope_covering = providers |> filter(p =>
           provider_is_store_tier(p: p)
             && provider_covers_identity(p: p, identity: identity)
-            && frame_path_is_prefix(prefix: p.scope, path: lca)
+            && is_prefix_of(prefix: p.scope, xs: lca, eq: fn(a, b) { frame_eq(a: a, b: b) })
         )
         match scope_covering.first() {
           Present { value: existence_one } =>
