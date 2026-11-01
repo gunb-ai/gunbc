@@ -134,3 +134,28 @@ test fn the_last_census_member_is_found_not_only_the_first() -> Bool {
     Absent => false
   }
 }
+
+// OLD-BYTES READBACK (Done item): a provider-events.jsonl that ALREADY EXISTS on the host (written by the
+// dispatcher under an earlier layout, here two terminated records) must read back BYTE-INTACT through the store.
+// The bytes are written before the store is ever opened; the store mints Ready over the pre-existing member (mode
+// is never a read gate) and the exact bytes return. A refusal or a reformat here would silently lose live-host
+// history, so the assertion is byte equality, not "some records".
+test fn an_existing_multirecord_worker_log_reads_back_its_bytes_intact() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let prov = attempt_state_provision(instance: inst, node: "wet-node", attempt_key: "wet-key")
+  let worker_dir = attempt_state_provision_directory(provision: prov, directory: AttemptDirectoryWorker)
+  let mpath = attempt_log_provision_path(provision: prov, member: AttemptWorkerEvents)
+  let legacy = "{\"seq\":1}\n{\"seq\":2}\n"
+  let made_dir = shell.Mkdir.Parents(path: worker_dir as FilePath).success
+  let wrote = Filesystem.Write(path: mpath, content: legacy).success
+  let opened = match attempt_append_log_store_open(instance: inst, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogReady { store: _ } => true
+    AttemptAppendLogUnready { detail: _ } => false
+    AttemptAppendLogLegacyRefused { cause: _ } => false
+  }
+  let back = Filesystem.Read(path: mpath)
+  let ok = made_dir && wrote && opened && back.success && back.content == legacy
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
