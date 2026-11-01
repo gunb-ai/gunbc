@@ -4447,9 +4447,14 @@ mod cross_claim_memo_tests {
         assert_eq!(eval("left_none"), eval("right_none"));
     }
 
-    // FAIL-CLOSED ROUTE CONTROL for the claim-run route defect (DESIGN §5). A `test fn`/claim run
-    // is executed in Hermetic mode (see `claim_run_execution_mode` in main.rs): it verifies against
-    // declared mocks and must NEVER perform a real host effect. This fixture declares a shell effect
+    // INTERPRETER-LAYER fail-closed control for the claim-run route defect (DESIGN §5). A claim run is
+    // executed in Hermetic mode — the mode is chosen by the ONE shared authority
+    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb and `claim_batch` both
+    // call; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
+    // mock), while `main.rs::claim_run_mode_tests` pins the route half (the claim route selects Hermetic
+    // AND discriminates Wet). This is the INTERPRETER layer, so it drives `InterpContext::new(.., Hermetic)`
+    // directly; the route-driven test in main.rs is what exercises the mode the route actually selects.
+    // This fixture declares a shell effect
     // with NO `mock_response` (no mock bound on the entry route). Under Hermetic it must refuse typed
     // (`no mock_response ... refusing`) via `eval_mock_response`, and NEVER reach `dispatch_shell` --
     // so nothing is spawned against the host. Before the fix, `gunbc run --claim-run` ran this entry

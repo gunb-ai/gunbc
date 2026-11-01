@@ -1828,13 +1828,16 @@ mod claim_run_mode_tests {
         );
         let verdict = run_one_function(&ctx, "witness", "f.dag", &[], true);
         let message = verdict.message.clone().unwrap_or_default();
-        assert_ne!(
-            verdict.status, 2,
-            "the Wet route must DISPATCH the effect, not take the typed-refusal exit 2 (got: {message})"
-        );
+        // The discriminator is the typed refusal, not the exit code: under Wet the REAL transport is
+        // attempted (the shell spawn at the nonexistent absolute path fails and evaluates to a normal
+        // dispatch outcome), so the run does NOT surface the `no mock_response` typed refusal that the
+        // Hermetic claim route produces on the identical fixture. (The exit code is not asserted: a
+        // dispatch failure may surface as a caught panic (exit 2) or a FAIL verdict (exit 1); either
+        // way it is not the typed unbound-mock refusal — that is what this control pins.)
         assert!(
             !message.contains("mock_response"),
-            "the Wet route must not refuse for an unbound mock (that is the fail-open the fix closes); got: {message}"
+            "the Wet route must DISPATCH the effect, not refuse it for an unbound mock (that \
+             fail-closed refusal is produced only by the Hermetic claim mode); got: {message}"
         );
     }
 }
