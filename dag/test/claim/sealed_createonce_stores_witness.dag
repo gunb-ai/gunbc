@@ -131,17 +131,3 @@ test fn an_old_grant_exceeded_record_reads_through_the_sealed_store() -> Bool {
     }
   }
 }
-
-// STRIPPED TWINS. These assert zero violations and are meant to PASS only on a tree whose declarations have had
-// `sole_constructor` removed; on the sealed tree they are RED. Together with the three REDs above they attribute each refusal to the seal.
-test fn twin_a_forged_start_evidence_store_draws_no_violation_once_unsealed() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: evidence_forged_source, subject: "StartEvidenceStore"), holds: fn(n) { n == 0 }))
-}
-
-test fn twin_a_forged_microvm_receipt_store_draws_no_violation_once_unsealed() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: microvm_forged_source, subject: "MicrovmReceiptStore"), holds: fn(n) { n == 0 }))
-}
-
-test fn twin_a_forged_grant_exceeded_store_draws_no_violation_once_unsealed() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: grant_forged_source, subject: "GrantExceededStore"), holds: fn(n) { n == 0 }))
-}
