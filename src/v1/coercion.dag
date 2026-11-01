@@ -23,6 +23,8 @@ import std.target_representation {
 
 import extdeps.languages.rust.representation { RustRepresentation, rust_exact_type_checkpoint, rust_representation_eq }
 
+import gunbc.rust_integer_width_bindings { rust_integer_width_realization }
+
 import gunbc.rust_source_type_bindings { rust_source_type_binding_rows, checkpoint_row_migration_rows, rust_source_variant_value_rows }
 
 import std.types { container_template_algebra, canonical_container_names, NonEmptyStr }
@@ -494,7 +496,10 @@ fn rust_exact_realization_decision(source: DeclarationRef?) -> TypeRealizationDe
         Present { value: cp } => Realized { checkpoint: cp, ground: GroundedByCheckpointRow }
         Absent => RealizationRefused { cause: BoundRepresentationHasNoRealizationRow { decl_name: b.source.decl_name as String } }
       }
-    ExactBindingAbsent => Unrealized
+    ExactBindingAbsent => match source {
+      Present { value: declaration } => rust_integer_width_realization(source: declaration)
+      Absent => Unrealized
+    }
     ExactBindingAmbiguous { candidate_count: _ } => RealizationRefused { cause: ExactBindingAmbiguousForOneDeclaration }
     ExactSourceIdentityUnavailable { cause: c } => RealizationRefused { cause: ExactSourceIdentityAbsent { detail: c } }
   }

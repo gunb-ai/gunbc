@@ -1,10 +1,11 @@
 module gunbc.rust_integer_width_bindings
 
 import std.types { List, Bool, String }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.optional { Present, Absent }
 import std.integer { Signed, Unsigned }
 import std.target_representation { SourceTypeTargetBinding }
+import std.coercion { TypeRealizationDecision, TypeCheckpoint, Realized, Unrealized, RealizationRefused, GroundedByCheckpointRow, ExactBindingAmbiguousForOneDeclaration, BoundRepresentationHasNoRealizationRow }
 import extdeps.languages.rust.primitives {
   RustPrimitive, IntegerPrimitive, NonIntegerPrimitive,
   TargetCarrier, BitCarrier, ByteCarrier, Word16Carrier, Word32Carrier,
@@ -77,4 +78,31 @@ fn integer_width_alias_name(width: StandardIntegerType) -> String {
 fn integer_width_source_declarations(width: StandardIntegerType) -> List<DeclarationRef> {
   let name = integer_width_alias_name(width: width)
   [decl_ref(module_path: "std.integer", decl_name: name), decl_ref(module_path: "v2.std.integer", decl_name: name)]
+}
+
+// The declaration lookup and target selection are one decision. An authored width with a missing
+// or ambiguous primitive refuses; it must not fall back to an opaque marker. Non-width identities
+// return Unrealized so the existing exact-binding owner can handle them.
+fn rust_integer_width_realization(source: DeclarationRef) -> TypeRealizationDecision {
+  let widths = filter(integer_standard_integer_type_roster, width =>
+    any(integer_width_source_declarations(width: width), declaration => declaration_ref_eq(a: declaration, b: source)))
+  if count(widths) == 0 { Unrealized }
+  else if count(widths) != 1 { RealizationRefused { cause: ExactBindingAmbiguousForOneDeclaration } }
+  else {
+    match first(widths) {
+      Absent => RealizationRefused { cause: BoundRepresentationHasNoRealizationRow { decl_name: source.decl_name as String } }
+      Present { value: width } => match rust_integer_width_primitive(width: width) {
+        Absent => RealizationRefused { cause: BoundRepresentationHasNoRealizationRow { decl_name: source.decl_name as String } }
+        Present { value: primitive } => match primitive {
+          NonIntegerPrimitive { target_name: _, algebra: _, carrier: _, is_copy: _ } =>
+            RealizationRefused { cause: BoundRepresentationHasNoRealizationRow { decl_name: source.decl_name as String } }
+          IntegerPrimitive { target_name: name, algebra: _, carrier: _, range_min_inclusive: _, range_max_inclusive: _, is_copy: copy, overflow: _ } =>
+            Realized { checkpoint: TypeCheckpoint {
+              dag_name: source.decl_name as String, target_type: name, grounding_type: name,
+              default_expr: Absent, is_copy: Present { value: copy }, literal_suffix: Absent
+            }, ground: GroundedByCheckpointRow }
+        }
+      }
+    }
+  }
 }

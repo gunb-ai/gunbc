@@ -1,6 +1,5 @@
 module std.machine_constraints
 
-import std.constructors { Phantom }
 import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -76,13 +75,17 @@ data machine_width_literal_roster_frontier: DissolutionCondition = unbound_disso
   description: "Per-kind literal admissibility at a kinded type-argument position. A Nat literal is admitted by a language-level rule rather than by the kind's declared arms, so MachineWidth cannot express WHICH literals it admits and a nonsensical width typechecks exactly as a real one does. DISSOLVES ON a kind being able to declare its admissible literal domain -- SUFFICIENT FOR the wall to refuse a literal outside it at the same position and with the same located diagnostic it already gives a named non-inhabitant, so the literal and named halves reach one rung. Five carriers were tried and enumerated at this module's header; each fails because a literal is not a name, so admitting one needs a compiler-held convention mapping literals to an arm -- the stringly proxy this kind exists to remove. Not dissolved by adding an arm, and not by widening the wall to refuse every literal, which would refuse the four live MachineWidth sites the corpus writes as bare integers." as NonEmptyStr
 )
 
-// TEMPORARY DECLARATION, not the intended integer-width meaning. The operator ruling
-// gunbc.design_ruling.machine_width_composition_has_an_intersection_carrier (2026-11-01)
-// gives Int/UInt intersected with MachineWidth an inhabited, range-restricted carrier.
-// The Phantom realization remains only until integer_width_carrier_realization_frontier below
-// is discharged. Do not make Compose universally transparent: unrelated algebras are unchanged,
-// and integer-width composition must stay folded so the existing literal wall sees its width.
-type Compose<Algebra, MachineConstraint> = Phantom
+// INTEGER-WIDTH COMPOSITION IS AN INHABITED INTERSECTION under
+// gunbc.design_ruling.machine_width_composition_has_an_intersection_carrier (2026-11-01).
+// Opaque syntax keeps the constrained constructor folded: v2.std.type_binder OpaqueTypeDecl
+// and infer_type_alias_unfolded_at preserve its identity and arguments without inspecting an
+// alias body. Existing two-parameter precedent: the local Compose<carrier, dimension> in
+// test.claim.self_host_emitted_call_target_realization_witness
+// w_alias_rhs_leaf_declared_locally_shadows_foreign_declarer.
+// Opaqueness is NOT permission to construct a value. Only the ruled integer-width intersection
+// has admission and realization rows; arbitrary Compose remains uninhabited and unrealized.
+// Never replace this with = Algebra: that discards the constraint and bypasses the literal wall.
+type Compose<Algebra, MachineConstraint>
 
 // Construction is a compiler-enforced checked conversion, not a record whose callers may forge
 // its value. A literal is checked by the existing located literal wall; a nonliteral narrowing or

@@ -154,7 +154,7 @@ import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion {
-  coerce_primitive_type, is_copy, target_callable, rust_lookup_exact_binding,
+  coerce_primitive_type, is_copy, target_callable, rust_lookup_exact_binding, rust_exact_realization_decision,
   declaration_realizes_natively_on_rust, type_reference_realization, declaration_realization,
   type_realization_decision, realized_checkpoint, realization_host_numeric_spelling,
   realization_is_host_numeric, provenance_declares_structurally, target_checkpoints,
@@ -162,7 +162,7 @@ import v1.compiler.coercion {
 }
 import std.coercion {
   TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent,
-  TypeRealizationDecision
+  TypeRealizationDecision, Realized, Unrealized, RealizationRefused, realization_refusal_label
 }
 import v1.compiler.dag_collect_support { connective_name }
 import v1.compiler.trait_derive_emit {
@@ -1036,7 +1036,11 @@ fn rust_exact_binding_spelling(source: DeclarationRef?, grounding: Bool) -> Stri
       }
     ExactBindingAmbiguous { candidate_count: k } =>
       Present { value: emit_rust_compile_error_expr(message: concat("ambiguous exact Rust binding: ", to_string(value: k), " rows for one declaration")) }
-    ExactBindingAbsent => none
+    ExactBindingAbsent => match rust_exact_realization_decision(source: source) {
+      Realized { checkpoint: cp, ground: _ } => Present { value: if grounding { cp.grounding_type } else { cp.target_type } }
+      Unrealized => none
+      RealizationRefused { cause: cause } => Present { value: emit_rust_compile_error_expr(message: realization_refusal_label(cause: cause)) }
+    }
     ExactSourceIdentityUnavailable { cause: _ } => none
   }
 }

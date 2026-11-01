@@ -4937,6 +4937,9 @@ fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIn
                     infer_type_alias_rhs(declared: declared, aliased: aliased, args: denotation.type_arguments)
                   }
                 GenericTypeDecl { binders: _, member: _ } => optional_absent()
+                // Opaque constrained constructors, including std.machine_constraints.Compose,
+                // retain identity and all arguments here. Their folding does not depend on a
+                // Phantom alias body; infer_machine_width_of still sees the same declared head.
                 OpaqueTypeDecl { binders: _ } => optional_absent()
                 NotATypeDecl => optional_absent()
                 PlainTypeDecl { member: _ } => optional_absent()
