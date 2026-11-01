@@ -15297,7 +15297,7 @@ fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> A
 }
 
 fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> List<BeltExitDrainEntry> {
-  match move(root, entry, RoleClaimed, RoleHandedOff) {
+  match move(root, entry, RoleClaimed, RolePending) {
     Absent => [] as List<BeltExitDrainEntry>
     Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: RoleClaimed, to: RolePending }, cause: why }]
   }
@@ -15341,10 +15341,10 @@ fn belt_exit_drain_at(root: String, enqueue: fn(String, String) -> BeltObligatio
 // afterwards, so a claimed entry is handed in the pass that claimed it. A worker's launch is owed only for
 // a worker entry whose claim succeeded.
 fn belt_exit_drain_moving_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue, launch: fn() -> BeltObligationEnqueue, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, SpoolRole, SpoolRole) -> String?) -> BeltExitDrain {
+  let reconciled = belt_exit_running_reconcile_at(root: root, observe: observe, move: move)
   match belt_exit_role_list(root: root, role: RolePending) {
     SpoolListingUnreadable { reason } => BeltExitDrainRefused { reason: reason }
     SpoolListed { names: inbox } => {
-      let reconciled = belt_exit_running_reconcile_at(root: root, observe: observe, move: move)
       let rescues = inbox |> filter(n => belt_exit_entry_is_obligation(entry: n))
       let names = inbox |> filter(n => !belt_exit_entry_is_obligation(entry: n))
       let rescued = rescues |> flat_map(n => belt_exit_obligation_entry_at(root: root, entry: n, observe: observe, move: move))

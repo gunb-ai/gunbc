@@ -45,6 +45,16 @@ fn record(root: String, name: String) -> Bool {
   }
 }
 
+// The claimant's boot is not this boot: a claim made before a host restart carries the previous boot id,
+// which is the evidence the requeue is gated on (spool_queue_boot_evidence).
+fn plant_previous_boot(root: String, name: String) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "sh", args: ["-c", "printf previous-boot > \"$1\"", "sh", join([spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleClaimed), "/", name, "/claim-boot-id"], "")]), workdir: "/") {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
 fn names_in(root: String, stage_is_queued: Bool) -> List<String> {
   match spool_queue_list(store: spool_open(kind: SpoolAttemptExit, instance_root: root), role: if stage_is_queued { RoleHandedOff } else { RolePending }) {
     SpoolListed { names } => names
@@ -225,11 +235,12 @@ test fn a_lone_orphaned_claim_is_recovered_by_the_drain_alone() -> Bool {
   let first = record(root: root, name: worker_exit)
   let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let dead_run_claim = claimed_of(root: root)
+  let planted = plant_previous_boot(root: root, name: worker_exit)
   let stranded = names_at(root: root, stage: RoleClaimed) == [worker_exit] && count(names_at(root: root, stage: RolePending)) == 0 && count(names_at(root: root, stage: RoleHandedOff)) == 0
   let boot = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let adopted = claimed_of(root: root)
   let settled = belt_exit_entries_settle_at(root: root, claimed: adopted)
-  first && dead_run_claim == [worker_exit] && stranded && sweep_started_for_attempt(drained: boot) && adopted == [worker_exit]
+  first && planted && dead_run_claim == [worker_exit] && stranded && sweep_started_for_attempt(drained: boot) && adopted == [worker_exit]
     && count(settled) == 0 && count(names_at(root: root, stage: RoleClaimed)) == 0 && names_at(root: root, stage: RoleDone) == [worker_exit]
 }
 
@@ -259,13 +270,14 @@ test fn a_claimant_killed_at_its_run_bound_is_rescued_by_its_stop_hook_entry() -
   let first = record(root: root, name: worker_exit)
   let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let dead_run_claim = claimed_of(root: root)
+  let planted = plant_previous_boot(root: root, name: worker_exit)
   let hook = record(root: root, name: obligation_exit)
   let while_stopping = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => live())
   let kept = names_at(root: root, stage: RolePending) == [obligation_exit] && names_at(root: root, stage: RoleClaimed) == [worker_exit]
   let after_exit = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let adopted = claimed_of(root: root)
   let settled = belt_exit_entries_settle_at(root: root, claimed: adopted)
-  hook_renders && first && hook && dead_run_claim == [worker_exit] && kept && sweep_started_for_attempt(drained: after_exit) && adopted == [worker_exit]
+  hook_renders && first && planted && hook && dead_run_claim == [worker_exit] && kept && sweep_started_for_attempt(drained: after_exit) && adopted == [worker_exit]
     && count(settled) == 0 && count(names_at(root: root, stage: RolePending)) == 0 && count(names_at(root: root, stage: RoleClaimed)) == 0
     && any(names_at(root: root, stage: RoleDone), e => e == worker_exit) && any(names_at(root: root, stage: RoleDone), e => e == obligation_exit)
 }
