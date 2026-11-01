@@ -1,0 +1,86 @@
+module gunbc.serving.rented_reclaim
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationIdentity, RentedAllocationEnrollable, RentedAllocationNotEnrollable, rented_allocation_enrollment }
+import gunbc.serving.rented_replica { rented_replica_wire }
+
+// A RECLAIM TAKES AWAY ENDPOINTS. IT DOES NOT DECIDE WHERE ANYTHING GOES NEXT.
+//
+// The legs of a reclaim already have owners: gunbc.serving.rented_release answers each one (drain, grant
+// revoke, lease anchor, store close, destroy) from a reading, and product.fabric.flex_vast_loop runs them for
+// the fleet. What had no home was the OTHER half of a reclaim -- the sessions that were standing on the card
+// when it went away. This module models exactly that half, and stops at the boundary: it reports which
+// endpoints a reclaimed allocation took away and which seats were standing on them, and it hands those seats
+// to the front door as an obligation. It does not choose a card, does not rank a survivor, and does not keep a
+// binding ledger: choosing is placement's job (gunbc.serving.router_realization forbids a router from
+// deciding a host, and a reclaim pass that picked survivors would be that same fault with a friendlier name).
+
+// WHAT THE RECLAIM KNOWS ABOUT THE ALLOCATION IT JUST RELEASED: the replica wires that were enrolled for it,
+// and -- because an allocation can be released before it ever enrolled anything -- the obligations that said
+// it never did. A reclaim that reported "no endpoints lost" for an allocation whose route was refused reads
+// the same as one that lost nothing because nothing was ever standing there, and the two are different facts
+// worth keeping apart.
+type RentedReclaimLoss { allocation: RentedAllocationIdentity, replica_wires: List<String>, never_enrolled: List<NonEmptyStr> }
+
+// THE ENDPOINTS A RECLAIM TAKES AWAY are exactly the enrollment rows the allocation implied, read from the
+// same derivation the enrollment roster is built from (gunbc.serving.rented_allocation
+// rented_allocation_enrollment, which gunbc.serving.rented_enrollment_from_allocations folds over a
+// population). One derivation, so a reclaim cannot lose an endpoint the roster never carried, nor keep one it
+// did.
+fn rented_reclaim_loss(allocation: RentedServingAllocation) -> RentedReclaimLoss {
+  match rented_allocation_enrollment(a: allocation) {
+    RentedAllocationEnrollable { allocation: id, enrollment: e } =>
+      RentedReclaimLoss { allocation: id, replica_wires: [rented_replica_wire(id: e.endpoint.replica)], never_enrolled: [] as List<NonEmptyStr> }
+    RentedAllocationNotEnrollable { allocation: id, obligation: o } =>
+      RentedReclaimLoss { allocation: id, replica_wires: [] as List<String>, never_enrolled: [o] }
+  }
+}
+
+// A SEAT STANDING ON A CARD, as supplied by whoever holds the bindings. Both halves are existing renderings:
+// the replica wire is gunbc.serving.rented_replica rented_replica_wire, the seat is the front door's own seat
+// reference wire (gunbc.harness.harness_seat harness_seat_reference_wire). The pair is taken as an INPUT on
+// purpose: a reclaim pass that kept its own ledger of who sits where would be a second binding ledger, which
+// is what the router contract refuses.
+type RentedReclaimSeat { replica: String, seat: String }
+
+// THE OBLIGATION A RECLAIM LEAVES BEHIND, stated once and identically for every orphaned seat: the seat must
+// ask placement again, and the endpoint incarnation it had is not reusable -- the next attempt is a new
+// incarnation of the replica, not a re-attachment to a card that no longer exists.
+data rented_reclaim_replacement_obligation: NonEmptyStr = "the rented card this seat was bound to has been reclaimed; the seat must ask placement again, on a new endpoint incarnation -- the reclaimed endpoint's incarnation is not reusable"
+
+// WHICH SEATS THE RECLAIM ORPHANS: those standing on a wire this reclaim took away. Everything else is left
+// untouched, including seats on other cards of the same cohort -- a reclaim that sweeps the cohort is how a
+// single destroyed card becomes an outage across cards that are still paid for and still running.
+fn rented_reclaim_orphaned_seats(loss: RentedReclaimLoss, held: List<RentedReclaimSeat>) -> List<RentedReclaimSeat> {
+  filter(held, s => any(loss.replica_wires, w => w == s.replica))
+}
+
+// THE HAND-OFF, in the shape the front door consumes: a seat, the replica it lost, and the obligation. There
+// is no destination field to fill in. That is the whole claim of this module, and it is a type-level claim
+// rather than a comment: a caller cannot pass a chosen card through a structure that has no place for one.
+type RentedReclaimHandoff { seat: String, replica: String, obligation: NonEmptyStr }
+
+fn rented_reclaim_handoffs(loss: RentedReclaimLoss, held: List<RentedReclaimSeat>) -> List<RentedReclaimHandoff> {
+  map(rented_reclaim_orphaned_seats(loss: loss, held: held),
+      s => RentedReclaimHandoff { seat: s.seat, replica: s.replica, obligation: rented_reclaim_replacement_obligation })
+}
+
+// DECLARED FRONTIER (DESIGN 3c). The triggers here are descriptions rather than declaration references,
+// following the module this one drives (gunbc.serving.rented_release records its own frontier rows the same
+// way): what is missing is a CALL in existing code, not a new named capability this repo can cite today, and a
+// fabricated citation is a worse record than an honest sentence.
+data rented_reclaim_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_reclaim", decl_name: "rented_reclaim_handoffs"),
+    reason: "Nothing hands an orphaned seat to the front door in production: the reclaim legs run (product.fabric.flex_vast_loop runs gunbc.serving.rented_release's decisions) and the obligation this module states has no consumer, so a reclaimed card silently strands the sessions that were standing on it. The callout that would consume this -- turning a refusal or a lost seat into a SubmitDemand at the single demand home (product.fabric.demand) -- belongs to the serving router's front-door work (calm-moth-166), not to this pass.",
+    dissolution: unbound_dissolution(description: "trigger: the front door's refusal-to-demand callout (product.fabric.demand SubmitDemand, the same callout the ceiling refusal needs) is fed by a reclaim pass over these handoffs -- sufficient for a reclaimed card to put its sessions back into placement with no hand-written re-placement arm in the flex pass and no failover decision anywhere in the router")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_reclaim", decl_name: "rented_reclaim_orphaned_seats"),
+    reason: "The seat population is a parameter nobody supplies in production yet: the bindings live in the harness seat ledger and the front door's seat permits, and no pass reads them against a reclaim receipt, so today the orphan set is computed only by this module's witnesses.",
+    dissolution: unbound_dissolution(description: "trigger: the flex release pass, having taken a rented_release_receipt, reads the seats standing on the reclaimed replica (the harness seat pool for that replica wire) and calls this over them -- sufficient for the orphan set to be observed against a real reclaim rather than a fixture")
+  ),
+]

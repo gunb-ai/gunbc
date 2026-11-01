@@ -1,0 +1,70 @@
+module test.claim.serving.rented_reclaim_witness
+
+import std.types { Bool, String, Port }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.serving.rented_reclaim {
+  RentedReclaimLoss, RentedReclaimSeat, rented_reclaim_loss, rented_reclaim_orphaned_seats, rented_reclaim_handoffs,
+  rented_reclaim_replacement_obligation,
+}
+import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The fixture allocation's engine listens on 8000 (test.claim.serving.rented_allocation_witness a_allocation),
+// so the same route pointed at another port is an allocation that never enrolled -- which is a different
+// reclaim fact from losing an endpoint, and the witnesses keep them apart.
+data fixture_engine_port: Port = 8000
+
+// The wire this reclaim took away, read back out of its own result rather than reconstructed by hand: a
+// witness that retypes the wire it is checking cannot catch a change in how the wire is rendered.
+fn w_lost(loss: RentedReclaimLoss) -> String {
+  match first(loss.replica_wires) { Present { value: w } => w _ => "" }
+}
+
+fn s_holds(w: String, label: String) -> RentedReclaimSeat { RentedReclaimSeat { replica: w, seat: label } }
+
+// A RECLAIM TAKES AWAY THE ENDPOINTS THE ALLOCATION IMPLIED.
+test fn a_reclaimed_allocation_loses_the_endpoints_it_enrolled() -> Bool {
+  let loss = rented_reclaim_loss(allocation: a_allocation(route: a_tunnel(target_port: fixture_engine_port)))
+  count(loss.replica_wires) == 1 && count(loss.never_enrolled) == 0
+}
+
+// THE ORPHAN SET IS THE SEATS ON THAT CARD, AND ONLY THOSE. A seat on a different replica wire in the same
+// cohort is left standing: sweeping the cohort is how one destroyed card becomes an outage across cards that
+// are still running and still paid for.
+test fn a_seat_on_a_reclaimed_card_is_orphaned_and_a_seat_on_another_is_not() -> Bool {
+  let loss = rented_reclaim_loss(allocation: a_allocation(route: a_tunnel(target_port: fixture_engine_port)))
+  let held = [s_holds(w: w_lost(loss: loss), label: "seat-on-reclaimed-card"), s_holds(w: "rented-node[other] device[0] name[other]", label: "seat-on-a-surviving-card")]
+  let orphaned = rented_reclaim_orphaned_seats(loss: loss, held: held)
+  count(orphaned) == 1 && any(orphaned, s => s.seat == "seat-on-reclaimed-card")
+}
+
+// THE RECLAIM NAMES NO DESTINATION. The hand-off carries the seat, the replica wire it lost, and the
+// obligation -- and there is no field in the type to put a chosen card in, which is the point: this pass does
+// not pick a survivor. So the assertion is that the surviving card appears NOWHERE in what the reclaim hands
+// off, and that the obligation says the seat must ask placement again.
+test fn the_reclaim_names_no_destination_for_an_orphaned_seat() -> Bool {
+  let loss = rented_reclaim_loss(allocation: a_allocation(route: a_tunnel(target_port: fixture_engine_port)))
+  let held = [s_holds(w: w_lost(loss: loss), label: "seat-on-reclaimed-card"), s_holds(w: "rented-node[other] device[0] name[other]", label: "seat-on-a-surviving-card")]
+  let handoffs = rented_reclaim_handoffs(loss: loss, held: held)
+  count(handoffs) == 1
+    && all(handoffs, h => h.seat == "seat-on-reclaimed-card" && h.replica == w_lost(loss: loss))
+    && !any(handoffs, h => string_contains(h.replica, "surviving-card"))
+    && string_contains(rented_reclaim_replacement_obligation as String, "placement")
+}
+
+// AN ALLOCATION THAT NEVER ENROLLED NOTHING LOSSES NOTHING, AND SAYS WHICH. An allocation whose route landed
+// off the engine port enrolled no endpoint, so no seat can be orphaned by releasing it -- and the loss record
+// carries the obligation that says it never enrolled, rather than reading as a clean reclaim of a quiet card.
+test fn an_allocation_that_enrolled_nothing_orphans_no_seat_and_says_so() -> Bool {
+  let loss = rented_reclaim_loss(allocation: a_allocation(route: a_tunnel(target_port: 9999)))
+  let held = [s_holds(w: "rented-node[fixture] device[0] name[fixture]", label: "seat-on-a-running-card")]
+  count(loss.replica_wires) == 0 && count(loss.never_enrolled) == 1 && count(rented_reclaim_orphaned_seats(loss: loss, held: held)) == 0
+}
+
+// THE PRODUCTION READING, PINNED: nobody feeds this a seat population yet, and an empty one hands off nothing.
+// The frontier row, not this case, is what says the pass is unwired.
+test fn an_empty_seat_population_hands_off_nothing() -> Bool {
+  let loss = rented_reclaim_loss(allocation: a_allocation(route: a_tunnel(target_port: fixture_engine_port)))
+  count(rented_reclaim_handoffs(loss: loss, held: [] as List<RentedReclaimSeat>)) == 0
+}
