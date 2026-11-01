@@ -2,6 +2,7 @@ module test.claim.machine_intake.megarac_media_0_45_3_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
+import std.measure { second, second_count }
 import std.algebra { FreeSemigroup, non_empty_singleton, string_contains }
 import std.optional { Present, Absent }
 import extdeps.bmc.megarac {
@@ -31,7 +32,10 @@ import extdeps.bmc.ipmitool_observed_output {
 }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
-import gunbc.megarac_media_model { megarac_cleared_cd_at_the_current_build }
+import gunbc.megarac_media_model {
+  megarac_cleared_cd_at_the_current_build, megarac_start_media,
+  MegaRacMediaWorld, MegaRacImage, MegaRacShare,
+}
 import gunbc.machine_intake.megarac_media_row_reading {
   boot_run_40258937016_end_media_row, boot_run_40264233543_end_media_row,
   boot_run_40258937016_started_session_marker, mtcollins1_cd_row_ui_attestation,
@@ -86,6 +90,9 @@ import gunbc.machine_intake.megarac_media_attach {
   UnreadStopRowIsTheWantedImage,
   UnreadStopImageForeign,
   unread_row_stop_refusal_text,
+  attach_readiness,
+  ReadinessNotPresented,
+  ReadinessUncatalogued,
 }
 
 // THE 0.45.3 MEDIA CONVERGE, as boot run 40038339650 met it: firmware 0.45.3 (the current build since the
@@ -860,5 +867,81 @@ test fn w_the_boot_fixture_renders_the_cleared_cd_on_the_wire_the_current_build_
           RedirectionStatusKnown { firmware: f, status: RedirectionStopped } => bmc_firmware_release_identity_eq(a: f, b: mtcollins1_identity.firmware)
           _ => false
         }
+  }
+}
+
+fn interlude_world() -> MegaRacMediaWorld {
+  MegaRacMediaWorld {
+    sessions: [],
+    next_session: 0,
+    share: MegaRacShare { server: "192.168.1.201", source_path: "/srv/bmc", share_type: "nfs" },
+    mount_cd: 1,
+    cd_error_code: 0,
+    images: [MegaRacImage { image_name: boot6_leftover_iso as String, image_index: 5 }],
+    cd: megarac_cleared_cd_at_the_current_build(),
+    ready_after: second(count: 12),
+    withdraw_at: none,
+    withdraw_after_ready: none,
+    error_after_ready: none,
+    error_clears_on_stop: false,
+    stop_at_ready: none,
+  }
+}
+
+fn row_at(name: String, status: String, session: String) -> String {
+  concat("{\"id\":1,\"media_type\":1,\"media_index\":0,\"session_index\":", concat(session, concat(",\"image_name\":\"", concat(name, concat("\",\"redirection_status\":", concat(status, "}"))))))
+}
+
+// THE INTERVAL BETWEEN THE START AND READINESS IS A PER-BUILD READING TOO. The cleared row moved with the
+// identity in this transition; the row the start leaves behind has to move with it, or the boot refuses at
+// attach on a code the build was never read answering. What THIS build has been read as, for a CD row: the
+// started pair (boot run 40258937016: redirection_status 1 beside session_index 0) and, naming an image, the
+// pair boot 6 read back (40264233543: 16 beside session_index 255, the leftover boot 5 left). No 0.45 reading
+// of this controller has ever returned 100 or 0 -- extdeps.bmc.megarac leaves both uncatalogued at this release
+// for exactly that reason -- so the model's interlude carries the read stopped pair, and the pairing is pinned
+// here: the status and marker the start leaves are the ones the row reading recorded (not typed), the interval
+// is still timed, and the 0.32-era interlude code is NOT what this build is claimed to answer.
+test fn w_the_start_leaves_the_row_at_the_pair_this_build_was_read_as() -> Bool {
+  let started = megarac_start_media(world: interlude_world(), image_name: boot6_leftover_iso as String, image_index: 5, now: second(count: 100))
+  started.cd.image_name == (boot6_leftover_iso as String)
+    && started.cd.redirection_status == boot_run_40264233543_end_media_row.redirection_status
+    && started.cd.session_index == boot_run_40264233543_end_media_row.session_index
+    && started.cd.session_index == megarac_no_redirection_session_index
+    && started.cd.redirection_status != 100
+    && started.cd.redirection_status != 0
+    && match started.cd.ready_at {
+        Present { value: at } => second_count(s: at) == 112
+        Absent => false
+      }
+}
+
+// THE INTERLUDE WAITS AT THIS BUILD, IT DOES NOT REFUSE. A row naming the wanted image at the pair above is
+// idle, so the policy's first look after its own start-media is NOT PRESENTED -- which the readiness fold
+// treats as pending after a start, so the attempt polls and the started pair can arrive at ready_at. This is
+// the arm the boot's attach depends on.
+test fn w_the_interlude_waits_at_this_build_rather_than_refusing() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match attach_readiness(answered: true, body: rows1(row_at(name: boot6_leftover_iso as String, status: "16", session: "255")), image_name: boot6_leftover_iso, firmware: read) {
+        ReadinessNotPresented { configurations: _ } => true
+        _ => false
+      }
+  }
+}
+
+// AND THE 0.32 INTERLUDE CODE WOULD REFUSE HERE -- the discriminating arm of the claim above. Had the model
+// kept 0.32's 100, the first look after the start would come back UNCATALOGUED on the wanted image, which is
+// a refusal, not a wait: that is the exact stop the boot witness hit. If anyone grounds 100 at this release
+// with a reading, this claim goes red and says so in the arm it names.
+test fn w_the_0_32_interlude_code_would_refuse_at_this_build() -> Bool {
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: read } =>
+      match attach_readiness(answered: true, body: rows1(row_at(name: boot6_leftover_iso as String, status: "100", session: "255")), image_name: boot6_leftover_iso, firmware: read) {
+        ReadinessUncatalogued { image_name: n, unread: u, configurations: _ } =>
+          n == (boot6_leftover_iso as String) && u == RedirectionUnreadCode { firmware: read, wire: 100 }
+        _ => false
+      }
   }
 }
