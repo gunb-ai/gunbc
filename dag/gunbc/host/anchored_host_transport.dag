@@ -221,16 +221,16 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_per_boot"),
-    reason: "anchored_host_transport_per_boot and per_boot_pin_from_console_line are called only by this module's witness: nothing reads the BMC serial console (SOL) of a boot, nothing supplies expected_boot_id from a real subject, and no production fold routes a transport through the per-boot binding (anchored_host_transport_live still compares against the row's static anchor)",
+    reason: "anchored_host_transport_per_boot and per_boot_pin_from_console_line are called by this module's witness and, as the proposal, by gunbc.runner.runner_host_medium runner_host_key_observation (which supplies the boot id from the bound capture envelope) and anchored_host_transport_live_per_boot; no production fold holds a host capture and calls that live route (runner_qualification_attempt_run calls anchored_host_transport_live with the static anchor)",
     dissolution: unbound_dissolution(
       description: "dissolves when a production fold acting on a mtcollins1 boot reads that boot's SOL console, parses its key line with per_boot_pin_from_console_line, supplies the subject's boot id as expected_boot_id, and refuses the leg on any non-Bound arm from anchored_host_transport_per_boot; a witness claim does not fire this"
     )
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "per_boot_console_marker"),
-    reason: "the console-line grammar (GUNBC-HOST-KEY boot_id=<id> ssh-ed25519 <base64> SHA256:<fingerprint>) is a SUPPLIED boundary value with no producer: no runner-medium stage generates a host key at boot, prints this line or starts sshd with that key, so the pairing obligation (the real image emits exactly this shape) is open",
+    reason: "the console-line grammar (GUNBC-HOST-KEY boot_id=<id> ssh-ed25519 <base64> SHA256:<fingerprint>) now has a producer, the runner-medium stages host-key-privsep, host-key-gen, host-key-pub, host-key-fingerprint and host-key-sshd, but the pairing obligation is open: the witness renders the stage commands and composes the line from SUPPLIED section bodies, and no execution of the rendered stage on a real or emulated boot has shown it emits exactly this shape; the fleet public key is also not yet seeded as authorized_keys",
     dissolution: unbound_dissolution(
-      description: "dissolves when the runner medium (gunbc.runner.runner_host_medium) has a stage that generates the host key at boot, prints exactly this line on the console and starts sshd with that HostKey, and a claim over the real stage's rendered output parses through per_boot_pin_from_console_line; the line shape in this module is then derived from that stage, not retyped"
+      description: "dissolves when a claim executes the rendered host-key stages on a real or emulated boot of the medium and the captured line parses through per_boot_pin_from_console_line, and an authorized_keys seed for the fleet public key is declared on the medium; the line shape in this module is then derived from that stage, not retyped"
     )
   ),
   frontier_row_decl(
@@ -660,22 +660,43 @@ fn anchored_host_transport_live(host: HostIdentity, attempt_raw: String) -> Anch
       Absent => AnchoredBindingAnchorAbsent {
         cause: join(["no trusted statement about ", host as String, "'s host key exists; nothing contacted. Read obligation: ", row.read_obligation as String], ""),
       }
-      Present { value: anchor } => match shell.Env.Get(name: "GUNBC_HOST_KEY_READBACK_GO").value {
-        Absent => AnchoredBindingRefused {
-          cause: join(["GATED: no live transport to ", host as String, " without GUNBC_HOST_KEY_READBACK_GO (the operator go relayed by merry-fox-82); nothing contacted"], ""),
-        }
-        Present { value: _ } => match prepare_ssh_agent_context(attempt_raw: attempt_raw, key: fleet_automation_ssh_key, fingerprint: fleet_automation_ssh_key_fingerprint as NonEmptyStr, rows: [anchor]) {
-          FleetSshContextRefused { cause: c } => AnchoredBindingRefused { cause: c }
-          FleetSshContextReady { context: context, receipt: _ } => match fleet_locus_ssh_target(host: host) {
-            SshTargetRefused { endpoint: e, refusal: _ } => AnchoredBindingRefused { cause: join(["the fleet endpoint ", e, " for ", host as String, " is not an SSH target"], "") }
-            SshTargetResolved { target: target } =>
-              match run_shell_command_capture(command: anchored_host_key_scan_command(row: row), transport: LocalExec) {
-                ProcessOutputPresent { text: key_text } => anchored_host_transport_of(transport: FleetSsh { target: target, context: context }, presented_key_line: trim(s: key_text))
-                ProcessOutputAbsent => AnchoredBindingRefused { cause: join([host as String, " offered no host key to the scan"], "") }
-                ProcessRefused { exit_code: _, stderr: e } => AnchoredBindingRefused { cause: join(["the host-key scan of ", host as String, " was refused: ", trim(s: e)], "") }
-              }
+      Present { value: anchor } => anchored_host_transport_live_gated(host: host, row: row, anchor: anchor, attempt_raw: attempt_raw, basis: LiveStaticAnchor)
+    }
+  }
+}
+
+// THE PER-BOOT ROUTE, THE SAME COMPOSITION: the anchor is this boot's pin (read off the serial console by
+// gunbc.runner.runner_host_medium runner_host_key_observation) rather than the row's static one, so a row with no
+// stable anchor (mtcollins1) still gets a host-authenticated transport -- and only for the boot the pin names.
+fn anchored_host_transport_live_per_boot(host: HostIdentity, attempt_raw: String, pin: PerBootHostPin, expected_boot_id: NonEmptyStr) -> AnchoredHostBinding {
+  match anchored_host_row_for(host: host) {
+    Absent => AnchoredBindingAnchorAbsent { cause: join(["no anchored row exists for ", host as String], "") }
+    Present { value: row } => anchored_host_transport_live_gated(host: host, row: row, anchor: pin.anchor, attempt_raw: attempt_raw, basis: LivePerBootPin { pin: pin, expected_boot_id: expected_boot_id })
+  }
+}
+
+type LiveBindingBasis
+  = LiveStaticAnchor
+  | LivePerBootPin { pin: PerBootHostPin, expected_boot_id: NonEmptyStr }
+
+fn anchored_host_transport_live_gated(host: HostIdentity, row: AnchoredHostRow, anchor: KnownHostKeyRow, attempt_raw: String, basis: LiveBindingBasis) -> AnchoredHostBinding {
+  match shell.Env.Get(name: "GUNBC_HOST_KEY_READBACK_GO").value {
+    Absent => AnchoredBindingRefused {
+      cause: join(["GATED: no live transport to ", host as String, " without GUNBC_HOST_KEY_READBACK_GO (the operator go relayed by merry-fox-82); nothing contacted"], ""),
+    }
+    Present { value: _ } => match prepare_ssh_agent_context(attempt_raw: attempt_raw, key: fleet_automation_ssh_key, fingerprint: fleet_automation_ssh_key_fingerprint as NonEmptyStr, rows: [anchor]) {
+      FleetSshContextRefused { cause: c } => AnchoredBindingRefused { cause: c }
+      FleetSshContextReady { context: context, receipt: _ } => match fleet_locus_ssh_target(host: host) {
+        SshTargetRefused { endpoint: e, refusal: _ } => AnchoredBindingRefused { cause: join(["the fleet endpoint ", e, " for ", host as String, " is not an SSH target"], "") }
+        SshTargetResolved { target: target } =>
+          match run_shell_command_capture(command: anchored_host_key_scan_command(row: row), transport: LocalExec) {
+            ProcessOutputPresent { text: key_text } => match basis {
+              LiveStaticAnchor => anchored_host_transport_of(transport: FleetSsh { target: target, context: context }, presented_key_line: trim(s: key_text))
+              LivePerBootPin { pin: p, expected_boot_id: b } => anchored_host_transport_per_boot(transport: FleetSsh { target: target, context: context }, expected_boot_id: b, pin: Present { value: p }, presented_key_line: trim(s: key_text))
+            }
+            ProcessOutputAbsent => AnchoredBindingRefused { cause: join([host as String, " offered no host key to the scan"], "") }
+            ProcessRefused { exit_code: _, stderr: e } => AnchoredBindingRefused { cause: join(["the host-key scan of ", host as String, " was refused: ", trim(s: e)], "") }
           }
-        }
       }
     }
   }

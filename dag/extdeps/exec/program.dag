@@ -129,6 +129,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "gunbc.host.cursor_agent_realization", decl_name: "cursor_agent_pinned_program"),
     decl_ref(module_path: "test.claim.cursor_runtime_root_wet_witness", decl_name: "wet_logging_stand_in"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_program"),
+    decl_ref(module_path: "extdeps.ssh.openssh_server_commands", decl_name: "sshd_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "nproc_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_program"),
