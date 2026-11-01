@@ -549,7 +549,7 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_string_length(),
             "std.host_text".to_string(),
             "string_length".to_string(),
-            Rc::new(ProjectionFidelity::ModeledProjection),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_map_insert(),
