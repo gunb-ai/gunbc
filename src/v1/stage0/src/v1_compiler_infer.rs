@@ -275,9 +275,9 @@ pub use crate::v1_compiler_infer_patterns::{
 };
 pub use crate::v1_compiler_infer_resolve::{
     expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
-    is_user_generic_use_site, preserve_nominal_brand_on_resolve, reference_with_declaration,
-    resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
-    ItemResolveResult, NodeResolveResult,
+    is_user_generic_use_site, node_with_declaration, preserve_nominal_brand_on_resolve,
+    reference_with_declaration, resolve_generic_use_decl, resolve_item_types, resolve_node,
+    resolve_node_bounded, ItemResolveResult, NodeResolveResult,
 };
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
     ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
@@ -29796,35 +29796,47 @@ pub fn census_upgrade_type_decl_binding(
             param_names.clone(),
             source_indices.clone(),
         );
-        {
-            let __rb_0_0 = binding.name.clone();
-            let __rb_1_0 = crate::v1_compiler_infer_env::qualify_decl_reference_positions(
-                node.clone(),
-                module_path.clone(),
-                env,
-                excluded,
-            );
-            let __rb_2_0 = binding.provenance.clone();
-            let __rb_3_0 = binding.alias_rhs.clone();
-            let mut __rb_h = binding;
-            match Rc::get_mut(&mut __rb_h) {
-                Some(__rb_r) => {
-                    __rb_r.name = __rb_0_0;
-                    __rb_r.resolved = __rb_1_0;
-                    __rb_r.provenance = __rb_2_0;
-                    __rb_r.alias_rhs = __rb_3_0;
-                }
-                None => {
-                    __rb_h = Rc::new(TypeBinding {
-                        name: __rb_0_0,
-                        resolved: __rb_1_0,
-                        provenance: __rb_2_0,
-                        alias_rhs: __rb_3_0,
-                    });
-                }
-            }
-            __rb_h
-        }
+        let qualified = crate::v1_compiler_infer_env::qualify_decl_reference_positions(
+            node.clone(),
+            module_path.clone(),
+            env,
+            excluded,
+        );
+        let declared_members = match node.connective.clone() {
+            Connective::Conj => true,
+            Connective::Disj => true,
+            _ => false,
+        };
+        let resolved = if declared_members.clone() {
+            crate::v1_compiler_infer_env::node_with_children(
+                qualified.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for member in qualified.children.clone().iter().cloned() {
+                        __result.push(crate::v1_compiler_infer_resolve::node_with_declaration(
+                            member.clone(),
+                            crate::std_decl_ref::decl_field_ref(
+                                module_path.clone(),
+                                binding.name.clone(),
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    member.clone(),
+                                ),
+                            ),
+                        ));
+                    }
+                    __result
+                }),
+            )
+        } else {
+            qualified.clone()
+        };
+        Rc::new(TypeBinding {
+            name: binding.name.clone(),
+            resolved: resolved.clone(),
+            provenance: binding.provenance.clone(),
+            alias_rhs: binding.alias_rhs.clone(),
+        })
     }
 }
 
