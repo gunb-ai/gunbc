@@ -144,3 +144,22 @@ type PowerInputPopulationStanding
   = PowerInputPopulationSpecified { required_inputs: Nat }
   | PowerInputMinimumOneStated { available_inputs: Nat, stated_condition: NonEmptyStr }
   | PowerInputPopulationUnresolved { available_inputs: Nat }
+
+// A FUNCTION A BOARD PROVIDES THAT A HOST CAN COME TO DEPEND ON -- an onboard device or link, or a
+// firmware behaviour -- named agnostically, so each board module can state how ITS manual says the
+// function is switched off. Which functions the fleet admits is policy and lives in the consuming
+// layer (gunbc.fleet.board_function_admission); this hub enumerates no product and dispatches among
+// none. A new arm does not compile until every board module states its switch for it.
+type BoardFunction
+  = BmcManagementFunction
+  | BmcGraphicsController
+  | PcieErrorFirmwareFirstHandling
+
+// HOW A BOARD'S HELD MANUAL SAYS A FUNCTION IS SWITCHED OFF. Silence is SwitchNotStated, a fact about
+// the manual, not a claim that the board has no switch; `coarser` names a stated switch that removes
+// the function only by also removing more than it (a whole-controller disable), which a consumer
+// that admits the rest of that controller may not use as this function's switch.
+type BoardFunctionSwitch
+  = JumperSwitch { designator: NonEmptyStr, off_position: NonEmptyStr, citation: NonEmptyStr }
+  | FirmwareSetupSwitch { menu: NonEmptyStr, item: NonEmptyStr, off_meaning: NonEmptyStr, citation: NonEmptyStr }
+  | SwitchNotStated { coarser: NonEmptyStr? }

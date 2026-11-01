@@ -645,13 +645,14 @@ data design_section_2_to_7_rows: List<DesignRow> = [
   DesignRow {
     proposition: Proposition {
       id: "s3c.consumption",
-      statement: "consumption is the converse of conformance: every declaration a change adds is consumed by a named consumer over an executing route, or it is redundant work by §2 and specification-without-execution by §5, however well modeled it is",
+      statement: "consumption is the converse of conformance: every declaration a change adds, and every dependency a system admits, is consumed by a named consumer over an executing route, or it is redundant work by §2 and specification-without-execution by §5, however well modeled it is; a dependency nothing consumes is not admitted",
       premises: ["s2.minimize-redundancy", "s5.fail-closed"]
     },
     review: ReviewableOnChange { parts: [yes_no_review(
       part: "consumption",
-      question: "Does the change add a declaration -- a type, function, data row, module or witness -- that nothing consumes by execution, or whose only consumer is a typecheck, a grep, or a witness asserting it exists? For each added declaration name the consumer and the route by which it is reached at execution, or the later change that will consume it with its trigger; a declaration with neither is dangling.",
+      question: "Does the change add a declaration -- a type, function, data row, module or witness -- that nothing consumes by execution, or whose only consumer is a typecheck, a grep, or a witness asserting it exists? For each added declaration name the consumer and the route by which it is reached at execution, or the later change that will consume it with its trigger; a declaration with neither is dangling. Does the change enable, install or keep on a dependency -- a package, service, port, kernel module, firmware behaviour or device -- without naming what uses it?",
       tells: [
+        "a change that enables or installs a dependency without naming the consumer that needs it, or that masks a dependency's errors where switching it off was available",
         "a pub declaration with no call site anywhere in the closure the change compiles",
         "a data row no fold reads, or a module no module imports",
         "a witness that asserts a declaration exists or has a shape, rather than exercising it through its consumer",

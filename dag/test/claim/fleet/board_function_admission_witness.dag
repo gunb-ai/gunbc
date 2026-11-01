@@ -1,0 +1,126 @@
+module test.claim.fleet.board_function_admission_witness
+
+import std.types { Bool, List, String }
+import std.decl_ref { decl_ref }
+import extdeps.boards.types {
+  BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling,
+  BoardFunctionSwitch, JumperSwitch, FirmwareSetupSwitch, SwitchNotStated,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog }
+import extdeps.boards.gigabyte { gigabyte_mp72_hb0_catalog }
+import gunbc.fleet.board_function_admission {
+  BoardFunctionRemoval, NothingToRemove, RemovedAtBoard, RemovedByHostAfterBoot,
+  VerifiedByHostObservation, RemovalUnmodeled,
+  HostBoardFunctionPlan,
+  board_functions, board_function_listed, board_function_removal, fleet_board_function_plans,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn removed_at_board_by_jumper(r: BoardFunctionRemoval, designator: String) -> Bool {
+  match r {
+    RemovedAtBoard { switch } => match switch {
+      JumperSwitch { designator: d, off_position: _, citation: _ } => (d as String) == designator
+      FirmwareSetupSwitch { menu: _, item: _, off_meaning: _, citation: _ } => false
+      SwitchNotStated { coarser: _ } => false
+    }
+    _ => false
+  }
+}
+
+fn removed_at_board_by_setup_item(r: BoardFunctionRemoval, item: String) -> Bool {
+  match r {
+    RemovedAtBoard { switch } => match switch {
+      JumperSwitch { designator: _, off_position: _, citation: _ } => false
+      FirmwareSetupSwitch { menu: _, item: i, off_meaning: _, citation: _ } => (i as String) == item
+      SwitchNotStated { coarser: _ } => false
+    }
+    _ => false
+  }
+}
+
+fn removed_by_host_after_boot(r: BoardFunctionRemoval) -> Bool {
+  match r {
+    RemovedByHostAfterBoot { residue: _ } => true
+    _ => false
+  }
+}
+
+fn verified_by_host_observation(r: BoardFunctionRemoval) -> Bool {
+  match r {
+    VerifiedByHostObservation { discriminator: _ } => true
+    _ => false
+  }
+}
+
+fn removal_unmodeled(r: BoardFunctionRemoval) -> Bool {
+  match r {
+    RemovalUnmodeled { cause: _ } => true
+    _ => false
+  }
+}
+
+fn kept_for_reset_roster(r: BoardFunctionRemoval) -> Bool {
+  match r {
+    NothingToRemove { consumer } => consumer == decl_ref(module_path: "gunbc.host.host_reset_subject_roster", decl_name: "reset_subject_roster")
+    _ => false
+  }
+}
+
+// Roster completeness, both directions: every arm is listed (the exhaustive match in
+// board_function_listed), and the list holds each arm once.
+test fn every_board_function_is_listed_once() -> Bool {
+  board_function_listed(f: BmcManagementFunction)
+    && board_function_listed(f: BmcGraphicsController)
+    && board_function_listed(f: PcieErrorFirmwareFirstHandling)
+    && length(board_functions) == 3
+}
+
+// The BMC is admitted for its consumer on both boards, so nothing removes it.
+test fn the_bmc_is_kept_for_power_control_on_both_boards() -> Bool {
+  kept_for_reset_roster(r: board_function_removal(catalog: asrock_altrad8ud_1l2t_catalog, f: BmcManagementFunction))
+    && kept_for_reset_roster(r: board_function_removal(catalog: supermicro_h11ssl_catalog, f: BmcManagementFunction))
+}
+
+// The discriminating pair for the graphics function. The H11SSL states a graphics-only jumper and
+// the plan uses it. The ALTRAD8UD states only BMC_DIS, which removes the admitted BMC too, so the
+// plan must NOT pick it: a plan that took the coarser jumper would read as RemovedAtBoard by BMC_DIS
+// and fail the first conjunct.
+test fn bmc_graphics_is_removed_by_the_narrowest_stated_route() -> Bool {
+  let altra = board_function_removal(catalog: asrock_altrad8ud_1l2t_catalog, f: BmcGraphicsController)
+  removed_by_host_after_boot(r: altra)
+    && !removed_at_board_by_jumper(r: altra, designator: "BMC_DIS")
+    && removed_at_board_by_jumper(r: board_function_removal(catalog: supermicro_h11ssl_catalog, f: BmcGraphicsController), designator: "JPG1")
+}
+
+// Firmware-first handling: switched off in setup where the manual states the item, verified by
+// observation where it states none.
+test fn firmware_first_error_handling_is_not_admitted() -> Bool {
+  removed_at_board_by_setup_item(r: board_function_removal(catalog: asrock_altrad8ud_1l2t_catalog, f: PcieErrorFirmwareFirstHandling), item: "PCIe AER Firmware First")
+    && verified_by_host_observation(r: board_function_removal(catalog: supermicro_h11ssl_catalog, f: PcieErrorFirmwareFirstHandling))
+}
+
+// A board whose switches were never read refuses by name for every function it does not admit,
+// rather than borrowing another board's answer.
+test fn an_unread_board_refuses() -> Bool {
+  removal_unmodeled(r: board_function_removal(catalog: gigabyte_mp72_hb0_catalog, f: BmcGraphicsController))
+    && removal_unmodeled(r: board_function_removal(catalog: gigabyte_mp72_hb0_catalog, f: PcieErrorFirmwareFirstHandling))
+}
+
+fn plan_for(plans: List<HostBoardFunctionPlan>, host: String, f: BoardFunction) -> List<HostBoardFunctionPlan> {
+  filter(plans, p => (p.host as String) == host && p.board_function == f)
+}
+
+// The real route: the fleet plans are derived from fleet_intent's declared hosts and their
+// baseboards, not from a supplied catalog. One plan per (known host, function), and srv1's graphics
+// plan is the host-side removal its ALTRAD8UD board forces.
+test fn fleet_plans_cover_every_known_host_and_function() -> Bool {
+  let plans = fleet_board_function_plans()
+  let hosts = [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+  length(plans) == 12
+    && all(hosts, h => all(board_functions, f => length(plan_for(plans: plans, host: h as String, f: f)) == 1))
+    && all(plan_for(plans: plans, host: operator_host_srv1 as String, f: BmcGraphicsController), p => removed_by_host_after_boot(r: p.removal))
+}
