@@ -20,7 +20,7 @@ import std.fabric_storage {
   FabricPut, FabricHeadAdvance, fabric_object_preimage,
 }
 import gunbc.fabric.fabric_storage_serve { FabricDoorRosters }
-import test.claim.fabric.fabric_storage_fixture { FabricFixture, fabric_fixture_run, fabric_fixture_served }
+import test.claim.fabric.fabric_storage_fixture { FabricFixture, fabric_fixture_run, fabric_fixture_served, fabric_wet_provision }
 import gunbc.fabric.fabric_storage_wire { fabric_storage_unwire_identity, FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused }
 import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
 import gunbc.fabric.fabric_storage_wire { fabric_storage_unwire_advance, fabric_storage_unwire_put }
@@ -255,7 +255,8 @@ test fn a_declared_entry_mode_is_the_published_mode_of_objects_and_heads() -> Bo
   // store over its own scenario instance posts at the process umask.
   let declared_instance = fabric_fixture_instance(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_storage_mode.XXXXXX").path as String)
   let undeclared_instance = fabric_fixture_instance(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_storage_undeclared.XXXXXX").path as String)
-  match fabric_store_open(members: fabric_storage_slots, instance: declared_instance, entry_mode: Present { value: read_only_by_all() }) {
+  let provisioned = fabric_wet_provision(instance: declared_instance) && fabric_wet_provision(instance: undeclared_instance)
+  if !provisioned { false } else { match fabric_store_open(members: fabric_storage_slots, instance: declared_instance, entry_mode: Present { value: read_only_by_all() }) {
     FabricStoreUnready { area: _, detail: _ } => false
     FabricStoreReady { store: s } => match fabric_store_open(members: fabric_storage_slots, instance: undeclared_instance, entry_mode: none) {
       FabricStoreUnready { area: _, detail: _ } => false
@@ -272,7 +273,7 @@ test fn a_declared_entry_mode_is_the_published_mode_of_objects_and_heads() -> Bo
   put && object_mode == "0444" && head_mode == "0444" && undeclared_mode != "0444"
       }
     }
-  }
+  } }
 }
 
 // ── THE WRITER WALL AT THE SERVED DOOR, BY REAL EXECUTION ────────────────────────────────────
