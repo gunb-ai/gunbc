@@ -518,8 +518,6 @@ fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEm
     Present { value: "REFUSE: the publisher is triggered by the completion of a workflow this profile does not declare, so it can never run with anything to publish. Name the heal or drift workflow that seals the candidate (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared)." }
   } else if profile_publisher_build_route_is_coherent(profile: profile) == false {
     Present { value: "REFUSE: the publisher says it builds its compiler from the profile's public seed, and the profile declares no seed to build - a step that would check out nothing and compile nothing. Name the seed, or select Own_checkout_under_witness_floor and build from this checkout (gunbc.ci.repository_ci_profile profile_publisher_build_route_is_coherent)." }
-  } else if profile_publisher_invocations_are_named(profile: profile) == false {
-    Present { value: "REFUSE: the publisher names a phase it does not run - an admit or publish invocation with an empty entry or function renders a `gunbc run` step whose subject is the empty string, which fails inside the runner instead of at emission. Take the invocation from the ci_spec target that owns the subject (gunbc.ci.repository_ci_profile HealPublisherPolicy.admit_invocation)." }
   } else if profile_optional_job_timeouts_are_positive(profile: profile) == false {
     Present { value: "REFUSE: a declared job carries a timeout that is not positive, so it would be killed before it could report a reason. The gate's timeout is refused at zero; heal, drift and publisher timeouts are held to the same bound (gunbc.ci.repository_ci_profile profile_optional_job_timeouts_are_positive)." }
   } else if minute_count(m: profile.roster.timeout) == 0 {
@@ -571,14 +569,14 @@ fn profile_runner_group_is_declared(target: CiRunnerTarget) -> Bool {
 // A ROUTE THAT NAMES A SEED HAS TO HAVE ONE. The route and the seed are separate fields because the seed is
 // shared with the drift job and the witness lane - a publisher may build from its own checkout while the
 // drift job seals against a seed - so their agreement is a rule rather than a type. Only one direction can
-// fail: a route naming a seed the profile does not declare.
+// fail: a route naming a seed the profile does not declare. The other arm checks nothing, because
+// `required_bins` is a List<NonEmptyStr> and an empty bin is a state that cannot be written (DESIGN §4b).
 fn profile_publisher_build_route_is_coherent(profile: RepositoryCiProfile) -> Bool {
   match profile.publisher {
     Absent => true
     Present { value: p } =>
       match p.build_route {
-        Own_checkout_under_witness_floor { required_bins: bins } =>
-          all(bins, b => b as String != "")
+        Own_checkout_under_witness_floor { required_bins: _ } => true
         Declared_seed =>
           match profile.public_seed {
             Present { value: _ } => true
@@ -588,21 +586,10 @@ fn profile_publisher_build_route_is_coherent(profile: RepositoryCiProfile) -> Bo
   }
 }
 
-// BOTH HALVES OF AN INVOCATION HAVE TO BE THERE. The publisher's invocations are read out of the ci_spec
-// target rows, whose entry and function fields are plain Strings rather than NonEmptyStrs, so nothing in
-// the types stops a target from declaring one half empty. An empty half renders a `gunbc run` step whose
-// subject is the empty string: a step that fails in the runner, after a candidate has been downloaded and
-// a fleet slot taken, rather than at emission with a reason.
-fn profile_publisher_invocations_are_named(profile: RepositoryCiProfile) -> Bool {
-  match profile.publisher {
-    Absent => true
-    Present { value: p } =>
-      p.admit_invocation.entry != ""
-        && p.admit_invocation.function != ""
-        && p.publish_invocation.entry != ""
-        && p.publish_invocation.function != ""
-  }
-}
+// BOTH HALVES OF AN INVOCATION ARE WRITABLE-BY-CONSTRUCTION. `DagInvocation`'s entry and function are
+// NonEmptyStrs, so an admit or publish phase cannot be declared with an empty half and there is no state
+// left for a predicate to catch (DESIGN §5: making a wrong state unwritable beats catching it). An
+// invocation whose module or function is absent is therefore a type error, not a runtime refusal.
 
 // A TIMEOUT OF ZERO KILLS A JOB BEFORE IT REPORTS WHY. The roster's own timeout has always been refused
 // at zero; the three optional jobs are the same kind of job and get the same bound, so declaring a job at

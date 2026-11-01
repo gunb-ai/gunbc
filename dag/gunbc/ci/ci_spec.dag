@@ -753,8 +753,8 @@ fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
 // DeclarationRef the substrate resolves) with the entry path derived from the module index rather
 // than authored beside it, at which point a wrong target cannot be written.
 type GunbcRunStepTarget {
-  entry: String
-  function: String
+  entry: NonEmptyStr
+  function: NonEmptyStr
 }
 
 data gunbc_ci_fleet_reach_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
