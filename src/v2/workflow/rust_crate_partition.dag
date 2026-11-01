@@ -332,6 +332,7 @@ fn stage0_std_core_modules() -> List<String> {
       // declarations; their emitted modules belong to the same foundation unit.
       "std_integer_interval",
       "std_integer_width_construction",
+      "std_machine_width_reading",
       "std_literal_elaboration",
       "std_operator_realization",
       "std_import_statement",
@@ -423,6 +424,7 @@ fn stage0_v1_infer_modules() -> List<String> {
     "v1_compiler_infer_cycle",
     "v1_compiler_infer_emit_info",
     "v1_compiler_infer_env",
+    "v1_compiler_machine_width_reading",
     "v1_compiler_infer_items",
     "v1_compiler_infer_lookup",
     "v1_compiler_infer_method",
