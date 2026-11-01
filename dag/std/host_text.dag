@@ -1,8 +1,9 @@
 module std.host_text
 
 import std.types { Char, List }
+import std.algebra { list_head, skip }
 import std.nat { Nat }
-import std.optional { Optional }
+import std.optional { Absent, Optional, Present }
 
 // THE HOST-TEXT CARRIER AND THE OPERATIONS WHOSE SEMANTICS NEED IT (operator ruling H2, 2026-10-17,
 // v2-namespace-cutover). HostText is the opaque, native representation of text a host hands the
@@ -70,7 +71,7 @@ fn text_of_chars(scalars: List<Char>) -> HostText {
 // cardinality_one_concept, dag_absence_is_one_meaning) -- not a char_at-specific sum, and not a sentinel a
 // caller has to recognize.
 //
-// A HOST SEAM, LIKE chars ABOVE. The body is a self-call no realization reaches; the realization binds by
+// A HOST SEAM, LIKE chars ABOVE: what a target realizes is bound by
 // THIS declaration's identity (std.primitive_projection primitive_char_at, a HostRealizedSeam row), and a
 // target without that realization refuses at realization rather than falling back to a name. Its primitive
 // signature already returns the Optional -- the shape of std.algebra map_lookup_primitive_delegate, whose
@@ -84,6 +85,23 @@ fn text_of_chars(scalars: List<Char>) -> HostText {
 // scalar read, would make every call linear and turn the per-character loops among the ambient call sites
 // quadratic; src/v2/std/witness list_nth shows that shape and pays it over a list, where there is no host
 // carrier to read through.
+// BOOTSTRAP, ONE PR LONG (the trap that caught #15507 three times). Heal round 1 builds the seed from
+// the BASE mirror, which has no primitive_char_at row, so a self-call body here emits as bare Rust
+// recursion and heal refuses. THIS body is therefore the declared operations only, and it is what runs
+// until the realization pair is on main: skip walks the scalar unfold by `pos`, list_head answers Absent
+// past the end by construction (no length guard, no sentinel), and the one scalar reaches a host text
+// through the declared inverse text_of_chars. `pos as Int` is the corpus's own total widening for this
+// carrier (dag/test/claim/eval_cast_identity nat_to_int, gunbc.instruments.native_emission_controls
+// control_nat_as_int -- Nat is carried as Int, so the cast is an identity on it); it is NOT the reverse
+// direction, which is a refinement the checker refuses without a witness. TRIGGER for the one-line
+// follow-up that replaces this body with the self-call: std.primitive_projection primitive_char_at is on
+// main. The trigger is a standing condition, so no clock task owns it. The interim body is proportional
+// to the position, where the realization is constant on the ASCII path; nothing routes a production call
+// through it yet (the ambient sites move when the builtin is cut over), so the cost is bounded to this
+// window and stated here rather than hidden in a contract row.
 fn char_at(text: HostText, pos: Nat) -> Optional<HostText> {
-  char_at(text: text, pos: pos)
+  match list_head(xs: skip(xs: chars(text: text), n: pos as Int)) {
+    Absent => Absent
+    Present { value: scalar } => Present { value: text_of_chars(scalars: [scalar]) }
+  }
 }
