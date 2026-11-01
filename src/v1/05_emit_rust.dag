@@ -8192,7 +8192,7 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
     if head == "" {
       ""
     } else {
-      v1_trait_derive_refuse(concat("trait_derive_emit: generic item '", item_name, "' has a field applying type '", head, "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '", item_name, "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)"))
+      v1_trait_derive_refuse(concat("trait_derive_emit: generic item '", item_name, "' has a field applying type '", head, "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '", item_name, "' cannot be decided (see the well-formedness-propagation note in the // comments in gunbc.v1.trait_derive_emit)"))
     }
   }
 }
