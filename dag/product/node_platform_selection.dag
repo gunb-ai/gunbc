@@ -71,7 +71,7 @@ import std.measure { Watt, ByteSize, Bandwidth, byte_size, byte_size_count, watt
 import std.nat { Nat }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog, dgx_spark_system_overview_authority }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog, extdeps_external_authority_anchor }
-import product.p4261_carrier_layout { carrier_model_text }
+import product.p4261.report { carrier_model_text }
 import product.superchip_assembly_qualification {
   SuperchipAssembly,
   AssemblyWorkloadQualified,
