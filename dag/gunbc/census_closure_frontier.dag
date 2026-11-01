@@ -1,6 +1,7 @@
 module gunbc.census_closure_frontier
 
 import gunbc.fleet.fleet_known_hosts_anchor { remote_word_quoting_frontier_rows }
+import gunbc.fleet.board_function_admission { board_function_admission_frontier_rows }
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import gunbc.host.host_assimilation_program { host_assimilation_program_frontier_rows }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
@@ -208,6 +209,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     printer_state_move_frontier_rows,
     attempt_directory_wire_frontier_rows,
     gcp_iam_bootstrap_journal_frontier_rows,
+    board_function_admission_frontier_rows,
   ]
 }
 

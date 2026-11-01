@@ -1,0 +1,155 @@
+module gunbc.fleet.board_function_admission
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import product.host_identity { HostIdentity }
+import extdeps.boards.types {
+  BaseboardCatalogRow,
+  BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling,
+  BoardFunctionSwitch, JumperSwitch, FirmwareSetupSwitch, SwitchNotStated,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog, asrock_altrad8ud_function_switch }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog, supermicro_h11ssl_function_switch }
+import gunbc.fleet.fleet_intent { ComputeHost, fleet_intent_known_hosts }
+
+// WHICH BOARD FUNCTIONS THE FLEET ADMITS, AND HOW EACH ONE IT DOES NOT IS SWITCHED OFF.
+//
+// DESIGN §3c (ruling gunbc.design_ruling dependencies_are_admitted_by_their_consumer): a dependency
+// is admitted by its consumer and everything else is not admitted. A board carries far more than a
+// host uses, and each enabled function is integration work whether or not anything uses it -- srv1's
+// BMC graphics link served nothing, and its link errors drove the board's firmware-first PCIe error
+// handler into hangs that took the host down. So admission is a match with no default arm: a new
+// BoardFunction does not compile until it is stated here, and the admitted arm cannot be written
+// without the declaration that consumes it. Admission is held board-wide here; a function only one
+// host uses (srv4's X550 port, say) is that host's exception, recorded with its consumer when the
+// per-host bring-up reads it, never by widening this default.
+type BoardFunctionAdmission
+  = FunctionAdmitted { consumer: DeclarationRef }
+  | FunctionNotAdmitted { reason: NonEmptyStr }
+
+fn board_function_admission(f: BoardFunction) -> BoardFunctionAdmission {
+  match f {
+    BmcManagementFunction => FunctionAdmitted {
+      consumer: decl_ref(module_path: "gunbc.host.host_reset_subject_roster", decl_name: "reset_subject_roster"),
+    }
+    BmcGraphicsController => FunctionNotAdmitted {
+      reason: "No fleet consumer: automation reaches a host over SSH and the BMC's serial console, never its video. The KVM picture is an operator convenience, brought up by its own workflow when someone needs it, not a standing dependency of every host.",
+    }
+    PcieErrorFirmwareFirstHandling => FunctionNotAdmitted {
+      reason: "No fleet consumer needs the firmware to take PCIe errors before the OS. The OS's own AER reports them where the fleet can count and alert on them; firmware-first adds a handler the fleet cannot observe, and on srv1 that handler hung the host.",
+    }
+  }
+}
+
+// THE ROSTER the per-host plan walks, with its completeness walled by an exhaustive match: a new
+// function does not compile until it is stated here, and the witness reds if it is stated but left
+// out of the list.
+data board_functions: List<BoardFunction> = [
+  BmcManagementFunction,
+  BmcGraphicsController,
+  PcieErrorFirmwareFirstHandling,
+]
+
+fn board_function_listed(f: BoardFunction) -> Bool {
+  match f {
+    BmcManagementFunction => any(board_functions, g => g == BmcManagementFunction)
+    BmcGraphicsController => any(board_functions, g => g == BmcGraphicsController)
+    PcieErrorFirmwareFirstHandling => any(board_functions, g => g == PcieErrorFirmwareFirstHandling)
+  }
+}
+
+// HOW A FUNCTION THE FLEET DOES NOT ADMIT IS REMOVED ON ONE BOARD. RemovedAtBoard is the board's own
+// stated switch. Where the manual states none, the host side is what remains, and it is weaker in a
+// way the arm carries: a device the OS removes after boot was still brought up by the firmware first,
+// and a firmware behaviour the OS cannot switch off can only be verified by reading what the firmware
+// granted. Neither host-side arm is masking: removing a device removes its errors, and suppressing a
+// device's error reporting while it runs is DESIGN §5's concealment, which no arm here admits.
+type BoardFunctionRemoval
+  = NothingToRemove { consumer: DeclarationRef }
+  | RemovedAtBoard { switch: BoardFunctionSwitch }
+  | RemovedByHostAfterBoot { residue: NonEmptyStr }
+  | VerifiedByHostObservation { discriminator: NonEmptyStr }
+  | RemovalUnmodeled { cause: NonEmptyStr }
+
+// The dispatch among board products is the consuming layer's, never the extdeps hub's (DESIGN §3,
+// external upstream decomposition). A board with no switch model refuses by name rather than
+// borrowing another board's answer.
+fn board_function_switch(catalog: BaseboardCatalogRow, f: BoardFunction) -> BoardFunctionSwitch? {
+  if catalog == asrock_altrad8ud_1l2t_catalog {
+    Present { value: asrock_altrad8ud_function_switch(f: f) }
+  } else {
+    if catalog == supermicro_h11ssl_catalog {
+      Present { value: supermicro_h11ssl_function_switch(f: f) }
+    } else {
+      Absent
+    }
+  }
+}
+
+fn host_side_removal(f: BoardFunction) -> BoardFunctionRemoval {
+  match f {
+    BmcManagementFunction => RemovalUnmodeled {
+      cause: "the board states no BMC switch and the host has no route that removes the whole controller",
+    }
+    BmcGraphicsController => RemovedByHostAfterBoot {
+      residue: "the firmware brings the controller's PCIe link up on every boot before the host removes the function and disables its root port's link, so the link is exposed until the OS acts",
+    }
+    PcieErrorFirmwareFirstHandling => VerifiedByHostObservation {
+      discriminator: "the kernel's ACPI _OSC negotiation lists AER among the capabilities the OS now controls",
+    }
+  }
+}
+
+fn board_function_removal(catalog: BaseboardCatalogRow, f: BoardFunction) -> BoardFunctionRemoval {
+  match board_function_admission(f: f) {
+    FunctionAdmitted { consumer } => NothingToRemove { consumer: consumer }
+    FunctionNotAdmitted { reason: _ } =>
+      match board_function_switch(catalog: catalog, f: f) {
+        Absent => RemovalUnmodeled {
+          cause: concat("no board-function switch model exists for ", concat(catalog.model_label as String, ", so its manual has not been read for this")) as NonEmptyStr,
+        }
+        Present { value: s } =>
+          match s {
+            JumperSwitch { designator: _, off_position: _, citation: _ } => RemovedAtBoard { switch: s }
+            FirmwareSetupSwitch { menu: _, item: _, off_meaning: _, citation: _ } => RemovedAtBoard { switch: s }
+            SwitchNotStated { coarser: _ } => host_side_removal(f: f)
+          }
+      }
+  }
+}
+
+type HostBoardFunctionPlan {
+  host: HostIdentity
+  board_function: BoardFunction
+  removal: BoardFunctionRemoval
+}
+
+fn host_board_function_plans(host: ComputeHost) -> List<HostBoardFunctionPlan> {
+  map(board_functions, f => HostBoardFunctionPlan {
+    host: host.identity,
+    board_function: f,
+    removal: match host.baseboard {
+      Absent => RemovalUnmodeled { cause: concat("host ", concat(host.identity as String, " declares no baseboard")) as NonEmptyStr }
+      Present { value: b } => board_function_removal(catalog: b.catalog, f: f)
+    },
+  })
+}
+
+fn fleet_board_function_plans() -> List<HostBoardFunctionPlan> {
+  flat_map(fleet_intent_known_hosts, h => host_board_function_plans(host: h))
+}
+
+// THE CONSUMER THESE PLANS ARE OWED, declared rather than implied. Nothing realizes them yet: srv1's
+// BMC graphics removal is a unit installed on the host by hand on 2026-11-01 (out-of-band actuation,
+// DESIGN §6), and the firmware-first setting is changed in setup by the operator. The trigger is a
+// converge route that consumes fleet_board_function_plans.
+data board_function_admission_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.board_function_admission", decl_name: "fleet_board_function_plans"),
+    reason: "No converge route realizes the per-host board-function plans: the one host-side removal in service (srv1's BMC graphics link) was installed by hand, and setup-item switches are set by the operator with no readback.",
+    dissolution: unbound_dissolution(description: "A fleet converge route reads each host's board-function plan, applies its host-side removals at boot, and reads back both that every removed function is absent and the ACPI _OSC AER grant, refusing on drift."),
+  ),
+]
