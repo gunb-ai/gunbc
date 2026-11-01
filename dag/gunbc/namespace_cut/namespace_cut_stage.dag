@@ -5,7 +5,6 @@ import gunbc.compiler_frontend_program_interlock {
   ProgramMilestone,
   SelfHostRatchetGateEnrolled,
   NamespaceWaveAdmissionEnrolled,
-  NamespaceBaselineObservationComplete,
 }
 
 // THE NAMESPACE-XL SERIAL CHAIN, AS A CLOSED VARIANT WITH A TOTAL PREREQUISITE FUNCTION.
@@ -88,6 +87,10 @@ fn stage_prerequisites(s: NamespaceCutStage) -> List<NamespaceCutStage> {
 // itself unanswerable makes ACT-0 unanswerable rather than merely outstanding: the two are kept
 // apart there for the same reason they are kept apart here.
 //
+// The legacy resolver is an oracle for bounded per-wave REDs and controls only: each XL-5 wave and
+// each XL-6 deleted root carries its own bounded declaration-identity differential, not a
+// whole-population baseline, so no baseline milestone joins this roster.
+//
 // The roster is DATA and not a per-stage total function, because exactly one stage has this join
 // and a total function over the chain would have returned the empty list for nine stages -- a
 // fold permanently green on nine of ten inputs, which DESIGN section 4b calls a decoration rather
@@ -95,7 +98,6 @@ fn stage_prerequisites(s: NamespaceCutStage) -> List<NamespaceCutStage> {
 data act0_release_milestones: List<ProgramMilestone> = [
   SelfHostRatchetGateEnrolled,
   NamespaceWaveAdmissionEnrolled,
-  NamespaceBaselineObservationComplete,
 ]
 
 data namespace_cut_stages: List<NamespaceCutStage> = [
