@@ -167,7 +167,7 @@ fn local_binder_shadow_cases() -> List<NativeEmissionCase> {
     NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_match_arm", held: control_shadow_match_arm(found: Present { value: true }) == 5 },
     NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_lambda_parameter", held: control_shadow_lambda(flags: [true, false, true]) == 4 },
     NativeEmissionCase { identity: "top_level_data_reference_beside_a_local_binder_is_a_call", held: control_shadow_table_beside_binder(found: Present { value: true }) == 6 },
-    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_red_not_the_global", held: control_shadow_match_arm(found: Present { value: false }) == 3 && control_leaf_a_probe() + control_leaf_b_probe() == 303 }
+    NativeEmissionCase { identity: "local_binder_shadows_ambiguous_global_leaf_red_not_the_global", held: control_shadow_match_arm(found: Present { value: false }) == 3 && control_leaf_a_probe() == 101 && control_leaf_b_probe() == 201 }
   ]
 }
 
