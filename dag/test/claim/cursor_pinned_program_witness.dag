@@ -15,12 +15,17 @@ import gunbc.cursor_harness_credential {
 }
 import gunbc.worker_turn_standing { cursor_pinned_realization_absent_reason }
 
+import test.claim.dispatch_credential_acquisition_witness { fx_credentials_required, fx_witness_stable_root, fx_cursor_parent }
 fn pinned_path() -> String {
   cursor_agent_executable_path(version: cursor_agent_pinned_version)
 }
 
+// The root is a sealed record the store module alone builds, so the witness mints the instance's credential
+// store the production way over a temporary root instead of handing a literal instance root to the deleted
+// cursor_attempt_runtime_root(instance_root:, reference:). What every claim below ASSERTS about the command
+// is unchanged; only how the root is obtained changed, and that made this witness wet.
 fn attempt_root() -> CursorAttemptRuntimeRoot {
-  cursor_attempt_runtime_root(instance_root: "/srv/instance", reference: "attempt-a-cursor")
+  cursor_attempt_runtime_root(credentials: fx_credentials_required(instance_root: fx_witness_stable_root("pinned")), reference: "attempt-a-cursor" as NonEmptyStr)
 }
 
 fn preflight_words() -> List<String> {
@@ -84,7 +89,7 @@ test fn preflight_probe_and_turn_bind_the_attempt_home_and_config() -> Bool {
 
 // ANOTHER ATTEMPT'S ROOT SHARES NOTHING WITH THIS ONE'S BINDINGS.
 test fn another_attempts_bindings_name_a_different_root() -> Bool {
-  let other = cursor_attempt_runtime_root(instance_root: "/srv/instance", reference: "attempt-b-cursor")
+  let other = cursor_attempt_runtime_root(credentials: fx_credentials_required(instance_root: fx_witness_stable_root("pinned")), reference: "attempt-b-cursor" as NonEmptyStr)
   let other_home = join(["HOME=", cursor_attempt_runtime_home(root: other)], "")
   !names_word(words: probe_words(), word: other_home) && !names_word(words: turn_words(), word: other_home)
 }

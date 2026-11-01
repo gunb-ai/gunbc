@@ -24,7 +24,7 @@ import gunbc.cursor_harness_credential {
   CursorKeyProbeUnreadable, cursor_worker_turn_api_key_host_path,
 }
 import gunbc.worker_turn_standing { cursor_bounded_keyed_probe_command, CursorBoundedProbeReady, CursorBoundedProbeNameRefused, CursorBoundedProbeEmitRefused, cursor_observed_standing_for_program, cursor_sandbox_unavailable_reason_prefix }
-import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken, fx_slots_dir }
+import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken, fx_slots_dir, fx_credentials_required, fx_witness_stable_root, fx_cursor_parent }
 
 // WET, NON-ROOT, over FRESH attempt roots: every invocation binds HOME and XDG_CONFIG_HOME to a root made
 // here, so the operator's real ~/.config/cursor is neither read nor written nor asserted. Every control is
@@ -44,7 +44,7 @@ fn wet_scratch(label: String) -> String {
 }
 
 fn wet_root_under(scratch: String, label: String) -> CursorAttemptRuntimeRoot {
-  let root = cursor_attempt_runtime_root(instance_root: scratch, reference: label)
+  let root = cursor_attempt_runtime_root(credentials: fx_credentials_required(instance_root: scratch), reference: label as NonEmptyStr)
   let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_home(root: root) as FilePath)
   let _ = shell.Mkdir.Parents(path: cursor_attempt_runtime_config(root: root) as FilePath)
   root

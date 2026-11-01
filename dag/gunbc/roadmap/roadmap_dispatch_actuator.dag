@@ -278,6 +278,7 @@ import gunbc.dispatch_credential_snapshot {
   CredentialSnapshotTombstoneFailed,
   credential_snapshot_tombstone_body,
   credential_snapshot_after_read_disposition,
+  credential_snapshot_path_for_attempt
 }
 import gunbc.dispatch_credential_acquisition { credential_register_then_take, credential_discard_taken_attempt }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
@@ -629,13 +630,17 @@ fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDeco
 // TakenCredentialSnapshot), the prepared launch is minted only when that attempt is the requested one
 // (gunbc.dispatch_attempt_launch prepare_attempt_launch), and the launch reads its attempt from it.
 // The path here is where the production take writes, derived from that same attempt.
-fn dispatch_credential_snapshot_path_for_attempt(attempt: DispatchAttempt, executor: SnapshotExecutor) -> NonEmptyStr {
-  join([
-    dashboard_instance_dispatch_attempt_state_root(instance: attempt.instance) as String,
-    "/", attempt.node.node as String, "-a", attempt.attempt_key, ".",
-    dispatch_provider_label(provider: snapshot_executor_provider(executor: executor)), "-credential",
-  ], "") as NonEmptyStr
-}
+// THE ONE DERIVATION OF A TAKEN SNAPSHOT'S PATH NOW LIVES IN THE STORE THAT WRITES IT:
+// gunbc.dispatch_credential_snapshot credential_snapshot_path_for_attempt, over that module's own
+// declaration row (taken_credential_snapshot_slots) and the attempt-state declaration's entry name
+// (gunbc.roadmap.roadmap_attempt_state_store attempt_state_entry_name) -- the attempt identity in, the path
+// out. The pre-seal spelling lived HERE, in the dispatch launch module, out of its own literals (the node,
+// "-a", the separator, the provider label, "-credential") beside the take that wrote the file and the
+// standing trip and Cursor child that read it, so the launch leg could be pointed at a snapshot of an
+// attempt other than the one being taken. The route is deleted, not deprecated (DESIGN section 3:
+// a replacement migration cuts over at the root); the two draws below call the store's function, and the
+// witnesses that pinned the old spelling now pin the declaration
+// (test.claim.dispatch_credential_snapshot_wet_witness).
 
 // A selection that refuses after its take discards the snapshot it took; a discard that does not
 // occupy it with a tombstone is appended to the refusal, never dropped.
@@ -754,7 +759,6 @@ fn dispatch_actuator_claude_selection_observed(
         attempt: attempt,
         executor: ClaudeFromSnapshot,
         custody: custody,
-        snapshot: dispatch_credential_snapshot_path_for_attempt(attempt: attempt, executor: ClaudeFromSnapshot),
       ) {
         DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: dispatch_snapshot_refusal_text(reason: reason) }
         DispatchSnapshotTaken { snapshot } => {
@@ -857,7 +861,6 @@ fn cursor_selection_observed(attempt: DispatchAttempt, sizing_expectation: Sizin
       attempt: attempt,
       executor: CursorFromSnapshot,
       custody: snapshot_custody_declaration(executor: CursorFromSnapshot),
-      snapshot: dispatch_credential_snapshot_path_for_attempt(attempt: attempt, executor: CursorFromSnapshot),
     ) {
       DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: dispatch_snapshot_refusal_text(reason: reason) }
       DispatchSnapshotTaken { snapshot } => {

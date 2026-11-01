@@ -64,6 +64,7 @@ import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import extdeps.exec.command { argv_words }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { sized_derivable }
 
+import test.claim.dispatch_credential_acquisition_witness { fx_credentials_required, fx_witness_stable_root, fx_cursor_parent }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUPPLIED AT THE TRIP BOUNDARY: the account trip's stdout, in the wire shapes the press witnesses
