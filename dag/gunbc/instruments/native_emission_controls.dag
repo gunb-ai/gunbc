@@ -8,7 +8,7 @@ import gunbc.instruments.native_emission_controls_alias { ControlWords, control_
 import std.list { duplicated_by_key }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import std.resource_contract { Observation, Read }
-import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
+import std.integer { UInt16, Int8, UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.nat { Nat }
 import extdeps.units.iso8601_calendar { iso8601_seconds_per_day, iso8601_utc_text }
@@ -808,6 +808,8 @@ fn rc_match_clone_cases() -> List<NativeEmissionCase> {
 }
 
 data native_emission_expected_identities: List<String> = [
+  "phantom_value_crossing_specimen_not_an_admission_contract",
+  "plain_int_value_control",
   "nat_as_int_inclusion_is_the_operand",
   "nat_as_int_inclusion_seconds_per_day",
   "nat_as_int_inclusion_utc_text",
@@ -1038,8 +1040,36 @@ fn empty_list_cast_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// Diagnostic specimen only: numeric values cross a declared Phantom formal.
+// The REFUSE route must reject these uses at the checker, with source positions.
+fn phantom_octet_numeric(value: UInt8) -> Int { value + 1 }
+fn phantom_octet_compare(value: UInt8) -> Bool { value >= 1 }
+fn phantom_octet_literal() -> UInt8 { 47 }
+fn phantom_octet_list() -> List<UInt8> { [1, 47] }
+fn phantom_other_unsigned_width(value: UInt16) -> Int { value + 1 }
+fn phantom_signed_width(value: Int8) -> Int { value + 1 }
+fn phantom_plain_int_control(value: Int) -> Int { value + 1 }
+
+fn phantom_value_specimen_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "phantom_value_crossing_specimen_not_an_admission_contract",
+      held: phantom_octet_numeric(value: 1) == 2
+        && phantom_octet_compare(value: 47)
+        && phantom_octet_compare(value: phantom_octet_literal())
+        && all(phantom_octet_list(), octet => phantom_octet_compare(value: octet))
+        && phantom_other_unsigned_width(value: 1) == 2
+        && phantom_signed_width(value: 1) == 2,
+    },
+    NativeEmissionCase {
+      identity: "plain_int_value_control",
+      held: phantom_plain_int_control(value: 1) == 2,
+    },
+  ]
+}
+
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), mixed_set_carrier_cases()))))))
+  concat(phantom_value_specimen_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), mixed_set_carrier_cases())))))))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
