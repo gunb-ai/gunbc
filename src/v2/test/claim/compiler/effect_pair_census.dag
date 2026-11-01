@@ -43,7 +43,7 @@ import v2.std.text { String }
 import v2.std.node {
   Arrow, ArrowBodyEdge, DeclarationReferenceKind, Atom, Loop, LoopDomainEdge, Branch, ComputationNode, Conj, Edge, Match, MatchArmBodyEdge, MatchArmPatternEdge, Node, NotADeclaration, Positional, Symbol, TypeNode, core_edge_label
 }
-import v2.compiler.primitive_execution_semantics { Pure, ReadsBoundInput }
+import v2.std.operation_declaration { Pure, ReadsBoundInput }
 import v2.compiler.effect_pair_census {
   BodyEffectFacts,
   BodyOrdered,
