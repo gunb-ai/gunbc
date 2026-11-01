@@ -13366,22 +13366,26 @@ fn eval_field_access(
 
     let access_style = summary.map(|s| &s.access_style);
 
-    // The checker DECLARES the unwrap: `04_lookup` `field_summary_for_type` styles `.value` on an
-    // optional `OptionalUnwrap` and every other field read off an optional with value shape
-    // `OptionalValue`. The interpreter realizes that declaration: peel `Present { value }`,
-    // refuse `Absent` with a typed error. It never reads a field off the variant itself.
+    // The checker DECLARES the read: `04_lookup` `field_summary_for_type` styles `.value` on an
+    // optional `OptionalUnwrap` (typed required: peel Present, refuse Absent with a typed error)
+    // and every other field read off an optional with value shape `OptionalValue` (typed
+    // OPTIONAL: peel Present and re-wrap the field, propagate Absent). The interpreter never
+    // reads a field off the variant itself, and never refuses what the checker types as optional.
     // `OptionalValue` carries two meanings in the checker's summary: the BASE is optional
     // (`field_summary_for_type`), or the FIELD's own value is optional (a struct field declared
     // `T?`, `field_value_shape_from_type_node`). Only the first peels; a record base is never an
     // Optional variant, so a field declared `T?` on a record is returned as the stored Optional.
-    let reads_off_optional = matches!(access_style, Some(FieldAccessStyle::OptionalUnwrap))
-        || (matches!(
+    let unwrap_style = matches!(access_style, Some(FieldAccessStyle::OptionalUnwrap));
+    let optional_base_read = !unwrap_style
+        && matches!(
             summary.map(|s| &s.value_shape),
             Some(FieldValueShape::OptionalValue)
-        ) && is_optional_variant(&base_val, ctx));
-    let base_val = if reads_off_optional {
+        )
+        && is_optional_variant(&base_val, ctx);
+    let base_val = if unwrap_style || optional_base_read {
         match optional_present_payload(&base_val, ctx)? {
             Some(payload) => payload,
+            None if optional_base_read => return Ok(optional_absent(ctx)),
             None => {
                 return Err(locate_field_access_error(
                     InterpError::TypeError {
@@ -13394,7 +13398,34 @@ fn eval_field_access(
     } else {
         base_val
     };
+    if optional_base_read {
+        let read = eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)?;
+        return Ok(declared_optional_field_value(read, ctx));
+    }
 
+    eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)
+}
+
+// A field read off an optional is typed optional (one layer): an already-Optional field value is
+// returned as is, a bare one is Present, Null is Absent.
+fn declared_optional_field_value(value: Value, ctx: &InterpContext) -> Value {
+    match value {
+        Value::Null => optional_absent(ctx),
+        Value::Variant { ref type_name, .. } if ctx.sym_eq(*type_name, "Optional") => value,
+        other => optional_present(other, ctx),
+    }
+}
+
+fn eval_field_access_on(
+    base_val: &Value,
+    access_style: Option<&FieldAccessStyle>,
+    field_name: &str,
+    node: &Rc<Node>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let base_val = base_val.clone();
+    let field_name = field_name.to_string();
     match access_style {
         Some(FieldAccessStyle::TupleFirst) => match expect_list(&base_val, "tuple.first") {
             Ok(items) => Ok(items.front().cloned().unwrap_or(Value::Null)),

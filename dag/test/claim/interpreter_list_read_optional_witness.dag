@@ -92,3 +92,21 @@ test fn json_unescape_checked_of_plain_text_is_present_and_of_a_bad_escape_absen
   (match json_unescape_checked(s: "ab") { Present { value: t } => t == "ab"  Absent => false })
     && json_unescape_checked(s: "\\q") == Absent
 }
+
+type IlroRow { status: String }
+
+data ilro_rows: List<IlroRow> = [IlroRow { status: "ok" }]
+
+data ilro_no_rows: List<IlroRow> = []
+
+// A FIELD READ OFF AN OPTIONAL is typed optional by the checker (`OptionalValue`): an Absent
+// receiver propagates Absent and a Present one peels and re-wraps the field. The interpreter
+// must not refuse what the checker types as optional.
+test fn a_field_read_off_an_absent_first_is_absent() -> Bool {
+  match ilro_no_rows.first().status { Present { value: s } => false  Absent => true }
+}
+
+// POSITIVE CONTROL: the same read off a Present first answers by value.
+test fn a_field_read_off_a_present_first_is_present() -> Bool {
+  match ilro_rows.first().status { Present { value: s } => s == "ok"  Absent => false }
+}
