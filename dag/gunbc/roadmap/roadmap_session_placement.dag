@@ -231,9 +231,9 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
   match session_placement_pool() {
     Absent => SessionStoresUnresolved { detail: join(["the belt's max_concurrent ", to_string(value: roadmap_belt_default_capacity.max_concurrent), " is not a natural number, so the session pool has no size"], "") }
     Present { value: pool } =>
-      match host_capacity_subject(instance: instance, pool: pool, request: kibibyte(count: 0)) {
+      match host_capacity_subject(instance: instance, pool: pool) {
         ComputeSubjectHostUnresolved { host } => SessionStoresUnresolved { detail: join(["no dashboard instance is declared for host ", host as String, ", so it has no session ledger"], "") }
-        ComputeSubjectResolved { subject } =>
+        ComputeSubjectResolved { subject, appropriation: _ } =>
           match session_attempt_slots_store(instance: instance) {
             SessionAttemptSlotsStoreUnready { detail } => SessionStoresUnresolved { detail: detail }
             SessionAttemptSlotsStoreReady { store: slots } =>

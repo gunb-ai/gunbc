@@ -21,9 +21,10 @@ import extdeps.gpu.nvidia_t10 { t10_card_row }
 import extdeps.fans.types { BlowerLengthEdge, BlowerDepthEdge }
 import extdeps.fans.delta { delta_bfb1012m_envelope, delta_bfb1012m_outlet, delta_bfb1012m_outlet_standing }
 import product.printed_chassis.duct_card_catalog {
-  duct_cards, duct_card, duct_card_bench_list, end_face_is_read, a16_duct_card, t10_duct_card,
+  duct_cards, duct_card, duct_card_dims, t4_duct_card, duct_card_bench_list, end_face_is_read, a16_duct_card, t10_duct_card,
 }
-import product.printed_chassis.gpu_duct { a16_blower_duct_design }
+import product.printed_chassis.gpu_duct { a16_blower_duct_design, a16_duct_design, um }
+import product.printed_chassis.duct_review_schema { duct_review_schema, schema_migration }
 
 // ═══ THE CARD ROWS SAY WHAT THEIR DOCUMENTS SAY, AND NO MORE ═══
 
@@ -163,4 +164,39 @@ test fn w_the_blower_outlet_is_cited_and_closes_on_the_housing() -> Bool {
     && micrometer_count(m: delta_bfb1012m_outlet.opening_along_edge) < micrometer_count(m: delta_bfb1012m_outlet.frame_along_edge)
     && micrometer_count(m: delta_bfb1012m_outlet.opening_across_thickness) + 2 * 1850 == micrometer_count(m: delta_bfb1012m_envelope.thickness)
     && match delta_bfb1012m_outlet_standing { CitedToAuthority { authority: _ } => true TranscribedUncited { read_obligation: _ } => false ObservedByReceipt { observed: _ } => false }
+}
+
+// THE DESIGNS A DUCT IS BUILT AGAINST ARE DERIVED FROM THE CARD, and for the A16 they equal the A16-only
+// designs the route reports read: six of the wall design's numbers, and the blower design's slot pitch and
+// card count. Only the plug fit ring was printed (#15521); this claims no blower design was.
+test fn w_the_a16_designs_derived_from_its_duct_card_are_the_printed_ones() -> Bool {
+  match duct_card_dims(card: a16_duct_card) {
+    Present { value: d } =>
+      um(m: d.wall.wall) == um(m: a16_duct_design.wall)
+      && um(m: d.wall.plug_clearance) == um(m: a16_duct_design.plug_clearance)
+      && um(m: d.wall.fin_margin) == um(m: a16_duct_design.fin_margin)
+      && um(m: d.wall.flange_thickness) == um(m: a16_duct_design.flange_thickness)
+      && um(m: d.wall.connector_keepout_past_outer_pin) == um(m: a16_duct_design.connector_keepout_past_outer_pin)
+      && um(m: d.wall.plenum_depth) == um(m: a16_duct_design.plenum_depth)
+      && um(m: d.fan.slot_pitch) == um(m: a16_blower_duct_design.slot_pitch)
+      && d.fan.card_count == a16_blower_duct_design.card_count
+    Absent => false
+  }
+}
+
+// An unread card still has no dims, whatever its row states.
+test fn w_an_unread_card_has_no_duct_dims() -> Bool {
+  match duct_card_dims(card: t4_duct_card) { Present { value: _ } => false Absent => true }
+}
+
+// THE SCHEMA SPELLING TRANSITION: the A16 spelling is migrated by its own declared row to the card-agnostic
+// one, the current spelling is itself, and an undeclared spelling migrates to nothing.
+test fn w_the_a16_schema_spelling_is_retired_through_its_declared_transition() -> Bool {
+  let migrated = match schema_migration(recorded: "gunbc.a16-inlet-duct-review.v2") {
+    Present { value: s } => (s as String) == (duct_review_schema as String)
+    Absent => false
+  }
+  let current = match schema_migration(recorded: duct_review_schema as String) { Present { value: _ } => true Absent => false }
+  let undeclared = match schema_migration(recorded: "gunbc.a16-inlet-duct-review.v1") { Present { value: _ } => false Absent => true }
+  migrated && current && undeclared
 }
