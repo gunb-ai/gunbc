@@ -1,0 +1,153 @@
+module test.claim.c_roadmap2_attempt_name_witness
+
+import std.types { String, NonEmptyStr }
+import std.algebra { string_contains }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.roadmap.roadmap_attempt_metering { MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metered_role_key, metering_launch_entry_name }
+import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptMeteringRecordFile, AttemptMeteringRosterSealed, AttemptMeteringLaunch, AttemptRequestBindingFile, attempt_state_member_name }
+
+// THE ENTRY NAMES OF THE ATTEMPT METERING AND REQUEST-BINDING STORES ARE READ FROM THEIR ONE DECLARATION,
+// AND THEY ARE THE NAMES srv1 ACTUALLY HOLDS. Before this cohort the record name, the roster's closing
+// marker, the roster's seal, and the launch-entry prefix and suffix were literals spelled inside the store,
+// and the launch-entry name was assembled by hand at the call site -- so a writer and a reader could
+// disagree by editing one of the two spellings and nothing in the corpus would notice. Now each name exists
+// once, in gunbc.roadmap.roadmap_attempt_metering_slots, and the member rows of
+// gunbc.roadmap.roadmap_attempt_state_store plus every read, write, listing and hold key read it.
+//
+// THE srv1 RECEIPT (operator relay, 2026-11-01 ~02:3xZ, read-only,
+// /opt/gunbc-lab/codex-provider-feedback-v0): 36 launch entries under exactly two shapes -- an auditor
+// launch carries metering-launch.<role>.<N>.<N>.<sha40>.json and a reviewer launch carries the
+// belt_review_call_key stem between the two length prefixes,
+// metering-launch.<role>.<N>.<tok16>-<criterion>.<N>.<sha40>.json -- plus 13 metering.json records, 15
+// request-binding.json records (72 B each), and ZERO metering-roster-closing markers or
+// metering-roster-sealed.json files. The literals below are those two shapes with concrete tokens filled
+// in; what the claim asserts is that THE WRITER'S OWN BUILDER produces them, which is what makes a
+// hand-spelled or renamed entry impossible rather than merely unlikely. The zero-count lines are the
+// cutover evidence for moving the closing marker onto the hold library.
+
+type NameCase {
+  label: String
+  actual: String
+  expected: String
+}
+
+// The verdict is a universal over the cases, so a case that cannot fail cannot carry the claim; the reason
+// concatenates only the mismatching labels, so a red run says which name drifted.
+fn names_agree(cases: List<NameCase>) -> ProcessExit {
+  if all(cases, c => c.actual == c.expected) {
+    ExitSuccess
+  } else {
+    exit_failure(join(map(cases, c => if c.actual == c.expected { "" } else { join([c.label, ": got <", c.actual, "> expected <", c.expected, ">"], "") }), " | "))
+  }
+}
+
+data srv1_reviewer_criterion: NonEmptyStr = "9f8e7d6c5b4a3210-review-gate" as NonEmptyStr
+data srv1_reviewer_head: NonEmptyStr = "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr
+data srv1_auditor_head: NonEmptyStr = "ffffffffffffffffffffffffffffffffffffffff" as NonEmptyStr
+
+// THE REVIEWER LAUNCH, exactly as srv1 spells it: the token-criterion stem sits between the two length
+// prefixes, because belt_review_call_key puts it in the criterion key and the role key length-prefixes it.
+data reviewer_launch_name: String = "metering-launch.reviewer.28.9f8e7d6c5b4a3210-review-gate.40.0123456789abcdef0123456789abcdef01234567.json"
+// THE AUDITOR LAUNCH, exactly as srv1 spells it: no token-criterion stem, one length prefix before the head.
+data auditor_launch_name: String = "metering-launch.auditor.40.ffffffffffffffffffffffffffffffffffffffff.json"
+data worker_launch_name: String = "metering-launch.worker.json"
+data supervisor_launch_name: String = "metering-launch.supervisor.7.json"
+
+test fn the_launch_entry_name_is_the_name_srv1_holds() -> ProcessExit {
+  names_agree(cases: [
+    NameCase {
+      label: "reviewer launch entry (srv1 reviewer shape, token-criterion stem carried)",
+      actual: metering_launch_entry_name(role: MeteredReviewer { criterion_key: srv1_reviewer_criterion, head: srv1_reviewer_head }),
+      expected: reviewer_launch_name,
+    },
+    NameCase {
+      label: "auditor launch entry (srv1 auditor shape, no token stem)",
+      actual: metering_launch_entry_name(role: MeteredAuditor { head: srv1_auditor_head }),
+      expected: auditor_launch_name,
+    },
+    NameCase {
+      label: "worker launch entry",
+      actual: metering_launch_entry_name(role: MeteredWorker),
+      expected: worker_launch_name,
+    },
+    NameCase {
+      label: "supervisor launch entry",
+      actual: metering_launch_entry_name(role: MeteredSupervisor { turn: 7 }),
+      expected: supervisor_launch_name,
+    },
+  ])
+}
+
+// THE LAUNCH NAME IS NOT ITS OWN LITERAL: it is the declaration's prefix and suffix wrapped around the role
+// key by the attempt-state member row. This is the control that turns the four equalities above into a
+// statement about the declaration rather than about a second hard-coded copy -- change the declaration and
+// this arm goes red along with them.
+test fn the_launch_entry_name_is_built_from_the_declaration() -> ProcessExit {
+  let worker = MeteredWorker
+  names_agree(cases: [
+    NameCase {
+      label: "launch name = declaration prefix + role key + declaration suffix",
+      actual: metering_launch_entry_name(role: worker),
+      expected: join([attempt_metering_slots.launch_prefix as String, metered_role_key(role: worker), attempt_metering_slots.launch_suffix as String], ""),
+    },
+    NameCase {
+      label: "member row and the writer's builder agree for a reviewer",
+      actual: metering_launch_entry_name(role: MeteredReviewer { criterion_key: srv1_reviewer_criterion, head: srv1_reviewer_head }),
+      expected: attempt_state_member_name(member: AttemptMeteringLaunch { role_key: metered_role_key(role: MeteredReviewer { criterion_key: srv1_reviewer_criterion, head: srv1_reviewer_head }) }),
+    },
+  ])
+}
+
+// THE RECORD, THE ROSTER SEAL AND THE REQUEST BINDING: one name each, read from the declaration or the
+// member row, equal to the names srv1 holds (13 metering.json, 15 request-binding.json). The closing marker
+// is named here too because it is still declared -- it is a hold key now, not a file the mint may list --
+// and srv1 holds none of it, which is why no move leg is needed for it.
+test fn the_record_and_roster_names_come_from_the_one_declaration() -> ProcessExit {
+  names_agree(cases: [
+    NameCase {
+      label: "metering record member name = declaration basename",
+      actual: attempt_state_member_name(member: AttemptMeteringRecordFile),
+      expected: attempt_metering_slots.record_basename as String,
+    },
+    NameCase {
+      label: "metering record basename = the name srv1 holds (13 of them)",
+      actual: attempt_state_member_name(member: AttemptMeteringRecordFile),
+      expected: "metering.json",
+    },
+    NameCase {
+      label: "roster seal member name = declaration basename",
+      actual: attempt_state_member_name(member: AttemptMeteringRosterSealed),
+      expected: attempt_metering_slots.roster_sealed_basename as String,
+    },
+    NameCase {
+      label: "roster seal basename",
+      actual: attempt_metering_slots.roster_sealed_basename as String,
+      expected: "metering-roster-sealed.json",
+    },
+    NameCase {
+      label: "roster closing basename (a hold key now; srv1 holds none)",
+      actual: attempt_metering_slots.roster_closing_basename as String,
+      expected: "metering-roster-closing",
+    },
+    NameCase {
+      label: "request binding member name = the name srv1 holds (15 of them, 72 B each)",
+      actual: attempt_state_member_name(member: AttemptRequestBindingFile),
+      expected: "request-binding.json",
+    },
+  ])
+}
+
+// THE TWO srv1 SHAPES STAY DISTINGUISHABLE. A reviewer launch carries the token-criterion stem, an auditor
+// launch does not, and neither is confusable with the roster seal: if the reviewer arm ever dropped its
+// criterion key the two launch shapes would collapse onto each other, and this is the claim that notices.
+test fn reviewer_and_auditor_launch_shapes_stay_distinguishable() -> ProcessExit {
+  let reviewer = metering_launch_entry_name(role: MeteredReviewer { criterion_key: srv1_reviewer_criterion, head: srv1_reviewer_head })
+  let auditor = metering_launch_entry_name(role: MeteredAuditor { head: srv1_auditor_head })
+  names_agree(cases: [
+    NameCase { label: "reviewer carries the token-criterion stem", actual: if string_contains(reviewer, srv1_reviewer_criterion as String) { "yes" } else { "no" }, expected: "yes" },
+    NameCase { label: "auditor carries no token-criterion stem", actual: if string_contains(auditor, srv1_reviewer_criterion as String) { "yes" } else { "no" }, expected: "no" },
+    NameCase { label: "a launch entry is not the roster seal", actual: if auditor == attempt_metering_slots.roster_sealed_basename as String { "same" } else { "distinct" }, expected: "distinct" },
+    NameCase { label: "both shapes carry the declared launch prefix", actual: if string_contains(reviewer, attempt_metering_slots.launch_prefix as String) && string_contains(auditor, attempt_metering_slots.launch_prefix as String) { "yes" } else { "no" }, expected: "yes" },
+  ])
+}

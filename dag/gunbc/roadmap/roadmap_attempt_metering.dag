@@ -2,6 +2,7 @@ module gunbc.roadmap.roadmap_attempt_metering
 
 
 import gunbc.roadmap.roadmap_attempt_state_store {
+import extdeps.shell
   AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents,
   AttemptMeteringRecordFile, AttemptMeteringRosterSealed, AttemptMeteringLaunch,
   attempt_state_directory_text, attempt_state_text, attempt_state_member_name,
@@ -17,7 +18,7 @@ import std.durable_exclusive_hold {
   DurableHoldObservation, DurableHoldOwnerRef,
   HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
 }
-import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs , FilePath}
 import std.algebra { trim }
 import std.types { path_segment_is_safe }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
@@ -1183,6 +1184,11 @@ fn attempt_metering_listing(root: String, what: String) -> AttemptMeteringListin
 // directory is the attempt-state declaration's root for that key, and it has to list.
 fn attempt_metering_store(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptMeteringStoreReading {
   let directory = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
+  // THE MINT ENSURES THE ATTEMPT DIRECTORY AND THEN OBSERVES IT, as #15445's print-runtime store does. The
+  // directory is the one the attempt-state declaration names for this attempt; ensuring it means the mint
+  // never hands out a store over a root it has not itself observed, and it keeps the dispatcher's
+  // provisioning and the store's reading on the SAME declaration rather than two literals.
+  if !shell.Mkdir.Parents(path: directory as FilePath).success { return AttemptMeteringStoreUnready { detail: concat("Cannot create the attempt metering directory ", directory) } }
   match attempt_metering_listing(root: directory, what: "the attempt metering directory") {
     AttemptMeteringListingUnreadable { detail } => AttemptMeteringStoreUnready { detail: detail }
     AttemptMeteringListingRead { names } =>
@@ -1199,6 +1205,8 @@ fn attempt_metering_store(instance: HostDashboardInstance, node_id: RoadmapNodeI
 // metering-attempt.* rows this module declares beside it.
 fn attempt_metering_index_store(instance: HostDashboardInstance) -> AttemptMeteringIndexStoreReading {
   let root = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+  // Ensured, then listed, from the same parent declaration (see the attempt mint above).
+  if !shell.Mkdir.Parents(path: root as FilePath).success { return AttemptMeteringIndexStoreUnready { detail: concat("Cannot create the dispatch attempt-state root ", root) } }
   match attempt_metering_listing(root: root, what: "the dispatch attempt-state root") {
     AttemptMeteringListingUnreadable { detail } => AttemptMeteringIndexStoreUnready { detail: detail }
     AttemptMeteringListingRead { names: _ } => AttemptMeteringIndexStoreReady { store: AttemptMeteringIndexStore { instance: instance.instance_id, root: root as NonEmptyStr } }

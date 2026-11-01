@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_served_observation
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptLaunchIdentity, attempt_state_read_at }
+import extdeps.shell
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_page { issue_query_snapshot_for_projection }
 import gunbc.site.markup { page_render_refusal_body }
@@ -11,7 +12,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
 }
-import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.types { String, Int, Bool, List, NonEmptyStr , FilePath}
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemReadRefused,
@@ -198,6 +199,10 @@ type ServedObservationStoreReading
 // declaration and the directory has to list for a store to exist.
 fn served_observation_store(instance: HostDashboardInstance) -> ServedObservationStoreReading {
   let root = instance_receipts_dir(instance_root: instance.instance_root as String)
+  // THE MINT ENSURES THE DIRECTORY AND THEN OBSERVES IT, as #15445's print-runtime store does: the receipts
+  // directory its OWN declaration names is created if absent and listed if present, so the mint never hands
+  // out a store over a root it has not observed, and no second provisioning literal exists.
+  if !shell.Mkdir.Parents(path: root as FilePath).success { return ServedObservationStoreUnready { detail: concat("Cannot create the served-observation receipts directory ", root) } }
   match served_observation_root_reading(root: root) {
     ServedObservationRootUnlistable { detail } => ServedObservationStoreUnready { detail: detail }
     ServedObservationRootListed => ServedObservationStoreReady { store: ServedObservationStore { instance: instance.instance_id, root: root as NonEmptyStr } }

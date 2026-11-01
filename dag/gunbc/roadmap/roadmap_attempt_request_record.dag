@@ -2,9 +2,10 @@ module gunbc.roadmap.roadmap_attempt_request_record
 
 
 import gunbc.roadmap.roadmap_attempt_state_store {
+import extdeps.shell
   AttemptRequestBindingFile, attempt_state_create_new_at, attempt_state_observe_at, attempt_state_directory_text, AttemptDirectoryRoot,
 }
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr , FilePath}
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
@@ -143,6 +144,10 @@ type AttemptRequestBindingStoreReading
 // THE ONE MINT, AND IT TAKES NO PATH.
 fn attempt_request_binding_store(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptRequestBindingStoreReading {
   let directory = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
+  // THE MINT ENSURES THE ATTEMPT DIRECTORY AND THEN OBSERVES IT, as #15445's print-runtime store does: the
+  // directory is the one the attempt-state declaration names for this attempt, so the mint never hands out a
+  // store over a root it has not itself observed, and provisioning and reading stay on one declaration.
+  if !shell.Mkdir.Parents(path: directory as FilePath).success { return AttemptRequestBindingStoreUnready { detail: concat("Cannot create the attempt directory ", directory) } }
   let listed = Filesystem.List(path: directory)
   match filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => AttemptRequestBindingStoreUnready { detail: join(["the attempt directory is not admissible: ", c], "") }

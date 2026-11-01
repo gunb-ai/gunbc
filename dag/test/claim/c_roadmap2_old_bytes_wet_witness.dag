@@ -1,0 +1,217 @@
+module test.claim.c_roadmap2_old_bytes_wet_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.host.host_layout { srv1_host_layout, instance_receipts_dir }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_view_preferences { IssueViewPreferences, default_issue_view_preferences }
+import gunbc.roadmap.roadmap_view_preference_store { IssueViewPreferenceStore, IssueViewPreferenceStoreReading, IssueViewPreferenceStoreReady, IssueViewPreferenceStoreUnready, IssueViewStored, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaved, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused, issue_view_preference_store, issue_view_preference_read, issue_view_preference_save }
+import gunbc.roadmap.roadmap_event_snapshot_census { SnapshotCensusReceiptStore, SnapshotCensusReceiptStoreReading, SnapshotCensusReceiptStoreReady, SnapshotCensusReceiptStoreUnready, SnapshotCensusReceiptWrite, SnapshotCensusReceiptWritten, SnapshotCensusReceiptWriteRefused, SnapshotCensusReceiptContent, SnapshotCensusReceiptContentRead, SnapshotCensusReceiptContentAbsent, SnapshotCensusReceiptContentUnreadable, RoadmapSnapshotCensusReceipt, SnapshotCensusPrior, SnapshotCensusPriorAbsent, snapshot_census_receipt_slots, snapshot_census_receipt_store, snapshot_census_receipt_put, snapshot_census_receipt_content, roadmap_snapshot_census_receipt_json }
+import gunbc.roadmap.roadmap_served_observation { ServedObservationStore, ServedObservationStoreReading, ServedObservationStoreReady, ServedObservationStoreUnready, ServedObservationWrite, ServedObservationWritten, ServedObservationWriteRefused, ServedObservationRead, ServedObservationPresent, ServedObservationIndex, ServedObservationEntry, ServedObservationKind, served_observation_slots, served_observation_store, served_observation_index_put, served_observation_read_for_instance, served_observation_index_json_value }
+import gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, AttemptMeteringStoreReading, AttemptMeteringStoreReady, AttemptMeteringStoreUnready, AttemptMeteringCreateOnce, AttemptMeteringCreated, AttemptMeteringAlreadyPresent, AttemptMeteringCreateRefused, OptionalFileRead, OptionalFileContent, OptionalFileAbsent, OptionalFileUnreadable, attempt_metering_store, attempt_metering_create_once, attempt_metering_read, metering_launch_entry_name, metering_roster_entry_json, metering_roster_seal_json, MeteredRole, MeteredWorker }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptMeteringRosterSealed, attempt_state_directory_text, attempt_state_member_name }
+import gunbc.roadmap.roadmap_attempt_request_record { AttemptRequestBindingStore, AttemptRequestBindingStoreReading, AttemptRequestBindingStoreReady, AttemptRequestBindingStoreUnready, AttemptRequestBinding, AttemptRequestBindingCommit, RequestBindingCommitted, RequestBindingCommitRefused, AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable, attempt_request_binding_store, attempt_request_binding_commit, attempt_request_binding_read, attempt_request_binding_json }
+
+// THE OLD BYTES COME BACK UNCHANGED THROUGH THE SEALED OPS. Each store in this cohort is sealed IN PLACE:
+// the on-disk format and the entry names are exactly what the pre-seal code wrote, and the claim that makes
+// that a fact rather than an assertion is a byte readback -- bytes produced by the PRE-SEAL SERIALIZER still
+// exported by the declaring module, written through the sealed writer, then read back both by the sealed
+// reader and by a raw Filesystem.Read at the path the PRE-SEAL code composed. If the seal had quietly moved
+// a file or reformatted a record, one of those two comparisons would fail. The raw path in every case is
+// composed in this witness from the pre-seal layout functions (instance_receipts_dir,
+// attempt_state_directory_text) rather than from anything the store hands back, so the store cannot make the
+// comparison true by pointing the test at itself.
+//
+// WITNESS, NOT PROOF: these run the real filesystem in an isolated instance under a mktemp dir, so they say
+// what the bytes are, not what they must be. Each is paired with the seal REDs in
+// test/claim/c_roadmap2_store_seal_witness, which say a consumer cannot build these stores any other way.
+
+fn wet_instance(tag: String, dir: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["c-roadmap2-old-bytes-", tag], "") as NonEmptyStr),
+    instance_id: join(["c-roadmap2-old-bytes-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18107,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn read_raw(path: String) -> String {
+  let read = Filesystem.Read(path: path as FilePath)
+  if read.success { read.content } else { join(["<unreadable:", read.error, ">"], "") }
+}
+
+// 1. THE SNAPSHOT CENSUS RECEIPT. Bytes from roadmap_snapshot_census_receipt_json (the pre-seal serializer,
+// still the one the pass uses) written through snapshot_census_receipt_put, read back through the store's own
+// content op AND through a raw read of <instance>/receipts/<declared stem><declared suffix>.
+test fn the_snapshot_census_receipt_bytes_survive_the_seal() -> Bool {
+  let dir = match shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-c-roadmap2-census-XXXXXX") {
+    shell.Mktemp.DirCreated { path: p } => p as String
+    shell.Mktemp.DirFailed { reason: r } => join(["<mktemp-failed:", r, ">"], "")
+  }
+  let instance = wet_instance(tag: "census", dir: dir)
+  let receipt = RoadmapSnapshotCensusReceipt {
+    observed_at: "2026-11-01T02:21:00Z",
+    namespace: "node:roadmap",
+    snapshots: ["a", "b"],
+    present_across_censuses: ["a"],
+    prior: SnapshotCensusPriorAbsent,
+  }
+  let bytes = serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: receipt))
+  match snapshot_census_receipt_store(instance: instance) {
+    SnapshotCensusReceiptStoreUnready { detail: _ } => false
+    SnapshotCensusReceiptStoreReady { store: store } =>
+      match snapshot_census_receipt_put(store: store, content: bytes) {
+        SnapshotCensusReceiptWriteRefused { error: _ } => false
+        SnapshotCensusReceiptWritten =>
+          match snapshot_census_receipt_content(store: store) {
+            SnapshotCensusReceiptContentRead { content: c } => c == bytes && read_raw(path: join([instance_receipts_dir(instance_root: instance.instance_root as String), "/", snapshot_census_receipt_slots.stem as String, snapshot_census_receipt_slots.suffix as String], "")) == bytes
+            SnapshotCensusReceiptContentAbsent => false
+            SnapshotCensusReceiptContentUnreadable { detail: _ } => false
+          }
+      }
+  }
+}
+
+// 2. THE SERVED OBSERVATION INDEX. The index bytes are the pre-seal serializer's, written through
+// served_observation_index_put and read back through served_observation_read_for_instance (the typed decode)
+// and through a raw read of the receipts directory the pre-seal layout named.
+test fn the_served_observation_index_bytes_survive_the_seal() -> Bool {
+  let dir = match shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-c-roadmap2-served-XXXXXX") {
+    shell.Mktemp.DirCreated { path: p } => p as String
+    shell.Mktemp.DirFailed { reason: r } => join(["<mktemp-failed:", r, ">"], "")
+  }
+  let instance = wet_instance(tag: "served", dir: dir)
+  let index = ServedObservationIndex {
+    observed_at: "2026-11-01T02:21:00Z",
+    entries: [ServedObservationEntry { kind: AttemptsJson, status: 200, digest: "0123456789abcdef0123456789abcdef0123456789abcdef" }],
+  }
+  let bytes = serialize_json(v: served_observation_index_json_value(index: index))
+  match served_observation_store(instance: instance) {
+    ServedObservationStoreUnready { detail: _ } => false
+    ServedObservationStoreReady { store: store } =>
+      match served_observation_index_put(store: store, content: bytes) {
+        ServedObservationWriteRefused { error: _ } => false
+        ServedObservationWritten =>
+          match served_observation_read_for_instance(instance: instance) {
+            ServedObservationPresent { index: read } => list_length(read.entries) == 1 && read.entries[0].status == 200 && read.entries[0].digest == "0123456789abcdef0123456789abcdef0123456789abcdef" && read_raw(path: join([instance_receipts_dir(instance_root: instance.instance_root as String), "/", served_observation_slots.index_stem as String, served_observation_slots.index_suffix as String], "")) == bytes
+            _ => false
+          }
+      }
+  }
+}
+
+// 3. THE CREATE-ONCE ROSTER RECORDS. The launch entry and the sealed roster are create-once RECORDS, not
+// locks, so they stay records (the closing marker is the only exclusion in this store, and it is a hold).
+// Their bytes come from the pre-seal builders, the entry names from the declaration, and the second create
+// must refuse -- the create-once is part of the format, not an extra.
+test fn the_metering_roster_records_survive_the_seal() -> Bool {
+  let dir = match shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-c-roadmap2-metering-XXXXXX") {
+    shell.Mktemp.DirCreated { path: p } => p as String
+    shell.Mktemp.DirFailed { reason: r } => join(["<mktemp-failed:", r, ">"], "")
+  }
+  let instance = wet_instance(tag: "metering", dir: dir)
+  let node = "c-roadmap2-node" as RoadmapNodeId
+  let key = "c-roadmap2-attempt-0123456789abcdef"
+  let roles: List<MeteredRole> = [MeteredWorker]
+  let launch_name = metering_launch_entry_name(role: MeteredWorker) as NonEmptyStr
+  let launch_bytes = metering_roster_entry_json(node_id: node as String, attempt_key: key, role: MeteredWorker)
+  let sealed_name = attempt_state_member_name(member: AttemptMeteringRosterSealed) as NonEmptyStr
+  let sealed_bytes = metering_roster_seal_json(node_id: node as String, attempt_key: key, launches: roles)
+  match attempt_metering_store(instance: instance, node_id: node, attempt_key: key) {
+    AttemptMeteringStoreUnready { detail: _ } => false
+    AttemptMeteringStoreReady { store: store } =>
+      match attempt_metering_create_once(store: store, entry: launch_name, content: launch_bytes) {
+        AttemptMeteringCreateRefused { error: _ } => false
+        AttemptMeteringAlreadyPresent => false
+        AttemptMeteringCreated =>
+          match attempt_metering_create_once(store: store, entry: sealed_name, content: sealed_bytes) {
+            AttemptMeteringCreateRefused { error: _ } => false
+            AttemptMeteringAlreadyPresent => false
+            AttemptMeteringCreated =>
+              match attempt_metering_read(store: store, entry: launch_name) {
+                OptionalFileContent { content: c } =>
+                  c == launch_bytes && read_raw(path: join([attempt_state_directory_text(instance: instance, node_id: node, attempt_key: key, directory: AttemptDirectoryRoot), "/", launch_name as String], "")) == launch_bytes &&
+                    match attempt_metering_read(store: store, entry: sealed_name) {
+                      OptionalFileContent { content: s } => s == sealed_bytes
+                      _ => false
+                    } &&
+                    match attempt_metering_create_once(store: store, entry: launch_name, content: launch_bytes) {
+                      AttemptMeteringAlreadyPresent => true
+                      _ => false
+                    }
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// 4. THE REQUEST BINDING. The 72-byte record srv1 holds 15 of is written by the create-once commit and read
+// back through the store's typed read AND through a raw read of the path the pre-seal code composed from the
+// attempt-state layout. The second commit must refuse: the binding is create-once, and a re-binding that
+// silently overwrote would be a security hole, not a bug.
+test fn the_request_binding_bytes_survive_the_seal() -> Bool {
+  let dir = match shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-c-roadmap2-binding-XXXXXX") {
+    shell.Mktemp.DirCreated { path: p } => p as String
+    shell.Mktemp.DirFailed { reason: r } => join(["<mktemp-failed:", r, ">"], "")
+  }
+  let instance = wet_instance(tag: "binding", dir: dir)
+  let node = "c-roadmap2-node" as RoadmapNodeId
+  let key = "c-roadmap2-attempt-0123456789abcdef"
+  let binding: AttemptRequestBinding = RequestAutonomous
+  let bytes = attempt_request_binding_json(binding: binding)
+  match attempt_request_binding_store(instance: instance, node_id: node, attempt_key: key) {
+    AttemptRequestBindingStoreUnready { detail: _ } => false
+    AttemptRequestBindingStoreReady { store: store } =>
+      match attempt_request_binding_commit(store: store, binding: binding) {
+        RequestBindingCommitRefused { step: _, detail: _ } => false
+        RequestBindingCommitted { binding: _ } =>
+          match attempt_request_binding_read(store: store) {
+            RequestBindingRead { binding: read } => read == binding && read_raw(path: join([attempt_state_directory_text(instance: instance, node_id: node, attempt_key: key, directory: AttemptDirectoryRoot), "/request-binding.json"], "")) == bytes &&
+              match attempt_request_binding_commit(store: store, binding: binding) {
+                RequestBindingCommitRefused { step: _, detail: _ } => true
+                _ => false
+              }
+            _ => false
+          }
+      }
+  }
+}
+
+// 5. THE ISSUE VIEW PREFERENCES. The slot format is file_slot_store's, landed in #14944; what this cohort
+// changed is WHO may build the store, not the bytes. So the readback here is a round trip through the sealed
+// ops compared against the value the caller passed in: same sorts, same query, same band, same revision
+// semantics. A byte-level claim over the slot file would be #14944's claim re-filed under a different name,
+// which the corpus rules out (no duplicate specimens).
+test fn the_issue_view_preferences_round_trip_through_the_sealed_store() -> Bool {
+  let dir = match shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-c-roadmap2-view-XXXXXX") {
+    shell.Mktemp.DirCreated { path: p } => p as String
+    shell.Mktemp.DirFailed { reason: r } => join(["<mktemp-failed:", r, ">"], "")
+  }
+  let instance = wet_instance(tag: "view", dir: dir)
+  let prefs = default_issue_view_preferences()
+  let key = "principal-c-roadmap2" as NonEmptyStr
+  match issue_view_preference_store(instance: instance) {
+    IssueViewPreferenceStoreUnready { detail: _ } => false
+    IssueViewPreferenceStoreReady { store: store } =>
+      match issue_view_preference_save(store: store, key: key, prefs: prefs, revision: "0") {
+        IssueViewSaveRefused => false
+        IssueViewSaveConflict => false
+        IssueViewSaveOk { revision: _ } =>
+          match issue_view_preference_read(store: store, key: key) {
+            IssueViewFound { prefs: read, revision: _, expected: _ } => read.query == prefs.query && read.band == prefs.band && read.project == prefs.project && read.selected == prefs.selected && read.expanded == prefs.expanded && list_length(read.sorts) == list_length(prefs.sorts)
+            IssueViewAbsent => false
+            IssueViewUnread => false
+          }
+      }
+  }
+}
