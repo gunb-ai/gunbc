@@ -1840,8 +1840,9 @@ fn bmc_secure_state_refusal_label(cause: BmcSecureStateRefusal) -> NonEmptyStr {
   }
 }
 
-// THE EFFECT'S DOMAIN PROJECTION (gunbc.host_convergence_protocol): observe, assess, decide. Its row is
-// gunbc.host_convergence_census BmcSecureAccountState. The protocol's apply side is an open frontier
+// THE EFFECT'S DOMAIN PROJECTION (gunbc.host_convergence_protocol): observe, assess, decide. Its census row
+// is the arrival entry's (gunbc.host_convergence_census, arrival_converge bmc_secure), the one route
+// that selects it. The protocol's apply side is an open frontier
 // (host_effect_decide_apply_frontier, CONVERGENCE-ONE C8); the apply and the independent readback
 // below are this domain's own, with its own sealed receipt, and do not discharge C8.
 fn bmc_secure_state_projection() -> HostEffectDomainProjection<MachineIntakeSubject, BmcSecureGoal, BmcAccountStateObservation, BmcAccountStateObservation, BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal, BmcSecureStateRefusal, BmcAccountActionDue> {

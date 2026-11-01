@@ -17,6 +17,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
   attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
   AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+  AttemptExitRecordWriterUnsubstituted, attempt_exit_entry_unexpanded_variables,
   attempt_exit_vendor_pane_entry_name, attempt_exit_vendor_pane_result_word,
   attempt_exit_vendor_pane_entry_name_of_death, VendorPaneSignaled,
 }
@@ -134,16 +135,19 @@ test fn record_found_in_any_stage_none_when_all_read_unreadable_when_one_is_not(
   let found = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [other] }, AttemptExitStageNames { names: [] }, AttemptExitStageNames { names: [mine] }]) {
     AttemptExitRecordFound { record } => match record.end { AttemptProcessExitedWith { status } => status == 3 AttemptProcessSignaled { signal: _ } => false }
     AttemptExitRecordNone => false
+    AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => false
     AttemptExitRecordUnreadable { reason: _ } => false
   }
   let none_found = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [other] }, AttemptExitStageNames { names: [] }, AttemptExitStageNames { names: [] }]) {
     AttemptExitRecordNone => true
     AttemptExitRecordFound { record: _ } => false
+    AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => false
     AttemptExitRecordUnreadable { reason: _ } => false
   }
   let unreadable = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [mine] }, AttemptExitStageUnreadable { reason: "EACCES" }, AttemptExitStageNames { names: [] }]) {
     AttemptExitRecordUnreadable { reason: _ } => true
     AttemptExitRecordFound { record: _ } => false
+    AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => false
     AttemptExitRecordNone => false
   }
   found && none_found && unreadable
@@ -155,11 +159,13 @@ test fn a_records_role_is_part_of_its_subject() -> Bool {
   let only_reviewer = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: ["n-1+k1+review.conformance-leasing.abc123+inv+success+exited+0"] }]) {
     AttemptExitRecordNone => true
     AttemptExitRecordFound { record: _ } => false
+    AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => false
     AttemptExitRecordUnreadable { reason: _ } => false
   }
   let reviewer_found = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptReviewerRole { criterion_key: "conformance-leasing", head_sha: "abc123" }, listings: [AttemptExitStageNames { names: ["n-1+k1+worker+inv+success+exited+0", "n-1+k1+review.conformance-leasing.abc123+inv+success+exited+0"] }]) {
     AttemptExitRecordFound { record } => record.role == "review.conformance-leasing.abc123"
     AttemptExitRecordNone => false
+    AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => false
     AttemptExitRecordUnreadable { reason: _ } => false
   }
   only_reviewer && reviewer_found
@@ -186,6 +192,40 @@ test fn an_undecodable_entry_for_this_attempt_is_unreadable_and_another_attempts
     AttemptExitRecordNone => true
     _ => false
   })
+}
+
+// THE SRV1 2026-10-28 ARTIFACT, VERBATIM IN SHAPE: the worker unit's only exit entry spells all four
+// stop variables UNEXPANDED (its audit, obligation and review units wrote expanded records in the same
+// minute). It is malformed, but malformed ABOUT ITS WRITER, and the observer must say which -- reading
+// it as "this attempt's end is unobserved" is what held a 22 GiB seat for twelve days.
+test fn an_unsubstituted_entry_names_its_writer_and_never_its_holder() -> Bool {
+  let entry = "n-1+k1+worker+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}"
+  let spelled = attempt_exit_entry_unexpanded_variables(entry_name: entry)
+  let answered = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [entry] }]) {
+    AttemptExitRecordWriterUnsubstituted { entries, variables } =>
+      count(entries) == 1 && any(entries, e => e == entry)
+        && count(variables) == 4
+        && any(variables, v => v == "INVOCATION_ID") && any(variables, v => v == "SERVICE_RESULT")
+        && any(variables, v => v == "EXIT_CODE") && any(variables, v => v == "EXIT_STATUS")
+    _ => false
+  }
+  // A decodable record for the same subject still answers the end; the broken artifact does not hide it.
+  let good = "n-1+k1+worker+0123456789abcdef0123456789abcdef+exit-code+exited+3"
+  let decodable_still_answers = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [entry, good] }]) {
+    AttemptExitRecordFound { record } => record.entry_name == good
+    _ => false
+  }
+  // Another attempt's unsubstituted entry is not this attempt's, and a name that merely cannot be
+  // decoded (no stop-variable spelling) stays the plain "unobserved" answer it was.
+  let foreign = match attempt_exit_record_from_listings(node_id: "n-2", attempt_key: "k9", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [entry] }]) {
+    AttemptExitRecordNone => true
+    _ => false
+  }
+  let ordinary = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: ["n-1+k1+worker+inv+exit-code+exited+BOGUS"] }]) {
+    AttemptExitRecordUnreadable { reason: _ } => true
+    _ => false
+  }
+  count(spelled) == 4 && answered && decodable_still_answers && foreign && ordinary
 }
 
 test fn linux_standard_signal_lookups_invert_the_one_name_and_number_tables() -> Bool {

@@ -7,7 +7,7 @@ module gunbc.tools.bmc_first_contact
 // of it, and bare resolution over a whole-corpus pool is not a stable binding to reason about when
 // the question is "which write verb ran".
 import gunbc.tools.bmc_onboard {
-  BmcGetSystem, bmc_authenticated_call, bmc_call_succeeded, bmc_call_failure_reason,
+  bmc_authenticated_call, bmc_call_succeeded, bmc_call_failure_reason,
 }
 import std.types { Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -42,7 +42,6 @@ fn bmc_first_contact() -> ProcessExit
     host: bmc,
     account: openbmc_factory_login.username,
     password: openbmc_factory_login.published_password as Secret,
-    call: BmcGetSystem,
   )
 
   return if bmc_call_succeeded(outcome: resp) { ExitSuccess } else { exit_failure(reason: bmc_call_failure_reason(outcome: resp, rejected_prefix: "")) }
