@@ -43,10 +43,10 @@ fn btar_refusal_at_authored(d: NonEmptyDiagnostics, id: Symbol) -> Bool {
   (diagnostics_fatal_reason(d: d) == ^body_lowering_reason_type_annotation_not_carried)
     && match diagnostics_fatal(d: d).at {
       NodeLocus { anchor: a } =>
-        btar_atom_in(n: a.at, id: id)
-          && !btar_atom_in(n: a.at, id: ^dag_token_kw_let)
-          && !btar_atom_in(n: a.at, id: ^dag_token_eq)
-          && !btar_atom_in(n: a.at, id: ^dag_token_kw_fn)
+        btar_atom_in(n: a.at.node, id: id)
+          && !btar_atom_in(n: a.at.node, id: ^dag_token_kw_let)
+          && !btar_atom_in(n: a.at.node, id: ^dag_token_eq)
+          && !btar_atom_in(n: a.at.node, id: ^dag_token_kw_fn)
       _ => false
     }
 }
@@ -69,9 +69,9 @@ test fn btar_let_annotation_refuses() -> Bool {
       (diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol)
         && match diagnostics_fatal(d: d).at {
           NodeLocus { anchor: a } =>
-            btar_atom_in(n: a.at, id: ^Q)
-              && !btar_atom_in(n: a.at, id: ^dag_token_kw_let)
-              && !btar_atom_in(n: a.at, id: ^dag_token_eq)
+            btar_atom_in(n: a.at.node, id: ^Q)
+              && !btar_atom_in(n: a.at.node, id: ^dag_token_kw_let)
+              && !btar_atom_in(n: a.at.node, id: ^dag_token_eq)
           _ => false
         }
   }
@@ -100,7 +100,7 @@ fn btar_resolve_refused_at_authored_q(o: Outcome<ResolvedTree>) -> Bool {
     Rejected { diagnostics: d } =>
       (diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol)
         && match diagnostics_fatal(d: d).at {
-          NodeLocus { anchor: a } => btar_atom_in(n: a.at, id: ^Q)
+          NodeLocus { anchor: a } => btar_atom_in(n: a.at.node, id: ^Q)
           _ => false
         }
   }

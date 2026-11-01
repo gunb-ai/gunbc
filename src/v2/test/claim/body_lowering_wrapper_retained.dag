@@ -50,7 +50,7 @@ test fn body_lowering_value_position_refuses_a_retention_at_its_shell_holds() ->
     Rejected { diagnostics: ne } =>
       (ne.head.reason == ^normalized_tree_reason_wrapper_retention_not_normalized)
         && match ne.head.at {
-          NodeLocus { anchor: a } => content_hash(n: a.at) == content_hash(n: shell)
+          NodeLocus { anchor: a } => content_hash(n: a.at.node) == content_hash(n: shell)
           _ => false
         }
   }

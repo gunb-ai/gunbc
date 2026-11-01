@@ -22,7 +22,8 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  NotADeclaration
+  NotADeclaration,
+  NodeOccurrence
 }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -65,8 +66,8 @@ data map_id_input: Node = Node {
 
 data map_id_claim: LensComplexityClaim = LensComplexityClaim {
   input: map_id_input,
-  expected_cost: LinearCost { variable: SizeVariable { source: map_id_measure } },
-  expected_complexity: linear_complexity(size_var: SizeVariable { source: map_id_measure }),
+  expected_cost: LinearCost { variable: SizeVariable { source: NodeOccurrence { node: map_id_measure } } },
+  expected_complexity: linear_complexity(size_var: SizeVariable { source: NodeOccurrence { node: map_id_measure } }),
   falsification: Diagnostic {
     reason: ^map_id_claim_reason,
     at: Textual { file: ^map_id_claim_file, extent: WholeFile },

@@ -228,9 +228,9 @@ fn bcn_refused_at(o: Outcome<ResolvedTree>, reason: Symbol, id: Symbol) -> Bool 
       (diagnostics_fatal_reason(d: d) == reason)
         && match diagnostics_fatal(d: d).at {
           NodeLocus { anchor: a } =>
-            bcn_atom_in(n: a.at, id: id)
-              && !bcn_atom_in(n: a.at, id: ^dag_token_kw_as)
-              && !bcn_atom_in(n: a.at, id: ^dag_token_kw_fn)
+            bcn_atom_in(n: a.at.node, id: id)
+              && !bcn_atom_in(n: a.at.node, id: ^dag_token_kw_as)
+              && !bcn_atom_in(n: a.at.node, id: ^dag_token_kw_fn)
           _ => false
         }
   }
@@ -451,7 +451,7 @@ fn bcn_out_of_refinement_inferred() -> Outcome<Bool> {
 fn bcn_mismatch_at_literal(x: Diagnostic) -> Bool {
   (x.reason == discriminant(v: NoTargetCandidate))
     && match x.at {
-      NodeLocus { anchor: a } => bcn_atom_in(n: a.at, id: ^dag_token_int_literal) && !bcn_atom_in(n: a.at, id: ^dag_token_kw_as)
+      NodeLocus { anchor: a } => bcn_atom_in(n: a.at.node, id: ^dag_token_int_literal) && !bcn_atom_in(n: a.at.node, id: ^dag_token_kw_as)
       _ => false
     }
 }
@@ -494,7 +494,7 @@ fn bcn_refused_with_mismatch_at_operand(o: Outcome<Bool>) -> Bool {
 fn bcn_operand_mismatch(x: Diagnostic) -> Bool {
   (x.reason == discriminant(v: NoTargetCandidate))
     && match x.at {
-      NodeLocus { anchor: a } => bcn_atom_in(n: a.at, id: ^x) && !bcn_atom_in(n: a.at, id: ^dag_token_kw_as)
+      NodeLocus { anchor: a } => bcn_atom_in(n: a.at.node, id: ^x) && !bcn_atom_in(n: a.at.node, id: ^dag_token_kw_as)
       _ => false
     }
 }

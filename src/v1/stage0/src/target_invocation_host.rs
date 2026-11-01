@@ -598,6 +598,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("derived-equality-routes"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/derived_equality_routes_native.dag",
+            },
+        ),
+        (
             instrument_label("cons-tail-recursion"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag",

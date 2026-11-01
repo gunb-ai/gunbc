@@ -597,7 +597,7 @@ fn acd_rejection_is_in_the_else_arm(tree: ResolvedTree) -> Bool {
 
 fn acd_locus_node(l: Locus) -> Optional<Node> {
   match l {
-    NodeLocus { anchor: a } => optional_present(value: a.at)
+    NodeLocus { anchor: a } => optional_present(value: a.at.node)
     _ => optional_absent()
   }
 }

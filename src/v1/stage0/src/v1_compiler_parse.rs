@@ -14864,6 +14864,7 @@ pub fn parse_expr_loop(
     op: binop.clone(),
     algebra_field: std::option::Option::None,
     operand: std::option::Option::None,
+    derived: std::option::Option::None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), std::option::Option::None, loop_span.clone());
                                                             {
                                                                 let __tco_0 = r.tokens.clone();
@@ -17167,6 +17168,7 @@ pub fn parse_expr_loop_no_brace(
     op: binop.clone(),
     algebra_field: std::option::Option::None,
     operand: std::option::Option::None,
+    derived: std::option::Option::None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), std::option::Option::None, loop_span.clone());
                                                             {
                                                                 let __tco_0 = r.tokens.clone();

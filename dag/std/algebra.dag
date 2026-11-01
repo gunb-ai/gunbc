@@ -1730,6 +1730,22 @@ fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool
   }
 }
 
+// A FINITELY SUPPORTED FUNCTION'S EQUALITY UNDER A CALLER-NAMED VALUE QUESTION: the same keys (compared by
+// the key type's own equality) and, at each, equal values by `eq`. The map counterpart of zip_eq and
+// std.optional optional_eq, used where a map's values reach a routed equality (v1.compiler.infer equality_route_declarations).
+fn map_values_eq<K, V>(a: Map<K, V>, b: Map<K, V>, eq: fn(V, V) -> Bool) -> Bool {
+  (count(map_keys(a)) == count(map_keys(b))) && for_all(xs: map_keys(a), predicate: fn(k) {
+    match map_get(a, k) {
+      Present { value: x } =>
+        match map_get(b, k) {
+          Present { value: y } => eq(x, y)
+          Absent => false
+        }
+      Absent => false
+    }
+  })
+}
+
 // ELEMENTWISE EQUALITY OF TWO SAME-LENGTH LISTS. The recursion this replaced put the call INSIDE the
 // `&&` (eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)), so the frame stayed live across the element
 // comparison AND the whole rest of the list: host depth equalled the list's length. The v1 interpreter

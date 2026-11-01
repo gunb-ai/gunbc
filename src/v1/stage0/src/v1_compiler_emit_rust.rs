@@ -134,7 +134,7 @@ use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem};
 use crate::v1_std_core::StringPart::{Text, Interpolation};
-use crate::v1_std_core::UnaryOpKind::{Neg};
+use crate::v1_std_core::UnaryOpKind::{Not, Neg};
 use crate::v1_std_core::VarBindingKind::{LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding};
 use self::WitnessCtorPathVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
@@ -26957,11 +26957,13 @@ pub fn emit_rust_expr_bin_op(
             op,
             algebra_field: algebra,
             operand: od,
+            derived: eqp,
             ..
         } => emit_typed_bin_op(
             op.clone(),
             algebra.clone(),
             od.clone(),
+            eqp.clone(),
             crate::v1_std_core::binop_left(expr.clone()),
             crate::v1_std_core::binop_right(expr.clone()),
             registry,
@@ -36805,6 +36807,7 @@ pub fn emit_typed_bin_op(
     op: BinOp,
     algebra_field: Option<AlgebraFieldKind>,
     operand: Option<Rc<OperandDeclaration>>,
+    derived: Option<Rc<DeclarationRef>>,
     left: Rc<Node>,
     right: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -36839,28 +36842,91 @@ pub fn emit_typed_bin_op(
                 RenderTarget::Rust,
             )
         } else {
-            match (*binop_operator_realization(op.clone(), operand, left.clone(), scope.clone()))
-                .clone()
+            if ((derived.clone() != std::option::Option::None)
+                && ((op.clone() == BinOp::Eq) || (op.clone() == BinOp::Ne)))
             {
-                OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
-                    emit_rust_compile_error_expr(
-                        crate::std_operator_realization::operator_realization_refusal_message(
-                            c.clone(),
-                        ),
-                    )
+                {
+                    let eq_fn = derived.clone().unwrap();
+                    let eq_target = Rc::new(CallTargetIdentity::SourceDeclarationCall {
+                        owner_module_path: eq_fn.module_path.clone(),
+                        decl_name: eq_fn.decl_name.clone(),
+                    });
+                    let eq_args = Rc::new({
+                        let mut __result = Vec::new();
+                        for a in Rc::new(vec![left.clone(), right.clone()]).iter().cloned() {
+                            __result.push(crate::v1_std_core::make_arg_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                std::option::Option::None,
+                                a.clone(),
+                                left.span.clone(),
+                                left.span.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let eq_call = emit_typed_call_expr(
+                        eq_fn.decl_name.clone(),
+                        eq_args,
+                        std::option::Option::None,
+                        Some(Rc::new(CallSemantics::PlainCallSemantics {
+                            target: eq_target.clone(),
+                        })),
+                        false,
+                        eq_target.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    );
+                    if (op.clone() == BinOp::Ne) {
+                        crate::v1_compiler_emit::emit_unary_op(
+                            UnaryOpKind::Not,
+                            eq_call,
+                            RenderTarget::Rust,
+                        )
+                    } else {
+                        eq_call.clone()
+                    }
                 }
-                OperatorRealization::StructuralComparison {
-                    binding: b,
-                    test: t,
-                    ..
-                } => emit_rust_structural_comparison(
-                    l_str.clone(),
-                    r_str.clone(),
-                    b.clone(),
-                    t.clone(),
-                ),
-                OperatorRealization::StructuralEquality { declaration: _, .. } => {
-                    emit_rust_host_bin_op(
+            } else {
+                match (*binop_operator_realization(
+                    op.clone(),
+                    operand,
+                    left.clone(),
+                    scope.clone(),
+                ))
+                .clone()
+                {
+                    OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
+                        emit_rust_compile_error_expr(
+                            crate::std_operator_realization::operator_realization_refusal_message(
+                                c.clone(),
+                            ),
+                        )
+                    }
+                    OperatorRealization::StructuralComparison {
+                        binding: b,
+                        test: t,
+                        ..
+                    } => emit_rust_structural_comparison(
+                        l_str.clone(),
+                        r_str.clone(),
+                        b.clone(),
+                        t.clone(),
+                    ),
+                    OperatorRealization::StructuralEquality { declaration: _, .. } => {
+                        emit_rust_host_bin_op(
+                            op.clone(),
+                            algebra_field.clone(),
+                            left.clone(),
+                            right.clone(),
+                            l_str.clone(),
+                            r_str.clone(),
+                            scope.clone(),
+                        )
+                    }
+                    OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
                         op.clone(),
                         algebra_field.clone(),
                         left.clone(),
@@ -36868,17 +36934,8 @@ pub fn emit_typed_bin_op(
                         l_str.clone(),
                         r_str.clone(),
                         scope.clone(),
-                    )
+                    ),
                 }
-                OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
-                    op.clone(),
-                    algebra_field.clone(),
-                    left.clone(),
-                    right.clone(),
-                    l_str.clone(),
-                    r_str.clone(),
-                    scope.clone(),
-                ),
             }
         }
     }

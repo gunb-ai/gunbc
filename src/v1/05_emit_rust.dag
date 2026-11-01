@@ -59,7 +59,7 @@ import v1.std.core { Unmarked, expr_literal_int_optional,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
   is_error_diagnostic,
-  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Neg, unaryop_operand, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Not, Neg, unaryop_operand, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -13025,8 +13025,8 @@ fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 
 fn emit_rust_expr_bin_op(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprBinOp { op: op, algebra_field: algebra, operand: od } =>
-      emit_typed_bin_op(op: op, algebra_field: algebra, operand: od, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    ExprBinOp { op: op, algebra_field: algebra, operand: od, derived: eqp } =>
+      emit_typed_bin_op(op: op, algebra_field: algebra, operand: od, derived: eqp, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_bin_op expected ExprBinOp", target: Rust)
   }
 }
@@ -16755,11 +16755,50 @@ fn rust_zero_value(type_name: String) -> String? {
   else { none }
 }
 
-fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, derived: DeclarationRef?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let l_str = emit_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let r_str = emit_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   if is_null_coalesce(op: op) {
     emit_null_coalesce(l_str: l_str, r_str: r_str, target: Rust)
+  } else if derived != none && (op == Eq || op == Ne) {
+    // A PLANNED `==` IS AN ORDINARY CALL of the declared function the checker named for it (the
+    // ExprBinOp's `derived`): the operand type's synthesized derived equality, or the routed
+    // function itself (v1.compiler.infer equality_derived_target). It goes through the same call
+    // lowering as any other call -- emit_typed_call_expr with a SourceDeclarationCall identity --
+    // so argument handling, module spelling, and effect suffixes come from the ordinary rules, not
+    // from a second call-emission path.
+    let eq_fn = derived.value
+    let eq_target = SourceDeclarationCall {
+      owner_module_path: eq_fn.module_path as String,
+      decl_name: eq_fn.decl_name as String
+    }
+    let eq_args = [left, right] |> map(a => make_arg_node(occurrence_identity: OccurrenceSynthetic, name: none, value: a, span: left.span, name_span: left.span))
+    let eq_call = emit_typed_call_expr(
+      func: eq_fn.decl_name as String,
+      args: eq_args,
+      inferred: none,
+      call_semantics: Present { value: PlainCallSemantics { target: eq_target } },
+      callee_is_function_value: false,
+      call_target: eq_target,
+      registry: registry,
+      scope: scope,
+      depth: depth,
+      shared_types: shared_types,
+      emit_info: emit_info
+    )
+    // `!=` is that call's result under `not`, one operator out: the negation is the TARGET
+    // LANGUAGE'S DECLARED `not` keyword row (extdeps.languages.rust emit, key "not"), applied by
+    // the shared unary-operator emitter -- the same route a `!x` written in source takes. No `!`
+    // is spliced as a string literal here: a spliced one would be a second spelling of the
+    // operator beside the declared row.
+    //
+    // THE CONDITION IS PARENTHESIZED, AND THAT IS NOT COSMETIC: written `if op == Ne {`, the seed
+    // parser reads `== Ne { ... }` as a COPRODUCT CONSTRUCTION of variant `Ne` and swallows the
+    // block, so the refusal arrives as an unrelated token inside it (two revisions of this line
+    // were refused that way -- first at the comma of `concat("!", eq_call)`, then at the colon of
+    // `emit_unary_op(op: ...)`, both blaming the block's contents for the condition's shape).
+    // `v1_src_dag_parse` is the check that sees this before a runner does.
+    if (op == Ne) { emit_unary_op(op: Not, operand_str: eq_call, target: Rust) } else { eq_call }
   } else {
     match binop_operator_realization(op: op, operand: operand, left: left, scope: scope) {
       OperatorRealizationRefused { cause: c } =>

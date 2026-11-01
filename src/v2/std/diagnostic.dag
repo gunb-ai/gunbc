@@ -3,7 +3,7 @@ module v2.std.diagnostic
 import std.types { List }
 import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, Node, Symbol, symbol_lexeme }
+import v2.std.node { node_equal_ignoring_provenance, node_occurrence_eq, Node, NodeOccurrence, Symbol, symbol_lexeme }
 
 type Extent
   = WholeFile
@@ -29,7 +29,7 @@ type LocusAnchor<T> {
 // competing declaration of an ambiguous reference here, one diagnostic per binder.
 type Locus
   = Textual { file: Symbol, extent: Extent }
-  | NodeLocus { anchor: LocusAnchor<Node> }
+  | NodeLocus { anchor: LocusAnchor<NodeOccurrence> }
   | SourcePortLocus { anchor: LocusAnchor<Symbol>, file: Symbol, extent: Extent }
   | InvariantPortLocus { anchor: LocusAnchor<Symbol>, invariant: Symbol }
   | DeclarationLocus { declaration: FreeMonoid<Symbol> }
@@ -100,7 +100,7 @@ fn diagnostics_singleton(d: Diagnostic) -> NonEmptyDiagnostics {
   NonEmptyDiagnostics { head: d, tail: [] }
 }
 fn node_locus(node: Node) -> Locus {
-  NodeLocus { anchor: LocusAnchor { at: node } }
+  NodeLocus { anchor: LocusAnchor { at: NodeOccurrence { node: node } } }
 }
 
 fn source_port_locus(port: Symbol, file: Symbol, extent: Extent) -> Locus {
@@ -188,7 +188,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
     }
     NodeLocus { anchor: na } => match b {
       Textual { file: _, extent: _ } => false
-      NodeLocus { anchor: nb } => node_same_occurrence(a: na.at, b: nb.at)
+      NodeLocus { anchor: nb } => node_occurrence_eq(a: na.at, b: nb.at)
       SourcePortLocus { anchor: _, file: _, extent: _ } => false
       InvariantPortLocus { anchor: _, invariant: _ } => false
       DeclarationLocus { declaration: _ } => false

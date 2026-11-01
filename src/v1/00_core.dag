@@ -299,7 +299,7 @@ type ExprData
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration? }
+  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, derived: DeclarationRef? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda
   | ExprStringInterp
@@ -443,6 +443,17 @@ type CompilerDiagnostic
   | EqualityMemberUnjudgeable { type_name: String, member: String, span: SourceSpan }
   | EqualityOnInadmissibleType { type_name: String, span: SourceSpan }
   | EqualityOptionalityMismatch { optional_side: String, span: SourceSpan }
+  // TYPED CENSUS ROWS FOR gunbc.rung_drop derived_equality_residual_field_equality, never a verdict
+  // (advisory; an accepted program stays accepted with either present). Each carries the declaration it
+  // sits in ("<module> <declaration>") and its locus, so the census label
+  // //gunbc/instruments:compile-clean-diagnostic-census joins them at identity grain. Both dissolve with
+  // that drop: the derive-eligibility fixpoint over the emitted type graph deletes them.
+  // A generic `==` the equality walk admits instantiation-blind: its operand type is a type variable, so
+  // no plan is computed and an instantiation at a Node-reaching type compares derived fields.
+  | EqualityInstantiationBlindGenericSite { operand_type: String, declaration: String, span: SourceSpan }
+  // A Map/Set key type the equality walk finds reaching a routed declaration: membership uses the emitted
+  // derived equality, not the plan.
+  | CollectionKeyReachesEqualityRoute { key_type: String, declaration: String, span: SourceSpan }
   | TypeArgumentArityMismatch { type_name: String, supplied: Int, declared: Int, span: SourceSpan }
   | TypeArgumentKindMismatch { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
   | TypeParameterInValuePosition { name: String, span: SourceSpan }
@@ -700,6 +711,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     EqualityOnFunctionMember { type_name: _, member: _, span: s } => s
     EqualityMemberUnjudgeable { type_name: _, member: _, span: s } => s
     EqualityOnInadmissibleType { type_name: _, span: s } => s
+    EqualityInstantiationBlindGenericSite { operand_type: _, declaration: _, span: s } => s
+    CollectionKeyReachesEqualityRoute { key_type: _, declaration: _, span: s } => s
     EqualityOptionalityMismatch { optional_side: _, span: s } => s
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: s } => s
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
@@ -822,6 +835,10 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("equality is not defined for '", t, "': it is declared equality-inadmissible (it carries provenance that derived '==' would compare) — compare through the erasure route (node_equal_ignoring_provenance for structure, node_same_occurrence for identity) instead of '=='")
     EqualityMemberUnjudgeable { type_name: t, member: m, span: _ } =>
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
+    EqualityInstantiationBlindGenericSite { operand_type: t, declaration: d, span: _ } =>
+      concat("census row (gunbc.rung_drop derived_equality_residual_field_equality): '==' over type variable '", t, "' in ", d, " is admitted instantiation-blind, so it carries no equality plan")
+    CollectionKeyReachesEqualityRoute { key_type: t, declaration: d, span: _ } =>
+      concat("census row (gunbc.rung_drop derived_equality_residual_field_equality): collection key type '", t, "' in ", d, " reaches a routed equality declaration, so membership uses derived equality, not the plan")
     EqualityOptionalityMismatch { optional_side: side, span: _ } =>
       concat("'==' compares an optional value with a required one (the ", side, " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional")
     TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, span: _ } =>
@@ -966,6 +983,8 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     EqualityOnFunctionMember { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityMemberUnjudgeable { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityOnInadmissibleType { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityInstantiationBlindGenericSite { operand_type: _, declaration: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    CollectionKeyReachesEqualityRoute { key_type: _, declaration: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     EqualityOptionalityMismatch { optional_side: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

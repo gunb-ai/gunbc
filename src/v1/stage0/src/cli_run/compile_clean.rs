@@ -966,6 +966,8 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         EqualityMemberUnjudgeable { type_name: s(), member: s(), span: no_span() },
         EqualityOnInadmissibleType { type_name: s(), span: no_span() },
         EqualityOptionalityMismatch { optional_side: s(), span: no_span() },
+        EqualityInstantiationBlindGenericSite { operand_type: s(), declaration: s(), span: no_span() },
+        CollectionKeyReachesEqualityRoute { key_type: s(), declaration: s(), span: no_span() },
         TypeArgumentArityMismatch { type_name: s(), supplied: 0, declared: 0, span: no_span() },
         OccurrenceTransportViolation {
             refusal: Rc::new(crate::std_occurrence_identity::OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { diagnostic_span: no_span() }),
@@ -1449,6 +1451,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => "EqualityOnInadmissibleType",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => {
+            "EqualityInstantiationBlindGenericSite"
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => {
+            "CollectionKeyReachesEqualityRoute"
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
@@ -1577,6 +1585,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
             optional_side.clone()
         }
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { declaration, .. } => {
+            declaration.clone()
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { declaration, .. } => {
+            declaration.clone()
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
         }
@@ -1655,6 +1669,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         // `Absent` is the honest reading.
         CompilerDiagnostic::CastRealizationRefused { .. } => None,
         CompilerDiagnostic::CircularDependency { .. } => None,
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => None,
         CompilerDiagnostic::ComplexityUnknown { .. } => None,
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => None,
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => None,
@@ -1669,6 +1684,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => None,
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { .. } => None,
         CompilerDiagnostic::EmittedSymbolCollision { .. } => None,
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => None,
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => None,
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => None,
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => None,

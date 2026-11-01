@@ -916,12 +916,12 @@ fn demand_census_unbound_locus_from_diagnostics(d: NonEmptyDiagnostics) -> Optio
   if fatal.reason == ^resolve_reason_unbound_symbol {
     match fatal.at {
       NodeLocus { anchor: a } =>
-        match node_atom_identity_optional(node: a.at) {
+        match node_atom_identity_optional(node: a.at.node) {
           Present { value: n } => optional_present(value: UnboundNamed { name: n })
           Absent =>
             optional_present(value: UnboundShaped {
-              kind: a.at.kind,
-              reference: demand_census_shaped_reference_optional(node: a.at)
+              kind: a.at.node.kind,
+              reference: demand_census_shaped_reference_optional(node: a.at.node)
             })
         }
       Textual { file: _, extent: _ } => optional_absent()

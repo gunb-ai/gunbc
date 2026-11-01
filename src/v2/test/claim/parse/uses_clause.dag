@@ -43,7 +43,7 @@ fn uses_refusal() -> UsesRefusal {
         is_unmodeled: diagnostics_fatal(d: d).reason == ^body_lowering_reason_uses_clause_unmodeled,
         at_clause: match diagnostics_fatal(d: d).at {
           NodeLocus { anchor: a } =>
-            match parse_production_emitted_identity_optional(node: a.at) {
+            match parse_production_emitted_identity_optional(node: a.at.node) {
               Present { value: id } => id == ^dag_surface_uses_clause
               Absent => false
             }

@@ -178,7 +178,7 @@ fn lens_verdict_diagnostic_locus_text_in_spans(d: Diagnostic, index: SpanIndex) 
         concat(lens_verdict_extent_text(e: e), concat(" ", quote_json_string(s: symbol_lexeme(sym: a.at))))
       )
     NodeLocus { anchor: a } =>
-      lens_verdict_node_occurrence_text_in_spans(node: a.at, index: index)
+      lens_verdict_node_occurrence_text_in_spans(node: a.at.node, index: index)
     InvariantPortLocus { anchor: _, invariant: inv } =>
       concat("<invariant ", concat(symbol_lexeme(sym: inv), ">"))
     DeclarationLocus { declaration: declaration } =>

@@ -7,10 +7,6 @@ use crate::std_algebra::Ordering::*;
 pub use crate::std_algebra::{
     collection_concat_shape, int_compare_canonical, string_compare_canonical, Ordering,
 };
-pub use crate::std_content_hash::{
-    content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
-    Fnv1a64Structural,
-};
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -202,41 +198,6 @@ pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
                 ),
             ),
         ),
-    }
-}
-
-pub fn declaration_ref_identity(reference: Rc<DeclarationRef>) -> Rc<Fnv1a64Structural> {
-    {
-        let module_part = crate::std_content_hash::content_hash_tagged_structural(
-            "declaration-module".to_string(),
-            crate::std_content_hash::content_hash_atom(reference.module_path.clone()),
-        );
-        let name_part = crate::std_content_hash::content_hash_tagged_structural(
-            "declaration-name".to_string(),
-            crate::std_content_hash::content_hash_atom(reference.decl_name.clone()),
-        );
-        let field_part = match (*reference.field.clone()).clone() {
-            DeclField::WholeDeclaration => crate::std_content_hash::content_hash_tagged_structural(
-                "declaration-field-whole".to_string(),
-                crate::std_content_hash::content_hash_atom("whole".to_string()),
-            ),
-            DeclField::NamedField {
-                field_name: named, ..
-            } => crate::std_content_hash::content_hash_tagged_structural(
-                "declaration-field-named".to_string(),
-                crate::std_content_hash::content_hash_atom(named.clone()),
-            ),
-            DeclField::TypeParameter {
-                name: parameter, ..
-            } => crate::std_content_hash::content_hash_tagged_structural(
-                "declaration-field-type-parameter".to_string(),
-                crate::std_content_hash::content_hash_atom(parameter.clone()),
-            ),
-        };
-        crate::std_content_hash::content_hash_combine_structural(
-            module_part,
-            crate::std_content_hash::content_hash_combine_structural(name_part, field_part),
-        )
     }
 }
 

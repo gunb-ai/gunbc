@@ -41,6 +41,7 @@ import v2.std.node { node_same_occurrence,
   Node,
   Symbol,
   TypeNode,
+  NodeOccurrence
 }
 import v2.std.verification {
   EqualsClaim,
@@ -76,8 +77,8 @@ fn synthetic_leaf(identity: Symbol) -> Node {
 data outer_leaf: Node = synthetic_leaf(identity: ^valuation_outer_size_atom)
 data inner_leaf: Node = synthetic_leaf(identity: ^valuation_inner_size_atom)
 
-data outer_variable: SizeVariable = SizeVariable { source: outer_leaf }
-data inner_variable: SizeVariable = SizeVariable { source: inner_leaf }
+data outer_variable: SizeVariable = SizeVariable { source: NodeOccurrence { node: outer_leaf } }
+data inner_variable: SizeVariable = SizeVariable { source: NodeOccurrence { node: inner_leaf } }
 
 fn bind(variable: SizeVariable, value: Nat) -> CostValuationBinding {
   CostValuationBinding { variable: variable, value: value }
@@ -171,7 +172,7 @@ test fn missing_binding_refuses_and_never_becomes_zero() -> Bool {
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        MissingSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source, b: outer_leaf)
+        MissingSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source.node, b: outer_leaf)
         _ => false
       }
     ExactCost { value: _ } => false
@@ -188,7 +189,7 @@ test fn duplicate_bindings_refuse() -> Bool {
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        DuplicateSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source, b: outer_leaf)
+        DuplicateSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source.node, b: outer_leaf)
         _ => false
       }
     _ => false
@@ -337,7 +338,7 @@ test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
   ) {
     CostEvaluationRefused { causes: c } =>
       match c.head {
-        MissingSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source, b: outer_leaf)
+        MissingSizeBinding { variable: v, at: _ } => node_same_occurrence(a: v.source.node, b: outer_leaf)
         _ => false
       }
     _ => false
