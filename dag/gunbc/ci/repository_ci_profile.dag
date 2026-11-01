@@ -8,7 +8,13 @@ import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.ci.ci_spec { gunbc_ci_tier_o_drift_check_target }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted, FleetSelfHostedInDeclaredGroup, DeclaredRunnerGroup, GithubHostedRunner }
+import gunbc.ci.ci_runner_target {
+  CiRunnerTarget,
+  FleetSelfHostedInDeclaredGroup,
+  DeclaredRunnerGroup,
+  GithubHostedRunner,
+  selected_ci_runner_target,
+}
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
 import gunbc.required_ci_contract_epoch { required_ci_context_name }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
@@ -39,6 +45,9 @@ import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_arm_public_cata
 // WHAT THIS ROW DELIBERATELY DOES NOT CARRY:
 // - runs-on label strings. A job carries a CiRunnerTarget and its spec PROJECTS from that target
 //   (gunbc.ci.ci_runner_target ci_runner_target_spec), so switching a repository's CI to another machine
+//   is not an edit to this row either: gunbc's row carries selected_ci_runner_target(), the seam that the
+//   CI budget tree, the fleet steps and the instrument dispatch already read. The row says WHICH target a
+//   repository's job runs on; for this repository that answer is the one the seam already gives.
 //   class stays the one-row edit that authority exists to make, and every derivation - labels, memory
 //   regime, RAM budget - follows. Where a job must be confined to a restricted runner group, the target
 //   carries the GROUP NAME, which is a row in gunbc.runner.runner_group_restriction_ensure (that module
@@ -230,7 +239,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
       job_id: required_ci_context_name,
       job_display_name: required_ci_context_name,
       required_context: required_ci_context_name,
-      runner: FleetSelfHosted,
+      runner: selected_ci_runner_target(),
       timeout: minute(90),
       source_roots: witness_layer_roots,
       schedule: Absent,
@@ -245,7 +254,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         workflow_name: heal_workflow_authority_name,
         job_id: "heal-generated-artifacts" as NonEmptyStr,
         job_display_name: "heal-generated-artifacts" as NonEmptyStr,
-        runner: FleetSelfHosted,
+        runner: selected_ci_runner_target(),
         timeout: minute(90)
       }
     },
@@ -255,7 +264,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         workflow_name: drift_watch_authority_name,
         job_id: "tier-o-drift" as NonEmptyStr,
         job_display_name: "tier-o-drift" as NonEmptyStr,
-        runner: FleetSelfHosted,
+        runner: selected_ci_runner_target(),
         timeout: minute(60),
         cron: Present {
           value: CronSchedule {
