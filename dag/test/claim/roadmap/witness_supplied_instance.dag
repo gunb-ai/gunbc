@@ -325,13 +325,38 @@ fn witness_unnameable_principal() -> WitnessSuppliedPrincipal {
   }
 }
 
-// EVERY ONE OF THOSE ROOTS IS OFF THE LIVE HOST. The claim form of the guard, so the assertion lives with the
-// fixture it guards and a witness cannot opt out of it by forgetting to check.
+// EVERY ONE OF THOSE ROOTS IS OFF THE LIVE HOST, and every one of them came from something the WITNESS
+// supplied. The claim form of the guard, so the assertion lives with the fixture it guards and a witness cannot
+// opt out of it by forgetting to check.
+//
+// WHY THIS IS NOT THE CLAIM'S OTHER ARM IN DISGUISE. The inhabiting claim's supplied arm compares each root
+// against the SCRATCH PREFIX — a corpus data row (`witness_scratch_prefix`, "/tmp"), which any path under /tmp
+// satisfies. This one compares each root against the two things THIS ROW was built from: its own
+// `instance_root` and its own `repo_root`. Those are different questions, and only this one catches the failure
+// mode the witness is actually exposed to — a row whose one child kept a production path while the rest moved,
+// or a root handed in from some third directory that happens to sit under /tmp. A prefix test asks "is this in
+// the temp area"; this asks "did the witness supply it", which is the property the repair is about. And the
+// second arm is not the prefix test either: it names the LIVE host, so no scratch-shaped path can satisfy it.
 fn witness_supplied_roots_are_off_the_live_host(instance: HostDashboardInstance) -> Bool {
   all(
     xs: witness_supplied_writable_roots(instance),
-    predicate: x => !witness_supplied_root_is_refused(x as String),
+    predicate: x =>
+      is_under(text: x as String, root: instance.instance_root as String)
+        || x == (instance.provision_parent_root as String)
+        || is_under(text: x as String, root: instance.repo_root as String),
   )
+    && all(
+      xs: witness_supplied_writable_roots(instance),
+      predicate: x => !witness_supplied_root_is_refused(x as String),
+    )
+    && !any(
+      xs: witness_supplied_writable_roots(instance),
+      predicate: x => is_under(text: x as String, root: srv1_dashboard_lab_provision_parent as String),
+    )
+    && !any(
+      xs: witness_supplied_writable_roots(instance),
+      predicate: x => x == (srv1_dashboard_lab_root as String),
+    )
 }
 
 // THE SAME SET, FOR THE PRODUCTION ROW — used only by the inhabiting claim, which writes nothing.
