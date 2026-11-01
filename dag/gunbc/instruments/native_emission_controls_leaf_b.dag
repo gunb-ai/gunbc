@@ -1,0 +1,15 @@
+module gunbc.instruments.native_emission_controls_leaf_b
+
+import std.types { Int }
+
+// THE SECOND DECLARER OF A TOP-LEVEL FN LEAF, for gunbc.instruments.native_emission_controls. This module
+// and native_emission_controls_leaf_a both declare control_shadowed_leaf, so that bare leaf is
+// ambiguous across the closure. The controls module binds a LOCAL of the same spelling and imports
+// neither declaration of it.
+fn control_shadowed_leaf(x: Int) -> Int {
+  x + 200
+}
+
+fn control_leaf_b_probe() -> Int {
+  control_shadowed_leaf(x: 1)
+}

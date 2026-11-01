@@ -535,19 +535,27 @@ type InstrumentObstacle
   | RefusedByAuthority { authority: DeclarationRef, why: NonEmptyStr }
   | NotBuiltRefusalFalsified { authority: DeclarationRef, falsified_by: NonEmptyStr }
 
+// A RETIRED CENSUS IS REFUSED BY THE RULING, NOT UNBUILT. gunbc.design_ruling
+// bad_process_is_worse_than_no_process retires census instruments by default with no successor, so
+// NotBuilt -- whose remedy reads "build it" -- would state the opposite of the ruling. The milestones
+// these instruments answered stay NotDerivable: retirement does not declare coverage achieved.
+fn census_retired_obstacle() -> InstrumentObstacle {
+  RefusedByAuthority {
+    authority: decl_ref(module_path: "gunbc.design_ruling", decl_name: "bad_process_is_worse_than_no_process"),
+    why: "census process retired by default (operator ruling 2026-10-30); no successor instrument is built, and the historical receipts it produced decide nothing" as NonEmptyStr
+  }
+}
+
 fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
   match i {
     PhaseCargoExecutionFact => NotBuilt
     DeclaringIdentitySpellingCensus => NotBuilt
     ResolverBoundDeclaringIdentity => NotBuilt
-    ExactOccurrenceResidualCensus => NotBuilt
+    ExactOccurrenceResidualCensus => census_retired_obstacle()
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
     SeedDeletionObservation => NotBuilt
-    LiveTreeCompilePhaseMeasurement => RefusedByAuthority {
-      authority: decl_ref(module_path: "gunbc.whole_corpus_compile_admission", decl_name: "whole_corpus_compile_admission"),
-      why: "TWO CONDITIONS STAND BETWEEN THIS MILESTONE AND ITS EVIDENCE, AND THE ROW LEADS WITH THE BINDING ONE, because a trigger naming a capability that is not what blocks gets SATISFIED WHILE THE CAPABILITY STAYS DEAD -- the mirror of the 4b(3) failure where a trigger names less than it restores. (1) BINDING: no receipt exists in the required runners' COMPARISON EPOCH, so a live population has nothing it may legally be compared against; the frontier's own series fold refuses a cross-epoch comparison without a reclassified predecessor, and that refusal is correct. (2) ENABLING, and not the same fact: taking such a receipt means measuring a whole-closure entry, which this authority refuses on budget. The instrument that would take it (gunbc.instruments.emission_entry_instrument measure_entry_emission) EXISTS AND RUNS -- the refusal is about the execution surface, not a missing tool -- and the receipts behind it live on this authority and on gunbc.host.host_budget_source memory_stall_refusal, not transcribed here. Delivering a cgroup-limited runner alone therefore does NOT retire this row: it makes the measurement takeable and leaves the epoch condition standing. THE ENABLING CONDITION NOW CARRIES AN EXECUTED RECEIPT RATHER THAN A PREDICTION, AND A TRIGGER WITH A RECEIPT OF ITS OWN ARM FIRING IS A DIFFERENT OBJECT FROM A TRIGGER SOMEONE WROTE DOWN. Run 2026-09-01, subject sha 792d6e3466370092eca414ee28627e2625aa3519 (main), working tree clean on the runner, entry `src/v2/compiler/compile.dag` and its import closure, one remote dispatch with a source-built `gunbc` and `cssl_assemble`, BuildBuddy invocation 60464991-e450-4268-8ca0-97bb5b3f3eb3, runner 6 cores / 7 GiB / NO cgroup memory.max. The BUILD succeeded (rc=0, 5m00s); the MEASURE refused, rc=101, `HostBudgetUnreadable`, no population produced. THE EXIT CODE IS THE FINDING AND NOT A DETAIL. rc=101 IS NOT rc=137. The 137 receipts this authority carries came from runs where a budget was DECLARED to get past the arm on a machine that could not honour it -- the declaration converts a typed refusal into a twenty-minute silent SIGKILL, which is `GUNBC_MEMORY_BUDGET_BYTES` behaving as the escape hatch DESIGN 5 forbids. This run declared nothing, so the arm fired as designed: seconds, typed, located, and naming in its own text the receipt it exists to prevent. From outside both outcomes read as `the measurement failed`; they are opposites -- one is the safety mechanism working and the other is the safety mechanism defeated through its own hatch. WHAT THE RUN THEREFORE MEASURED IS THE RUNNER, NOT THE TREE, and the operator-facing consequence is that the current diagnostic population for this entry is NOT MEASURABLE on any executor reachable from here -- not unknown through neglect. THE CAPABILITY IS UNCHANGED BY THIS RECEIPT AND IS RESTATED SO NO LOOKALIKE SATISFIES IT, AND THE HARD CAP IS NAMED SINGULARLY BECAUSE THE DISJUNCTION ADMITS THE EXECUTOR THIS ROW EXISTS TO EXCLUDE: the enabling condition is an executor exposing a finite, readable cgroup `memory.max` above the closure's modeled demand with headroom, with `memory.current`, `memory.peak` and `memory.events` observable. `memory.high` MAY BE RECORDED AS RECLAIM-THROTTLE TELEMETRY BUT DOES NOT SATISFY THE HARD-CAP CONDITION -- it is a throttle a process may exceed, so it is not a bound on what the process may allocate and therefore not proof the process cannot be killed; a runner admitted on `memory.high` alone can still rc=137, which is the outcome this condition is written to make impossible. No environment-only request substitutes for an observed limit: not a bigger unbounded machine, and not a declared budget. AND THE ACCEPTANCE HALF, because a condition without one is retired by a lookalike receipt: the receipt must IDENTIFY THE OBSERVED HARD-CAP SOURCE AS `memory.max`. `HostBudgetResolved` by itself is insufficient, and `GUNBC_MEMORY_BUDGET_BYTES` is never a substitute. THIS NARROWING IS ABOUT THE TERMINAL MEASUREMENT AND IMPEACHES NOTHING UPSTREAM: gunbc.whole_corpus_compile_admission deliberately resolves `memory.high` as a PLANNING ceiling and compares demand against that throttle, which is correct at its own declared rung. The defect is borrowing a planning admission as proof of hard containment. AND SATISFYING THIS CONDITION CLOSES ONLY THIS ONE: condition (1), the comparison epoch, stands after the executor exists -- the runner makes the measurement TAKEABLE and does not produce the in-epoch receipt the ratchet separately requires. AND THE LIVE ARM ITSELF IS NOT MISSING. gunbc#9857 carries gunbc.self_host_compile_phase_live_gate -- the live measured population joined to the latest receipt through the frontier's own fold and ratchet -- BUILT, WITNESSED at twelve witnesses already enrolled under the required floor's test.claim.self_host_ prefix, and PARKED BY OPERATOR DIRECTIVE ON FUNDING GROUNDS rather than blocked on any defect. 'We chose not to fund this' and 'we cannot do this' are different states with different remedies, and reporting the second where the first is true is the same inflation in the other direction. WHEN THAT PR IS UNPARKED IT MUST CONSUME THE COVERAGE JUDGMENT RATHER THAN RE-DERIVE IT: gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage answers whether the latest receipt speaks for the tree under judgment AT ALL, which is the PRECONDITION of the live gate's population question -- a regression comparison against a receipt that does not describe this tree is meaningless. One module answering the precondition and another consuming it is composition; the live gate growing its own tree-identity comparison is the section 3 fork." as NonEmptyStr
-    }
+    LiveTreeCompilePhaseMeasurement => census_retired_obstacle()
   }
 }
 
@@ -712,19 +720,9 @@ fn standing_rung_drop_outstanding(drop: RungDrop) -> List<String> {
 fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
   match m {
     SelfHostWholeCorpusPopulationDerived =>
-      match current_compile_phase_frontier_standing() {
-        CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host S2: whole-corpus compile-phase population derived from the latest validated frontier receipt" as NonEmptyStr,
-          outstanding: if latest.board.partition_complete { [] } else { latest.unplaced_identities }
-        ))
-        CompilePhaseFrontierEmpty => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host S2: whole-corpus compile-phase frontier has no genesis receipt" as NonEmptyStr,
-          outstanding: ["frontier receipt series is empty"]
-        ))
-        CompilePhaseFrontierInvalid { reason } => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host S2: whole-corpus compile-phase frontier validation" as NonEmptyStr,
-          outstanding: [reason as String]
-        ))
+      NotDerivable {
+        why: "the whole-corpus compile-phase population was a census, retired by gunbc.design_ruling bad_process_is_worse_than_no_process; the persisted frontier receipt series stays as historical evidence and decides nothing, so this milestone can neither read Clear off it nor be satisfied by a successor census" as NonEmptyStr,
+        cause: needs(i: LiveTreeCompilePhaseMeasurement)
       }
     SelfHostCargoPhaseEnrolled =>
       NotDerivable {
@@ -786,6 +784,15 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           outstanding: stage_subject_outstanding(stage: StageXL7GrammarDeletion)
         )
       )
+    // DELIBERATELY NOT RETIRED IN V2-GOV-001 PART A (operator scope correction, 2026-10-31). The
+    // ruling retires census-CONDITIONED obligations; it does not retire every reader of a shared
+    // series. S5 asks a diagnostic question of one reconciled, non-vacuous historical receipt
+    // (receipt_4_e0d0e01e, 2026-09-29, cargo check profile check/dev), so it is a historical
+    // observation, not fresh codegen or link evidence, and not a census gate. S2 above was a
+    // population-completeness obligation, which is what was retired. FOLLOW-UP: V2-GOV-001 Part B
+    // owns S5's interlock edges and the historical-retirement redesign. Until then this arm reads only
+    // that receipt. gunbc.design_ledgers compile_phase_frontier_blocks renders the same series as
+    // documentation and sets no standing.
     SelfHostCorpusEmitsCleanly =>
       match current_compile_phase_frontier_standing() {
         CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
@@ -1121,16 +1128,16 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
 //
 // "May begin collecting activation evidence" is STARTABILITY, and it is the chain edge from XL-4
 // alone -- see stage_startability, which no longer reads any milestone. "May RELEASE the waves"
-// is this: the interlock triple clear AND every activation receipt held against the pinned base.
-// The gate used to state the triple as a PREREQUISITE, which made collecting evidence unstartable
+// is this: every interlock release milestone (act0_release_milestones) clear AND every activation receipt held against the pinned base.
+// The gate used to state those milestones as a PREREQUISITE, which made collecting evidence unstartable
 // until the whole self-host interlock cleared; that is a stricter chain than the ruling, and a
 // stricter chain is not a safer one -- it stalls the stage whose output the gate needs.
 //
-// A NOT-DERIVABLE MILESTONE IN THE TRIPLE MAKES THE GATE NOT-DERIVABLE, NOT OUTSTANDING. Folding
+// A NOT-DERIVABLE RELEASE MILESTONE MAKES THE GATE NOT-DERIVABLE, NOT OUTSTANDING. Folding
 // an unanswerable milestone's name into an outstanding list would report an unknown as ordinary
 // pending work, which is the state-space conflation the startability classifier above exists to
 // prevent -- committed at standing grain instead. So the unanswerable half is checked first and
-// carries the union of the causes, and the receipts are only reached once the triple can answer.
+// carries the union of the causes, and the receipts are only reached once those milestones can answer.
 fn act0_release_milestone_names(want: MilestoneStandingClass) -> List<String> {
   fold(act0_release_milestones, init: [], f: fn(acc, m) {
     if standing_class_label(c: standing_class(s: milestone_status(m: m)))
@@ -1175,7 +1182,7 @@ fn act0_release_standing() -> MilestoneStanding {
     Absent =>
       standing_from_evidence(
         e: observe_outstanding(
-          subject: "ACT-0 RELEASE: the interlock triple clear and every activation receipt held against the pinned base" as NonEmptyStr,
+          subject: "ACT-0 RELEASE: every interlock release milestone (act0_release_milestones) clear and every activation receipt held against the pinned base" as NonEmptyStr,
           outstanding: concat(
             act0_release_milestone_names(want: ClassOutstanding),
             activation_receipts_outstanding(held: held_activation_receipts))

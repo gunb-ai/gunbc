@@ -169,7 +169,7 @@ fn listener_restart_residual_wire() -> String {
 // fleet_targeted_wait_bound), plus one poll interval (the wait is quantized to ticks; the last tick
 // can sample up to a full interval early). It REPLACES the 2700s literal, whose row rested on the
 // premise 'no source declares the longest job' — a premise falsified by
-// gunbc.witness.compiler_gate_workflow compiler_gate_emit_build_timeout_minutes (90), which is why
+// gunbc.witness.compiler_gate_workflow compiler_gate_emit_build_timeout (minute(90)), which is why
 // srv3 cap converge run 39961292233 withheld every cap: a v2-bootstrap job runs ~55 minutes under a
 // 90-minute declaration, and a 2700s drain bound refused it mid-flight. Today the fold yields
 // 90 min (v2-bootstrap), so the bound is 90*60 + poll, and the cost of a cap change is that long of
