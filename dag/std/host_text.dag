@@ -84,21 +84,31 @@ fn text_of_chars(scalars: List<Char>) -> HostText {
 // carrier-sensitive is a named follow-up, not this change). A .dag body here, a guard over chars then a
 // scalar read, would make every call linear and turn the per-character loops among the ambient call sites
 // quadratic; src/v2/std/witness list_nth shows that shape and pays it over a list, where there is no host
-// carrier to read through.
-// BOOTSTRAP, ONE PR LONG (the trap that caught #15507 three times). Heal round 1 builds the seed from
-// the BASE mirror, which has no primitive_char_at row, so a self-call body here emits as bare Rust
-// recursion and heal refuses. THIS body is therefore the declared operations only, and it is what runs
-// until the realization pair is on main: skip walks the scalar unfold by `pos`, list_head answers Absent
-// past the end by construction (no length guard, no sentinel), and the one scalar reaches a host text
-// through the declared inverse text_of_chars. `pos as Int` is the corpus's own total widening for this
-// carrier (dag/test/claim/eval_cast_identity nat_to_int, gunbc.instruments.native_emission_controls
-// control_nat_as_int -- Nat is carried as Int, so the cast is an identity on it); it is NOT the reverse
-// direction, which is a refinement the checker refuses without a witness. TRIGGER for the one-line
-// follow-up that replaces this body with the self-call: std.primitive_projection primitive_char_at is on
-// main. The trigger is a standing condition, so no clock task owns it. The interim body is proportional
-// to the position, where the realization is constant on the ASCII path; nothing routes a production call
-// through it yet (the ambient sites move when the builtin is cut over), so the cost is bounded to this
-// window and stated here rather than hidden in a contract row.
+// carrier to read through. THIS declaration's own body is that shape -- a fold over chars then a scalar
+// read -- so on this declaration alone it is position-proportional on every path; no production call
+// routes through it yet (the ambient sites stay on the realization until the builtin is cut over), so the
+// cost is bounded to this window and stated here rather than hidden in a contract row.
+// WHY THIS BODY IS DECLARED OPERATIONS, AND WHAT STILL DOES NOT RUN. The body is the operation itself:
+// skip walks the scalar unfold by `pos`, list_head answers Absent past the end by construction (no length
+// guard, no sentinel, no clamp), and the one scalar reaches a host text through the declared inverse
+// text_of_chars. `pos as Int` is the corpus's own total widening for this carrier (dag/test/claim/
+// eval_cast_identity nat_to_int, gunbc.instruments.native_emission_controls control_nat_as_int -- Nat is
+// carried as Int, so the cast is an identity on it); it is NOT the reverse direction, which is a refinement
+// the checker refuses without a witness. A self-call body in the map_lookup_primitive_delegate shape is
+// admissible only once the realization pair is on main: heal round 1 builds the seed from the BASE mirror,
+// which has no primitive_char_at row, so a self-call emits as bare Rust recursion and heal refuses -- the
+// trap that caught #15507 three times.
+// MEASURED AT 956dc433116f, AND WHAT IS STILL MISSING. The checker binds THIS declaration, but on the claim
+// route the interpreter answers a free call's value by SPELLING -- the free_call.char_at arm of
+// gunbc.v1.v1_interpreter_primitive_surface, reached through lookup_eval_builtin_inner before any body is
+// consulted -- so a read one past the end came back as the ambient builtin's empty text instead of Absent.
+// TRIGGER for the change that makes this body what evaluation runs: a free call dispatches by its RESOLVED
+// declaration target (src/v1/04_lookup.dag resolved_declaration_call_target), with spelling-first dispatch
+// applying only where no declaration was bound; that change's discriminating pair is the Absent assertion
+// withheld from v2.test.claim.char_at_unicode_witness. A per-name bridge arm beside v4_bridge.host_text_chars
+// was considered and REJECTED: its admission reads the flat, name-merged item registry, so it would answer
+// the char_at sites of three modules that import only other names of this module. Both halves are receipted
+// in gunbc.recurring_failure_mode.host_seam_realization_is_keyed_by_primitive_spelling.
 fn char_at(text: HostText, pos: Nat) -> Optional<HostText> {
   match list_head(xs: skip(xs: chars(text: text), n: pos as Int)) {
     Absent => Absent

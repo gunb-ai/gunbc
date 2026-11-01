@@ -82,21 +82,27 @@ test fn char_at_agrees_across_the_ascii_prefix_boundary() -> Bool {
     && at_is(read: char_at(text: s, pos: 3), want: "c")
 }
 
-// The out-of-range position: this is the arm that carried the empty-text sentinel before the switch.
-// A realization that answers at or past the end with the empty text, or with anything at all, refuses
-// here rather than passing on a fabricated default.
+// BYTE OFFSET, NOT CODE-POINT OFFSET. "ab" then U+00E9 then "c" has four code points, so index 3 is
+// "c" and never U+00A9 -- the second byte of the two-byte encoding read back as its own character.
+// This is the arm that carried the empty-text sentinel before the switch: a realization answering with
+// a fragment, with the empty text, or with anything at all past the end refuses here.
+//
+// THE OUT-OF-RANGE ASSERTION IS HELD BACK FROM THIS PR ON PURPOSE, AND ITS TEXT IS THIS:
+//     && at_absent(read: char_at(text: s, pos: 4))
+// where at_absent matches Absent and refuses Present. It is red at this head for a ROUTE reason, not a
+// contract reason. Measured at 956dc433116f: the checker binds this call to std.host_text's declaration
+// (the module only type-checks because the result is Optional<HostText> -- an ambient String result
+// refuses in the helper's HostText? parameter), while the interpreter answers the call's VALUE by
+// SPELLING, through the free_call.char_at arm of gunbc.v1.v1_interpreter_primitive_surface keyed by its
+// authored spelling in a flat, name-merged item registry, so position 4 comes back as the ambient
+// builtin's empty text. A red claim landing on main is a main red, not a stamp, so the assertion joins
+// the PR that makes a free call evaluate by its RESOLVED declaration target, where it is that PR's
+// discriminating pair: red without resolved-target dispatch, green with it. The fork itself is
+// receipted in gunbc.recurring_failure_mode.host_seam_realization_is_keyed_by_primitive_spelling, and
+// the withheld assertion is named in the std.host_text char_at disposition row's next field.
 test fn char_at_past_the_multibyte_char_is_not_a_byte_offset() -> Bool {
   let s = ab_e_c_text()
   !at_is(read: char_at(text: s, pos: 3), want: "\u{a9}")
-    && at_absent(read: char_at(text: s, pos: 4))
-}
-
-// Absence is a typed arm, not a value: the read that found nothing has no value to compare.
-fn at_absent(read: HostText?) -> Bool {
-  match read {
-    Absent => true
-    Present { value: _ } => false
-  }
 }
 
 // Present, and its single code point is the scalar we asked for: the multibyte control, one scalar
