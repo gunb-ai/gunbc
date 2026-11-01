@@ -17,6 +17,7 @@ import extdeps.languages.json.parse {
 }
 
 import std.algebra { FreeMonoid, fold_list, length }
+import std.host_text { HostText, char_at }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.std.integer { Int }
@@ -24,7 +25,7 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE NINE CONTROLLED SPECIMENS of roadmap node cardinality-realization-conformance, each reduced
+// THE TEN CONTROLLED SPECIMENS of roadmap node cardinality-realization-conformance, each reduced
 // to ONE Int tag by an elimination that keeps every distinction the specimen exists to test, so two
 // specimens that a realization conflates read as one tag and the pairwise claim reds. This module
 // covers the EVALUATOR PATH as claims executing the tag functions (not eval_test_claim_subject itself). The other paths are declared per (target, specimen) in
@@ -52,6 +53,24 @@ fn specimen_absent_collection() -> Optional<FreeMonoid<Int>> { Absent }
 fn specimen_present_empty_collection() -> Optional<FreeMonoid<Int>> { Present { value: [] } }
 
 fn specimen_present_absent_entries() -> Optional<FreeMonoid<Optional<Int>>> { Present { value: [Absent] } }
+
+// (10) ABSENCE FROM AN OPERATION, not from a literal: the one-code-point text at a position, where a
+// read at or past the end is Absent. std.host_text declares `char_at` with the Optional already in its
+// signature, so the absence is a card of the answer rather than a second text value standing for one.
+// AT STEP 1 OF THE char_at EGRESS the value here comes from the declaration's interim .dag body (chars,
+// std.algebra skip and list_head, text_of_chars), NOT from a seed seam; the seam binding arrives with
+// the self-call, and v2.test.claim.cardinality_realization_coverage records which is declared per
+// compiled target.
+fn specimen_char_at_position() -> Optional<HostText> {
+  char_at(text: "ab", pos: 1)
+}
+
+fn tag_position_read(x: Optional<HostText>) -> Int {
+  match x {
+    Absent => 101
+    Present { value: _ } => 103
+  }
+}
 
 // THE THREE FOREIGN FIXTURES AS DECLARATIONS, so each has an identity a support row can cite.
 data specimen_foreign_member_missing_text: String = "{}"
@@ -170,7 +189,8 @@ fn specimen_tags() -> FreeMonoid<Int> {
     tag_entries(x: specimen_present_absent_entries()),
     tag_presence_text(text: specimen_foreign_member_missing_text),
     tag_presence_text(text: specimen_foreign_member_null_text),
-    tag_field_text(text: specimen_foreign_member_invalid_text)
+    tag_field_text(text: specimen_foreign_member_invalid_text),
+    tag_position_read(x: specimen_char_at_position())
   ]
 }
 
@@ -194,7 +214,15 @@ test fn entries_keep_element_absence_and_payload() -> Bool {
 }
 
 test fn foreign_missing_null_and_invalid_stay_three_answers() -> Bool {
-  specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92]
+  specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92, 103]
+}
+
+// THE POSITION READ KEEPS ITS OWN ABSENCE: a realization that answers absence with the empty text, or
+// that indexes bytes instead of code points, still answers Present for a position past the end, so this
+// pair is what the tenth specimen exists to hold apart. Index 1 of "ab" reads; index 5 does not.
+test fn a_position_read_keeps_its_own_absence() -> Bool {
+  tag_position_read(x: char_at(text: "ab", pos: 5)) == 101
+    && tag_position_read(x: char_at(text: "ab", pos: 1)) == 103
 }
 
 // THE DISCRIMINATING CONTROL: a realization that flattened Present(Absent) to Absent, or read an

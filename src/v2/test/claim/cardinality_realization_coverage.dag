@@ -93,6 +93,17 @@ data specimen_8_foreign_null: DeclarationRef = specimen_ref(name: "specimen_fore
 
 data specimen_9_foreign_invalid: DeclarationRef = specimen_ref(name: "specimen_foreign_member_invalid_text")
 
+// SPECIMEN 10, POSITION READ AS TYPED ABSENCE: the cardinality meaning the lane enrolls is char_at's,
+// which v2 declares at std.host_text as a read of one code point that answers Absent past the end. At
+// this revision the Optional is built by the declaration's own .dag body over chars/skip/list_head, NOT
+// by a seed primitive seam: the projection row primitive_projection_row(primitive: primitive_char_at,
+// fidelity: HostRealizedSeam) is declared, but its seed binding (the v1 interpreter's char_at arm
+// returning the Optional, and the regenerated dispatch that calls it) is the follow-up once
+// primitive_char_at is on main. The row below therefore records what is TRUE NOW, and the follow-up
+// flips it to the seam realization. Enrolled because a typed refusal with no realization row is exactly
+// the unstamped state this lane exists to prevent.
+data specimen_10_char_at_position: DeclarationRef = specimen_ref(name: "specimen_char_at_position")
+
 data all_specimens: List<DeclarationRef> = [
   specimen_1_absent,
   specimen_2_present_absent,
@@ -103,14 +114,15 @@ data all_specimens: List<DeclarationRef> = [
   specimen_6_list_present_absent_list_entries,
   specimen_7_foreign_missing,
   specimen_8_foreign_null,
-  specimen_9_foreign_invalid
+  specimen_9_foreign_invalid,
+  specimen_10_char_at_position
 ]
 
 data all_targets: List<DeclarationRef> = [evaluator_target, seed_rust_target, native_v2_target]
 
-// The tag the evaluator path answers for each of nine specimens is asserted by the specimens module and the
+// The tag the evaluator path answers for each of ten specimens is asserted by the specimens module and the
 // List spelling's by v2.test.claim.cardinality_realization_list_specimen; the evaluator rows below
-// are the declared expectation that all ten are realized.
+// are the declared expectation that all eleven are realized.
 // SPECIMEN 6 OVER List on seed Rust: a List nested under an Optional is left unstamped by seed
 // inference and the expected element type is not pushed into the literal, so
 // render_rust_optional_carrier_inner falls back to () and the payload is lost. The emitted type is
@@ -158,6 +170,7 @@ data realization_support_rows: List<RealizationSupportRow> = [
   supported(target: evaluator_target, specimen: specimen_7_foreign_missing),
   supported(target: evaluator_target, specimen: specimen_8_foreign_null),
   supported(target: evaluator_target, specimen: specimen_9_foreign_invalid),
+  supported(target: evaluator_target, specimen: specimen_10_char_at_position),
   supported(target: seed_rust_target, specimen: specimen_1_absent),
   supported(target: seed_rust_target, specimen: specimen_2_present_absent),
   supported(target: seed_rust_target, specimen: specimen_3_present_present),
@@ -168,6 +181,11 @@ data realization_support_rows: List<RealizationSupportRow> = [
   supported(target: seed_rust_target, specimen: specimen_7_foreign_missing),
   supported(target: seed_rust_target, specimen: specimen_8_foreign_null),
   supported(target: seed_rust_target, specimen: specimen_9_foreign_invalid),
+  // The seed Rust route realizes specimen 10 through the declaration's interim .dag body, which is
+  // ordinary seed-lowering source: the tag is the evaluator's answer carried through the emitted crate.
+  // This is NOT yet the host seam's own answer; the seam binding is the follow-up (primitive_char_at on
+  // main), and that follow-up is what makes this row a realization of the projection row.
+  supported(target: seed_rust_target, specimen: specimen_10_char_at_position),
   refuses(target: native_v2_target, specimen: specimen_1_absent, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_2_present_absent, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_3_present_present, causes: native_closure_causes),
@@ -177,7 +195,8 @@ data realization_support_rows: List<RealizationSupportRow> = [
   refuses(target: native_v2_target, specimen: specimen_6_list_present_absent_list_entries, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_7_foreign_missing, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_8_foreign_null, causes: native_closure_causes),
-  refuses(target: native_v2_target, specimen: specimen_9_foreign_invalid, causes: native_closure_causes)
+  refuses(target: native_v2_target, specimen: specimen_9_foreign_invalid, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_10_char_at_position, causes: native_closure_causes)
 ]
 
 fn row_matches(row: RealizationSupportRow, target: DeclarationRef, specimen: DeclarationRef) -> Bool {
@@ -236,11 +255,11 @@ fn target_realizes_all(rows: List<RealizationSupportRow>, target: DeclarationRef
   )
 }
 
-// The evaluator's executed answers: one tag per original specimen, in specimen order. The ten
-// specimens are nine tags plus the List spelling, whose answer is asserted in the specimens module.
+// The evaluator's executed answers: one tag per original specimen, in specimen order. The eleven
+// specimens are ten tags plus the List spelling, whose answer is asserted in the specimens module.
 test fn the_evaluator_realizes_what_its_rows_declare() -> Bool {
   target_realizes_all(rows: realization_support_rows, target: evaluator_target)
-    && specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92]
+    && specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92, 103]
 }
 
 // COMPLETENESS BY IDENTITY, not by count: every (target, specimen) pair of the declared rosters has a
@@ -336,7 +355,8 @@ data specimen_programs: List<SpecimenProgram> = [
   SpecimenProgram { specimen: specimen_6_list_present_absent_list_entries, entry: "src/v2/test/claim/cardinality_realization_entry_6l.dag", tag: "71" },
   SpecimenProgram { specimen: specimen_7_foreign_missing, entry: "src/v2/test/claim/cardinality_realization_entry_7.dag", tag: "80" },
   SpecimenProgram { specimen: specimen_8_foreign_null, entry: "src/v2/test/claim/cardinality_realization_entry_8.dag", tag: "81" },
-  SpecimenProgram { specimen: specimen_9_foreign_invalid, entry: "src/v2/test/claim/cardinality_realization_entry_9.dag", tag: "92" }
+  SpecimenProgram { specimen: specimen_9_foreign_invalid, entry: "src/v2/test/claim/cardinality_realization_entry_9.dag", tag: "92" },
+  SpecimenProgram { specimen: specimen_10_char_at_position, entry: "src/v2/test/claim/cardinality_realization_entry_10.dag", tag: "103" }
 ]
 
 fn program_field(specimen: DeclarationRef, want_entry: Bool) -> String {
@@ -535,6 +555,7 @@ data green_observations: List<ObservationRecord> = [
   seed_observed(specimen: specimen_7_foreign_missing, outcome: ObservedRealized { tag: "80" }),
   seed_observed(specimen: specimen_8_foreign_null, outcome: ObservedRed { detail: "emitted program panicked" }),
   seed_observed(specimen: specimen_9_foreign_invalid, outcome: ObservedRed { detail: "emitted program panicked" }),
+  seed_observed(specimen: specimen_10_char_at_position, outcome: ObservedRealized { tag: "103" }),
   native_refused(specimen: specimen_1_absent),
   native_refused(specimen: specimen_2_present_absent),
   native_refused(specimen: specimen_3_present_present),
@@ -544,7 +565,8 @@ data green_observations: List<ObservationRecord> = [
   native_refused(specimen: specimen_6_list_present_absent_list_entries),
   native_refused(specimen: specimen_7_foreign_missing),
   native_refused(specimen: specimen_8_foreign_null),
-  native_refused(specimen: specimen_9_foreign_invalid)
+  native_refused(specimen: specimen_9_foreign_invalid),
+  native_refused(specimen: specimen_10_char_at_position)
 ]
 
 fn exit_code_of(e: ProcessExit) -> Int {
@@ -569,7 +591,7 @@ fn standing_code(obs: List<ObservationRecord>) -> Int {
 }
 
 test fn the_instrument_plan_names_every_seed_and_native_row_once() -> Bool {
-  length(xs: instrument_plan()) == 20
+  length(xs: instrument_plan()) == 22
     && fold_list(xs: all_specimens, empty: true, cons: fn(acc, s) { acc && program_field(specimen: s, want_entry: true) != "" && program_field(specimen: s, want_entry: false) != "" })
 }
 
