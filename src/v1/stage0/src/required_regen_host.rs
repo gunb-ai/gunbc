@@ -3655,21 +3655,22 @@ fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String
 
 fn restore_regen_convergence_journal(workspace: &Path) -> Result<usize, String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
-    restore_regen_convergence_journal_for_subject(workspace, &subject)
+    restore_regen_convergence_journal_for_subject(workspace, &subject).map(|paths| paths.len())
 }
 
-/// Return every journalled path to the byte recorded before the round, and report HOW MANY were
-/// put back. The count is returned rather than re-derived by a caller so that the journal keeps
-/// exactly one reader (§3): a round that seeded the base snapshot prints what its rollback restored,
-/// and no second parser of `journal.json` is needed to say so.
+/// Return every journalled path to the byte recorded before the round, and report WHICH were put
+/// back (workspace-relative). The paths are returned rather than re-derived by a caller so that the
+/// journal keeps exactly one reader (§3): a round that seeded the base snapshot prints what its
+/// rollback restored, and the partition-rebuild decision is fed the same list — the paths whose
+/// mtime this restore moved are exactly the ones cargo will see as changed.
 fn restore_regen_convergence_journal_for_subject(
     workspace: &Path,
     subject: &RegenConvergenceCheckpointSubject,
-) -> Result<usize, String> {
+) -> Result<Vec<String>, String> {
     let root = regen_convergence_journal_path(workspace);
     let manifest_path = root.join("journal.json");
     if !manifest_path.is_file() {
-        return Ok(0);
+        return Ok(Vec::new());
     }
     let manifest: RegenConvergenceJournal = serde_json::from_slice(
         &fs::read(&manifest_path).map_err(|e| format!("read {}: {e}", manifest_path.display()))?,
@@ -3728,7 +3729,7 @@ fn restore_regen_convergence_journal_for_subject(
                 .map_err(|e| format!("prepare validated restore {}: {e}", backup.display()))?;
         }
     }
-    let mut restored = 0usize;
+    let mut restored: Vec<String> = Vec::new();
     for entry in &manifest.entries {
         let destination = workspace.join(&entry.relative_path);
         if matches!(
@@ -3751,7 +3752,7 @@ fn restore_regen_convergence_journal_for_subject(
                     destination.display()
                 )
             })?;
-            restored += 1;
+            restored.push(entry.relative_path.clone());
         } else if destination.exists() {
             fs::remove_file(&destination).map_err(|e| {
                 format!(
@@ -5957,6 +5958,7 @@ fn install_convergence_stage(
     stage0_src: &Path,
     candidate_src: &Path,
     basenames: &[String],
+    base_rewritten_mirrors: &[String],
     admitted_manifest: &HashMap<String, RegenCandidateManifestSurface>,
     basename_to_module: &HashMap<String, String>,
     ordinal: usize,
@@ -5973,7 +5975,15 @@ fn install_convergence_stage(
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
     let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
-    let actuation = partition_rebuild_actuation(source_roots, basenames, &declared_shell_modules)?;
+    let changed_mirrors: Vec<String> = basenames
+        .iter()
+        .chain(base_rewritten_mirrors)
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let actuation =
+        partition_rebuild_actuation(source_roots, &changed_mirrors, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
         Some(admit_derived_partition_move(source_roots, workspace)?)
     } else {
@@ -6826,9 +6836,10 @@ pub fn run_regen_round_cost(
     // not survive the round. The child reaches here with the parent's journal still on disk (the
     // child restores nothing at startup, and only the end of a round deletes it), so one call
     // unwinds what the parent seeded.
-    if let Some(subject) = round_subject.as_ref() {
+    let base_rewritten_mirrors: Vec<String> = if let Some(subject) = round_subject.as_ref() {
         v1_rt::trace_mark("round.base_snapshot_revert.begin".to_string());
-        let reverted = restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        let rewritten = restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        let reverted = rewritten.len();
         v1_rt::trace_mark("round.base_snapshot_revert.done".to_string());
         // THE RECEIPT NAMES WHAT IT PUT BACK, so a reader can tell a round that returned the head's
         // bytes from one that quietly kept compiling base's into the candidate. The count is the
@@ -6838,7 +6849,20 @@ pub fn run_regen_round_cost(
             "regen-round-cost: round 1 ended the base snapshot; {reverted} journalled paths were \
              rewritten to the head's own bytes (the rest already held them)"
         );
-    }
+        // THE CHANGED SET THE REBUILD DECISION READS INCLUDES THESE. Round 1 compiled base's
+        // bytes; this restore just moved the head's differing mirrors under the built artifacts, so
+        // cargo sees exactly these paths as changed in round 2. They are taken from the restore's own
+        // return, never inferred from mtimes (RFM
+        // `heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths`).
+        let src_prefix = format!("{STAGE0_CRATE_REL}/src/");
+        rewritten
+            .iter()
+            .filter(|path| path.starts_with(&src_prefix) && path.ends_with(".rs"))
+            .map(|path| emit_path_basename(path).to_string())
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     // Pre-handoff cost joins this image's no-op rebuild: summed once, here, before the
     // ledger rows and the crate count reach the receipt.
@@ -7076,6 +7100,7 @@ pub fn run_regen_round_cost(
             &stage0_src,
             &candidate_src,
             &install_set,
+            &base_rewritten_mirrors,
             &admitted_manifest,
             &basename_to_module,
             generation_ordinal + 1,
@@ -7602,9 +7627,25 @@ mod heal_round_one_base_mirror_tests {
         }
 
         // What a SUCCEEDED round now does before anything observes or publishes the worktree.
-        let put_back =
+        let put_back_paths =
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
                 .expect("the round ends its snapshot");
+        let put_back = put_back_paths.len();
+        // THE DECISION'S CHANGED SET IS THESE PATHS, NOT AN MTIME SCAN (RFM
+        // `heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths`): the restore
+        // names each file it moved under the built artifacts, workspace-relative, so the rebuild
+        // scope can list them. A count alone cannot feed it, and a path the restore skipped (equal
+        // bytes) must not appear.
+        assert!(
+            put_back_paths
+                .iter()
+                .any(|path| path.starts_with(STAGE0_CRATE_REL) && path.ends_with("/std_logic.rs")),
+            "the restore did not name the hand-maintained file it moved: {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths.iter().all(|path| !path.ends_with("/build.rs")),
+            "the restore named a path it never moved (its bytes were identical): {put_back_paths:?}"
+        );
         // The journal covers exactly what the seed MOVED. A path whose base bytes already equal the
         // head's is never written (a rewrite would bump an mtime cargo misreads as a change — the
         // #14876 / #15310 specimen), so it is never journalled and has nothing to put back; a
@@ -7751,7 +7792,8 @@ mod heal_round_one_base_mirror_tests {
         );
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &subject)
-                .expect("the round's teardown restores what the parent seeded"),
+                .expect("the round's teardown restores what the parent seeded")
+                .len(),
             restored.paths_rewritten,
             "the teardown did not return every path the parent seed moved ({}), so the child touched \
              the tree or the journal",
@@ -8268,7 +8310,8 @@ mod heal_round_one_base_mirror_tests {
         // The restore of a journal that moved nothing must also touch nothing.
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
-                .expect("the round's teardown runs"),
+                .expect("the round's teardown runs")
+                .len(),
             0,
             "the teardown wrote back paths the seed never moved"
         );
