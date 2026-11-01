@@ -3635,8 +3635,21 @@ fn equality_refused(carrier: String, member: String, member_judged: Bool) -> Equ
   Present { value: EqualityAdmissionRefusal { type_name: carrier, member: member, member_judged: member_judged } }
 }
 
+// A MEMBER'S TYPE FOR THE EQUALITY WALK. A generic type parameter's leaf carries TypeVariable, not Resolved,
+// so child_type_node (resolved_type) turns it into the nameless error_type and the walk then reads a
+// parameter as an unjudgeable "::" member. Heal run 41332788949 located exactly that node (name='',
+// span_file='<synthetic>', inferred=CompilerError(unresolved type)) at six `!= none` sites once a declaration's
+// fields resolve under its own parameters. A TypeVariable member is handed on as itself, so
+// exposure_view_for_node classifies it by its stamp; every other member is read as before.
+fn equality_member_type_node(ch: Node) -> Node {
+  match ch.inferred {
+    Present { value: TypeVariable { id: _ } } => ch
+    _ => child_type_node(ch: ch)
+  }
+}
+
 fn equality_field_refusal(owner_name: String, ch: Node, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
-  let ft = child_type_node(ch: ch)
+  let ft = equality_member_type_node(ch: ch)
   if (ft.connective == Arrow) {
     equality_refused(carrier: owner_name, member: authored_name_at(source_indices: scope.type_env.source_indices, node: ch), member_judged: true)
   } else {
@@ -3689,7 +3702,7 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
                 fold(peeled.children, init: none, f: (acc, ch) =>
                   match acc {
                     Present { value: _ } => acc
-                    Absent => equality_operand_admission(n: child_type_node(ch: ch), scope: scope, visited: visited2, depth: depth + 1)
+                    Absent => equality_operand_admission(n: equality_member_type_node(ch: ch), scope: scope, visited: visited2, depth: depth + 1)
                   })
               } else {
                 equality_refused(carrier: name, member: "open-support carrier: extensional equality is not enumerable", member_judged: true)

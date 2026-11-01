@@ -633,6 +633,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     // field (`type Wrap<S: Scale> { m: Measure<Memory, S, Int> }`) reached type_param_kind_diagnostics unbound
     // and was refused as a non-inhabitant. One binding mechanism, the one resolve_item_types uses for the same
     // names: env_with_type_variable_bindings over generic_param_name_at.
+    // transport == none: same gate as resolve_item_types, which binds params only for non-transport items.
     let env = if n.transport == none {
       env_with_type_variable_bindings(env: env, tp_names: n.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)))
     } else { env }
