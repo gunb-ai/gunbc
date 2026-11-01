@@ -1056,6 +1056,14 @@ data native_emission_expected_identities: List<String> = [
   "only_set_record_equal_members_in_another_order",
   "only_set_record_red_member_differs",
   "mixed_set_record_red_sequence_differs",
+  "heap_carrier_filled_is_filled",
+  "heap_carrier_red_empty_is_not_filled",
+  "heap_carrier_routes_count_through_the_handle",
+  "heap_carrier_red_empty_row_counts_zero",
+  "heap_row_compares_equal_through_the_handle",
+  "heap_row_red_labels_differ",
+  "owed_leaf_element_still_owes_the_parameter",
+  "owed_leaf_red_empty_list_counts_zero",
 ]
 
 // RULE: a match whose only coverage of an outer variant is nested two levels deep is emitted
