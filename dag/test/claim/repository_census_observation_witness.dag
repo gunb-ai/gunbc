@@ -1,7 +1,7 @@
 module test.claim.repository_census_observation_witness
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_identity }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
 import gunbc.repository_census_observation {
   RepositoryIdentity,
@@ -14,7 +14,6 @@ import gunbc.repository_census_observation {
   census_observed_row,
   census_rows_identity,
   census_method_run_identity,
-  census_declaration_ref_identity,
   census_revision_identity,
   repository_census_observation,
   repository_census_source_roots,
@@ -328,10 +327,10 @@ test fn witness_every_population_field_reaches_the_identity() -> Bool {
 }
 
 test fn witness_a_declaration_field_selector_reaches_the_identity() -> Bool {
-  let whole = census_declaration_ref_identity(
+  let whole = declaration_ref_identity(
     reference: census_witness_decl(name: "census_witness_classifier"),
   )
-  let named = census_declaration_ref_identity(
+  let named = declaration_ref_identity(
     reference: decl_field_ref(
       module_path: "test.claim.repository_census_observation_witness",
       decl_name: "census_witness_classifier",
