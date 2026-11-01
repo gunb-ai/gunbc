@@ -16820,7 +16820,7 @@ pub fn emit_item_clone_bound_refusal(
                     if (head.clone() == "".to_string()) {
                         "".to_string()
                     } else {
-                        crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)".to_string()))
+                        crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see the well-formedness-propagation note in the // comments in gunbc.v1.trait_derive_emit)".to_string()))
                     }
                 }
             }
