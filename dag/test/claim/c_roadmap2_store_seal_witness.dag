@@ -53,27 +53,27 @@ data forged_metering_index_store_source: String = "module probe_fmi\nimport std.
 data forged_request_binding_store_source: String = "module probe_frb\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_request_record { AttemptRequestBindingStore }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> AttemptRequestBindingStore { AttemptRequestBindingStore { instance: isolated_dashboard_instance(deployment: deployment_id(name: \"p\" as NonEmptyStr), instance_id: \"p\" as NonEmptyStr, layout: srv1_host_layout(), root: \"/any\" as FilePath, serve_function: \"roadmap_serve_handle_srv1_lab\" as NonEmptyStr, listen_port: 18097, source_anchor_ref: \"refs/heads/main\" as NonEmptyStr, actuation: DashboardActuating, provision_transport: DashboardLocalProvision), node: \"n\" as NonEmptyStr, attempt_key: \"k\" as NonEmptyStr } }\n"
 
 test fn a_forged_view_preference_store_is_refused() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_view_preference_store_source, subject: "IssueViewPreferenceStore"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_view_preference_store_source, subject: "IssueViewPreferenceStore"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_forged_snapshot_census_receipt_store_is_refused() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_census_receipt_store_source, subject: "SnapshotCensusReceiptStore"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_census_receipt_store_source, subject: "SnapshotCensusReceiptStore"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_forged_served_observation_store_is_refused() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_served_observation_store_source, subject: "ServedObservationStore"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_served_observation_store_source, subject: "ServedObservationStore"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_forged_attempt_metering_store_is_refused() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_metering_store_source, subject: "AttemptMeteringStore"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_metering_store_source, subject: "AttemptMeteringStore"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_forged_metering_index_store_is_refused() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_metering_index_store_source, subject: "AttemptMeteringIndexStore"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_metering_index_store_source, subject: "AttemptMeteringIndexStore"), holds: fn(n) { n == 1 }))
 }
 
 test fn a_forged_request_binding_store_is_refused() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_request_binding_store_source, subject: "AttemptRequestBindingStore"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_request_binding_store_source, subject: "AttemptRequestBindingStore"), holds: fn(n) { n == 1 }))
 }
 
 // ── deleted routes (stripped twins) ────────────────────────────────────────────────────────────────────
@@ -93,31 +93,31 @@ data deleted_metering_path_route_source: String = "module probe_r6\nimport std.t
 data deleted_metering_create_only_source: String = "module probe_r7\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_metering { metering_create_only }\nfn f(path: String, content: String) -> String { match metering_create_only(path: path, content: content) { Present { value: e } => e Absent => \"\" } }\n"
 
 test fn the_view_preference_root_route_is_gone() -> ProcessExit {
-  census_verdict(census: missing_export(source: deleted_view_store_root_source, subject: "issue_view_store_root"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_view_store_root_source, subject: "issue_view_store_root"), holds: fn(n) { n == 1 }))
 }
 
 test fn the_view_preference_root_read_route_is_gone() -> ProcessExit {
-  census_verdict(census: missing_export(source: deleted_view_store_read_source, subject: "issue_view_store_read"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_view_store_read_source, subject: "issue_view_store_read"), holds: fn(n) { n == 1 }))
 }
 
 test fn the_census_receipt_path_route_is_gone() -> ProcessExit {
-  census_verdict(census: missing_export(source: deleted_census_receipt_path_source, subject: "roadmap_snapshot_census_receipt_path_for_instance"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_census_receipt_path_source, subject: "roadmap_snapshot_census_receipt_path_for_instance"), holds: fn(n) { n == 1 }))
 }
 
 test fn the_served_observation_path_route_is_gone() -> ProcessExit {
-  census_verdict(census: missing_export(source: deleted_served_observation_path_source, subject: "served_observation_path_for_instance"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_served_observation_path_source, subject: "served_observation_path_for_instance"), holds: fn(n) { n == 1 }))
 }
 
 test fn the_metering_path_read_route_is_gone() -> ProcessExit {
-  census_verdict(census: missing_export(source: deleted_metering_read_file_source, subject: "metering_read_file"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_metering_read_file_source, subject: "metering_read_file"), holds: fn(n) { n == 1 }))
 }
 
 test fn the_metering_record_path_route_is_gone() -> ProcessExit {
-  census_verdict(census: missing_export(source: deleted_metering_path_route_source, subject: "attempt_metering_path_for_instance"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_metering_path_route_source, subject: "attempt_metering_path_for_instance"), holds: fn(n) { n == 1 }))
 }
 
 test fn the_metering_create_only_route_is_gone() -> ProcessExit {
-  census_verdict(census: missing_export(source: deleted_metering_create_only_source, subject: "metering_create_only"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_metering_create_only_source, subject: "metering_create_only"), holds: fn(n) { n == 1 }))
 }
 
 // ── the retired writers are gone ───────────────────────────────────────────────────────────────────────
@@ -125,12 +125,12 @@ test fn the_metering_create_only_route_is_gone() -> ProcessExit {
 data deleted_verification_receipt_writer_source: String = "module probe_r8\nimport std.types { String, NonEmptyStr }\nimport gunbc.roadmap.roadmap_verify { persist_verification_receipt }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_model { RoadmapNode }\nfn f(i: HostDashboardInstance, n: RoadmapNode) -> Int { match persist_verification_receipt(instance: i, node: n, receipt: \"{}\" as NonEmptyStr) { _ => 0 } }\n"
 
 test fn the_legacy_verification_receipt_writer_is_gone() -> ProcessExit {
-  census_verdict(census: missing_export(source: deleted_verification_receipt_writer_source, subject: "persist_verification_receipt"), holds: fn(n) { n == 1 })
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_verification_receipt_writer_source, subject: "persist_verification_receipt"), holds: fn(n) { n == 1 }))
 }
 
 // ── the lawful routes are admitted ─────────────────────────────────────────────────────────────────────
 
-data lawful_view_preference_route_source: String = "module probe_g1\nimport std.types { NonEmptyStr, FilePath }\nimport gunbc.roadmap.roadmap_view_preference_store { issue_view_preference_store, issue_view_preference_read }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> Int {\n  let i = isolated_dashboard_instance(deployment: deployment_id(name: \"witness\" as NonEmptyStr), instance_id: \"witness\" as NonEmptyStr, layout: srv1_host_layout(), root: \"/tmp/witness\" as FilePath, serve_function: \"roadmap_serve_handle_srv1_lab\" as NonEmptyStr, listen_port: 18097, source_anchor_ref: \"refs/heads/main\" as NonEmptyStr, actuation: DashboardActuating, provision_transport: DashboardLocalProvision)\n  match issue_view_preference_store(instance: i) {\n    IssueViewPreferenceStoreReady { store } => match issue_view_preference_read(store: store, key: "v0" as NonEmptyStr) { _ => 0 }\n    IssueViewPreferenceStoreUnready { detail: _ } => 2\n  }\n}\n"
+data lawful_view_preference_route_source: String = "module probe_g1\nimport std.types { NonEmptyStr, FilePath }\nimport gunbc.roadmap.roadmap_view_preference_store { issue_view_preference_store, issue_view_preference_read }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> Int {\n  let i = isolated_dashboard_instance(deployment: deployment_id(name: \"witness\" as NonEmptyStr), instance_id: \"witness\" as NonEmptyStr, layout: srv1_host_layout(), root: \"/tmp/witness\" as FilePath, serve_function: \"roadmap_serve_handle_srv1_lab\" as NonEmptyStr, listen_port: 18097, source_anchor_ref: \"refs/heads/main\" as NonEmptyStr, actuation: DashboardActuating, provision_transport: DashboardLocalProvision)\n  match issue_view_preference_store(instance: i) {\n    IssueViewPreferenceStoreReady { store } => match issue_view_preference_read(store: store, key: \"v0\" as NonEmptyStr) { _ => 0 }\n    IssueViewPreferenceStoreUnready { detail: _ } => 2\n  }\n}\n"
 
 data lawful_census_route_source: String = "module probe_g2\nimport std.types { NonEmptyStr, FilePath, String }\nimport gunbc.roadmap.roadmap_event_snapshot_census { snapshot_census_receipt_store, snapshot_census_receipt_content, SnapshotCensusReceiptStoreReady, SnapshotCensusReceiptStoreUnready, SnapshotCensusReceiptContent }\nimport gunbc.roadmap.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> Int {\n  let i = isolated_dashboard_instance(deployment: deployment_id(name: \"witness2\" as NonEmptyStr), instance_id: \"witness2\" as NonEmptyStr, layout: srv1_host_layout(), root: \"/tmp/witness2\" as FilePath, serve_function: \"roadmap_serve_handle_srv1_lab\" as NonEmptyStr, listen_port: 18098, source_anchor_ref: \"refs/heads/main\" as NonEmptyStr, actuation: DashboardActuating, provision_transport: DashboardLocalProvision)\n  match snapshot_census_receipt_store(instance: i) {\n    SnapshotCensusReceiptStoreReady { store } => match snapshot_census_receipt_content(store: store) { _ => 0 }\n    SnapshotCensusReceiptStoreUnready { detail: _ } => 1\n  }\n}\n"
 
