@@ -1,0 +1,9 @@
+module test.fixture.sealed_createonce_stores.unsealed
+
+import std.types { NonEmptyStr }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+
+// THE STRIPPED TWIN (GrantExceededStore) for test.claim.sealed_createonce_stores_witness: each sealed record with the SAME fields and NO
+// sole_constructor keyword, so the same forged text compiles clean here and the refusal is pinned to the keyword.
+
+type GrantExceededStore { root: NonEmptyStr, instance: HostDashboardInstance }
