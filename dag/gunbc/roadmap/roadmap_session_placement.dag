@@ -1026,7 +1026,7 @@ fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) ->
                 match session_read_host_text(path: proc_stat_path) {
                   FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot instant could not be read: ", error], "") }
                   FilesystemReadSucceeded { content: stat_text } => SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
-                    standing: unit_invocation_observation(manager: SystemManager, boot_id_text: boot_text, proc_stat_text: stat_text, invocation_text: invocation),
+                    standing: unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: boot_text, proc_stat_text: stat_text, invocation_text: invocation),
                     boot: unit_boot_observation(boot_id_text: boot_text, proc_stat_text: stat_text),
                     acquired_at: at,
                   } }
@@ -1042,11 +1042,15 @@ fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) ->
 // never decides this. The proof itself is the conjunction in gunbc.systemd_unit_invocation_liveness
 // unit_reboot_holder_liveness -- no unit in the manager that ran it, AND a boot that began after the
 // ledger acquired this hold.
-fn session_absent_unit_lifecycle(evidence: SessionHolderEvidenceReading, artifact_note: String) -> UnitLifecycle {
+fn session_absent_unit_lifecycle(evidence: SessionHolderEvidenceReading, holder_unit: NonEmptyStr, artifact_note: String) -> UnitLifecycle {
   match evidence {
     SessionHolderEvidenceRefused { detail } => UnitLifecycleUnknown { detail: join(["the unit is not in the manager, and its holder identity is not established: ", detail], "") }
     SessionHolderEvidenceRead { evidence: e } =>
-      match unit_reboot_holder_liveness(standing: e.standing, boot: e.boot, acquired_at: e.acquired_at, skew_bound_seconds: session_holder_boot_skew_bound_seconds) {
+      // The manager named for this holder is the system manager: session_holder_evidence refuses any unit
+      // the declared prefix rule (roadmap_dispatch_actuator attempt_unit_manager_is_system) does not put in
+      // that manager, and it reads the standing from that same manager. The liveness arm re-checks the
+      // binding, so a standing read from another manager, or about another unit, cannot free this seat.
+      match unit_reboot_holder_liveness(standing: e.standing, holder_unit: holder_unit, holder_manager: SystemManager, boot: e.boot, acquired_at: e.acquired_at, skew_bound_seconds: session_holder_boot_skew_bound_seconds) {
         HolderObservedDead { evidence: proof } => UnitTerminatedCauseUnknown { detail: join([proof, artifact_note], "") }
         HolderObservedLive { evidence: proof } => UnitStillRunning { detail: join([proof, artifact_note], "") }
         HolderLivenessUnobservable { cause } => UnitLifecycleUnknown { detail: join(["the holder's death is not observable: ", cause, artifact_note], "") }
@@ -1075,6 +1079,7 @@ fn session_observe_unit_lifecycle(stores: SessionPlacementStores, unit: NonEmpty
   match observed {
     AttemptUnitAbsent => session_absent_unit_lifecycle(
       evidence: session_holder_evidence(stores: stores, unit: unit),
+      holder_unit: unit,
       artifact_note: " (read on the abandonment route, which consults no exit spool)",
     )
     AttemptUnitActive => session_unit_lifecycle(o: observed)
@@ -1098,7 +1103,7 @@ fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservati
       match record {
         // NO ARTIFACT AT ALL: the only evidence is the unit's standing, bound to the holder's identity.
         AttemptExitRecordNone =>
-          session_absent_unit_lifecycle(evidence: evidence, artifact_note: " (the spool holds no exit record for this unit)")
+          session_absent_unit_lifecycle(evidence: evidence, holder_unit: unit, artifact_note: " (the spool holds no exit record for this unit)")
         AttemptExitRecordFound { record: _ } => session_unit_lifecycle(o: attempt_unit_from_exit_record(unit: unit, record: record, start: AttemptUnitStartRecorded))
         // THE ARTIFACT IS ABOUT ITS WRITER, NOT ABOUT THE HOLDER. An entry whose name still spells the
         // stop variables was created without the manager's substitution: the hook's writer is broken,
@@ -1109,6 +1114,7 @@ fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservati
         AttemptExitRecordWriterUnsubstituted { entries, variables } =>
           session_absent_unit_lifecycle(
             evidence: evidence,
+            holder_unit: unit,
             artifact_note: join([" (its only exit artifact names the stop variables unexpanded (", join(variables, ", "), "): a defective writer, which is not evidence either way: ", join(entries, ", ")], ""),
           )
         AttemptExitRecordUnreadable { reason } => UnitLifecycleUnknown { detail: reason }

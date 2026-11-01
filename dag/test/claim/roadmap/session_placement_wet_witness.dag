@@ -729,7 +729,7 @@ fn holder_evidence_boot_at(stores: SessionPlacementStores, boot_started_at: Epoc
     Present { value: at } => {
       let stat = join(["cpu 1 2 3\nbtime ", to_string(boot_started_at), "\n"], "")
       SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
-        standing: unit_invocation_observation(manager: SystemManager, boot_id_text: fixture_boot_id_text, proc_stat_text: stat, invocation_text: invocation_text),
+        standing: unit_invocation_observation(manager: SystemManager, unit: unit_a(), boot_id_text: fixture_boot_id_text, proc_stat_text: stat, invocation_text: invocation_text),
         boot: unit_boot_observation(boot_id_text: fixture_boot_id_text, proc_stat_text: stat),
         acquired_at: at,
       } }

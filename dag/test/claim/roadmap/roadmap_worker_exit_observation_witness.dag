@@ -34,7 +34,7 @@ data witness_acquired_at: EpochSecs = 1000
 
 fn holder_evidence(proc_stat_text: String, invocation_text: String) -> SessionHolderEvidenceReading {
   SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
-    standing: unit_invocation_observation(manager: SystemManager, boot_id_text: witness_boot_id_text, proc_stat_text: proc_stat_text, invocation_text: invocation_text),
+    standing: unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: witness_boot_id_text, proc_stat_text: proc_stat_text, invocation_text: invocation_text),
     boot: unit_boot_observation(boot_id_text: witness_boot_id_text, proc_stat_text: proc_stat_text),
     acquired_at: witness_acquired_at,
   } }

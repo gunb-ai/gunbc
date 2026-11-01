@@ -9,35 +9,57 @@ import extdeps.systemd.systemctl
 import extdeps.linux.kernel_random { kernel_boot_id_path }
 import extdeps.linux.proc_stat { proc_stat_path }
 import gunbc.systemd_unit_invocation_liveness {
-  SystemManager, UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable,
+  SystemManager, UnitInvocationPresent, UnitInvocationUnreadable,
   unit_invocation_observation, unit_invocation_holder_liveness,
 }
-import std.durable_exclusive_hold { HolderObservedLive }
+import std.durable_exclusive_hold { HolderObservedLive, HolderLivenessUnobservable }
 
 // LIVE OBSERVATION OF A REAL UNIT RUN (the pairing obligation for the supplied values in
 // test.claim.systemd_unit_invocation_liveness_witness). Run on a systemd host, naming a unit that is
-// currently active:
+// currently active and, optionally, a second different active unit and the independently read referent:
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/test/manual/systemd_unit_run_live_observation.dag \
-//     --function systemd_unit_run_live_observation --arg unit=<active unit name, e.g. ssh.service>
-// It reads the unit's InvocationID through systemd, /proc/sys/kernel/random/boot_id and /proc/stat from the host,
-// builds the run twice and asserts that the second reading is judged the same live run. A refusal (exit 1) names
-// the located cause; it never defaults a component.
-fn systemd_unit_run_live_observation(unit: String) -> ProcessExit
+//     --function systemd_unit_run_live_observation --arg unit=ssh.service --arg other_unit=<another active unit or ""> \
+//     --arg expected_invocation=<systemctl show -p InvocationID --value> --arg expected_boot_id=<boot_id> --arg expected_btime=<btime>
+// The run is observed TWICE from fresh reads (ShowProperty, boot_id and /proc/stat each read again), and the second
+// observation must be judged the same live run as the first. A non-empty other_unit is observed too and must be judged
+// a DIFFERENT IDENTITY (another InvocationID) and, asked about the first unit's holder, a foreign subject
+// (HolderLivenessUnobservable), never dead, so the entry can go red. A non-empty expected_invocation also requires the first
+// reading to equal that referent (pass all three expected_* or none). gunbc run carries only an exit reason out of an
+// entry, so a success prints nothing: exit 0 means the referent matched; a mismatch exits 1 with the observed triple in
+// the reason. A refusal names the located cause; it never defaults a component.
+fn live_unit_observation(unit: String) -> UnitInvocationObservation
   uses fs: Filesystem
 {
   let inv = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
   let boot = Filesystem.Read(path: kernel_boot_id_path)
   let stat = Filesystem.Read(path: proc_stat_path)
-  if !inv.success || !boot.success || !stat.success { exit_failure(reason: "the unit run was not observed as the same live run") }
-  else {
-    let first = unit_invocation_observation(manager: SystemManager, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: inv.value)
-    match first {
-      UnitInvocationPresent { run: r } => {
-        let again = unit_invocation_observation(manager: SystemManager, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: inv.value)
-        match unit_invocation_holder_liveness(recorded: r, observed: again) { HolderObservedLive { evidence: _ } => ExitSuccess  _ => exit_failure(reason: "the unit run was not observed as the same live run") }
+  if !inv.success || !boot.success || !stat.success { UnitInvocationUnreadable { cause: "the unit run was not read from the host" as NonEmptyStr } }
+  else { unit_invocation_observation(manager: SystemManager, unit: unit as NonEmptyStr, boot_id_text: boot.content, proc_stat_text: stat.content, invocation_text: inv.value) }
+}
+
+fn systemd_unit_run_live_observation(unit: String, other_unit: String, expected_invocation: String, expected_boot_id: String, expected_btime: String) -> ProcessExit
+  uses fs: Filesystem
+{
+  match live_unit_observation(unit: unit) {
+    UnitInvocationPresent { unit: _, run: r } => {
+      let again = live_unit_observation(unit: unit)
+      match unit_invocation_holder_liveness(recorded: r, holder_unit: unit as NonEmptyStr, observed: again) {
+        HolderObservedLive { evidence: _ } =>
+          if expected_invocation != "" && !((r.invocation_id as String) == expected_invocation && (r.boot_id as String) == expected_boot_id && concat("", r.boot_started_at) == expected_btime) {
+            exit_failure(reason: join(["the observed run differs from the referent: invocation=", r.invocation_id as String, " boot_id=", r.boot_id as String, " btime=", concat("", r.boot_started_at)], ""))
+          } else if other_unit == "" { ExitSuccess }
+          else { match live_unit_observation(unit: other_unit) {
+            UnitInvocationPresent { unit: _, run: o } =>
+              if (o.invocation_id as String) == (r.invocation_id as String) { exit_failure(reason: "a second, different unit carries the same InvocationID") }
+              else { match unit_invocation_holder_liveness(recorded: r, holder_unit: unit as NonEmptyStr, observed: live_unit_observation(unit: other_unit)) {
+                HolderLivenessUnobservable { cause: _ } => ExitSuccess
+                _ => exit_failure(reason: "an observation of another unit was judged a verdict on the first unit's holder")
+              } }
+            _ => exit_failure(reason: "the second unit was not observed")
+          } }
+        _ => exit_failure(reason: "the second fresh observation was not judged the same live run")
       }
-      UnitInvocationAbsent => exit_failure(reason: "the unit run was not observed as the same live run")
-      UnitInvocationUnreadable { cause: _ } => exit_failure(reason: "the unit run was not observed as the same live run")
     }
+    _ => exit_failure(reason: "the unit run was not observed")
   }
 }
