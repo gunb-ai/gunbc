@@ -206,11 +206,12 @@ pub use crate::v1_compiler_infer_env::{
     build_unit_variant_index, carried_declaration_ref, census_declaration_type_env,
     declaration_named_by_type_name, declaration_node_of_ref, declaration_provenance_of_ref,
     declaration_ref_of_declaration_node, declaration_ref_of_type_node,
-    declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
-    empty_type_env_cache, env_with_type_variable_bindings, generic_actual_position_type,
-    global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates,
-    host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, is_unsolved_type_variable, kernel_settled_name,
+    declaration_substitution_basis, declared_module_owner, effective_visible_binding,
+    empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings,
+    generic_actual_position_type, global_bare_is_ambiguous,
+    global_bare_strict_ambiguity_candidates, host_text_into_structural_sequence,
+    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
+    is_recursive_type_by_name, is_unsolved_type_variable, kernel_settled_name,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
     lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
     merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
@@ -260,8 +261,8 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
 pub use crate::v1_compiler_infer_method::{
     bare_call_non_declaration_binding, builtin_host_display_deferred_param_names,
     builtin_host_text_param_names, builtin_kernel_seed_diagnostics, builtin_param_names,
-    builtin_receiver_self_host_text_param_names, builtin_signature, infer_builtin_call_type,
-    is_empty_map_constructor, is_empty_set_constructor, resolve_builtin_call_type,
+    builtin_receiver_self_host_text_param_names, infer_builtin_call_type, is_empty_map_constructor,
+    is_empty_set_constructor, resolve_builtin_call_type,
     template_renders_receiver_elements_as_host_text, NonDeclarationBinding,
 };
 use crate::v1_compiler_infer_patterns::ConstructorRoster::{ConstructorsClosed, ConstructorsOpen};
@@ -307,6 +308,7 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
 };
 pub use crate::v1_compiler_infer_sigs::{
+    call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding,
     callable_candidate_labels, callable_identity_label, flatten_parent_envs,
     func_sig_for_derivation, resolve_func_sigs, CallTargetOutcome, CallableCandidate,
     CallableIdentity, DerivedCalleeSig, FuncSigLookup, NoDerivableSigReason, ResolveFuncSigsResult,
@@ -315,19 +317,22 @@ pub use crate::v1_compiler_infer_sigs::{
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
 use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedInVariantFieldSummary;
 pub use crate::v1_compiler_infer_types::{
-    alias_identity_in_judgment, alias_names_identity_in_judgment, apply_type_substitution,
-    bare_map_node, bare_set_node, build_type_substitution, callable_inferred, callable_return_type,
-    child_type_node, collection_carrier_node, emit_map_has, extract_optional_inner_node,
-    for_each_element_type_node, infer_binop_type_node, infer_literal_node,
-    is_declared_container_alias_spelling, is_fully_resolved, is_product_type,
+    alias_identity_in_judgment, alias_names_identity_in_judgment, bare_map_node, bare_set_node,
+    callable_inferred, callable_return_type, child_type_node, collection_carrier_node,
+    declaration_carried_through_resolution, declaration_is_std_optional, emit_map_has,
+    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
+    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_product_type,
     is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
-    method_receiver_element_node, node_is_collection, node_is_element_collection,
-    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
-    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
-    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
+    method_receiver_element_node, node_declaration_file, node_declaration_identity,
+    node_is_collection, node_is_element_collection, node_is_keyed_collection,
+    node_is_set_collection, node_type_compatible, node_type_deps, node_type_equals,
+    node_type_shape, nominal_type_ref, normalize_access_type_node, prefer_specific_type,
+    resolve_type_variables_from_template, resolved_type, std_optional_declaration_ref,
     structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
-    template_return_is_receiver_self, KernelTypeBuild, TextJudgment, TextNotAskedReason,
+    template_return_is_receiver_self, type_node_is_callable, KernelTypeBuild, TextJudgment,
+    TextNotAskedReason,
 };
+pub use crate::v1_compiler_ownership::fold_terminal_expr;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
@@ -398,36 +403,38 @@ pub use crate::v1_std_core::{
     arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
     build_newline_index, call_semantics_target, callable_identity, cast_expr, cast_target,
     decl_ref_coords_label, declaration_provenance_of, default_ident_span,
-    diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table, error_type,
-    expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_is_any_literal,
-    expr_literal_int_optional, expr_literal_string_optional, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
-    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
-    field_node_type_expr, find_child_named, find_property_string, float_type, fn_admit_callers,
-    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named,
-    has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
-    is_child_accessor_in_model, is_compiler_error, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, is_property_contraction, is_shell_transport,
-    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
-    let_value, make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
-    make_field_binding_node, make_field_init_node, make_interp_part_node, make_named_expr_node,
-    make_param_node, make_text_part_node, make_transport_node, map_children, match_arm_nodes,
-    match_scrutinee, method_arg_nodes, method_receiver, module_imports, module_items, module_node,
-    no_span, node_name_span, none_type, param_node_default_value, param_node_name_at,
-    param_node_type_expr, preserve_outer_optional_cardinality, qualified_last_segment,
-    record_lit_expr_optional, record_lit_named_field_value_optional, record_lit_type_name_at,
-    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
-    string_type, symbol_type, type_name_compatible, type_reference_provenance,
-    type_variable_binder_name, unaryop_operand, undeclared_transport_node, unit_type,
-    variant_node_fields, with_optional_cardinality, with_required_cardinality, AdmitCallersEntry,
-    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
-    DeclarationMarker, DeclaredCallableIdentity, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode,
-    ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary, FieldValueShape,
-    FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex,
-    Node, ParsedModuleItemKind, ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart,
-    UnaryOpKind, VarBindingKind,
+    diagnostic_frontier_occurrence_key, diagnostic_to_span, divergent_type, empty_intern_table,
+    error_type, expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call,
+    expr_is_any_literal, expr_literal_int_optional, expr_literal_string_optional,
+    expr_literal_symbol_optional, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
+    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
+    find_child_named, find_property_string, float_type, fn_admit_callers, foreach_body,
+    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
+    is_compiler_error, is_error_diagnostic, is_interpreter_blocking_diagnostic,
+    is_property_contraction, is_shell_transport, is_tree_size_reducing, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node, make_arm_node,
+    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_interp_part_node, make_named_expr_node, make_param_node,
+    make_text_part_node, make_transport_node, map_children, match_arm_nodes, match_scrutinee,
+    method_arg_nodes, method_receiver, module_imports, module_items, module_node,
+    module_path_segments, no_span, node_name_span, none_type, param_node_default_value,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
+    record_lit_type_name_at, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
+    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
+    slice_end, slice_start, string_type, symbol_type, type_name_compatible,
+    type_reference_provenance, type_variable_binder_name, unaryop_operand,
+    undeclared_transport_node, unit_type, variant_node_fields, with_optional_cardinality,
+    with_required_cardinality, AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality,
+    CompilerDiagnostic, Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity,
+    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
+    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
+    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1789,11 +1796,7 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
                     if local_is_service_root_binding(scope.clone(), name.clone(), binding.clone()) {
                         Rc::new(VarBindingKind::ServiceValueBinding)
                     } else {
-                        if v1_rt::map_has(&scope.body_locals.clone(), name.clone()) {
-                            Rc::new(VarBindingKind::LocalValueBinding)
-                        } else {
-                            Rc::new(VarBindingKind::FunctionValueBinding)
-                        }
+                        Rc::new(VarBindingKind::LocalValueBinding)
                     }
                 }
             }
@@ -10708,163 +10711,6 @@ match value.inferred.clone().as_deref().cloned() {
     }
 }
 
-pub fn builtin_call_application_plan(
-    func_name: String,
-    typed_args: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-) -> Rc<Vec<Rc<ResolvedCallFormal>>> {
-    match crate::v1_compiler_infer_method::builtin_signature(func_name.clone()) {
-        std::option::Option::None => Rc::new(vec![]),
-        Some(sig) => {
-            let source_indices = scope.type_env.source_indices.clone();
-            let templates = Rc::new({
-                let mut __result = Vec::new();
-                for p in sig.params.clone().iter().cloned() {
-                    __result.push(p.ty.clone());
-                }
-                __result
-            });
-            let first_is_self = match templates.clone().first().cloned() {
-                Some(t) => match (*t.clone()).clone() {
-                    AlgebraTypeTemplate::ReceiverSelf => true,
-                    _ => false,
-                },
-                std::option::Option::None => false,
-            };
-            let receiver = match typed_args.clone().first().cloned() {
-                Some(ta) => expression_value_type(crate::v1_std_core::arg_value(ta.clone())),
-                std::option::Option::None => error_type(),
-            };
-            let operand_args = if first_is_self.clone() {
-                Rc::new(v1_rt::list_skip(&typed_args.clone(), 1))
-            } else {
-                typed_args.clone()
-            };
-            let subst = crate::v1_compiler_infer_types::build_type_substitution(
-                templates.clone(),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for ta in operand_args.iter().cloned() {
-                        __result.push(expression_value_type(crate::v1_std_core::arg_value(
-                            ta.clone(),
-                        )));
-                    }
-                    __result
-                }),
-                receiver.clone(),
-                v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                source_indices.clone(),
-            );
-            Rc::new({
-                let mut __result = Vec::new();
-                for pair in Rc::new(
-                    sig.params
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
-                    __result.extend(
-                        (*{
-                            let param = pair.1.clone();
-                            let matched = Rc::new({
-                                let mut __result = Vec::new();
-                                for ap in Rc::new({
-                                    let mut __result = Vec::new();
-                                    for ap in Rc::new(
-                                        typed_args
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .enumerate()
-                                            .map(|(i, v)| (i as i64, v))
-                                            .collect::<Vec<_>>(),
-                                    )
-                                    .iter()
-                                    .cloned()
-                                    {
-                                        if (builtin_argument_bound_name(
-                                            func_name.clone(),
-                                            ap.1.clone(),
-                                            ap.0.clone(),
-                                            scope.clone(),
-                                        ) == param.name.clone())
-                                        {
-                                            __result.push(ap);
-                                        }
-                                    }
-                                    __result
-                                })
-                                .iter()
-                                .cloned()
-                                {
-                                    __result.push(ap.0.clone());
-                                }
-                                __result
-                            })
-                            .first()
-                            .cloned();
-                            match (*param.ty.clone()).clone() {
-                                AlgebraTypeTemplate::ReceiverSelf => Rc::new(vec![]),
-                                _ => {
-                                    let declared =
-                                        crate::v1_compiler_infer_types::apply_type_substitution(
-                                            param.ty.clone(),
-                                            subst.clone(),
-                                            receiver.clone(),
-                                            source_indices.clone(),
-                                        )
-                                        .ty
-                                        .clone();
-                                    Rc::new(vec![Rc::new(ResolvedCallFormal {
-                                        formal_index: pair.0.clone(),
-                                        formal: Rc::new(ResolvedFormal {
-                                            parameter_identity: v1_rt::concat(
-                                                "'".to_string(),
-                                                v1_rt::concat(
-                                                    param.name.clone(),
-                                                    v1_rt::concat(
-                                                        "' of ".to_string(),
-                                                        func_name.clone(),
-                                                    ),
-                                                ),
-                                            ),
-                                            declared_type: declared.clone(),
-                                            declaration_bound_conformance: declared.clone(),
-                                            substitution_basis: declared.clone(),
-                                        }),
-                                        matched_argument_index: matched.clone(),
-                                    })])
-                                }
-                            }
-                        })
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            })
-        }
-    }
-}
-
-pub fn builtin_argument_inhabitance_diags(
-    func_name: String,
-    typed_args: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    direct_call_argument_inhabitance_diags(
-        builtin_call_application_plan(func_name, typed_args.clone(), scope.clone()),
-        typed_args.clone(),
-        scope.clone(),
-    )
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum BuiltinResultAtCall {
@@ -16464,7 +16310,7 @@ Rc::new(InferResult {
     call_semantics: call_semantics.clone(),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), call_inferred, span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), v1_rt::concat(builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()), builtin_argument_inhabitance_diags(func_name.clone(), typed_args.clone(), scope.clone())))))),
+    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()))))),
 })
 }
                                 } else {
@@ -26466,54 +26312,6 @@ pub fn infer_transport_node(
     }
 }
 
-pub fn parameter_default_emissions(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferEmissions> {
-    infer_emissions_concat_all(Rc::new({
-        let mut __result = Vec::new();
-        for p in item.params.clone().iter().cloned() {
-            __result.push(
-                match crate::v1_std_core::param_node_default_value(p.clone()) {
-                    std::option::Option::None => infer_emissions_empty(),
-                    Some(default_expr) => {
-                        if (param_is_generic_decl(p.clone(), scope.type_env.source_indices.clone())
-                            || direct_call_formal_has_unbound_type_variable(
-                                crate::v1_std_core::param_node_type_expr(p.clone()),
-                            ))
-                        {
-                            infer_emissions_empty()
-                        } else {
-                            {
-                                let declared = crate::v1_std_core::param_node_type_expr(p.clone());
-                                let r = infer_expr(
-                                    default_expr.clone(),
-                                    scope.clone(),
-                                    Some(declared.clone()),
-                                );
-                                infer_emissions_concat(
-                                    r.emissions.clone(),
-                                    infer_emissions_of_diagnostics(
-                                        declared_type_conformance_diags(
-                                            DeclaredTypePosition::PositionParameterDefault,
-                                            crate::v1_std_core::authored_name_at(
-                                                scope.type_env.source_indices.clone(),
-                                                p.clone(),
-                                            ),
-                                            declared.clone(),
-                                            expression_value_type(r.typed.clone()),
-                                            r.typed.span.clone(),
-                                            scope.clone(),
-                                        ),
-                                    ),
-                                )
-                            }
-                        }
-                    }
-                },
-            );
-        }
-        __result
-    }))
-}
-
 pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let typed_anno = item.type_annotation.clone();
@@ -26716,7 +26514,6 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             props_emissions.clone(),
                             body_emissions.clone(),
                             infer_emissions_of_diagnostics(return_conformance_diags),
-                            parameter_default_emissions(item.clone(), scope.clone()),
                         ])),
                     })
                 }
@@ -26835,11 +26632,10 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
-                            emissions: infer_emissions_concat_all(Rc::new(vec![
+                            emissions: infer_emissions_concat(
                                 transport_emissions.clone(),
                                 props_emissions.clone(),
-                                parameter_default_emissions(item.clone(), scope.clone()),
-                            ])),
+                            ),
                         })
                     } else {
                         Rc::new(TypedItemResult {

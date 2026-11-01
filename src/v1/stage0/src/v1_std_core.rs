@@ -2173,6 +2173,19 @@ pub fn generic_param_name_at(
     authored_name_at(source_indices, n)
 }
 
+pub fn item_generic_param_names(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in item.params.clone().iter().cloned() {
+            __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
+        }
+        __result
+    })
+}
+
 pub fn authored_name_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     node: Rc<Node>,
