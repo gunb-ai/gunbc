@@ -4283,7 +4283,10 @@ fn foreign_concrete_coproduct_where_parent_required(
 // the declared-return chain and the whole relation already consume -- for a NON-LITERAL field value
 // (gunbc.recurring_failure_mode record_field_admits_a_distinct_product_value). That is two verdicts
 // judged there through the shared authorities, still not the position judged: the trigger below
-// stands for it unchanged.
+// stands for it unchanged. A field whose declared and produced types are one container application
+// (application_pair) runs the WHOLE relation instead, through declared_type_obligation_diags, as
+// the conformance chain does for let and return: a head-only node_type_compatible would admit
+// Map<String, Int> at Map<String, Bool>.
 //
 // NO PRODUCER: PositionMapValue, PositionVariantPayload, PositionCastTarget,
 // PositionCallableReturn. These occur solely in
@@ -12903,6 +12906,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             span: ar_typed.span,
             module_name: scope.module_name
           )]
+        } else if application_pair(declared: expected_node, produced: got_node, source_indices: scope.type_env.source_indices) {
+          declared_type_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_node, span: ar_typed.span
+            },
+            scope: scope)
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
           []
