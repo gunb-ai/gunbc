@@ -5,7 +5,7 @@ import std.optional { Absent, Present }
 import extdeps.uri { UriScheme, Https }
 import extdeps.network.ipv4 { render_ipv4_address }
 import std.list { first_where }
-import std.algebra { length, string_contains, list_append }
+import std.algebra { length, string_contains }
 import std.dissolution { dissolution_is_bound, dissolution_description }
 import std.roster_frontier { DeclSubject }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, CeilingByDeclaredPolicy }
@@ -14,6 +14,8 @@ import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manif
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
+import extdeps.crypto.sha2 { sha256_hex }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_flags }
 import std.measure { token_count_value }
 import gunbc.serving.srv1_serving_launch {
@@ -22,7 +24,7 @@ import gunbc.serving.srv1_serving_launch {
   srv1_serving_unmodeled_frontier_rows,
 }
 
-// The argv `docker inspect --format {{.Config.Cmd}} lil-flash-next` showed on 2026-10-29 (the LMCache tier relaunch), with the two
+// The argv `docker inspect --format {{.Config.Cmd}} lil-flash-next` showed for the 2026-10-31 08:02 relaunch (recovery1, LMCACHE_L2_GB 150, the pool context cap), with the two
 // shell substitutions left as the wrapper writes them and the output redirect cut at its boundary (the
 // wrapper's `>> $D/serve.log 2>&1` is shell, not argv). A LITERAL, deliberately: this is the reading the
 // derivation is checked against, and restating it from the rows would make the check circular.
@@ -32,7 +34,7 @@ data observed_cmd_tail: List<String> = [
   "--hardware", "rtx-pro-6000-pcie",
   "--env", "LMCACHE_MODE=ram-disk",
   "--env", "LMCACHE_L1_GB=100",
-  "--env", "LMCACHE_L2_GB=160",
+  "--env", "LMCACHE_L2_GB=150",
   "--env", "LMCACHE_L2_ROOT=/cache/kv",
   "--env", "LMCACHE_L2_WORKERS=16",
   "--env", "LMCACHE_L2_ODIRECT=1",
@@ -43,6 +45,7 @@ data observed_cmd_tail: List<String> = [
   "--ssl-keyfile", "/root/serve/tls.key",
   "--ssl-certfile", "/root/serve/tls.crt",
   "--api-key", "$(cat /root/.pool_key)",
+  "--max-model-len", "229376",
 ]
 
 // THE BASH REALIZATION supplies its own key-read token to the render: the wrapper's command
@@ -52,16 +55,12 @@ data observed_cmd_tail: List<String> = [
 // shell syntax out of string literals into an argv; the substitution lives in the retained wrapper).
 data bash_realization_key_read: NonEmptyStr = "\x24(cat /root/.pool_key)"
 
-// THE RENDER IS WHAT THE RUNNING CONTAINER SHOWED PLUS THE POOL CONTEXT CAP, element for element —
-// including the key's file read spelled as a shell substitution and no secret value anywhere. This is
-// the check that makes the argv a DERIVATION verified against an OBSERVATION, not a restatement of it.
-// The cap (gunbc.design_ruling one_serving_context_cap, 2026-10-30) is the ONE declared change since
-// that reading; the observation is not rewritten to include it, because no launch at the cap has been
-// read. When srv1 is relaunched and re-read, observed_cmd_tail is re-taken and the suffix goes.
-data context_cap_suffix: List<String> = ["--max-model-len", "229376"]
-
-test fn the_rendered_argv_is_the_container_cmd_tail_plus_only_the_context_cap() -> Bool {
-  srv1_serving_launch_argv(api_key_wire: bash_realization_key_read) == list_append(left: observed_cmd_tail, right: context_cap_suffix)
+// THE RENDER EQUALS WHAT THE RUNNING CONTAINER SHOWED, element for element — including the key's file
+// read spelled as a shell substitution and no secret value anywhere. This is the check that makes the
+// argv a DERIVATION verified against an OBSERVATION, not a restatement of it. The observation is the
+// 2026-10-31 08:02 relaunch at the pool context cap (gunbc.design_ruling one_serving_context_cap).
+test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
+  srv1_serving_launch_argv(api_key_wire: bash_realization_key_read) == observed_cmd_tail
 }
 
 // ONE CAP, TWO ENGINES: srv1's vLLM launch and srv3's Strata flags both carry the pool cap from its one
@@ -101,7 +100,7 @@ test fn the_environment_tiers_wire_as_the_container_shows_them() -> Bool {
     == [
       lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "100" as NonEmptyStr),
-      lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "160" as NonEmptyStr),
+      lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "150" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
       lil_serve_environment_entry(key: "LMCACHE_L2_ODIRECT" as NonEmptyStr, value: "1" as NonEmptyStr),
@@ -119,7 +118,7 @@ test fn the_retained_wrapper_is_the_serving_entrypoint_the_receipt_read() -> Boo
   let b = srv1_serving_wrapper.body
   string_contains(s: b, pattern: "#!/bin/bash")
     && string_contains(s: b, pattern: "lil-flash-next")
-    && string_contains(s: b, pattern: "IMG=sha256:58d49cac0f22daa3af29177b68bc76d7aa7389858a59192bfc3625911e7778b0")
+    && string_contains(s: b, pattern: concat("IMG=sha256:", srv1_serving_image().digest_sha256 as String))
     && string_contains(s: b, pattern: "srv1-inference.slice")
     && string_contains(s: b, pattern: "pool-card")
     && string_contains(s: b, pattern: ".pool_key")
@@ -137,18 +136,31 @@ test fn the_launch_exports_the_observed_authorities() -> Bool {
     && (srv1_serving_pinned_checkpoint().revision as String) == (srv1_serving_startup_reading.checkpoint_revision as String)
     && (srv1_serving_image().digest_sha256 as String) == (srv1_serving_startup_reading.image_digest_sha256 as String)
     // srv1 runs the DERIVED image, not the upstream base: the two digests differ, the base is the
-    // upstream row itself, and every change is a real one: twenty-one files, nineteen replaced (each digest
-    // differs from the base's) and two added (checkpoint_loss.py and checkpoint_policy.py, absent from the base).
+    // upstream row itself, and every change is a real one: twenty-seven files, twenty-four replaced (each
+    // digest differs from the base's) and three added (checkpoint_loss.py, checkpoint_policy.py and
+    // checkpoint_restore.py, absent from the base).
     && (srv1_serving_image_derivation.base.digest_sha256 as String) == (local_inference_lab_vllm_image.digest_sha256 as String)
     && (srv1_serving_image().digest_sha256 as String) != (local_inference_lab_vllm_image.digest_sha256 as String)
-    && length(xs: concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)) == 21
+    && length(xs: concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)) == 27
     && concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail)
       .all(c => match c {
         Srv1ImageFileReplaced { path: _, base_file_sha256_hex: b, replaced_file_sha256_hex: r } => (b as String) != (r as String)
         Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => true
       })
     && fold(concat([srv1_serving_image_derivation.changes.head], srv1_serving_image_derivation.changes.tail), init: 0,
-      f: (n, c) => match c { Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => n + 1 _ => n }) == 2
+      f: (n, c) => match c { Srv1ImageFileAdded { path: _, added_file_sha256_hex: _ } => n + 1 _ => n }) == 3
+}
+
+// THE BODY IS THE HOST COPY, BYTE FOR BYTE: `sha256sum ~/strata-test/srv1_lil_serve.sh` on srv1,
+// 2026-10-30 20:3x after the context-cap edit, and re-read 2026-10-31 at the relaunch. A LITERAL,
+// deliberately, for the reason observed_cmd_tail is one: the hash is the reading, and the body (with the
+// cap rendered from its row) and the startup receipt's pin are both checked against it. Editing the body,
+// the cap, or the host file without the others turns this red.
+data host_wrapper_sha256_read: String = "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd"
+
+test fn the_retained_body_hashes_to_the_host_copy() -> Bool {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper.body))) == host_wrapper_sha256_read
+    && host_wrapper_sha256_read == (srv1_serving_startup_reading.wrapper_sha256_hex as String)
 }
 
 // THE ROUTER'S LAUNCH FACTS READ THE LAUNCH: the port is the launch's listen port, the advertised model
@@ -190,7 +202,7 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--hardware", "rtx-pro-6000-pcie",
       "--env", "LMCACHE_MODE=ram-disk",
       "--env", "LMCACHE_L1_GB=100",
-      "--env", "LMCACHE_L2_GB=160",
+      "--env", "LMCACHE_L2_GB=150",
       "--env", "LMCACHE_L2_ROOT=/cache/kv",
       "--env", "LMCACHE_L2_WORKERS=16",
       "--env", "LMCACHE_L2_ODIRECT=1",
@@ -230,7 +242,7 @@ test fn the_key_is_a_typed_source_in_the_interface_and_shell_only_in_the_realiza
 // here converges the live container — that waits on the operator's maintenance window (merry-fox-82,
 // 2026-10-25), so it cannot claim a bound trigger it does not own.
 test fn the_unmodeled_frontier_is_keyed_and_the_relaunch_half_stays_unbounded() -> Bool {
-  length(xs: srv1_serving_unmodeled_frontier_rows) == 7
+  length(xs: srv1_serving_unmodeled_frontier_rows) == 6
     && (match first_where(xs: srv1_serving_unmodeled_frontier_rows, keep: fn(r) {
       match r.subject {
         DeclSubject { ref: d } => (d.decl_name as String) == "srv1_serving_wrapper"
@@ -249,15 +261,15 @@ test fn the_unmodeled_frontier_is_keyed_and_the_relaunch_half_stays_unbounded() 
       Present { value: r } => true
       Absent => false
     })
-    // The body edited past the receipt is keyed on the receipt, so the gap cannot pass as agreement.
+    // The relaunch closed the receipt gap, so no frontier row is keyed on the receipt any more.
     && (match first_where(xs: srv1_serving_unmodeled_frontier_rows, keep: fn(r) {
       match r.subject {
         DeclSubject { ref: d } => (d.decl_name as String) == "srv1_serving_startup_reading"
         _ => false
       }
     }) {
-      Present { value: r } => !dissolution_is_bound(condition: r.dissolution)
-      Absent => false
+      Present { value: _ } => false
+      Absent => true
     })
 }
 // The loopback host is TYPED (review 86720): octets in the model; the wire string exists only at

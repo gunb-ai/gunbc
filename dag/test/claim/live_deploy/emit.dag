@@ -101,7 +101,7 @@ import std.materialization_ladder { string_list_contains }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
 import gunbc.live_deploy.operations {
-  systemctl_disable_now_command, systemctl_user_daemon_reload_command, install_directory_owned_command, deploy_stage_dir_var, deploy_cap_stage_dir_var,
+  systemctl_disable_now_command, systemctl_user_daemon_reload_command, install_directory_owned_command,
 }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command, systemctl_restart_effect,
@@ -142,27 +142,8 @@ import gunbc.fleet.fleet_intent { srv1_host }
 import std.realization_reconcile { Converged, NotConverged }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.fleet.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoVisudo, fleet_posix_ci_runner_principal }
-import gunbc.host.host_axis_caps {
-  deploy_memory_cap_apply_script_for_host,
-  deploy_memory_cap_shadow_revert_script,
-  deploy_memory_cap_script_author_precedes_shadow_revert,
-  deploy_memory_cap_apply_script_from_authorization,
-  deploy_slice_control_converge_script,
-  deploy_runner_memory_cap_author_script,
-  derived_runner_memory_cap_members,
-  cap_converge_decision,
-  CapConvergeDecision, CapConvergeWithheld,
-  CapConvergeAuthorized,
-  SurplusSlotsObserved,
-  runner_slot_service_units_for_host,
-  RunnerSlotServiceUnits, ServiceUnitsDerived, ServiceUnitsWidthUnresolved,
-}
 import product.host_identity { HostIdentity }
-import gunbc.host.host_converge {
-  slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
-  SliceControlUnit,
-}
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import std.algebra { FreeSemigroup }
 import std.measure { byte_size_count }
@@ -196,17 +177,6 @@ data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE
 // NOT reduce the claims that render a DIFFERENT spec or plan (the twin, the converged plan): those
 // have their own renders and still pay them, which is why the zero-mutation claim below is still
 // the expensive one and had to lose its second render outright.
-// THE APPLY FIXTURE RENDERS UNDER AN AUTHORIZED DECISION, because the claims below are about what
-// the apply script CONTAINS. Rendering it withheld would emit the refusal marker instead of the cap
-// block, and every "contains" assertion would then be checking a string that is present but
-// unreachable -- the coverage trap of asserting on text after a fail-fast refusal.
-data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
-  host: operator_host_srv1,
-  required_retiring: [],
-  observation: SurplusSlotsObserved { retired: [], still_present: [] },
-)
-
-
 fn retract_leg_text(leg: DeployRetractLeg) -> String {
   match leg {
     RetractServeOff { endpoint: e } => join(["serve-off ", join(tailscale_serve_off_argv(endpoint: e), " ")], "")
@@ -332,37 +302,6 @@ test fn witness_tailnet_url_absent_not_fabricated() -> Bool {
   }
 }
 
-
-// THE CAP WIRING IS ASSERTED AT ITS OWN SEAM, NOT BY RENDERING THE WHOLE DEPLOY.
-//
-// This claim is about one question: does the production cap step carry the authorized members, in the
-// author-before-revert order, with the allocation's own byte count? It previously answered that by
-// rendering `live_deploy_apply_script_for` -- the entire apply program, every family, through the bash
-// emitter -- and then grepping the result. That is roughly 200k eval steps to read four substrings out
-// of a program whose other ten thousand characters the claim says nothing about.
-//
-// `deploy_memory_cap_apply_steps` is the production function `apply_intent_from_effects` calls for this
-// axis, so testing it directly tests the same producer at a fraction of the cost.
-//
-// WHAT IS GIVEN UP IS NAMED RATHER THAN RE-HOMED, BECAUSE NOTHING ELSE HOLDS IT. No witness in this
-// module now proves that the cap block reaches the ASSEMBLED apply program -- the only claim that
-// ever did was this one, and `a_matching_authorization_applies_the_staged_caps` below drives the same
-// steps producer rather than the emitter, so citing it as the surviving home would be the authority
-// substitution DESIGN's failure-mode list names. The reach fact is unwitnessed, and it is unwitnessed
-// for a stated reason: the required floor's new-witness ceiling is 72,300 eval steps and one render
-// of the apply program costs ~194,000, so no planned witness in this module can assemble it at all.
-// NEXT-RUNG TRIGGER: the reach claim returns the moment one render fits under a tier this module's
-// identities are judged by -- either because the emitter's fixed cost falls below the ceiling, or
-// because these identities are measured into a tier that admits one.
-// THE FIXTURE FAILS RATHER THAN SUBSTITUTES. srv1's width resolves, so both rows below take the
-// derived arm; the unresolved arm returns a one-element list that matches no real unit, so a
-// regression that made srv1 unresolvable reds these rows instead of comparing empty scripts.
-fn emit_test_service_units_of(host: HostIdentity) -> List<NonEmptyStr> {
-  match runner_slot_service_units_for_host(host: host) {
-    ServiceUnitsDerived { units: units } => units
-    ServiceUnitsWidthUnresolved { host: _, cause: _ } => ["__width-unresolved__" as NonEmptyStr]
-  }
-}
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the roster-granted sudo -n commands (fleet_posix_ci_runner_sudo_grants). Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (carried by the annotation on gunbc.live_deploy.emit install_d_owned_command)."
 
@@ -943,33 +882,6 @@ test fn no_retract_can_remove_the_fabric_storage_store() -> Bool {
     })
 }
 
-
-// ── THE PRODUCTION WRITER, FOUR CASES ─────────────────────────────────────────────────────────
-//
-// These call `deploy_memory_cap_apply_steps` -- the route live_deploy actually emits -- rather than
-// the abstract effect producer. A nonempty membership-effect list does not exercise this branch, and
-// the earlier suite proved that: the authorized branch was DEAD (its builder used direct writes while
-// the ordering guard re-derived the staged form) while every helper-level row stayed green.
-
-
-fn srv1_authorization() -> CapConvergeDecision {
-  cap_converge_decision(
-    host: operator_host_srv1,
-    required_retiring: [],
-    observation: SurplusSlotsObserved { retired: [], still_present: [] },
-  )
-}
-
-// HOLD on this head: cap authoring names the private cap stage and not the apply-fold stage.
-// RECEIPT (RED): on a worktree at c22acb7, the real deploy_runner_memory_cap_author_script()
-// contains $_gunbc_stage (the apply-fold stage). The two conjuncts below are the live producer.
-// The former conjuncts 3-4 grepped a hand-built deploy_stage_write_command string and could
-// never fail.
-test fn cap_author_uses_a_private_stage_not_the_apply_fold_stage() -> Bool {
-  let current = deploy_runner_memory_cap_author_script()
-  string_contains(s: current, pattern: concat("$", deploy_cap_stage_dir_var))
-    && !string_contains(s: current, pattern: concat("$", deploy_stage_dir_var))
-}
 
 // MEASURED HOLE (bright-moth-475 srv1:~/bm475-prod-apply-c22acb7-2026-10-12.log): no
 // __GUNBC_DEPLOY_REFUSED__; visudo of gunbc-approval-broker-helpers succeeded; last on-disk
