@@ -508,11 +508,16 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 //       step's profile and target directory through the same build-step preamble.
 // An earlier draft of this comment quoted a debug-profile figure (`cargo test -p v1-compiler --lib
 // --no-run`, 7m52s at `b5d77434fd80`) as if it described this step; it did not, and it is replaced
-// rather than kept alongside. THE CEILING IT WAS ADMITTED UNDER WAS 15 MINUTES, and it binds on the
-// ceiling-binding row: srv1 has far more cores than a fleet slot, so (A) could still exceed 15 minutes
-// on CI, and it is the CI row measured AFTER the step ships that decides the cost this lane actually
-// pays. If that first CI row is over the ceiling, the step comes out -- a CI row over the ceiling is a
-// finding to bring back, not a rounding error.
+// rather than kept alongside.
+//   (C) THE CI ROW, WHICH IS THE BINDING MEASUREMENT: on the fleet pool (arm64 slots) the step ran in
+//       **240 s** directly after `Build the compiler` (278 s) in the same job, inside the `v2-bootstrap`
+//       job's 42m41s total (run 41331358916, job 124921971301, head 9d4969110895). A fleet slot is what
+//       the lane actually pays, so this is the row the ceiling is read against; srv1's core count made
+//       (A) and (B) upper bounds rather than the cost.
+// THE CEILING IT WAS ADMITTED UNDER WAS 15 MINUTES, and on (C) it is met with 11 minutes to spare. The
+// ceiling stays written down because a step's cost is not stable across the fleet: if a later CI row of
+// this step goes over 15 minutes, the step comes out -- a CI row over the ceiling is a finding to bring
+// back, not a rounding error.
 //
 // WHY THIS IS NOT THE WITHDRAWN POPULATION THROUGH A SIDE DOOR. The 2026-09-04 ruling refused to let the
 // unit-test POPULATION be relocated onto an existing lane; a population is test bodies executing, and
