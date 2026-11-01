@@ -1106,11 +1106,13 @@ fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservati
           session_absent_unit_lifecycle(evidence: evidence, holder_unit: unit, artifact_note: " (the spool holds no exit record for this unit)")
         AttemptExitRecordFound { record: _ } => session_unit_lifecycle(o: attempt_unit_from_exit_record(unit: unit, record: record, start: AttemptUnitStartRecorded))
         // THE ARTIFACT IS ABOUT ITS WRITER, NOT ABOUT THE HOLDER. An entry whose name still spells the
-        // stop variables was created without the manager's substitution: the hook's writer is broken,
-        // and that says nothing about whether the process ended. It cannot keep the seat -- the answer
-        // comes from the unit's standing in the manager that ran it, the same as when the spool holds
-        // nothing -- and it cannot free the seat either, because a malformed artifact is never death
-        // proof. It enters only as a note on the answer the holder's identity gives.
+        // stop variables was created without the manager's substitution: the hook's writer is broken, and
+        // that says nothing about whether the process ended. So this arm neither keeps the seat on the
+        // artifact's authority nor frees it on the artifact's authority: it names the defect -- variables
+        // and entries, so it is countable -- and hands the decision to the unit's standing in the manager
+        // that ran it, exactly as if the spool held nothing. A malformed artifact is never death proof, and
+        // naming it is not licence to release; it enters only as a note on the answer the holder's identity
+        // gives (the arms in gunbc.systemd_unit_invocation_liveness).
         AttemptExitRecordWriterUnsubstituted { entries, variables } =>
           session_absent_unit_lifecycle(
             evidence: evidence,

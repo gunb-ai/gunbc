@@ -21,7 +21,7 @@ import gunbc.host.host_layout { srv1_host_layout, attempt_exit_inbox_dir }
 import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_entry_parts, AttemptWorkerRole, attempt_exit_record_put_mkdir_name, attempt_exit_record_observe, attempt_exit_spool_prepare, AttemptExitRecordNone, AttemptExitRecordPutFailed }
 import extdeps.systemd.service_exec { exec_word_render, ExecWordRendered, ExecWordRefused }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_lab_dashboard_instance, srv1_dashboard_lab_id }
 import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_store, session_attempt_slots_path, session_attempt_slots_directory, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready }
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs, FilePath }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
@@ -789,6 +789,29 @@ test fn an_unsubstituted_exit_artifact_settles_the_real_seat_once_and_the_next_p
   }
 }
 
+// THE SAME ARTIFACT, THE SAME NOT-FOUND STANDING, WITHOUT THE BINDING. This is the control that keeps the
+// wedge row honest: everything is identical except that the boot this reading was taken from began BEFORE
+// the ledger acquired the hold, so the conjunction fails and the holder may still be running. The seat is
+// kept, the slot stays Launching, the ledger charge stays, and a second pass behaves the same way. A
+// defective writer plus a not-found reading from the same boot is not death proof: it is a broken writer
+// and a reading that cannot be ordered against the hold. (The rfm row
+// hold_recovered_by_age_not_observed_holder_death SITE 5 states the rule this row refuses to bend.)
+test fn an_unsubstituted_exit_artifact_with_a_not_found_reading_from_the_same_boot_keeps_the_seat_and_the_slot() -> Bool {
+  let dir = fresh_dir(tag: "unsubbound")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let launched = launched_with_unexpired_deadline(dir: dir)
+      let seeded = plant_unsubstituted_worker_exit_entry(instance_root: dir)
+      let unbound = holder_evidence_before_acquisition(stores: stores, margin: fixture_boot_margin, invocation_text: "")
+      let first = settle_with_unit_absent(dir: dir, stores: stores, evidence: unbound)
+      let second = settle_with_unit_absent(dir: dir, stores: stores, evidence: unbound)
+      launched && seeded && kept(s: first) && kept(s: second)
+        && slot_is_launching(dir: dir) && ledger_still_holds(dir: dir)
+    }
+  }
+}
+
 // CONTROL, SEEDED THE SAME WAY: a substituted exit record settles the seat exactly as it did before
 // this change -- the new arm did not move the healthy path.
 test fn a_substituted_exit_record_still_settles_the_real_seat_as_it_did() -> Bool {
@@ -1267,6 +1290,29 @@ test fn a_row_naming_an_instance_the_store_is_not_is_refused_and_writes_nothing(
       AttemptSlotAbsent => true
       AttemptSlotHeld { record: _, generation: _ } => false
       AttemptSlotUnreadable { detail: _ } => false
+    }
+  }
+}
+
+// THE DECLARED ROW, MEETING A STORE IT DOES NOT ANSWER FOR. Same refusal as the row above, but reached
+// through the DECLARATION instead of a synthetic row: the instance id is the one the declaration carries,
+// and the store is a fixture store that answers for another instance. The refusal must arrive AT THE TOP
+// LEVEL -- a wrapper that folded it into a success report would hide a refusal inside a PASS, which is
+// exactly the bug this row holds shut. And because the row check runs before the old store is opened, the
+// declared root on srv1 is never touched by this test.
+test fn the_declared_row_meeting_a_store_of_another_instance_is_refused_at_the_top_level() -> Bool {
+  let dir = fresh_dir(tag: "cutoverdecl")
+  let lookup = replaced_attempt_slots_root_for(instance_id: srv1_dashboard_lab_id)
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let carry = attempt_slots_carry_for_instance(instance_id: srv1_dashboard_lab_id, target: stores.slots)
+      (match lookup { ReplacedAttemptSlotsRootFound { row: _ } => true  _ => false })
+        && carry_row_names_another_instance(c: carry)
+        && match carry {
+             AttemptSlotsCarryRowRefused { refusal: AttemptSlotsRowNamesAnotherInstance { row_instance: i, store_instance: _ } } => i == srv1_dashboard_lab_id
+             _ => false
+           }
     }
   }
 }
