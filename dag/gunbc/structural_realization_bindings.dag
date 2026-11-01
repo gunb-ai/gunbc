@@ -1,5 +1,6 @@
 module gunbc.structural_realization_bindings
 
+import std.literal_elaboration { integer_width_grounding_rows }
 import std.optional { Present, Absent }
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -135,7 +136,7 @@ data kernel_grounding_rows: List<KernelGrounding> = [
       negative: KernelGroundingArm { constructor: "Negative", payload: "pred" }
     }
   }
-]
+] ++ integer_width_grounding_rows
 
 // KernelMintDeclaration). The seed's kernel Optional -- what `T?` resolves to -- is
 // v2.std.optional Optional, the corpus's one declaration of that coproduct. Bound here so a

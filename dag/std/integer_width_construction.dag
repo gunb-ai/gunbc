@@ -1,0 +1,24 @@
+module std.integer_width_construction
+
+import std.machine_constraints { Compose, MachineWidth, WidthResolution }
+import std.integer { Int, UInt }
+import std.types { String }
+
+// Named checked-conversion SIGNATURES, not an implementation or an inhabitance
+// rule for arbitrary Compose. Only the integer-width specialization is declared.
+// The implementation frontier supplies these operations after the opaque carrier
+// and target realization land. Absence means the mathematical input is outside
+// the destination interval; no cast may precede that check.
+//
+// N stays in the result type: a proof for one width cannot mint another width.
+// Signedness changes are named through the destination operation, including the
+// mathematically total UInt8 -> Int16 crossing. Widening alone remains governed
+// by kernel_grounding_crossing, not by this interface.
+type IntegerWidthConstruction<N: WidthResolution> {
+  checked_int_width: fn(Int) -> Compose<Int, MachineWidth<N>>?
+  checked_uint_width: fn(Int) -> Compose<UInt, MachineWidth<N>>?
+}
+
+fn integer_width_checked_conversion_remedy() -> String {
+  "Use the named IntegerWidthConstruction.checked_int_width or checked_uint_width operation for the destination width; handle Absent when the value is outside its interval. These signatures require the integer-width construction implementation frontier."
+}

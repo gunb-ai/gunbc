@@ -1,6 +1,10 @@
 module test.claim.integer_width_carrier_model_witness
 
 import std.types { Bool, String }
+import std.integer_interval { integer_width_from_declaration, integer_width_from_composition, integer_extent_admits, uint8_interval_spec }
+import std.literal_elaboration { kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused }
+import gunbc.structural_realization_bindings { kernel_grounding_rows }
+import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
 import extdeps.languages.rust.primitives { IntegerPrimitive, NonIntegerPrimitive }
 import v2.std.integer { Int8, Int16, Int128, UInt8, UInt16, UInt128, StandardIntegerType, Trapping, integer_width_implicit_conversion, integer_width_default_overflow }
@@ -44,4 +48,66 @@ test fn both_source_declaration_homes_share_the_target_fact() -> Bool {
 // RED CONTROL (authored, not yet executed): Change the default disposition from Trapping to Wrapping: this test is false even though Rust primitives still advertise their native wrap fact.
 test fn width_arithmetic_does_not_inherit_target_wrapping() -> Bool {
   match integer_width_default_overflow() { Trapping => true _ => false }
+}
+
+// RED CONTROL (authored, not executed): compare only decl_name in the reverse lookup;
+// the local UInt8 then maps and this control fails.
+test fn width_identity_rejects_a_same_spelled_local_alias() -> Bool {
+  let canonical = match integer_width_from_declaration(source: decl_ref(module_path: "std.integer", decl_name: "UInt8")) {
+    Present { value: UInt8 } => true
+    _ => false
+  }
+  let v2 = match integer_width_from_declaration(source: decl_ref(module_path: "v2.std.integer", decl_name: "UInt8")) {
+    Present { value: UInt8 } => true
+    _ => false
+  }
+  let foreign = match integer_width_from_declaration(source: decl_ref(module_path: "test.local", decl_name: "UInt8")) {
+    Absent => true
+    _ => false
+  }
+  canonical && v2 && foreign
+}
+
+// RED CONTROL (authored, not executed): ignore the resolved Compose head identity;
+// a foreign same-spelled constructor then receives a width interpretation.
+test fn resolved_composition_and_alias_share_the_width_identity() -> Bool {
+  let width = integer_width_from_composition(
+    head: decl_ref(module_path: "std.machine_constraints", decl_name: "Compose"),
+    algebra: decl_ref(module_path: "std.nat", decl_name: "Nat"), algebra_argument: Absent,
+    constraint: decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth"), bits: 8)
+  let foreign = integer_width_from_composition(
+    head: decl_ref(module_path: "test.local", decl_name: "Compose"),
+    algebra: decl_ref(module_path: "std.nat", decl_name: "Nat"), algebra_argument: Absent,
+    constraint: decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth"), bits: 8)
+  (match width { Present { value: UInt8 } => true _ => false })
+    && (match foreign { Absent => true _ => false })
+}
+
+// RED CONTROL (authored, not executed): make bounded membership unconditional;
+// 300 and -1 then admit at the very same extent used by kernel_grounding_admits.
+test fn literal_membership_reads_the_shared_exact_interval() -> Bool {
+  integer_extent_admits(extent: uint8_interval_spec, value: 255)
+    && !integer_extent_admits(extent: uint8_interval_spec, value: 300)
+    && !integer_extent_admits(extent: uint8_interval_spec, value: -1)
+}
+
+fn crossing_admits(from_module: String, from_name: String, to_module: String, to_name: String) -> Bool {
+  match kernel_grounding_crossing(rows: kernel_grounding_rows,
+    from: decl_ref(module_path: from_module, decl_name: from_name),
+    to: decl_ref(module_path: to_module, decl_name: to_name)) {
+    CrossingTotalWidening => true
+    CrossingRefused { cause: _ } => false
+  }
+}
+
+// RED CONTROL (authored, not executed): remove width grounding rows; the mixed
+// positive cases fail. Remove inclusion or sign policy; negative cases fail.
+test fn mixed_crossings_and_existing_unbounded_crossings_use_one_rule() -> Bool {
+  crossing_admits(from_module: "std.integer", from_name: "UInt8", to_module: "std.nat", to_name: "Nat")
+    && crossing_admits(from_module: "std.integer", from_name: "Int32", to_module: "std.integer", to_name: "Int")
+    && !crossing_admits(from_module: "std.nat", from_name: "Nat", to_module: "std.integer", to_name: "UInt64")
+    && !crossing_admits(from_module: "std.integer", from_name: "UInt8", to_module: "std.integer", to_name: "Int16")
+    && crossing_admits(from_module: "std.nat", from_name: "Nat", to_module: "std.integer", to_name: "Int")
+    && !crossing_admits(from_module: "std.integer", from_name: "Int", to_module: "std.nat", to_name: "Nat")
+    && !crossing_admits(from_module: "std.nat", from_name: "Nat", to_module: "std.types", to_name: "Int")
 }

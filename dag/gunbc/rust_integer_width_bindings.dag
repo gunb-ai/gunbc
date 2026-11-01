@@ -1,7 +1,8 @@
 module gunbc.rust_integer_width_bindings
 
+import std.integer_interval { integer_width_source_declarations, integer_width_from_declaration }
 import std.types { List, Bool, String }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.optional { Present, Absent }
 import std.integer { Signed, Unsigned }
 import std.target_representation { SourceTypeTargetBinding }
@@ -57,24 +58,4 @@ fn rust_integer_width_source_bindings(width: StandardIntegerType) -> List<Source
       value: map(integer_width_source_declarations(width: width), source => SourceTypeTargetBinding { source: source, representation: primitive })
     }
   }
-}
-
-fn integer_width_alias_name(width: StandardIntegerType) -> String {
-  match width {
-    Int8 => "Int8"
-    Int16 => "Int16"
-    Int32 => "Int32"
-    Int64 => "Int64"
-    Int128 => "Int128"
-    UInt8 => "UInt8"
-    UInt16 => "UInt16"
-    UInt32 => "UInt32"
-    UInt64 => "UInt64"
-    UInt128 => "UInt128"
-  }
-}
-
-fn integer_width_source_declarations(width: StandardIntegerType) -> List<DeclarationRef> {
-  let name = integer_width_alias_name(width: width)
-  [decl_ref(module_path: "std.integer", decl_name: name), decl_ref(module_path: "v2.std.integer", decl_name: name)]
 }
