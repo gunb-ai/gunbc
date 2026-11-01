@@ -202,6 +202,24 @@ test fn w_a_legacy_acquire_after_the_migration_is_fenced_and_the_new_store_takes
   }
 }
 
+// ABSENT IS NOT EXCLUSION. The legacy slot starts with no entry at all; the move takes the fence anyway, BEFORE any relocation,
+// and keeps it as the slot's head, so a legacy controller acquiring afterwards (the competing acquisition) is refused with the
+// fence owner as holder. BROKEN (paired run): skip the fence on an absent slot and the same legacy acquire reads "acquired".
+test fn w_an_absent_legacy_hold_is_fenced_and_a_competing_legacy_acquisition_is_refused() -> Bool {
+  match tree_with_members() {
+    Absent => false
+    Present { value: tree } => {
+      let legacy_root = printer_starts_path(tree: tree)
+      let absent_before = !Filesystem.Read(path: join([legacy_root as String, "/fleet-print-controller.1"], "")).success
+      let moved = match printer_state_move(tree: tree) { PrinterStateMoved => true PrinterStateMoveRefused { cause: _ } => false }
+      let fence_owner = printer_execution_hold_fence.owner as String
+      let refused = acquire_by(root: legacy_root, owner: "old-controller-late") == join(["occupied:", fence_owner], "")
+      let fence_stays = Filesystem.Read(path: join([legacy_root as String, "/fleet-print-controller.1"], "")).success
+      absent_before && moved && refused && fence_stays
+    }
+  }
+}
+
 // RED: while the copied hold is still held by the fence owner (generations copied, hand-over not done) the new hold
 // store is Unready; after the hand-over it is Ready. The state is built through the production fence functions.
 test fn w_the_new_hold_store_refuses_until_the_handover_completes() -> Bool {
