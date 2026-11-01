@@ -122,9 +122,10 @@ test fn generated_dispatch_executor_name_is_bounded_deterministic_and_duplicate_
     && fresh_rust_value_binding_name(blocked: [next, base], prefix: prefix) == Present { value: third }
 }
 
-// KNOWN RED: the interpreter returns the raw element or Null for terminal `first`, while emitted
-// Rust returns Optional<T>. Keep this exact discriminator enrolled when the primitive is repaired;
-// its transition to green removes the expected-red roster row, not the executing evidence.
+// REGRESSION CONTROL: the interpreter used to return the raw element or Null for terminal `first`
+// while emitted Rust returns Optional<T>. The interpreter now returns the modeled optional, so this
+// discriminator must hold; it stays enrolled as an ordinary claim, not on the expected-red roster.
+// Standing: climb authored, not yet executed.
 test fn interpreter_first_returns_the_modeled_optional() -> Bool {
   (["x"] |> filter(n => true) |> first) == Present { value: "x" }
 }

@@ -26,8 +26,9 @@ type CliDispatchRungClass {
 
 // `first` currently has two runtime meanings: the interpreter returns the raw element or Null,
 // while emitted Rust returns Optional<T>. That is silent wrongness, outside the ladder: the
-// consumer typechecks and computes a false answer without a diagnostic. The executing known-red
-// `interpreter_first_returns_the_modeled_optional` is the confirmed specimen. A source census
+// consumer typechecks and computes a false answer without a diagnostic. The claim
+// `interpreter_first_returns_the_modeled_optional` is the confirmed specimen (ordinary claim now that
+// the interpreter returns the modeled optional; climb authored, not yet executed). A source census
 // found 187 terminal `|> first` sites across 82 files; that is a lower bound on candidate
 // consumers, not a claim that every site is harmed. The ceiling is structural: derive both the
 // interpreter and emitted realizations from one authority for `first`. When that capability lands,
