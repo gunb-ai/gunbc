@@ -30257,7 +30257,7 @@ mod value_depth_walker_tests {
     use super::{
         account_value, cross_representation_numeric_straddle,
         free_monoid_symbol_value_to_dotted_string, json_to_value, list_value, map_value,
-        portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
+        optional_absent, portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
         portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash, CanonKey,
         ExecutionMode, InterpContext, MemoryAccounting, Value,
     };
