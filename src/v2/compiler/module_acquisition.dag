@@ -1237,17 +1237,11 @@ fn acquisition_entry_requests(
         ModuleNameUnderivable { name: name, cause: cause } =>
           AcquisitionEntriesRefused { refusal: AcquisitionEntryUnderivable { entry: name, cause: cause } }
         ModuleFileDerived { file: file } =>
-          if !namespace_declared(rows: layout.namespace_rows, namespace: module_namespace(name: entry)) {
-            AcquisitionEntriesRefused {
-              refusal: AcquisitionEntryNamespaceUndeclared { entry: entry, namespace: module_namespace(name: entry) }
-            }
-          } else {
-            acquisition_entry_requests(
-              layout: layout,
-              pending: skip(xs: pending, n: 1),
-              acc: list_snoc_item(xs: acc, item: AcquisitionRequest { from_module: "", from_tree: file.tree, spelling: entry, kind: AcquireEntry })
-            )
-          }
+          acquisition_entry_requests(
+            layout: layout,
+            pending: skip(xs: pending, n: 1),
+            acc: list_snoc_item(xs: acc, item: AcquisitionRequest { from_module: "", from_tree: file.tree, spelling: entry, kind: AcquireEntry })
+          )
       }
   }
 }
