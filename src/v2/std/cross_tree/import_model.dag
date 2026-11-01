@@ -58,13 +58,22 @@ fn cross_tree_roots_admitted(
   }
 }
 
-// ADMISSION REQUIRES BOTH NAMESPACES TO BE DECLARED, and there is no direction (ruling
+// ADMISSION REQUIRES THE NAMESPACES AN EDGE READS TO BE DECLARED, and there is no direction (ruling
 // gunbc.design_ruling cross_tree_admission_is_namespace_membership). A crossing between two namespaces with a
 // row in gunbc.source_layout_namespaces is admitted whichever way it points; one whose importer or target
 // namespace has no row refuses fail-closed as CrossTreeNamespaceUndeclared. The declared rows are policy and
-// arrive as a value; this model imports no repository fact. An edge within one tree is not a crossing and
-// reads no membership. Its one enforcement site is the storage lookup
-// (v2.compiler.source_authority storage_cross_tree_verdict), per DESIGN section 3.
+// arrive as a value; this model imports no repository fact.
+//
+// AN EDGE WITHIN ONE TREE IS NOT A CROSSING, AND IT STILL READS MEMBERSHIP OF ITS TARGET. Closing the
+// acquirer route (the finding named by gunbc.design_ruling's cross-tree ruling, 2026-10-31) is what changed
+// this: a same-tree import that names a module whose namespace has no row used to be admitted by never being
+// looked at, which let a compile reach modules the storage policy does not declare. The importer's own
+// namespace is not asked again on such an edge, because the module holding the import was itself admitted -
+// as an entry (v2.compiler.module_acquisition acquisition_entry_requests asks membership there) or as another
+// edge's target (asked here). Charging the target alone is therefore the whole judgment, with no edge charged
+// twice. Its one enforcement site is the storage lookup
+// (v2.compiler.source_authority storage_cross_tree_verdict), per DESIGN section 3; the name-resolve gate
+// reads the root denials only, because reaching a module at all went through that lookup.
 // namespace_declared is the one membership judgment: the storage lookup's candidate skip and the population's
 // bound_modules_admitted ask it too. It scans the rows rather than keying a Map, because Map has no home the
 // native compiler binds yet; the row set is small and the scan is the same judgment.
@@ -80,12 +89,12 @@ fn cross_tree_import_admitted(
   match cross_tree_roots_admitted(from_tree: edge.from_tree, to_tree: edge.to_tree, roots: roots) {
     CrossTreeDenied { reason: reason } => CrossTreeDenied { reason: reason }
     CrossTreeAdmitted =>
-      if source_root_ref_eq(a: edge.from_tree, b: edge.to_tree) {
-        CrossTreeAdmitted
-      } else if namespace_declared(rows: declared, namespace: edge.from_namespace) && namespace_declared(rows: declared, namespace: edge.to_namespace) {
-        CrossTreeAdmitted
-      } else {
+      if !namespace_declared(rows: declared, namespace: edge.to_namespace) {
         CrossTreeDenied { reason: CrossTreeNamespaceUndeclared }
+      } else if !source_root_ref_eq(a: edge.from_tree, b: edge.to_tree) && !namespace_declared(rows: declared, namespace: edge.from_namespace) {
+        CrossTreeDenied { reason: CrossTreeNamespaceUndeclared }
+      } else {
+        CrossTreeAdmitted
       }
   }
 }

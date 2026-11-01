@@ -131,6 +131,7 @@ type DerivedRosterRefusal
 type AcquisitionRefusal
   = AcquisitionGrammarUnprepared { diagnostics: NonEmptyDiagnostics }
   | AcquisitionEntryUnderivable { entry: String, cause: String }
+  | AcquisitionEntryNamespaceUndeclared { entry: String, namespace: String }
   | AcquisitionTreeUnbound { tree: String, request: AcquisitionRequest }
   | AcquisitionUnknownModule { request: AcquisitionRequest }
   | AcquisitionLookupRefused { request: AcquisitionRequest, lookup: ReferenceLookup }
@@ -1196,7 +1197,12 @@ fn acquisition_loop(env: AcquisitionEnv, state: AcquisitionState, entries: List<
 }
 
 // The initial requests, one entry request per entry in the order given. An entry the layout cannot
-// derive a file for refuses the whole acquisition before any read.
+// derive a file for refuses the whole acquisition before any read, and so does an entry whose namespace
+// has no row in the declared layout (gunbc.source_layout_namespaces): the acquirer route used to ask
+// derivability alone, which let a compile ENTER a namespace the storage policy does not declare - the
+// finding named beside ruling gunbc.design_ruling cross_tree_admission_is_namespace_membership. The entry
+// is where an acquisition is charged for its namespace, which is what lets an import edge charge only its
+// target (v2.std.cross_tree.import_model cross_tree_import_admitted).
 type AcquisitionEntries
   = AcquisitionEntriesDerived { requests: List<AcquisitionRequest> }
   | AcquisitionEntriesRefused { refusal: AcquisitionRefusal }
@@ -1213,11 +1219,17 @@ fn acquisition_entry_requests(
         ModuleNameUnderivable { name: name, cause: cause } =>
           AcquisitionEntriesRefused { refusal: AcquisitionEntryUnderivable { entry: name, cause: cause } }
         ModuleFileDerived { file: file } =>
-          acquisition_entry_requests(
-            layout: layout,
-            pending: skip(xs: pending, n: 1),
-            acc: list_snoc_item(xs: acc, item: AcquisitionRequest { from_module: "", from_tree: file.tree, spelling: entry, kind: AcquireEntry })
-          )
+          if !namespace_declared(rows: layout.namespace_rows, namespace: module_namespace(name: entry)) {
+            AcquisitionEntriesRefused {
+              refusal: AcquisitionEntryNamespaceUndeclared { entry: entry, namespace: module_namespace(name: entry) }
+            }
+          } else {
+            acquisition_entry_requests(
+              layout: layout,
+              pending: skip(xs: pending, n: 1),
+              acc: list_snoc_item(xs: acc, item: AcquisitionRequest { from_module: "", from_tree: file.tree, spelling: entry, kind: AcquireEntry })
+            )
+          }
       }
   }
 }
@@ -1380,6 +1392,7 @@ fn census_block_locality(refusal: AcquisitionRefusal) -> CensusBlockLocality {
     AcquisitionTreeUnbound { tree: t, request: q } => CensusBlockedEdge { refusal: CensusEdgeTreeUnbound { tree: t, request: q } }
     AcquisitionGrammarUnprepared { diagnostics: _ } => CensusBlockNotLocal
     AcquisitionEntryUnderivable { entry: _, cause: _ } => CensusBlockNotLocal
+    AcquisitionEntryNamespaceUndeclared { entry: _, namespace: _ } => CensusBlockNotLocal
     AcquisitionDerivedRosterRefused { module: _, refusal: _ } => CensusBlockNotLocal
   }
 }
@@ -1843,12 +1856,15 @@ fn acquisition_lookup_text(lookup: ReferenceLookup) -> String {
   }
 }
 
-// The reason a crossing was refused, said as what it is: there is no tree direction, so a refusal is either
-// an inactive root or a namespace with no row (v2.std.cross_tree.import_model cross_tree_import_admitted).
+// The reason an import edge was refused, said as what it is: there is no tree direction, so a refusal is
+// either an inactive root or a namespace with no row (v2.std.cross_tree.import_model
+// cross_tree_import_admitted). A rowless TARGET namespace refuses on any edge, same-tree included; a
+// rowless IMPORTER namespace refuses only across a crossing, because within one tree the importer was
+// already admitted on the edge that reached it.
 fn cross_tree_denial_text(reason: CrossTreeDenialReason) -> String {
   match reason {
     CrossTreeNamespaceUndeclared =>
-      "is across a tree crossing from or to a namespace with no row in the declared layout"
+      "is reached through an edge naming a namespace with no row in the declared layout: the target namespace on this edge, or the importer across a tree crossing"
     CrossTreeToTreeNotInRootSet => "lies in a tree that is not an active source root"
     CrossTreeFromTreeNotInRootSet => "is requested from a tree that is not an active source root"
   }
@@ -1859,6 +1875,8 @@ fn acquisition_refusal_text(refusal: AcquisitionRefusal) -> String {
     AcquisitionGrammarUnprepared { diagnostics: _ } => "the dag grammar did not prepare"
     AcquisitionEntryUnderivable { entry: entry, cause: cause } =>
       concat("entry ", entry, " names no storable module: ", cause)
+    AcquisitionEntryNamespaceUndeclared { entry: entry, namespace: namespace } =>
+      concat("entry ", entry, " lies in namespace ", namespace, ", which has no row in the declared layout, so no module of it is a compilable entry")
     AcquisitionTreeUnbound { tree: tree, request: request } =>
       concat("no source root is bound to the ", tree, " tree, which holds ", acquisition_request_text(request: request))
     AcquisitionUnknownModule { request: request } =>
