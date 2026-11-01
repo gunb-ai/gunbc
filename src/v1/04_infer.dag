@@ -3884,7 +3884,7 @@ fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>,
               match map_get(equality_extensional_container_rows, leaf) {
                 Present { value: extensional } =>
                   if extensional {
-                    equality_container_walk(name: name, arguments: peeled.children, scope: scope, visited: visited2, depth: depth)
+                    equality_container_walk(name: name, arguments: peeled.children, scope: scope, visited: visited, depth: depth)
                   } else {
                     equality_walk_refused(r: equality_refused(carrier: name, member: "open-support carrier: extensional equality is not enumerable", member_judged: true))
                   }
@@ -4161,7 +4161,7 @@ fn equality_derived_target(plan: EqualityPlan) -> EqualityDerivedTarget {
       match plan.declarations |> filter(d => d.declaration == key) |> first {
         Present { value: d } =>
           if !equality_plan_synthesizable(plan: plan) {
-            EqualityRootRefused { member: "a generic or unidentified declaration reaches a routed equality, so no derived equality is synthesized for it" }
+            EqualityRootRefused { member: concat("a generic or unidentified declaration reaches a routed equality, so no derived equality is synthesized for it: ", join(plan.declarations |> filter(x => x.generic || x.reference == none) |> map(x => concat(x.declaration, if x.generic { " generic" } else { " unidentified" })), ", ")) }
           } else {
             match d.reference {
               Present { value: r } => EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
@@ -4332,7 +4332,7 @@ fn equality_admission(op: BinOp, left_typed: Node, right_typed: Node, scope: Inf
                     match equality_derived_target(plan: p) {
                       EqualityCallsDeclared { function: f } => EqualityAdmission { diags: [], derived: Present { value: f } }
                       EqualityRootRefused { member: m } =>
-                        equality_admission_refused(diags: [make_error_node(diagnostic: EqualityMemberUnjudgeable { type_name: authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: lt)), member: m, span: span }, module_name: scope.module_name)])
+                        equality_admission_refused(diags: [make_error_node(diagnostic: EqualityMemberUnjudgeable { type_name: authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: lt)), member: concat(m, " [compared in ", equality_census_declaration(scope: scope), "]"), span: span }, module_name: scope.module_name)])
                     }
                 }
               }

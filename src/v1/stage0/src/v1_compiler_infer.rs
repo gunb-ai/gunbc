@@ -5821,7 +5821,7 @@ pub fn equality_operand_walk(
                                                                         name.clone(),
                                                                         peeled.children.clone(),
                                                                         scope.clone(),
-                                                                        visited2.clone(),
+                                                                        visited.clone(),
                                                                         depth.clone(),
                                                                     )
                                                                 } else {
@@ -6579,7 +6579,11 @@ pub fn equality_derived_target(plan: Rc<EqualityPlan>) -> Rc<EqualityDerivedTarg
     EqualityStep::EqualityThroughPlan { declaration: key, .. } => match Rc::new({ let mut __result = Vec::new(); for d in plan.declarations.clone().iter().cloned() { if (d.declaration.clone() == key.clone()) { __result.push(d); } } __result }).first().cloned() {
     Some(d) => if !equality_plan_synthesizable(plan.clone()) {
         Rc::new(EqualityDerivedTarget::EqualityRootRefused {
-    member: "a generic or unidentified declaration reaches a routed equality, so no derived equality is synthesized for it".to_string(),
+    member: v1_rt::concat("a generic or unidentified declaration reaches a routed equality, so no derived equality is synthesized for it: ".to_string(), Rc::new({ let mut __result = Vec::new(); for x in Rc::new({ let mut __result = Vec::new(); for x in plan.declarations.clone().iter().cloned() { if (x.generic.clone() || (x.reference.clone() == std::option::Option::None)) { __result.push(x); } } __result }).iter().cloned() { __result.push(v1_rt::concat(x.declaration.clone(), if x.generic.clone() {
+            " generic".to_string()
+        } else {
+            " unidentified".to_string()
+        })); } __result }).join(&", ".to_string())),
 })
     } else {
         match d.reference.clone() {
@@ -7025,7 +7029,7 @@ equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::
 }),
     EqualityDerivedTarget::EqualityRootRefused { member: m, .. } => equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EqualityMemberUnjudgeable {
     type_name: crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::normalize_access_type_node(lt.clone())),
-    member: m.clone(),
+    member: v1_rt::concat(v1_rt::concat(v1_rt::concat(m.clone(), " [compared in ".to_string()), equality_census_declaration(scope.clone())), "]".to_string()),
     span: span.clone(),
 }), scope.module_name.clone())])),
 },
