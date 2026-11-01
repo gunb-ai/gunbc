@@ -1,7 +1,7 @@
 module test.claim.documentary_refs_witness
 
 import std.types { Bool, String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.std.decl_index { DeclFact, FnItem, TypeItem, decl_facts_at }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
@@ -9,10 +9,12 @@ import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
-  generated_document_declaration_refs,
+  DocumentaryLiteral, DocumentaryCitation, DocumentaryJoin,
+  documentary_text_render, documentary_text_refs,
+  documentary_cited_p, documentary_cited_li, documentary_ul, documentary_blocks_refs,
 }
-import gunbc.design_document { expected_design_md }
-import gunbc.design_ruling { DesignRuling, design_rulings }
+import gunbc.design_document { expected_design_md, generated_document_declaration_refs }
+import gunbc.design_ruling { design_rulings }
 
 // THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES.
 // cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the
@@ -62,8 +64,8 @@ fn fixed_facts() -> List<DeclFact> {
   ]
 }
 
-// The ruling rows' facts come from the same roster the document's references do, so a ruling
-// added to gunbc.design_ruling design_rulings() is resolved and render-checked with no edit here.
+// Fixture facts include the ruling ledger; only references actually used by the document
+// are checked against them. Adding an unused ruling must not require a document edit.
 fn ruling_facts() -> List<DeclFact> {
   map(design_rulings(), r => fixture_fact(
     qualified_name: concat("gunbc.design_ruling.", r.reference.decl_name as String),
@@ -133,8 +135,8 @@ test fn documentary_refs_ambiguous_system_refuses() -> Bool {
 // typed reference sitting beside a paragraph that independently spells the same name is two
 // representations of one fact -- the rename would move the row and leave the sentence, and the
 // enrolled population would resolve while the document lied. This claim asserts the rendered symbol
-// text of EVERY row appears in the generated document, so the row and the printed name cannot
-// diverge, and a row no paragraph renders is a red rather than an orphan.
+// text of every USED reference appears in the generated document. The population comes from
+// typed construction, not from filtering the rendered bytes or enrolling the entire ruling ledger.
 
 test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
   let md = expected_design_md()
@@ -145,18 +147,58 @@ test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
 // THE INHABITANCE HALF. The fixture above derives the ruling facts from the rows' own references, so
 // it proves the resolver's behaviour, not that a row's reference names the row: a row whose
 // decl_name drifted from its declaration would plant its own matching fact and stay green. This
-// claim reads the live declaration pool, keyed, so each ruling reference must name exactly one real
-// declaration. The pool is read ONCE with every ruling's key and each ruling is joined against
-// that read by its own key, so a ruling answers with exactly the rows a one-key read would give.
-fn documentary_ruling_key(r: DesignRuling) -> String {
-  concat("gunbc.design_ruling.", r.reference.decl_name as String)
-}
-
+// claim reads the live declaration pool once, keyed by the document's used references.
+// Each cited reference must name exactly one real declaration; unused ledger rows are outside
+// this document-integrity claim.
 test fn documentary_refs_ruling_references_name_live_declarations() -> Bool {
   let facts = decl_facts_at(
     pool_roots: ["dag"],
-    qualified_names: map(design_rulings(), r => documentary_ruling_key(r: r)),
+    qualified_names: map(generated_document_declaration_refs(), r => concat(r.module_path as String, ".", r.decl_name as String)),
     type_names: [],
   )
-  all(design_rulings(), r => length(xs: decl_facts_matching_qualified_name(qn: documentary_ruling_key(r: r), facts: facts)) == 1)
+  all(generated_document_declaration_refs(), r => length(xs: decl_facts_matching_qualified_name(qn: concat(r.module_path as String, ".", r.decl_name as String), facts: facts)) == 1)
+}
+
+// A missing ledger declaration that the document does not cite is not a broken citation.
+// Both used systems and ruling citations retain unique-resolution checks.
+test fn documentary_refs_unused_ruling_does_not_require_rendering() -> Bool {
+  let used = decl_ref(module_path: "gunbc.design_ruling", decl_name: "used")
+  let unused = decl_ref(module_path: "gunbc.design_ruling", decl_name: "unused")
+  let text = DocumentaryCitation { reference: used }
+  let refs = documentary_blocks_refs(blocks: [documentary_cited_p(text: text)])
+  let used_fact = fixture_fact(qualified_name: "gunbc.design_ruling.used", name: "used", path: "dag/gunbc/design_ruling.dag")
+  let unused_fact = fixture_fact(qualified_name: "gunbc.design_ruling.unused", name: "unused", path: "dag/gunbc/design_ruling.dag")
+  refs == [used] &&
+  !string_contains(s: documentary_text_render(text: text), pattern: documentary_ref_symbol_text(reference: unused)) &&
+  cited_declaration_ref_refusal_count(refs: refs, facts: [used_fact], modules: fixture_modules()) == 0 &&
+  cited_declaration_ref_refusal_count(refs: refs, facts: [used_fact, unused_fact], modules: fixture_modules()) == 0
+}
+
+test fn documentary_refs_cited_rename_moves_text_and_resolution() -> Bool {
+  let before = decl_ref(module_path: "gunbc.design_ruling", decl_name: "before")
+  let after = decl_ref(module_path: "gunbc.design_ruling", decl_name: "after")
+  let old_text = DocumentaryCitation { reference: before }
+  let new_text = DocumentaryCitation { reference: after }
+  let facts = [fixture_fact(qualified_name: "gunbc.design_ruling.after", name: "after", path: "dag/gunbc/design_ruling.dag")]
+  documentary_text_render(text: old_text) == "`gunbc.design_ruling before`" &&
+  documentary_text_render(text: new_text) == "`gunbc.design_ruling after`" &&
+  cited_declaration_ref_refusal_count(refs: documentary_text_refs(text: old_text), facts: facts, modules: fixture_modules()) == 1 &&
+  cited_declaration_ref_refusal_count(refs: documentary_text_refs(text: new_text), facts: facts, modules: fixture_modules()) == 0
+}
+
+test fn documentary_refs_nested_list_retains_cited_reference() -> Bool {
+  let reference = decl_ref(module_path: "gunbc.design_ruling", decl_name: "nested")
+  let text = DocumentaryJoin { parts: [DocumentaryLiteral { text: "See " }, DocumentaryCitation { reference: reference }] }
+  let blocks = [documentary_ul(items: [documentary_cited_li(text: text)])]
+  documentary_blocks_refs(blocks: blocks) == [reference] &&
+  documentary_text_render(text: text) == "See `gunbc.design_ruling nested`"
+}
+
+test fn documentary_refs_cited_ruling_missing_or_ambiguous_refuses() -> Bool {
+  let reference = decl_ref(module_path: "gunbc.design_ruling", decl_name: "cited")
+  let refs = documentary_text_refs(text: DocumentaryCitation { reference: reference })
+  let fact = fixture_fact(qualified_name: "gunbc.design_ruling.cited", name: "cited", path: "dag/gunbc/design_ruling.dag")
+  cited_declaration_ref_refusal_count(refs: refs, facts: [], modules: fixture_modules()) == 1 &&
+  cited_declaration_ref_refusal_count(refs: refs, facts: [fact], modules: fixture_modules()) == 0 &&
+  cited_declaration_ref_refusal_count(refs: refs, facts: [fact, fact], modules: fixture_modules()) == 1
 }
