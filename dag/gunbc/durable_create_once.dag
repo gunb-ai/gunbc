@@ -3,6 +3,12 @@ module gunbc.durable_create_once
 import std.types { String, Bool }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_create_new, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
 
+// CONFORMANCE (DESIGN 3b). The home model for "write only if the slot is absent" is std.durable_compare_and_set CasExpectation
+// ExpectSlotAbsent over gunbc.durable_cas_file_store. This module DIVERGES, with a stated reason: the RECORD_DIR ruling keeps each
+// store's existing on-disk format, and the CAS slot format would change the bytes of every record already on a host. Dissolution:
+// each store's FormatConsolidation follow-up moves it onto the slot store; this module is deleted when the last store moves.
+// Residual: the stores are still built over a path a holder of the record can read, recorded at
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module (no new row).
 // THE ONE CREATE-ONCE PROCEDURE and the one directory admission, shared by every sealed create-once record store
 // (the grant-exceeded, microVM receipt and post-start evidence stores). Each store keeps its own seal, mint and key in its
 // declaring module and passes the path it derived; the effect, its typed classification and the readback live here once
