@@ -134,7 +134,7 @@ import gunbc.compute.work_request {
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused, SeatStopObservationUnrenderable,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -2972,6 +2972,14 @@ fn compute_spawn_and_collect(
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
+        summary: compute_unspawned_summary(),
+        gate: launched,
+      }
+    // THE SEAT IS NOT STARTED, AND THE REFUSAL SAYS WHY: no attempt reaches the pool, so no charge is
+    // opened for a run that could never have its end observed.
+    ComputeUnitStopObservationRefused { cause: cause } =>
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure { identity: identity, cause: SeatStopObservationUnrenderable { detail: cause } },
         summary: compute_unspawned_summary(),
         gate: launched,
       }
