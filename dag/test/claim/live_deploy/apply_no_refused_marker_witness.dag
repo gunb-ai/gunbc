@@ -2,7 +2,8 @@ module test.claim.live_deploy.apply_no_refused_marker_witness
 
 import std.types { Bool, String, List }
 import std.algebra { string_contains }
-import gunbc.shell_command_text { shell_command_text_of_node }
+import gunbc.shell_command_text { shell_command_text_of_node, shell_command_text_refusal_marker }
+import std.optional { Present, Absent }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
 import v2.extdeps.languages.bash_build {
@@ -10,7 +11,10 @@ import v2.extdeps.languages.bash_build {
   bash_build_assign, bash_build_word_lit,
 }
 
-data refused_marker: String = "__GUNBC_BASH_EMIT_REFUSED__"
+// The needle is DERIVED, in gunbc.shell_command_text ::shell_command_text_refusal_marker, from the
+// authority constant that mints the marker -- this module used to re-type the token here, a second
+// copy of one fact that could drift from the thing it copies. Absent means the needle could not be
+// derived, which fails the claim rather than letting it pass on a weaker needle.
 
 // The three apply-emission claims that stood here (the live srv1 apply script, and the object-source
 // Decide step alone) were deleted with the bash apply emitter they read (gunbc#14660): the typed apply
@@ -27,8 +31,12 @@ test fn a_refused_intent_marker_carries_the_serializers_reason() -> Bool {
     else_body: bash_build_if_else(cond: bash_build_command_from_lits(lits: ["true"]), then_body: colon, else_body: colon),
   )
   let text = shell_command_text_of_node(stmt: bare_nested)
-  string_contains(s: text, pattern: refused_marker)
-    && string_contains(s: text, pattern: "bash_fold_serialize_stmt_list_shape_refused")
+  match shell_command_text_refusal_marker() {
+    Absent => false
+    Present { value: refused_marker } =>
+      string_contains(s: text, pattern: refused_marker)
+        && string_contains(s: text, pattern: "bash_fold_serialize_stmt_list_shape_refused")
+  }
 }
 
 // THE SERIALIZER REFUSES AN OVER-ARITY LIST: a bare `if` node standing where a statement list is
@@ -76,7 +84,11 @@ test fn the_one_if_else_builder_folds_single_statement_arms() -> Bool {
     else_stmts: [bash_build_assign(name: "TARGET", value: bash_build_word_lit(text: "fallback"))],
   )
   let text = shell_command_text_of_node(stmt: folded)
-  (!string_contains(s: text, pattern: refused_marker))
-    && string_contains(s: text, pattern: "TARGET='keep'")
-    && string_contains(s: text, pattern: "TARGET='fallback'")
+  match shell_command_text_refusal_marker() {
+    Absent => false
+    Present { value: refused_marker } =>
+      (!string_contains(s: text, pattern: refused_marker))
+        && string_contains(s: text, pattern: "TARGET='keep'")
+        && string_contains(s: text, pattern: "TARGET='fallback'")
+  }
 }

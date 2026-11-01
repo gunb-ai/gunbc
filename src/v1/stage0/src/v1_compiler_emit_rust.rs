@@ -59,7 +59,7 @@ pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
 pub use crate::v1_compiler_infer_resolve::{resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position};
 pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv};
-pub use crate::v1_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, is_product_type, is_coproduct_type, is_unit_like};
+pub use crate::v1_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, type_is_ordered_element_run, is_product_type, is_coproduct_type, is_unit_like};
 pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
 pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, build_read_only_params, collect_callable_refs, analyze_dying_base_sites};
 pub use crate::v1_compiler_resolve::{get_exported_names};
@@ -5327,6 +5327,20 @@ pub fn lookup_item_by_leaf(
 }
 
 pub fn lookup_item_for_value_ref(
+    resolved_name: String,
+    self_module: String,
+    binding_kind: Option<Rc<VarBindingKind>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<ItemLookup> {
+    match binding_kind.clone().as_deref().cloned() {
+        Some(VarBindingKind::LocalValueBinding) => Rc::new(ItemLookup::ItemNotFound),
+        Some(VarBindingKind::MatchBoundBinding) => Rc::new(ItemLookup::ItemNotFound),
+        _ => lookup_item_for_declared_value_ref(resolved_name, self_module, registry, emit_info),
+    }
+}
+
+pub fn lookup_item_for_declared_value_ref(
     resolved_name: String,
     self_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -15997,8 +16011,8 @@ pub fn emit_prelude(module_name: String) -> String {
 
 pub fn emit_non_empty_wrappers() -> String {
     {
-        let vec_wrapper = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub struct NonEmptyVec<T>(Vec<T>);\n\n".to_string(), "impl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T> {\n".to_string()), "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n".to_string()), "        f.debug_tuple(\"NonEmptyVec\").field(&self.0).finish()\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone> Clone for NonEmptyVec<T> {\n".to_string()), "    fn clone(&self) -> Self {\n".to_string()), "        Self(self.0.clone())\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {\n".to_string()), "    fn eq(&self, other: &Self) -> bool {\n".to_string()), "        self.0 == other.0\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone> NonEmptyVec<T> {\n".to_string()), "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {\n".to_string()), "        if items.is_empty() {\n".to_string()), "            Err(\"NonEmptyVec requires at least one element\")\n".to_string()), "        } else {\n".to_string()), "            Ok(Self(items))\n".to_string()), "        }\n".to_string()), "    }\n\n".to_string()), "    pub fn into_vec(self) -> Vec<T> {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}".to_string());
-        let set_wrapper = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Debug, Clone, PartialEq)]\n".to_string(), "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n".to_string()), "impl<T: Ord> NonEmptyBTreeSet<T> {\n".to_string()), "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {\n".to_string()), "        if items.is_empty() {\n".to_string()), "            Err(\"NonEmptyBTreeSet requires at least one element\")\n".to_string()), "        } else {\n".to_string()), "            Ok(Self(items))\n".to_string()), "        }\n".to_string()), "    }\n\n".to_string()), "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {\n".to_string()), "        &self.0\n".to_string()), "    }\n\n".to_string()), "    pub fn into_set(self) -> std::collections::BTreeSet<T> {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}".to_string());
+        let vec_wrapper = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub struct NonEmptyVec<T>(Vec<T>);\n\n".to_string(), "impl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T> {\n".to_string()), "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n".to_string()), "        f.debug_tuple(\"NonEmptyVec\").field(&self.0).finish()\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone> Clone for NonEmptyVec<T> {\n".to_string()), "    fn clone(&self) -> Self {\n".to_string()), "        Self(self.0.clone())\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {\n".to_string()), "    fn eq(&self, other: &Self) -> bool {\n".to_string()), "        self.0 == other.0\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone> NonEmptyVec<T> {\n".to_string()), "    pub fn new(items: Vec<T>) -> std::result::Result<Self, &'static str> {\n".to_string()), "        if items.is_empty() {\n".to_string()), "            Err(\"NonEmptyVec requires at least one element\")\n".to_string()), "        } else {\n".to_string()), "            Ok(Self(items))\n".to_string()), "        }\n".to_string()), "    }\n\n".to_string()), "    pub fn into_vec(self) -> Vec<T> {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}".to_string());
+        let set_wrapper = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Debug, Clone, PartialEq)]\n".to_string(), "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n".to_string()), "impl<T: Ord> NonEmptyBTreeSet<T> {\n".to_string()), "    pub fn new(items: std::collections::BTreeSet<T>) -> std::result::Result<Self, &'static str> {\n".to_string()), "        if items.is_empty() {\n".to_string()), "            Err(\"NonEmptyBTreeSet requires at least one element\")\n".to_string()), "        } else {\n".to_string()), "            Ok(Self(items))\n".to_string()), "        }\n".to_string()), "    }\n\n".to_string()), "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {\n".to_string()), "        &self.0\n".to_string()), "    }\n\n".to_string()), "    pub fn into_set(self) -> std::collections::BTreeSet<T> {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}".to_string());
         v1_rt::concat(
             v1_rt::concat(vec_wrapper.clone(), "\n\n".to_string()),
             set_wrapper.clone(),
@@ -17302,6 +17316,18 @@ pub fn type_has_fn_fields(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
         Some(ts) => ts.has_fn_fields.clone(),
         std::option::Option::None => false,
     }
+}
+
+pub fn type_node_realizes_fn_field_record(
+    n: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (!crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone())
+        && type_has_fn_fields(
+            rust_fn_sig_leaf_name(source_indices.clone(), n.clone()),
+            emit_info,
+        ))
 }
 
 pub fn struct_needs_serde(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
@@ -19868,14 +19894,12 @@ pub fn v1_call_site_static_forwarded_param_names(
                                     }
                                     __result
                                 });
-                                let callee_own_static = if type_has_fn_fields(
-                                    rust_fn_sig_leaf_name(
-                                        si.clone(),
-                                        crate::v1_compiler_infer_types::resolved_type(
-                                            callee_item.clone(),
-                                        ),
+                                let callee_own_static = if type_node_realizes_fn_field_record(
+                                    crate::v1_compiler_infer_types::resolved_type(
+                                        callee_item.clone(),
                                     ),
                                     emit_info.clone(),
+                                    si.clone(),
                                 ) {
                                     callee_generic_param_names.clone()
                                 } else {
@@ -20392,10 +20416,8 @@ pub fn emit_fn_def(
                 emit_info.type_decl_items.clone(),
                 si.clone(),
             );
-        let returns_fn_field_record = type_has_fn_fields(
-            rust_fn_sig_leaf_name(si.clone(), inferred.clone()),
-            emit_info.clone(),
-        );
+        let returns_fn_field_record =
+            type_node_realizes_fn_field_record(inferred.clone(), emit_info.clone(), si.clone());
         let returns_arrow_or_fn_field_record =
             (((inferred.params.clone().len() as i64) > 0) || returns_fn_field_record.clone());
         let call_forwarded_static_param_names = v1_call_forwarding_static_bound_param_names(
@@ -20406,6 +20428,40 @@ pub fn emit_fn_def(
             si.clone(),
             Rc::new(vec![]),
         );
+        let arrow_value_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in value_params.iter().cloned() {
+                    if rust_type_node_is_arrow(crate::v1_std_core::param_node_type_expr(p.clone()))
+                    {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(crate::v1_std_core::param_node_name_at(
+                    p.clone(),
+                    si.clone(),
+                ));
+            }
+            __result
+        });
+        let static_fn_param_names = if returns_arrow_or_fn_field_record.clone() {
+            arrow_value_param_names.clone()
+        } else {
+            v1_body_forwarded_static_fn_param_names(
+                arrow_value_param_names.clone(),
+                body.clone(),
+                emit_info.fn_decl_items.clone(),
+                emit_info.clone(),
+                si.clone(),
+                Rc::new(vec![]),
+            )
+        };
         let static_param_names = if returns_fn_field_record.clone() {
             generic_param_names.clone()
         } else {
@@ -20440,8 +20496,7 @@ pub fn emit_fn_def(
             emit_info.read_only_params.clone(),
             emit_info.variant_to_enum.clone(),
             scope.type_env.clone(),
-            (returns_arrow_or_fn_field_record.clone()
-                || ((call_forwarded_static_param_names.clone().len() as i64) > 0)),
+            static_fn_param_names,
         );
         let ret_str = emit_inferred(
             inferred.clone(),
@@ -21654,7 +21709,7 @@ pub fn emit_func_inferred(
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
-            " -> Result<".to_string(),
+            " -> std::result::Result<".to_string(),
             render_rust_fn_sig_type(
                 inferred,
                 Rc::new(vec![]),
@@ -21664,8 +21719,204 @@ pub fn emit_func_inferred(
                 env,
             ),
         ),
-        ", Box<dyn std::error::Error>>".to_string(),
+        ", std::boxed::Box<dyn std::error::Error>>".to_string(),
     )
+}
+
+pub fn v1_body_forwarded_static_fn_param_names(
+    candidates: Rc<Vec<String>>,
+    body: Rc<Node>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((candidates.clone().len() as i64) == 0) {
+            return Rc::new(vec![]);
+        }
+        let here = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => v1_call_site_forwarded_static_fn_param_names(
+                body.clone(),
+                candidates.clone(),
+                fn_decl_items.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+                visited.clone(),
+            ),
+            _ => Rc::new(vec![]),
+        };
+        body.children.clone().iter().cloned().fold(
+            here.clone(),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                    acc,
+                    v1_body_forwarded_static_fn_param_names(
+                        candidates.clone(),
+                        child.clone(),
+                        fn_decl_items.clone(),
+                        emit_info.clone(),
+                        source_indices.clone(),
+                        visited.clone(),
+                    ),
+                )
+            },
+        )
+    })
+}
+
+pub fn v1_call_site_forwarded_static_fn_param_names(
+    call: Rc<Node>,
+    candidates: Rc<Vec<String>>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        let si = source_indices.clone();
+        let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
+        if {
+            let mut __found = false;
+            for v in visited.iter().cloned() {
+                if (v.clone() == callee_name.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            return Rc::new(vec![]);
+        }
+        match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(callee_item) => {
+                let callee_static = v1_item_static_fn_param_names(
+                    callee_item.clone(),
+                    fn_decl_items.clone(),
+                    emit_info,
+                    si.clone(),
+                    v1_rt::concat(visited.clone(), Rc::new(vec![callee_name.clone()])),
+                );
+                let arg_by_name =
+                    crate::v1_compiler_infer::call_args_by_name(call.clone(), si.clone());
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for cp in function_value_params(callee_item.params.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        __result.extend(
+                            (*{
+                                let cp_name =
+                                    crate::v1_std_core::param_node_name_at(cp.clone(), si.clone());
+                                if {
+                                    let mut __found = false;
+                                    for n in callee_static.iter().cloned() {
+                                        if (n.clone() == cp_name.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    match v1_rt::map_get(&arg_by_name, cp_name.clone()) {
+                                        Some(arg) => match (*arg.expr_data.clone()).clone() {
+                                            ExprData::ExprVar {
+                                                binding_kind: _, ..
+                                            } => {
+                                                let arg_name = crate::v1_std_core::expr_var_name_at(
+                                                    arg.clone(),
+                                                    si.clone(),
+                                                );
+                                                if {
+                                                    let mut __found = false;
+                                                    for c in candidates.iter().cloned() {
+                                                        if (c.clone() == arg_name.clone()) {
+                                                            __found = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                    __found
+                                                } {
+                                                    Rc::new(vec![arg_name.clone()])
+                                                } else {
+                                                    Rc::new(vec![])
+                                                }
+                                            }
+                                            _ => Rc::new(vec![]),
+                                        },
+                                        std::option::Option::None => Rc::new(vec![]),
+                                    }
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                })
+            }
+        }
+    }
+}
+
+pub fn v1_item_static_fn_param_names(
+    item: Rc<Node>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        let si = source_indices.clone();
+        let arrow_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in function_value_params(item.params.clone()).iter().cloned() {
+                    if rust_type_node_is_arrow(crate::v1_std_core::param_node_type_expr(p.clone()))
+                    {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(crate::v1_std_core::param_node_name_at(
+                    p.clone(),
+                    si.clone(),
+                ));
+            }
+            __result
+        });
+        let rt = crate::v1_compiler_infer_types::resolved_type(item.clone());
+        if ((arrow_names.clone().len() as i64) == 0) {
+            Rc::new(vec![])
+        } else {
+            if (((rt.params.clone().len() as i64) > 0)
+                || type_node_realizes_fn_field_record(rt.clone(), emit_info.clone(), si.clone()))
+            {
+                arrow_names.clone()
+            } else {
+                match item.body.clone() {
+                    std::option::Option::None => Rc::new(vec![]),
+                    Some(b) => v1_body_forwarded_static_fn_param_names(
+                        arrow_names.clone(),
+                        b.clone(),
+                        fn_decl_items,
+                        emit_info.clone(),
+                        si.clone(),
+                        visited,
+                    ),
+                }
+            }
+        }
+    }
 }
 
 pub fn emit_params(
@@ -21676,7 +21927,7 @@ pub fn emit_params(
     read_only_params: Rc<BTreeSet<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-    fn_param_needs_static: bool,
+    static_fn_param_names: Rc<Vec<String>>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -21690,7 +21941,21 @@ pub fn emit_params(
                     read_only_params.clone(),
                     variant_to_enum.clone(),
                     env.clone(),
-                    fn_param_needs_static.clone(),
+                    {
+                        let mut __found = false;
+                        for n in static_fn_param_names.iter().cloned() {
+                            if (n.clone()
+                                == crate::v1_std_core::param_node_name_at(
+                                    p.clone(),
+                                    source_indices.clone(),
+                                ))
+                            {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    },
                 ));
             }
             __result
@@ -24544,32 +24809,37 @@ pub fn effective_variant_parent(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    {
-        let leaf_name = value_ref_qualified_leaf(name);
-        let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone()) {
-            Some(p) => {
-                if (p.clone() != "".to_string()) {
-                    Some(crate::v1_std_core::qualified_last_segment(p.clone()))
-                } else {
-                    std::option::Option::None
+    match binding_kind.clone().as_deref().cloned() {
+        Some(VarBindingKind::LocalValueBinding) => std::option::Option::None,
+        Some(VarBindingKind::MatchBoundBinding) => std::option::Option::None,
+        _ => {
+            let leaf_name = value_ref_qualified_leaf(name);
+            let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone())
+            {
+                Some(p) => {
+                    if (p.clone() != "".to_string()) {
+                        Some(crate::v1_std_core::qualified_last_segment(p.clone()))
+                    } else {
+                        std::option::Option::None
+                    }
                 }
+                std::option::Option::None => std::option::Option::None,
+            };
+            match cached.clone() {
+                Some(parent) => Some(parent.clone()),
+                std::option::Option::None => match resolved_type.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        effective_variant_parent_from_resolved(
+                            leaf_name.clone(),
+                            rt.clone(),
+                            binding_kind.clone(),
+                            emit_info.clone(),
+                            source_indices,
+                        )
+                    }
+                    _ => variant_parent_from_binding_kind(binding_kind.clone()),
+                },
             }
-            std::option::Option::None => std::option::Option::None,
-        };
-        match cached.clone() {
-            Some(parent) => Some(parent.clone()),
-            std::option::Option::None => match resolved_type.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    effective_variant_parent_from_resolved(
-                        leaf_name.clone(),
-                        rt.clone(),
-                        binding_kind.clone(),
-                        emit_info.clone(),
-                        source_indices,
-                    )
-                }
-                _ => variant_parent_from_binding_kind(binding_kind.clone()),
-            },
         }
     }
 }
@@ -24594,7 +24864,7 @@ pub fn emit_value_ref_ident(
             let leaf = value_ref_qualified_leaf(name.clone());
             let qualifier = value_ref_qualifier_prefix(name.clone());
             if (qualifier.clone() != "".to_string()) {
-                match (*lookup_item_for_value_ref(name.clone(), self_module, registry.clone(), emit_info.clone())).clone() {
+                match (*lookup_item_for_declared_value_ref(name.clone(), self_module, registry.clone(), emit_info.clone())).clone() {
     ItemLookup::ItemFound { info: info, .. } => emit_qualified_value_ref_crate_ident(leaf.clone(), info.clone(), registry.clone(), emit_info.clone()),
     ItemLookup::ItemLeafAmbiguous { leaf: ambiguous_leaf, .. } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
     ItemLookup::ItemNotFound => crate::v1_compiler_emit::emit_error_expr("qualified value reference missing exact registry row — refuse authored qualifier".to_string(), RenderTarget::Rust),
@@ -24729,6 +24999,7 @@ pub fn emit_var_ref(
                             std::option::Option::None => match (*lookup_item_for_value_ref(
                                 resolved_name.clone(),
                                 module_name.clone(),
+                                binding_kind.clone(),
                                 registry.clone(),
                                 emit_info.clone(),
                             ))
@@ -24889,6 +25160,7 @@ pub fn emit_typed_expr_base(
                                     match (*lookup_item_for_value_ref(
                                         resolved_name.clone(),
                                         scope.module_name.clone(),
+                                        binding_kind.clone(),
                                         registry.clone(),
                                         emit_info.clone(),
                                     ))
@@ -37178,15 +37450,7 @@ pub fn type_node_is_ordered_element_run(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((((n.return_cardinality.clone() != Cardinality::CardOptional)
-        && crate::v1_compiler_infer_types::node_is_element_collection(
-            n.clone(),
-            source_indices.clone(),
-        ))
-        && !crate::v1_compiler_infer_types::node_is_set_collection(
-            n.clone(),
-            source_indices.clone(),
-        ))
+    (crate::v1_compiler_infer_types::type_is_ordered_element_run(n.clone(), source_indices.clone())
         && !is_rust_string_like(n.clone(), source_indices.clone()))
 }
 
@@ -40749,11 +41013,11 @@ pub fn emit_operation_method(
                                     ),
                                     all_params.clone(),
                                 ),
-                                ") -> Result<".to_string(),
+                                ") -> std::result::Result<".to_string(),
                             ),
                             ret_type.clone(),
                         ),
-                        ", Box<dyn std::error::Error>> {\n".to_string(),
+                        ", std::boxed::Box<dyn std::error::Error>> {\n".to_string(),
                     ),
                     crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
                         depth.clone(),
@@ -42130,10 +42394,10 @@ pub fn emit_rust_rest_answered_mock(mock_body: String, output_type: String) -> S
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    "let __rest_answer = (|| -> Result<".to_string(),
+                                    "let __rest_answer = (|| -> std::result::Result<".to_string(),
                                     output_type.clone(),
                                 ),
-                                ", Box<dyn std::error::Error>> {\n".to_string(),
+                                ", std::boxed::Box<dyn std::error::Error>> {\n".to_string(),
                             ),
                             mock_body.clone(),
                         ),
@@ -42163,7 +42427,7 @@ pub fn emit_rust_rest_result_lowering(
         } else {
             emit_plain_response_body(op_node.clone(), transport, source_indices.clone())
         };
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let response = match request.send().await {\n".to_string(), "    Ok(response) => response,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestTransportRefused { cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "let status = response.status().as_u16();\n".to_string()), "let __rest_text = match response.text().await {\n".to_string()), "    Ok(text) => text,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "if !(200..300).contains(&status) {\n".to_string()), "    return Ok(".to_string()), rust_rest_refused("RestStatusRefused { status: status as i64, body: __rest_text }".to_string())), ");\n".to_string()), "}\n".to_string()), "let __rest_decoded = (|| -> Result<".to_string()), output_type.clone()), ", Box<dyn std::error::Error>> {\n".to_string()), decode.clone()), "\n".to_string()), "})();\n".to_string()), "match __rest_decoded {\n".to_string()), "    Ok(answer) => Ok(".to_string()), rust_rest_answered("answer".to_string())), "),\n".to_string()), "    Err(error) => Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }".to_string())), "),\n".to_string()), "}".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let response = match request.send().await {\n".to_string(), "    Ok(response) => response,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestTransportRefused { cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "let status = response.status().as_u16();\n".to_string()), "let __rest_text = match response.text().await {\n".to_string()), "    Ok(text) => text,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "if !(200..300).contains(&status) {\n".to_string()), "    return Ok(".to_string()), rust_rest_refused("RestStatusRefused { status: status as i64, body: __rest_text }".to_string())), ");\n".to_string()), "}\n".to_string()), "let __rest_decoded = (|| -> std::result::Result<".to_string()), output_type.clone()), ", std::boxed::Box<dyn std::error::Error>> {\n".to_string()), decode.clone()), "\n".to_string()), "})();\n".to_string()), "match __rest_decoded {\n".to_string()), "    Ok(answer) => Ok(".to_string()), rust_rest_answered("answer".to_string())), "),\n".to_string()), "    Err(error) => Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }".to_string())), "),\n".to_string()), "}".to_string())
     }
 }
 
@@ -43648,11 +43912,11 @@ pub fn emit_capability_method(
                         ),
                         all_params.clone(),
                     ),
-                    ") -> Result<".to_string(),
+                    ") -> std::result::Result<".to_string(),
                 ),
                 ret.clone(),
             ),
-            ", Box<dyn std::error::Error>>;".to_string(),
+            ", std::boxed::Box<dyn std::error::Error>>;".to_string(),
         )
     }
 }
