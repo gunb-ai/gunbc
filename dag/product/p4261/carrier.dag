@@ -11,7 +11,7 @@ import extdeps.connector.amphenol_g97v22332hr { g97v22332hr }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalDesignIdentity, ElectricalTerminalRef, TerminalIdentity }
 import product.electrical.source_draw { SourceDrawObservation }
 import product.electrical.bench_session { BenchRecord }
-import product.electrical.continuity { ContinuityObservation, DiodeModeObservation, EvidenceRef }
+import product.electrical.continuity { ContinuityObservation, DiodeModeObservation, EvidenceRef, ModuleState }
 import product.electrical.identification {
   InstalledComponent,
   names,
@@ -150,7 +150,18 @@ type UnresolvedPart {
 
 // ── THE MEASURED BOARD AND ITS INPUT ──────────────────────────────────────────────────────────
 
+// WHICH STATE THE BOARD'S PIN, SWITCH AND ATTACHMENT DERIVATIONS READ. A board's bench work spans
+// several physical states (product.electrical.bench_session SpecimenState); the derivations over its
+// controller pins, switches and probe attachments read one, named here by the dividing events it
+// follows and its module configuration. A selection naming no state of the record is refused, and the
+// derivations then read nothing (product.p4261.readings analysis_state).
+type AnalysisSelection {
+  after: List<NonEmptyStr>
+  module: ModuleState
+}
+
 type MeasuredBoard {
+  analysis: AnalysisSelection
   asset: PhysicalAssetIdentity
   continuity: List<ContinuityObservation>
   diode_readings: List<DiodeModeObservation>

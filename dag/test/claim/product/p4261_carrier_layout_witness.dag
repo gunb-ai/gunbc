@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt, millivolt_count }
 import product.placement_supply { physical_asset_identity_eq }
-import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
+import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_k1_a, p4261_e1_b }
 import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
@@ -39,6 +39,9 @@ import product.electrical.source_draw {
   OverCurrentShutoffArmed,
 }
 import product.electrical.bench_session {
+  AssetAlteration,
+  NoDamageSeen,
+  StateReadings,
   BenchRecord,
   ProbeAttachment,
   NodeVoltageObservation,
@@ -94,9 +97,13 @@ import product.electrical.measured_netlist {
   netlist_text,
 }
 import product.electrical.continuity {
+  ModuleState,
   ReadingOrder,
   BeforeIncidents,
+  BetweenIncidents,
   AfterIncidents, OrderUnrecorded,
+  ModuleUnrecorded,
+  ModuleInstalled,
   ReachabilityGraph,
   reachability_graph,
   ContinuityObservation,
@@ -154,6 +161,7 @@ import product.p4261.carrier {
   LatchSide,
   lv165a_pins,
   ManagementIoSurvey,
+  AnalysisSelection,
   MeasuredBoard,
   RowSide,
   SideUnrecorded,
@@ -340,8 +348,9 @@ import product.p4261.readings {
   AttachmentRuled,
   AttachmentStanding,
   AttachmentUnconfirmed,
+  analysis_state,
+  beeps_state,
   board_graph,
-  board_intact,
   board_after,
   board_readings,
   board_netlist,
@@ -484,7 +493,7 @@ fn layout_with(base: CarrierLayoutObservation, components: List<InstalledCompone
 }
 
 fn e1_with_continuity(cs: List<ContinuityObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: cs, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: cs, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
 }
 
 fn component_of(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> List<InstalledComponent> {
@@ -543,7 +552,7 @@ fn supplied_said() -> EvidenceRef {
 }
 
 fn read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, result: ContinuityResult) -> ContinuityObservation {
-  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: both_points_recorded, conditions: e1_bench, result: result, order: BeforeIncidents { keys: [] }, evidence: supplied_said() }
+  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: both_points_recorded, conditions: e1_bench, result: result, order: BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] }, evidence: supplied_said() }
 }
 
 fn positive_term() -> TerminalIdentity {
@@ -579,7 +588,7 @@ test fn the_photographs_establish_no_input_bound() -> Bool {
 // derives nothing: every reading names the E1 asset, and the K1's board is the K1 asset.
 test fn a_reading_on_the_e1_cannot_qualify_the_k1() -> Bool {
   let k1_given_e1 = layout_with(base: p4261_k1_layout, components: p4261_k1_layout.components,
-    measured: Present { value: MeasuredBoard { asset: p4261_k1_a, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } },
+    measured: Present { value: MeasuredBoard { asset: p4261_k1_a, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } },
     input: Present { value: e1_input })
   let unpolarized = match input_polarity(layout: k1_given_e1) {
     PolarityUnestablished { gaps: _ } => true
@@ -805,7 +814,7 @@ test fn only_a_rating_across_the_input_bounds_it() -> Bool {
   let low_pos = terminal_ref(component: low, terminal: positive_term())
   let low_neg = terminal_ref(component: low, terminal: negative_term())
   let with_low = concat(p4261_e1_layout.components, [low_part])
-  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
   let unread = layout_with(base: p4261_e1_layout, components: with_low, measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
   count(f300) == 1 && all(f300, s => is_unplaced(s: s))
     && bound_volts(b: input_bound(layout: p4261_e1_layout)) == 60
@@ -897,10 +906,14 @@ fn rl_bench(b: BenchRecord) -> BenchRecord {
 }
 
 fn relabelled_e1() -> CarrierLayoutObservation {
+  relabelled_of(bench: e1_measured.bench)
+}
+
+fn relabelled_of(bench: BenchRecord) -> CarrierLayoutObservation {
   layout_with(
     base: p4261_e1_layout,
     components: map(p4261_e1_layout.components, c => InstalledComponent { component: rl_c(c: c.component), terminals: map(c.terminals, t => rl_t(t: t)), identification: c.identification }),
-    measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: map(e1_measured.continuity, o => rl_obs(o: o)), diode_readings: map(e1_measured.diode_readings, o => rl_diode(o: o)), source_draws: map(e1_measured.source_draws, o => rl_draw(o: o)), bench: rl_bench(b: e1_measured.bench), phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } },
+    measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: map(e1_measured.continuity, o => rl_obs(o: o)), diode_readings: map(e1_measured.diode_readings, o => rl_diode(o: o)), source_draws: map(e1_measured.source_draws, o => rl_draw(o: o)), bench: rl_bench(b: bench), phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } },
     input: Present { value: InputConnector { housing: rl_housing(h: e1_j20_housing), fuse_terminal: rl_ref(r: e1_input.fuse_terminal) } },
   )
 }
@@ -1121,7 +1134,7 @@ fn on_input(open: Nat, loaded: Nat, behaviour: SourceBehaviour) -> SourceDrawObs
 }
 
 fn e1_with_draws(ds: List<SourceDrawObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: ds, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: ds, bench: e1_measured.bench, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
 }
 
 fn draw_finding(layout: CarrierLayoutObservation) -> Bool {
@@ -1215,8 +1228,15 @@ test fn the_energized_draw_renders_and_survives_relabelling() -> Bool {
 
 // ── THE INPUT SWITCHES AND THEIR CONTROLLER ───────────────────────────────────────────────────
 
+// A supplied E1 whose bench readings are the given ones, read in the given analysis selection.
+fn e1_with_attached_in(analysis: AnalysisSelection, attachments: List<ProbeAttachment>, vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, alterations: e1_bench_record.alterations, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+}
+
+// A supplied E1 read in the E1's own analysis state (after the probe bridge, before the short and the
+// lift): supplied readings are ordered there (analysis_order()), beside the real ones they join.
 fn e1_with_attached(attachments: List<ProbeAttachment>, vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, alterations: e1_bench_record.alterations, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: BenchRecord { incidents: e1_bench_record.incidents, alterations: e1_bench_record.alterations, attachments: attachments, voltages: vs, resistances: rs }, phases: e1_measured.phases, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
 }
 
 fn e1_with_bench(vs: List<NodeVoltageObservation>, rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
@@ -1242,12 +1262,16 @@ fn about(mv: Nat) -> VoltageValue {
   ReadAbout { value: millivolt(count: mv) }
 }
 
-fn before() -> ReadingOrder {
-  BeforeIncidents { keys: [e1_bridge_incident.key] }
+fn analysis_order() -> ReadingOrder {
+  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] }
+}
+
+fn before_every_event() -> ReadingOrder {
+  BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] }
 }
 
 fn q21_with(drain_mv: Nat, source_mv: Nat) -> List<NodeVoltageObservation> {
-  [reading(c: e1_q21, terminal: "tab", value: about(mv: drain_mv), order: before()), reading(c: e1_q21, terminal: "pin 2", value: about(mv: source_mv), order: before())]
+  [reading(c: e1_q21, terminal: "tab", value: about(mv: drain_mv), order: analysis_order()), reading(c: e1_q21, terminal: "pin 2", value: about(mv: source_mv), order: analysis_order())]
 }
 
 fn switch_of(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> List<InputSwitchStanding> {
@@ -1286,23 +1310,30 @@ fn finding_holds(layout: CarrierLayoutObservation, f: CarrierFinding) -> Bool {
   is_finding_established(s: carrier_finding(layout: layout, f: f))
 }
 
-// A SWITCH'S STATE COMES FROM ITS DATASHEET ROLES AND ITS READINGS. The live E1 readings -- tabs near
-// 48 V, every small lead near 1 V -- establish Q21_P5 and Q22_P5 blocking, and say their order against
-// the probe-bridge incident is unrecorded. A source read near the drain conducts; one read halfway
+// A SWITCH'S STATE COMES FROM ITS DATASHEET ROLES AND ITS READINGS OF ONE STATE. The live E1 readings
+// -- tabs near 48 V, every small lead near 1 V -- were taken around the 48 V probe bridge in an order
+// against it that was never recorded, and the bridge divides the board's states whatever its
+// inspection saw, so they belong to no state: they stay recorded, and Q21_P5's and Q22_P5's switch
+// state is not established from them. The same readings supplied in the analysis state establish both
+// blocking. A source read near the drain conducts; one read halfway
 // establishes no state; with no drain value nothing is established; and the probed MOSFET whose marking
 // is unread has no roles, so the same readings put on it establish nothing. Relabelling the components
 // keeps both states.
 test fn the_input_switches_read_blocking() -> Bool {
-  let live = finding_holds(layout: p4261_e1_layout, f: InputSwitchState { component: e1_q21 })
-    && finding_holds(layout: p4261_e1_layout, f: InputSwitchState { component: e1_q22 })
-    && is_blocking(ss: switch_of(layout: p4261_e1_layout, c: e1_q21))
-    && carrier_input_reading(layout: p4261_e1_layout).contains("Q21_P5 is BLOCKING")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("order against incident 2026-10-19 probe bridge unrecorded")
+  let around_bridge = filter(e1_bench_record.voltages, o => order_is_unrecorded(o: o.order))
+  let placed = map(around_bridge, o => NodeVoltageObservation { asset: o.asset, at: o.at, reference: o.reference, record: o.record, conditions: o.conditions, source: o.source, value: o.value, certainty: o.certainty, order: analysis_order(), evidence: o.evidence })
+  let live = count(around_bridge) > 0
+    && !finding_holds(layout: p4261_e1_layout, f: InputSwitchState { component: e1_q21 })
+    && !finding_holds(layout: p4261_e1_layout, f: InputSwitchState { component: e1_q22 })
+    && !carrier_input_reading(layout: p4261_e1_layout).contains("Q21_P5 is BLOCKING")
+    && finding_holds(layout: e1_with_voltages(vs: placed), f: InputSwitchState { component: e1_q21 })
+    && finding_holds(layout: e1_with_voltages(vs: placed), f: InputSwitchState { component: e1_q22 })
+    && is_blocking(ss: switch_of(layout: e1_with_voltages(vs: placed), c: e1_q21))
   let conducting = is_conducting(ss: switch_of(layout: e1_with_voltages(vs: q21_with(drain_mv: 48000, source_mv: 47500)), c: e1_q21))
   let halfway = switch_gap_is(ss: switch_of(layout: e1_with_voltages(vs: q21_with(drain_mv: 48000, source_mv: 30000)), c: e1_q21), between: true)
     && !finding_holds(layout: e1_with_voltages(vs: q21_with(drain_mv: 48000, source_mv: 30000)), f: InputSwitchState { component: e1_q21 })
-  let no_drain = switch_gap_is(ss: switch_of(layout: e1_with_voltages(vs: [reading(c: e1_q21, terminal: "pin 2", value: about(mv: 1000), order: before())]), c: e1_q21), between: false)
-  let unrolled = [reading(c: e1_input_fet, terminal: "tab", value: about(mv: 48000), order: before()), reading(c: e1_input_fet, terminal: "pin 2", value: about(mv: 1000), order: before())]
+  let no_drain = switch_gap_is(ss: switch_of(layout: e1_with_voltages(vs: [reading(c: e1_q21, terminal: "pin 2", value: about(mv: 1000), order: analysis_order())]), c: e1_q21), between: false)
+  let unrolled = [reading(c: e1_input_fet, terminal: "tab", value: about(mv: 48000), order: analysis_order()), reading(c: e1_input_fet, terminal: "pin 2", value: about(mv: 1000), order: analysis_order())]
   let unidentified = all(switch_of(layout: e1_with_voltages(vs: unrolled), c: e1_input_fet), s => match s {
     SwitchStateUnestablished { component: _, gap } => match gap {
       SwitchNotIdentified => true
@@ -1310,7 +1341,8 @@ test fn the_input_switches_read_blocking() -> Bool {
     }
     _ => false
   }) && count(switch_of(layout: e1_with_voltages(vs: unrolled), c: e1_input_fet)) == 1
-  let relabelled = is_blocking(ss: switch_of(layout: relabelled_e1(), c: rl_c(c: e1_q22)))
+  let relabelled = is_blocking(ss: switch_of(layout: relabelled_of(bench: BenchRecord { incidents: e1_bench_record.incidents, alterations: e1_bench_record.alterations, attachments: [], voltages: placed, resistances: [] }), c: rl_c(c: e1_q22)))
+    && !is_blocking(ss: switch_of(layout: relabelled_e1(), c: rl_c(c: e1_q22)))
   live && conducting && halfway && no_drain && unidentified && relabelled
 }
 
@@ -1344,14 +1376,14 @@ fn enable_gap(ss: List<ControllerPinStanding>, which: Nat) -> Bool {
 }
 
 fn u1_reading(terminal: NonEmptyStr, value: VoltageValue) -> List<NodeVoltageObservation> {
-  [reading(c: e1_u1_p5, terminal: terminal, value: value, order: before())]
+  [reading(c: e1_u1_p5, terminal: terminal, value: value, order: analysis_order())]
 }
 
 fn pad_to_pin(pin: NonEmptyStr, display: ResistanceDisplay) -> ResistanceObservation {
   ResistanceObservation {
     asset: p4261_e1_b, first: terminal_ref(component: e1_ovlo_pad, terminal: "pad" as TerminalIdentity), second: terminal_ref(component: e1_u1_p5, terminal: pin as TerminalIdentity),
     record: both_points_recorded, conditions: BenchConditions { power: Unpowered, module: ModuleRemoved }, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 200 }, display: display,
-    stability: StabilityUnrecorded, certainty: StatedPlainly, order: before(), evidence: [OperatorStatement { stated_on: "supplied", verbatim: "supplied" }],
+    stability: StabilityUnrecorded, certainty: StatedPlainly, order: analysis_order(), evidence: [OperatorStatement { stated_on: "supplied", verbatim: "supplied" }],
   }
 }
 
@@ -1379,7 +1411,7 @@ fn baselined(o: ResistanceObservation) -> ResistanceObservation {
 
 fn baselined_board(b: MeasuredBoard) -> MeasuredBoard {
   MeasuredBoard {
-    asset: b.asset, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
+    asset: b.asset, analysis: b.analysis, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
     bench: BenchRecord { incidents: b.bench.incidents, alterations: b.bench.alterations, attachments: b.bench.attachments, voltages: b.bench.voltages, resistances: map(b.bench.resistances, o => baselined(o: o)) },
     phases: b.phases, transitions: b.transitions, pole_closures: b.pole_closures,
   }
@@ -1434,17 +1466,18 @@ test fn an_enable_bound_above_the_threshold_minimum_establishes_nothing() -> Boo
 }
 
 // A READING TAKEN AFTER AN INCIDENT SAYS SO. The same held enable reading renders with the incident
-// caveat when ordered after the probe bridge, and without it when ordered before; a standing resting on
+// caveat when ordered after the probe bridge (read in the after-bridge state), and without it when
+// ordered before every dividing event (read on the intact board); a standing resting on
 // a hedged statement says so, and one resting on a plain statement does not (the report's hypotheses
 // quote hedged readings of their own, so the word alone is not the reading's).
 test fn a_post_incident_reading_is_never_presented_as_before() -> Bool {
   let after = [NodeVoltageObservation {
     asset: p4261_e1_b, at: terminal_ref(component: e1_u1_p5, terminal: "pin 7" as TerminalIdentity), reference: e1_ground_ref, record: both_points_recorded,
-    conditions: e1_live_bench, source: volt(count: 48), value: about(mv: 300), certainty: StatedHedged { verbatim: "supplied: i think" }, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    conditions: e1_live_bench, source: volt(count: 48), value: about(mv: 300), certainty: StatedHedged { verbatim: "supplied: i think" }, order: mid_order(),
     evidence: [OperatorStatement { stated_on: "supplied", verbatim: "supplied" }],
   }]
   let after_text = carrier_input_reading(layout: e1_with_voltages(vs: after))
-  let before_text = carrier_input_reading(layout: e1_with_voltages(vs: u1_reading(terminal: "pin 7", value: about(mv: 300))))
+  let before_text = carrier_input_reading(layout: e1_with_attached_in(analysis: AnalysisSelection { after: [], module: ModuleRemoved }, attachments: [], vs: [reading(c: e1_u1_p5, terminal: "pin 7", value: about(mv: 300), order: before_every_event())], rs: []))
   after_text.contains("read after incident 2026-10-19 probe bridge")
     && after_text.contains("rests on readings taken after an incident or of unrecorded order")
     && after_text.contains("rests on a hedged statement")
@@ -1457,7 +1490,7 @@ test fn a_post_incident_reading_is_never_presented_as_before() -> Bool {
 // to the MOSFETs' gates, but no reading on the E1 joins U1_P5 pin 2 to Q21_P5 pin 1, so they are not
 // reachable; the datasheet stays a hypothesis's source, never a reading.
 test fn a_reference_design_connection_is_not_a_reachability_edge() -> Bool {
-  let g = board_graph(s: board_intact(b: e1_measured))
+  let g = beeps_graph(b: e1_measured)
   !is_reachable(s: reach(g: g, a: terminal_ref(component: e1_u1_p5, terminal: "pin 2" as TerminalIdentity), b: terminal_ref(component: e1_q21, terminal: "pin 1" as TerminalIdentity)))
     && carrier_input_reading(layout: p4261_e1_layout).contains("Q4_P5 is the diode-configured MMBT3904-class transistor")
     && carrier_input_reading(layout: p4261_e1_layout).contains("incident 2026-10-19 probe bridge")
@@ -1523,7 +1556,7 @@ fn projection_at_attachment(ps: List<EnableProjection>) -> Bool {
 }
 
 fn pin7(mv: Nat, source_volts: Nat) -> NodeVoltageObservation {
-  reading_under(c: e1_u1_p5, terminal: "pin 7", value: about(mv: mv), order: before(), source_volts: source_volts)
+  reading_under(c: e1_u1_p5, terminal: "pin 7", value: about(mv: mv), order: analysis_order(), source_volts: source_volts)
 }
 
 // A PROJECTION NEEDS READINGS IN PROPORTION TO THE SOURCE, AT THE PIN. The live E1 projects nothing:
@@ -1686,7 +1719,7 @@ test fn a_baseline_reading_joins_two_points_into_one_node() -> Bool {
 test fn a_kilohm_reading_is_a_link_never_a_merge() -> Bool {
   let linked = measured_netlist(graph: no_beeps(), resistances: [pad_to_pin(pin: "pin 8", display: DisplayValue { ohms: 3500, approximate: false })])
   let alike = measured_netlist(graph: no_beeps(), resistances: [pad_to_pin(pin: "pin 7", display: DisplayValue { ohms: 550, approximate: false }), pad_to_pin(pin: "pin 9", display: DisplayValue { ohms: 550, approximate: false })])
-  let live = board_netlist(s: board_intact(b: e1_measured))
+  let live = analysis_net(b: e1_measured)
   !one_node(net: linked, a: pad_ref(), b: u1_pin(pin: "pin 8")) && count(linked.nodes) == 0 && links_between(net: linked, a: pad_ref(), b: u1_pin(pin: "pin 8")) == 1
     && !one_node(net: alike, a: u1_pin(pin: "pin 7"), b: u1_pin(pin: "pin 9")) && count(alike.nodes) == 0 && count(alike.links) == 2
     && !one_node(net: live, a: e1_q300_leg, b: e1_q301_leg) && !one_node(net: live, a: e1_q300_leg, b: e1_ground_ref)
@@ -1708,7 +1741,7 @@ test fn a_reading_inside_one_node_is_kept_as_a_contradiction() -> Bool {
 // placement, none averaged or chosen. Supplied, the same pair read under opposite placements is two
 // links rendering each placement.
 test fn two_readings_of_one_pair_stay_two_links() -> Bool {
-  let live = board_netlist(s: board_intact(b: e1_measured))
+  let live = analysis_net(b: e1_measured)
   let tab = terminal_ref(component: e1_q21, terminal: "tab" as TerminalIdentity)
   let ground_pad = terminal_ref(component: e1_ground_pad, terminal: "pad" as TerminalIdentity)
   let text = carrier_input_reading(layout: p4261_e1_layout)
@@ -1754,26 +1787,36 @@ test fn two_readings_of_one_pair_stay_two_links() -> Bool {
 // board's baselined netlist holds none. The rail's about 1 ohm after the converter's lift
 // (e1_after_lift_rail_resistances), which an asset-only selection once folded into the node the
 // pre-lift zeros make of the inductor's pad and the return as a seventh, is a reading of a third
-// state, after the lift, and sits in neither. The converter hypothesis reads
+// state, after the lift, and sits in neither. Likewise the E1's beeps were read before the probe
+// bridge, which divides the board's states whatever its inspection saw: D5's top tab is one node with
+// the return on the intact board, where the beep was read, and the after-bridge netlist, built from the
+// resistance readings alone, does not inherit that join. The converter hypothesis reads
 // the BST group as one first-sweep
 // reading every later one disagrees with and the other as near-zero figures beside true zeros, assigning
 // no cause; nothing here reconciles them.
 test fn the_live_e1_record_yields_the_measured_netlist() -> Bool {
-  let live = board_netlist(s: board_intact(b: e1_measured))
-  let net = board_netlist(s: board_intact(b: baselined_board(b: e1_measured)))
-  let post = match board_after(b: baselined_board(b: e1_measured), keys: [e1_inductor_short_incident.key]) {
+  let live = analysis_net(b: e1_measured)
+  let net = analysis_net(b: baselined_board(b: e1_measured))
+  let intact = match beeps_state(b: e1_measured) {
+    Absent => MeasuredNetlist { nodes: [], links: [] }
+    Present { value: s } => board_netlist(s: s)
+  }
+  let post = match board_after(b: baselined_board(b: e1_measured), keys: [e1_bridge_incident.key, e1_inductor_short_incident.key], module: ModuleRemoved) {
     Absent => MeasuredNetlist { nodes: [], links: [] }
     Present { value: s } => board_netlist(s: s)
   }
   let ring = terminal_ref(component: e1_ground_ring, terminal: "ring" as TerminalIdentity)
   let ground_pad = terminal_ref(component: e1_ground_pad, terminal: "pad" as TerminalIdentity)
-  let zeros = filter(board_readings(s: board_intact(b: e1_measured)).resistances, o => is_reported_zero(o: o))
+  let zeros = match analysis_state(b: e1_measured) {
+    Absent => []
+    Present { value: s } => filter(board_readings(s: s).resistances, o => is_reported_zero(o: o))
+  }
   count(zeros) > 0 && !any(e1_measured.bench.resistances, o => is_at_baseline(o: o))
     && count(filter(live.links, l => is_reported_zero(o: link_reading(l: l)))) == count(zeros)
-    && one_node(net: live, a: e1_ground_ref, b: e1_d5_top) && !one_node(net: live, a: e1_ground_ref, b: ring)
+    && !one_node(net: live, a: e1_ground_ref, b: e1_d5_top) && one_node(net: intact, a: e1_ground_ref, b: e1_d5_top) && !one_node(net: live, a: e1_ground_ref, b: ring)
     && !one_node(net: live, a: pad_ref(), b: u1_pin(pin: "pin 8")) && !one_node(net: live, a: e1_w4_end, b: cluster_pad(name: "P6"))
     && !one_node(net: live, a: e1_q301_lone_lead, b: cluster_pad(name: "P6")) && !one_node(net: live, a: e1_q301_lead_b, b: e1_q300_lone_lead)
-    && one_node(net: net, a: e1_ground_ref, b: e1_d5_top) && one_node(net: net, a: e1_ground_ref, b: ring) && one_node(net: net, a: e1_ground_ref, b: ground_pad)
+    && !one_node(net: net, a: e1_ground_ref, b: e1_d5_top) && one_node(net: net, a: e1_ground_ref, b: ring) && one_node(net: net, a: e1_ground_ref, b: ground_pad)
     && one_node(net: net, a: pad_ref(), b: u1_pin(pin: "pin 8"))
     && !one_node(net: net, a: u1_pin(pin: "pin 7"), b: e1_ground_ref) && !one_node(net: net, a: u1_pin(pin: "pin 7"), b: pad_ref())
     && !one_node(net: net, a: e1_pin7_wire_end, b: u1_pin(pin: "pin 7")) && !one_node(net: net, a: e1_pin7_wire_end, b: e1_ground_ref)
@@ -1864,7 +1907,7 @@ test fn a_marking_candidate_is_not_an_identification() -> Bool {
 // a link between its ends, never a join, and its marking stays unresolved -- '18D' read, no value
 // credited -- so no decoded resistance stands for it. Without the 26 kohm reading its ends are unlinked.
 test fn the_enable_chain_is_read_at_54_v() -> Bool {
-  let live = board_netlist(s: board_intact(b: e1_measured))
+  let live = analysis_net(b: e1_measured)
   let resistor = component_of(layout: p4261_e1_layout, c: e1_q301_resistor)
   let without_26k = measured_netlist(graph: no_beeps(), resistances: filter(e1_bench_record.resistances, o => !reads_pair(o: o, a: e1_q301_resistor_near, b: e1_q301_resistor_far)))
   reads_at_54(t: e1_q300_lead_b, millivolts: 0)
@@ -1928,11 +1971,11 @@ fn closure_arm(s: PoleClosureStanding) -> Nat {
 // E1's pin 21 joins its own. The K1's pin 7 is not the E1's. The K1's readings handed to the E1's graph
 // join nothing and link nothing, and the E1's own netlist holds no K1 join.
 test fn the_k1_is_read_on_its_own_board() -> Bool {
-  let k1_live = board_netlist(s: board_intact(b: k1_measured))
-  let k1 = board_netlist(s: board_intact(b: baselined_board(b: k1_measured)))
-  let e1 = board_netlist(s: board_intact(b: baselined_board(b: e1_measured)))
+  let k1_live = analysis_net(b: k1_measured)
+  let k1 = analysis_net(b: baselined_board(b: k1_measured))
+  let e1 = analysis_net(b: baselined_board(b: e1_measured))
   let k1_200_end = terminal_ref(component: k1_200, terminal: "end read from pin 7 (which end unrecorded)" as TerminalIdentity)
-  let k1_into_e1 = measured_netlist(graph: board_graph(s: board_intact(b: e1_measured)), resistances: baselined_board(b: k1_measured).bench.resistances)
+  let k1_into_e1 = measured_netlist(graph: beeps_graph(b: e1_measured), resistances: baselined_board(b: k1_measured).bench.resistances)
   !one_node(net: k1_live, a: k1_pin(pin: "pin 7"), b: k1_200_end)
     && !one_node(net: k1_live, a: k1_pin(pin: "pin 21"), b: terminal_ref(component: k1_beige, terminal: "top end" as TerminalIdentity))
     && one_node(net: k1, a: k1_pin(pin: "pin 7"), b: k1_200_end)
@@ -1941,7 +1984,7 @@ test fn the_k1_is_read_on_its_own_board() -> Bool {
     && one_node(net: k1, a: k1_pin(pin: "pin 22"), b: terminal_ref(component: k1_pin22_point, terminal: "point" as TerminalIdentity))
     && one_node(net: e1, a: u1_pin(pin: "pin 21"), b: e1_beige_top)
     && !terminal_ref_equal(a: k1_pin(pin: "pin 7"), b: u1_pin(pin: "pin 7"))
-    && count(k1_into_e1.links) == 0 && count(k1_into_e1.nodes) == count(board_graph(s: board_intact(b: e1_measured)).classes)
+    && count(k1_into_e1.links) == 0 && count(k1_into_e1.nodes) == count(beeps_graph(b: e1_measured).classes)
     && !one_node(net: k1_into_e1, a: k1_pin(pin: "pin 7"), b: k1_200_end)
     && !one_node(net: e1, a: k1_pin(pin: "pin 7"), b: k1_200_end)
 }
@@ -2014,7 +2057,7 @@ fn phase_gap_is(layout: CarrierLayoutObservation, key: NonEmptyStr, which: Nat) 
 }
 
 fn e1_with_phases(ps: List<CarrierPhaseObservation>) -> CarrierLayoutObservation {
-  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: ps, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, analysis: e1_measured.analysis, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings, source_draws: e1_measured.source_draws, bench: e1_measured.bench, phases: ps, transitions: e1_measured.transitions, pole_closures: e1_measured.pole_closures } }, input: p4261_e1_layout.input)
 }
 
 fn e1_phase_named(key: NonEmptyStr) -> List<CarrierPhaseObservation> {
@@ -2213,7 +2256,7 @@ fn j68_point(name: NonEmptyStr) -> ElectricalTerminalRef {
 // DIP package four, two per pole.
 // The report carries the phases under their observed names.
 test fn a_bridge_is_a_recorded_stimulus_and_a_zero_volt_point_is_not_a_ground() -> Bool {
-  let live = board_netlist(s: board_intact(b: e1_measured))
+  let live = analysis_net(b: e1_measured)
   let p3 = e1_phase_named(key: "p3-settled")
   let volts = flat_map(p3, p => p.node_voltages)
   let at_1v8 = filter(volts, v => match v.value { ReadAbout { value } => millivolt_count(v: value) == 1800, ReadBelow { bound: _ } => false })
@@ -2317,7 +2360,7 @@ fn supplied_pin8_standing(rs: List<ResistanceObservation>) -> PairRangeStanding 
 // are supply and control, 7 OE control, 12 B1 and 1 A1 the two ends of channel 1, 17 no pin; U51
 // carries no translator row.
 test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
-  let live = board_netlist(s: board_intact(b: e1_measured))
+  let live = analysis_net(b: e1_measured)
   let rs = e1_measured.bench.resistances
   let pin8 = pair_range_standing(os: rs, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8"))
   let to_return = pair_range_standing(os: rs, a: e1_q300_lead_b, b: e1_ground_ref)
@@ -2364,7 +2407,7 @@ test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
 // terminals and no identified row; the report carries the count and the contact. Supplied: a copy of the
 // readings with the lower-right contact at 500 ohm counts two.
 test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
-  let live = board_netlist(s: board_intact(b: e1_measured))
+  let live = analysis_net(b: e1_measured)
   let rs = e1_measured.bench.resistances
   let low = terminals_reading_at_most(rs: rs, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500)
   let doubled = map(e1_front_chain_resistances, o => if reads_pair(o: o, a: e1_q300_lead_b, b: e1_u500_contact(n: "lower-right contact")) { ResistanceObservation { asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range, display: DisplayValue { ohms: 500, approximate: true }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence } } else { o })
@@ -2406,7 +2449,7 @@ test fn u500_meets_the_gate_network_at_one_contact() -> Bool {
 // zeros without a baseline and join nothing in the live netlist; the report carries the count and the
 // pins. Supplied: pin 13 at 500 ohm makes four.
 test fn u55_control_and_supply_pins_sit_near_the_gate() -> Bool {
-  let live = board_netlist(s: board_intact(b: e1_measured))
+  let live = analysis_net(b: e1_measured)
   let rs = e1_measured.bench.resistances
   let low = terminals_reading_at_most(rs: rs, c: e1_u55, names: e1_u55_pins, ceiling_ohms: 500)
   let with_13 = map(e1_u55_resistances, o => if reads_pair(o: o, a: e1_q300_lead_b, b: e1_u55_pin(n: "pin 13")) { ResistanceObservation { asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range, display: DisplayValue { ohms: 500, approximate: true }, stability: o.stability, certainty: o.certainty, order: o.order, evidence: o.evidence } } else { o })
@@ -2522,7 +2565,7 @@ test fn the_island_flashes_decode_to_two_1gbit_and_one_2gbit() -> Bool {
 // basis; DS1_2's one side to U104's inner middle pin is a zero without a baseline that joins nothing.
 // Supplied: a layout without J24's row renders the not-a-component text.
 test fn j24_is_named_measured_and_reads_no_return() -> Bool {
-  let live = board_netlist(s: board_intact(b: e1_measured))
+  let live = analysis_net(b: e1_measured)
   let without = layout_with(base: p4261_e1_layout, components: filter(p4261_e1_layout.components, c => !component_identity_eq(a: c.component, b: e1_j24)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
   let valued = filter(e1_j24_resistances, o => match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
   count(e1_j24_positions) == 10 && count(e1_j24_resistances) == 10 && count(valued) == 8
@@ -2552,7 +2595,7 @@ fn j68_value_at(n: NonEmptyStr) -> Nat {
 }
 
 test fn j68_reads_in_the_shape_of_a_jtag_header() -> Bool {
-  let live = board_netlist(s: board_intact(b: e1_measured))
+  let live = analysis_net(b: e1_measured)
   let zeros = filter(e1_j68_resistances, o => is_reported_zero(o: o))
   let open = filter(e1_j68_resistances, o => match o.display { DisplayOverRange => true, _ => false })
   count(e1_j68_resistances) == 10 && count(zeros) == 2 && count(open) == 3
@@ -2658,6 +2701,7 @@ test fn the_k1_shows_one_of_three_inductor_outputs_where_the_e1_shows_all_three(
 fn after_both_incidents(o: ResistanceObservation) -> Bool {
   match o.order {
     AfterIncidents { keys } => any(keys, k => k == e1_inductor_short_incident.key) && any(keys, k => k == e1_bridge_incident.key)
+    BetweenIncidents { after, before: _ } => any(after, k => k == e1_inductor_short_incident.key) && any(after, k => k == e1_bridge_incident.key)
     BeforeIncidents { keys: _ } => false
     OrderUnrecorded { relative_to: _ } => false
   }
@@ -2729,7 +2773,7 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
   let sw_k1 = match pin_reading(rs: k1_converter_lead_resistances, name: "(SW)") {
     Absent => false
     Present { value: o } => match valued_ohms(o: o) { Present { value: v } => v == 8000, Absent => false }
-      && match o.order { BeforeIncidents { keys } => count(keys) == 0, AfterIncidents { keys: _ } => false, OrderUnrecorded { relative_to: _ } => false }
+      && match o.order { BeforeIncidents { keys } => any(keys, k => k == k1_u10p2_lift.key), _ => false }
   }
   let bst = match pin_reading(rs: e1_converter_lead_resistances, name: "(BST)") { Absent => false, Present { value: o } => is_reported_zero(o: o) && !is_at_baseline(o: o) }
     && match pin_reading(rs: k1_converter_lead_resistances, name: "(BST)") { Absent => false, Present { value: o } => match valued_ohms(o: o) { Present { value: v } => v == 134000, Absent => false } }
@@ -2769,7 +2813,7 @@ test fn the_converter_is_read_pin_by_pin_against_its_row() -> Bool {
 // never share a terminal. The K1's footprint reads VIN to SW at about VIN's and SW's paths to the return in
 // series, and EN's figures are hedged because their unit was inferred.
 fn after_key(o: ResistanceObservation, key: NonEmptyStr) -> Bool {
-  match o.order { AfterIncidents { keys } => any(keys, k => k == key), BeforeIncidents { keys: _ } => false, OrderUnrecorded { relative_to: _ } => false }
+  match o.order { AfterIncidents { keys } => any(keys, k => k == key), BetweenIncidents { after, before: _ } => any(after, k => k == key), BeforeIncidents { keys: _ } => false, OrderUnrecorded { relative_to: _ } => false }
 }
 fn footprint_row(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> Bool {
   count(component_of(layout: layout, c: c)) == 1
@@ -2944,55 +2988,185 @@ fn order_is_unrecorded(o: ReadingOrder) -> Bool {
   match o { OrderUnrecorded { relative_to: _ } => true, _ => false }
 }
 
-// The E1 with one supplied reading added, of the given order.
-fn e1_with_reading(order: ReadingOrder) -> MeasuredBoard {
+fn analysis_net(b: MeasuredBoard) -> MeasuredNetlist {
+  match analysis_state(b: b) {
+    Absent => MeasuredNetlist { nodes: [], links: [] }
+    Present { value: s } => board_netlist(s: s)
+  }
+}
+
+fn beeps_graph(b: MeasuredBoard) -> ReachabilityGraph {
+  match beeps_state(b: b) {
+    Absent => reachability_graph(observations: [], asset: b.asset)
+    Present { value: s } => board_graph(s: s)
+  }
+}
+
+// One selection's readings, or none when the selection is refused.
+fn selected(b: MeasuredBoard, keys: List<NonEmptyStr>, module: ModuleState) -> StateReadings? {
+  match board_after(b: b, keys: keys, module: module) {
+    Absent => Absent
+    Present { value: s } => Present { value: board_readings(s: s) }
+  }
+}
+
+fn resistances_in(b: MeasuredBoard, keys: List<NonEmptyStr>, module: ModuleState) -> Nat {
+  match selected(b: b, keys: keys, module: module) { Absent => 0, Present { value: r } => count(r.resistances) }
+}
+
+fn refused(b: MeasuredBoard, keys: List<NonEmptyStr>, module: ModuleState) -> Bool {
+  match selected(b: b, keys: keys, module: module) { Absent => true, Present { value: _ } => false }
+}
+
+
+// The E1 with one supplied unpowered reading added, of the given order and module configuration.
+fn e1_with_reading(order: ReadingOrder, module: ModuleState) -> MeasuredBoard {
   let o = pad_to_pin(pin: "pin 8", display: DisplayValue { ohms: 3500, approximate: false })
   let r = ResistanceObservation {
-    asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: o.conditions, polarity: o.polarity, range: o.range,
+    asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: BenchConditions { power: Unpowered, module: module }, polarity: o.polarity, range: o.range,
     display: o.display, stability: o.stability, certainty: o.certainty, order: order, evidence: o.evidence,
   }
   let b = e1_measured
   MeasuredBoard {
-    asset: b.asset, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
+    asset: b.asset, analysis: b.analysis, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
     bench: BenchRecord { incidents: b.bench.incidents, alterations: b.bench.alterations, attachments: b.bench.attachments, voltages: b.bench.voltages, resistances: concat(b.bench.resistances, [r]) },
     phases: b.phases, transitions: b.transitions, pole_closures: b.pole_closures,
   }
 }
 
-// A NETLIST READS ONE PHYSICAL STATE. The intact E1 folds no reading taken after the converter was
-// lifted, and the state after the inductor short and the lift holds those readings and only readings
-// that follow both. The probe bridge was inspected without damage, so it divides no state, and a state
-// naming it -- or naming the K1's lift on the E1 -- is refused rather than selecting nothing. The
-// input switches' readings, of unrecorded order against that bridge only, are the intact board's; a
-// supplied reading of unrecorded order against the short is counted and folded into no state. The
-// K1's intact state excludes the footprint readings its own lift precedes.
-test fn a_netlist_reads_one_physical_state() -> Bool {
-  let intact = board_readings(s: board_intact(b: e1_measured))
-  let intact_net = board_netlist(s: board_intact(b: e1_measured))
-  let after_lift = match board_after(b: e1_measured, keys: [e1_inductor_short_incident.key, e1_u10p2_lift.key]) {
-    Absent => []
-    Present { value: s } => board_readings(s: s).resistances
+// The E1 with its converter lift recorded as refitted: one event for two changes.
+fn e1_lift_refitted() -> MeasuredBoard {
+  let b = e1_measured
+  MeasuredBoard {
+    asset: b.asset, analysis: b.analysis, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
+    bench: BenchRecord {
+      incidents: b.bench.incidents, attachments: b.bench.attachments, voltages: b.bench.voltages, resistances: b.bench.resistances,
+      alterations: map(b.bench.alterations, a => AssetAlteration { key: a.key, asset: a.asset, part: a.part, performed_on: a.performed_on, evidence: a.evidence, change: match a.change { PartRemoved { refitted: _ } => PartRemoved { refitted: true }, ThermalInterfaceChanged { removed, applied } => ThermalInterfaceChanged { removed: removed, applied: applied } } }),
+    },
+    phases: b.phases, transitions: b.transitions, pole_closures: b.pole_closures,
   }
-  let k1_intact = board_readings(s: board_intact(b: k1_measured))
-  let k1_after = match board_after(b: k1_measured, keys: [k1_u10p2_lift.key]) {
-    Absent => []
-    Present { value: s } => board_readings(s: s).resistances
+}
+
+fn mid_order() -> ReadingOrder {
+  BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] }
+}
+
+fn bridged_keys() -> List<NonEmptyStr> {
+  [e1_bridge_incident.key]
+}
+
+fn intact_keys() -> List<NonEmptyStr> {
+  []
+}
+
+fn n_continuity(b: MeasuredBoard, keys: List<NonEmptyStr>, module: ModuleState) -> Nat {
+  match selected(b: b, keys: keys, module: module) {
+    Absent => 0
+    Present { value: r } => count(r.continuity)
   }
-  !any(intact.resistances, o => after_key(o: o, key: e1_u10p2_lift.key) || after_key(o: o, key: e1_inductor_short_incident.key))
-    && !any(intact_net.links, l => after_key(o: link_reading(l: l), key: e1_u10p2_lift.key))
-    && count(after_lift) > 0 && all(after_lift, o => after_key(o: o, key: e1_u10p2_lift.key) && after_key(o: o, key: e1_inductor_short_incident.key))
-    && count(after_lift) == count(filter(e1_measured.bench.resistances, o => after_key(o: o, key: e1_u10p2_lift.key)))
-    && count(intact.continuity) == count(e1_measured.continuity)
-    && intact.excluded_other_state > 0 && intact.excluded_order_unrecorded == 0
-    && count(filter(intact.voltages, o => order_is_unrecorded(o: o.order))) == count(filter(e1_measured.bench.voltages, o => order_is_unrecorded(o: o.order)))
-    && count(filter(intact.voltages, o => order_is_unrecorded(o: o.order))) > 0
-    && board_readings(s: board_intact(b: e1_with_reading(order: OrderUnrecorded { relative_to: [e1_inductor_short_incident.key] }))).excluded_order_unrecorded == 1
-    && count(board_readings(s: board_intact(b: e1_with_reading(order: OrderUnrecorded { relative_to: [e1_inductor_short_incident.key] }))).resistances) == count(intact.resistances)
-    && count(board_readings(s: board_intact(b: e1_with_reading(order: OrderUnrecorded { relative_to: [e1_bridge_incident.key] }))).resistances) == count(intact.resistances) + 1
-    && match board_after(b: e1_measured, keys: [e1_bridge_incident.key]) { Absent => true, Present { value: _ } => false }
-    && match board_after(b: e1_measured, keys: [k1_u10p2_lift.key]) { Absent => true, Present { value: _ } => false }
-    && !any(k1_intact.resistances, o => after_key(o: o, key: k1_u10p2_lift.key))
-    && count(k1_after) > 0 && all(k1_after, o => after_key(o: o, key: k1_u10p2_lift.key))
+}
+
+fn n_uncovered(b: MeasuredBoard, keys: List<NonEmptyStr>, module: ModuleState) -> Nat {
+  match selected(b: b, keys: keys, module: module) {
+    Absent => 0
+    Present { value: r } => r.excluded_order_uncovered
+  }
+}
+
+fn n_unresolved(b: MeasuredBoard, keys: List<NonEmptyStr>, module: ModuleState) -> Nat {
+  match selected(b: b, keys: keys, module: module) {
+    Absent => 0
+    Present { value: r } => r.excluded_event_unresolved
+  }
+}
+
+fn n_other_configuration(b: MeasuredBoard, keys: List<NonEmptyStr>, module: ModuleState) -> Nat {
+  match selected(b: b, keys: keys, module: module) {
+    Absent => 0
+    Present { value: r } => r.excluded_other_configuration
+  }
+}
+
+
+// A POWERED BRIDGE INSPECTED WITHOUT DAMAGE STILL DIVIDES THE BOARD. The E1's beeps (before the probe
+// bridge) are the intact board's and none of its resistances is; its resistances read after the
+// bridge are the after-bridge board's and none of its beeps is. The input switches' voltages, of
+// unrecorded order against that bridge, are retained and counted, and fall in neither state.
+test fn an_inspected_bridge_still_divides_the_board() -> Bool {
+  let unrecorded = count(filter(e1_measured.bench.voltages, o => order_is_unrecorded(o: o.order)))
+  unrecorded > 0
+    && n_continuity(b: e1_measured, keys: intact_keys(), module: ModuleRemoved) == count(e1_measured.continuity)
+    && resistances_in(b: e1_measured, keys: intact_keys(), module: ModuleRemoved) == 0
+    && n_continuity(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved) == 0
+    && resistances_in(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved) > 0
+    && n_uncovered(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved) == unrecorded
+    && n_uncovered(b: e1_measured, keys: intact_keys(), module: ModuleRemoved) == unrecorded
+    && match e1_bridge_incident.inspection { NoDamageSeen { looked_at: _ } => true, _ => false }
+}
+
+// A READING IS PLACED ONLY WHERE ITS ORDER IS STATED AND ITS EVENTS RESOLVE. A supplied reading naming a
+// misspelled event, or the K1's lift on the E1, is counted unresolved by every selection and joins
+// none; one ordered only after the bridge (silent on the short and the lift), or only before the
+// bridge (silent on the rest), is counted uncovered and joins none -- never the intact board. Stated
+// against every dividing event, it joins its state. A selection naming the K1's lift on the E1, or a
+// removal recorded as refitted, is refused.
+test fn a_reading_is_placed_only_where_its_order_is_stated() -> Bool {
+  let base_mid = resistances_in(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved)
+  let base_intact = resistances_in(b: e1_measured, keys: intact_keys(), module: ModuleRemoved)
+  let misspelled = e1_with_reading(order: AfterIncidents { keys: ["2026-10-19 probe brdige"] }, module: ModuleRemoved)
+  let foreign = e1_with_reading(order: AfterIncidents { keys: [k1_u10p2_lift.key] }, module: ModuleRemoved)
+  let after_only = e1_with_reading(order: AfterIncidents { keys: [e1_bridge_incident.key] }, module: ModuleRemoved)
+  let before_only = e1_with_reading(order: BeforeIncidents { keys: [e1_bridge_incident.key] }, module: ModuleRemoved)
+  let stated = e1_with_reading(order: mid_order(), module: ModuleRemoved)
+  n_unresolved(b: misspelled, keys: intact_keys(), module: ModuleRemoved) == 1 && n_unresolved(b: misspelled, keys: bridged_keys(), module: ModuleRemoved) == 1
+    && resistances_in(b: misspelled, keys: intact_keys(), module: ModuleRemoved) == base_intact && resistances_in(b: misspelled, keys: bridged_keys(), module: ModuleRemoved) == base_mid
+    && n_unresolved(b: foreign, keys: intact_keys(), module: ModuleRemoved) == 1 && resistances_in(b: foreign, keys: intact_keys(), module: ModuleRemoved) == base_intact
+    && n_uncovered(b: after_only, keys: bridged_keys(), module: ModuleRemoved) == n_uncovered(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved) + 1
+    && resistances_in(b: after_only, keys: bridged_keys(), module: ModuleRemoved) == base_mid
+    && n_uncovered(b: before_only, keys: intact_keys(), module: ModuleRemoved) == n_uncovered(b: e1_measured, keys: intact_keys(), module: ModuleRemoved) + 1
+    && resistances_in(b: before_only, keys: intact_keys(), module: ModuleRemoved) == base_intact
+    && resistances_in(b: stated, keys: bridged_keys(), module: ModuleRemoved) == base_mid + 1
+    && refused(b: e1_measured, keys: [k1_u10p2_lift.key], module: ModuleRemoved)
+    && !refused(b: e1_measured, keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key], module: ModuleRemoved)
+    && refused(b: e1_lift_refitted(), keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key], module: ModuleRemoved)
+}
+
+// ONE HISTORY, TWO CONFIGURATIONS, TWO SELECTIONS. A supplied reading of the after-bridge board with the
+// module seated joins the module-seated selection alone, and the module-removed selection counts it as
+// another configuration; a module unrecorded matches neither. The K1, whose module is unrecorded, has
+// no module-removed reading at all.
+test fn a_selection_matches_one_module_configuration() -> Bool {
+  let seated = ModuleInstalled { asset: gh200_dv5_b }
+  let with_seated = e1_with_reading(order: mid_order(), module: seated)
+  let with_unrecorded = e1_with_reading(order: mid_order(), module: ModuleUnrecorded)
+  let base_mid = resistances_in(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved)
+  resistances_in(b: with_seated, keys: bridged_keys(), module: ModuleRemoved) == base_mid
+    && n_other_configuration(b: with_seated, keys: bridged_keys(), module: ModuleRemoved) == n_other_configuration(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved) + 1
+    && resistances_in(b: with_seated, keys: bridged_keys(), module: seated) == 1
+    && resistances_in(b: with_unrecorded, keys: bridged_keys(), module: ModuleRemoved) == base_mid
+    && resistances_in(b: with_unrecorded, keys: bridged_keys(), module: seated) == 0
+    && resistances_in(b: with_unrecorded, keys: bridged_keys(), module: ModuleUnrecorded) == 1
+    && resistances_in(b: k1_measured, keys: intact_keys(), module: ModuleRemoved) == 0
+    && resistances_in(b: k1_measured, keys: intact_keys(), module: ModuleUnrecorded) > 0
+}
+
+// THE AFTER-LIFT READINGS ARE KEPT, IN THEIR OWN STATE. On the E1 the readings after the converter's lift
+// (its footprint and the rail's about 1 ohm) are the after-bridge-short-and-lift board's, and none sits
+// in the intact, after-bridge or after-short selections; on the K1 the footprint readings its lift
+// precedes are the after-lift board's and not the intact one's.
+test fn the_after_lift_readings_are_kept_in_their_own_state() -> Bool {
+  let lifted = count(filter(e1_measured.bench.resistances, o => after_key(o: o, key: e1_u10p2_lift.key)))
+  let k1_lifted = count(filter(k1_measured.bench.resistances, o => after_key(o: o, key: k1_u10p2_lift.key)))
+  let all_e1 = [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key]
+  let in_lift = match selected(b: e1_measured, keys: all_e1, module: ModuleRemoved) { Absent => [], Present { value: r } => r.resistances }
+  let in_short = match selected(b: e1_measured, keys: [e1_bridge_incident.key, e1_inductor_short_incident.key], module: ModuleRemoved) { Absent => [], Present { value: r } => r.resistances }
+  let in_mid = match selected(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved) { Absent => [], Present { value: r } => r.resistances }
+  let k1_in_lift = match selected(b: k1_measured, keys: [k1_u10p2_lift.key], module: ModuleUnrecorded) { Absent => [], Present { value: r } => r.resistances }
+  let k1_in_intact = match selected(b: k1_measured, keys: intact_keys(), module: ModuleUnrecorded) { Absent => [], Present { value: r } => r.resistances }
+  lifted > 0 && count(in_lift) == lifted && all(in_lift, o => after_key(o: o, key: e1_u10p2_lift.key))
+    && count(e1_after_lift_rail_resistances) > 0 && all(e1_after_lift_rail_resistances, o => any(in_lift, x => after_key(o: x, key: e1_u10p2_lift.key) && terminal_ref_equal(a: x.first, b: o.first) && terminal_ref_equal(a: x.second, b: o.second)))
+    && count(in_short) > 0 && !any(in_short, o => after_key(o: o, key: e1_u10p2_lift.key)) && !any(in_mid, o => after_key(o: o, key: e1_u10p2_lift.key))
+    && k1_lifted > 0 && count(k1_in_lift) == k1_lifted && !any(k1_in_intact, o => after_key(o: o, key: k1_u10p2_lift.key))
 }
 
 fn receipt_named(s: CitedFigureStanding, module_path: String, decl_name: String) -> Bool {

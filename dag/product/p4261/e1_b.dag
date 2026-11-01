@@ -119,6 +119,7 @@ import product.electrical.bench_session {
 import product.electrical.continuity {
   AfterIncidents,
   BeforeIncidents,
+  BetweenIncidents,
   OrderUnrecorded,
   BenchConditions,
   both_points_inferred,
@@ -162,6 +163,7 @@ import product.electrical.identification {
 import product.electrical.investigation_hypothesis { InvestigationHypothesis }
 import product.p4261.carrier {
   AcrossRows,
+  AnalysisSelection,
   AlongRow,
   AssemblyLabel,
   AwayFromLatch,
@@ -400,7 +402,7 @@ fn touched_to(a: ElectricalTerminalRef, reference: ElectricalTerminalRef, first_
 }
 
 fn e1_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, record: ProbeRecord, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
-  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: record, conditions: e1_bench, result: result, order: BeforeIncidents { keys: [e1_bridge_incident.key] }, evidence: evidence }
+  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: record, conditions: e1_bench, result: result, order: BeforeIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key] }, evidence: evidence }
 }
 
 fn to_ground(a: ElectricalTerminalRef, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
@@ -533,7 +535,7 @@ data e1_return_basis: NonEmptyStr = "'ground' is J20's latch-side row; position 
 fn e1_pad_ohms(to: ElectricalTerminalRef, display: ResistanceDisplay, range: MeterRange, certainty: StatementCertainty, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
     asset: p4261_e1_b, first: e1_terminal(c: e1_ovlo_pad, name: "pad"), second: to, record: both_points_recorded, conditions: e1_bench, polarity: PolarityUnrecorded,
-    range: range, display: display, stability: StabilityUnrecorded, certainty: certainty, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    range: range, display: display, stability: StabilityUnrecorded, certainty: certainty, order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
   }
 }
@@ -541,7 +543,7 @@ fn e1_pad_ohms(to: ElectricalTerminalRef, display: ResistanceDisplay, range: Met
 fn e1_to_return(from: ElectricalTerminalRef, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
     asset: p4261_e1_b, first: from, second: e1_ground_ref, record: second_point_inferred(basis: e1_return_basis), conditions: e1_bench, polarity: PolarityUnrecorded,
-    range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "ground" }, stability: StabilityUnrecorded, certainty: StatedPlainly, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "ground" }, stability: StabilityUnrecorded, certainty: StatedPlainly, order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
   }
 }
@@ -549,7 +551,7 @@ fn e1_to_return(from: ElectricalTerminalRef, said: NonEmptyStr) -> ResistanceObs
 fn e1_pad_to_pin(pin: NonEmptyStr, display: ResistanceDisplay, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
     asset: p4261_e1_b, first: e1_terminal(c: e1_ovlo_pad, name: "pad"), second: e1_terminal(c: e1_u1_p5, name: pin), record: both_points_recorded, conditions: e1_bench, polarity: PolarityUnrecorded,
-    range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly, order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo, e1_u1_closeup_photo],
   }
 }
@@ -572,7 +574,7 @@ fn e1_pad_volts(source_volts: Nat, millivolts: Nat, said: NonEmptyStr) -> NodeVo
   NodeVoltageObservation {
     asset: p4261_e1_b, at: e1_terminal(c: e1_ovlo_pad, name: "pad"), reference: e1_ground_ref, record: second_point_inferred(basis: e1_supply_return_basis),
     conditions: e1_live_bench, source: volt(count: source_volts), value: ReadAbout { value: millivolt(count: millivolts) }, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] }, evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] }, evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_photo],
   }
 }
 
@@ -618,7 +620,7 @@ data e1_pin7_attachment: ProbeAttachment = ProbeAttachment {
 fn e1_wire_read(to: ElectricalTerminalRef, record: ProbeRecord, polarity: ProbePolarity, placed: List<EvidenceRef>, range: MeterRange, display: ResistanceDisplay, certainty: StatementCertainty, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
     asset: p4261_e1_b, first: e1_pin7_wire_end, second: to, record: record, conditions: e1_bench, polarity: polarity,
-    range: range, display: display, stability: StabilityUnrecorded, certainty: certainty, order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    range: range, display: display, stability: StabilityUnrecorded, certainty: certainty, order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: concat([OperatorStatement { stated_on: "2026-10-19", verbatim: said }, OperatorStatement { stated_on: "2026-10-19", verbatim: e1_pin7_wire_said }, e1_u1_closeup_photo], placed),
   }
 }
@@ -709,7 +711,7 @@ data e1_pin21_resistances: List<ResistanceObservation> = [
     asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 21"), second: e1_beige_top,
     record: both_points_inferred(first_basis: "'it reads 0 on both boards': the point asked for on the E1, U1_P5 pin 21, the eighth lead down the right-hand column, as on the K1", second_basis: "the point asked for, the top end of the beige part directly across from pin 21"),
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "0" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] }, evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "yes, it reads 0 on both boards, and the trace is clearly visible on both" }],
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] }, evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "yes, it reads 0 on both boards, and the trace is clearly visible on both" }],
   },
 ]
 
@@ -717,7 +719,7 @@ data e1_vdd_volts: NodeVoltageObservation = NodeVoltageObservation {
   asset: p4261_e1_b, at: e1_beige_top, reference: e1_ground_ref,
   record: both_points_inferred(first_basis: "'it reads 5v', then 'yes its like 4.86 or something': the point asked for, the top end of the beige part across from pin 21 (reported at 0 ohm to pin 21), on the DC 20 V range asked for", second_basis: "the meter's black probe on J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
   conditions: e1_live_bench, source: volt(count: 48), value: ReadAbout { value: millivolt(count: 4860) }, certainty: StatedHedged { verbatim: "like 4.86 or something" },
-  order: AfterIncidents { keys: [e1_bridge_incident.key] },
+  order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
   evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "it reads 5v" }, OperatorStatement { stated_on: "2026-10-19", verbatim: "yes its like 4.86 or something" }],
 }
 
@@ -725,7 +727,7 @@ fn e1_wire_volts(source_volts: Nat) -> NodeVoltageObservation {
   NodeVoltageObservation {
     asset: p4261_e1_b, at: e1_pin7_wire_end, reference: e1_ground_ref, record: second_point_inferred(basis: e1_supply_return_basis),
     conditions: e1_live_bench, source: volt(count: source_volts), value: ReadAbout { value: millivolt(count: 1000) }, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "It's steady at 1v always / It was 36v, 48v, and 54v I tried" }, OperatorStatement { stated_on: "2026-10-19", verbatim: e1_pin7_wire_said }],
   }
 }
@@ -757,7 +759,7 @@ data e1_rp1_resistances: List<ResistanceObservation> = [
     asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 7"), second: e1_rp1_pad,
     record: second_point_inferred(basis: "'that ringed wire': the ringed point RP1, the point just asked about"),
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayValue { ohms: 1300, approximate: true }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [
       OperatorStatement { stated_on: "2026-10-19", verbatim: "that ringed wire reads 1.3k directly to pin 7" },
       OperatorStatement { stated_on: "2026-10-19", verbatim: "in that area, the closest i could find was 1.3k to basically what seems like pin 21 (that circled test pad) or whatever the circle connects to" },
@@ -786,7 +788,7 @@ data e1_w2_resistances: List<ResistanceObservation> = [
     asset: p4261_e1_b, first: e1_w2_end, second: e1_ground_ref,
     record: both_points_inferred(first_basis: "the sheet's M4: the meter's black probe on the red wire's far end", second_basis: "the sheet's M4: the red probe on J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
     conditions: e1_bench, polarity: RedOnSecond, range: RangeFullScale { ohms: 2000 }, display: DisplayOverRange, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "Sorry - M4 - returned no contact for this, does that make sense?" }],
   },
 ]
@@ -812,7 +814,7 @@ fn e1_lead_volts(pin: NonEmptyStr, millivolts: Nat) -> NodeVoltageObservation {
     asset: p4261_e1_b, at: e1_terminal(c: e1_u1_p5, name: pin), reference: e1_ground_ref,
     record: second_point_inferred(basis: "the sheet's setup: the meter's black probe on J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
     conditions: e1_live_bench, source: volt(count: 48), value: ReadAbout { value: millivolt(count: millivolts) }, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: e1_leads_said }],
   }
 }
@@ -822,7 +824,7 @@ fn e1_pin7_to_return(polarity: ProbePolarity, range: MeterRange, display: Resist
     asset: p4261_e1_b, first: e1_terminal(c: e1_u1_p5, name: "pin 7"), second: e1_ground_ref,
     record: second_point_inferred(basis: "'J20ground': J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
     conditions: e1_bench, polarity: polarity, range: range, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_leads_photo],
   }
 }
@@ -873,7 +875,7 @@ fn e1_w4_read(to: ElectricalTerminalRef, polarity: ProbePolarity, range: MeterRa
     asset: p4261_e1_b, first: e1_w4_end, second: to,
     record: second_point_inferred(basis: "the point the sheet named, the operator's words naming the result"),
     conditions: e1_bench, polarity: polarity, range: range, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: concat([OperatorStatement { stated_on: "2026-10-19", verbatim: said }], photo),
   }
 }
@@ -905,7 +907,7 @@ fn e1_cluster_read(pad: NonEmptyStr, to: ElectricalTerminalRef, display: Resista
     asset: p4261_e1_b, first: e1_terminal(c: e1_back_cluster, name: pad), second: to,
     record: second_point_inferred(basis: basis),
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: said }, e1_back_cluster_photo],
   }
 }
@@ -988,7 +990,7 @@ fn e1_route_read(to: ElectricalTerminalRef, display: ResistanceDisplay, certaint
     asset: p4261_e1_b, first: e1_q301_resistor_far, second: to,
     record: second_point_inferred(basis: "a point on the route the operator drew, named by place only"),
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: certainty,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: concat([OperatorStatement { stated_on: "2026-10-19", verbatim: e1_route_said }], e1_route_photos),
   }
 }
@@ -1007,7 +1009,7 @@ fn e1_via_volts(source_volts: Nat, millivolts: Nat, certainty: StatementCertaint
     asset: p4261_e1_b, at: e1_q301_b_via, reference: e1_ground_ref,
     record: second_point_inferred(basis: "the sheet's V1: the meter's black probe on J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
     conditions: e1_live_bench, source: volt(count: source_volts), value: ReadAbout { value: millivolt(count: millivolts) }, certainty: certainty,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: e1_q301_b_via_said }, e1_q300_q301_photo],
   }
 }
@@ -1017,7 +1019,7 @@ fn e1_q_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, reported: NonEm
     asset: p4261_e1_b, first: a, second: b,
     record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: reported }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: e1_q300_q301_said }, e1_q300_q301_photo],
   }
 }
@@ -1027,7 +1029,7 @@ data e1_q301_resistances: List<ResistanceObservation> = [
     asset: p4261_e1_b, first: e1_q301_lone_lead, second: e1_terminal(c: e1_back_cluster, name: "P6"),
     record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "0.00" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "Q301 3 legged thing -> single leg is 0.00 with P6" }, e1_back_cluster_photo],
   },
   e1_q_read(a: e1_q301_lead_a, b: e1_ground_ref, reported: "0ohm"),
@@ -1037,7 +1039,7 @@ data e1_q301_resistances: List<ResistanceObservation> = [
     asset: p4261_e1_b, first: e1_q301_resistor_near, second: e1_q301_lead_b,
     record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "==" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-19", verbatim: "Z1: bottom of r is == q301b" }, e1_q300_q301_photo],
   },
   e1_route_read(to: e1_route_near_u2, display: DisplayZeroWithoutBaseline { reported: "0 ohms" }, certainty: StatedHedged { verbatim: "0 ohms until ~U2_P5" }),
@@ -1063,7 +1065,7 @@ fn e1_zb_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, display: Resis
     asset: p4261_e1_b, first: a, second: b,
     record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: said }, OperatorStatement { stated_on: "2026-10-20", verbatim: e1_zb_baseline_said }, e1_q300_q301_photo],
   }
 }
@@ -1108,7 +1110,7 @@ fn e1_ranged_read(b: ElectricalTerminalRef, ohms: Nat, full_scale: Nat, polarity
     asset: p4261_e1_b, first: e1_q300_lead_b, second: b,
     record: both_points_recorded,
     conditions: e1_bench, polarity: polarity, range: RangeFullScale { ohms: full_scale }, display: DisplayValue { ohms: ohms, approximate: true }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: said }, e1_u51_pins_photo, e1_lv165a_photo],
   }
 }
@@ -1180,7 +1182,7 @@ fn e1_u55_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, display: Resi
     asset: p4261_e1_b, first: a, second: b,
     record: both_points_recorded,
     conditions: e1_bench, polarity: RedOnFirst, range: RangeFullScale { ohms: 2000 }, display: display, stability: StabilityUnrecorded, certainty: certainty,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: e1_u55_said }, e1_u55_photo],
   }
 }
@@ -1330,7 +1332,7 @@ fn e1_j24_read(n: NonEmptyStr, display: ResistanceDisplay) -> ResistanceObservat
     asset: p4261_e1_b, first: e1_j24_pin(n: n), second: e1_ground_ref,
     record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-21", verbatim: e1_j24_said }, e1_j24_photo],
   }
 }
@@ -1370,7 +1372,7 @@ data e1_ds1_2_resistances: List<ResistanceObservation> = [
     asset: p4261_e1_b, first: e1_terminal(c: e1_ds1_2, name: "one side (which of the two unrecorded)"), second: e1_terminal(c: e1_u104, name: "inner side, middle"),
     record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: DisplayZeroWithoutBaseline { reported: ".000" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [e1_ds1_2_said, e1_erot_photo],
   },
 ]
@@ -1403,7 +1405,7 @@ data e1_site_resistances: List<ResistanceObservation> = [
     asset: p4261_e1_b, first: e1_q300_lead_b, second: e1_terminal(c: e1_u3, name: "lower-right lead"),
     record: both_points_recorded,
     conditions: e1_bench, polarity: RedOnFirst, range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: 500, approximate: true }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: e1_u3_reference_said }, e1_site_clusters_said, e1_u3_photo],
   },
 ]
@@ -1423,7 +1425,7 @@ fn e1_pad_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, ohms: Nat, po
     asset: p4261_e1_b, first: a, second: b,
     record: both_points_recorded,
     conditions: e1_bench, polarity: polarity, range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: ohms, approximate: true }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: e1_pad_each_way_said }, e1_u500_photo],
   }
 }
@@ -1433,7 +1435,7 @@ fn e1_front_read(b: ElectricalTerminalRef, ohms: Nat, said: NonEmptyStr) -> Resi
     asset: p4261_e1_b, first: e1_q300_lead_b, second: b,
     record: both_points_recorded,
     conditions: e1_bench, polarity: RedOnFirst, range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: ohms, approximate: true }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: said }, e1_u500_photo],
   }
 }
@@ -1452,7 +1454,7 @@ data e1_front_chain_resistances: List<ResistanceObservation> = [
     asset: p4261_e1_b, first: e1_q300_lead_b, second: e1_terminal(c: e1_u43_chain_via, name: "via"),
     record: both_points_recorded,
     conditions: e1_bench, polarity: RedOnFirst, range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: 400, approximate: true }, stability: KeptMoving, certainty: StatedHedged { verbatim: "Sorry - i can't reproduce the 400 consistently - the point i thought it was is now reading 800" },
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: e1_u43_chain_said }, e1_u500_photo],
   },
   e1_front_read(b: e1_terminal(c: e1_u43_chain_via, name: "via"), ohms: 800, said: e1_u43_chain_said),
@@ -1466,7 +1468,7 @@ data e1_front_chain_resistances: List<ResistanceObservation> = [
     asset: p4261_e1_b, first: e1_u500_contact(n: "right contact 2"), second: e1_ground_ref,
     record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: DisplayZeroWithoutBaseline { reported: "0.00" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: e1_u500_said }, e1_u500_photo],
   },
   e1_pad_read(a: e1_u500_pad, b: e1_ground_ref, ohms: 500, polarity: RedOnFirst),
@@ -1486,7 +1488,7 @@ fn e1_zv_read(at: ElectricalTerminalRef, millivolts: Nat) -> NodeVoltageObservat
     asset: p4261_e1_b, at: at, reference: e1_ground_ref,
     record: second_point_inferred(basis: "the sheet's setup: the meter's black probe on J20's black lead, which joins J20's latch-side row; position 1 stands for the row"),
     conditions: e1_live_bench, source: volt(count: 54), value: ReadAbout { value: millivolt(count: millivolts) }, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-20", verbatim: e1_zv_said }, OperatorStatement { stated_on: "2026-10-20", verbatim: "Yeah it was 54v" }, e1_resistor_marking_photo],
   }
 }
@@ -1534,7 +1536,7 @@ fn e1_j68_read(n: NonEmptyStr, display: ResistanceDisplay) -> ResistanceObservat
     asset: p4261_e1_b, first: e1_terminal(c: e1_j68, name: n), second: e1_ground_ref,
     record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key], before: [e1_inductor_short_incident.key, e1_u10p2_lift.key] },
     evidence: [OperatorStatement { stated_on: "2026-10-21", verbatim: e1_j68_ohms_said }, e1_j68_labelled_photo],
   }
 }
@@ -1715,7 +1717,7 @@ fn e1_after_short_read(first: ElectricalTerminalRef, second: ElectricalTerminalR
   ResistanceObservation {
     asset: p4261_e1_b, first: first, second: second, record: both_points_recorded,
     conditions: e1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: ohms_full_scale }, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key], before: [e1_u10p2_lift.key] },
     evidence: [e1_short_after_said],
   }
 }
@@ -1767,7 +1769,7 @@ fn converter_lead_read_e1(number: Nat, name: NonEmptyStr, basis: NonEmptyStr, di
     asset: p4261_e1_b, first: e1_terminal(c: e1_converter_near, name: pin_terminal_name(number: number, name: name)), second: e1_ground_ref,
     record: ProbeRecord { first: PointInferred { basis: basis }, second: PointRecorded },
     conditions: e1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: stability, certainty: certainty,
-    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key], before: [e1_u10p2_lift.key] },
     evidence: [converter_said_1031, e1_converter_area_photo_1031],
   }
 }
@@ -1776,7 +1778,7 @@ fn u100_lead_read_e1(lead: NonEmptyStr, second: ElectricalTerminalRef, display: 
   ResistanceObservation {
     asset: p4261_e1_b, first: e1_terminal(c: e1_u100, name: lead), second: second, record: both_points_recorded,
     conditions: e1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key], before: [e1_u10p2_lift.key] },
     evidence: evidence,
   }
 }
@@ -1890,7 +1892,7 @@ fn e1_check_read(first: ElectricalTerminalRef, second: ElectricalTerminalRef, po
   ResistanceObservation {
     asset: p4261_e1_b, first: first, second: second, record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointRecorded },
     conditions: e1_bench, polarity: polarity, range: AutoRanging, display: display, stability: stability, certainty: certainty,
-    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key], before: [e1_u10p2_lift.key] },
     evidence: [converter_said_1101_checks],
   }
 }
@@ -1899,7 +1901,7 @@ fn e1_pair_read(first: ElectricalTerminalRef, second: ElectricalTerminalRef, rec
   ResistanceObservation {
     asset: p4261_e1_b, first: first, second: second, record: record,
     conditions: e1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: [e1_bridge_incident.key, e1_inductor_short_incident.key] },
+    order: BetweenIncidents { after: [e1_bridge_incident.key, e1_inductor_short_incident.key], before: [e1_u10p2_lift.key] },
     evidence: [converter_said_1031_pairs, e1_converter_area_photo_1031],
   }
 }
@@ -2209,6 +2211,7 @@ data e1_bench_record: BenchRecord = BenchRecord {
 
 data e1_measured: MeasuredBoard = MeasuredBoard {
   asset: p4261_e1_b,
+  analysis: AnalysisSelection { after: [e1_bridge_incident.key], module: ModuleRemoved },
   continuity: concat(concat(concat(concat(
     // each fused-row position to both ends of F1: both points named
     map(j20_row_indices, i => e1_read(a: e1_j20_at(side: AwayFromLatch, index: i), b: e1_f1_near, record: both_points_recorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said)),

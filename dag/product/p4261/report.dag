@@ -197,9 +197,10 @@ import product.p4261.readings {
   AttachmentUnconfirmed,
   bench_of,
   bias_ceiling,
-  board_intact,
+  analysis_state,
   board_netlist,
   board_readings,
+  BoardState,
   BoundContradicted,
   BoundEstablished,
   BoundNotBelowMinimum,
@@ -241,6 +242,7 @@ import product.p4261.readings {
   InputPolarityNotEstablished,
   InputReadingsInconclusive,
   InputSwitchStanding,
+  BeepsNotOfOneState,
   InputUnmapped,
   is_access_point,
   is_regulator_output,
@@ -309,13 +311,26 @@ import product.p4261.findings {
 // THE RENDERED REPORT (diagnostics only): text over the records and their derivations, and the
 // narrow findings for consumers that cite one fact.
 
+fn state_text(s: BoardState) -> String {
+  match s.state.after.first() {
+    Absent => "the intact board"
+    Present { value: _ } => join(["the board after ", join(map(s.state.after, k => k as String), " and ")], "")
+  }
+}
+
 fn netlist_reading(layout: CarrierLayoutObservation) -> String {
   match layout.measured {
     Absent => "no board measured, so no measured netlist"
-    Present { value: b } => {
-      let intact = board_intact(b: b)
-      let rs = board_readings(s: intact)
-      join(["the intact board: ", netlist_text(net: board_netlist(s: intact)), " (", to_string(rs.excluded_other_state), " readings of a later state and ", to_string(rs.excluded_order_unrecorded), " of unrecorded order are not folded in)"], "")
+    Present { value: b } => match analysis_state(b: b) {
+      Absent => "the board's analysis selection names no state of its record, so no measured netlist"
+      Present { value: s } => {
+        let rs = board_readings(s: s)
+        join([
+          state_text(s: s), ": ", netlist_text(net: board_netlist(s: s)),
+          " (not folded in: ", to_string(rs.excluded_other_state), " readings of other states, ", to_string(rs.excluded_other_configuration), " of another module configuration, ",
+          to_string(rs.excluded_order_uncovered), " whose order against a dividing event is not stated, ", to_string(rs.excluded_event_unresolved), " naming no recorded event)",
+        ], "")
+      }
     }
   }
 }
@@ -763,6 +778,7 @@ fn polarity_gap_text(g: PolarityGap) -> String {
     SidesUnrecorded => "a contact's side is unrecorded"
     NoMeasuredBoard => "no measured board"
     InputUnmapped => "J20's contacts are not mapped on this board"
+    BeepsNotOfOneState => "the board's beeps are not all of one physical state and module configuration"
     FusedSideNotReached => "not every fused-side contact is read to the fuse"
     ReturnSideNotJoined => "the return-side contacts are not read joined"
     IsolationUnread => "no reading separates the two sides"

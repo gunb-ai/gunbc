@@ -101,13 +101,17 @@ fn point_is_inferred(p: PointProvenance) -> Bool {
 
 // WHERE A READING STANDS AGAINST THE ASSET'S RECORDED EVENTS. An accidental bridge, a short or a part
 // lifted off the board can change what a later reading means, so every reading -- a beep here, a
-// voltage or a resistance in product.electrical.bench_session -- says which recorded events it came
-// before or after, or that its order against them is unrecorded. AfterIncidents lists EVERY recorded
-// event the reading follows; an event it does not list came after it. BeforeIncidents follows none.
-// The keys are BenchIncident and AssetAlteration keys (product.electrical.bench_session).
+// voltage or a resistance in product.electrical.bench_session -- states its order against recorded
+// events: before these, after these, after these and before those, or unrecorded against these. EACH
+// ARM STATES ORDER AGAINST THE EVENTS IT LISTS AND NOTHING ELSE: an event it does not list is of
+// unknown order to the reading, never assumed later. So recording a new event leaves every earlier
+// reading unplaced against it until its order is stated; an event added to the record never
+// manufactures chronology for a reading. The keys are BenchIncident and AssetAlteration keys
+// (product.electrical.bench_session), and a key that resolves to no recorded event is refused there.
 type ReadingOrder
   = BeforeIncidents { keys: List<NonEmptyStr> }
   | AfterIncidents { keys: List<NonEmptyStr> }
+  | BetweenIncidents { after: List<NonEmptyStr>, before: List<NonEmptyStr> }
   | OrderUnrecorded { relative_to: List<NonEmptyStr> }
 
 type ContinuityObservation {

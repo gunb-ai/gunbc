@@ -10,6 +10,11 @@ import product.electrical.continuity {
   AfterIncidents,
   BeforeIncidents,
   BenchConditions,
+  BetweenIncidents,
+  ModuleInstalled,
+  ModuleRemoved,
+  ModuleState,
+  ModuleUnrecorded,
   ContinuityObservation,
   EvidenceRef,
   OrderUnrecorded,
@@ -235,34 +240,39 @@ fn is_before_incidents(o: ReadingOrder) -> Bool {
   match o {
     BeforeIncidents { keys: _ } => true
     AfterIncidents { keys: _ } => false
+    BetweenIncidents { after: _, before: _ } => false
     OrderUnrecorded { relative_to: _ } => false
   }
 }
 
 // ── PHYSICAL STATE: WHICH READINGS DESCRIBE ONE STATE OF THE ASSET ─────────────────────────────────
 //
-// A FOLD OVER READINGS IS A FOLD OVER ONE PHYSICAL STATE, chosen before the fold. A join read before a
-// converter was lifted and a reading of its bare footprint after are of two different boards; a fold
-// that takes both as one board's readings invents a circuit no one measured. So a derivation names
-// the state it reads (SpecimenState) and its readings are selected for that state first.
+// A FOLD OVER READINGS IS A FOLD OVER ONE PHYSICAL STATE IN ONE CONFIGURATION, chosen before the fold.
+// A join read before a converter was lifted and a reading of its bare footprint after are of two
+// different boards; a reading with the module seated and one with it removed are of two different
+// circuits. A fold that takes both as one board's readings invents a circuit no one measured. So a
+// derivation names the state and module configuration it reads (SpecimenState), and its readings are
+// selected for them first.
 //
-// WHICH RECORDED EVENTS DIVIDE STATES, and the reason each does or does not, is decided once here:
-// - a part removed (refitted or not) divides: the circuit had the part, then did not, and a refit is a
-//   second soldering whose joints are not the factory's;
-// - a thermal interface changed does not: no electrical terminal was touched;
-// - an incident divides unless it was inspected and no damage was seen: a damage seen, or no
-//   inspection at all, leaves the board's state after it unknown, so readings either side are kept
-//   apart rather than assumed equal (fail closed). An incident inspected without damage is not a
-//   boundary, and the state carries no claim that the inspection could see everything.
+// WHICH RECORDED EVENTS DIVIDE STATES, decided once here:
+// - every bench incident divides: a bridge or a short on the board may change it whatever an inspection
+//   then sees, and "no damage seen" is kept on the incident as what the inspection found, never read as
+//   "the electrically relevant state was unchanged";
+// - a part removed divides; a removal later refitted is ONE recorded event for two changes (off, then
+//   on), so the states after it are not distinguishable and a selection naming it is refused;
+// - a thermal interface changed does not divide: no electrical terminal was touched. It is still a
+//   recorded event, so a reading may name it.
 //
-// A reading belongs to a state when the boundary events it follows are exactly the state's. A reading
-// whose order is unrecorded against a BOUNDARY event belongs to no state: it stays recorded, and a
-// selection counts it among the readings it excluded instead of folding it into a current-state
-// result. Unrecorded order against an event that divides no state places the reading as well as any
-// other: by the ReadingOrder convention it follows no recorded event it does not list.
+// A READING IS PLACED ONLY WHERE ITS ORDER IS STATED. Each key a reading's order names must resolve to
+// an event recorded for the asset, or the reading is unresolved; and its order against EVERY dividing
+// event must be stated (product.electrical.continuity ReadingOrder), or it is uncovered. Unresolved
+// and uncovered readings stay recorded and are counted by every selection; none is ever taken as the
+// intact board's. A configuration matches only itself: a module unrecorded never matches a module
+// removed or seated, and a selection of unrecorded configuration says so.
 type SpecimenState sole_constructor {
   asset: PhysicalAssetIdentity
   after: List<NonEmptyStr>
+  module: ModuleState
 }
 
 fn alteration_divides_state(a: AssetAlteration) -> Bool {
@@ -272,16 +282,19 @@ fn alteration_divides_state(a: AssetAlteration) -> Bool {
   }
 }
 
-fn incident_divides_state(i: BenchIncident) -> Bool {
-  match i.inspection {
-    NoDamageSeen { looked_at: _ } => false
-    DamageSeen { description: _ } => true
-    NotInspected => true
+fn alteration_refitted(a: AssetAlteration) -> Bool {
+  match a.change {
+    ThermalInterfaceChanged { removed: _, applied: _ } => false
+    PartRemoved { refitted } => refitted
   }
 }
 
+fn recorded_events(r: BenchRecord) -> List<NonEmptyStr> {
+  concat(map(r.incidents, i => i.key), map(r.alterations, a => a.key))
+}
+
 fn state_boundaries(r: BenchRecord) -> List<NonEmptyStr> {
-  concat(map(filter(r.alterations, a => alteration_divides_state(a: a)), a => a.key), map(filter(r.incidents, i => incident_divides_state(i: i)), i => i.key))
+  concat(map(r.incidents, i => i.key), map(filter(r.alterations, a => alteration_divides_state(a: a)), a => a.key))
 }
 
 fn key_listed(keys: List<NonEmptyStr>, k: NonEmptyStr) -> Bool {
@@ -292,70 +305,119 @@ fn same_keys(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
   all(a, k => key_listed(keys: b, k: k)) && all(b, k => key_listed(keys: a, k: k))
 }
 
-// The intact state: before every boundary event. Always a state of the asset, whatever its record.
-fn intact_state(asset: PhysicalAssetIdentity) -> SpecimenState {
-  SpecimenState { asset: asset, after: [] }
+fn module_matches(a: ModuleState, b: ModuleState) -> Bool {
+  match a {
+    ModuleRemoved => match b { ModuleRemoved => true, _ => false }
+    ModuleInstalled { asset: x } => match b { ModuleInstalled { asset: y } => physical_asset_identity_eq(a: x, b: y), _ => false }
+    ModuleUnrecorded => match b { ModuleUnrecorded => true, _ => false }
+  }
 }
 
-// The state after the named boundary events and before every other one. Refuses (Absent) a key the
-// record does not hold as a boundary: naming an event that does not divide states would select no
-// reading at all, an empty result indistinguishable from a board with nothing read.
-fn state_after(r: BenchRecord, asset: PhysicalAssetIdentity, keys: List<NonEmptyStr>) -> SpecimenState? {
+// The intact state in one module configuration: before every dividing event. Always a state of the asset.
+fn intact_state(asset: PhysicalAssetIdentity, module: ModuleState) -> SpecimenState {
+  SpecimenState { asset: asset, after: [], module: module }
+}
+
+// The state after exactly the named dividing events and before every other one. Refused (Absent) when a
+// key is not a dividing event of this record -- naming one would select nothing, an empty result
+// indistinguishable from a board with nothing read -- or names a removal later refitted, whose states
+// one event cannot tell apart.
+fn state_after(r: BenchRecord, asset: PhysicalAssetIdentity, keys: List<NonEmptyStr>, module: ModuleState) -> SpecimenState? {
   let boundaries = state_boundaries(r: r)
-  if all(keys, k => key_listed(keys: boundaries, k: k)) { Present { value: SpecimenState { asset: asset, after: keys } } } else { Absent }
+  let refitted = map(filter(r.alterations, a => alteration_refitted(a: a)), a => a.key)
+  if all(keys, k => key_listed(keys: boundaries, k: k) && !key_listed(keys: refitted, k: k)) { Present { value: SpecimenState { asset: asset, after: keys, module: module } } } else { Absent }
 }
 
-fn follows_no_boundary() -> List<NonEmptyStr>? {
-  Present { value: [] }
-}
+// Where a reading stands among the dividing events: placed after exactly some of them, uncovered (its
+// order against some dividing event is not stated), or unresolved (it names an event not recorded).
+type ReadingPlacement
+  = PlacedAfter { after: List<NonEmptyStr> }
+  | OrderUncovered
+  | EventUnresolved { keys: List<NonEmptyStr> }
 
-// The boundary events a reading follows, or Absent when its order against some boundary is unrecorded.
-fn boundaries_followed(boundaries: List<NonEmptyStr>, o: ReadingOrder) -> List<NonEmptyStr>? {
+fn order_keys(o: ReadingOrder) -> List<NonEmptyStr> {
   match o {
-    BeforeIncidents { keys: _ } => follows_no_boundary()
-    AfterIncidents { keys } => Present { value: filter(keys, k => key_listed(keys: boundaries, k: k)) }
-    OrderUnrecorded { relative_to } => if any(relative_to, k => key_listed(keys: boundaries, k: k)) { Absent } else { follows_no_boundary() }
+    BeforeIncidents { keys } => keys
+    AfterIncidents { keys } => keys
+    BetweenIncidents { after, before } => concat(after, before)
+    OrderUnrecorded { relative_to } => relative_to
   }
 }
 
-fn order_in_state(boundaries: List<NonEmptyStr>, s: SpecimenState, o: ReadingOrder) -> Bool {
-  match boundaries_followed(boundaries: boundaries, o: o) {
-    Absent => false
-    Present { value: follows } => same_keys(a: follows, b: s.after)
+fn placed_before_all() -> ReadingPlacement {
+  PlacedAfter { after: [] }
+}
+
+fn reading_placement(r: BenchRecord, o: ReadingOrder) -> ReadingPlacement {
+  let events = recorded_events(r: r)
+  let boundaries = state_boundaries(r: r)
+  let unresolved = filter(order_keys(o: o), k => !key_listed(keys: events, k: k))
+  if count(unresolved) > 0 { EventUnresolved { keys: unresolved } } else {
+    match o {
+      BeforeIncidents { keys } => if all(boundaries, b => key_listed(keys: keys, k: b)) { placed_before_all() } else { OrderUncovered }
+      AfterIncidents { keys } => if all(boundaries, b => key_listed(keys: keys, k: b)) { PlacedAfter { after: boundaries } } else { OrderUncovered }
+      BetweenIncidents { after, before } =>
+        if all(boundaries, b => key_listed(keys: after, k: b) || key_listed(keys: before, k: b)) && !any(after, k => key_listed(keys: before, k: k)) {
+          PlacedAfter { after: filter(boundaries, b => key_listed(keys: after, k: b)) }
+        } else { OrderUncovered }
+      OrderUnrecorded { relative_to: _ } => if count(boundaries) == 0 { placed_before_all() } else { OrderUncovered }
+    }
   }
 }
 
-fn order_placed(boundaries: List<NonEmptyStr>, o: ReadingOrder) -> Bool {
-  match boundaries_followed(boundaries: boundaries, o: o) {
-    Absent => false
-    Present { value: _ } => true
+// How one reading relates to one selection.
+type ReadingDisposition
+  = InSelection
+  | OfAnotherState
+  | OfAnotherConfiguration
+  | Uncovered
+  | Unresolved
+
+fn reading_disposition(r: BenchRecord, s: SpecimenState, o: ReadingOrder, c: BenchConditions) -> ReadingDisposition {
+  match reading_placement(r: r, o: o) {
+    EventUnresolved { keys: _ } => Unresolved
+    OrderUncovered => Uncovered
+    PlacedAfter { after } => if !same_keys(a: after, b: s.after) { OfAnotherState } else { if module_matches(a: c.module, b: s.module) { InSelection } else { OfAnotherConfiguration } }
   }
 }
 
-// One state's readings, and how many of the asset's readings were left out and why: of another
-// state, or of unrecorded order. Readings of another asset are not this asset's and are not counted.
+fn is_disposition(d: ReadingDisposition, want: ReadingDisposition) -> Bool {
+  match d {
+    InSelection => match want { InSelection => true, _ => false }
+    OfAnotherState => match want { OfAnotherState => true, _ => false }
+    OfAnotherConfiguration => match want { OfAnotherConfiguration => true, _ => false }
+    Uncovered => match want { Uncovered => true, _ => false }
+    Unresolved => match want { Unresolved => true, _ => false }
+  }
+}
+
+// One selection's readings, and how many of the asset's readings it left out, by reason. Readings of
+// another asset are not this asset's and are not counted.
 type StateReadings {
   state: SpecimenState
   continuity: List<ContinuityObservation>
   resistances: List<ResistanceObservation>
   voltages: List<NodeVoltageObservation>
   excluded_other_state: Nat
-  excluded_order_unrecorded: Nat
+  excluded_other_configuration: Nat
+  excluded_order_uncovered: Nat
+  excluded_event_unresolved: Nat
 }
 
 fn state_readings(r: BenchRecord, continuity: List<ContinuityObservation>, s: SpecimenState) -> StateReadings {
-  let boundaries = state_boundaries(r: r)
   let cs = filter(continuity, o => physical_asset_identity_eq(a: o.asset, b: s.asset))
   let rs = filter(r.resistances, o => physical_asset_identity_eq(a: o.asset, b: s.asset))
   let vs = filter(r.voltages, o => physical_asset_identity_eq(a: o.asset, b: s.asset))
-  let orders = concat(concat(map(cs, o => o.order), map(rs, o => o.order)), map(vs, o => o.order))
+  let ds = concat(concat(map(cs, o => reading_disposition(r: r, s: s, o: o.order, c: o.conditions)), map(rs, o => reading_disposition(r: r, s: s, o: o.order, c: o.conditions))), map(vs, o => reading_disposition(r: r, s: s, o: o.order, c: o.conditions)))
   StateReadings {
     state: s,
-    continuity: filter(cs, o => order_in_state(boundaries: boundaries, s: s, o: o.order)),
-    resistances: filter(rs, o => order_in_state(boundaries: boundaries, s: s, o: o.order)),
-    voltages: filter(vs, o => order_in_state(boundaries: boundaries, s: s, o: o.order)),
-    excluded_other_state: count(filter(orders, o => order_placed(boundaries: boundaries, o: o) && !order_in_state(boundaries: boundaries, s: s, o: o))),
-    excluded_order_unrecorded: count(filter(orders, o => !order_placed(boundaries: boundaries, o: o))),
+    continuity: filter(cs, o => is_disposition(d: reading_disposition(r: r, s: s, o: o.order, c: o.conditions), want: InSelection)),
+    resistances: filter(rs, o => is_disposition(d: reading_disposition(r: r, s: s, o: o.order, c: o.conditions), want: InSelection)),
+    voltages: filter(vs, o => is_disposition(d: reading_disposition(r: r, s: s, o: o.order, c: o.conditions), want: InSelection)),
+    excluded_other_state: count(filter(ds, d => is_disposition(d: d, want: OfAnotherState))),
+    excluded_other_configuration: count(filter(ds, d => is_disposition(d: d, want: OfAnotherConfiguration))),
+    excluded_order_uncovered: count(filter(ds, d => is_disposition(d: d, want: Uncovered))),
+    excluded_event_unresolved: count(filter(ds, d => is_disposition(d: d, want: Unresolved))),
   }
 }
 
@@ -410,6 +472,7 @@ fn order_text(o: ReadingOrder) -> String {
       Present { value: _ } => join([", read before ", keys_text(keys: keys)], "")
     }
     AfterIncidents { keys } => join([", read after ", keys_text(keys: keys)], "")
+    BetweenIncidents { after, before } => join([", read after ", keys_text(keys: after), " and before ", keys_text(keys: before)], "")
     OrderUnrecorded { relative_to } => join([", order against ", keys_text(keys: relative_to), " unrecorded"], "")
   }
 }
