@@ -26308,6 +26308,54 @@ pub fn infer_transport_node(
     }
 }
 
+pub fn parameter_default_emissions(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferEmissions> {
+    infer_emissions_concat_all(Rc::new({
+        let mut __result = Vec::new();
+        for p in item.params.clone().iter().cloned() {
+            __result.push(
+                match crate::v1_std_core::param_node_default_value(p.clone()) {
+                    std::option::Option::None => infer_emissions_empty(),
+                    Some(default_expr) => {
+                        if (param_is_generic_decl(p.clone(), scope.type_env.source_indices.clone())
+                            || direct_call_formal_has_unbound_type_variable(
+                                crate::v1_std_core::param_node_type_expr(p.clone()),
+                            ))
+                        {
+                            infer_emissions_empty()
+                        } else {
+                            {
+                                let declared = crate::v1_std_core::param_node_type_expr(p.clone());
+                                let r = infer_expr(
+                                    default_expr.clone(),
+                                    scope.clone(),
+                                    Some(declared.clone()),
+                                );
+                                infer_emissions_concat(
+                                    r.emissions.clone(),
+                                    infer_emissions_of_diagnostics(
+                                        declared_type_conformance_diags(
+                                            DeclaredTypePosition::PositionParameterDefault,
+                                            crate::v1_std_core::authored_name_at(
+                                                scope.type_env.source_indices.clone(),
+                                                p.clone(),
+                                            ),
+                                            declared.clone(),
+                                            expression_value_type(r.typed.clone()),
+                                            r.typed.span.clone(),
+                                            scope.clone(),
+                                        ),
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                },
+            );
+        }
+        __result
+    }))
+}
+
 pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let typed_anno = item.type_annotation.clone();
@@ -26510,6 +26558,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             props_emissions.clone(),
                             body_emissions.clone(),
                             infer_emissions_of_diagnostics(return_conformance_diags),
+                            parameter_default_emissions(item.clone(), scope.clone()),
                         ])),
                     })
                 }
@@ -26628,10 +26677,11 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
-                            emissions: infer_emissions_concat(
+                            emissions: infer_emissions_concat_all(Rc::new(vec![
                                 transport_emissions.clone(),
                                 props_emissions.clone(),
-                            ),
+                                parameter_default_emissions(item.clone(), scope.clone()),
+                            ])),
                         })
                     } else {
                         Rc::new(TypedItemResult {
