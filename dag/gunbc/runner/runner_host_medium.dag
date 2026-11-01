@@ -196,7 +196,7 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact, baked: RunnerHos
     HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_account, command: shell_command_render(command: useradd_system_nologin_command(name: runner_host_medium_runner_account)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_release_dir, command: shell_command_render(command: mkdir_parents_command(path: runner_host_baked_release_locus(baked: baked))) as NonEmptyStr },
-    HostCaptureStage { name: runner_host_section_release_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_baked_release_on_medium(baked: baked), into_directory: runner_host_baked_release_locus(baked: baked), strip_components: 0)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_release_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_baked_release_on_medium(baked: baked), into_directory: runner_host_baked_release_locus(baked: baked), strip_components: 0, existing_directories: TarOverwriteDir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_nproc, command: shell_command_render(command: nproc_command()) as NonEmptyStr },
