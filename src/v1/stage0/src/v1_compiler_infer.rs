@@ -14857,7 +14857,10 @@ pub fn expected_type_is_keyed_collection(exp: Rc<Node>, scope: Rc<InferScope>) -
                         last,
                         "FinitelySupportedFunction".to_string(),
                     ) || (((core.children.clone().len() as i64) == 2)
-                        && (core.name.clone() == "Map".to_string())))
+                        && crate::std_types::container_spelling_is_algebra(
+                            core.name.clone(),
+                            "FinitelySupportedFunction".to_string(),
+                        )))
                 }
             }
         }
@@ -14883,7 +14886,10 @@ pub fn expected_type_is_set_collection(exp: Rc<Node>, scope: Rc<InferScope>) -> 
                         last,
                         "FinitePowerSet".to_string(),
                     ) || (((core.children.clone().len() as i64) == 1)
-                        && (core.name.clone() == "Set".to_string())))
+                        && crate::std_types::container_spelling_is_algebra(
+                            core.name.clone(),
+                            "FinitePowerSet".to_string(),
+                        )))
                 }
             }
         }

@@ -40,7 +40,7 @@ pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, Varia
 pub use crate::std_syntax::{LiteralValue, BinOp, AlgebraFieldKind};
 pub use crate::std_target_representation::{VariantParentIdentity, variant_value_realization_refusal_message, ExactBindingResolution, VariantValueRealization, VariantParentKey};
 pub use crate::std_types::{SourceSpan};
-pub use crate::std_types::{is_container_type, is_kernel_type, container_template_algebra};
+pub use crate::std_types::{is_container_type, is_kernel_type, container_template_algebra, container_spelling_is_algebra};
 pub use crate::std_unicode_scalar::{ascii_lowercase};
 pub use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::{closure_stub_v2_std_integer_source};
@@ -1374,7 +1374,7 @@ pub fn rust_declaration_checkpoint_grounding_at(
 }
 
 pub fn rust_seed_host_container_base(name: String) -> Option<String> {
-    if ((name.clone() == "List".to_string()) || (name.clone() == "FreeMonoid".to_string())) {
+    if crate::std_types::container_spelling_is_algebra(name, "FreeMonoid".to_string()) {
         Some("Vec".to_string())
     } else {
         std::option::Option::None
@@ -1406,7 +1406,8 @@ pub fn is_host_text_carrier_type(
                 crate::v1_std_core::type_reference_provenance(n.clone()),
             )
         } else {
-            if ((nm.clone() == "FreeMonoid".to_string()) || (nm.clone() == "List".to_string())) {
+            if crate::std_types::container_spelling_is_algebra(nm.clone(), "FreeMonoid".to_string())
+            {
                 if (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
                     != "Char".to_string())
                 {

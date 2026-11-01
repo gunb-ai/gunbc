@@ -155,10 +155,7 @@ pub fn container_template_algebra(name: String) -> Option<String> {
 }
 
 pub fn container_spelling_is_algebra(name: String, algebra: String) -> bool {
-    match container_template_algebra(name) {
-        Some(found) => (found.clone() == algebra.clone()),
-        std::option::Option::None => false,
-    }
+    (container_template_algebra(name).as_deref() == Some(algebra.clone()).as_deref())
 }
 
 pub fn container_template_alias_algebra(name: String) -> Option<String> {
