@@ -1053,6 +1053,11 @@ fn enum_member_identity_cases() -> List<NativeEmissionCase> {
 }
 
 data native_emission_expected_identities: List<String> = [
+  "catchall_tco_body_restores_shared_carrier",
+  "catchall_tco_body_terminal_preserves_value",
+  "catchall_enum_payload_restores_shared_carrier",
+  "explicit_enum_payload_keeps_its_value",
+  "catchall_recursive_payload_restores_shared_carrier",
   "enum_member_identity_shared_uses_its_local_arm",
   "enum_member_identity_other_uses_its_local_arm",
   "enum_member_identity_shared_is_not_the_other_arm",
@@ -1311,8 +1316,95 @@ fn empty_list_cast_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// A catch-all binds the matched enum value after the scrutinee's shared layer
+// has been opened. Reusing it as another variant's field must restore that layer.
+type ControlNestedLookup
+  = ControlNestedFound { value: Int }
+  | ControlNestedMissing
+
+type ControlNestedLookupOutcome
+  = ControlNestedLookupRefused { cause: ControlNestedLookup }
+
+fn control_nested_lookup_wrap(value: ControlNestedLookup) -> ControlNestedLookupOutcome {
+  match value {
+    ControlNestedFound { value: n } => ControlNestedLookupRefused { cause: ControlNestedFound { value: n } }
+    other => ControlNestedLookupRefused { cause: other }
+  }
+}
+
+type ControlRecursiveLookup
+  = ControlRecursiveEnd
+  | ControlRecursiveNext { next: ControlRecursiveLookup }
+
+type ControlRecursiveLookupOutcome
+  = ControlRecursiveLookupRefused { cause: ControlRecursiveLookup }
+
+fn control_recursive_lookup_wrap(value: ControlRecursiveLookup) -> ControlRecursiveLookupOutcome {
+  match value {
+    ControlRecursiveEnd => ControlRecursiveLookupRefused { cause: ControlRecursiveEnd }
+    other => ControlRecursiveLookupRefused { cause: other }
+  }
+}
+
+// The recursive call is in the catch-all BODY, a route accepted by both parsers.
+// Arm guards are not part of v2's grammar and are not this control's subject.
+fn control_recursive_tco_body_wrap(value: ControlRecursiveLookup, remaining: Int) -> ControlRecursiveLookupOutcome {
+  match value {
+    other => if remaining > 0 {
+      control_recursive_tco_body_wrap(value: other, remaining: remaining - 1)
+    } else {
+      ControlRecursiveLookupRefused { cause: other }
+    }
+  }
+}
+
+fn catchall_tco_body_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "catchall_tco_body_restores_shared_carrier",
+      held: match control_recursive_tco_body_wrap(value: ControlRecursiveNext { next: ControlRecursiveEnd }, remaining: 3) {
+        ControlRecursiveLookupRefused { cause: ControlRecursiveNext { next: ControlRecursiveEnd } } => true
+        _ => false
+      },
+    },
+    NativeEmissionCase {
+      identity: "catchall_tco_body_terminal_preserves_value",
+      held: match control_recursive_tco_body_wrap(value: ControlRecursiveNext { next: ControlRecursiveEnd }, remaining: 0) {
+        ControlRecursiveLookupRefused { cause: ControlRecursiveNext { next: ControlRecursiveEnd } } => true
+        _ => false
+      },
+    },
+  ]
+}
+
+fn nested_payload_catchall_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "catchall_enum_payload_restores_shared_carrier",
+      held: match control_nested_lookup_wrap(value: ControlNestedMissing) {
+        ControlNestedLookupRefused { cause: ControlNestedMissing } => true
+        _ => false
+      },
+    },
+    NativeEmissionCase {
+      identity: "explicit_enum_payload_keeps_its_value",
+      held: match control_nested_lookup_wrap(value: ControlNestedFound { value: 47 }) {
+        ControlNestedLookupRefused { cause: ControlNestedFound { value: n } } => n == 47
+        _ => false
+      },
+    },
+    NativeEmissionCase {
+      identity: "catchall_recursive_payload_restores_shared_carrier",
+      held: match control_recursive_lookup_wrap(value: ControlRecursiveNext { next: ControlRecursiveEnd }) {
+        ControlRecursiveLookupRefused { cause: ControlRecursiveNext { next: ControlRecursiveEnd } } => true
+        _ => false
+      },
+    },
+  ]
+}
+
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(enum_member_identity_cases(), concat(imported_result_capture_cases(), concat(local_binder_shadow_cases(), concat(local_binder_shadows_coproduct_arm_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), concat(mixed_set_carrier_cases(), canonical_set_carrier_cases())))))))))))
+  concat(enum_member_identity_cases(), concat(catchall_tco_body_cases(), concat(nested_payload_catchall_cases(), concat(imported_result_capture_cases(), concat(local_binder_shadow_cases(), concat(local_binder_shadows_coproduct_arm_cases(), concat(open_init_fold_cases(), concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), concat(bare_variant_fold_init_cases(), concat(dual_form_append_accumulator_cases(), concat(list_payload_enum_cases(), concat(mixed_set_carrier_cases(), canonical_set_carrier_cases())))))))))))))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
