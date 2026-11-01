@@ -924,6 +924,28 @@ test fn operands_outside_the_claim_universe_do_not_admit_to_it() -> Bool {
   })
 }
 
+// A REHOMED CLAIM CHANGES EXECUTOR BY CHANGING ITS MODULE NAME, AND NOTHING ELSE. H6's first member,
+// `wc_byte_count_verification_witness`, moved from `test.claim.*` to `v2.test.claim.*`: its exact label
+// now lies inside the native universe (supplied values at this boundary), while a claim still
+// authored under `test.claim.*` keeps the claim route. The inhabitance half -- that the real native
+// route emits a NativeTestVerdict row for the moved identity -- is the srv1 `gunbc test` receipt in
+// the PR, not this fold (DESIGN section 3, the pairing obligation). The OLD label of the moved claim
+// still lies inside the claim universe, so admission answers ClaimRoute for it; that it then selects
+// no discovered claim is the executor's answer, observed on the real route, not decidable here.
+test fn a_rehomed_claim_admits_native_and_an_unmigrated_one_keeps_the_claim_route() -> Bool {
+  (match admit_test_operand(
+    operand: "//v2/test/claim/wc_byte_count_verification_witness:witness_byte_count_verification_preserves_nonmatching_arms",
+    native_universe: native_universe(),
+    claim_universe: claim_universe()
+  ) {
+    TestOperandNativeRoute { pattern: _ } => true
+    _ => false
+  }) && admits_to_claim_route_as(
+    operand: "//test/claim/namespace_import_closure_witness:namespace_import_closure_receipt_holds",
+    rendered: "//test/claim/namespace_import_closure_witness:namespace_import_closure_receipt_holds"
+  )
+}
+
 // THE PRODUCTION UNIVERSE IS THE SUBTREE THE CENSUS'S OWN LABELS OCCUPY. A claim site labelled by
 // `site_label_text` must lie inside `claim_route_universe`, or the route would refuse the very
 // labels the census mints; and the universe must not reach the native one.

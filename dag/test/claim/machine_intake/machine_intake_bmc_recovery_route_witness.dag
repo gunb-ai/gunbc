@@ -752,10 +752,10 @@ test fn the_recovery_obligations_are_rostered_as_pending_frontiers() -> Bool {
     && any(xs: onboarding, predicate: fn(row) {
          recovery_frontier_pending(row: row)
            && recovery_frontier_subject_declared(row: row)
-           // the dissolve trigger is the fold this row exists to demand: a bmc_onboard fold, which does
+           // the dissolve trigger is the fold this row exists to demand: a bmc_secure fold, which does
            // not exist today -- if someone repoints the trigger at a live declaration, this goes red and
            // the row's pending status stops being something the module can quietly wish away
-           && recovery_frontier_trigger_module(row: row) == "gunbc.tools.bmc_onboard"
+           && recovery_frontier_trigger_module(row: row) == "gunbc.machine_intake.bmc_secure"
        })
 }
 
