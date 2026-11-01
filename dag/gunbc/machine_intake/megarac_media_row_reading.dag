@@ -145,18 +145,9 @@ fn reads_agree_on_the_ejected_row(a: MegaRacMediaRowReceipt, b: MegaRacMediaRowR
     && a.run_id != b.run_id
 }
 
-// WHAT THE BUILD REPORTS FOR A CD THAT IS NOT PRESENTING, as a fixture can use it. This is the wire a model
-// of the boot at THIS build has to put in its cleared CD row, and it is NOT the wire the 2026-09-05 probe put
-// there at 0.32 (0): the value comes from the read, not from a typed literal. What it does not claim: that a
-// CD slot which had never held a session would read this way -- every reading here follows an ended session --
-// nor that the image name the read carried belongs in a fixture for a host with nothing presented.
-fn megarac_cleared_cd_wire_status_at_the_build_this_repository_read() -> Int {
-  boot_run_40264233543_end_media_row.redirection_status
-}
-
 test fn w_the_build_reports_a_different_wire_for_a_non_presenting_cd_than_the_probe_did() -> Bool {
-  megarac_cleared_cd_wire_status_at_the_build_this_repository_read() == 16
-    && boot_run_40258937016_end_media_row.redirection_status == megarac_cleared_cd_wire_status_at_the_build_this_repository_read()
+  boot_run_40264233543_end_media_row.redirection_status == 16
+    && boot_run_40258937016_end_media_row.redirection_status == boot_run_40264233543_end_media_row.redirection_status
     && boot_run_40258937016_end_media_row.session_index == boot_run_40264233543_end_media_row.session_index
     && boot_run_40258937016_end_media_row.media_index == boot_run_40264233543_end_media_row.media_index
     && boot_run_40258937016_end_media_row.observed_at != boot_run_40264233543_end_media_row.observed_at
