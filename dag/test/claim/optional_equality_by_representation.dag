@@ -8,11 +8,12 @@ type ObrKind = ObrFirst | ObrSecond
 
 data obr_kinds: List<ObrKind> = [ObrFirst, ObrSecond]
 
-// EXPECTED RED (v2.workflow.floor_expected_red, chunk optional_equality_by_representation): the
+// REGRESSION CONTROL (an ordinary claim; the floor_expected_red chunk for it is deleted): the
 // method-form specimen of gunbc.recurring_failure_mode optional_equality_answers_by_representation
-// over a data list of variant rows. The interpreter's `first` yields the raw element, the literal is
-// held as Present, and `==` answers false. When `first` realizes the modeled optional the roster row
-// is deleted and this claim stays as the regression control (DESIGN 4b(4)).
+// over a data list of variant rows. The interpreter's `first` used to yield the raw element while the
+// literal is held as Present, so `==` answered false. This PR makes `first` yield the modeled
+// optional, so the claim must now hold; it stays enrolled permanently (DESIGN 4b(4)). Standing:
+// climb authored, not yet executed.
 test fn a_present_first_equals_its_present_literal() -> Bool {
   obr_kinds.first() == Present { value: ObrFirst }
 }
