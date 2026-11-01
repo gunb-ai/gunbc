@@ -22,6 +22,14 @@ import extdeps.posix.signal {
   LinuxStandardSignal, linux_standard_signal_of_name,
   linux_standard_signal_of_number, linux_standard_signal_wire_name,
 }
+import gunbc.systemd_unit_names {
+  dispatch_attempt_unit_name, dispatch_review_unit_name, dispatch_audit_unit_name,
+  dispatch_supervisor_unit_name, belt_attempt_obligation_unit_name,
+}
+import extdeps.systemd {
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong, systemd_unit_name_wire, systemd_unit_name_refusal_detail,
+}
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
@@ -89,6 +97,60 @@ fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
     AttemptAuditorRole { head_sha } => join(["audit.", head_sha], "")
     AttemptObligationRole => "obligation"
     AttemptSupervisorRole { turn } => join(["supervise.t", to_string(value: turn)], "")
+  }
+}
+
+// THE UNIT A RECORD WAS WRITTEN FOR. The entry name never spells the unit: it carries the parts each
+// launcher used to NAME its unit. So the unit is DERIVED, by calling the same declared builder that
+// launcher calls -- one authority, never a second spelling (DESIGN 6b: a rule re-derived per boundary is
+// a per-site fork). A role token no builder claims is refused BY NAME; the decoder never invents a unit
+// name, and a name no launcher can produce is not evidence about any holder.
+//
+// The token grammar is attempt_unit_role_token's own: criterion keys and head shas carry no '.', because
+// that function joins them with '.'. If a token splits some other way it is refused rather than guessed.
+type AttemptExitUnitDerivation
+  = AttemptExitUnitDerived { unit: NonEmptyStr }
+  | AttemptExitUnitUnclaimed { role_token: String }
+  | AttemptExitUnitRefusedShape { role_token: String, detail: String }
+  | AttemptExitUnitRefusedName { role_token: String, admission: SystemdUnitNameAdmission }
+
+fn attempt_exit_unit_admission(derivation: SystemdUnitNameAdmission, role_token: String) -> AttemptExitUnitDerivation {
+  match derivation {
+    SystemdUnitNameAdmitted { name } => AttemptExitUnitDerived { unit: systemd_unit_name_wire(name: name) }
+    SystemdUnitNameStemEmpty => AttemptExitUnitRefusedName { role_token: role_token, admission: SystemdUnitNameStemEmpty }
+    SystemdUnitNameDisallowedCharacter { stem, character } => AttemptExitUnitRefusedName { role_token: role_token, admission: SystemdUnitNameDisallowedCharacter { stem: stem, character: character } }
+    SystemdUnitNameOverlong { length } => AttemptExitUnitRefusedName { role_token: role_token, admission: SystemdUnitNameOverlong { length: length } }
+  }
+}
+
+fn attempt_exit_unit_of(node_id: String, attempt_key: String, role_token: String) -> AttemptExitUnitDerivation {
+  if role_token == "worker" {
+    attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token)
+  } else if role_token == "obligation" {
+    AttemptExitUnitDerived { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key) }
+  } else if starts_with(s: role_token, prefix: "review.") {
+    let segments = role_token.split(delimiter: ".")
+    if count(segments) != 3 {
+      AttemptExitUnitRefusedShape { role_token: role_token, detail: "a reviewer role is review.<criterion>.<head>; this token has some other number of '.'-separated segments" }
+    } else {
+      match segments.get(1) {
+        Present { value: criterion } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion) }
+        Absent => AttemptExitUnitRefusedShape { role_token: role_token, detail: "a reviewer role names no criterion" }
+      }
+    }
+  } else if starts_with(s: role_token, prefix: "audit.") {
+    if count(role_token.split(delimiter: ".")) != 2 {
+      AttemptExitUnitRefusedShape { role_token: role_token, detail: "an auditor role is audit.<head>; this token has some other number of '.'-separated segments" }
+    } else {
+      AttemptExitUnitDerived { unit: dispatch_audit_unit_name(node_id: node_id, attempt_key: attempt_key) }
+    }
+  } else if starts_with(s: role_token, prefix: "supervise.t") {
+    match parse_int(text: substring(s: role_token, start: 11, end: string_length(s: role_token))) {
+      Present { value: turn } => AttemptExitUnitDerived { unit: dispatch_supervisor_unit_name(node_id: node_id, attempt_key: attempt_key, turn: turn) }
+      Absent => AttemptExitUnitRefusedShape { role_token: role_token, detail: "a supervisor role is supervise.t<turn> and this token's turn is not a number" }
+    }
+  } else {
+    AttemptExitUnitUnclaimed { role_token: role_token }
   }
 }
 
@@ -162,6 +224,12 @@ type AttemptExitRecord {
   node_id: String
   attempt_key: String
   role: String
+  // The unit this record was written for, DERIVED from the subject parts above by calling the declared
+  // builder for that role. It is a common field because every route's record names its unit, and it is
+  // derived rather than spelled because the entry name is built inside systemd's ExecStopPost
+  // substitution, which never sees a unit name. A consumer matches a record by this name plus the
+  // invocation below -- never by reinterpreting a route-specific field as a unit.
+  unit: NonEmptyStr
   invocation_id: String
   result: ServiceResult
   end: AttemptProcessEnd
@@ -226,16 +294,32 @@ fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
       match attempt_process_end_of(code: code, status: status) {
         AttemptProcessEndRefused { reason } => AttemptExitEntryMalformed { entry_name: entry_name, reason: reason }
         AttemptProcessEndOf { end } =>
-          AttemptExitEntryDecoded {
-            record: AttemptExitRecord {
-              node_id: node_id,
-              attempt_key: attempt_key,
-              role: role,
-              invocation_id: invocation_id,
-              result: service_result_of_wire(word: result_word),
-              end: end,
+          match attempt_exit_unit_of(node_id: node_id, attempt_key: attempt_key, role_token: role) {
+            AttemptExitUnitUnclaimed { role_token } => AttemptExitEntryMalformed {
               entry_name: entry_name,
-            },
+              reason: join(["the role ", role_token, " names no launcher this build declares, so no unit can be derived for it"], ""),
+            }
+            AttemptExitUnitRefusedShape { role_token, detail } => AttemptExitEntryMalformed {
+              entry_name: entry_name,
+              reason: join(["the role ", role_token, " is not a role this build declares: ", detail], ""),
+            }
+            AttemptExitUnitRefusedName { role_token, admission } => AttemptExitEntryMalformed {
+              entry_name: entry_name,
+              reason: join(["the unit for role ", role_token, " is refused: ", systemd_unit_name_refusal_detail(admission: admission)], ""),
+            }
+            AttemptExitUnitDerived { unit } =>
+              AttemptExitEntryDecoded {
+                record: AttemptExitRecord {
+                  node_id: node_id,
+                  attempt_key: attempt_key,
+                  role: role,
+                  unit: unit,
+                  invocation_id: invocation_id,
+                  result: service_result_of_wire(word: result_word),
+                  end: end,
+                  entry_name: entry_name,
+                },
+              }
           }
       }
     }
