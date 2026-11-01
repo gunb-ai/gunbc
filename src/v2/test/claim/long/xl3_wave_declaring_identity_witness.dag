@@ -6,7 +6,7 @@ import std.optional { Absent, Optional, Present }
 import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
-import v2.compiler.resolve { OccurrenceResolutionRecord, ResolvedToDeclaration, BoundToDeclaration, ResolvedTree }
+import v2.compiler.resolve { ResolvedToDeclaration, BoundToDeclaration, ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.source_root_eval { native_test_context_from_ingest, native_test_resolve_module }
 import v2.std.artifact { Artifact, SourceFile }
