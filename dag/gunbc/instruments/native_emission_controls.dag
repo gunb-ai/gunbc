@@ -741,9 +741,14 @@ fn control_power_seed(xs: List<Int>) -> FinitePowerSet<Int> {
   xs |> fold(init: empty_set(), f: (acc, n) => set_insert(acc, n))
 }
 
+fn control_power_empty() -> FinitePowerSet<Int> {
+  empty_set()
+}
+
 fn mixed_set_carrier_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "power_set_spelled_seed_collects_each_member_once", held: length(control_power_seed(xs: [1, 2, 2])) == 2 },
+    NativeEmissionCase { identity: "power_set_spelled_canonical_empty", held: length(control_power_empty()) == 0 },
     NativeEmissionCase { identity: "power_set_spelled_seed_red_is_not_empty", held: !(length(control_power_seed(xs: [1])) == 0) },
     NativeEmissionCase { identity: "mixed_set_enum_equal_members_in_another_order", held: ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [2, 1]) } },
     NativeEmissionCase { identity: "mixed_set_enum_red_member_differs", held: !(ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 2]) } == ControlMixedSetPresent { sequence: [1], members: control_int_set(xs: [1, 3]) }) },
@@ -920,6 +925,7 @@ data native_emission_expected_identities: List<String> = [
   "mixed_set_record_red_sequence_differs",
   "power_set_spelled_seed_collects_each_member_once",
   "power_set_spelled_seed_red_is_not_empty",
+  "power_set_spelled_canonical_empty",
 ]
 
 // RULE: a match whose only coverage of an outer variant is nested two levels deep is emitted
