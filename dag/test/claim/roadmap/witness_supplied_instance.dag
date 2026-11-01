@@ -1,0 +1,297 @@
+module test.claim.roadmap.witness_supplied_instance
+
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.posix.identity { PosixOwnerNames }
+import extdeps.tools.gnu_coreutils { mktemp_directory_command }
+import extdeps.tools.id {
+  id_program, id_uid_command, id_gid_command, id_group_name_command, id_user_name_argv,
+}
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardLocalProvision,
+  DashboardExistingRepo,
+  srv1_dashboard_lab_id,
+  srv1_dashboard_lab_root,
+  srv1_dashboard_lab_provision_parent,
+  dashboard_instance_child,
+  dashboard_inbox_under,
+  dashboard_execution_environment,
+  srv1_lab_dashboard_instance,
+}
+
+// THE SUPPLIED INSTANCE ROOT, FOR A CONFINEMENT WITNESS THAT MUST NOT LIVE ON THE HOST IT DESCRIBES.
+//
+// A wet confinement witness proves something about a BOUNDARY by standing inside it and pushing: it installs a
+// tree, writes under the confinement, and shows a write outside is refused. Both halves are WRITES, so the
+// witness needs a root it is allowed to write — and until now the witnesses in this family got theirs from the
+// production row: `roadmap_dashboard_instance.srv1_lab_dashboard_instance()`, whose `provision_parent_root` is
+// `srv1_dashboard_lab_provision_parent` = `/opt/gunbc-lab`. That gives a witness exactly two hosts, and neither
+// one is a place a witness should be: on every host but srv1 the first `install` refuses (`install: cannot
+// create directory /opt/gunbc-lab: Permission denied` — nine of them on srv2, 2026-11-01), and on srv1 — which
+// is LIVE, serving the lab — the claim passes by writing into the root the lab dispatches from. The row is
+// filed as `gunbc.recurring_failure_mode.a_confinement_witness_whose_only_writable_root_is_the_live_host`.
+//
+// WHAT THIS MODULE SUPPLIES, AND WHY THIS SHAPE AND NOT ANOTHER.
+//
+//   THE ROOT IS AN MKTEMP LEAF UNDER A DECLARED SCRATCH PREFIX. `witness_scratch_prefix` is the only literal
+//   any witness writes; the LEAF comes from `mktemp -d`, because a fixed scratch path is a rendezvous point
+//   between two runs of the same witness on the same host — and a witness that inherits a tree it did not
+//   create cannot tell its own write from a leftover, which is the difference between observing a confinement
+//   breach and reading last week's file. The prefix is a `data` row per DESIGN section 1, and the refusal arm
+//   (`witness_supplied_root_is_refused`) is a PURE decision, so it is claimed in the hermetic corpus rather
+//   than only under `--wet`: the guard that keeps a witness off the live root does not itself need a host.
+//
+//   THE PRINCIPAL IS THE HOST'S OWN, READ AND REQUIRED — NOT ONE THE WITNESS MINTS. The alternative was
+//   `groupadd`/`useradd` in the fixture. It was rejected for three reasons that all point the same way:
+//   (1) /etc/passwd and /etc/group are durable host state that no scratch prefix contains, so a witness that
+//   mints an account has mutated the host outside the one tree it owns, with no seal and no rollback — the same
+//   defect this work removes, moved from the filesystem to the account database; (2) it needs root, and a
+//   confinement witness running as root answers the DAC question with root's privilege instead of with the
+//   model's declared modes, so the very assertion it exists to make stops discriminating; (3) the production
+//   names (`node`, gid 1003 as measured on srv1, and `gunbc-attempt` for the shared attempt group) are facts
+//   about srv1's account database — srv2 has user `briansrls`, no group `node`, and neither `gunbc-worker` nor
+//   `gunbc-attempt` — so nominating them measures the host's provisioning rather than the boundary. What is
+//   kept is the pattern this family already uses for the same problem (`wet_group_token` in
+//   `test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness`): ask the host what account is running,
+//   REQUIRE an answer, and refuse when it does not answer. `witness_principal_from_texts` is the pure decision
+//   — uid, gid and both names, refused when any is missing and refused when the uid is 0 — so the refusal is
+//   claimed without spawning anything, and the uid/gid/mode legs stay exactly as strong: they are graded by the
+//   host (`install -o -g -m`, `find -printf '%u %g %m'`, the sandbox's own EACCES) against the MODEL's modes,
+//   and now against a principal the host actually SAYS instead of one inherited from srv1.
+//
+//   WHAT IS *NOT* SUPPLIED, WHICH IS THE PAIRING OBLIGATION (DESIGN section 3). The instance is built from the
+//   SAME production row the lab uses and the SAME production path helper it uses (`dashboard_instance_child`):
+//   the deployment, the instance id, the layout, the serve function, the port, the admitted-revision source,
+//   the publication branch, the worker identity, the toolchain and the memory cap all come from
+//   `srv1_lab_dashboard_instance()` unchanged, so the only inputs that come from the witness are the root
+//   prefix, the principal, the throwaway repository, and the transport (a witness is its own provision target;
+//   `DashboardSshProvision { host: "srv1" }` would have a local test reach into the live host). The live row
+//   keeps its one execution as a PURE derivation in
+//   `test.claim.roadmap.dashboard_lab_instance_inhabitance_witness`, which asserts the shape the lab actually
+//   gets — every derived path under the lab root, the owner, the group, the declared modes — without writing or
+//   spawning. Deleting the real derivation makes THAT claim fail, which is what keeps supplying a root from
+//   becoming, silently, deleting one.
+
+// THE SCRATCH PREFIX EVERY WITNESS ROOT IS AN MKTEMP LEAF UNDER. A `data` row so the prefix is one admitted
+// fact rather than a string scattered through fixtures; the unique leaf is always the host's, from `mktemp -d`.
+data witness_scratch_prefix: NonEmptyStr = "/tmp" as NonEmptyStr
+
+// THE LEAF TEMPLATE `mktemp -d` IS HANDED. The XXXXXX is mktemp's own token, not a placeholder: mktemp refuses
+// to create the directory unless the template ends in at least three of them, and a refused mktemp is the
+// fixture's `Absent` arm — a witness with no root declines, it does not fall back to a fixed path.
+data witness_scratch_leaf_template: NonEmptyStr = "gunbc-wet-witness-XXXXXX" as NonEmptyStr
+
+fn witness_scratch_template() -> String {
+  join([witness_scratch_prefix as String, "/", witness_scratch_leaf_template as String], "")
+}
+
+// THE ONE PROCESS THE FIXTURE NEEDS TO GET A ROOT. Callers run this with `run_shell_command_observe` and read
+// the created path off stdout; an empty or absent stdout is `Absent`, which every claim turns into a refusal
+// rather than a default.
+fn witness_scratch_parent_command() -> ArgvCommand {
+  mktemp_directory_command(template: witness_scratch_template() as NonEmptyStr)
+}
+
+// THE PRINCIPAL, AS THE HOST SAID IT. `uid`/`gid` are what `install -o/-g` and the readback compare; `user` and
+// `group` are the names `find -printf '%u %g'` prints, which is how the modes leg checks the group it set
+// (GNU find 4.10.0 exits 1 on an unknown GROUP name, so a name the host does not have is a refusal, not a
+// zero).
+type WitnessSuppliedPrincipal {
+  uid: Int
+  gid: Int
+  user: NonEmptyStr
+  group: NonEmptyStr
+}
+
+// THE COMMANDS THAT ASK. Four separate processes, deliberately: one `id -u -g -n` collapses the answers into a
+// single line, and then a missing group name is indistinguishable from a missing uid — the conflation that lets
+// a witness "pass" on a host that has no such account.
+fn witness_principal_commands() -> List<ArgvCommand> {
+  [
+    id_uid_command(),
+    id_gid_command(),
+    id_group_name_command(),
+    argv_command(program: id_program(), arguments: id_user_name_argv()),
+  ]
+}
+
+type PrincipalNumbers {
+  uid: Int
+  gid: Int
+}
+
+// THE PURE DECISION. Nothing here spawns, so the refusal arms are claimable in the hermetic corpus: a witness
+// that silently substituted a production uid for a missing one would have to pass this first. `uid == 0` is
+// refused for the reason in the header — running as root makes the DAC legs non-discriminating — and a negative
+// uid or gid is what `id` prints when the account cannot be resolved, which is the host SAYING it has no such
+// principal.
+fn witness_principal_from_texts(
+  uid_text: String,
+  gid_text: String,
+  user_text: String,
+  group_text: String,
+) -> Optional<WitnessSuppliedPrincipal> {
+  match parse_principal_numbers(uid_text: uid_text, gid_text: gid_text) {
+    Absent => Absent
+    Present { value: numbers } =>
+      if trim(s: user_text) == "" || trim(s: group_text) == "" || numbers.uid == 0 {
+        Absent
+      } else {
+        Present {
+          value: WitnessSuppliedPrincipal {
+            uid: numbers.uid,
+            gid: numbers.gid,
+            user: trim(s: user_text) as NonEmptyStr,
+            group: trim(s: group_text) as NonEmptyStr,
+          },
+        }
+      }
+  }
+}
+
+fn parse_principal_numbers(uid_text: String, gid_text: String) -> Optional<PrincipalNumbers> {
+  match parse_int(s: trim(s: uid_text)) {
+    Absent => Absent
+    Present { value: uid } => match parse_int(s: trim(s: gid_text)) {
+      Absent => Absent
+      Present { value: gid } =>
+        if uid < 0 || gid < 0 {
+          Absent
+        } else {
+          Present { value: PrincipalNumbers { uid: uid, gid: gid } }
+        }
+    }
+  }
+}
+
+// THE GUARD THAT IS THE WHOLE POINT OF THE FIXTURE. A supplied root is refused when it is, or is under, either
+// production lab root or the fleet's owned install root, or when it is NOT under the declared scratch prefix.
+// Over-approximation is the safe direction: a substring prefix test also refuses `/opt/gunbc-labX`, and a
+// witness that has to move its scratch prefix into the model loses nothing, while a witness that slips past
+// this guard writes into the live lab root. Every claim that takes a witness root checks it through this one
+// decision.
+fn witness_supplied_root_is_refused(candidate: String) -> Bool {
+  is_under(text: candidate, root: srv1_dashboard_lab_provision_parent as String)
+    || is_under(text: candidate, root: srv1_dashboard_lab_root as String)
+    || is_under(text: candidate, root: "/opt/gunbc" as String)
+    || !is_under(text: candidate, root: witness_scratch_prefix as String)
+}
+
+fn is_under(text: String, root: String) -> Bool {
+  text == root || string_contains(s: text, pattern: join([root, "/"], ""))
+}
+
+// THE INSTANCE UNDER TEST, AT THE ROOT THE WITNESS SUPPLIED. Every field that is a function of the root is
+// re-derived by the SAME production helper the production derivation uses (`dashboard_instance_child`), so
+// `source`, `bin/gunbc`, `origin.git`, `inbox/source.bundle`, `attempts` and `attempt-state` have the shape the
+// lab's have — the leaf names and relative layout are not restated here, which is what makes this row's shape
+// evidence about the production rule rather than about a fixture's idea of it. The four fields that DO come
+// from the witness are named, with their reason, at the literal.
+fn witness_supplied_instance(
+  scratch_parent: FilePath,
+  repo: FilePath,
+  principal: WitnessSuppliedPrincipal,
+) -> HostDashboardInstance {
+  let lab = srv1_lab_dashboard_instance()
+  let parent = scratch_parent as FilePath
+  let root = dashboard_instance_child(root: parent, child: srv1_dashboard_lab_id)
+  HostDashboardInstance {
+    deployment: lab.deployment,
+    instance_id: lab.instance_id,
+    host_identity: lab.host_identity,
+    // SUPPLIED (1 of 4): the root the witness created, not `srv1_dashboard_lab_provision_parent`. This is the
+    // field whose production value produced the srv2 reds and would have created the live lab root.
+    provision_parent_root: parent,
+    instance_root: root,
+    local_origin_root: dashboard_instance_child(root: root, child: "origin.git"),
+    local_origin_publish_ref: lab.local_origin_publish_ref,
+    // SUPPLIED (2 of 4): a throwaway repository under the same scratch tree. The production value is the lab's
+    // live `source` checkout, and these claims drive `git` in this tree — so a production value here is a claim
+    // running `git apply` against the lab's checkout.
+    repo_root: repo,
+    dispatch_base_ref: lab.dispatch_base_ref,
+    publication_base_branch: lab.publication_base_branch,
+    dispatch_state_scope: lab.dispatch_state_scope,
+    // Re-derived, not inherited: `lab.execution_environment` carries the lab's `serve_binary` under
+    // `/opt/gunbc-lab`, and a claim that execs the instance's serve binary would then exec the live host's
+    // served artifact instead of the one it installed.
+    execution_environment: dashboard_execution_environment(
+      serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
+    ),
+    provider_state: lab.provider_state,
+    serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
+    serve_function: lab.serve_function,
+    listen_host: lab.listen_host,
+    listen_port: lab.listen_port,
+    tmux_server: lab.tmux_server,
+    actuation: lab.actuation,
+    // SUPPLIED (3 of 4): the witness IS its provision target. Inheriting the lab's value here
+    // (`DashboardSshProvision { host: "srv1" }`) would have a local test reach into the live host to provision
+    // it, which is the defect this row is about in its most literal form.
+    provision_transport: DashboardLocalProvision,
+    // SUPPLIED (4 of 4): the throwaway repository already exists and holds the anchor, so the seed is
+    // "existing repo" rather than the lab's staged bundle. The bundle path is derived from the root, so
+    // keeping the lab's arm here would name a bundle under the live lab root that the witness could create.
+    source_seed: DashboardExistingRepo { anchor_ref: lab.dispatch_base_ref },
+    admitted_revision: lab.admitted_revision,
+    toolchain: lab.toolchain,
+    dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
+    // THE PRINCIPAL, AS THE HOST SAID IT. `lab.directory_owner` is srv1's service account name read out of the
+    // model; passing it through would have the witness assert ownership against an account database only the
+    // live host has (and an absent group makes `find -chgrp` exit 1, whose zero-vs-one is not evidence about
+    // the boundary). The uid and gid the claims install and read back are the host's own numbers.
+    directory_owner: PosixOwnerNames {
+      user: principal.user,
+      group: principal.group,
+    },
+    worker: lab.worker,
+    materialization_store_root: lab.materialization_store_root,
+  }
+}
+
+// THE ROOTS A CLAIM USING THIS INSTANCE MAY WRITE UNDER. Enumeration, not a wildcard: a claim that ends up
+// writing somewhere else is a claim this set does not cover, and the inhabiting claim over the production row
+// (`test.claim.roadmap.dashboard_lab_instance_inhabitance_witness`) is what keeps this set the same SHAPE as
+// the production one. `provider_state.root` is deliberately absent — it is the account's own Codex home, the
+// lab's value, and no claim in this family writes there; a claim that starts to must join this set and be
+// refused by `witness_supplied_root_is_refused` if it points at a production root.
+fn witness_supplied_writable_roots(instance: HostDashboardInstance) -> List<FilePath> {
+  [
+    instance.provision_parent_root,
+    instance.instance_root,
+    instance.repo_root,
+    instance.local_origin_root,
+    dashboard_instance_child(root: instance.instance_root, child: "source"),
+    dashboard_instance_child(root: instance.instance_root, child: "bin"),
+    dashboard_instance_child(root: instance.instance_root, child: "bin/gunbc"),
+    dashboard_inbox_under(root: instance.instance_root),
+    dashboard_instance_child(root: instance.instance_root, child: "attempts"),
+    dashboard_instance_child(root: instance.instance_root, child: "attempt-state"),
+  ]
+}
+
+// EVERY ONE OF THOSE ROOTS IS OFF THE LIVE HOST. The claim form of the guard, so the assertion lives with the
+// fixture it guards and a witness cannot opt out of it by forgetting to check.
+fn witness_supplied_roots_are_off_the_live_host(instance: HostDashboardInstance) -> Bool {
+  all(
+    xs: witness_supplied_writable_roots(instance),
+    predicate: x => !witness_supplied_root_is_refused(x as String),
+  )
+}
+
+// THE SAME SET, FOR THE PRODUCTION ROW — used only by the inhabiting claim, which writes nothing.
+fn witness_production_writable_roots(instance: HostDashboardInstance) -> List<FilePath> {
+  [
+    instance.provision_parent_root,
+    instance.instance_root,
+    instance.repo_root,
+    instance.local_origin_root,
+    instance.serve_binary,
+    dashboard_inbox_under(root: instance.instance_root),
+    dashboard_instance_child(root: instance.instance_root, child: "attempts"),
+    dashboard_instance_child(root: instance.instance_root, child: "attempt-state"),
+  ]
+}

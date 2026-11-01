@@ -65,8 +65,8 @@ import extdeps.tools.chmod { chmod_set_mode_command, chmod_recursive_set_mode_co
 import extdeps.tools.findutils { find_subtree_mode_readback_command, find_path_probe_command, find_subtree_ungranted_entry_refusal_command }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
 import gunbc.roadmap.roadmap_dashboard_instance {
-  HostDashboardInstance, DashboardLocalProvision, DashboardEnsureGitSharedRepositoryPosture,
-  DashboardMigrateGitWorkerSubtree, srv1_lab_dashboard_instance, dashboard_git_worker_subtree_walk_depth,
+  HostDashboardInstance, DashboardEnsureGitSharedRepositoryPosture,
+  DashboardMigrateGitWorkerSubtree, dashboard_git_worker_subtree_walk_depth,
   dashboard_git_subtree_readback_is_granted, dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_objects_child,
   dashboard_git_worker_refs_child, dashboard_git_worker_logs_child,
@@ -85,6 +85,10 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_git_owned_host_step_argv,
 }
 import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir }
+import test.claim.roadmap.witness_supplied_instance {
+  WitnessSuppliedPrincipal, witness_supplied_instance, witness_principal_commands,
+  witness_principal_from_texts, witness_supplied_root_is_refused,
+}
 import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, ExecStepFailed }
 
 // THE HOST ROUTE, THE PRODUCTION ONE: run_shell_command_capture over LocalExec. An ArgvCommand goes in as an
@@ -165,54 +169,85 @@ fn wet_group_token() -> String {
 // feature is about -- the worker's `git commit` on an ungranted tree, a write to .git/config, a write under
 // hooks/ -- are qualified where two real accounts exist, on the host, as the PR body's steps say. Nothing
 // here pretends to be that evidence.
-// THE INSTANCE UNDER TEST: the lab's own row, with the two fields a throwaway local run must differ on set
-// explicitly. provision_transport is DashboardLocalProvision because the witness IS the target -- there is no
-// SSH hop to a machine already running the claim. repo_root is the throwaway tree. Everything else, worker:
-// WorkerDedicatedAccount and directory_owner included, is the lab's own row, and the claims below assert the
-// lab facts they lean on rather than inheriting them silently.
+// THE INSTANCE UNDER TEST, AT A ROOT THE WITNESS SUPPLIES. Until this row, the instance's
+// `provision_parent_root` and `instance_root` were copied from `srv1_lab_dashboard_instance()` — production's
+// `/opt/gunbc-lab` — so the claims here aimed their writes at the LIVE lab root: on any host but srv1 the first
+// `install` refused (`install: cannot create directory /opt/gunbc-lab: Permission denied`, seen nine times on
+// srv2 on 2026-11-01), and on srv1 the claim would have passed by writing into the root the lab serves from.
+// The root and the principal now come from `test.claim.roadmap.witness_supplied_instance`, which builds the row
+// through the SAME production derivation and the SAME production path helper the lab row uses; the witness
+// supplies the mktemp scratch tree it created for itself, the throwaway repository inside it, the host's own
+// account as the principal, and the transport (this witness IS its provision target). What is NOT supplied —
+// deployment, instance id, host identity, the dispatch refs, the listen host and port, the tmux server, the
+// toolchain, the memory cap and `worker: WorkerDedicatedAccount` — is the lab's own row, and
+// `test.claim.roadmap.dashboard_lab_instance_inhabitance_witness` is the pairing claim that keeps that row's
+// derivation executed, as a pure derivation, so "the witness supplies its root" has not quietly become "nobody
+// derives it any more".
 fn wet_lab_local_instance(root: String) -> HostDashboardInstance {
-  let lab = srv1_lab_dashboard_instance()
-  HostDashboardInstance {
-    deployment: lab.deployment,
-    instance_id: lab.instance_id,
-    host_identity: lab.host_identity,
-    provision_parent_root: lab.provision_parent_root,
-    instance_root: lab.instance_root,
-    local_origin_root: lab.local_origin_root,
-    local_origin_publish_ref: lab.local_origin_publish_ref,
-    repo_root: root as FilePath,
-    dispatch_base_ref: lab.dispatch_base_ref,
-    dispatch_state_scope: lab.dispatch_state_scope,
-    execution_environment: lab.execution_environment,
-    provider_state: lab.provider_state,
-    serve_binary: lab.serve_binary,
-    serve_function: lab.serve_function,
-    listen_host: lab.listen_host,
-    listen_port: lab.listen_port,
-    tmux_server: lab.tmux_server,
-    actuation: lab.actuation,
-    provision_transport: DashboardLocalProvision,
-    // THE SEED THE TWO ARMS UNDER TEST ACTUALLY REQUIRE. The lab's real row is bundle-seeded, and on
-    // srv1 its controller_repo EXISTS -- that is why the apply works there. Both arms reach the target
-    // through dashboard_target_exec -> dashboard_local_exec, whose cwd is
-    // dashboard_instance_controller_workdir(instance), which projects the bundle seed to that controller
-    // path and the existing-repo seed to repo_root (roadmap_dashboard_instance:455). Here the repository
-    // under test IS the only repository that exists, so the honest seed is the existing-repo one: a
-    // repository already on this machine, which is precisely the precondition for running a posture or a
-    // migration arm. Keeping the lab's bundle seed would run every command in a cwd that is not on this
-    // host and produce a refusal that has nothing to do with what the claim is about -- and the seed's
-    // other fields (staged_bundle, history_remote) are consulted only by the hydrate arm, which this
-    // witness does not drive. This is the shape roadmap_dashboard_instance:778 names as the stated
-    // divergence between "seeded from a bundle" and "answers for the machine it runs on".
-    source_seed: DashboardExistingRepo { anchor_ref: lab.dispatch_base_ref },
-    admitted_revision: lab.admitted_revision,
-    toolchain: lab.toolchain,
-    dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
-    directory_owner: lab.directory_owner,
-    worker: lab.worker,
-    materialization_store_root: lab.materialization_store_root,
-    publication_base_branch: lab.publication_base_branch,
+  witness_supplied_instance(
+    scratch_parent: root as FilePath,
+    repo: root as FilePath,
+    // THE GUARD, AT THE ONE PLACE A WITNESS ROOT ENTERS THESE CLAIMS. A root the fixture refuses -- the live
+    // lab root, a child of it, the fleet's install root, or anything outside the declared scratch prefix --
+    // is carried by a principal that cannot exist, so every claim that would have run at that target goes RED
+    // instead of writing there. That is the BROKEN run the PR body names: point the supplied root back at the
+    // live derivation and the claims refuse.
+    principal:
+      if witness_supplied_root_is_refused(root) {
+        wet_unnameable_principal()
+      } else {
+        wet_principal()
+      },
+  )
+}
+
+// THE PRINCIPAL THE CLAIMS INSTALL AND READ BACK AS: the host's own account, four separate questions, all four
+// required. When the host will not answer — an unresolvable uid or gid, a group name it cannot print, or uid 0,
+// under which a DAC leg answers with root's privilege instead of with the model's modes — this returns a
+// principal that cannot exist: negative ids and a `?` name, which `install -o/-g` and `chgrp` refuse and which
+// no `find -printf '%u %g'` readback can match. So a host that cannot say goes RED on every claim in this file
+// rather than passing on a value nobody gave it, and `the_supplied_principal_is_the_hosts_own` is the claim
+// that names the refusal directly. Minting an account instead was rejected: /etc/passwd and /etc/group are
+// durable state no scratch tree contains, the mint needs root, and the production names (`node`, gid 1003,
+// `gunbc-attempt`) are srv1's account database, which srv2 does not have — see the fixture's header.
+fn wet_principal() -> WitnessSuppliedPrincipal {
+  match witness_principal_commands() {
+    [uid_cmd, gid_cmd, group_cmd, user_cmd] => match witness_principal_from_texts(
+      uid_text: wet_out(command: uid_cmd),
+      gid_text: wet_out(command: gid_cmd),
+      user_text: wet_out(command: user_cmd),
+      group_text: wet_out(command: group_cmd),
+    ) {
+      Present { value: principal } => principal
+      Absent => wet_unnameable_principal()
+    }
+    _ => wet_unnameable_principal()
   }
+}
+
+fn wet_unnameable_principal() -> WitnessSuppliedPrincipal {
+  WitnessSuppliedPrincipal {
+    uid: -1,
+    gid: -1,
+    user: "?" as NonEmptyStr,
+    group: "?" as NonEmptyStr,
+  }
+}
+
+// THE PRINCIPAL THE WITNESS RUNS UNDER IS ONE THE HOST NAMED. The refusal arm above is otherwise a claim about
+// a value this file made up, so it is asserted here as well as enforced downstream: the uid and gid are the
+// host's own, both names are non-empty, and the account is not root. A host that cannot say makes THIS red,
+// which is the loud version of the same fact.
+test fn the_supplied_principal_is_the_hosts_own() -> Bool {
+  let principal = wet_principal()
+  principal.uid == wet_self_uid()
+    && principal.gid == wet_self_gid()
+    && principal.uid > 0
+    && principal.gid >= 0
+    && (principal.user as String) != ""
+    && (principal.group as String) != ""
+    && (principal.user as String) != "?"
+    && (principal.group as String) != "?"
 }
 
 // THE THROWAWAY REPOSITORY, planted as the running account owns it -- the lab's relationship. Directories
