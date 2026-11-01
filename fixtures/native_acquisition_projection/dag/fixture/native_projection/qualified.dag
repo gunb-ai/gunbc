@@ -1,8 +1,0 @@
-module fixture.native_projection.qualified
-
-// THE POSITIVE CONTROL OF THE SAME WALK: `product.y.projection_same_named_value` names no binder -- nothing
-// here binds `product` -- so it IS a qualified module reference, and the module `product.y` is read for
-// it. The walk requires that the closure over a well-formed product/y.dag holds that module and carries its
-// declaration, and that a malformed one refuses the entry naming the file, so the projection control's
-// silence about that file is a fact of the head's binding and not of the file never being read at all.
-data native_projection_qualified_value: Int = product.y.projection_same_named_value

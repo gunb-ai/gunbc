@@ -1655,11 +1655,17 @@ fn parse_elapsed_boot_once_ms_observation(stdout: String) -> Milliseconds? {
   match parts.length() <= 1 {
     true => Absent
     false => {
-      let tail = parts.skip(n: 1).first()
-      let token = split(s: tail, delimiter: "\n").first()
-      match parse_int(s: token) {
-        Present { value: n } => Present { value: n }
+      match parts.skip(n: 1).first() {
         Absent => Absent
+        Present { value: tail } =>
+          match split(s: tail, delimiter: "\n").first() {
+            Absent => Absent
+            Present { value: token } =>
+              match parse_int(s: token) {
+                Present { value: n } => Present { value: n }
+                Absent => Absent
+              }
+          }
       }
     }
   }

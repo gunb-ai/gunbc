@@ -2,7 +2,7 @@ module gunbc.serving.rented_host_grant
 
 import std.types { String, Bool, List, NonEmptyStr, Timestamp }
 import std.optional { Present, Absent }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_of_value, identity_frame }
 import std.effect_grant { NamespacePosition, ServiceOpTree, Execute }
 import std.scoped_authorization {
   ScopedAuthorization, AuthorizationPending, AuthorizationGranted, AuthorizationDenied,
@@ -10,7 +10,6 @@ import std.scoped_authorization {
   AuthorizationDecision, AuthorizationPermitted, AuthorizationRefused,
   authorize, authorization_refusal_reason,
 }
-import product.fabric.work { identity_frame }
 import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
 import gunbc.fleet.fleet_host_key_enrollment { known_host_row_field }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
