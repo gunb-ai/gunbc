@@ -369,13 +369,17 @@ pub fn render_rust_type_without_applied_binding(
                 emit_info.clone(),
             )
         } else {
-            if ((((n.connective.clone() == Connective::NoConnective)
+            if (((((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
                 && !crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
                     n.clone(),
                 )))
                 && !crate::v1_compiler_infer_types::node_is_keyed_collection(
+                    n.clone(),
+                    source_indices.clone(),
+                ))
+                && !crate::v1_compiler_infer_types::node_is_element_collection(
                     n.clone(),
                     source_indices.clone(),
                 ))
@@ -2919,10 +2923,14 @@ pub fn render_rust_fn_sig_type(
                             shared_types.clone(),
                         )
                     } else {
-                        if ((((n.connective.clone() == Connective::NoConnective)
+                        if (((((n.connective.clone() == Connective::NoConnective)
                             && ((n.children.clone().len() as i64) > 0))
                             && !crate::std_types::is_container_type(name.clone()))
                             && closed_alias_peels_zero_param(env.clone(), n.clone()))
+                            && !crate::v1_compiler_infer_types::node_is_element_collection(
+                                n.clone(),
+                                source_indices.clone(),
+                            ))
                         {
                             render_rust_shared_type_with_optional(
                                 n.clone(),
@@ -16820,7 +16828,7 @@ pub fn emit_item_clone_bound_refusal(
                     if (head.clone() == "".to_string()) {
                         "".to_string()
                     } else {
-                        crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see the well-formedness-propagation note in the // comments in gunbc.v1.trait_derive_emit)".to_string()))
+                        crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)".to_string()))
                     }
                 }
             }
@@ -17516,7 +17524,6 @@ pub fn emit_struct_from_children(
                 ),
             ),
             generic_param_names.clone(),
-            emit_info.clone_bounded_type_params.clone(),
             env.source_indices.clone(),
             header_clone_param_names,
             deserialize_forbidden,
@@ -17964,8 +17971,6 @@ pub fn enum_derives(
         ),
         deserialize_forbidden,
         generic_param_names,
-        emit_info.clone_bounded_type_params.clone(),
-        emit_info.type_decl_items.clone(),
         source_indices,
     )
 }
@@ -18079,8 +18084,6 @@ pub fn emit_enum_from_children(
             children.clone(),
             generic_param_names.clone(),
             header_clone_param_names,
-            emit_info.clone_bounded_type_params.clone(),
-            emit_info.type_decl_items.clone(),
             env.source_indices.clone(),
         );
         let with_accessors = if (accessor_impl.clone() == "".to_string()) {
@@ -34500,13 +34503,23 @@ pub fn rust_receiver_has_callable_method_field(
         )) {
             false
         } else {
-            match rust_struct_field_type_node(
-                scope.clone(),
-                receiver_type_name.clone(),
-                method_name,
-            ) {
-                Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
-                std::option::Option::None => false,
+            if (crate::v1_compiler_infer_types::node_is_element_collection(
+                receiver_type.clone(),
+                scope.type_env.source_indices.clone(),
+            ) && crate::v1_compiler_emit::keyed_container_has_target_inhabitant(
+                crate::v1_std_core::qualified_last_segment(receiver_type_name.clone()),
+                RenderTarget::Rust,
+            )) {
+                false
+            } else {
+                match rust_struct_field_type_node(
+                    scope.clone(),
+                    receiver_type_name.clone(),
+                    method_name,
+                ) {
+                    Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
+                    std::option::Option::None => false,
+                }
             }
         }
     }
