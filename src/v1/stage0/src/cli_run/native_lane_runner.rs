@@ -4555,6 +4555,7 @@ fn run_required_v2_native_inner(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     /// THE IDENTITY IS THE WORKSPACE'S FILES, NOT ITS MODULE DIRECTORY. Relocating identical files
     /// keeps it; changing only the binary's entry, or only a crate root outside the module
     /// directory, changes it. The last two are what an identity over the module directory alone
