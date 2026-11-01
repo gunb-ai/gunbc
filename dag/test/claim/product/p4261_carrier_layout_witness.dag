@@ -399,6 +399,11 @@ import product.p4261.readings {
   TerminalsNotPlaced,
 }
 import product.p4261.report {
+  AssemblyRevisionStanding,
+  assembly_revision_standing,
+  RevisionReadOnBoard,
+  RevisionContradictedOnBoard,
+  carrier_label_text,
   alterations_text,
   carrier_finding,
   carrier_input_reading,
@@ -440,6 +445,7 @@ import product.electrical.carrier_phase {
   PhaseNodeVoltage, SupplyReading, CurrentRead, CurrentAmbiguous, CurrentUnrecorded, CarrierTransitionObservation, SourceModeUnrecorded, SettingUnrecorded, SettingOneOf, SettledSteady, SettlingUnrecorded, PhaseSettling, SourceSettingStanding,
   transition_text, phase_standing_text,
 }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
@@ -447,6 +453,7 @@ fn layout_with(base: CarrierLayoutObservation, components: List<InstalledCompone
   CarrierLayoutObservation {
     asset: base.asset,
     design: base.design,
+    revision: base.revision,
     markings: base.markings,
     module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors,
@@ -1049,6 +1056,7 @@ fn with_survey(base: CarrierLayoutObservation, survey: ManagementIoSurvey) -> Ca
   CarrierLayoutObservation {
     asset: base.asset,
     design: base.design,
+    revision: base.revision,
     markings: base.markings,
     module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors,
@@ -2768,4 +2776,52 @@ test fn a_lifted_parts_footprint_is_its_own_state() -> Bool {
     && count(filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(SW)") && is_reported_zero(o: o))) == 3
     && count(filter(e1_footprint_resistances, o => (o.first.terminal as String).contains("(SW)") && terminal_ref_equal(a: o.second, b: terminal_ref(component: e1_l_4r7_near, terminal: inductor_pad_near_u4 as TerminalIdentity)) && is_reported_zero(o: o) && !is_at_baseline(o: o))) == 1
   rows && ordered && figures && separation
+}
+
+// EACH BOARD NAMES THE NVIDIA REVISION IT WAS BUILT TO, AND ITS OWN LABEL HOLDS IT THERE. Both boards
+// read as their recorded revisions (extdeps.nvidia.p4261), the K1's label and PCB print only from the
+// received board, never the listing; the E1 recorded against the K1's revision is contradicted by its
+// own label, and the rendered label carries the revision and its uncited standing.
+fn with_revision(base: CarrierLayoutObservation, revision: P4261AssemblyRevision) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    asset: base.asset,
+    design: base.design,
+    revision: revision,
+    markings: base.markings,
+    module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors,
+    j20: base.j20,
+    j20_calipers: base.j20_calipers,
+    edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey,
+    management_io: base.management_io,
+    components: base.components,
+    measured: base.measured,
+    input: base.input,
+    unresolved: base.unresolved,
+  }
+}
+
+fn is_read_on_board(s: AssemblyRevisionStanding) -> Bool {
+  match s {
+    RevisionReadOnBoard { revision: _ } => true
+    _ => false
+  }
+}
+
+fn is_contradicted_on_board(s: AssemblyRevisionStanding) -> Bool {
+  match s {
+    RevisionContradictedOnBoard { revision: _, marking: _ } => true
+    _ => false
+  }
+}
+
+test fn each_board_names_its_nvidia_revision_and_its_label_holds_it() -> Bool {
+  is_read_on_board(s: assembly_revision_standing(layout: p4261_k1_layout))
+    && is_read_on_board(s: assembly_revision_standing(layout: p4261_e1_layout))
+    && is_contradicted_on_board(s: assembly_revision_standing(layout: with_revision(base: p4261_e1_layout, revision: p4261_k1)))
+    && is_contradicted_on_board(s: assembly_revision_standing(layout: with_revision(base: p4261_k1_layout, revision: p4261_e1)))
+    && carrier_label_text(layout: p4261_k1_layout).contains("NVIDIA assembly revision K1 (694-24261-0000-100, PCB 180-14261-DAAF-A01)")
+    && carrier_label_text(layout: p4261_e1_layout).contains("no NVIDIA source names it")
+    && carrier_label_text(layout: with_revision(base: p4261_e1_layout, revision: p4261_k1)).contains("CONTRADICTS")
 }

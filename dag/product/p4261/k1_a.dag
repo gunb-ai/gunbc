@@ -141,6 +141,7 @@ import product.p4261.bench {
   t3_basis,
   t4_basis,
 }
+import extdeps.nvidia.p4261 { p4261_k1 }
 
 // THE K1 BOARD WE HOLD (asset p4261-k1-a; NVIDIA assembly revision K1, extdeps.nvidia.p4261 p4261_k1):
 // its listing photographs, bench records and phases. A reading here is of this board, not of the
@@ -378,6 +379,7 @@ data k1_measured: MeasuredBoard = MeasuredBoard {
 data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   asset: p4261_k1_a,
   design: k1_design,
+  revision: p4261_k1,
   markings: [
     AssemblyLabel { model: "P4261", part_number: "694-24261-0000-100", revision: "K1", serial: "1582023110038", evidence: k1_listing },
     AssemblyLabel { model: "P4261", part_number: "694-24261-0000-100", revision: "K1", serial: "1582023110033", evidence: k1_listing },

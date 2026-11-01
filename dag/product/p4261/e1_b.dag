@@ -219,6 +219,7 @@ import product.p4261.bench {
   t3_basis,
   t4_basis,
 }
+import extdeps.nvidia.p4261 { p4261_e1 }
 
 // THE E1 BOARD WE HOLD (asset p4261-e1-b; NVIDIA assembly revision E1, extdeps.nvidia.p4261 p4261_e1):
 // its bench records, phases, incidents and its own fault hypotheses. A reading here is of this board,
@@ -2256,6 +2257,7 @@ data e1_shared_tvs_rows: List<ElectronicComponentRow> = [tvs_5_0smdj60a, aos_tvs
 data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   asset: p4261_e1_b,
   design: e1_design,
+  revision: p4261_e1,
   markings: [
     AssemblyLabel { model: "P4261", part_number: "694-24261-0000-201", revision: "E1", serial: "1583323120274", evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
     PcbCode { code: "180-14261-DAAF-B00", printed_beside: Absent, evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },

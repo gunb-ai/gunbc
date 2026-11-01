@@ -20,6 +20,7 @@ import product.electrical.identification {
   regulator_pins,
 }
 import product.electrical.investigation_hypothesis { InvestigationHypothesis }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision }
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS OBSERVED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
 // document names this board, so everything here is the operator's observation of a physical unit,
@@ -170,6 +171,7 @@ type InputConnector {
 type CarrierLayoutObservation {
   asset: PhysicalAssetIdentity
   design: ElectricalDesignIdentity
+  revision: P4261AssemblyRevision
   markings: List<BoardMarking>
   module_receptacles: List<NonEmptyStr>
   backplane_connectors: List<BackplaneConnectorObservation>

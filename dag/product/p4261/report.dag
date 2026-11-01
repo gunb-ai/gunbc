@@ -127,6 +127,7 @@ import product.p4261.carrier {
   AssemblyLabel,
   AwayFromLatch,
   BoardMarking,
+  PcbCode,
   CaliperSpan,
   CarrierLayoutObservation,
   CensusComplete,
@@ -295,6 +296,7 @@ import product.p4261.readings {
   ThresholdPin,
   translator_of,
 }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision }
 
 // THE RENDERED REPORT (diagnostics only): text over the records and their derivations, and the
 // narrow findings for consumers that cite one fact.
@@ -1141,15 +1143,64 @@ fn received_labels(layout: CarrierLayoutObservation) -> List<BoardMarking> {
   filter(layout.markings, m => is_received_label(m: m))
 }
 
+// WHICH REVISION A BOARD WAS BUILT TO IS READ OFF ITS OWN LABEL. The record names the NVIDIA revision
+// it claims (layout.revision, extdeps.nvidia.p4261); the received board's assembly labels and its PCB
+// print either all agree with that row or one contradicts it, so a board recorded against the wrong
+// revision says so instead of inheriting another revision's identity. A label only in a seller's
+// listing is not the received board's (is_received_label).
+type AssemblyRevisionStanding
+  = RevisionReadOnBoard { revision: P4261AssemblyRevision }
+  | RevisionContradictedOnBoard { revision: P4261AssemblyRevision, marking: BoardMarking }
+  | RevisionUnreadOnBoard { revision: P4261AssemblyRevision }
+
+fn is_revision_marking(m: BoardMarking) -> Bool {
+  match m {
+    PcbCode { code: _, printed_beside: _, evidence } => is_operator_photograph(e: evidence)
+    _ => is_received_label(m: m)
+  }
+}
+
+fn marking_contradicts_revision(m: BoardMarking, r: P4261AssemblyRevision) -> Bool {
+  match m {
+    AssemblyLabel { model, part_number, revision, serial: _, evidence: _ } =>
+      !(model == r.model && part_number == r.assembly_part_number && revision == r.revision_code)
+    PcbCode { code, printed_beside: _, evidence: _ } => !(code == r.pcb_code)
+    _ => false
+  }
+}
+
+fn assembly_revision_standing(layout: CarrierLayoutObservation) -> AssemblyRevisionStanding {
+  let read = filter(layout.markings, m => is_revision_marking(m: m))
+  match (filter(read, m => marking_contradicts_revision(m: m, r: layout.revision))).first() {
+    Present { value: m } => RevisionContradictedOnBoard { revision: layout.revision, marking: m }
+    Absent => match read.first() {
+      Absent => RevisionUnreadOnBoard { revision: layout.revision }
+      Present { value: _ } => RevisionReadOnBoard { revision: layout.revision }
+    }
+  }
+}
+
+fn assembly_revision_text(s: AssemblyRevisionStanding) -> String {
+  match s {
+    RevisionReadOnBoard { revision: r } =>
+      join(["NVIDIA assembly revision ", r.revision_code as String, " (", r.assembly_part_number as String, ", PCB ", r.pcb_code as String, "), as its own label and PCB print read; no NVIDIA source names it"], "")
+    RevisionContradictedOnBoard { revision: r, marking: _ } =>
+      join(["recorded as NVIDIA assembly revision ", r.revision_code as String, " (", r.assembly_part_number as String, ", PCB ", r.pcb_code as String, "), which its own label or PCB print CONTRADICTS"], "")
+    RevisionUnreadOnBoard { revision: r } =>
+      join(["recorded as NVIDIA assembly revision ", r.revision_code as String, ", unread on the board itself"], "")
+  }
+}
+
 fn carrier_label_text(layout: CarrierLayoutObservation) -> String {
   let texts = flat_map(received_labels(layout: layout), m => match m {
     AssemblyLabel { model, part_number, revision, serial, evidence: _ } =>
       [join([model as String, " ", part_number as String, " rev ", revision as String, ", S/N ", serial as String], "")]
     _ => []
   })
+  let revision = assembly_revision_text(s: assembly_revision_standing(layout: layout))
   match texts.first() {
-    Absent => "a carrier whose label is unread on the received unit"
-    Present { value: _ } => join(texts, "; ")
+    Absent => join(["a carrier whose label is unread on the received unit; ", revision], "")
+    Present { value: _ } => join([join(texts, "; "), "; ", revision], "")
   }
 }
 
