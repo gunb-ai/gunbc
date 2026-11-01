@@ -6,19 +6,14 @@ import std.optional { Absent, Optional, Present }
 import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
-import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_with_admission_policy }
-import v2.compiler.normalized_tree { NormalizedTree }
-import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.resolve { OccurrenceResolutionRecord, ResolvedToDeclaration, BoundToDeclaration, ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.source_root_eval { native_test_context_from_ingest, native_test_resolve_module }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
-import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.resolution_policy { ImportScoped }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -94,11 +89,8 @@ fn wave_ingest() -> SourceRootIngest {
   }
 }
 
-fn wave_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject { name: Cons { head: ^std, tail: Cons { head: ^declaring_identity_spelling, tail: Empty } } },
-    imports: Empty
-  }
+fn wave_subject() -> QualifiedName {
+  Cons { head: ^std, tail: Cons { head: ^declaring_identity_spelling, tail: Empty } }
 }
 
 // The declaring paths the subject module's occurrence records bind to, one dotted string per record,
@@ -134,45 +126,36 @@ fn table_holds(paths: List<String>, table: List<ExpectedBinding>) -> Bool {
   )
 }
 
-fn resolved_paths(table_roots_ok: Bool) -> Optional<List<String>> {
-  match module_roots_from_source_root_ingest(ingest: wave_ingest(), lm: dag_language_model()) {
+// ONE native front end and ONE resolution of the subject: the same native_test_* route the native claim
+// lane runs (resolution compiled, not interpreted). Both arms below read THIS tree's paths.
+fn resolved_paths() -> Optional<List<String>> {
+  match native_test_context_from_ingest(ingest: wave_ingest()) {
     Rejected { diagnostics: _ } => Absent
-    Accepted { value: roots, diagnostics: _ } =>
-      match resolve_with_admission_policy(
-        lm: dag_language_model(),
-        roots: roots,
-        admission: wave_admission(),
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: ImportScoped
-      ) {
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_resolve_module(context: context, module: wave_subject()).resolved {
         Rejected { diagnostics: _ } => Absent
         Accepted { value: tree, diagnostics: _ } => Present { value: declaring_paths(tree: tree) }
       }
   }
 }
 
-// The GREEN arm: every pinned declaring path is bound exactly as often as the table says. Run at base
-// and at head with `gunbc run --claim-run --entry <this file>`; a respelling that preserved resolution
-// answers the same at both.
-test fn wave1_every_reference_binds_its_declaring_identity_holds() -> Bool {
-  match resolved_paths(table_roots_ok: true) {
-    Present { value: paths } => table_holds(paths: paths, table: expected_bindings())
-    Absent => false
-  }
-}
-
-// The RED arm: the SAME producer read against a table whose `Bool` row names the wrong declaration
-// (v2.std.logic.Bool, a real declaration with the same leaf). Must answer false: this is what a
-// respelling that rebound `Bool` to the wrong declaration would look like, and it proves the green
-// claim discriminates by declaration identity rather than by leaf name.
+// The wrong-declaration table: its `Bool` row names v2.std.logic.Bool, a real declaration with the same
+// leaf. A respelling that rebound `Bool` to the wrong declaration would look like this table holding.
 fn wrong_declaration_table() -> List<ExpectedBinding> {
   [ExpectedBinding { declaring: "v2.std.logic.Bool", occurrences: 1 }]
 }
 
-test fn wave1_wrong_declaration_table_is_refused_holds() -> Bool {
-  match resolved_paths(table_roots_ok: true) {
-    Present { value: paths } => !table_holds(paths: paths, table: wrong_declaration_table())
+fn both_arms(paths: List<String>) -> Bool {
+  table_holds(paths: paths, table: expected_bindings()) && !table_holds(paths: paths, table: wrong_declaration_table())
+}
+
+// BOTH ARMS ON ONE RESOLUTION (DESIGN 2: two tests each re-ingesting the same six modules was authored
+// duplication). GREEN: every pinned declaring path is bound exactly as often as the table says. RED: the
+// same paths refuse the wrong-declaration table, so the claim discriminates by declaration identity and
+// not by leaf name. Run at base and at head; a respelling that preserved resolution answers the same.
+test fn wave1_every_reference_binds_its_declaring_identity_and_refuses_the_wrong_one_holds() -> Bool {
+  match resolved_paths() {
+    Present { value: paths } => both_arms(paths: paths)
     Absent => false
   }
 }
