@@ -6435,6 +6435,7 @@ pub enum InhabitanceVerdict {
     InhabitanceUndecidable {
         reason: InhabitanceUndecidableReason,
     },
+    InhabitanceUnmodeled,
 }
 
 pub fn declared_type_position_label(position: DeclaredTypePosition, subject: String) -> String {
@@ -6844,7 +6845,7 @@ pub fn declared_type_inhabitance(
     Some(r) => Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: r.clone(),
 }),
-    std::option::Option::None => Rc::new(InhabitanceVerdict::Inhabits),
+    std::option::Option::None => Rc::new(InhabitanceVerdict::InhabitanceUnmodeled),
 }
                                                                         }
                                                                     },
@@ -7868,6 +7869,18 @@ pub fn declared_type_obligation_diags(
                         obligation.subject.clone(),
                     ),
                     reason: inhabitance_undecidable_reason_label(r.clone()),
+                    span: obligation.span.clone(),
+                }),
+                scope.module_name.clone(),
+            )])
+        }
+        InhabitanceVerdict::InhabitanceUnmodeled => {
+            Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled {
+                    position: declared_type_position_label(
+                        obligation.position.clone(),
+                        obligation.subject.clone(),
+                    ),
                     span: obligation.span.clone(),
                 }),
                 scope.module_name.clone(),
