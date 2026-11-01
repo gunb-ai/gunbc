@@ -45,17 +45,17 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
   } else {
     match fields.first() {
       Absent => BmcFirmwareVersionRefused { wire: wire }
-      Present { value: sa } => match parse_int(s: sa) {
+      Present { value: wire_field } => match parse_int(s: wire_field) {
       Absent => BmcFirmwareVersionRefused { wire: wire }
       Present { value: major } =>
         match fields.skip(n: 1).first() {
       Absent => BmcFirmwareVersionRefused { wire: wire }
-      Present { value: sb } => match parse_int(s: sb) {
+      Present { value: wire_field } => match parse_int(s: wire_field) {
           Absent => BmcFirmwareVersionRefused { wire: wire }
           Present { value: minor } =>
             match fields.skip(n: 2).first() {
       Absent => BmcFirmwareVersionRefused { wire: wire }
-      Present { value: sc } => match parse_int(s: sc) {
+      Present { value: wire_field } => match parse_int(s: wire_field) {
               Absent => BmcFirmwareVersionRefused { wire: wire }
               Present { value: patch } =>
                 if major < 0 || minor < 0 || patch < 0 {
@@ -69,12 +69,9 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
                     ),
                   }
                 }
-            }
-            }
-        }
-        }
-    }
-    }
+            } }
+        } }
+    } }
   }
 }
 

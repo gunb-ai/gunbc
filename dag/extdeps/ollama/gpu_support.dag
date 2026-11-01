@@ -70,17 +70,15 @@ fn ollama_nvidia_driver_version_from_wire_text(raw: String) -> OllamaNvidiaDrive
     let parts = split(s: trimmed, delimiter: ".")
     match parts.first() {
       Absent => none
-      Present { value: head } =>
-        match parse_int(s: head) {
-          Absent => none
-          Present { value: major } =>
-            if major < 0 {
-              none
-            } else {
-              Present { value: OllamaNvidiaDriverVersion { major: major } }
-            }
+      Present { value: wire_field } => match parse_int(s: wire_field) {
+      Absent => none
+      Present { value: major } =>
+        if major < 0 {
+          none
+        } else {
+          Present { value: OllamaNvidiaDriverVersion { major: major } }
         }
-    }
+    } }
   }
 }
 
