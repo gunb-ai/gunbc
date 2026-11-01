@@ -983,6 +983,14 @@ fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservati
       match record {
         AttemptExitRecordNone => UnitTerminatedCauseUnknown { detail: "the user manager has no such unit and it left no exit record" }
         AttemptExitRecordFound { record: _ } => session_unit_lifecycle(o: attempt_unit_from_exit_record(unit: unit, record: record, start: AttemptUnitStartRecorded))
+        // THE ARTIFACT IS ABOUT ITS WRITER, NOT ABOUT THE HOLDER. An entry whose name still spells the
+        // stop variables was created without the manager's substitution: the hook's writer is broken, and
+        // that says nothing about whether the process ended. So this arm names the defect and REFUSES,
+        // exactly as an unreadable entry does -- a broken writer is not a reading of the holder, and a
+        // seat is freed only by a reading bound to the holder's identity (the arms in
+        // gunbc.systemd_unit_invocation_liveness). Naming the writer here is what makes the defect
+        // countable; it is not, by itself, licence to release.
+        AttemptExitRecordWriterUnsubstituted { entries, variables } => UnitLifecycleUnknown { detail: join(["the manager has no such unit and its only exit artifact names the stop variables unexpanded (", join(variables, ", "), "): a defective writer, which is evidence about its writer and not about the holder, so the seat is kept: ", join(entries, ", ")], "") }
         AttemptExitRecordUnreadable { reason } => UnitLifecycleUnknown { detail: reason }
       }
     AttemptUnitActive => session_unit_lifecycle(o: loaded)
@@ -991,8 +999,12 @@ fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservati
   }
 }
 
-fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, unit: NonEmptyStr) -> UnitLifecycle {
-  let loaded = attempt_unit_observation(unit: unit)
+// THE SAME READ WITH THE MANAGER'S STANDING SUPPLIED. Production reaches it through
+// session_worker_unit_lifecycle_for_instance, which passes attempt_unit_observation's real read; a
+// witness seeds the standing, because a unit is a fact of the service manager and no file a witness
+// writes can be one. Everything else -- the spool listing, the matching, the settlement -- stays the
+// production path over the real instance root. One authority, one matcher, one seeded seam.
+fn session_worker_unit_lifecycle_with_standing(instance: HostDashboardInstance, unit: NonEmptyStr, loaded: AttemptUnitObservation) -> UnitLifecycle {
   match loaded {
     AttemptUnitAbsent =>
       session_worker_unit_lifecycle(
@@ -1012,6 +1024,10 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
     AttemptUnitFinished { exit_status: _ } => session_unit_lifecycle(o: loaded)
     AttemptUnitUnreadable { reason: _ } => session_unit_lifecycle(o: loaded)
   }
+}
+
+fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, unit: NonEmptyStr) -> UnitLifecycle {
+  session_worker_unit_lifecycle_with_standing(instance: instance, unit: unit, loaded: attempt_unit_observation(unit: unit))
 }
 
 // THE START RECEIPT THE PROCESS OBSERVER NEEDS (gunbc.roadmap.roadmap_dispatch_actuator
@@ -1050,6 +1066,7 @@ fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, nod
           attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))
         AttemptExitRecordFound { record: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
         AttemptExitRecordUnreadable { reason: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
       }
     }
     AttemptUnitActive => loaded
