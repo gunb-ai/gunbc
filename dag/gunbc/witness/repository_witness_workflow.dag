@@ -241,7 +241,8 @@ fn run_roster_step(profile: RepositoryCiProfile, seed: PublicSeed, program: Rost
     statements: roster_run_statements(profile: profile, seed: seed, program: program, compose_statements: compose_statements),
     set_e: true,
     env: memory_budget_env(profile: profile),
-    if_condition: none
+    if_condition: none,
+    working_directory: none
   )
 }
 
@@ -360,7 +361,8 @@ fn annotation_compile_step(profile: RepositoryCiProfile, seed: PublicSeed, annot
     statements: annotation_compile_statements(profile: profile, seed: seed, annotation: annotation),
     set_e: false,
     env: memory_budget_env(profile: profile),
-    if_condition: Present { value: "!cancelled()" }
+    if_condition: Present { value: "!cancelled()" },
+    working_directory: none
   )
 }
 

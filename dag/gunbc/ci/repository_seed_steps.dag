@@ -65,28 +65,11 @@ fn seed_checkout_step(seed: PublicSeed) -> Step {
 // v2.extdeps.languages.bash_build nodes folded by v2.workflow.bash_emit::bash_emit_stmts, so the shape of
 // a step is a model rather than a string that happens to be shell. The fold's Refused is carried up as the
 // emitter's own refusal, which is why these builders return Outcome.
-fn emit_run_step(
-  name: NonEmptyStr,
-  statements: List<Node>,
-  set_e: Bool,
-  env: Optional<List<YamlKeyValue>>,
-  if_condition: Optional<String>
-) -> Outcome<Step> {
-  emit_run_step_in_directory(
-    name: name,
-    statements: statements,
-    set_e: set_e,
-    env: env,
-    if_condition: if_condition,
-    working_directory: none
-  )
-}
-
 /// Emit a `run:` step whose body is the fold of `statements` through the typed shell grammar, run in the
 /// working directory the row names. THE FOLD LIVES HERE AND ONLY HERE: a caller that names no directory
 /// passes Absent, and a step that must run in a tree checked out beside the repository passes that path -
 /// either way the script is the model's, never a string pasted out of a row.
-fn emit_run_step_in_directory(
+fn emit_run_step(
   name: NonEmptyStr,
   statements: List<Node>,
   set_e: Bool,
@@ -129,7 +112,8 @@ fn record_seed_revision_step(seed: PublicSeed) -> Outcome<Step> {
     ],
     set_e: false,
     env: none,
-    if_condition: none
+    if_condition: none,
+    working_directory: none
   )
 }
 
@@ -156,7 +140,7 @@ fn seed_build_step(seed: PublicSeed) -> Outcome<Step> {
   // THE BUILD IS THE ROW'S MODELLED COMMAND, folded through the same typed grammar as every other step in
   // the lane. A row that carried a shell string here could put arbitrary script into a committed workflow
   // without going through the grammar at all.
-  return emit_run_step_in_directory(
+  return emit_run_step(
     name: seed.build_step_name,
     statements: seed.build_command,
     set_e: true,

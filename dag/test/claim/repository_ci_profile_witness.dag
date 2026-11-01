@@ -29,7 +29,8 @@ import gunbc.witness.witness_roster {
 }
 import gunbc.ci.repository_mirror_frontier { repository_mirror_frontier_rows }
 import gunbc.ci.repository_compose_overlay {
-  command_words, heal_seal_env }
+  command,
+  word, heal_seal_env }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
   ProjectionDriftWorkflowGenerated, ProjectionDriftWorkflowGenerationRefused,
@@ -357,7 +358,19 @@ fn fixture_seed() -> PublicSeed {
     repository: "example-org/example-public",
     checkout_path: "seed_repo",
     ref_name: "main",
-    build_command: command_words(rest: ["cargo", "build", "--release", "-p", "example", "--bin", "example"]),
+    build_command: [
+      command(
+        words: [
+          word(text: "cargo"),
+          word(text: "build"),
+          word(text: "--release"),
+          word(text: "-p"),
+          word(text: "example"),
+          word(text: "--bin"),
+          word(text: "example")
+        ]
+      )
+    ],
     seed_binary_relative_path: "target/release/example",
     record_step_name: "Record the seed revision",
     build_step_name: "Build the seed compiler"
@@ -438,12 +451,11 @@ test fn the_emitted_gate_carries_the_seed_receipt_the_composition_and_the_declar
   )
   yaml_emission_admitted(result: repository_witnesses_yml_emission(
     profile: mirror_profile(seal: true, publish: true),
-    seed: fixture_seed(),
     program: gate_program(entries: fixture_roster())
   ))
     && string_contains(s: yml, pattern: "--detach")
     && string_contains(s: yml, pattern: "rev-parse")
-    && string_contains(s: yml, pattern: "cargo build --release -p example --bin example")
+    && string_contains(s: yml, pattern: "'cargo' 'build' '--release'")
     && string_contains(s: yml, pattern: "exit $fail")
     && string_contains(s: yml, pattern: "CAUSE DRIFT")
     && string_contains(s: yml, pattern: "UNDECLARED FAILURE")
@@ -497,7 +509,7 @@ test fn a_declared_cadence_becomes_a_schedule_and_an_empty_one_becomes_no_trigge
 }
 
 fn emitted_gate_text(profile: RepositoryCiProfile) -> String {
-  expected_repository_witnesses_yml(profile: profile, seed: fixture_seed(), program: gate_program(entries: fixture_roster()))
+  expected_repository_witnesses_yml(profile: profile, program: gate_program(entries: fixture_roster()))
 }
 
 fn gate_program(entries: List<RosterEntry>) -> RosterProgram {
@@ -924,7 +936,7 @@ fn mirror_profile_with_seed_ref(ref: NonEmptyStr) -> RepositoryCiProfile {
 }
 
 // EVERY GUNBC EMITTER ADMITS THE ROW BEFORE IT RENDERS (review 89604). The four emitters that read
-# gunbc's own row used to call no admission at all: a row pinning a job to a runner group no census
+// gunbc's own row used to call no admission at all: a row pinning a job to a runner group no census
 // declared, declaring a heal with no publisher, or carrying a duration that is not positive still produced
 // committed YAML. Each emitter now admits first, and each pair below is a discriminator: the same emitter
 // function refuses the row it does not admit and composes for gunbc's own.
