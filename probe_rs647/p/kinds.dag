@@ -1,0 +1,10 @@
+module p.kinds
+
+type Quantity = Time | Memory
+type Scale = One | Milli
+type Measure<Q: Quantity, S: Scale, M> { count: M }
+type Sub<Q: Quantity, S: Scale>
+  = Diff { value: Measure<Q, S, Int> }
+  | Other
+type Wrap<S: Scale> { m: Measure<Memory, S, Int> }
+fn f<Q: Quantity, S: Scale>(m: Measure<Q, S, Int>) -> Int { m.count }

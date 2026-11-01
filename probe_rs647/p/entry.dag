@@ -1,0 +1,5 @@
+module p.entry
+
+import p.kinds { Measure, Sub, Wrap, Memory, One }
+
+type B = Measure<Memory, One, Int>
