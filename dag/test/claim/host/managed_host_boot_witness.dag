@@ -88,6 +88,8 @@ import gunbc.machine_intake.mtcollins1_boot_run {
   ActuationPoweredOn,
 }
 import gunbc.machine_intake.megarac_media_attach { MegaRacPresentationReady }
+import gunbc.megarac_media_model { megarac_start_media_interval }
+import extdeps.external_authority { TranscribedUncited }
 import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch, bmc_control_route_observation }
 import gunbc.host.host_reset_subject_roster { admit_reset_subject, ResetSubjectAdmitted }
 import gunbc.machine_intake.mtcollins1_access_observation {
@@ -986,6 +988,33 @@ test fn w_a_refused_fan_reading_stops_the_executed_boot_route_at_the_gate() -> B
           ExitSuccess => false
         })
         && (match a.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => false _ => true })
+    _ => false
+  }
+}
+
+// THE CONDITIONAL, STATED AS A CLAIM RATHER THAN A CAVEAT. The executed frames above reach power in this
+// model, and they do so on ONE input this build has never been read answering: what the CD row reads in the
+// interval between the start write and the started reading. gunbc.megarac_media_model carries that interval
+// as a hypothesis with a typed standing (extdeps.external_authority CitedFigureStanding, TranscribedUncited)
+// whose read_obligation names the read that would ground it -- a configurations look inside the interval on a
+// live boot at this build, which is what boot 7 will do. This claim pins both halves in one breath: the frame
+// reaches power, AND the standing is still an uncited hypothesis carrying that obligation. Re-key the datum
+// as observed before the interval read is committed and this goes red; when boot 7 commits the read, the
+// datum moves to ObservedByReceipt in its own transition and this claim is replaced by the unconditional one.
+test fn w_the_boot_reaches_power_under_the_start_interval_hypothesis_and_says_so() -> Bool {
+  match run_attempt(world: healthy_census_world()) {
+    WitnessReturned { value: a, route: _, state: _ } =>
+      (match a.fan_gate {
+        PostPowerFanGatePowered { gate: PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } } => true
+        _ => false
+      })
+        && (match a.outcome { ExitSuccess => true ExitFailure { code: _, reason: _ } => false })
+        && (match megarac_start_media_interval.standing {
+            TranscribedUncited { read_obligation: o } =>
+              string_contains(s: o as String, pattern: "INSIDE the interval between a successful StartMedia")
+                && string_contains(s: o as String, pattern: "boot 7")
+            _ => false
+          })
     _ => false
   }
 }

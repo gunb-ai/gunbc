@@ -1,9 +1,10 @@
 module gunbc.megarac_media_model
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
 import std.algebra { list_snoc_item }
 import extdeps.bmc.megarac { megarac_no_redirection_session_index }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.machine_intake.megarac_media_row_reading { boot_run_40264233543_end_media_row }
 
 // THE BMC's VIRTUAL-MEDIA SUBSYSTEM (AMI MegaRAC SP-X): the same controller as gunbc.bmc_model, held as its
@@ -40,8 +41,9 @@ type MegaRacShare {
 // connecting and 1 started (read at 0.32 in 2026-09-27 and again at this build by the boot runs), and for a
 // row that is NOT presenting 0 at 0.32 versus 16 beside session_index 255 at this build -- the divergence
 // this module's cleared row now carries. extdeps.bmc.megarac is the table of what each release answers. A
-// start leaves the row at the pair THIS BUILD was read as in that interval (100 at 0.32; the read stopped
-// pair at this build -- see megarac_start_media) and, after the readiness delay, at started with a bound
+// start leaves the row at a HYPOTHESIZED pair -- this build has never been read in that interval, and
+// megarac_start_media_interval carries it as TranscribedUncited with a read_obligation rather than as a
+// reading -- and, after the readiness delay, at the started pair this build WAS read as, with a bound
 // session index; session index 255 means no session.
 // ready_at is when the row between the start and readiness becomes started.
 type MegaRacCdRow {
@@ -143,35 +145,59 @@ fn megarac_image_index(world: MegaRacMediaWorld, image_name: String) -> Int? {
   })
 }
 
-// A start names an image and its listing index. The row connects, and becomes started after the
-// connecting interval. A start naming an image the listing does not hold changes nothing; whether the
-// firmware answers such a start with an error body is not observed, so the adapter reports the write as
-// accepted and readiness -- which the production code waits on -- never arrives.
+// WHICH ROW THE START LEAVES BEHIND IS NOT READ ON THE BUILD THIS WORLD RENDERS, so it is carried as a
+// MODELED HYPOTHESIS WITH A TYPED STANDING rather than as a reading. What this build has been read
+// answering: the started pair (redirection_status 1 beside a bound session index, boot run 40258937016)
+// and a row naming an image at 16 beside session_index 255 (boot run 40264233543 -- a LEFTOVER,
+// stopped/ejected row read long after any start). NO 0.45 capture covers the interval between a start and
+// the started reading; the capture that shows a connecting row there belongs to 0.32 (the 2026-09-27
+// re-attach read 100 at +6s, then 1 beside session_index 0 from +12s). So the pair placed in the interval
+// is THIS REPOSITORY'S INFERENCE -- the closest pair this unit has been read answering while it is NOT
+// presenting -- and the datum below says so with extdeps.external_authority's CitedFigureStanding:
+// TranscribedUncited, with a read_obligation naming the read that would ground it.
 //
-// WHICH ROW THE START LEAVES BEHIND IS ITSELF A PER-BUILD READING, and this world renders one build. 0.32 was
-// read in that interval: the 2026-09-27 re-attach read 100 beside no session at +6s, then 1 beside
-// session_index 0 from +12s. NO reading on the build the admit gate supplies shows an intermediate row at all;
-// what has been read on it is the started pair (redirection_status 1 beside a bound index, boot run
-// 40258937016) and a row NAMING an image beside 16 and session_index 255 (boot run 40264233543, the leftover
-// boot 5 left; the operator's reading of the vendor UI calls that pair ejected). So the interval carries the
-// pair this unit was read as and NOT 0.32's 100. Borrowing 100 puts a code on the attach path that this build
-// has never been read answering -- extdeps.bmc.megarac leaves 0 and 100 uncatalogued at that release
-// deliberately, because no 0.45 reading grounds them -- and the convergence refuses at once on an uncatalogued
-// code (presented_media -> PresentedMediaUncatalogued -> ReadinessUncatalogued) instead of waiting: the boot
-// stops at attach on a state nobody has read, which is exactly what the boot witness showed while this line
-// typed 100. A row naming the wanted image at the read stopped pair is idle, so the policy sees NOT PRESENTED,
-// which after its own start-media is pending; it polls, and at ready_at the row carries the started pair this
-// build was read as.
+// WHY A STANDING AND NOT A COMMENT. The pair is idle, so it never SATISFIES readiness -- only the started
+// pair does, and that pair is read -- but it does decide whether the attempt WAITS or REFUSES, and no
+// reader can tell an inferred Int from a read Int at the use site. The standing makes the difference
+// machine-visible: w_the_post_start_interval_is_a_hypothesis_with_a_read_obligation goes red the moment the
+// datum is re-keyed as observed without the interval read being committed, and
+// w_the_boot_reaches_power_under_the_start_interval_hypothesis_and_says_so keeps the executed boot frames
+// and the hypothesis named in the same claim. Production attach_readiness is untouched and stays
+// fail-closed: on a live boot it reads the real row and refuses on anything uncatalogued, which is exactly
+// how boot 7 will ground or falsify this.
+type MegaRacModeledCdInterval {
+  row: MegaRacCdRow,
+  standing: CitedFigureStanding,
+}
+
+data megarac_start_media_interval_read_obligation: NonEmptyStr = "Read configurations 0 INSIDE the interval between a successful StartMedia and the started reading, on a live boot at the build this controller reports (boot 7's pre-ready look). Until that read is committed in gunbc.machine_intake.megarac_media_row_reading, the pair below is a model choice about what the row reads while a presentation comes up -- not a 0.45 firmware observation. The 0.45 readings that exist are of a session already started (boot run 40258937016: 1 beside session_index 0) and of a leftover row long after any start (boot run 40264233543: 16 beside session_index 255); neither is a reading of this interval."
+
+data megarac_start_media_interval: MegaRacModeledCdInterval = MegaRacModeledCdInterval {
+  row: MegaRacCdRow {
+    image_name: "",
+    redirection_status: boot_run_40264233543_end_media_row.redirection_status,
+    media_index: 0,
+    session_index: boot_run_40264233543_end_media_row.session_index,
+    ready_at: none,
+  },
+  standing: TranscribedUncited { read_obligation: megarac_start_media_interval_read_obligation },
+}
+
+// A start names an image and its listing index. A start naming an image the listing does not hold changes
+// nothing; whether the firmware answers such a start with an error body is not observed, so the adapter
+// reports the write as accepted and readiness -- which the production code waits on -- never arrives.
+// The interval row comes from megarac_start_media_interval above, and the interval is still TIMED: the wait
+// is the scenario's, not an assumption about the controller's answer.
 fn megarac_start_media(world: MegaRacMediaWorld, image_name: String, image_index: Int, now: Second) -> MegaRacMediaWorld {
   match megarac_image_index(world: world, image_name: image_name) {
     Present { value: idx } =>
       if idx == image_index {
-        let interlude = megarac_cleared_cd_at_the_current_build()
+        let hypothesized = megarac_start_media_interval.row
         megarac_with_cd(world: world, cd: MegaRacCdRow {
           image_name: image_name,
-          redirection_status: interlude.redirection_status,
-          media_index: interlude.media_index,
-          session_index: interlude.session_index,
+          redirection_status: hypothesized.redirection_status,
+          media_index: hypothesized.media_index,
+          session_index: hypothesized.session_index,
           ready_at: Present { value: second(count: second_count(s: now) + second_count(s: world.ready_after)) },
         })
       } else { world }
