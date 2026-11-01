@@ -17077,9 +17077,33 @@ fn exposure_view_for_node(n: Node, source_indices: Map<String, NewlineIndex>) ->
   }
 }
 
+// THE STUCK CAUSE LOCATES ITS NODE. "declaration identity unavailable" with an empty carrier name was typed but not located
+// (DESIGN 5): it named neither the node nor why its identity is absent. This push exists to LOCATE the node heal run
+// 41328971735 refused, and changes no admission behaviour -- the cause text only gains the fields below.
+fn stuck_head_cause(n: Node) -> String {
+  let connective = match n.connective {
+    Arrow => "Arrow"
+    Disj => "Disj"
+    Conj => "Conj"
+    NoConnective => "NoConnective"
+  }
+  let inferred_head = match n.inferred {
+    Present { value: TypeVariable { id: tv } } => concat("TypeVariable(", tv, ")")
+    Present { value: Resolved { node: r } } => concat("Resolved(name=", r.name, ", span_file=", r.span.file, ")")
+    Present { value: CompilerError { message: m, span: _ } } => concat("CompilerError(", m, ")")
+    Present { value: _ } => "other-inferred"
+    Absent => "no-inferred"
+  }
+  let occurrence = match n.occurrence_identity {
+    OccurrenceSynthetic => "synthetic"
+    _ => "minted-or-projected"
+  }
+  concat("declaration identity unavailable [node name='", n.name, "' span_file='", n.span.file, "' connective=", connective, " inferred=", inferred_head, " occurrence=", occurrence, "]")
+}
+
 fn exposure_view_for_declared_node(n: Node, identity: String, head_erasing_properties: List<Node>, source_indices: Map<String, NewlineIndex>) -> TypeHeadExposure {
   match identity == "::" {
-    true => StuckTypeHead { cause: "declaration identity unavailable" }
+    true => StuckTypeHead { cause: stuck_head_cause(n: n) }
     false => match n.type_annotation != none || (head_erasing_properties |> count) > 0 {
       true => OpaqueTypeHead { type_identity: identity }
       false => match n.connective {
