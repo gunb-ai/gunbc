@@ -116,8 +116,7 @@ data witness_emitter_rows: List<FrontierRow> = frontier_rows_for_decls(
   dissolution: mirror_lane_dissolution,
 )
 
-// THE ROSTER THE CENSUS FOLDS. Enrolled the way product.data_category's rows are, in
-// gunbc.census_closure_frontier, so the fold sees the lane rather than a comment describing it.
+// THE LANE'S FRONTIER ROWS. The roster fold that once enrolled them (gunbc.census_closure_frontier) was retired.
 data repository_mirror_frontier_rows: List<FrontierRow> = concat(
   mirror_lane_module_rows,
   concat(profile_mirror_arm_rows, witness_emitter_rows)
