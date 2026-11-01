@@ -144,6 +144,7 @@ test fn enrolled_roster_discovers_a_customer_request_the_operator_pass_misses() 
           other => false
         })
       other => false
+      }
     }
     other => false
   } }

@@ -14,7 +14,7 @@ module test.claim.live_deploy.tailnet_door_cutover_journal_live_bytes_witness
 // The paired witness breaks the realization: the declared member is never stood up, and the mint
 // refuses, so there is no store to read at all.
 
-import std.types { Bool, String, NonEmptyStr, Int, Optional, Absent, Present, none }
+import std.types { Bool, String, NonEmptyStr, Int, Optional, Absent, Present }
 import std.cas { CasGeneration }
 import std.durable_compare_and_set { cas_generation_first, cas_generation_count, ExpectSlotAbsent }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }

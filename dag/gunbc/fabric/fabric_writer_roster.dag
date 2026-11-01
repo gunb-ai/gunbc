@@ -97,7 +97,7 @@ fn observed_login(o: FabricWriterIdentityObservation) -> List<NonEmptyStr> {
 // decision supplies readings, and one wet claim on the store proves those readings are what the real
 // roster holds.
 fn fabric_served_writer_roster_of(observations: List<FabricWriterIdentityObservation>) -> List<NonEmptyStr> {
-  fold(flat_map(rows, o => observed_login(o: o)), init: [], f: (acc, l) =>
+  fold(flat_map(observations, o => observed_login(o: o)), init: [], f: (acc, l) =>
     if any(acc, a => (a as String) == (l as String)) { acc } else { concat(acc, [l]) })
 }
 
