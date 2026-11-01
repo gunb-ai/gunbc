@@ -39,7 +39,10 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound,
 }
-import gunbc.host.host_layout { publication_request_dir, publication_answer_dir, publication_refused_dir, publication_bare_mirror_path }
+import gunbc.host.host_layout { publication_answer_dir, publication_bare_mirror_path }
+import gunbc.spool_queue {
+  SpoolPublication, RolePending, RoleRefused, SpoolRole, SpoolEnqueueAssessment, spool_open, spool_role_path, spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EnqueueRefused, EntryAbsent, EntryStanding, EntryObservationUnavailable,
+}
 import gunbc.roadmap.roadmap_publish_actuate {
   publish_staged_attempt, stage_captured_candidate_sha,
   PublishActuated, PushRefused, PullRequestRefused, PublishNetrcResidueRemains,
@@ -172,12 +175,22 @@ fn publication_spool_entry_name(key: String) -> String {
   join([key, ".json"], "")
 }
 
-fn publication_request_path_for(instance_root: String, key: String) -> String {
-  join([
-    publication_request_dir(instance_root: instance_root),
-    "/",
-    publication_spool_entry_name(key: key),
-  ], "")
+fn publication_role_dir(instance_root: String, role: SpoolRole) -> String? {
+  spool_role_path(store: spool_open(kind: SpoolPublication, instance_root: instance_root), role: role)
+}
+
+fn publication_pending_dir_text(instance_root: String) -> String {
+  match publication_role_dir(instance_root: instance_root, role: RolePending) {
+    Present { value: dir } => dir
+    Absent => "<the publication spool declares no pending directory>"
+  }
+}
+
+fn publication_request_path_for(instance_root: String, key: String) -> String? {
+  match publication_role_dir(instance_root: instance_root, role: RolePending) {
+    Present { value: dir } => Present { value: join([dir, "/", publication_spool_entry_name(key: key)], "") }
+    Absent => Absent
+  }
 }
 
 fn publication_answer_path_for(instance_root: String, key: String) -> String {
@@ -346,7 +359,7 @@ fn publication_answer_read(
 }
 
 // ENQUEUE IS CREATE-ONLY. The request's name is the subject's identity; a second write of the
-// same key is refused rather than overwritten (gunbc.durable_handoff_host host_spool_enqueue_assess
+// same key is refused rather than overwritten (gunbc.spool_queue spool_enqueue_assess
 // over Filesystem.WriteCreateNew). Already-present means the helper was already asked, not that
 // the bytes may be replaced.
 type PublicationRequestEnqueue
@@ -354,31 +367,28 @@ type PublicationRequestEnqueue
   | RequestAlreadyPresent { path: String }
   | RequestNotEnqueued { detail: String }
 
+fn publication_request_from_assessment(path: String, assessment: SpoolEnqueueAssessment) -> PublicationRequestEnqueue {
+  match assessment {
+    EnqueueEligible { into: _ } => RequestEnqueued { path: path }
+    EnqueueAlreadyPresent { state: _ } => RequestAlreadyPresent { path: path }
+    EnqueueRefused { detail } =>
+      RequestNotEnqueued {
+        detail: join([
+          "the publication request could not be written, so nothing was asked of the publication helper: ",
+          path, " (", detail, ")",
+        ], ""),
+      }
+  }
+}
+
 fn publication_request_from_create(created: FilesystemCreateNew) -> PublicationRequestEnqueue {
   match created {
     FilesystemCreated { path: p } =>
-      match host_spool_enqueue_assess(name: p, observed: HostSpoolNameAbsent) {
-        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
-        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
-        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued { detail: join([n, ": ", d], "") }
-      }
+      publication_request_from_assessment(path: p, assessment: spool_enqueue_assess(kind: SpoolPublication, observed: EntryAbsent))
     FilesystemCreateTargetOccupied { path: p } =>
-      match host_spool_enqueue_assess(name: p, observed: HostSpoolNamePresent) {
-        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
-        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
-        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued { detail: join([n, ": ", d], "") }
-      }
+      publication_request_from_assessment(path: p, assessment: spool_enqueue_assess(kind: SpoolPublication, observed: EntryStanding { role: RolePending }))
     FilesystemCreateRefused { path: p, kind: _, error: e } =>
-      match host_spool_enqueue_assess(name: p, observed: HostSpoolNameUnreadable { detail: e }) {
-        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued {
-          detail: join([
-            "the publication request could not be written, so nothing was asked of the publication helper: ",
-            n, " (", d, ")",
-          ], ""),
-        }
-        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
-        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
-      }
+      publication_request_from_assessment(path: p, assessment: spool_enqueue_assess(kind: SpoolPublication, observed: EntryObservationUnavailable { detail: e }))
     FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
       RequestNotEnqueued { detail: join([p, ": ", o, ": ", e], "") }
   }
@@ -390,14 +400,17 @@ fn publication_request_enqueue(
   subject: RoadmapPublicationSubject,
   worktree: String,
 ) -> PublicationRequestEnqueue {
-  let path = publication_request_path_for(instance_root: instance_root, key: key)
-  let write = Filesystem.WriteCreateNew(
-    path: path,
-    content: publication_request_json(subject: subject, worktree: worktree),
-  )
-  publication_request_from_create(
-    created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
-  )
+  match publication_request_path_for(instance_root: instance_root, key: key) {
+    Absent => RequestNotEnqueued { detail: "the publication spool declares no pending directory" }
+    Present { value: path } =>
+      let write = Filesystem.WriteCreateNew(
+        path: path,
+        content: publication_request_json(subject: subject, worktree: worktree),
+      )
+      publication_request_from_create(
+        created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
+      )
+  }
 }
 
 // THREE STATES, BECAUSE THREE REMEDIES. An answer that is ready, a request that is now waiting, and
@@ -750,21 +763,28 @@ fn publication_helper_retire_request(
   entry: String,
   refused: PublicationHelperOutcome,
 ) -> PublicationHelperOutcome {
-  let moved = shell.Move.File(
-    source: join([publication_request_dir(instance_root: instance_root), "/", entry], "") as FilePath,
-    destination: join([publication_refused_dir(instance_root: instance_root), "/", entry], "") as FilePath,
-  )
-  if moved.success {
-    refused
-  } else {
-    HelperRequestNotQuarantined {
-      entry: entry,
-      detail: join([
-        "the request was terminally refused and could not be moved out of the pending set, so it will stop the line again on the next run with the same bytes: ",
-        publication_request_dir(instance_root: instance_root), "/", entry,
-        " -> ", publication_refused_dir(instance_root: instance_root), "/", entry,
-      ], ""),
-    }
+  match publication_role_dir(instance_root: instance_root, role: RolePending) {
+    Absent => HelperRequestNotQuarantined { entry: entry, detail: "the publication spool declares no pending directory, so the request could not be moved out of it" }
+    Present { value: pending } =>
+      match publication_role_dir(instance_root: instance_root, role: RoleRefused) {
+        Absent => HelperRequestNotQuarantined { entry: entry, detail: "the publication spool declares no refused directory, so the request could not be moved out of the pending set" }
+        Present { value: quarantine } =>
+          let moved = shell.Move.File(
+            source: join([pending, "/", entry], "") as FilePath,
+            destination: join([quarantine, "/", entry], "") as FilePath,
+          )
+          if moved.success {
+            refused
+          } else {
+            HelperRequestNotQuarantined {
+              entry: entry,
+              detail: join([
+                "the request was terminally refused and could not be moved out of the pending set, so it will stop the line again on the next run with the same bytes: ",
+                pending, "/", entry, " -> ", quarantine, "/", entry,
+              ], ""),
+            }
+          }
+      }
   }
 }
 
@@ -792,11 +812,7 @@ fn publication_helper_record_subject_outcome(
                 },
               )
             } else {
-              let consumed = Filesystem.Delete(
-                path: join([
-                  publication_request_dir(instance_root: instance_root), "/", entry,
-                ], ""),
-              )
+              let consumed = Filesystem.Delete(path: path)
               if consumed.success {
                 HelperAnswered {
                   key: key,
@@ -929,9 +945,7 @@ fn publication_helper_prepare_entry(instance_root: String, entry: String) -> Pub
   if trim(entry) == "" {
     PreparedOutcome { outcome: HelperSpoolRefused { detail: "the request listing carried an empty entry name" } }
   } else {
-    let path = join([
-      publication_request_dir(instance_root: instance_root), "/", entry,
-    ], "")
+    let path = join([publication_pending_dir_text(instance_root: instance_root), "/", entry], "")
     let read = Filesystem.Read(path: path)
     match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
       FilesystemReadRefused { error } =>
@@ -1048,7 +1062,7 @@ fn publication_helper_capability_admits(
 // there is nothing to do` -- that is the empty-observation narrow, and it would render a helper
 // whose spool the deploy never created as a helper with no work, forever.
 fn publication_helper_run_once(instance_root: String) -> List<PublicationHelperOutcome> {
-  let requests_dir = publication_request_dir(instance_root: instance_root)
+  let requests_dir = publication_pending_dir_text(instance_root: instance_root)
   let requests = Filesystem.List(path: requests_dir)
   if !requests.success {
     [
