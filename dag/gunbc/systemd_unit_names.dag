@@ -51,6 +51,19 @@ fn belt_attempt_obligation_unit_name(node_id: String, attempt_key: String) -> No
   join(["gunbc-obligation-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
 }
 
+// THE COMPUTE SEAT'S UNIT. The launcher passes the STEM (no suffix) to systemd-run, which is the name
+// the door later asks the manager about, so the stem is spelled ONCE here and the exit-record decoder
+// derives the very same string rather than reconstructing it. compute_unit_name_admission is the
+// admissibility test over that same stem: an identity an entry carries that cannot name a unit is
+// refused typed, never repaired into a name.
+fn compute_unit_stem(identity_hex: String) -> String {
+  join(["gunbc-compute-", identity_hex], "")
+}
+
 fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
-  join(["gunbc-compute-", identity_hex], "") as NonEmptyStr
+  compute_unit_stem(identity_hex: identity_hex) as NonEmptyStr
+}
+
+fn compute_unit_name_admission(identity_hex: String) -> SystemdUnitNameAdmission {
+  systemd_service_unit_name(stem: compute_unit_stem(identity_hex: identity_hex))
 }

@@ -586,6 +586,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, AttemptSupervisorRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, attempt_unit_role_token,
+  attempt_exit_record_is_role, attempt_exit_record_names_attempt,
+  AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit,
   attempt_exit_record_put_worker_exited, attempt_exit_record_put_vendor_pane_death,
   AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
   VendorPaneDeath, VendorPaneExited, VendorPaneSignaled,
@@ -15215,7 +15217,7 @@ fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String
 
 fn belt_exit_entry_is_worker(entry: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
-    AttemptExitEntryDecoded { record } => record.role == attempt_unit_role_token(role: AttemptWorkerRole)
+    AttemptExitEntryDecoded { record } => attempt_exit_record_is_role(record: record, token: attempt_unit_role_token(role: AttemptWorkerRole))
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
 }
@@ -15231,13 +15233,20 @@ fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> A
     AttemptExitStageNames { names } =>
       names |> flat_map(n => match attempt_exit_entry_decode(entry_name: n) {
         AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: n, reason: join(["running entry is not an exit record: ", reason], "") }]
-        AttemptExitEntryDecoded { record } =>
-          match observe(record.node_id, record.attempt_key) {
-            AttemptUnitActive => [] as List<BeltExitDrainEntry>
-            AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: n, reason: join(["the user manager could not say whether the claiming unit is live: ", reason], "") }]
-            AttemptUnitAbsent => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
-            AttemptUnitFinished { exit_status: _ } => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
-          }
+        AttemptExitEntryDecoded { record } => match record.subject {
+          RoadmapAttemptExit { node_id, attempt_key, role: _ } =>
+            match observe(node_id, attempt_key) {
+              AttemptUnitActive => [] as List<BeltExitDrainEntry>
+              AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: n, reason: join(["the user manager could not say whether the claiming unit is live: ", reason], "") }]
+              AttemptUnitAbsent => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
+              AttemptUnitFinished { exit_status: _ } => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
+            }
+          // A COMPUTE SEAT'S RECORD IS NOT THIS BELT'S TO DRAIN. It sits in the roadmap spool, where no
+          // route writes it, and its identity is not an attempt coordinate: refused by name and left in
+          // place for an operator to see, never moved and never read as an attempt.
+          ComputeAttemptExit { identity } =>
+            [BeltExitEntryRefused { entry: n, reason: join(["the exit record names compute seat identity ", identity, ", which the roadmap belt does not own and cannot resolve to an attempt"], "") }]
+        }
       })
   }
 }
@@ -15251,7 +15260,7 @@ fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, Str
 
 fn belt_exit_entry_is_obligation(entry: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
-    AttemptExitEntryDecoded { record } => record.role == attempt_unit_role_token(role: AttemptObligationRole)
+    AttemptExitEntryDecoded { record } => attempt_exit_record_is_role(record: record, token: attempt_unit_role_token(role: AttemptObligationRole))
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
 }
@@ -15262,13 +15271,20 @@ fn belt_exit_entry_is_obligation(entry: String) -> Bool {
 fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: entry, reason: reason }]
-    AttemptExitEntryDecoded { record } =>
-      match observe(record.node_id, record.attempt_key) {
-        AttemptUnitActive => [] as List<BeltExitDrainEntry>
-        AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: entry, reason: join(["the user manager could not say whether the unit is live: ", reason], "") }]
-        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
-        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
-      }
+    AttemptExitEntryDecoded { record } => match record.subject {
+      RoadmapAttemptExit { node_id, attempt_key, role: _ } =>
+        match observe(node_id, attempt_key) {
+          AttemptUnitActive => [] as List<BeltExitDrainEntry>
+          AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: entry, reason: join(["the user manager could not say whether the unit is live: ", reason], "") }]
+          AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
+          AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
+        }
+          // A COMPUTE SEAT'S RECORD IS NOT THIS BELT'S TO DRAIN. It sits in the roadmap spool, where no
+          // route writes it, and its identity is not an attempt coordinate: refused by name and left in
+          // place for an operator to see, never moved and never read as an attempt.
+          ComputeAttemptExit { identity } =>
+            [BeltExitEntryRefused { entry: entry, reason: join(["the exit record names compute seat identity ", identity, ", which the roadmap belt does not own and cannot resolve to an attempt"], "") }]
+    }
   }
 }
 
@@ -15716,7 +15732,7 @@ type BeltExitClaim
 
 fn belt_exit_entry_is_for(entry: String, node_id: String, attempt_key: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
-    AttemptExitEntryDecoded { record } => record.node_id == node_id && record.attempt_key == attempt_key
+    AttemptExitEntryDecoded { record } => attempt_exit_record_names_attempt(record: record, node_id: node_id, attempt_key: attempt_key)
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
 }
@@ -15778,18 +15794,24 @@ fn belt_exit_queued_sweep_at(root: String, enqueue: fn(String, String) -> BeltOb
     AttemptExitStageNames { names } =>
       fold(names, init: [] as List<BeltExitDrainEntry>, f: (acc, n) => match attempt_exit_entry_decode(entry_name: n) {
         AttemptExitEntryMalformed { entry_name: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: join(["queued entry is not an exit record: ", reason], "") }])
-        AttemptExitEntryDecoded { record } => {
-          let key = join([record.node_id, "/", record.attempt_key], "")
-          if any(acc, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => belt_exit_entry_is_for(entry: entry, node_id: record.node_id, attempt_key: record.attempt_key) _ => false }) {
-            acc
-          } else {
-            let handed = enqueue(record.node_id, record.attempt_key)
-            match handed {
-              BeltObligationEnqueueRefused { unit: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: reason }])
-              BeltObligationStarted { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
-              BeltObligationHeld { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+        AttemptExitEntryDecoded { record } => match record.subject {
+          RoadmapAttemptExit { node_id, attempt_key, role: _ } => {
+            let key = join([node_id, "/", attempt_key], "")
+            if any(acc, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => belt_exit_entry_is_for(entry: entry, node_id: node_id, attempt_key: attempt_key) _ => false }) {
+              acc
+            } else {
+              let handed = enqueue(node_id, attempt_key)
+              match handed {
+                BeltObligationEnqueueRefused { unit: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: reason }])
+                BeltObligationStarted { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+                BeltObligationHeld { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+              }
             }
           }
+          // A QUEUED RECORD FOR A COMPUTE SEAT IS NOT AN OBLIGATION HAND-OFF. There is no attempt to
+          // start, so nothing is enqueued; the entry is refused by name and stays where it is.
+          ComputeAttemptExit { identity } =>
+            concat(acc, [BeltExitEntryRefused { entry: n, reason: join(["the queued record names compute seat identity ", identity, ", which the roadmap belt does not own and cannot resolve to an attempt"], "") }])
         }
       })
   }

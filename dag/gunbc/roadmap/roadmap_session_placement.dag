@@ -61,6 +61,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   attempt_exit_record_observe, attempt_exit_record_matching, attempt_exit_stage_listings,
   AttemptWorkerRole, attempt_unit_role_token,
+  AttemptExitEntrySubject, RoadmapEntrySubject, ComputeEntrySubject, OtherEntrySubject,
 }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, FilesystemReadOutcome,
@@ -1146,12 +1147,21 @@ fn session_worker_unit_lifecycle_with_standing(instance: HostDashboardInstance, 
         loaded: loaded,
         evidence: evidence,
         record: attempt_exit_record_matching(
-          matches: (n, a, r) => r == attempt_unit_role_token(role: AttemptWorkerRole) && (match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
-            SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
-            SystemdUnitNameStemEmpty => false
-            SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
-            SystemdUnitNameOverlong { length: _ } => false
-          }),
+          matches: s => match s {
+            RoadmapEntrySubject { node_id: n, attempt_key: a, role: r, invocation_id: _ } =>
+              r == attempt_unit_role_token(role: AttemptWorkerRole) && (match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
+                SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
+                SystemdUnitNameStemEmpty => false
+                SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+                SystemdUnitNameOverlong { length: _ } => false
+              })
+            // A COMPUTE SEAT'S RECORD IS NOT THIS ATTEMPT'S WORKER, and an entry too broken to say which
+            // route wrote it cannot be attributed to this unit. Both answer "not mine", so neither can
+            // make a seat's exit stand in for a worker's -- the confusion this split exists to make
+            // unrepresentable.
+            ComputeEntrySubject { identity: _, invocation_id: _ } => false
+            OtherEntrySubject { parts: _ } => false
+          },
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
       )

@@ -36,6 +36,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptWorkerRole, attempt_unit_role_token,
   AttemptExitStageListing, AttemptExitStageNames, AttemptExitStageUnreadable, attempt_exit_stage_listings,
   AttemptExitEntryDecoded, AttemptExitEntryMalformed, attempt_exit_entry_decode,
+  AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit,
 }
 
 // A COMPUTE SEAT HELD BY AN ATTEMPT THAT ENDED IS ENSURED RETURNED, THROUGH THE ONE DISCHARGE DOOR
@@ -432,8 +433,14 @@ fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<Seat
       AttemptExitStageNames { names } => names
       AttemptExitStageUnreadable { reason: _ } => [] as List<String>
     }) |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
-      AttemptExitEntryDecoded { record } =>
-        if record.role == attempt_unit_role_token(role: AttemptWorkerRole) { [SeatOwnerKey { node_id: record.node_id, attempt_key: record.attempt_key }] } else { [] as List<SeatOwnerKey> }
+      AttemptExitEntryDecoded { record } => match record.subject {
+        // A SEAT IS OWNED BY A ROADMAP ATTEMPT. A compute seat's exit record carries the provider's own
+        // execution identity, which is not an attempt coordinate: it names no owner here, and the compute
+        // provider discharges its own seats at its own door.
+        RoadmapAttemptExit { node_id, attempt_key, role } =>
+          if role == attempt_unit_role_token(role: AttemptWorkerRole) { [SeatOwnerKey { node_id: node_id, attempt_key: attempt_key }] } else { [] as List<SeatOwnerKey> }
+        ComputeAttemptExit { identity: _, invocation_id: _ } => [] as List<SeatOwnerKey>
+      }
       AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<SeatOwnerKey>
     }),
     key: fn(o) { join([o.node_id, "\n", o.attempt_key], "") })

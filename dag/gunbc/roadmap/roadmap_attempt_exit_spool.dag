@@ -25,6 +25,7 @@ import extdeps.posix.signal {
 import gunbc.systemd_unit_names {
   dispatch_attempt_unit_name, dispatch_review_unit_name, dispatch_audit_unit_name,
   dispatch_supervisor_unit_name, belt_attempt_obligation_unit_name,
+  compute_unit_name, compute_unit_name_admission,
 }
 import extdeps.systemd {
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
@@ -220,10 +221,71 @@ type AttemptProcessEnd
   = AttemptProcessExitedWith { status: Int }
   | AttemptProcessSignaled { signal: LinuxStandardSignal }
 
+// WHICH ROUTE WROTE THE RECORD, and the subject it names. The two routes name their subjects with
+// keys that are NOT interchangeable: a roadmap attempt is a (node, key) coordinate plus a role, while a
+// compute seat is the provider's opaque execution identity (minted by gunbc.compute.work_provider_local
+// compute_execution_identity, which can itself contain '.'). Keeping them in one field would let a
+// consumer read a seat identity as a node id or a node id as a unit -- so they are two arms, and every
+// consumer answers both.
+type AttemptExitSubject
+  = RoadmapAttemptExit { node_id: String, attempt_key: String, role: String }
+  | ComputeAttemptExit { identity: String, invocation_id: String }
+
+// WHAT AN ENTRY NAMES BEFORE IT CAN BE DECODED. A malformed entry yields no record, so deciding whether
+// a broken artifact is about THIS subject runs on the raw parts; the decoder, not this type, decides
+// what an entry means. The arms are the same shape as the record's, so a caller writes ONE predicate
+// that answers both the decoded and the broken case.
+type AttemptExitEntrySubject
+  = RoadmapEntrySubject { node_id: String, attempt_key: String, role: String, invocation_id: String }
+  | ComputeEntrySubject { identity: String, invocation_id: String }
+  | OtherEntrySubject { parts: List<String> }
+
+fn attempt_exit_entry_subject(name: String) -> AttemptExitEntrySubject {
+  let parts = name.split(delimiter: attempt_exit_entry_separator)
+  if count(parts) == 7 {
+    RoadmapEntrySubject {
+      node_id: attempt_exit_entry_part(parts: parts, index: 0),
+      attempt_key: attempt_exit_entry_part(parts: parts, index: 1),
+      role: attempt_exit_entry_part(parts: parts, index: 2),
+      invocation_id: attempt_exit_entry_part(parts: parts, index: 3),
+    }
+  } else if count(parts) == 5 {
+    ComputeEntrySubject {
+      identity: attempt_exit_entry_part(parts: parts, index: 0),
+      invocation_id: attempt_exit_entry_part(parts: parts, index: 1),
+    }
+  } else {
+    OtherEntrySubject { parts: parts }
+  }
+}
+
+fn attempt_exit_subject_of_record(record: AttemptExitRecord) -> AttemptExitEntrySubject {
+  match record.subject {
+    RoadmapAttemptExit { node_id, attempt_key, role } =>
+      RoadmapEntrySubject { node_id: node_id, attempt_key: attempt_key, role: role, invocation_id: record.invocation_id }
+    ComputeAttemptExit { identity, invocation_id } => ComputeEntrySubject { identity: identity, invocation_id: invocation_id }
+  }
+}
+
+// WHICH ROUTE'S SUBJECT A RECORD NAMES, asked through the type instead of read off a field: a role
+// belongs to the roadmap route, so a compute record answers false rather than being compared to a role
+// it never had.
+fn attempt_exit_record_is_role(record: AttemptExitRecord, token: String) -> Bool {
+  match record.subject {
+    RoadmapAttemptExit { node_id: _, attempt_key: _, role } => role == token
+    ComputeAttemptExit { identity: _, invocation_id: _ } => false
+  }
+}
+
+fn attempt_exit_record_names_attempt(record: AttemptExitRecord, node_id: String, attempt_key: String) -> Bool {
+  match record.subject {
+    RoadmapAttemptExit { node_id: n, attempt_key: a, role: _ } => n == node_id && a == attempt_key
+    ComputeAttemptExit { identity: _, invocation_id: _ } => false
+  }
+}
+
 type AttemptExitRecord {
-  node_id: String
-  attempt_key: String
-  role: String
+  subject: AttemptExitSubject
   // The unit this record was written for, DERIVED from the subject parts above by calling the declared
   // builder for that role. It is a common field because every route's record names its unit, and it is
   // derived rather than spelled because the entry name is built inside systemd's ExecStopPost
@@ -267,6 +329,42 @@ fn attempt_process_end_of(code: ServiceExitCode, status: String) -> AttemptProce
   }
 }
 
+// A COMPUTE SEAT'S RECORD. The identity is the provider's own execution identity, so the unit is
+// derived by calling the SAME builder the launcher used (gunbc.systemd_unit_names compute_unit_name);
+// an identity that cannot name a unit refuses typed with the identity named, because a name no launcher
+// can produce is not evidence about any holder. There is no role part: a seat runs one unit.
+fn attempt_exit_compute_entry_decode(entry_name: String, parts: List<String>) -> AttemptExitEntryDecode {
+  let identity = attempt_exit_entry_part(parts: parts, index: 0)
+  let invocation_id = attempt_exit_entry_part(parts: parts, index: 1)
+  let result_word = attempt_exit_entry_part(parts: parts, index: 2)
+  let code = service_exit_code_of_wire(word: attempt_exit_entry_part(parts: parts, index: 3))
+  let status = attempt_exit_entry_part(parts: parts, index: 4)
+  if string_length(s: identity) == 0 || string_length(s: invocation_id) == 0 {
+    AttemptExitEntryMalformed { entry_name: entry_name, reason: "a compute seat's exit record names its execution identity and its invocation; one of them is empty" }
+  } else {
+    match compute_unit_name_admission(identity_hex: identity) {
+      SystemdUnitNameAdmitted { name: _ } =>
+        match attempt_process_end_of(code: code, status: status) {
+          AttemptProcessEndRefused { reason } => AttemptExitEntryMalformed { entry_name: entry_name, reason: reason }
+          AttemptProcessEndOf { end } => AttemptExitEntryDecoded {
+            record: AttemptExitRecord {
+              subject: ComputeAttemptExit { identity: identity, invocation_id: invocation_id },
+              unit: compute_unit_name(identity_hex: identity),
+              invocation_id: invocation_id,
+              result: service_result_of_wire(word: result_word),
+              end: end,
+              entry_name: entry_name,
+            },
+          }
+        }
+      other => AttemptExitEntryMalformed {
+        entry_name: entry_name,
+        reason: join(["the compute seat identity ", identity, " cannot name a unit: ", systemd_unit_name_refusal_detail(admission: other)], ""),
+      }
+    }
+  }
+}
+
 // The decoder checks the part count before reading any part, so an absent index here is a count
 // already refused; the empty string it answers is then refused by the emptiness checks below.
 fn attempt_exit_entry_part(parts: List<String>, index: Int) -> String {
@@ -276,10 +374,28 @@ fn attempt_exit_entry_part(parts: List<String>, index: Int) -> String {
   }
 }
 
+// THE ONE DECODER. An entry's part count says which route wrote it: a roadmap attempt's record names
+// node, attempt, role, invocation, result, code, status (seven); a compute seat's names identity,
+// invocation, result, code, status (five). Anything else is neither, and is refused with the count it
+// carried -- it is never guessed into a route. Both arms then share the stop-variable and end rules
+// below, because those are facts about the stop hook, not about the subject.
 fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
   let parts = entry_name.split(delimiter: attempt_exit_entry_separator)
+  if count(parts) == 7 {
+    attempt_exit_roadmap_entry_decode(entry_name: entry_name, parts: parts)
+  } else if count(parts) == 5 {
+    attempt_exit_compute_entry_decode(entry_name: entry_name, parts: parts)
+  } else {
+    AttemptExitEntryMalformed {
+      entry_name: entry_name,
+      reason: join(["an exit record is a roadmap attempt's seven '+'-separated parts (node, attempt, role, invocation, result, code, status) or a compute seat's five (identity, invocation, result, code, status); this name has ", to_string(value: count(parts))], ""),
+    }
+  }
+}
+
+fn attempt_exit_roadmap_entry_decode(entry_name: String, parts: List<String>) -> AttemptExitEntryDecode {
   if count(parts) != 7 {
-    AttemptExitEntryMalformed { entry_name: entry_name, reason: join(["an exit record has seven '+'-separated parts; this name has ", to_string(value: count(parts))], "") }
+    AttemptExitEntryMalformed { entry_name: entry_name, reason: join(["a roadmap attempt's exit record has seven '+'-separated parts; this name has ", to_string(value: count(parts))], "") }
   } else {
     let node_id = attempt_exit_entry_part(parts: parts, index: 0)
     let attempt_key = attempt_exit_entry_part(parts: parts, index: 1)
@@ -310,9 +426,7 @@ fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
             AttemptExitUnitDerived { unit } =>
               AttemptExitEntryDecoded {
                 record: AttemptExitRecord {
-                  node_id: node_id,
-                  attempt_key: attempt_key,
-                  role: role,
+                  subject: RoadmapAttemptExit { node_id: node_id, attempt_key: attempt_key, role: role },
                   unit: unit,
                   invocation_id: invocation_id,
                   result: service_result_of_wire(word: result_word),
@@ -381,14 +495,22 @@ fn attempt_exit_record_from_listings(
   role: AttemptUnitRole,
   listings: List<AttemptExitStageListing>,
 ) -> AttemptExitRecordObservation {
-  attempt_exit_record_matching(matches: (n, a, r) => n == node_id && a == attempt_key && r == attempt_unit_role_token(role: role), listings: listings)
+  attempt_exit_record_matching(
+    matches: s => match s {
+      RoadmapEntrySubject { node_id: n, attempt_key: a, role: r, invocation_id: _ } => n == node_id && a == attempt_key && r == attempt_unit_role_token(role: role)
+      ComputeEntrySubject { identity: _, invocation_id: _ } => false
+      OtherEntrySubject { parts: _ } => false
+    },
+    listings: listings,
+  )
 }
 
-// DOES THIS ENTRY NAME IDENTIFY THE SUBJECT? An entry is for the subject when its first three parts
-// are its node, attempt and role -- the parts every writer must put there, expanded or not.
-fn attempt_exit_entry_names_subject(matches: fn(String, String, String) -> Bool, name: String) -> Bool {
-  let parts = name.split(delimiter: attempt_exit_entry_separator)
-  count(parts) >= 3 && matches(attempt_exit_entry_part(parts: parts, index: 0), attempt_exit_entry_part(parts: parts, index: 1), attempt_exit_entry_part(parts: parts, index: 2))
+// DOES THIS ENTRY NAME IDENTIFY THE SUBJECT? An entry is for the subject when the parts it carries
+// before any decoding -- the subject parts every writer must put there, expanded or not -- are the
+// subject the caller is asking about. A malformed name answers through the same predicate a decoded
+// record answers, so "this broken artifact is mine" and "this record is mine" cannot drift apart.
+fn attempt_exit_entry_names_subject(matches: fn(AttemptExitEntrySubject) -> Bool, name: String) -> Bool {
+  matches(attempt_exit_entry_subject(name: name))
 }
 
 // THE SAME DECISION OVER ANY SUBJECT PREDICATE: the placement settlement knows a worker by its unit
@@ -396,7 +518,7 @@ fn attempt_exit_entry_names_subject(matches: fn(String, String, String) -> Bool,
 // gunbc.systemd_unit_names dispatch_attempt_unit_name), so the caller supplies the predicate rather than this module
 // re-deriving the name.
 fn attempt_exit_record_matching(
-  matches: fn(String, String, String) -> Bool,
+  matches: fn(AttemptExitEntrySubject) -> Bool,
   listings: List<AttemptExitStageListing>,
 ) -> AttemptExitRecordObservation {
   let unreadable = listings |> flat_map(l => match l {
@@ -427,7 +549,7 @@ fn attempt_exit_record_matching(
           AttemptExitStageUnreadable { reason: _ } => [] as List<String>
         })
         |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
-          AttemptExitEntryDecoded { record } => if matches(record.node_id, record.attempt_key, record.role) { [record] } else { [] as List<AttemptExitRecord> }
+          AttemptExitEntryDecoded { record } => if matches(attempt_exit_subject_of_record(record: record)) { [record] } else { [] as List<AttemptExitRecord> }
           AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<AttemptExitRecord>
         })
       // A DECODABLE RECORD ANSWERS THE END, and it outranks a broken sibling artifact: the end is
