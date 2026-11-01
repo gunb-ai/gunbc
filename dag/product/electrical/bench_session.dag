@@ -4,11 +4,16 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat, nat_min, nat_max }
 import std.measure { Millivolt, Volt, millivolt_count, volt_count }
-import product.placement_supply { PhysicalAssetIdentity }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import product.electrical.connectivity { ElectricalTerminalRef, ComponentInstanceIdentity, terminal_ref_equal }
 import product.electrical.continuity {
+  AfterIncidents,
+  BeforeIncidents,
   BenchConditions,
+  ContinuityObservation,
   EvidenceRef,
+  OrderUnrecorded,
+  ReadingOrder,
   ProbeRecord,
   probe_record_inferred,
   terminal_text,
@@ -61,10 +66,6 @@ type BenchIncident {
   evidence: EvidenceRef
 }
 
-type ReadingOrder
-  = BeforeIncidents { keys: List<NonEmptyStr> }
-  | AfterIncidents { keys: List<NonEmptyStr> }
-  | OrderUnrecorded { relative_to: List<NonEmptyStr> }
 
 type StatementCertainty
   = StatedPlainly
@@ -235,6 +236,126 @@ fn is_before_incidents(o: ReadingOrder) -> Bool {
     BeforeIncidents { keys: _ } => true
     AfterIncidents { keys: _ } => false
     OrderUnrecorded { relative_to: _ } => false
+  }
+}
+
+// ── PHYSICAL STATE: WHICH READINGS DESCRIBE ONE STATE OF THE ASSET ─────────────────────────────────
+//
+// A FOLD OVER READINGS IS A FOLD OVER ONE PHYSICAL STATE, chosen before the fold. A join read before a
+// converter was lifted and a reading of its bare footprint after are of two different boards; a fold
+// that takes both as one board's readings invents a circuit no one measured. So a derivation names
+// the state it reads (SpecimenState) and its readings are selected for that state first.
+//
+// WHICH RECORDED EVENTS DIVIDE STATES, and the reason each does or does not, is decided once here:
+// - a part removed (refitted or not) divides: the circuit had the part, then did not, and a refit is a
+//   second soldering whose joints are not the factory's;
+// - a thermal interface changed does not: no electrical terminal was touched;
+// - an incident divides unless it was inspected and no damage was seen: a damage seen, or no
+//   inspection at all, leaves the board's state after it unknown, so readings either side are kept
+//   apart rather than assumed equal (fail closed). An incident inspected without damage is not a
+//   boundary, and the state carries no claim that the inspection could see everything.
+//
+// A reading belongs to a state when the boundary events it follows are exactly the state's. A reading
+// whose order is unrecorded against a BOUNDARY event belongs to no state: it stays recorded, and a
+// selection counts it among the readings it excluded instead of folding it into a current-state
+// result. Unrecorded order against an event that divides no state places the reading as well as any
+// other: by the ReadingOrder convention it follows no recorded event it does not list.
+type SpecimenState sole_constructor {
+  asset: PhysicalAssetIdentity
+  after: List<NonEmptyStr>
+}
+
+fn alteration_divides_state(a: AssetAlteration) -> Bool {
+  match a.change {
+    ThermalInterfaceChanged { removed: _, applied: _ } => false
+    PartRemoved { refitted: _ } => true
+  }
+}
+
+fn incident_divides_state(i: BenchIncident) -> Bool {
+  match i.inspection {
+    NoDamageSeen { looked_at: _ } => false
+    DamageSeen { description: _ } => true
+    NotInspected => true
+  }
+}
+
+fn state_boundaries(r: BenchRecord) -> List<NonEmptyStr> {
+  concat(map(filter(r.alterations, a => alteration_divides_state(a: a)), a => a.key), map(filter(r.incidents, i => incident_divides_state(i: i)), i => i.key))
+}
+
+fn key_listed(keys: List<NonEmptyStr>, k: NonEmptyStr) -> Bool {
+  any(keys, x => (x as String) == (k as String))
+}
+
+fn same_keys(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
+  all(a, k => key_listed(keys: b, k: k)) && all(b, k => key_listed(keys: a, k: k))
+}
+
+// The intact state: before every boundary event. Always a state of the asset, whatever its record.
+fn intact_state(asset: PhysicalAssetIdentity) -> SpecimenState {
+  SpecimenState { asset: asset, after: [] }
+}
+
+// The state after the named boundary events and before every other one. Refuses (Absent) a key the
+// record does not hold as a boundary: naming an event that does not divide states would select no
+// reading at all, an empty result indistinguishable from a board with nothing read.
+fn state_after(r: BenchRecord, asset: PhysicalAssetIdentity, keys: List<NonEmptyStr>) -> SpecimenState? {
+  let boundaries = state_boundaries(r: r)
+  if all(keys, k => key_listed(keys: boundaries, k: k)) { Present { value: SpecimenState { asset: asset, after: keys } } } else { Absent }
+}
+
+fn follows_no_boundary() -> List<NonEmptyStr>? {
+  Present { value: [] }
+}
+
+// The boundary events a reading follows, or Absent when its order against some boundary is unrecorded.
+fn boundaries_followed(boundaries: List<NonEmptyStr>, o: ReadingOrder) -> List<NonEmptyStr>? {
+  match o {
+    BeforeIncidents { keys: _ } => follows_no_boundary()
+    AfterIncidents { keys } => Present { value: filter(keys, k => key_listed(keys: boundaries, k: k)) }
+    OrderUnrecorded { relative_to } => if any(relative_to, k => key_listed(keys: boundaries, k: k)) { Absent } else { follows_no_boundary() }
+  }
+}
+
+fn order_in_state(boundaries: List<NonEmptyStr>, s: SpecimenState, o: ReadingOrder) -> Bool {
+  match boundaries_followed(boundaries: boundaries, o: o) {
+    Absent => false
+    Present { value: follows } => same_keys(a: follows, b: s.after)
+  }
+}
+
+fn order_placed(boundaries: List<NonEmptyStr>, o: ReadingOrder) -> Bool {
+  match boundaries_followed(boundaries: boundaries, o: o) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// One state's readings, and how many of the asset's readings were left out and why: of another
+// state, or of unrecorded order. Readings of another asset are not this asset's and are not counted.
+type StateReadings {
+  state: SpecimenState
+  continuity: List<ContinuityObservation>
+  resistances: List<ResistanceObservation>
+  voltages: List<NodeVoltageObservation>
+  excluded_other_state: Nat
+  excluded_order_unrecorded: Nat
+}
+
+fn state_readings(r: BenchRecord, continuity: List<ContinuityObservation>, s: SpecimenState) -> StateReadings {
+  let boundaries = state_boundaries(r: r)
+  let cs = filter(continuity, o => physical_asset_identity_eq(a: o.asset, b: s.asset))
+  let rs = filter(r.resistances, o => physical_asset_identity_eq(a: o.asset, b: s.asset))
+  let vs = filter(r.voltages, o => physical_asset_identity_eq(a: o.asset, b: s.asset))
+  let orders = concat(concat(map(cs, o => o.order), map(rs, o => o.order)), map(vs, o => o.order))
+  StateReadings {
+    state: s,
+    continuity: filter(cs, o => order_in_state(boundaries: boundaries, s: s, o: o.order)),
+    resistances: filter(rs, o => order_in_state(boundaries: boundaries, s: s, o: o.order)),
+    voltages: filter(vs, o => order_in_state(boundaries: boundaries, s: s, o: o.order)),
+    excluded_other_state: count(filter(orders, o => order_placed(boundaries: boundaries, o: o) && !order_in_state(boundaries: boundaries, s: s, o: o))),
+    excluded_order_unrecorded: count(filter(orders, o => !order_placed(boundaries: boundaries, o: o))),
   }
 }
 

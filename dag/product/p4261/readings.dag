@@ -73,6 +73,11 @@ import product.electrical.source_draw {
 }
 import product.electrical.bench_session {
   DisplayOverRange,
+  intact_state,
+  SpecimenState,
+  state_after,
+  state_readings,
+  StateReadings,
   is_at_baseline,
   is_read_value,
   is_reported_zero,
@@ -174,14 +179,40 @@ fn side_terminals(h: ConnectorHousing, side: RowSide) -> List<ElectricalTerminal
   map(filter(h.positions, p => row_side_code(s: p.side) == row_side_code(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
 }
 
-fn board_graph(b: MeasuredBoard) -> ReachabilityGraph {
-  reachability_graph(observations: b.continuity, asset: b.asset)
+// ONE BOARD IN ONE PHYSICAL STATE. Every fold over a board's readings reads one state of it, chosen
+// before the fold (product.electrical.bench_session SpecimenState): the intact board, or the board
+// after named boundary events such as a part lifted off it. The state is minted from the board itself,
+// so it cannot name another asset's state, and a state naming an event the board's record does not
+// hold as a boundary is refused rather than selecting nothing.
+type BoardState sole_constructor {
+  board: MeasuredBoard
+  state: SpecimenState
 }
 
-// The board as measured: its beep classes joined by its baseline resistance readings into nodes, and
-// every other resistance reading a link between them (product.electrical.measured_netlist).
-fn board_netlist(b: MeasuredBoard) -> MeasuredNetlist {
-  measured_netlist(graph: board_graph(b: b), resistances: b.bench.resistances)
+fn board_intact(b: MeasuredBoard) -> BoardState {
+  BoardState { board: b, state: intact_state(asset: b.asset) }
+}
+
+fn board_after(b: MeasuredBoard, keys: List<NonEmptyStr>) -> BoardState? {
+  match state_after(r: b.bench, asset: b.asset, keys: keys) {
+    Absent => Absent
+    Present { value: s } => Present { value: BoardState { board: b, state: s } }
+  }
+}
+
+fn board_readings(s: BoardState) -> StateReadings {
+  state_readings(r: s.board.bench, continuity: s.board.continuity, s: s.state)
+}
+
+fn board_graph(s: BoardState) -> ReachabilityGraph {
+  reachability_graph(observations: board_readings(s: s).continuity, asset: s.board.asset)
+}
+
+// The board as measured in one state: its beep classes joined by its baseline resistance readings into
+// nodes, and every other resistance reading a link between them (product.electrical.measured_netlist).
+fn board_netlist(s: BoardState) -> MeasuredNetlist {
+  let rs = board_readings(s: s)
+  measured_netlist(graph: reachability_graph(observations: rs.continuity, asset: s.board.asset), resistances: rs.resistances)
 }
 
 fn standings_to(g: ReachabilityGraph, ts: List<ElectricalTerminalRef>, target: ElectricalTerminalRef) -> List<ReachabilityStanding> {
@@ -263,7 +294,7 @@ fn input_polarity(layout: CarrierLayoutObservation) -> InputPolarity {
     Absent => PolarityUnestablished { gaps: [NoMeasuredBoard] }
     Present { value: b } => match layout.input {
       Absent => PolarityUnestablished { gaps: [InputUnmapped] }
-      Present { value: input } => measured_polarity(g: board_graph(b: b), input: input)
+      Present { value: input } => measured_polarity(g: board_graph(s: board_intact(b: b)), input: input)
     }
   }
 }
@@ -353,7 +384,7 @@ fn placement_basis(layout: CarrierLayoutObservation) -> PlacementBasis {
     Present { value: b } => match layout.input {
       Absent => NoPlacementBasis
       Present { value: input } => {
-        let g = board_graph(b: b)
+        let g = board_graph(s: board_intact(b: b))
         match measured_polarity(g: g, input: input) {
           PolarityEstablished { fused_side, return_side, fused, returns, isolation } =>
             PlacementOnPolarity { graph: g, input: input, fused: fused_side, ret: return_side, readings: concat(concat(fused, returns), isolation) }
@@ -589,10 +620,12 @@ type ControllerPinStanding
   | PinAboveThreshold { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, maximum: Millivolt }
   | PinThresholdUnestablished { component: ComponentInstanceIdentity, readings: List<NodeVoltageObservation>, gap: PinReadingGap }
 
+// The intact board's voltage readings: the controller-pin and switch derivations read the board as it
+// was before any boundary event, never a reading taken after a part was lifted or a damage seen.
 fn bench_of(layout: CarrierLayoutObservation) -> List<NodeVoltageObservation> {
   match layout.measured {
     Absent => []
-    Present { value: b } => b.bench.voltages
+    Present { value: b } => board_readings(s: board_intact(b: b)).voltages
   }
 }
 
@@ -915,10 +948,11 @@ fn threshold_from(c: InstalledComponent, window: ThresholdWindow, readings: List
   }
 }
 
+// The intact board's resistance readings, for the same reason as bench_of.
 fn resistances_of(layout: CarrierLayoutObservation) -> List<ResistanceObservation> {
   match layout.measured {
     Absent => []
-    Present { value: b } => b.bench.resistances
+    Present { value: b } => board_readings(s: board_intact(b: b)).resistances
   }
 }
 

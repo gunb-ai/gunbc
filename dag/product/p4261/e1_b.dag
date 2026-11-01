@@ -84,7 +84,6 @@ import product.electrical.connectivity {
 }
 import product.electrical.source_draw { HeldBelowLimit, OverCurrentShutoffArmed, SourceDrawObservation, SourceSetting }
 import product.electrical.bench_session {
-  AfterIncidents,
   AssetAlteration,
   AutoRanging,
   BenchIncident,
@@ -98,7 +97,6 @@ import product.electrical.bench_session {
   MeterRange,
   NoDamageSeen,
   NodeVoltageObservation,
-  OrderUnrecorded,
   PartRemoved,
   PolarityUnrecorded,
   ProbeAttachment,
@@ -119,6 +117,9 @@ import product.electrical.bench_session {
   ThermalPad,
 }
 import product.electrical.continuity {
+  AfterIncidents,
+  BeforeIncidents,
+  OrderUnrecorded,
   BenchConditions,
   both_points_inferred,
   both_points_recorded,
@@ -399,7 +400,7 @@ fn touched_to(a: ElectricalTerminalRef, reference: ElectricalTerminalRef, first_
 }
 
 fn e1_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, record: ProbeRecord, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
-  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: record, conditions: e1_bench, result: result, evidence: evidence }
+  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: record, conditions: e1_bench, result: result, order: BeforeIncidents { keys: [e1_bridge_incident.key] }, evidence: evidence }
 }
 
 fn to_ground(a: ElectricalTerminalRef, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {

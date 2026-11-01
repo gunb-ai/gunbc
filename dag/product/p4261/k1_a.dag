@@ -37,10 +37,8 @@ import product.electrical.connectivity {
   TerminalIdentity,
 }
 import product.electrical.bench_session {
-  AfterIncidents,
   AssetAlteration,
   AutoRanging,
-  BeforeIncidents,
   BenchRecord,
   DisplayAboveBaseline,
   DisplayOverRange,
@@ -62,6 +60,8 @@ import product.electrical.bench_session {
   StatementCertainty,
 }
 import product.electrical.continuity {
+  AfterIncidents,
+  BeforeIncidents,
   BenchConditions,
   both_points_inferred,
   both_points_recorded,

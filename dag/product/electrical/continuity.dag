@@ -99,6 +99,17 @@ fn point_is_inferred(p: PointProvenance) -> Bool {
   }
 }
 
+// WHERE A READING STANDS AGAINST THE ASSET'S RECORDED EVENTS. An accidental bridge, a short or a part
+// lifted off the board can change what a later reading means, so every reading -- a beep here, a
+// voltage or a resistance in product.electrical.bench_session -- says which recorded events it came
+// before or after, or that its order against them is unrecorded. AfterIncidents lists EVERY recorded
+// event the reading follows; an event it does not list came after it. BeforeIncidents follows none.
+// The keys are BenchIncident and AssetAlteration keys (product.electrical.bench_session).
+type ReadingOrder
+  = BeforeIncidents { keys: List<NonEmptyStr> }
+  | AfterIncidents { keys: List<NonEmptyStr> }
+  | OrderUnrecorded { relative_to: List<NonEmptyStr> }
+
 type ContinuityObservation {
   asset: PhysicalAssetIdentity
   first: ElectricalTerminalRef
@@ -106,6 +117,7 @@ type ContinuityObservation {
   record: ProbeRecord
   conditions: BenchConditions
   result: ContinuityResult
+  order: ReadingOrder
   evidence: EvidenceRef
 }
 
