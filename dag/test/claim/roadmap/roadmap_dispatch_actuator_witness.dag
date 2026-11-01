@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_dispatch_actuator_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryPublication, AttemptDirectoryRoot, AttemptDirectoryWire, AttemptSupervisorEvents, AttemptWorkerEvents, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryPublication, AttemptDirectoryRoot, AttemptDirectoryWire, AttemptSupervisorEvents, AttemptWorkerEvents, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider }
 import gunbc.roadmap.roadmap_sizing {
   NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
@@ -999,7 +999,7 @@ test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scra
   let key = "a0123456789abcdef"
   let argvs = attempt_state_prepare_argvs_for_instance(instance: instance, node_id: node_id, attempt_key: key)
   let attempt_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryRoot)
-  let scratch = path_parent_directory(path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: key, member: AttemptWorkerLog))
+  let scratch = path_parent_directory(path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: key, member: AttemptWorkerLog))
   let publication_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryPublication)
   let wire_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryWire)
   let traverse = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerAllGroupTraverseSetgid))
@@ -1056,7 +1056,7 @@ test fn the_service_user_worker_prepare_stays_one_owner_only_install() -> Bool {
   let key = "a0123456789abcdef"
   let argvs = attempt_state_prepare_argvs_for_instance(instance: instance, node_id: node_id, attempt_key: key)
   let attempt_dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: key, directory: AttemptDirectoryRoot)
-  let scratch = path_parent_directory(path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: key, member: AttemptWorkerLog))
+  let scratch = path_parent_directory(path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: key, member: AttemptWorkerLog))
   let owner_only = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly))
   list_length(items: argvs) == 1
     && all_owner_only_with(argvs: argvs, owner_only: owner_only, attempt_dir: attempt_dir, scratch: scratch)
@@ -1525,7 +1525,7 @@ test fn witness_auditor_launch_writes_the_events_path_metering_reads() -> Bool {
       witness_argv_member(
         xs: argv_words(command: command),
         x: join(
-          ["events_path=", attempt_state_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", member: AttemptAuditEvents { head_sha: "fci1witnesssha" })],
+          ["events_path=", attempt_log_member_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", member: AttemptAuditEvents { head_sha: "fci1witnesssha" })],
           "",
         ),
       )
@@ -1548,7 +1548,7 @@ test fn witness_supervisor_launch_writes_the_events_path_metering_reads() -> Boo
       witness_argv_member(
         xs: argv_words(command: command),
         x: join(
-          ["events_path=", attempt_state_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", member: AttemptSupervisorEvents { turn: 7 })],
+          ["events_path=", attempt_log_member_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: "witness-node"), attempt_key: "witness-attempt", member: AttemptSupervisorEvents { turn: 7 })],
           "",
         ),
       )
@@ -1559,8 +1559,8 @@ test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_ev
   let instance = srv1_live_dashboard_instance()
   let node_id = "claude-headless"
   let attempt_key = "feedfacefeedface"
-  let events = attempt_state_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: node_id), attempt_key: attempt_key, member: AttemptWorkerEvents)
-  let log = attempt_state_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: node_id), attempt_key: attempt_key, member: AttemptWorkerLog)
+  let events = attempt_log_member_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: node_id), attempt_key: attempt_key, member: AttemptWorkerEvents)
+  let log = attempt_log_member_text(instance: instance, node_id: roadmap_dispatch_actuator_nid(s: node_id), attempt_key: attempt_key, member: AttemptWorkerLog)
   match dispatch_session_container_for_provider(
     provider: ClaudeCodeProvider,
     instance: instance,

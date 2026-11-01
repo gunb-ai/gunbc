@@ -1,6 +1,6 @@
 module test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worktree_path_for_instance, session_process_bounds }
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.measure { kibibyte }
@@ -105,7 +105,7 @@ fn probe_attempt_dir(instance: HostDashboardInstance) -> String {
 }
 
 fn probe_worker_dir(instance: HostDashboardInstance) -> String {
-  path_parent_directory(path: attempt_state_text(instance: instance, node_id: wet_probe_node, attempt_key: wet_probe_key, member: AttemptWorkerLog))
+  path_parent_directory(path: attempt_log_member_text(instance: instance, node_id: wet_probe_node, attempt_key: wet_probe_key, member: AttemptWorkerLog))
 }
 
 fn probe_attempt_worktree(instance: HostDashboardInstance) -> String {
@@ -402,7 +402,7 @@ fn launcher_probe_worktree(instance: HostDashboardInstance, unit_key: String) ->
 }
 
 fn launcher_probe_worker_dir(instance: HostDashboardInstance, unit_key: String) -> String {
-  path_parent_directory(path: attempt_state_text(instance: instance, node_id: wet_probe_node, attempt_key: launcher_probe_key(unit_key: unit_key), member: AttemptWorkerLog))
+  path_parent_directory(path: attempt_log_member_text(instance: instance, node_id: wet_probe_node, attempt_key: launcher_probe_key(unit_key: unit_key), member: AttemptWorkerLog))
 }
 
 fn prepare_launcher_probe(instance: HostDashboardInstance, unit_key: String) -> Bool {
