@@ -10,7 +10,7 @@ import gunbc.auth.oidc_id_token_verification { jwks_cache_directory }
 import gunbc.auth.profile_store_root { profile_store_directory }
 import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_directory }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
-import gunbc.compute.host_capacity { compute_root_directory }
+import gunbc.compute.host_capacity { compute_root_directory, compute_attempt_exit_spool_directory }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
 import gunbc.roadmap.roadmap_belt_receipt_store_root { belt_projects_directory }
@@ -48,6 +48,7 @@ fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instan
     issue_view_store_directory(instance: instance),
     roadmap_event_carrier_directory(instance: instance),
     compute_root_directory(instance: instance),
+    compute_attempt_exit_spool_directory(instance: instance),
     credential_acquisition_slots_directory(instance: instance),
     cursor_attempt_runtime_directory(instance: instance),
     worktree_claim_slots_directory(instance: instance),

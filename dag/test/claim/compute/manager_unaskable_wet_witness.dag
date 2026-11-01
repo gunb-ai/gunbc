@@ -5,7 +5,8 @@ import std.types { Bool, NonEmptyStr, String }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended }
 import gunbc.compute.work_provider_local {
   UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
-  observe_unit_termination, observe_unit_lifecycle, unit_termination_frees_capacity, 
+  observe_unit_termination, observe_unit_lifecycle, unit_termination_frees_capacity,
+  SeatStopRecordNone, 
   UnitPropertyReading, unit_property_from_shell,
 }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
@@ -93,8 +94,14 @@ fn lifecycle_unknown(u: UnitLifecycle) -> Bool {
 // this cell ABORT rather than answer, which is the control the file's header describes.
 test fn a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting() -> Bool {
   let present = manager_present()
-  let termination = observe_unit_termination(identity_hex: unaskable_identity, attempt_completed: false)
-  let lifecycle = observe_unit_lifecycle(unit: compute_unit_name(identity_hex: unaskable_identity))
+  // NO RECORD IS READ HERE, BECAUSE NOTHING WAS LAUNCHED: this witness asks about a name that belongs to
+  // no seat it created, so it has no stop hook's artifact to bring. The claim is the AGREEMENT of the two
+  // folds on the manager's answer -- the reading srv1's ledger kept two 22 GiB charges on freed capacity
+  // on a bare not-found while its unit's own end was never observed, and the pair below is red the moment
+  // either fold goes back to minting an ending from an absence.
+  let no_record = SeatStopRecordNone
+  let termination = observe_unit_termination(identity_hex: unaskable_identity, attempt_completed: false, stop_record: no_record)
+  let lifecycle = observe_unit_lifecycle(unit: compute_unit_name(identity_hex: unaskable_identity), stop_record: no_record)
   if present {
     unit_termination_frees_capacity(t: termination) == unit_lifecycle_ended(u: lifecycle)
       && !unit_populated(t: termination)

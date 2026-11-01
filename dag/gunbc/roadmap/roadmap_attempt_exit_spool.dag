@@ -215,6 +215,50 @@ fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String
   }
 }
 
+// A SEAT'S STOP HOOK, in the same machinery as an attempt's: the stop variables are the manager's words,
+// never literals this file interpolated, and the hook is refused rather than rendered if a part would be
+// read as command-line syntax. A seat runs one unit, so its record names its identity and the invocation --
+// there is no role part, and no attempt coordinate to forge.
+fn compute_attempt_exit_entry_parts(done_dir: String, identity: String) -> List<ExecWordPart> {
+  [
+    ExecLiteral { text: join([done_dir, "/", identity, attempt_exit_entry_separator], "") },
+    ExecVariable { variable: InvocationIdVariable },
+    ExecLiteral { text: attempt_exit_entry_separator },
+    ExecVariable { variable: ServiceResultVariable },
+    ExecLiteral { text: attempt_exit_entry_separator },
+    ExecVariable { variable: ExitCodeVariable },
+    ExecLiteral { text: attempt_exit_entry_separator },
+    ExecVariable { variable: ExitStatusVariable },
+  ]
+}
+
+// THE SEAT'S RECORD IS CREATED OWNED BY THE PROVIDER THAT READS IT, with install -d so a repeated hook is
+// idempotent, inside the uid directory the deploy route stood the root up over. The record's NAME is the
+// record, so a hook whose variables were never substituted would leave a directory literally named
+// "...+${INVOCATION_ID}+..." -- which attempt_exit_record_put_mkdir_name refuses to write and
+// attempt_exit_entry_decode refuses to read, at the two ends of the only routes that touch it.
+fn compute_attempt_exit_hook(done_dir: String, identity: String, record_owner: PosixOwnerNames) -> AttemptExitHook {
+  match exec_word_render(parts: compute_attempt_exit_entry_parts(done_dir: done_dir, identity: identity)) {
+    ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
+    // THE RECORD IS CREATED OWNED BY THE PROVIDER THAT READS IT BACK -- the same owner the deploy route
+    // gave the spool root -- and the reader only ever reads its own uid's directory, so ownership and
+    // partition are one fact: no foreign uid can plant a record here, and no chown can drift.
+    ExecWordRendered { word } =>
+      match exec_command_line_full_privileges(command: install_directory_owned_argv_command(mode: declared_directory_mode(m: attempt_exit_record_mode), owner: record_owner.user, group: record_owner.group, path: word as String)) {
+        ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
+        ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
+      }
+  }
+}
+
+// WHAT THE SEAT'S DOOR CAN SEE: its own uid's done directory, listed once. An unreadable spool is
+// UNREADABLE, never empty -- "there is no record" is a claim about the seat's end that a failed listing
+// cannot support, and the door keeps the seat on it.
+fn compute_attempt_exit_record_listing(done_dir: String) -> AttemptExitStageListing {
+  let listed = Filesystem.List(path: done_dir as FilePath)
+  attempt_exit_stage_listing(listing: filesystem_listing_observation(directory: done_dir, success: listed.success, entries: listed.entries, error: listed.error))
+}
+
 // ONE DECODED RECORD. The process END is a closed pair: an exit with a status, or a signal. They are
 // different facts -- a process killed by SIGTERM did not exit 15 -- and the record keeps them apart.
 type AttemptProcessEnd

@@ -7,6 +7,7 @@ import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_la
 import gunbc.compute.work_provider_local {
   NoPathVirtualization, UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
   UnitPropertyReading, UnitObservations, unit_termination_decide,
+  SeatStopRecord, SeatStopRecordNone, SeatStopRecordFound, SeatStopRecordUnreadable, SeatStopRecordWriterUnsubstituted, SeatStopRecordNoUid,
   unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
   ProvideResult, ProvideFresh, ProvideAttached, HostRecordStatus, HostRecordWritten, HostRecordLost,
   provide_result_host_record, provide_result_ending, provide_result_document, host_record_was_written, host_record_wire,
@@ -333,7 +334,13 @@ fn reading(queried: Bool, value: String) -> UnitPropertyReading {
 }
 
 fn decided(done: Bool, load: UnitPropertyReading, cg: UnitPropertyReading, ev: UnitPropertyReading) -> UnitTermination {
-  unit_termination_decide(o: UnitObservations { attempt_completed: done, load_state: load, control_group: cg, events: ev })
+  decided_with(done: done, record: SeatStopRecordNone, load: load, cg: cg, ev: ev)
+}
+
+// THE SAME FOLD, DECIDING ON A SEAT'S OWN STOP-HOOK RECORD. The record travels in, exactly as the manager
+// readings do, so a row says what the door saw rather than what it hoped.
+fn decided_with(done: Bool, record: SeatStopRecord, load: UnitPropertyReading, cg: UnitPropertyReading, ev: UnitPropertyReading) -> UnitTermination {
+  unit_termination_decide(o: UnitObservations { attempt_completed: done, stop_record: record, load_state: load, control_group: cg, events: ev })
 }
 
 test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
@@ -344,13 +351,20 @@ test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
   let completed_unknown = decided(done: true, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: ""), ev: no_events)
   let absent = decided(done: false, load: reading(queried: true, value: "not-found"), cg: unread, ev: no_events)
   let misleading = decided(done: false, load: reading(queried: false, value: "Failed to connect to bus: not-found"), cg: unread, ev: no_events)
+  // THE READING SRV1 HELD TWO 22 GiB SEATS ON: the user manager lists no unit, and nothing recorded how
+  // it ended. That freed capacity before, and the ledger kept the charge; it must not free now.
+  let absent_recorded = decided_with(
+    done: false,
+    record: SeatStopRecordFound { invocation_id: "0123456789abcdef0123456789abcdef", end: "exit(0)" },
+    load: reading(queried: true, value: "not-found"), cg: unread, ev: no_events)
   let empty_load = decided(done: false, load: reading(queried: true, value: ""), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))
   let pending = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: ""), ev: no_events)
   let empty_no_completion = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))
   let populated_no_completion = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 1\n"))
   let undecodable = decided(done: false, load: reading(queried: true, value: "loaded"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "garbage\n"))
   unit_termination_frees_capacity(t: completed_empty)
-    && unit_termination_frees_capacity(t: absent)
+    && unit_termination_frees_capacity(t: absent_recorded)
+    && !unit_termination_frees_capacity(t: absent)
     && !unit_termination_frees_capacity(t: completed_unknown)
     && !unit_termination_frees_capacity(t: completed_populated)
     && !unit_termination_frees_capacity(t: empty_no_completion)
@@ -364,6 +378,8 @@ test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
     && string_contains(s: unit_termination_wire(t: empty_no_completion), pattern: "did not complete")
     && string_contains(s: unit_termination_wire(t: pending), pattern: "pending")
     && string_contains(s: unit_termination_wire(t: misleading), pattern: "UNESTABLISHED")
+    && string_contains(s: unit_termination_wire(t: absent), pattern: "left no record")
+    && string_contains(s: unit_termination_wire(t: absent_recorded), pattern: "its stop hook recorded")
 }
 
 // A COMPLETED ATTEMPT RELEASES, AND AN ATTEMPT THAT DID NOT COMPLETE DOES NOT RELEASE ON ITS OWN.
@@ -476,7 +492,13 @@ fn lifecycle_word(u: UnitLifecycle) -> String {
 data unqueried: UnitPropertyReading = UnitPropertyReading { queried: false, value: "" }
 
 fn lifecycle_of(load: UnitPropertyReading, active: UnitPropertyReading, result: UnitPropertyReading, pop: UnitPopulation) -> UnitLifecycle {
-  unit_lifecycle_decide(o: UnitLifecycleObservations { load_state: load, active_state: active, result: result, population: pop })
+  lifecycle_of_record(record: SeatStopRecordNone, load: load, active: active, result: result, pop: pop)
+}
+
+// THE SAME FOLD ON A RECORD. The lifecycle and termination folds must reach the same agreement about a
+// manager's absence, and they can only agree if both are handed the same reading.
+fn lifecycle_of_record(record: SeatStopRecord, load: UnitPropertyReading, active: UnitPropertyReading, result: UnitPropertyReading, pop: UnitPopulation) -> UnitLifecycle {
+  unit_lifecycle_decide(o: UnitLifecycleObservations { stop_record: record, load_state: load, active_state: active, result: result, population: pop })
 }
 
 // CRITERION 1: FOUR STATES FROM THE MANAGER'S OWN VOCABULARY, AND UNKNOWN IS AN ARM.
@@ -500,7 +522,16 @@ test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool 
   let failed = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "failed"), result: reading(queried: true, value: "exit-code"), pop: empty)
   let oom = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: reading(queried: true, value: "oom-kill"), pop: empty)
   let running = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "active"), result: reading(queried: true, value: "success"), pop: unknown_pop)
+  // THE COLLECTED UNIT, TWO WAYS. A transient --collect unit really is removed once its process ends, so
+  // not-found CAN be an ending -- but it is equally the state of a unit whose manager restarted. The
+  // reading that tells them apart is the record the manager's own stop hook wrote, so the ended arm is
+  // issued only beside it: without the record the fold says unknown and the seat stays charged (RED --
+  // this is the reading srv1's ledger kept two 22 GiB charges on), with the record it says ended and says
+  // where the cause went (CONTROL).
   let collected = lifecycle_of(load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: unknown_pop)
+  let collected_recorded = lifecycle_of_record(
+    record: SeatStopRecordFound { invocation_id: "0123456789abcdef0123456789abcdef", end: "exit(0)" },
+    load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: unknown_pop)
 
   let occupied_but_forgotten = lifecycle_of(load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: occupied)
   let no_manager = lifecycle_of(load: unqueried, active: unqueried, result: unqueried, pop: unknown_pop)
@@ -512,7 +543,10 @@ test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool 
     && lifecycle_word(u: oom) == "terminated-failure"
     && string_contains(s: unit_lifecycle_wire(u: oom), pattern: "oom-kill")
     && lifecycle_word(u: running) == "still-running"
-    && lifecycle_word(u: collected) == "terminated-cause-unknown"
+    && lifecycle_word(u: collected) == "unknown"
+    && string_contains(s: unit_lifecycle_wire(u: collected), pattern: "no stop-hook record")
+    && lifecycle_word(u: collected_recorded) == "terminated-cause-unknown"
+    && string_contains(s: unit_lifecycle_wire(u: collected_recorded), pattern: "its stop hook recorded")
 
     && lifecycle_word(u: occupied_but_forgotten) == "still-running"
     && lifecycle_word(u: no_manager) == "unknown"

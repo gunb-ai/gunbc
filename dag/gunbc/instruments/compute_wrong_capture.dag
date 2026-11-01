@@ -18,6 +18,7 @@ import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_la
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  ComputeUnitStopObservationRefused,
   NoStopObservation, NoPathVirtualization,
   NoComputeDependency, compute_return_outputs, OutputsReturn, OutputsReturned, OutputsMismatch, compute_staged_path,
 }
@@ -176,10 +177,11 @@ fn wrong_capture_build(
     // (gunbc.instruments.compute_run_unit_cold) and nothing here would read them. The parameter is
     // required; omitting it fails at dispatch resolve rather than at compile, which is why the corpus
     // that imports this module (test/claim/target_invocation_witness) is the check that catches it.
-    stop_observation: NoStopObservation,
+    stop_observation: [] as List<ComputeUnitStopObservation>,
     path_virtualization: NoPathVirtualization,
   ) {
     ComputeUnitRunRefused { cause: _ } => "unit launch refused"
+    ComputeUnitStopObservationRefused { cause: _ } => "unit launch refused"
     ComputeUnitRunExecuted { run: unit_run } =>
       match unit_run.exec {
         ComputeExecOk { stdout: _, stderr: _ } => ""
