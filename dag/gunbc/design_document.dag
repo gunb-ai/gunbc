@@ -1,7 +1,7 @@
 module gunbc.design_document
 
 import std.markdown {
-  MarkdownDocument, CodeBlock,
+  MarkdownDocument, MarkdownBlock, CodeBlock,
 }
 import std.decl_ref { DeclarationRef }
 import extdeps.languages.markdown { serialize_markdown_source }
@@ -153,7 +153,7 @@ fn conformance_boundary_blocks(d: ConformanceDomain) -> List<DocumentaryBlock> {
   }
 }
 
-fn conformance_domain_section(d: ConformanceDomain) -> List<DocumentaryBlock> {
+fn documentary_conformance_domain_section(d: ConformanceDomain) -> List<DocumentaryBlock> {
   concat(
     concat(
       [documentary_h3(text: d.label), documentary_p(text: concat("**Owns.** ", d.owns))],
@@ -167,7 +167,7 @@ fn conformance_domain_section(d: ConformanceDomain) -> List<DocumentaryBlock> {
 }
 
 fn conformance_domain_blocks() -> List<DocumentaryBlock> {
-  flat_map(conformance_domains, d => conformance_domain_section(d: d))
+  flat_map(conformance_domains, d => documentary_conformance_domain_section(d: d))
 }
 
 fn section_3b_blocks() -> List<DocumentaryBlock> {
@@ -424,4 +424,9 @@ fn design_drifted(committed: String) -> Bool {
 // Only references supplied by the document's construction participate in citation checks.
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
   documentary_blocks_refs(blocks: design_blocks())
+}
+
+// Preserve the Markdown projection consumed by the conformance-domain witness.
+fn conformance_domain_section(d: ConformanceDomain) -> List<MarkdownBlock> {
+  map(documentary_conformance_domain_section(d: d), b => b.block)
 }
