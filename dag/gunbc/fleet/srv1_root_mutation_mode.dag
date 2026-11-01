@@ -1,0 +1,107 @@
+module gunbc.fleet.srv1_root_mutation_mode
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.optional { Absent, Present }
+import std.list { first_where }
+
+// ── THE srv1 ROOT-MUTATION FAMILY, AS A COPRODUCT OF ITS OWN ──────────────────────────────────
+// Four of the fleet-converge dispatch modes mutate srv1 as root behind one operator approval
+// (gunbc.fleet.srv1_root_mutation_approval_run). The whole point of that approval is that the
+// OPERATOR reads, before they tap, what the mode does to the host and whether it takes anything off
+// it -- requester, purpose and destructive are the fields the decision record says the operator READS
+// (gunbc.auth.approval_decision_store approval_decision_record_fields), and nothing in admission keys
+// on the flag, so its only function is to tell the approver the truth about risk.
+//
+// That fact used to be ONE hard-coded pair (destructive:false, one purpose sentence about writes under
+// /etc and /usr/local and apt-get installs) shared by every mode, which made the run that removes an
+// account and deletes two trees read as an install. Found in the ntfy retirement's dispatch; operator
+// ruling 2026-10-31: declare it per mode.
+//
+// WHY A COPRODUCT, AND WHY IT SITS HERE RATHER THAN AS FOUR ARMS OF FleetConvergeWorkflowMode:
+// the rule has to be UNWRITABLE-BY-CONSTRUCTION, not validated (DESIGN section 5). A roster keyed on
+// strings re-spells each wire name a second time (DESIGN section 3: nicknaming -- a second name for
+// one concept) and leaves drift to a test. So the family is its own sum, the big dispatch vocabulary
+// carries it as ONE constructor (gunbc.fleet.fleet_converge_workflow
+// FleetConvergeWorkflowMode Srv1RootMutation), and the authority below is a TOTAL match over it: a
+// mode added to the family with no row does not compile, and there is no "unlisted mode" case left to
+// fall through. This module is imported by both the generator and the request builder, so neither can
+// see the other's copy of the fact -- and the language refuses two sums sharing a variant name, which
+// is what keeps each mode to exactly one name.
+type Srv1RootMutationMode
+  = DashboardDeploy
+  | ApprovalBrokerDarkInstall
+  | MicrovmControllerInstall
+  | ApprovalNtfyRetire
+
+// THE WIRE NAME, SPELLED ONCE. The dispatch's `mode` input takes these values, and
+// gunbc.fleet.fleet_converge_workflow fleet_converge_workflow_mode_wire DELEGATES to this fn for the
+// family rather than restating the strings, so there is one place a wire name can change.
+fn srv1_root_mutation_mode_wire(mode: Srv1RootMutationMode) -> String {
+  match mode {
+    DashboardDeploy => "dashboard_deploy"
+    ApprovalBrokerDarkInstall => "approval_broker_dark_install"
+    MicrovmControllerInstall => "microvm_controller_install"
+    ApprovalNtfyRetire => "approval_ntfy_retire"
+  }
+}
+
+// THE JOB, SPELLED ONCE: the GitHub job id of each mode in the family.
+fn srv1_root_mutation_mode_job_id(mode: Srv1RootMutationMode) -> String {
+  match mode {
+    DashboardDeploy => "dashboard-deploy"
+    ApprovalBrokerDarkInstall => "approval-broker-dark-install"
+    MicrovmControllerInstall => "microvm-controller-install"
+    ApprovalNtfyRetire => "approval-ntfy-retire"
+  }
+}
+
+// WHAT THE MODE DOES TO THE HOST. `destructive` is the truth about whether the mode takes anything off
+// the host, and `purpose_note` is the sentence the operator reads before the intent text. Every mode in
+// the family must say; there is no default and no fall-through.
+type Srv1RootMutationModeAuthority {
+  destructive: Bool
+  purpose_note: NonEmptyStr
+}
+
+fn srv1_root_mutation_mode_authority(mode: Srv1RootMutationMode) -> Srv1RootMutationModeAuthority {
+  match mode {
+    DashboardDeploy => Srv1RootMutationModeAuthority {
+      destructive: false,
+      purpose_note: "Run one srv1 dashboard deploy on the selection below: it installs staged units, files and sudoers drop-ins under /etc, /usr/local, /opt/gunbc and /var/lib/gunbc, checks the sudoers policy with visudo and reloads systemd; it takes nothing off the host." as NonEmptyStr,
+    }
+    ApprovalBrokerDarkInstall => Srv1RootMutationModeAuthority {
+      destructive: false,
+      purpose_note: "Run one srv1 approval-broker dark install on the selection below: it installs the broker's staged unit and config under /etc and its binary under /usr/local, checks the sudoers policy with visudo and reloads systemd; it takes nothing off the host and admits no traffic until the operator turns the front door on." as NonEmptyStr,
+    }
+    MicrovmControllerInstall => Srv1RootMutationModeAuthority {
+      destructive: false,
+      purpose_note: "Run one srv1 microVM controller install on the selection below: it writes the controller's unit, the dispatch grant's sudoers drop-in, the controller's release locus under /opt/gunbc and the revision job's state root under /var/lib/gunbc, checks the sudoers policy with visudo and reloads systemd; it takes nothing off the host." as NonEmptyStr,
+    }
+    ApprovalNtfyRetire => Srv1RootMutationModeAuthority {
+      destructive: true,
+      purpose_note: "Run one srv1 ntfy retirement on the selection below: it stops and disables the gunbc-ntfy unit BY NAME, removes the gunbc-ntfy ACCOUNT, deletes the unit file, the config directory /etc/gunbc-ntfy, the state root /var/lib/gunbc-ntfy and the hand-installed binary /usr/local/bin/ntfy, and takes the tailscale front door off 8443; these deletions are not undone by any later step of this run." as NonEmptyStr,
+    }
+  }
+}
+
+// THE FAMILY AS A LIST, for the one place a mode arrives as a STRING: the run's own `mode` input. The
+// run parses it back through the wire fn, so the strings are never matched against a literal here --
+// and a constructor missing from this list can only ever mean the run refuses (fail closed), while a
+// constructor missing from the authority match above is a build error.
+data srv1_root_mutation_modes: List<Srv1RootMutationMode> = [
+  DashboardDeploy,
+  ApprovalBrokerDarkInstall,
+  MicrovmControllerInstall,
+  ApprovalNtfyRetire,
+]
+
+type Srv1RootMutationModeRead
+  = ModeRead { mode: Srv1RootMutationMode }
+  | ModeWireUnreadable { wire: String }
+
+fn srv1_root_mutation_mode_of_wire(wire: String) -> Srv1RootMutationModeRead {
+  match first_where(xs: srv1_root_mutation_modes, keep: m => srv1_root_mutation_mode_wire(mode: m) == wire) {
+    Present { value: mode } => ModeRead { mode: mode }
+    Absent => ModeWireUnreadable { wire: wire }
+  }
+}

@@ -374,8 +374,6 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_user_record_command"),
     decl_ref(module_path: "extdeps.tools.ls", decl_name: "ls_long_numeric_entries_command"),
     decl_ref(module_path: "extdeps.tools.ls", decl_name: "ls_long_numeric_listing_command"),
-    decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
-    decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_off_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),

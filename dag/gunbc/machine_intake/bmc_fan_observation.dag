@@ -16,6 +16,9 @@ import std.measure { ObservationRoundCount, Second, observation_round_count_valu
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.bmc.ipmi_sdr {
+  SdrVerboseReadout,
+  SdrVerboseRecord,
+  sdr_verbose_readout,
   SdrFanDuty,
   SdrFanNoReading,
   SdrFanReadingUnrecognised,
@@ -127,6 +130,14 @@ type FanSensorObservation
   = FanSensorsRead { lines: List<SdrTypeLine>, undecoded_lines: List<String>, failure_rows: List<SdrEmptyReadingRow> }
   | FanSensorsUnreadable
 
+// THE CONDITIONAL VERBOSE CAPTURE (manager msg_56f4f57b, agreed): the verbose elist read fires in a
+// round ONLY when that round's thermal read left undecoded rows - the bytes answer exactly the
+// question the refusal just printed. NotRequired is a fact about the round, not a missing capture;
+// Unreadable is a FAILED read, never an empty repository (the fan_lines lesson again).
+type SdrVerboseCapture
+  = SdrVerboseNotRequired
+  | SdrVerboseCaptured { readout: SdrVerboseReadout }
+
 type FanObservationRound {
   observed_at: NonEmptyStr
   round_index: Int
@@ -137,6 +148,7 @@ type FanObservationRound {
   chassis_raw: String
   thermal: ThermalObservation
   fans: FanSensorObservation
+  verbose: SdrVerboseCapture
 }
 
 // AN UNREADABLE THERMAL SENSOR LIST IS NOT "THIS HOST PUBLISHES NO THERMALS", AND THE FIRST
@@ -227,6 +239,11 @@ fn observe_fan_round(
   password_file: NonEmptyStr,
   round_index: Int,
   cipher_suite: IpmiCipherSuite?,
+  // THE OBSERVED-AT IS AN INPUT, NOT AN AMBIENT PROBE: the round used to clock itself, which made it
+  // un-runnable inside an evaluation frame (the hermetic frame faults an ambient time probe). The wet
+  // lanes pass the clock they are standing in; a witness passes the time it is fixing. Same value the
+  // round has always carried - only WHO reads the clock moved, not what the round records.
+  observed_at: NonEmptyStr,
 ) -> FanObservationRound
 {
   status = diagnostic.ipmi.Tool.ChassisStatus(
@@ -257,13 +274,36 @@ fn observe_fan_round(
   )
   let temp_results = sdr_decode_lines(stdout: temps.stdout)
   let fan_results = sdr_decode_lines(stdout: fans.stdout)
+  let thermal = thermal_observation(success: temps.success, results: temp_results)
+  // THE CONDITIONAL VERBOSE DISPATCH (manager msg_56f4f57b, agreed): fires exactly when this round's
+  // thermal read left rows the plain elist could not decode - the same rows the fan-gate refusal
+  // will print. An unreadable thermal read is a DIFFERENT refusal (no rows to answer), so it does
+  // not trigger the capture.
+  let undecoded_row_count = match thermal {
+    ThermalRead { publication: _, undecoded_texts: u, unrecognised_readings: _ } => u.length()
+    ThermalUnreadable => 0
+  }
+  verbose = if undecoded_row_count > 0 {
+    let verbose_read = diagnostic.ipmi.Tool.SdrElistVerbose(
+      bmc_host: bmc_host,
+      username: username,
+      password_file: password_file,
+      deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
+      kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
+      cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
+    )
+    SdrVerboseCaptured { readout: sdr_verbose_readout(success: verbose_read.success, stdout: verbose_read.stdout) }
+  } else {
+    SdrVerboseNotRequired
+  }
   return FanObservationRound {
-    observed_at: clock_now_probed_at_or_unknown(),
+    observed_at: observed_at,
     round_index: round_index,
     chassis: chassis_observation(success: status.success, stdout: status.stdout),
     chassis_raw: join(["exit=", to_string(status.exit_code), " stdout=[", status.stdout, "] stderr=[", status.transport_stderr, "]"], ""),
-    thermal: thermal_observation(success: temps.success, results: temp_results),
+    thermal: thermal,
     fans: fan_observation(success: fans.success, results: fan_results),
+    verbose: verbose,
   }
 }
 
@@ -338,6 +378,7 @@ fn observe_fan_series(
     password_file: password_file,
     round_index: round_index,
     cipher_suite: cipher_suite,
+    observed_at: clock_now_probed_at_or_unknown(),
   )
   let next = acc.append(round)
   if rounds_remaining == 1 {
@@ -534,7 +575,23 @@ fn render_round_block(round: FanObservationRound) -> String {
     .concat(map(round_fan_lines(round: round), l => render_fan_line(round: round, line: l)))
     .concat(map(round_fan_failure_rows(round: round), r => join(["  round=", to_string(round.round_index), " fan_failure_row=[", r.text, "]"], "")))
     .concat(map(round_undecoded_fan_lines(round: round), t => join(["  round=", to_string(round.round_index), " fan_undecoded_line=[", t, "]"], "")))
-    .concat(map(round_thermal_undecoded_texts(round: round), t => join(["  round=", to_string(round.round_index), " thermal_undecoded_row=[", t, "]"], ""))), "\n")
+    .concat(map(round_thermal_undecoded_texts(round: round), t => join(["  round=", to_string(round.round_index), " thermal_undecoded_row=[", t, "]"], "")))
+    .concat(round_verbose_render_lines(round: round)), "\n")
+}
+
+// THE VERBOSE SEGMENT OF THE RENDER (default rendered, manager msg_56f4f57b): each captured record
+// prints its elist line and its verbatim detail lines; not_required says so, unread says so. The
+// later admission rule reads these bytes; nothing here interprets them.
+fn round_verbose_render_lines(round: FanObservationRound) -> List<String> {
+  match round.verbose {
+    SdrVerboseNotRequired => [join(["  round=", to_string(round.round_index), " verbose_sdr=not_required"], "")]
+    SdrVerboseCaptured { readout: ro } => match ro {
+      SdrVerboseUnreadable => [join(["  round=", to_string(round.round_index), " verbose_sdr=unread"], "")]
+      SdrVerboseRead { records: recs } => flat_map(recs, rec =>
+        [join(["  round=", to_string(round.round_index), " verbose_record=[", rec.record_line, "]"], "")]
+          .concat(map(rec.detail_lines, d => join(["  round=", to_string(round.round_index), " verbose_detail=[", d, "]"], ""))))
+    }
+  }
 }
 
 fn render_series(rounds: List<FanObservationRound>) -> String {
