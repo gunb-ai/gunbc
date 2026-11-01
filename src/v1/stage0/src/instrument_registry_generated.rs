@@ -312,6 +312,16 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "roster-rehome-controls".to_string(),
+            },
+            TargetProducer::CliWireProgram {
+                entry: "src/v2/workflow/roster_rehome.dag",
+                function: "rehome_controls_wire",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "compute-run-unit-cold".to_string(),
             },
             TargetProducer::CliWireProgram {
