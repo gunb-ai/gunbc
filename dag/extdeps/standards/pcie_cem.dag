@@ -81,7 +81,8 @@ fn cem_slot_envelope(slot_count: Nat) -> CemEnvelopeFigure {
 
 // DESIGN section 3c declared frontier. CemHeightClass and CemBracket are consumed now (every card row
 // types its height class and brackets with them); the envelope functions and figures above are read only
-// by test.claim.duct_card_catalog_witness, which exercises them and is not a consumer.
+// by test.claim.duct_card_catalog_witness, which exercises them and is not a consumer. EXCEPT cem_slot_envelope,
+// which product.printed_chassis.gpu_duct card_slot_pitch and a16_blower_duct_design now consume.
 data pcie_cem_envelope_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: the printed-chassis geometry refactor (product.printed_chassis.duct_card_catalog duct_card_catalog_consumer_frontier, following PR #15243) derives the duct's slot pitch from cem_slot_envelope over the card row's slot_count instead of the A16 blower design's slot_pitch constant, selects the bracket a part is fitted to by cem_class_bracket over the row's height class, and bounds a part's height clearance by cem_class_max_card_height where a card row's height is unread. SUFFICIENT FOR: cem_slot_width, cem_full_height_max_card_height, cem_low_profile_max_card_height, cem_class_bracket, cem_class_max_card_height and cem_slot_envelope have a production consumer." as NonEmptyStr
+  description: "TRIGGER: the printed-chassis geometry refactor (product.printed_chassis.duct_card_catalog duct_card_catalog_consumer_frontier, following PR #15243) selects the bracket a part is fitted to by cem_class_bracket over the row's height class, and bounds a part's height clearance by cem_class_max_card_height where a card row's height is unread. SUFFICIENT FOR: cem_slot_width, cem_full_height_max_card_height, cem_low_profile_max_card_height, cem_class_bracket, cem_class_max_card_height have a production consumer (cem_slot_envelope has one already)." as NonEmptyStr
 )
