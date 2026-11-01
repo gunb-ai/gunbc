@@ -95,11 +95,18 @@ type RosterHeadRow {
   home: QualifiedName
   labels: List<RosterLabelRename>
   head: RosterHeadRewrite
-  // A DUAL-TYPED SPELLING IS NEVER SWEPT BY SPELLING. The sweep matches no type, so a name whose ambient signature admits
-  // two argument kinds (append: `[ReceiverSelf, ReceiverElementOrSelf]`, src/v1/stage0/src/std_algebra.rs:1969) has halves
-  // that mean different things -- the typed census, not the row, decides which half a wave owns. A row with this flag set
-  // can ONLY be applied through OnlyOccurrences keys (RefusalRowSiteGatedNeedsOccurrences); EveryRowOfHome and OnlyCall
-  // selections refuse it, so no run can rewrite the half the census did not judge.
+  // A SPELLING THE SWEEP CANNOT DECIDE ALONE IS NEVER SWEPT BY SPELLING. The sweep matches no type, and two classes of row
+  // turn on information the spelling does not carry: (a) a DUAL-TYPED name whose ambient signature admits two argument kinds
+  // (append: `[ReceiverSelf, ReceiverElementOrSelf]`, src/v1/stage0/src/std_algebra.rs:1969) has halves that mean different
+  // things; (b) an IDENTITY-SPLIT spelling carried by SEVERAL rows of one call and home, told apart by the identity of an
+  // argument (sort_by: a Symbol, String or digest key selects which row's appended order is correct -- applying another
+  // row's would sort a digest by lexeme, silently wrong, review 89793 follow-up from tidy-ant-251). In both classes the
+  // typed census, not the row, decides which row a wave owns. A row with this flag set is ONLY ever applied where a run
+  // carries a site key for it (OnlyOccurrences): a run that keys no site -- EveryRowOfHome, OnlyCall, AllHomes -- refuses
+  // AT THE SITE it would have rewritten (RefusalRowSiteGatedNeedsOccurrences, roster_site_gated_site_refusal), and an
+  // OnlyCall over an identity-split call is refused earlier still by the several-rows rule. Nothing is silently skipped:
+  // a wave cannot report a home migrated while leaving a gated site standing. Every identity-split spelling in the table
+  // carries this flag; one rule, not a flag only on the newest row.
   site_gated: Bool
 }
 
@@ -217,7 +224,7 @@ type RosterRefusalReason
   // A ONE-HOME SCOPE THAT SELECTS NO ROW, OR AN OnlyCall SELECTING MORE THAN ONE (side chat on #14883, DESIGN 5): a
   // misspelled call or a wrong home would otherwise sweep nothing and report converged. Located by home and selection.
   | RefusalScopeSelectsNoRow { home: String, selection: String }
-  // A dual-typed spelling reached for without census keys: see roster_site_gated_selection_refusal.
+  // A site-gated spelling met by a run that keys no site: see roster_site_gated_site_refusal.
   | RefusalRowSiteGatedNeedsOccurrences { home: String, row: String, call: String, selection: String }
   | RefusalScopeSelectsSeveralRows { home: String, call: String, count: Int }
   | RefusalAppendedCalleeUncovered { row: String, callee: String }
@@ -427,23 +434,30 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       labels: [],
       head: RenameHead { to: "map_lookup", positional: ["m", "key"], appended: [] }, site_gated: false },
     // sort_by -> std.algebra list_sort_by_key(xs, key, order) (S2). The ambient sort_by orders by the key's canonical order;
-    // list_sort_by_key takes that order as a declared argument, and a key kind with no declared order has NO row. Two rows of
+    // list_sort_by_key takes that order as a declared argument, and a key kind with no declared order has NO row. Three rows of
     // one call and home, told apart by their row key (a per-site OnlyOccurrences selection names the key kind's sites):
     // a Symbol key orders by its lexeme (v2.std.node symbol_total_order), a String key by the String order, a digest key by the digest order.
+    // THE KEY KIND IS NOT IN THE SPELLING, so all three are site_gated: an EveryRowOfHome or AllHomes run carrying no site key
+    // meets such a site and refuses there (roster_site_gated_site_refusal) rather than pairing it with whichever row the fold
+    // reached first -- a digest-keyed site under symbol_total_order() sorts by lexeme, silently wrong -- and OnlyCall
+    // { call: "sort_by" } is refused earlier by the several-rows rule (roster_scope_rows_refusal_in). A wave names the key kind's
+    // sites by census keys; the three arms are controls, not prose: sort-by-whole-row-set-refuses, sort-by-whole-call-refuses,
+    // and sort-by-whole-row-set-clean-file-passes (the same unkeyed run over a file spelling none of these calls completes,
+    // which is what keeps the native differential sweep over such files reporting rows instead of a refusal).
     RosterHeadRow {
       call: "sort_by",
       key: "sort_by/symbol",
       import_name: "list_sort_by_key",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "symbol_total_order()" }] }, site_gated: false },
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "symbol_total_order()" }] }, site_gated: true },
     RosterHeadRow {
       call: "sort_by",
       key: "sort_by/string",
       import_name: "list_sort_by_key",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "string_total_order()" }] }, site_gated: false },
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "string_total_order()" }] }, site_gated: true },
     // A digest key (Fnv1a64Structural.digest, a String where lower_hex_16) is its own key kind: its declared order is over
     // Fnv1a64StructuralDigestHex, which is not String at a typed argument, so it gets its own row and its own order.
     RosterHeadRow {
@@ -452,7 +466,7 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       import_name: "list_sort_by_key",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "fnv1a64_digest_hex_total_order()" }] }, site_gated: false },
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "fnv1a64_digest_hex_total_order()" }] }, site_gated: true },
     RosterHeadRow { call: "fnv1a64_digest_hex_total_order", key: "fnv1a64_digest_hex_total_order", import_name: "fnv1a64_digest_hex_total_order", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead, site_gated: false },
     // string_total_order is declared in std.algebra beside list_sort_by_key: the row covers the sort_by/string appended callee.
     RosterHeadRow { call: "string_total_order", key: "string_total_order", import_name: "string_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false },
@@ -473,7 +487,7 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     // the call moves to that declaration: no new body, no seam. The snoc half is deliberately NOT here -- its declaration is
     // std.algebra list_push, a HostRealizedSeam (line 186), and a wave that claimed both would join lists where the site
     // meant to add one element. Hence site_gated: the row can only be applied at the occurrence keys a typed census
-    // enumerated (roster_site_gated_selection_refusal); a whole-call or whole-home selection refuses. The judgment for the
+    // enumerated (roster_site_gated_site_refusal); a run that keys no site refuses at the site it would have rewritten. The judgment for the
     // five src/v2 sites is cited per site in the PR: both operands are the same List<T> (Xl2EntriesBuilt.entries,
     // xl2_member -> List<Step0SubjectMember>:33, xl2_real_manifest -> List<Xl2ManifestEntry>:22), and an element-shaped call
     // under this row would not even typecheck, because list_append types BOTH operands as FreeMonoid<T> with the same T.
@@ -689,38 +703,43 @@ fn roster_appended_callee_refusal(table: List<RosterHeadRow>, selected: List<Ros
   })
 }
 
-// A DUAL-TYPED ROW IS ONLY EVER REACHED THROUGH CENSUS KEYS. The sweep matches no type, so a row whose spelling admits two
-// argument kinds can only be applied where a TYPED census said this site is the half the wave owns: a whole-home or whole-call
-// selection would rewrite every site of the spelling -- including the half nobody judged -- so it refuses instead of trusting
-// the spelling. This gate sits on roster_selection_and_paths_refusal, the one check every wave report and every writer passes
-// through; the rename CENSUS does not pass through it, because accounting for a population is not rewriting it, and a
-// dual-typed spelling is exactly the population that must stay visible (roster_rename_census_exit). The refusal is loud
-// rather than a silent skip: a whole-home run of a home that holds such a row is blocked until its sites are keyed, which is
-// the honest state (DESIGN section 5: never a silent narrowing).
-fn roster_site_gated_scope_refusal(scope: RosterHomeScope) -> Optional<RosterRefusalReason> {
-  match scope {
-    AllHomes => roster_site_gated_selection_refusal(home: "*", selection: "all-homes", selected: roster_head_rows())
-    OneHome { home: h, rows: sel } =>
-      match sel {
-        OnlyOccurrences { row: _, call: _, occurrences: _ } => Absent
-        EveryRowOfHome => roster_site_gated_selection_refusal(home: roster_qn_text(qn: h), selection: "every-row", selected: roster_rows_for_scope_in(table: roster_head_rows(), scope: scope))
-        OnlyCall { call: c } => roster_site_gated_selection_refusal(home: roster_qn_text(qn: h), selection: "call=" + c, selected: roster_rows_for_scope_in(table: roster_head_rows(), scope: scope))
-      }
-  }
-}
-
-fn roster_site_gated_selection_refusal(home: String, selection: String, selected: List<RosterHeadRow>) -> Optional<RosterRefusalReason> {
-  fold_list(xs: selected, empty: Absent, cons: fn(acc, r) {
+// A SITE-GATED ROW IS ONLY EVER REACHED THROUGH CENSUS KEYS, AND THE REFUSAL IS RAISED AT THE SITE. A row whose meaning the
+// spelling does not carry -- an ambient signature admitting two argument kinds (append) or several rows of one call split by an
+// argument's identity (sort_by) -- can only be applied where a TYPED census said this site is the row the wave owns. A run that
+// keys NO site (EveryRowOfHome, OnlyCall, AllHomes: the run carries no RosterSiteGate for the row) must not act on those sites,
+// so meeting one refuses the file with RefusalRowSiteGatedNeedsOccurrences. The refusal is raised WHERE THE RUN WOULD HAVE ACTED
+// -- on the file whose parsed sites hold a free-standing call of the gated spelling -- not at selection time: a run that meets
+// no gated site is untouched (the native differential sweep over files carrying none of these spellings still reports its rows),
+// and no gated site is ever SILENTLY SKIPPED (DESIGN section 5: never a silent narrowing), so a wave cannot report a home
+// migrated while leaving its sort_by or append sites standing. A keyed run carries its row's gate (roster_gate_for) and passes;
+// the rename CENSUS reports populations without rewriting them, so it is exempt.
+fn roster_site_gated_site_refusal(candidates: List<RosterHeadRow>, gates: List<RosterSiteGate>, sites: FreeMonoid<ScopedReferenceSite>, census_mode: Bool) -> Optional<RosterRefusalReason> {
+  fold_list(xs: candidates, empty: Absent, cons: fn(acc, r) {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        if r.site_gated {
-          Present { value: RefusalRowSiteGatedNeedsOccurrences { home: home, row: r.key, call: r.call, selection: selection } }
-        } else {
+        if census_mode || !r.site_gated {
           Absent
+        } else {
+          match roster_gate_for(gates: gates, row: r) {
+            Present { value: _ } => Absent
+            Absent =>
+              if roster_call_is_spelled(sites: sites, call: r.call) {
+                Present { value: RefusalRowSiteGatedNeedsOccurrences { home: roster_qn_text(qn: r.home), row: r.key, call: r.call, selection: "no-site-keys" } }
+              } else {
+                Absent
+              }
+          }
         }
     }
   })
+}
+
+// Does this module spell `call` as a free-standing reference at all? The sites are the parse's own reference sites -- the same
+// population the sweep joins heads to -- so a mention in a comment or a string is not a site, and a method spelling (parts.append)
+// is not a free-standing call.
+fn roster_call_is_spelled(sites: FreeMonoid<ScopedReferenceSite>, call: String) -> Bool {
+  fold_list(xs: sites, empty: false, cons: fn(acc, st) { acc || roster_spelling_is(qn: st.site.spelling, call: call) })
 }
 
 fn roster_scope_rows_refusal_in(table: List<RosterHeadRow>, scope: RosterHomeScope) -> Optional<RosterRefusalReason> {
@@ -793,7 +812,7 @@ fn roster_selection_and_paths_refusal(paths_csv: String, scope: RosterHomeScope)
     Absent =>
       match roster_key_outside_paths(paths_csv: paths_csv, scope: scope) {
         Present { value: r } => Present { value: r }
-        Absent => roster_site_gated_scope_refusal(scope: scope)
+        Absent => Absent
       }
   }
 }
@@ -1443,7 +1462,12 @@ fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterC
                 Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
                 Accepted { value: scoped, diagnostics: _ } =>
                   let sites = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites
-                  let unmet = roster_gate_unmet(sides: sides, gates: gates, candidates: candidates, sites: sites, spans: artifact.span_index, imported: scoped.tree.import_bindings)
+                  let census_mode = match census_call { Present { value: _ } => true; Absent => false }
+                  let gated = roster_site_gated_site_refusal(candidates: candidates, gates: gates, sites: sites, census_mode: census_mode)
+                  let unmet = match gated {
+                    Present { value: reason } => Present { value: reason }
+                    Absent => roster_gate_unmet(sides: sides, gates: gates, candidates: candidates, sites: sites, spans: artifact.span_index, imported: scoped.tree.import_bindings)
+                  }
                   let outcome = match unmet {
                     Present { value: reason } => RosterRefused { reason: reason }
                     Absent => match roster_sweep_rows(sites: sites, sides: sides, 
@@ -3074,9 +3098,10 @@ fn roster_rename_control_names() -> List<String> {
     "appended-argument-symbol-order",
     "appended-argument-string-order", "appended-argument-digest-order",
     "sort-by-undeclared-order-refuses",
+    "sort-by-whole-row-set-refuses", "sort-by-whole-row-set-clean-file-passes", "sort-by-whole-call-refuses",
     "collection-head-first", "collection-head-reverse", "collection-head-take", "collection-head-flat_map",
     "collection-head-append", "collection-head-append-pipe", "collection-head-append-foreign-label", "collection-head-append-reordered", "collection-head-append-arity",
-    "collection-head-append-site-gated", "collection-head-append-whole-call-refused",
+    "collection-head-append-site-gated", "collection-head-append-whole-row-set-refuses",
     "appended-callee-uncovered-refuses",
     "appended-callee-covered-admitted",
     "occurrences-byte-column-after-multibyte-text",
@@ -3132,7 +3157,16 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     // silently swap the concatenation's operands -- and a short call refuses rather than guessing an operand. Each runs the
     // row the way a wave does: one keyed site.
     roster_control_verdict(name: "collection-head-append-site-gated", fail: roster_append_expect_text(name: "collection-head-append-site-gated", before: append_site_gated_before, keys: append_key, after: append_site_gated_after, prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "collection-head-append-whole-call-refused", fail: roster_scope_exit_refuses(name: "collection-head-append-whole-call-refused", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "append"), refusal: RefusalRowSiteGatedNeedsOccurrences { home: "std.algebra", row: "append/list", call: "append", selection: "call=append" })),
+    roster_control_verdict(name: "collection-head-append-whole-row-set-refuses", fail: roster_unkeyed_expect_refusal(name: "collection-head-append-whole-row-set-refuses", text: append_fn_head + "  xs |> append(items: ys)" + append_fn_tail, want: "row-site-gated-needs-occurrences home=std.algebra row=append/list call=append selection=no-site-keys", prepared: prepared, lex: lex)),
+    // THE SAME RULE FOR THE OTHER IDENTITY-SPLIT SPELLING (tidy-ant-251's follow-up on review 89793): sort_by is ONE spelling
+    // carried by THREE rows, split by the key's identity -- Symbol, String, digest -- which is not in the spelling. A run that
+    // never judged the key kind must not pick a row: an EveryRowOfHome over the home refuses naming the first gated row it
+    // meets, and an OnlyCall over the call was already refused by the several-rows rule (roster_scope_rows_refusal_in, checked
+    // first) -- pinned here so both arms of the rule are controls, not prose. The green half is the per-site grain: the
+    // appended-argument controls above apply each sort_by row through census keys and stay green with the flag set.
+    roster_control_verdict(name: "sort-by-whole-row-set-refuses", fail: roster_unkeyed_expect_refusal(name: "sort-by-whole-row-set-refuses", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> List<String> {\n  sort_by(xs, fn(s) { s })\n}\n", want: "row-site-gated-needs-occurrences home=std.algebra row=sort_by/symbol call=sort_by selection=no-site-keys", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "sort-by-whole-row-set-clean-file-passes", fail: roster_unkeyed_expect_clean(name: "sort-by-whole-row-set-clean-file-passes", text: "module c.rename\n\nimport std.algebra { Cons, list_sort_by_key }\n\nfn f(xs: List<String>) -> List<String> {\n  list_sort_by_key(xs: xs, key: fn(s) { s }, order: string_total_order())\n}\n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "sort-by-whole-call-refuses", fail: roster_scope_exit_refuses(name: "sort-by-whole-call-refuses", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "sort_by"), refusal: RefusalScopeSelectsSeveralRows { home: "std.algebra", call: "sort_by", count: 3 })),
     roster_control_verdict(name: "collection-head-append-pipe", fail: roster_append_expect_text(name: "collection-head-append-pipe", before: append_fn_head + "  xs |> append(items: ys)" + append_fn_tail, keys: append_key, after: append_fn_head_moved + "  list_append(left: xs, right: ys)" + append_fn_tail, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-append-foreign-label", fail: roster_append_expect_refusal(name: "collection-head-append-foreign-label", text: append_fn_head + "  append(xs, parts: ys)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-append-reordered", fail: roster_append_expect_refusal(name: "collection-head-append-reordered", text: append_fn_head + "  append(items: ys, xs)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
@@ -3159,6 +3193,32 @@ fn roster_append_expect_refusal(name: String, text: String, keys: List<String>, 
   match roster_append_occurrence_outcome(keys: keys, text: text, prepared: prepared, lex: lex) {
     RosterRefused { reason: r } => if roster_refusal_text(reason: r) == want { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + ", wanted " + want + "\n" }
     other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other) + "\n"
+  }
+}
+
+// A WHOLE-ROW-SET RUN OVER THE PRODUCTION std.algebra ROWS -- the shape a wave uses when it names no site. The site-gated rows
+// meet their sites carrying no RosterSiteGate, and the run must refuse there (roster_site_gated_site_refusal).
+fn roster_unkeyed_home_outcome(text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  let rows = roster_rename_production_row()
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: EveryRowOfHome }
+  roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope_in(table: rows, scope: scope), closures: roster_control_closures(), gates: roster_scope_gates(scope: scope, path: "control/rename.dag", text: text))
+}
+
+fn roster_unkeyed_expect_refusal(name: String, text: String, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_unkeyed_home_outcome(text: text, prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } => if roster_refusal_text(reason: r) == want { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + ", wanted " + want + "\n" }
+    other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other) + "\n"
+  }
+}
+
+// THE GATE DOES NOT FIRE WHERE IT MEETS NOTHING: the same whole-row-set run over a file that spells none of the gated calls
+// completes. Without this arm the rule would read as a blanket refusal of unkeyed runs, and the native differential sweep --
+// whose subjects carry none of these spellings -- would have no stated contract to hold.
+fn roster_unkeyed_expect_clean(name: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_unkeyed_home_outcome(text: text, prepared: prepared, lex: lex) {
+    RosterClean => ""
+    RosterRefused { reason: r } => "CONTROL-FAIL " + name + ": refused a file with no gated spelling: " + roster_refusal_text(reason: r) + "\n"
+    other => "CONTROL-FAIL " + name + ": rewrote a file with no gated spelling: " + roster_render_outcome(path: "control/rename.dag", outcome: other) + "\n"
   }
 }
 
