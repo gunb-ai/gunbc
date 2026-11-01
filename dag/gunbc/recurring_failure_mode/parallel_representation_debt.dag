@@ -15,7 +15,7 @@ data parallel_representation_debt: RecurringFailureMode = RecurringFailureMode {
 
     "The authoring pressure is worth naming because the exhaustive match has a REAL VIRTUE -- a tenth variant fails to compile -- which reads as justification for a fold that need not exist at all. That is how the shape reproduces: the defence is sound and answers a question nobody needed asked.",
 
-    "A discovery grep for hand-authored `*_eq` declarations returns a population in the low hundreds. That is a CANDIDATE CENSUS whose members are not dispositioned, NOT a defect count: members over payload coproducts may differ from `==` in ways a bulk rewrite would silently change, which would convert a legibility problem into a correctness one. The next step is a typed report-only census, not a sweep.)",
+    "A discovery grep for hand-authored `*_eq` declarations returns a population in the low hundreds. That is a CANDIDATE LIST whose members are not dispositioned, NOT a defect count: members over payload coproducts may differ from `==` in ways a bulk rewrite would silently change, which would convert a legibility problem into a correctness one. A census or sweep is not a prerequisite (retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`); this does not establish corpus-wide coverage); each rewrite is scoped review plus a focused test that `==` agrees with the fold on payload arms.)",
   ],
 
   evidence: [],

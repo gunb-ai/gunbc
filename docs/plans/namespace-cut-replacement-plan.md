@@ -1,6 +1,6 @@
 # Namespace cut: replace imports with containment resolution
 
-**Goal:** delete the import grammar, parse surface and import-name universe. **Method:** `SymbolIndex` from `v2.compiler.symbol_index_fill`, resolved by `v2.compiler.resolve` containment walks; derive dependencies from references. **Validation:** typed parse refusal for `import`, containment-only binding, restored reference-derived emission/order, dispositioned census and applicable drift/regen receipts.
+**Goal:** delete the import grammar, parse surface and import-name universe. **Method:** `SymbolIndex` from `v2.compiler.symbol_index_fill`, resolved by `v2.compiler.resolve` containment walks; derive dependencies from references. **Validation:** typed parse refusal for `import`, containment-only binding, restored reference-derived emission/order and applicable drift/regen receipts. The census disposition is retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`); this does not establish corpus-wide coverage.
 
 This is reasoning and history, not live standing. Current authorities:
 
@@ -31,7 +31,7 @@ Controls held the August compiler (`64ebefa7416`, not September’s `f84c91b774a
 - `src/v2/compiler/body_lowering_fold.dag`: the `dag_surface_import_decl`/`_block` passthrough arms
 - `src/v2/lens/reference_deps.dag`: only the import-reading arms (`reference_qn_from_import_decl_strict` + dispatch, `reference_paths_from_import_edges`, `import_edge_to_reference_fact`) — the module survives as the replacement producer
 
-**Sequencing consequence:** land this before deep-diagnosing the census. Until X's resolution arms are gone, part of the 5,531 may be X's machinery judging over now-empty import lists (e.g. `get_exported_names` folding `imported_names` into export sets) — measuring the corpse, not Y. Re-derive the census after; the numbers moving is expected.
+**Sequencing consequence:** land this before deep-diagnosing failures. Until X's resolution arms are gone, part of the 5,531 may be X's machinery judging over now-empty import lists (e.g. `get_exported_names` folding `imported_names` into export sets) — measuring the corpse, not Y. Re-deriving the census afterward is not a prerequisite (retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`)); the numbers moving is expected.
 
 ## Step 2 — host and emit machinery
 
@@ -56,7 +56,7 @@ Controls held the August compiler (`64ebefa7416`, not September’s `f84c91b774a
 
 ## Step 4 — fix-forward on the census, class grain
 
-Method (post-retraction): instrument **real specimens** from the census, never synthetic fixtures — a probe answers questions about the probe. First specimen: `LiveTreeDisposition` (579 failures) at `dag/test/claim/lifecycle_survivor_corpus_census.dag`. Per specimen, pin first **which resolver path judged it** (mask / single-candidate-from-anywhere / NamespaceOnlyY chain filter); the instrumented binary is rebuilt from the branch head. Classes are decided deliberately in sequence and applied mechanically within a class; the function-not-found majority carries an open question — were function references ever candidates in the reference-derived path, or only visible through the import universe? The qualification sweep uses the old resolver as offline oracle only.
+Method (post-retraction): instrument **real specimens** of the failures a change surfaces, never synthetic fixtures — a probe answers questions about the probe. First specimen: `LiveTreeDisposition` (579 failures) at `dag/test/claim/lifecycle_survivor_corpus_census.dag`. Per specimen, pin first **which resolver path judged it** (mask / single-candidate-from-anywhere / NamespaceOnlyY chain filter); the instrumented binary is rebuilt from the branch head. Classes are decided deliberately in sequence and applied mechanically within a class; the function-not-found majority carries an open question — were function references ever candidates in the reference-derived path, or only visible through the import universe? The qualification sweep uses the old resolver as offline oracle only.
 
 ## Step 5 — grammar/parse deletion, LAST (`import` becomes a parse error)
 
@@ -100,7 +100,7 @@ Method (post-retraction): instrument **real specimens** from the census, never s
 
 ## Green bar / cutover
 
-`import` refuses at parse with a typed, located refusal (step 5, the LAST step — the branch receipt for it predates the 2026-08-25 reordering and is evidence the deletion works, not that this cut's step 5 is done); the corpus resolves through the containment rule **by construction — never pool coincidence**; Rust-emit use-lines restored from the containment resolver (the strip silently emptied the old channel — see step 3); the census worked to zero or every remaining row dispositioned; the regen fixed point and drift gates re-established on the branch — **or, if `integration/v1-cut` reached main first, the regen half retired with `regen_stage0` under the order-dependency above, the drift gates standing on their own** (they are independent of regen — **observed 2026-08-15** on `integration/v1-cut`: `heal_generated_artifacts` passed while `regen` was red; that branch has since retired the regen job outright, so the observation is a dated receipt for the independence, not a live claim about either branch's current jobs). Then #8282 flips ready and the operator merges — one atomic cutover.
+`import` refuses at parse with a typed, located refusal (step 5, the LAST step — the branch receipt for it predates the 2026-08-25 reordering and is evidence the deletion works, not that this cut's step 5 is done); the corpus resolves through the containment rule **by construction — never pool coincidence**; Rust-emit use-lines restored from the containment resolver (the strip silently emptied the old channel — see step 3); the census-to-zero and row-disposition conditions are retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`) (this does not establish corpus-wide coverage); the regen fixed point and drift gates re-established on the branch — **or, if `integration/v1-cut` reached main first, the regen half retired with `regen_stage0` under the order-dependency above, the drift gates standing on their own** (they are independent of regen — **observed 2026-08-15** on `integration/v1-cut`: `heal_generated_artifacts` passed while `regen` was red; that branch has since retired the regen job outright, so the observation is a dated receipt for the independence, not a live claim about either branch's current jobs). Then #8282 flips ready and the operator merges — one atomic cutover.
 
 ## Registration
 
