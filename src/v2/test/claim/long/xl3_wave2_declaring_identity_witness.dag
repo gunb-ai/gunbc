@@ -1,25 +1,23 @@
 module v2.test.claim.long.xl3_wave2_declaring_identity_witness
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_snoc_item, map_support_keys, map_lookup }
+import std.algebra { Empty }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Optional, Present }
 import std.types { List }
-import extdeps.communication.medium { Lossless, Medium }
-import extdeps.filesystem.filesystem_io
-import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_with_admission_policy }
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolve_with_admission_policy }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.compiler.resolve { OccurrenceResolutionRecord, ResolvedToDeclaration, BoundToDeclaration, ResolvedTree }
-import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Symbol }
-import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.resolution_policy { ImportScoped }
 import v2.test.claim.long.xl3_wave_declaring_identity_witness { ExpectedBinding, declaring_paths, read_of, table_holds }
+
+// Every read, table and resolution helper this witness needs comes from wave 1; the imports above carry
+// only the types and producers this file names. filesystem_read / DagSourceReadWitness / ResolvedTree sit
+// behind read_of and declaring_paths in v2.test.claim.long.xl3_wave_declaring_identity_witness.
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
