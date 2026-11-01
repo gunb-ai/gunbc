@@ -696,8 +696,6 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let dev_ready = curl(arguments: ["-k", "-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "30", "--retry-delay", "1", "--retry-connrefused", "https://127.0.0.1:18445/ready"])
   let dev_no_key = dev_request(key: "wrong", session: "s0", body: model_body(model: "m-a"), path: "/v1/chat/completions")
   let dev_models = dev_get(key: "ck-falsifier", path: "/v1/models")
-  let priced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-1", "-d", model_body(model: "Qwen3.8-Flash-Next"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
-  let unpriced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-2", "-d", model_body(model: "m-a"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
   let dev_a = dev_request(key: "ck-falsifier", session: "s1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
   let dev_b = dev_request(key: "ck-falsifier", session: "s2", body: model_body(model: "m-b"), path: "/v1/chat/completions")
   let dev_d = dev_request(key: "ck-falsifier", session: "s3", body: model_body(model: "m-d"), path: "/v1/chat/completions")
@@ -817,6 +815,10 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let reloaded_zero = DockerCli.Signal(docker: docker(), name: dev_router_name(), signal: SignalHangup)
   let reloaded_zero_models = await_models(mark: "4325", n: 20)
   let zero_pool_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  // The pricing turns run AFTER every stats read: a quoted-model turn and an m-a turn would otherwise add to the
+  // owned tallies those cases pin.
+  let priced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-1", "-d", model_body(model: "Qwen3.8-Flash-Next"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
+  let unpriced_turn = curl(arguments: ["-k", "-sS", "-i", "--max-time", "10", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: pq-2", "-d", model_body(model: "m-a"), "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
   let trim_old_names = dev_request(key: "ck-falsifier", session: "t", body: "\{\}", path: "/router/trim-bindings")
   let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
   let after_large = sink(n: "5")
@@ -856,7 +858,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     // reports usage, so every owned turn here must land as UNMEASURED rather than as zero tokens -- a
     // missing count is never a zero -- and with no quote row for these models the comparison figures are
     // absent, not invented. Owned spend is zero by construction.
-    case_of(identity: "the_meter_tallies_owned_turns_and_never_invents_tokens", held: contains(s: dev_stats, p: "\"version\":2") && occurrences(s: dev_stats, needle: "\"billing\":\"owned\"") == 18 && occurrences(s: dev_stats, needle: "\"unmeasured_requests\":") == 20 && !contains(s: dev_stats, p: "\"comparison_pricing\"") && contains(s: dev_stats, p: "\"actual_spend_usd\":0"), observed: one_line(s: dev_stats)),
+    case_of(identity: "the_meter_tallies_owned_turns_and_never_invents_tokens", held: contains(s: dev_stats, p: "\"version\":2") && occurrences(s: dev_stats, needle: "\"billing\":\"owned\"") == 20 && occurrences(s: dev_stats, needle: "\"unmeasured_requests\":") == 22 && occurrences(s: dev_stats, needle: "\"comparison_pricing\"") == 2 && contains(s: dev_stats, p: "\"actual_spend_usd\":0"), observed: one_line(s: dev_stats)),
     // Effort is translated by the ROW dialect, per upstream model, before the body leaves the router.
     // A DRAINED ENGINE IS UNREACHABLE, NOT MERELY UNPOPULAR. g1 is in the file with in_service false and
     // no server behind its port: if the flag were ignored the turn would be proxied there and read 502,
