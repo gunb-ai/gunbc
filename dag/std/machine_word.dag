@@ -1,5 +1,6 @@
 module std.machine_word
 
+import std.types { list_length }
 import std.induction { int_pow_bounded }
 import std.power_of_two { bitwise_pow2 }
 import std.machine_width_range { machine_width_admits }

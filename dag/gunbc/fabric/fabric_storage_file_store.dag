@@ -30,7 +30,9 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
+  filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_child }
 
 // THE FIRST REALIZATION OF std.fabric_storage: ONE FILE-BACKED STORE, ONE LINEARIZATION POINT.
 //
@@ -46,40 +48,98 @@ import extdeps.filesystem.filesystem_io {
 // from every other host -- and no host keeps a second writable copy. Replication
 // and failover are the program in docs/plans/fabric-storage.md, not this module.
 //
-// THE ROOT IS NOT CREATED HERE (the CAS store's rule, for the same reason): creating the directory
-// that defines the store's identity is a convergence decision, made by fabric_storage_file_root_ensure,
-// not a side effect of one write.
+// THE ROOT IS NOT CREATED BY A WRITE (the CAS store's rule, for the same reason): standing up the
+// directory that defines the store's identity is a placement decision, made once by the mint below
+// against the declared member chain, never as a side effect of one write.
 
 // THE ENTRY MODE IS THE PLACEMENT'S FACT, NOT THIS REALIZATION'S. Who reads the store's files is
 // decided by who the placement declares as its writers and readers
 // (gunbc.fabric.fabric_storage_placement fabric_storage_placed_store); a root built with no declared
 // mode publishes at the writing process's umask, which is what a single-principal fixture wants and
 // what a store with two principals must not rely on.
-// SEALED CONSTRUCTION: only this module builds the record, through the two path mints below. A forged
-// record literal or cast elsewhere is a SoleConstructorViolation. The path mints stay exported, so a
-// caller-chosen path is still a route to a FileRoot and to FabricStorageLocalFiles { root }: the declared
-// residual gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module. No rung is
-// claimed for it. LocalFiles carrying FabricStorageOperations instead waits on C-compute sealing the capacity
-// store (gunbc.compute.host_capacity, which builds this arm over its own root).
-type FabricStorageFileRoot sole_constructor {
+// SEALED CONSTRUCTION: only this module builds the record. A forged record literal or cast elsewhere is a SoleConstructorViolation. The path mints that used to live here are
+// DELETED: the only route to this record is the ONE declaration-driven mint below. The rung established
+// is construction: a consumer cannot be handed a FORGED store record. It is not a claim that no caller can
+// choose the directory: HostDashboardInstance has no sole constructor and isolated_dashboard_instance
+// accepts any root, so fabric_store_open can still be reached over a chosen directory, and any module can
+// still build a plain store over a literal path with Filesystem + file_slot_store_over. That residual is
+// recorded once in gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module
+// (route 3, owned by the ambient-authority lane); no rung is claimed for it.
+type FabricStorageOperations sole_constructor {
   objects: NonEmptyStr
   heads: NonEmptyStr
   entry_mode: FileMode?
 }
 
-fn fabric_storage_file_root(root: NonEmptyStr) -> FabricStorageFileRoot {
-  fabric_storage_file_root_with(root: root, entry_mode: none)
-}
+// ── ONE FAMILY, ONE RULE ───────────────────────────────────────────────────────────────────────
+//
+// §6b root generalization: the fabric stores differ only in WHICH declared member chain under a host
+// instance's root they sit on. One mint takes a member chain -- read from a data row, never a path --
+// and every store in the family is an instance of it. The public CAS sits at instance_root/fabric-
+// storage; its state space is a member under that; compute's capacity ledger (gunbc.compute.
+// host_capacity, which declares its own chain) sits under instance_root/compute. The mode each
+// directory is ENROLLED with belongs to the substrate's demand rows, not to the mint: the mint only
+// opens what the substrate provisioned.
+data fabric_storage_slots: List<NonEmptyStr> = ["fabric-storage"]
+data fabric_storage_state_slots: List<NonEmptyStr> = ["fabric-storage", "state"]
 
-fn fabric_storage_file_root_with(root: NonEmptyStr, entry_mode: FileMode?) -> FabricStorageFileRoot {
-  FabricStorageFileRoot {
-    objects: join([root as String, "/objects"], "") as NonEmptyStr,
-    heads: join([root as String, "/heads"], "") as NonEmptyStr,
-    entry_mode: entry_mode,
+// The root the declaration picks: the member chain applied in order under the instance root. The ONE
+// place that spells the join; every route to a fabric store root goes through it.
+fn fabric_store_declared_root(members: List<NonEmptyStr>, root: FilePath) -> FilePath {
+  match first(members) {
+    Absent => root
+    Present { value: head } =>
+      fabric_store_declared_root(members: skip(members, n: 1), root: dashboard_instance_child(root: root, child: head as String))
   }
 }
 
-fn fabric_storage_head_publication(root: FabricStorageFileRoot) -> CasGenerationPublication {
+// THE TWO AREAS A STORE'S DECLARATION IMPLIES, spelled exactly once. The operations use them, and the
+// substrate's provisioning rows (gunbc.fabric.fabric_storage_placement
+// fabric_storage_store_directories) ask for the SAME paths from the SAME row, so a store and the
+// directories it needs cannot disagree. This is a path pair, not a store: constructing it grants no
+// capability -- only FabricStorageOperations, minted below, does.
+type FabricStoreAreas { objects: NonEmptyStr, heads: NonEmptyStr }
+
+fn fabric_store_area_paths(members: List<NonEmptyStr>, instance: HostDashboardInstance) -> FabricStoreAreas {
+  let root = fabric_store_declared_root(members: members, root: instance.instance_root)
+  FabricStoreAreas {
+    objects: join([root as String, "/objects"], "") as NonEmptyStr,
+    heads: join([root as String, "/heads"], "") as NonEmptyStr,
+  }
+}
+
+// THE MINT. It takes the declared member chain and the business key -- never a path, never a directory
+// someone chose. It LISTS the two AREAS under the root the declaration picks and creates nothing. The root
+// itself is not listed: the public store's root is provisioned traverse-only for the service (fabric_storage_store_directories,
+// writes: false), so listing it would refuse on the live host, and a listable area proves the root is traversable: a missing area is Unready naming it (creation and mode are
+// the owned-directory rows'). `entry_mode` is a PUBLISHING posture, not a
+// location: the placement mint derives it from the writer rosters (refusing while they are unresolved)
+// and hands it here; stores with no declared publication mode pass Absent and post at the process umask,
+// exactly as they did before.
+type FabricStoreStanding = FabricStoreReady { store: FabricStorageOperations } | FabricStoreUnready { area: String, detail: String }
+
+fn fabric_store_open(members: List<NonEmptyStr>, instance: HostDashboardInstance, entry_mode: FileMode?) -> FabricStoreStanding {
+  fabric_store_area_standing(areas: fabric_store_area_paths(members: members, instance: instance), entry_mode: entry_mode)
+}
+
+// EACH AREA IS OBSERVED, NEVER CREATED. Creation (and the mode) belongs to the owned-directory rows
+// fabric_storage_store_directories / compute_capacity_directories derive from the same declaration, so an
+// area no row has provisioned is Unready naming that area, never a directory made here at the umask.
+fn fabric_store_area_standing(areas: FabricStoreAreas, entry_mode: FileMode?) -> FabricStoreStanding {
+  let o = Filesystem.List(path: areas.objects as String)
+  if !o.success {
+    FabricStoreUnready { area: "objects", detail: join([areas.objects as String, " is not provisioned: ", o.error], "") }
+  } else {
+    let h = Filesystem.List(path: areas.heads as String)
+    if !h.success {
+      FabricStoreUnready { area: "heads", detail: join([areas.heads as String, " is not provisioned: ", h.error], "") }
+    } else {
+      FabricStoreReady { store: FabricStorageOperations { objects: areas.objects, heads: areas.heads, entry_mode: entry_mode } }
+    }
+  }
+}
+
+fn fabric_storage_head_publication(root: FabricStorageOperations) -> CasGenerationPublication {
   match root.entry_mode {
     Absent => DefaultAccessCreateOnly
     Present { value: m } => DeclaredModeCreateOnly { mode: m }
@@ -91,7 +151,7 @@ fn fabric_storage_head_publication(root: FabricStorageFileRoot) -> CasGeneration
 // CONTENT-ADDRESSED name, so a lost race publishes identical bytes and no generation line exists to advance. It DIVERGES from
 // std.durable_compare_and_set on purpose: an immutable object has no head to compare. Every MUTABLE fact here (the head)
 // advances through fabric_storage_cas_expectation -> file_compare_and_set_windowed, the one CAS authority.
-fn fabric_storage_object_create(root: FabricStorageFileRoot, path: String, content: String) -> FilesystemCreateNew {
+fn fabric_storage_object_create(root: FabricStorageOperations, path: String, content: String) -> FilesystemCreateNew {
   match root.entry_mode {
     Absent => {
       let w = Filesystem.WriteCreateNew(path: path, content: content)
@@ -104,7 +164,7 @@ fn fabric_storage_object_create(root: FabricStorageFileRoot, path: String, conte
   }
 }
 
-fn fabric_storage_object_path(root: FabricStorageFileRoot, object: FabricObjectRef) -> String {
+fn fabric_storage_object_path(root: FabricStorageOperations, object: FabricObjectRef) -> String {
   join([root.objects as String, "/", fabric_object_ref_wire(object: object) as String], "")
 }
 
@@ -140,7 +200,7 @@ fn fabric_storage_object_from_read(asked: FabricObjectRef, exact: FilesystemExac
   }
 }
 
-fn fabric_storage_file_get(root: FabricStorageFileRoot, object: FabricObjectRef) -> FabricObjectGet {
+fn fabric_storage_file_get(root: FabricStorageOperations, object: FabricObjectRef) -> FabricObjectGet {
   let path = fabric_storage_object_path(root: root, object: object)
   let read = Filesystem.Read(path: path)
   fabric_storage_object_from_read(asked: object, exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind))
@@ -162,7 +222,7 @@ fn fabric_storage_file_get(root: FabricStorageFileRoot, object: FabricObjectRef)
 // rather than the outer `object` deliberately. They are the same VALUE; the difference is SHAPE.
 // Reading the outer binding is the spelling that lets a later edit change one side without the
 // other, which is how the peer-parameter defect FabricAddressedObject exists to close gets back in.
-fn fabric_storage_file_put(root: FabricStorageFileRoot, object: FabricObject) -> FabricPut {
+fn fabric_storage_file_put(root: FabricStorageOperations, object: FabricObject) -> FabricPut {
   let a = fabric_object_addressed(object: object)
   let r = a.ref
   let path = fabric_storage_object_path(root: root, object: r)
@@ -191,7 +251,7 @@ fn fabric_storage_head_name_admitted(name: NonEmptyStr) -> Bool {
   cas_key_is_slot_addressable(key: name)
 }
 
-fn fabric_storage_file_head(root: FabricStorageFileRoot, name: NonEmptyStr) -> FabricHeadRead {
+fn fabric_storage_file_head(root: FabricStorageOperations, name: NonEmptyStr) -> FabricHeadRead {
   if !fabric_storage_head_name_admitted(name: name) {
     FabricHeadReadRefused { fault: FabricHeadNameRefused { name: name } }
   } else {
@@ -224,7 +284,7 @@ fn fabric_storage_cas_expectation(reading: FabricHeadReading) -> CasExpectation 
 // generation compare-and-set decides the winner against every concurrent writer. A precondition the
 // CAS refuses is re-read so the outcome names what beat this writer, and a re-read that cannot
 // observe refuses with its own cause rather than inventing a winner.
-fn fabric_storage_file_advance(root: FabricStorageFileRoot, name: NonEmptyStr, expected: FabricHeadExpectation, target: FabricObjectRef) -> FabricHeadAdvance {
+fn fabric_storage_file_advance(root: FabricStorageOperations, name: NonEmptyStr, expected: FabricHeadExpectation, target: FabricObjectRef) -> FabricHeadAdvance {
   match fabric_storage_file_get(root: root, object: target) {
     FabricObjectGetRefused { fault: f } => FabricHeadAdvanceRefused { fault: f }
     FabricObjectFetched { stored: _ } =>
@@ -271,7 +331,7 @@ fn closure_seen(st: ClosureState, r: FabricObjectRef) -> Bool {
   set_contains(st.seen, fabric_object_ref_wire(object: r) as String)
 }
 
-fn closure_step(root: FabricStorageFileRoot, st: ClosureState) -> ClosureState {
+fn closure_step(root: FabricStorageOperations, st: ClosureState) -> ClosureState {
   match st.refused {
     Present { value: _ } => st
     Absent =>
@@ -294,7 +354,7 @@ fn closure_step(root: FabricStorageFileRoot, st: ClosureState) -> ClosureState {
 
 // Stop when the observed closure ends, not after allocating the full configured upper bound.
 // Each advancing step consumes one unit exactly as the former bounded fold did.
-fn closure_pump(root: FabricStorageFileRoot, st: ClosureState, steps: Nat, bound: Nat) -> ClosureState {
+fn closure_pump(root: FabricStorageOperations, st: ClosureState, steps: Nat, bound: Nat) -> ClosureState {
   if steps >= bound || st.pending.count() == 0 { st }
   else { match st.refused {
     Present { value: _ } => st
@@ -302,7 +362,7 @@ fn closure_pump(root: FabricStorageFileRoot, st: ClosureState, steps: Nat, bound
   } }
 }
 
-fn fabric_storage_file_closure(root: FabricStorageFileRoot, name: NonEmptyStr, bound: Nat) -> FabricClosureRead {
+fn fabric_storage_file_closure(root: FabricStorageOperations, name: NonEmptyStr, bound: Nat) -> FabricClosureRead {
   match fabric_storage_file_head(root: root, name: name) {
     FabricHeadReadRefused { fault: f } => FabricClosureRefused { fault: f }
     FabricHeadObserved { reading: FabricHeadAbsent } => FabricClosureRead { reading: FabricHeadAbsent, newest_first: [] }
@@ -320,20 +380,3 @@ fn fabric_storage_file_closure(root: FabricStorageFileRoot, name: NonEmptyStr, b
   }
 }
 
-// ── THE ROOT ─────────────────────────────────────────────────────────────────────────────────
-
-// THE PLACEMENT ENSURE, run ON the store's host: both areas created if absent. The root's parent,
-// its ownership and mode are the substrate's obligation; a missing or unwritable parent refuses.
-type FabricStorageRootStanding
-  = FabricStorageRootReady
-  | FabricStorageRootRefused { area: String, detail: String }
-
-fn fabric_storage_file_root_ensure(root: FabricStorageFileRoot) -> FabricStorageRootStanding {
-  let o = shell.Mkdir.Parents(path: root.objects as FilePath)
-  if !o.success {
-    FabricStorageRootRefused { area: "objects", detail: join(["could not create ", root.objects as String], "") }
-  } else {
-    let h = shell.Mkdir.Parents(path: root.heads as FilePath)
-    if !h.success { FabricStorageRootRefused { area: "heads", detail: join(["could not create ", root.heads as String], "") } } else { FabricStorageRootReady }
-  }
-}

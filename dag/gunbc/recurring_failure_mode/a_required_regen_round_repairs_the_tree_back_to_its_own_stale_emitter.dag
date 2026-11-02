@@ -1,0 +1,50 @@
+module gunbc.recurring_failure_mode.a_required_regen_round_repairs_the_tree_back_to_its_own_stale_emitter
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A --required-regen ROUND IS TRUSTED BECAUSE IT REFUSES LOUDLY. This row files the one thing it
+// cannot see: that the binary running it may be an older generation than the authorities it is
+// regenerating. The round compares the emitted surface against the COMMITTED surface, and mid-merge
+// the committed surface can itself be the older side -- so the round rewrites the newer generated
+// content back to the older spelling, prints no refusal, names the drift it did cause, writes a
+// candidate, and reaches a fixed point. Its output is indistinguishable from a correct repair.
+//
+// WHY THIS IS NOT JUST "USE A FRESH BINARY". Mid-merge there is no compilable seed that carries both
+// sides: each side's mirror bytes are self-consistent, and together they do not compile (this branch
+// hit E0061 'this function takes 12 arguments but 11 were supplied' where main's call-site bytes met
+// this branch's parameter bytes). The route's "rebuild and run the seed emitter" step therefore has
+// no declared way to choose a starting generation. What converged was: take ONE side's mirrors
+// wholesale, regenerate from the merged authorities, install the named candidate files, rebuild,
+// re-run. That is a workaround an operator has to know; the row files the missing check.
+//
+// WHY THE GREEN LANE IS NOT EVIDENCE. The required lane passed at the head that carried the wrong
+// expectation, because the control that asserts the newer spelling is a seed unit test no required
+// route runs. Only a review caught it. "The route printed no refusal" plus "CI is green" was not
+// evidence the repair was correct, and that is the fact worth keeping.
+
+data a_required_regen_round_repairs_the_tree_back_to_its_own_stale_emitter: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_required_regen_round_repairs_the_tree_back_to_its_own_stale_emitter" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "a required regeneration round that refuses when the emitting binary's recorded seed identity does not match the authority digest it is regenerating, naming both generations, so a round run mid-merge cannot silently rewrite the other side's generated content" } },
+
+  receipts: [
+    "INVALID STATE: a --required-regen round emits a generated surface that contradicts the authorities in the same working tree, because the emitting binary was built from an older generation of those authorities. The round's own admission cannot see it: required_regen_sync_admission admits on population, planned-versus-executed agreement, byte drift against the committed bytes, emitted-not-committed, shadowing entries and committed-not-emitted, and it carries an authority_digest parameter without ever comparing that digest against the identity of the emitter that produced the surface.",
+    "WHERE IT BITES: the round is the DECLARED repair for generated-surface drift, so an operator following a gate refusal runs it, installs the candidate files it names, and takes the fixed point as proof the surface is converged. When the round's emitter is stale the install is a regression: the merged tree ends with a generated file that disagrees with the authority for that same file sitting beside it. This happened on a merge of origin/main into session/royal-moth-622-clone-walk: the round ran on a claim_executor built from this branch's own mirrors, which predate #15495 'Seed emit: synthesized Result/Box are fully qualified', and the installed candidate rewrote src/v1/stage0/src/compiler_tests.rs's expectation back to the unqualified '-> Result<(bool, String, String), Box<dyn std::error::Error>>' while the authority v1.compiler.compiler_tests_rust and the emitter mirror v1_compiler_compiler_tests_rust.rs both carried the std::result::Result / std::boxed::Box form. The route printed no refusal; review 89687 on PR 15599 caught it.",
+    "HOW TO TELL IT APART FROM ORDINARY DRIFT, three facts. (1) The drift list names a file whose AUTHORITY in the same tree already carries the newer spelling -- emitted candidate disagreeing with the authority next to it cannot happen when emitter and authorities are one generation. (2) Re-running the same round with the same binary asks for the older spelling back: at the next merge a round on the stale binary reported 'required-regen: FAIL generated surface drift: compiler_tests.rs', while a round on a claim_executor rebuilt from origin/main's mirrors reported first_generation_equal=true with that file absent from the drift list entirely. (3) The emitting binary prints the commit it was built from (gunbc --version), and that commit predates the merge being repaired.",
+    "THE BOOTSTRAPPING FACT THAT MAKES THIS NOT MERELY OPERATOR ERROR: mid-merge the merged mirror set does not compile, so the route's own first step cannot be satisfied by a seed carrying both sides. The safe generation to start from is one side's mirrors taken WHOLESALE -- never a per-file mix -- and the round then regenerates the other side's content from the merged authorities. The route states the repair but not this choice, which is why the class is reachable by following instructions.",
+    "THE GREEN LANE DID NOT SEE IT: v2-bootstrap passed at the head carrying the wrong expectation (41m35s), because the control that asserts the newer spelling -- the seed unit test shell_service_output_projection_binds_each_declared_channel -- is not run by any required route. So the failure was visible only in review, and the row's ceiling names the route that would have caught the class rather than the one that happened to.",
+    "RUNG FOUND AT: mitigatable -- the round already carries an authority digest and already prints the seed identity of the binary that ran it, so comparing the two and refusing on mismatch is a small, deterministic change to an existing admission step. CEILING: mechanically preventable, and the blocker is that no such comparison exists: nothing in the corpus refuses a regeneration round whose emitter predates the authorities it regenerates, so the next mid-merge repair can repeat this silently. NEXT TRIGGER: a required regeneration round that refuses when the emitting binary's recorded seed identity does not match the authority digest it is regenerating, naming both generations.",
+    "NOT THIS CLASS, RECORDED SO THE NEXT READER DOES NOT FILE IT TWICE: a stale rlib from another worktree sharing CARGO_TARGET_DIR was reused against this worktree's sources during the same investigation, producing three E0004 'non-exhaustive patterns: &CompilerDiagnostic::OwnershipViolation not covered' refusals for a variant that exists nowhere in this tree or in origin/main. That one fails LOUDLY at a build step, so it is not a silent-drift class; it is filed here only as the reason a mid-merge build failure must be checked with git grep before any repair route is run."
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_sync_admission"),
+    decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run"),
+    decl_ref(module_path: "v1.compiler.compiler_tests_rust", decl_name: "ct_shell_service_output_projection_test"),
+    decl_ref(module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "generated_artifact_drift_failure_receipt"),
+  ],
+}

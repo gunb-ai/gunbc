@@ -1,6 +1,6 @@
 module gunbc.realization_census
 
-import std.types { String, NonEmptyStr, Int, List }
+import std.types { String, NonEmptyStr, Int, List, CommitSha }
 import std.decl_ref { DeclarationRef }
 import std.algebra { FreeSemigroup }
 import gunbc.guarantee_rung { GuaranteeRung }
@@ -63,8 +63,13 @@ type CensusPhase
 // path, a name with a parenthetical, any citation in a Rust seed file) is not a declaration of
 // that module, and is kept as the text it is rather than forced into a reference it would not
 // resolve as.
+// A DECLARATION CITATION CARRIES THE REVISION IT WAS READ AT. The census is a reading of the tree at
+// its pin, so a citation resolves against that revision, not against whatever tree it is read in:
+// a module later deleted from main reads as "cited at <revision>", not as a dangling symbol. A
+// citation without the coordinate has no constructor (gunbc.recurring_failure_mode
+// a_revision_pinned_reading_cites_a_declaration_without_its_revision).
 type EvidenceCitation
-  = EvidenceDeclaration { ref: DeclarationRef }
+  = EvidenceDeclaration { ref: DeclarationRef, revision: CommitSha }
   | EvidenceUncited { text: NonEmptyStr }
 
 type DimensionReading {
@@ -184,7 +189,7 @@ fn census_phase_text(p: CensusPhase) -> String {
 
 fn evidence_citation_text(c: EvidenceCitation) -> String {
   match c {
-    EvidenceDeclaration { ref: r } => r.decl_name as String
+    EvidenceDeclaration { ref: r, revision: _ } => r.decl_name as String
     EvidenceUncited { text: t } => t as String
   }
 }

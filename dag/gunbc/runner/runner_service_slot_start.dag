@@ -18,7 +18,8 @@ import gunbc.actions_run_binding { actions_variable_trimmed, fleet_converge_subj
 import gunbc.host.host_effect { HostEffectTransport }
 import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused }
 import gunbc.host.anchored_host_transport { anchored_host_transport_for_run, AnchoredBindingBound, anchored_host_binding_refusal_reason }
-import gunbc.runner.runner_host_unit_slot { ServiceBootId, current_service_population, CurrentServicePopulationDerived, CurrentServicePopulationRefused }
+import gunbc.host.host_boot_id { HostBootId }
+import gunbc.runner.runner_host_unit_slot { current_service_population, CurrentServicePopulationDerived, CurrentServicePopulationRefused }
 import gunbc.runner.runner_lost_boot_sweep_run {
   lost_boot_observe_current_boot, CurrentBootObserved, CurrentBootUnobserved,
   sweep_host_standing, SweepHostBound, SweepHostNotManaged, population_refusal_text,
@@ -156,7 +157,7 @@ fn service_slot_start_unit(unit: NonEmptyStr, revision: CommitSha, transport: Ho
 // or ran over a population with one outcome per unit. The receipt renders this; the exit is decided from it.
 type ServiceSlotStartRun
   = ServiceSlotStartRefused { cause: String }
-  | ServiceSlotStartRan { host: String, boot: ServiceBootId, revision: CommitSha, units: List<ServiceSlotUnitStart> }
+  | ServiceSlotStartRan { host: String, boot: HostBootId, revision: CommitSha, units: List<ServiceSlotUnitStart> }
 
 fn service_slot_start_held(run: ServiceSlotStartRun) -> Bool {
   match run {
@@ -182,7 +183,7 @@ fn service_slot_start_over(host: String, revision: CommitSha) -> ServiceSlotStar
     SweepHostNotManaged { host: h } => ServiceSlotStartRefused { cause: concat("host is not a managed_host row: ", h) }
     SweepHostBound { host: identity, standing: standing } =>
       match anchored_host_transport_for_run(host: identity, prefix: service_slot_start_attempt_prefix) {
-        AnchoredBindingBound { bound: b } =>
+        AnchoredBindingBound { bound: b, anchor: _ } =>
           match lost_boot_observe_current_boot(transport: Present { value: b }) {
             CurrentBootUnobserved { cause: c } => ServiceSlotStartRefused { cause: concat("the current boot is unobserved: ", c) }
             CurrentBootObserved { evidence: e } =>

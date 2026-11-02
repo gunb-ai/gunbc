@@ -29,6 +29,7 @@ import gunbc.design.interaction {
   Approach, Enter, Receipt, Reveal, Brighten,
   StarElement, HashElement, SwatchElement, element_id_eq,
   coverage_gaps, verb_key, response_key,
+  element_id_key,
 }
 import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
 import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }

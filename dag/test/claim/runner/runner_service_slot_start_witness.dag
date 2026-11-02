@@ -13,7 +13,7 @@ import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.uuid { uuid_of }
 import gunbc.machine_intake.host_capture_envelope { KernelBootId }
-import gunbc.runner.runner_host_unit_slot { service_boot_id_of }
+import gunbc.host.host_boot_id { host_boot_id_of_capture_run }
 import gunbc.runner.runner_service_slot_start {
   service_slot_unit_start_command, service_slot_release_locus, service_slot_unit_start_of,
   ServiceSlotUnitStart, ServiceSlotUnitActive, ServiceSlotUnitNotStarted, ServiceSlotUnitNotActive,
@@ -69,7 +69,7 @@ test fn the_run_holds_only_when_every_member_is_active() -> Bool {
   match uuid_of(text: "00000000-0000-4000-8000-0000000000a1") {
     Absent => false
     Present { value: u } =>
-      match service_boot_id_of(run: KernelBootId { boot_id: u }) {
+      match host_boot_id_of_capture_run(run: KernelBootId { boot_id: u }) {
         Absent => false
         Present { value: b } => {
           let active = ServiceSlotUnitActive { unit: unit }
