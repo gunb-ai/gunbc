@@ -40,7 +40,6 @@ import gunbc.ci.repository_ci_profile {
   ProjectionDrift,
   PublicSeed,
   RepositoryCiProfile,
-  gunbc_roster_gate,
   repository_ci_profile_refusal,
   profile_overlay,
 }

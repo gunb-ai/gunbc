@@ -26,20 +26,20 @@ module test.claim.repository.mirror_lane_4c_execution_local_wet
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.optional { Present, Absent }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
 import std.algebra { list_map }
 import std.dissolution { unbound_dissolution }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { LocalExec }
-import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.shell
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.extdeps.languages.bash_build { bash_build_assign_lit, bash_build_command_with_words, bash_build_word_lit, bash_build_with_redir_to_file }
+import v2.extdeps.languages.bash_build { bash_build_assign_lit, bash_build_command_with_words, bash_build_word_concat_from_nodes, bash_build_word_lit, bash_build_word_var, bash_build_with_redir_to_file }
 import gunbc.ci.repository_compose_overlay { command_words }
 import gunbc.witness.repository_witness_workflow {
-  annotation_compile_statements, read_refusals_or_refuse, statements_of
+  annotation_compile_statements, read_refusals_or_refuse
 }
 import gunbc.ci.repository_ci_profile { AnnotationStep, DagInvocation, RepositoryCiProfile }
 import gunbc.heal_publisher_workflow { heal_publisher_candidate_directory }
@@ -66,17 +66,31 @@ type LaneRun {
   out: String
 }
 
+// THE RENDER, THEN THE RUN: the same function the emitter calls to build the body, the same fold it calls to
+// render it, then the script runs under a shell. A fold failure is REPORTED with the fold's own reasons -- a
+// body that no longer renders must read red, not "the compiler printed nothing".
+//
+// THE SHELL IS BASH, AND THE HONEST GAP. The CI step this body belongs to runs under the runner's default
+// `bash -e {0}`; the builder this repository exposes for a script string without an admit wall is `bash -c`,
+// which leaves errexit off. The two agree on every verdict asserted here, because each failing command in
+// this body either sits in an `if` condition, where errexit does not apply, or is followed by an explicit
+// `exit` whose status is what the scenario reads. A scenario that ever needs an errexit-only verdict has to
+// write `set -e` into the script itself rather than rely on the shell's.
 fn render_and_run(stmts: List<Node>) -> LaneRun {
   match bash_emit_stmts(statements: stmts, set_e: false) {
     Accepted { value: script, diagnostics: _ } => {
-      let observed = run_shell_command_observe(command: posix_sh_program_command(script: script), transport: LocalExec)
+      let observed = run_shell_command_observe(command: bash_program_command(script: script), transport: LocalExec)
       LaneRun {
         rendered: true,
         status: observed.exit_code,
         out: concat(concat(observed.stdout, "\n"), observed.stderr)
       }
     }
-    Rejected { diagnostics: _ } => LaneRun { rendered: false, status: -1, out: "the statement list did not render" }
+    Rejected { diagnostics: d } => LaneRun {
+      rendered: false,
+      status: -1,
+      out: concat("the statement list did not render: ", diagnostics_reason_lexemes(diagnostics: d))
+    }
   }
 }
 
@@ -151,15 +165,11 @@ fn fake_compiler_stmts(dir: String, diagnostics: List<String>, code: String) -> 
 // scenario runs is written by this file.
 fn lane_body_stmts(dir: String) -> List<Node> {
   let profile = mirror_profile_with_annotation(lane_root: dir)
-  [
-    statements_of(
-      stmts: annotation_compile_statements(
-        profile: profile,
-        seed: fixture_seed(),
-        annotation: lane_annotation(profile: profile)
-      )
-    )
-  ]
+  annotation_compile_statements(
+    profile: profile,
+    seed: fixture_seed(),
+    annotation: lane_annotation(profile: profile)
+  )
 }
 
 fn lane_annotation(profile: RepositoryCiProfile) -> AnnotationStep {
@@ -287,7 +297,18 @@ fn candidate_probe(dir: String, candidate_value: String, stands_in: String) -> L
         command_words(rest: ["touch", join([candidate_blob_dir(dir: dir), "/candidate"], "")]),
         bash_build_assign_lit(name: "HEAL_CAND", text: candidate_value),
         command_words(rest: ["cd", stands_in]),
-        command_words(rest: ["test", "-f", join(["$HEAL_CAND", "/heal-1/candidate"], "")])
+        // THE PROBE READS THE VARIABLE. A `$HEAL_CAND` typed into a literal word is single-quoted by the
+        // fold and looks for a file literally named `$HEAL_CAND/heal-1/candidate`, so every scenario would
+        // report "no candidate" -- including the one that exists to find it.
+        bash_build_command_with_words(
+          words: [
+            bash_build_word_lit(text: "test"),
+            bash_build_word_lit(text: "-f"),
+            bash_build_word_concat_from_nodes(
+              parts: [bash_build_word_var(name: "HEAL_CAND"), bash_build_word_lit(text: "/heal-1/candidate")]
+            )
+          ]
+        )
       ]
   )
 }
@@ -331,32 +352,40 @@ test fn the_relative_candidate_directory_resolves_at_the_workspace() -> Bool {
   })
 }
 
-// THE LOCAL RECEIPT ENTRY, one invocation that runs all eight scenarios in one resolve. It is a plain fn,
-// not a scheduled claim: CI runs the eight `test fn`s above through the local-repo wet lane, and this is how
-// the same code is exercised on a workstation without eight separate resolutions. It reaches the process
-// runner, so it must be run OUTSIDE --claim-run (the wet way), which is also why the file is enrolled as a
-// wet row rather than left to hermetic discovery.
-fn scenario_report(name: String, held: Bool) -> Bool {
-  print(concat([if held { "ok   " } else { "FAIL " }, name]))
-  held
-}
-
-// ONE PROCESS, EVERY SCENARIO, each reported on its own line. The `&&` chain would stop at the first
-// failure and report only that scenario, so a lane with three broken behaviours would be read as one.
-// It returns a ProcessExit because the host maps a run's verdict to an exit code.
+// ONE PROCESS, EVERY SCENARIO. The `&&` chain alone would stop at the first failure and report only that
+// one, so a lane with three broken behaviours would be read as one; each verdict is bound first and the
+// reason names every scenario that did not hold. It returns a ProcessExit because the host maps a run's
+// verdict to an exit code. It reaches the process runner, so it must be run OUTSIDE --claim-run (the wet
+// way), which is also why the file is enrolled as a wet row rather than left to hermetic discovery.
 fn run_executed_scenarios() -> ProcessExit {
-  let clean = scenario_report("a clean compile passes", the_executed_lane_body_passes_a_clean_compile())
-  let odd_exit = scenario_report("an exit that is neither a pass nor a named refusal is refused by its number", the_executed_lane_body_refuses_an_unexpected_exit_by_its_number())
-  let refusal = scenario_report("a rendered refusal the reader found fails the job", the_executed_lane_body_fails_on_a_rendered_refusal_the_reader_found())
-  let no_count = scenario_report("a nonzero exit without its terminal count is refused", the_executed_lane_body_refuses_a_nonzero_exit_without_its_terminal_count())
-  let unreadable = scenario_report("a diagnostic log the reader cannot read is refused", the_executed_reader_refuses_a_log_it_cannot_read())
-  let anchored = scenario_report("the anchored candidate directory resolves from the composed root", the_anchored_candidate_directory_resolves_from_the_composed_root())
-  let missed = scenario_report("a relative candidate directory finds nothing from the composed root", the_relative_candidate_directory_finds_nothing_from_the_composed_root())
-  let workspace = scenario_report("a relative candidate directory resolves at the workspace", the_relative_candidate_directory_resolves_at_the_workspace())
-  let all_held = clean && odd_exit && refusal && no_count && unreadable && anchored && missed && workspace
+  let clean = the_executed_lane_body_passes_a_clean_compile()
+  let odd = the_executed_lane_body_refuses_an_unexpected_exit_by_its_number()
+  let refusal = the_executed_lane_body_fails_on_a_rendered_refusal_the_reader_found()
+  let no_count = the_executed_lane_body_refuses_a_nonzero_exit_without_its_terminal_count()
+  let unreadable = the_executed_reader_refuses_a_log_it_cannot_read()
+  let anchored = the_anchored_candidate_directory_resolves_from_the_composed_root()
+  let missed = the_relative_candidate_directory_finds_nothing_from_the_composed_root()
+  let workspace = the_relative_candidate_directory_resolves_at_the_workspace()
+  let all_held = clean && odd && refusal && no_count && unreadable && anchored && missed && workspace
   if all_held {
     ExitSuccess
   } else {
-    ExitFailure { code: 1, reason: "at least one executed 4c annotation scenario did not hold; the lines above name which" }
+    ExitFailure {
+      code: 1,
+      reason: join(
+        [
+          "executed 4c annotation scenarios that did not hold:",
+          if clean { "" } else { " a clean compile passes;" },
+          if odd { "" } else { " an exit that is neither a pass nor a named refusal is refused by its number;" },
+          if refusal { "" } else { " a rendered refusal the reader found fails the job;" },
+          if no_count { "" } else { " a nonzero exit without its terminal count is refused;" },
+          if unreadable { "" } else { " a diagnostic log the reader cannot read is refused;" },
+          if anchored { "" } else { " the anchored candidate directory resolves from the composed root;" },
+          if missed { "" } else { " a relative candidate directory finds nothing from the composed root;" },
+          if workspace { "" } else { " a relative candidate directory resolves at the workspace;" }
+        ],
+        ""
+      )
+    }
   }
 }

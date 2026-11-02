@@ -393,17 +393,17 @@ fn annotation_compile_statements(profile: RepositoryCiProfile, seed: PublicSeed,
             bash_build_assign(name: "COMPOSE", value: path_under(name: "RUNNER_TMP_ROOT", tail: overlay.compose_dir_name as String)),
             bash_build_assign(name: "OUT", value: path_under(name: "RUNNER_TMP_ROOT", tail: annotation.output_dir_suffix as String)),
             refuse_when_composition_absent(overlay: overlay),
-            command_words(rest: ["cd", "$COMPOSE"]),
+            command_values(words: [message_text("cd"), word_variable("COMPOSE")]),
             echo_stmt(text: join([
               annotation.subject_banner as String,
               " Dissolves when: ",
               dissolution_description(condition: annotation.closure_narrowing_dissolves_when)
             ], "")),
-            command_words(rest: ["rm", "-rf", "$OUT", "$OUT.log"]),
+            command_values(words: [message_text("rm"), message_text("-rf"), word_variable("OUT"), word_output_file(suffix: ".log")]),
             unset_may_be_absent(name: "GUNBC_RESOLVED_GRAPH_CACHE_DIR"),
             unset_may_be_absent(name: "GUNBC_NATIVE_CACHE_ROOT"),
             capture_compile_exit_code(roots: roots, overlay: overlay, annotation: annotation),
-            echo_stmt(text: "gunbc compile exited $code"),
+            echo_message(parts: [message_text("gunbc compile exited "), word_variable("code")]),
             refuse_unless_clean_or_rendered_refusal(),
             refuse_refusal_without_terminal_count(),
             bash_build_or_else(
@@ -435,6 +435,41 @@ fn statements_of(stmts: List<Node>) -> Node {
   bash_build_stmt_list_from_nodes(stmts: stmts)
 }
 
+// A WORD THAT READS A RUNTIME VARIABLE. `command_words` and `echo_stmt` build LITERAL words, and the fold
+// single-quotes a literal: a `$NAME` typed into their text arrives in the runner's log as the six characters
+// `$NAME`, and `grep ... "$OUT.log"` goes looking for a file literally named `$OUT.log` -- which reads as the
+// compiler having printed nothing. The serializer's rule (stated at
+// gunbc.witness.compiler_gate_contract_stamp: a literal part renders quoted, a variable part renders as
+// "$NAME") is why every runtime value in this module's shell is a node and not a character inside a string.
+fn word_variable(name: String) -> Node {
+  bash_build_word_var(name: name)
+}
+
+fn message_text(text: String) -> Node {
+  bash_build_word_lit(text: text)
+}
+
+// `$OUT` plus a suffix, which is how this step names the compiler's log and its annotation extract. Spelled
+// once, because a log name re-derived as a string at each use is where the quoting mistake comes back.
+fn word_output_file(suffix: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "OUT"), bash_build_word_lit(text: suffix)])
+}
+
+// `echo` of a message that INTERPOLATES. A refusal that prints "exited $code" where it should print the
+// number tells the next reader nothing, and the message and the number are one fact: the message is built
+// from its literal parts and the variable part as separate nodes.
+fn echo_message(parts: List<Node>) -> Node {
+  bash_build_command_with_words(
+    words: concat([bash_build_word_lit(text: "echo")], [bash_build_word_concat_from_nodes(parts: parts)])
+  )
+}
+
+// A COMMAND WHOSE ARGUMENTS INCLUDE VARIABLES: same reason as `echo_message`, for `cd`, `rm`, `cat`, `tail`
+// and `grep`, each of which has to see a value rather than a variable's name.
+fn command_values(words: List<Node>) -> Node {
+  bash_build_command_with_words(words: words)
+}
+
 fn compiled_program_words(roots: List<String>, overlay: OverlayIngest, annotation: AnnotationStep) -> List<Node> {
   concat(
     concat(
@@ -464,7 +499,11 @@ fn refuse_when_composition_absent(overlay: OverlayIngest) -> Node {
       ])
     ),
     body: statements_of(stmts: [
-      echo_stmt(text: "::error::REFUSE section 4c check observed nothing: the composed root $COMPOSE is absent, so the roster step did not reach composition."),
+      echo_message(parts: [
+        message_text("::error::REFUSE section 4c check observed nothing: the composed root "),
+        word_variable("COMPOSE"),
+        message_text(" is absent, so the roster step did not reach composition.")
+      ]),
       bash_build_exit(code: "1")
     ])
   )
@@ -494,7 +533,7 @@ fn code_compared(op: NonEmptyStr, value: String) -> Node {
 }
 
 fn tail_the_log() -> Node {
-  command_words(rest: ["tail", "-n", "40", "$OUT.log"])
+  command_values(words: [message_text("tail"), message_text("-n"), message_text("40"), word_output_file(suffix: ".log")])
 }
 
 // AN EXIT THAT IS NEITHER CLEAN NOR A RENDERED REFUSAL MEANS THE STEP OBSERVED NOTHING.
@@ -503,14 +542,23 @@ fn refuse_unless_clean_or_rendered_refusal() -> Node {
     cond: bash_build_and_then(left: code_compared(op: "!=", value: "0"), right: code_compared(op: "!=", value: "1")),
     body: statements_of(stmts: [
       tail_the_log(),
-      echo_stmt(text: "::error::REFUSE section 4c check observed nothing: gunbc compile exited $code, which is neither a clean compile nor a rendered refusal."),
+      echo_message(parts: [
+        message_text("::error::REFUSE section 4c check observed nothing: gunbc compile exited "),
+        word_variable("code"),
+        message_text(", which is neither a clean compile nor a rendered refusal.")
+      ]),
       bash_build_exit(code: "1")
     ])
   )
 }
 
 fn terminal_count_reader() -> Node {
-  command_words(rest: ["grep", "-E", compile_terminal_error_count_pattern as String, "$OUT.log"])
+  command_values(words: [
+    message_text("grep"),
+    message_text("-E"),
+    message_text(compile_terminal_error_count_pattern as String),
+    word_output_file(suffix: ".log")
+  ])
 }
 
 // A REFUSAL THAT NEVER PRINTED ITS SUMMARY LINE IS NOT THE REFUSAL THE COMPILER RENDERS.
@@ -518,7 +566,12 @@ fn refuse_refusal_without_terminal_count() -> Node {
   bash_build_if(
     cond: bash_build_and_then(
       left: code_compared(op: "=", value: "1"),
-      right: bash_build_negation(inner: command_words(rest: ["grep", "-qE", compile_terminal_error_count_pattern as String, "$OUT.log"]))
+      right: bash_build_negation(inner: command_values(words: [
+        message_text("grep"),
+        message_text("-qE"),
+        message_text(compile_terminal_error_count_pattern as String),
+        word_output_file(suffix: ".log")
+      ]))
     ),
     body: statements_of(stmts: [
       tail_the_log(),
@@ -533,11 +586,17 @@ fn refuse_refusal_without_terminal_count() -> Node {
 fn read_refusals_or_refuse(annotation: AnnotationStep) -> Node {
   bash_build_if_else(
     cond: bash_build_with_redir_to_file(
-      inner: command_words(rest: ["grep", "-F", "--", annotation.refusal_prefix as String, "$OUT.log"]),
+      inner: command_values(words: [
+        message_text("grep"),
+        message_text("-F"),
+        message_text("--"),
+        message_text(annotation.refusal_prefix as String),
+        word_output_file(suffix: ".log")
+      ]),
       path: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "OUT"), bash_build_word_lit(text: ".annotations")])
     ),
     then_body: statements_of(stmts: [
-      command_words(rest: ["cat", "$OUT.annotations"]),
+      command_values(words: [message_text("cat"), word_output_file(suffix: ".annotations")]),
       echo_stmt(text: "::error::FAIL section 4c: source annotations outside module-item grain, each located above. Move each above the module-scope declaration it describes."),
       bash_build_exit(code: "1")
     ]),
@@ -550,7 +609,11 @@ fn read_refusals_or_refuse(annotation: AnnotationStep) -> Node {
           ])
         ),
         body: statements_of(stmts: [
-          echo_stmt(text: "::error::REFUSE section 4c check observed nothing: the diagnostic reader exited $reader, which is a read failure and not the no-match status 1."),
+          echo_message(parts: [
+            message_text("::error::REFUSE section 4c check observed nothing: the diagnostic reader exited "),
+            word_variable("reader"),
+            message_text(", which is a read failure and not the no-match status 1.")
+          ]),
           bash_build_exit(code: "1")
         ])
       )
