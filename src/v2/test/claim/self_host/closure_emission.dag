@@ -629,3 +629,40 @@ fn ce_probe_stmt_first_analysis() -> String {
       }
   }
 }
+
+// ---- node adhoc-56744ea7 fifth probe: block-final if (NO tail statement) ----
+// Member body `if c { i }` with the if as the LAST statement, nothing after it. This discriminates the
+// record-swallow hypothesis (condition c greedily reads `c { i }` as a single-pun record literal; the only
+// guard against it, dag_grammar_block_of_one_name_before_else_expr at dag.dag:1985, requires an `else`
+// after the `}` and cannot fire here) from the if-block-handback hypothesis (the if production parses its
+// block then hands back a table whose position skips the following statement):
+//  - blockfinal REJECTED on the emitted side (with elseelse ACCEPTED and twostat ACCEPTED) => record-swallow:
+//    the block-form is starved and the if itself never parses; the fix is the record probe's guard/plan, and
+//    the interpreter must REJECT this probe too (it differs only in executor).
+//  - blockfinal ACCEPTED (elseless/sameline REJECTED) => the if production itself; the block parses fine
+//    alone but its handback loses a following statement -- the fix is there, not in the record probe.
+// The namespace_xl0 controls all spell the guarded shape (`if c { return i }` -- a single `return` cannot be
+// a record pun, so those fixtures never exercise the swallow). Member bytes for the emitted fixture:
+// blockfinal member sha256 fce23fc1a31bd85a8b96f29802a4ed5a61db943d3cfc0f030c1b6265240e93b8.
+data ce_refusing_blockfinal_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { i }\n}\n"
+
+fn ce_emission_blockfinal() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: ce_refusing_blockfinal_member_source, id: ^ce_refusing_blockfinal_member_read, path: "src/v2/test/ce_refusing_member.dag"),
+      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
+    ],
+    entry: "v2.test.ce_refusing_entry"
+  )
+}
+
+// PROBE (not for landing): if-block-final with NO following statement -> record-swallow vs if-handback.
+fn ce_probe_blockfinal_text() -> String {
+  let located = ce_emission_blockfinal()
+  match located.outcome {
+    Rejected { diagnostics: d } =>
+      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
+    Accepted { value: e, diagnostics: _ } =>
+      concat("ACCEPTED: ", closure_emission_json(emission: e))
+  }
+}
