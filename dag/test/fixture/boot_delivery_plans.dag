@@ -4,7 +4,7 @@ import std.algebra { FreeSemigroup }
 import std.types { List }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
+import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, UefiArm64 }
 import extdeps.provisioning.network_boot { NativeDhcpBootOptions, UefiPxe }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.uri { Uri, Https, Tftp }
@@ -26,7 +26,7 @@ import gunbc.machine_intake.subject {
   qualification_subject_of,
 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import gunbc.machine_intake.access { AccessContextProfileLookupNotRun, BootDeliveryTarget, NetworkAddressedTarget, boot_delivery_target_subject }
+import gunbc.machine_intake.access { AccessContextProfileLookupNotRun, BootDeliveryTarget, NetworkAddressedTarget, ControllerAddressedTarget, boot_delivery_target_subject }
 import gunbc.network_boot_delivery {
   ArchitectureChainloader,
   BootBundleAvailabilityReceipt,
@@ -109,6 +109,10 @@ data network_target: BootDeliveryTarget = NetworkAddressedTarget {
 }
 
 fn network_boot_establishment_for(t: BootDeliveryTarget, digest: ContentHash) -> NetworkBootDeliveryEstablishment {
+  network_boot_establishment_observing(t: t, digest: digest, arch: UefiArm64)
+}
+
+fn network_boot_establishment_observing(t: BootDeliveryTarget, digest: ContentHash, arch: DhcpProcessorArchitecture) -> NetworkBootDeliveryEstablishment {
   let obs = DeclarationRef {
     module_path: "test.fixture.boot_delivery_plans",
     decl_name: "network_boot_establishment_for",
@@ -149,7 +153,7 @@ fn network_boot_establishment_for(t: BootDeliveryTarget, digest: ContentHash) ->
       site: site,
       client: ObservedDhcpPxeClient {
         vendor_class: "PXEClient:Arch:00011:UNDI:003016",
-        arch: UefiArm64,
+        arch: arch,
       },
       observation: obs,
       observed_at: 1788000000000,
@@ -213,8 +217,15 @@ data pxe_plan: BootDeliveryPlan = BootDeliveryPlan {
 
 data pxe_establishment: NetworkBootDeliveryEstablishment = network_boot_establishment_for(t: network_target, digest: intake_artifact.digest)
 
+// The controller-addressed target a media plan is solved for: a network-addressed target has no controller, so
+// the solver cannot reach a BMC delivery for it.
+data controller_target: BootDeliveryTarget = ControllerAddressedTarget {
+  subject: intake_subject,
+  endpoint: BmcControllerEndpoint { host: "192.168.1.60" },
+}
+
 data removable_media_plan: BootDeliveryPlan = BootDeliveryPlan {
-  target: network_target,
+  target: controller_target,
   artifact: intake_artifact,
   delivery: RedfishVirtualMediaPull {
     params: RedfishVirtualMediaParams {
@@ -242,21 +253,41 @@ data refused_solution: BootDeliverySolution = BootDeliveryRefused {
   },
 }
 
-// A solution whose plan selected `control`, for consumers parameterised over the control target. The
-// delivery and eligibility are the PXE plan's or the removable-media plan's; only boot_control varies for
-// the HTTP-boot arm, which no real-solver witness plans here.
-fn solution_selecting_control(control: BootControlTarget) -> BootDeliverySolution {
+// A solution whose plan selected `control`, for consumers parameterised over the control target. The PXE
+// plan's evidence observes `client_arch` (a plan whose control is not PXE ignores it; an absent observation
+// takes the fixture's UefiArm64 because a PXE plan cannot be solved without one). Delivery and eligibility are
+// the PXE plan's or the removable-media plan's; only boot_control varies for the HTTP-boot arm, which no
+// real-solver witness plans here.
+fn solution_selecting_control(control: BootControlTarget, client_arch: DhcpProcessorArchitecture?) -> BootDeliverySolution {
+  let arch = match client_arch {
+    Present { value: a } => a
+    Absent => UefiArm64
+  }
+  let establishment = network_boot_establishment_observing(t: network_target, digest: intake_artifact.digest, arch: arch)
+  let observing_pxe = BootDeliveryPlan {
+    target: network_target,
+    artifact: intake_artifact,
+    delivery: PxeChainBoot { evidence: establishment },
+    boot_control: BootFromNetworkPxe,
+    boot_control_route: BootControlByFirmwareBootOrder,
+    eligibility: BootDeliveryEligibilityProvenance {
+      profile_provenance: none,
+      evidence_manifest: [],
+      selected: SelectedFromNetworkBootEstablishment { establishment: establishment },
+      considered: [],
+    },
+  }
   match control {
     BootFromRemovableMedia => removable_media_solution
-    BootFromNetworkPxe => pxe_solution
+    BootFromNetworkPxe => BootDeliveryPlanned { plan: observing_pxe }
     BootFromUefiHttp =>
       BootDeliveryPlanned { plan: BootDeliveryPlan {
-        target: pxe_plan.target,
-        artifact: pxe_plan.artifact,
-        delivery: pxe_plan.delivery,
+        target: observing_pxe.target,
+        artifact: observing_pxe.artifact,
+        delivery: observing_pxe.delivery,
         boot_control: BootFromUefiHttp,
-        boot_control_route: pxe_plan.boot_control_route,
-        eligibility: pxe_plan.eligibility,
+        boot_control_route: observing_pxe.boot_control_route,
+        eligibility: observing_pxe.eligibility,
       } }
   }
 }
