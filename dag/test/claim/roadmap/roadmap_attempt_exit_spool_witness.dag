@@ -29,7 +29,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_vendor_pane_entry_name, attempt_exit_vendor_pane_result_word,
   attempt_exit_vendor_pane_entry_name_of_death, VendorPaneSignaled,
   attempt_exit_record_is_role, attempt_exit_record_names_attempt,
-  AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit,
+  attempt_exit_subject_of_record,
+  AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit, ComputeEntrySubject,
 }
 import gunbc.systemd_unit_names { compute_unit_name }
 import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal, ServiceResultExitCode }
@@ -345,9 +346,18 @@ test fn a_compute_seats_entry_derives_the_units_name_from_its_identity() -> Bool
       (record.unit as String) == "gunbc-compute-0a1b2c3d4e5f6789.occurrence.1793000000"
         && (record.unit as String) == (compute_unit_name(identity_hex: "0a1b2c3d4e5f6789.occurrence.1793000000") as String)
         && (match record.subject {
-             ComputeAttemptExit { identity, invocation_id } =>
-               identity == "0a1b2c3d4e5f6789.occurrence.1793000000" && invocation_id == "0123456789abcdef0123456789abcdef"
+             ComputeAttemptExit { identity } => identity == "0a1b2c3d4e5f6789.occurrence.1793000000"
              RoadmapAttemptExit { node_id: _, attempt_key: _, role: _ } => false
+           })
+        // ONE COPY OF THE INVOCATION. It belongs to the record alone -- the arm says whose seat this is and
+        // carries no second copy -- so the view a consumer matches on can only be reading the record's. Had
+        // the arm kept its own copy, a record whose copies disagree would be constructible, and the door
+        // would match on one while the freeing detail named the other.
+        && record.invocation_id == "0123456789abcdef0123456789abcdef"
+        && (match attempt_exit_subject_of_record(record: record) {
+             ComputeEntrySubject { identity: i, invocation_id: v } =>
+               i == "0a1b2c3d4e5f6789.occurrence.1793000000" && v == record.invocation_id
+             _ => false
            })
         && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false

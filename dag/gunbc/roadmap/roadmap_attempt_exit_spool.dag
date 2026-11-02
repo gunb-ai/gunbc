@@ -271,9 +271,16 @@ type AttemptProcessEnd
 // compute_execution_identity, which can itself contain '.'). Keeping them in one field would let a
 // consumer read a seat identity as a node id or a node id as a unit -- so they are two arms, and every
 // consumer answers both.
+//
+// An arm names its SUBJECT and nothing else. The invocation is NOT repeated here: it is the unit's
+// systemd InvocationID, one fact, and it lives on AttemptExitRecord.invocation_id alone -- exactly as
+// the unit does. Carrying it on the compute arm as well would let a record be built whose two copies
+// disagree, and consumers would then choose which copy to trust (the door's match on one, the freeing
+// detail on the other). Both arms therefore stay in the same shape: keys that say WHOSE, never a second
+// copy of something the record already says.
 type AttemptExitSubject
   = RoadmapAttemptExit { node_id: String, attempt_key: String, role: String }
-  | ComputeAttemptExit { identity: String, invocation_id: String }
+  | ComputeAttemptExit { identity: String }
 
 // WHAT AN ENTRY NAMES BEFORE IT CAN BE DECODED. A malformed entry yields no record, so deciding whether
 // a broken artifact is about THIS subject runs on the raw parts; the decoder, not this type, decides
@@ -307,7 +314,7 @@ fn attempt_exit_subject_of_record(record: AttemptExitRecord) -> AttemptExitEntry
   match record.subject {
     RoadmapAttemptExit { node_id, attempt_key, role } =>
       RoadmapEntrySubject { node_id: node_id, attempt_key: attempt_key, role: role, invocation_id: record.invocation_id }
-    ComputeAttemptExit { identity, invocation_id } => ComputeEntrySubject { identity: identity, invocation_id: invocation_id }
+    ComputeAttemptExit { identity } => ComputeEntrySubject { identity: identity, invocation_id: record.invocation_id }
   }
 }
 
@@ -317,14 +324,14 @@ fn attempt_exit_subject_of_record(record: AttemptExitRecord) -> AttemptExitEntry
 fn attempt_exit_record_is_role(record: AttemptExitRecord, token: String) -> Bool {
   match record.subject {
     RoadmapAttemptExit { node_id: _, attempt_key: _, role } => role == token
-    ComputeAttemptExit { identity: _, invocation_id: _ } => false
+    ComputeAttemptExit { identity: _ } => false
   }
 }
 
 fn attempt_exit_record_names_attempt(record: AttemptExitRecord, node_id: String, attempt_key: String) -> Bool {
   match record.subject {
     RoadmapAttemptExit { node_id: n, attempt_key: a, role: _ } => n == node_id && a == attempt_key
-    ComputeAttemptExit { identity: _, invocation_id: _ } => false
+    ComputeAttemptExit { identity: _ } => false
   }
 }
 
@@ -392,7 +399,7 @@ fn attempt_exit_compute_entry_decode(entry_name: String, parts: List<String>) ->
           AttemptProcessEndRefused { reason } => AttemptExitEntryMalformed { entry_name: entry_name, reason: reason }
           AttemptProcessEndOf { end } => AttemptExitEntryDecoded {
             record: AttemptExitRecord {
-              subject: ComputeAttemptExit { identity: identity, invocation_id: invocation_id },
+              subject: ComputeAttemptExit { identity: identity },
               unit: compute_unit_name(identity_hex: identity),
               invocation_id: invocation_id,
               result: service_result_of_wire(word: result_word),

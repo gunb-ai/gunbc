@@ -867,6 +867,10 @@ fn compute_seat_stop_record(instance: HostDashboardInstance, identity_hex: Strin
     ComputeSeatExitSpoolDirUidUnreadable { cause } => SeatStopRecordNoUid { cause: cause }
     ComputeSeatExitSpoolDirResolved { dir } =>
       match attempt_exit_record_matching(
+        // The match is on WHOSE seat the entry names. The entry subject's invocation is a positional part
+        // of the raw name (its purpose is to say "a record exists with these parts" before decoding, and to
+        // name an unusable one in the residue); the invocation that ends up in the freeing detail is the
+        // record's own single copy -- AttemptExitSubject carries no second one.
         matches: s => match s {
           ComputeEntrySubject { identity, invocation_id: _ } => identity == identity_hex
           RoadmapEntrySubject { node_id: _, attempt_key: _, role: _, invocation_id: _ } => false

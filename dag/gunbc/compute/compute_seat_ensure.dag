@@ -439,7 +439,7 @@ fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<Seat
         // provider discharges its own seats at its own door.
         RoadmapAttemptExit { node_id, attempt_key, role } =>
           if role == attempt_unit_role_token(role: AttemptWorkerRole) { [SeatOwnerKey { node_id: node_id, attempt_key: attempt_key }] } else { [] as List<SeatOwnerKey> }
-        ComputeAttemptExit { identity: _, invocation_id: _ } => [] as List<SeatOwnerKey>
+        ComputeAttemptExit { identity: _ } => [] as List<SeatOwnerKey>
       }
       AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<SeatOwnerKey>
     }),
