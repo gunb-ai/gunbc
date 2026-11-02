@@ -7,7 +7,7 @@ import std.nat { Nat }
 import std.measure {
   Bandwidth, bandwidth, Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
 }
-import extdeps.boards.types { BaseboardCatalogRow, HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population }
+import extdeps.boards.types { BaseboardCatalogRow, HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population, BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, BoardFunctionSwitch, JumperSwitch, SwitchNotStated }
 import extdeps.vendor.supermicro { supermicro }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -428,6 +428,20 @@ fn supermicro_h11ssl_jumper_resets_bmc_accounts(j: H11sslJumper) -> H11sslJumper
 
 data supermicro_h11ssl_bmc_reset_procedure_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "The manual documents NO BMC password reset, factory reset or default BMC credential (its only default login, SuperDoctor 5 admin/admin on p.124, is not the BMC). It names IPMICFG and SMCIPMITOOL (p.16) without documenting them. Ground against Supermicro's IPMICFG user guide or BMC firmware notes for this board.",
+}
+
+// Switching a board function off. Jpg1VgaEnable above is the AST2500's graphics function alone:
+// p.13's jumper table reads "JPG1 VGA Enable/Disable, Pins 1-2 (Enabled)" and the layout legend
+// "JPG1:VGA 2-3 DISABLE", separate from JPB1, which removes the whole BMC. For PCIe error handling the
+// manual as read (rev 1.1 and 1.1a, 2026-11-01) names PCI PERR/SERR Support and no firmware-first or
+// AER item; that reading decoded the manual's literal text and not its hex-encoded strings, so the
+// silence is a fact of that reading, recorded as SwitchNotStated and nothing stronger.
+fn supermicro_h11ssl_function_switch(f: BoardFunction) -> BoardFunctionSwitch {
+  match f {
+    BmcManagementFunction => JumperSwitch { designator: "JPB1", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual pp.13,46-48" }
+    BmcGraphicsController => JumperSwitch { designator: "JPG1", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual pp.13,46-48" }
+    PcieErrorFirmwareFirstHandling => SwitchNotStated { coarser: Absent }
+  }
 }
 
 // ---- LEDs (pp.13,49-50).
