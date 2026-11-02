@@ -5,7 +5,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
-// Q1e covers Add, Mul, Sub and unary Neg (v1.compiler.types arithmetic_requirement). Div and Mod are not in that
+// Q1e covers Add, Mul, Sub and unary Neg (v1.compiler.types arithmetic_requirement and unary_arithmetic_requirement). Div and Mod are not in that
 // roster, so a mixed-carrier quotient or remainder (a: Nat / b: Int) is still typed from the LEFT operand by
 // infer_arithmetic_binop_type_node. That is the pre-Q1e behaviour, kept rather than extended: the quotient's
 // carrier needs its own requirement (the field Div reads and what an injection must preserve for it) and a RED,
