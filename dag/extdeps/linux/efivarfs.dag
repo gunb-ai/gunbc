@@ -7,6 +7,9 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.numeric.base16 { base16_word_value }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
+import std.machine_word { Width8, Width32, WordReady, WordRefused, word_from_octets }
+import extdeps.toolchain.architecture_profile { LittleEndian }
 import extdeps.tools.coreutils_od
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -52,20 +55,25 @@ type EfiVariableReading
   = EfiVariableRead { attributes: Int, payload: List<Int> }
   | EfiVariableUnread { cause: String }
 
-// Little-endian unsigned value of `octets`, the first octet the least significant.
-fn little_endian_value_inner(octets: List<Int>, scale: Int, acc: Int) -> Int {
-  match octets.first() {
-    Absent => acc
-    Present { value: o } => little_endian_value_inner(octets: octets.skip(n: 1), scale: scale * 256, acc: acc + o * scale)
-  }
-}
-
-// The `width`-octet little-endian unsigned field at `offset` of a data payload, or none when the payload
-// does not reach that far: a short variable never reads as zero.
+// The little-endian unsigned field of `width` octets (1 or 4, the widths HII checkbox and numeric items use)
+// at `offset` of a data payload, decoded by std.machine_word, or none when the payload does not reach that far
+// or the width is another: a short variable never reads as zero.
 fn efi_variable_unsigned_at(payload: List<Int>, offset: Int, width: Int) -> Int? {
   let field = take_prefix(xs: skip(xs: payload, n: offset), n: width)
-  if offset < 0 || width < 1 || length(field) != width { none } else {
-    Present { value: little_endian_value_inner(octets: field, scale: 1, acc: 0) }
+  let word_width = if width == 1 { Present { value: Width8 } } else { if width == 4 { Present { value: Width32 } } else { none } }
+  if offset < 0 || length(field) != width { none } else {
+    match word_width {
+      Absent => none
+      Present { value: w } =>
+        match uint8_octets_of_ints(values: field) {
+          QualifiedOctetsRefused { observed: _ } => none
+          QualifiedOctetsReady { value: q } =>
+            match word_from_octets(width: w, octets: q, endianness: LittleEndian) {
+              WordRefused { cause: _ } => none
+              WordReady { word } => Present { value: word.value }
+            }
+        }
+    }
   }
 }
 
