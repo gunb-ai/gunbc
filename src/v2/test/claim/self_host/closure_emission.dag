@@ -574,3 +574,43 @@ test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
           _ => false })
   }
 }
+
+// ---- PARSE-PATH-UNITY probe (dashboard node adhoc-56744ea7). NOT a claim, NOT for landing. ----
+// The member text below is the VERBATIM ce-probe.sh fixture (source bytes sha256
+// 0f785394e803ce694370e7c917d7faad069b70bfabc2eb2167cd2160dcf409a8), an else-less `if c { i }`
+// followed by the tail statement `i`. The emitted gen-1 refuses this at PARSE with
+// parse_g0_tokens_remain; the interpreter's closure door PARSES it and records the member's body
+// refusal at LOWERING (else_less_if_unlowered) as that member's typed arm, so the closure ACCEPTS.
+// This probe returns the interpreted verdict as text so
+//   gunbc run --source-root dag --source-root src/v2 --entry v2.test.claim.self_host.closure_emission --function ce_probe_elseless_text
+// prints it (the host's "returned ... not ProcessExit" line), to be compared against the emitted
+// side's emit.err on the byte-identical member. PROBE (not a claim, not for landing).
+
+data ce_refusing_int_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\nimport v2.test.ce_refusing_member { ce_refusing_fn }\n\nfn ce_refusing_entry_fn(c: Bool, i: Int) -> Int { ce_refusing_fn(c: c, i: i) }\n"
+
+data ce_refusing_int_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
+
+fn ce_emission_elseless_refusing() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: ce_refusing_int_member_source, id: ^ce_refusing_int_member_read, path: "src/v2/test/ce_refusing_member.dag"),
+      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
+    ],
+    entry: "v2.test.ce_refusing_entry"
+  )
+}
+
+// PROBE (not a claim, not for landing): the observed verdict of the verbatim else-less-if member run
+// through the interpreter's own parse authority (closure door -> parse_module_prepared_seeded). A
+// parse refusal (the parse_g0_tokens_remain the emitted gen-1 gives today) shows its located chain; a
+// parse acceptance (what the interpreter gives, the member then refusing at lowering) shows the whole
+// emission JSON with the member's refused arm.
+fn ce_probe_elseless_text() -> String {
+  let located = ce_emission_elseless_refusing()
+  match located.outcome {
+    Rejected { diagnostics: d } =>
+      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
+    Accepted { value: e, diagnostics: _ } =>
+      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+  }
+}
