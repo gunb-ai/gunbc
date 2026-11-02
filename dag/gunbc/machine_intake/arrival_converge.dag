@@ -386,7 +386,9 @@ type BoardSerialAgreementRefusal
 // THE SOL SESSION CHECK, over an OPTIONAL attribution. An observation whose source is a witness fixture
 // carries no session, and none is not "read through some unnamed controller": there is nothing to compare,
 // so nothing contradicts the access and the arm cannot fire (mtjade1_access_observation.smbios_session_controller).
-// A capture-backed SMBIOS observation always carries its attribution, where the arm does discriminate.
+// Absent is reachable only through a witness-supplied baseboard serial: the capture arm of
+// mtjade1_access_observation.SmbiosEvidenceSource carries the SOL attribution as a REQUIRED field, so a
+// capture-backed observation cannot be written without it and this arm cannot be reached by omission.
 fn smbios_session_disagrees(attested: BmcControllerEndpoint?, accessed: BmcControllerEndpoint) -> Bool {
   match attested {
     Present { value: c } => (c.host as String) != (accessed.host as String)
@@ -1324,7 +1326,8 @@ fn arrival_bound_unit_keys() -> List<UnitKey> {
 //   names the dry realization; the world claims no controller family.
 // WITNESS-ONLY IDENTITY INPUTS (parent decision 2026-10-30). A unit whose board identity has no committed
 // capture yet -- srv13 and srv14, the ALTRAD8UD units this lane drives -- can still carry an identity through
-// an arrival fold UNDER TEST: the two observations it supplies carry IdentityWitnessSupplied
+// an arrival fold UNDER TEST: the two observations it supplies carry FruIdentityWitnessSupplied /
+// SmbiosIdentityWitnessSupplied
 // (mtjade1_access_observation's witness mints), and this mint is admitted ONLY to
 // machine_intake_arrival_converge_witness, so no production arrival can pass identity inputs that did not
 // come from the capture readers above. Dissolves with

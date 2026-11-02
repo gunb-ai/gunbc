@@ -554,7 +554,7 @@ type FruDecode
 // witness fixture without parsing a path.
 type RecordedFruObservation sole_constructor {
   subject: NonEmptyStr
-  source: IdentityEvidenceSource
+  source: FruEvidenceSource
   fields: FruIdentityFields
 }
 
@@ -638,10 +638,9 @@ fn read_mtjade1_fru() -> FruRead uses fs: std.resources.Filesystem {
           FruObserved {
             observation: RecordedFruObservation {
               subject: "mtjade1",
-              source: IdentityFromCommittedCapture {
+              source: FruFromCommittedCapture {
                 capture_path: mtjade1_fru_capture_path,
                 capture_sha256: mtjade1_fru_capture_sha256,
-                sol_session: none,
               },
               fields: f,
             },
@@ -752,27 +751,38 @@ fn sol_session_controller(a: SolSessionAttribution) -> BmcControllerEndpoint {
 // slot is one name with two meanings. The precedent is gunbc.clock_read's ObserverInstantSource, which
 // "travels with every instant so a modeled instant is never read as a measured one": the two identity
 // records below carry this source in place of loose capture_path / capture_sha256 / sol_session fields, so
-// a witness-supplied identity can never be read as a measured one. sol_session is optional because the FRU
-// side has no SOL transcript; the SMBIOS reader always fills it, and a witness-supplied source has none.
-type IdentityEvidenceSource
-  = IdentityFromCommittedCapture { capture_path: NonEmptyStr, capture_sha256: NonEmptyStr, sol_session: SolSessionAttribution? }
-  | IdentityWitnessSupplied { realization: NonEmptyStr }
+// a witness-supplied identity can never be read as a measured one.
+//
+// THE TWO RECORDS DO NOT SHARE ONE SOURCE TYPE, AND THE SPLIT IS THE POINT. A capture-backed baseboard
+// (SMBIOS type-2) transcript MUST name the SOL session it was read through: that attribution was a required
+// field of RecordedSmbiosObservation before this change, and carrying it as an optional field of a shared
+// source would let an omission switch arrival_converge.smbios_session_disagrees off -- a writable false
+// fact (DESIGN §5, "Stronger than catching a wrong state is making it unwritable"). An ipmitool FRU print
+// records no SOL transcript at all, so the FRU capture arm offers no such field to leave empty: the vendor's
+// absence is modelled as absence of the field, not as an absent value.
+type SmbiosEvidenceSource
+  = SmbiosFromCommittedCapture { capture_path: NonEmptyStr, capture_sha256: NonEmptyStr, sol_session: SolSessionAttribution }
+  | SmbiosIdentityWitnessSupplied { realization: NonEmptyStr }
 
-// THE CONTROLLER THE SMBIOS TRANSCRIPT WAS READ THROUGH, when the observation has a capture behind it.
-// none says only that no SOL attribution exists for this observation -- it is not a claim that the
-// transcript was read through some unnamed controller, so the agreement classifier does not invent one.
-fn smbios_session_controller(source: IdentityEvidenceSource) -> BmcControllerEndpoint? {
+type FruEvidenceSource
+  = FruFromCommittedCapture { capture_path: NonEmptyStr, capture_sha256: NonEmptyStr }
+  | FruIdentityWitnessSupplied { realization: NonEmptyStr }
+
+// THE CONTROLLER THE SMBIOS TRANSCRIPT WAS READ THROUGH. The capture arm cannot be written without the
+// attribution, so the only route to none is a witness-supplied serial, which says so by its own name. none
+// is not a claim that the transcript went through some unnamed controller, so the agreement classifier does
+// not invent one.
+fn smbios_session_controller(source: SmbiosEvidenceSource) -> BmcControllerEndpoint? {
   match source {
-    IdentityFromCommittedCapture { capture_path: _, capture_sha256: _, sol_session: Present { value: a } } => Present { value: sol_session_controller(a: a) }
-    IdentityFromCommittedCapture { capture_path: _, capture_sha256: _, sol_session: Absent } => none
-    IdentityWitnessSupplied { realization: _ } => none
+    SmbiosFromCommittedCapture { capture_path: _, capture_sha256: _, sol_session: a } => Present { value: sol_session_controller(a: a) }
+    SmbiosIdentityWitnessSupplied { realization: _ } => none
   }
 }
 
 // WITNESS-ONLY IDENTITY MINTS. A unit whose identity has no committed capture yet -- srv13 and srv14, the
 // ALTRAD8UD units this lane drives, have a Redfish capture set but no ipmitool FRU print and no UEFI
 // smbiosview type-2 transcript -- can still carry an identity through an arrival fold UNDER TEST, because
-// these mint IdentityWitnessSupplied: the values say they are the witness's, and no field pretends to be a
+// these mint FruIdentityWitnessSupplied / SmbiosIdentityWitnessSupplied: the values say they are the witness's, and no field pretends to be a
 // digest or a path. Production cannot reach either mint (admit_callers names only the arrival witness), so
 // no production admission changes and no production identity can be minted from a thought.
 fn witness_recorded_fru_identity(subject: NonEmptyStr, fields: FruIdentityFields, realization: NonEmptyStr) -> RecordedFruObservation
@@ -782,7 +792,7 @@ fn witness_recorded_fru_identity(subject: NonEmptyStr, fields: FruIdentityFields
 {
   RecordedFruObservation {
     subject: subject,
-    source: IdentityWitnessSupplied { realization: realization },
+    source: FruIdentityWitnessSupplied { realization: realization },
     fields: fields,
   }
 }
@@ -794,7 +804,7 @@ fn witness_recorded_smbios_serial(subject: NonEmptyStr, serial: NonEmptyStr, rea
 {
   RecordedSmbiosObservation {
     subject: subject,
-    source: IdentityWitnessSupplied { realization: realization },
+    source: SmbiosIdentityWitnessSupplied { realization: realization },
     serial: serial,
   }
 }
@@ -802,21 +812,22 @@ fn witness_recorded_smbios_serial(subject: NonEmptyStr, serial: NonEmptyStr, rea
 // DISSOLUTION (DESIGN §3c -- these two mints exist only until this dissolves): the ALTRAD8UD FRU and SMBIOS
 // READERS. Trigger: PR 2's live readers on the actual target, or a committed identity capture for
 // srv13/srv14 -- an ipmitool fru print and a UEFI `smbiosview -t 2` SOL transcript, digest-listed in a
-// SHA256SUMS, minting IdentityFromCommittedCapture; at that point the witness mints above lose their only
+// SHA256SUMS, minting FruFromCommittedCapture and SmbiosFromCommittedCapture; at that point the witness
+// mints above lose their only
 // caller and are deleted. Named for the record, NOT consumed here:
 // artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt carries srv14's own
 // in-band dmidecode baseboard serial plus the ipmitool fru board area (BR80S6102300077) and is a candidate
 // grounding, but reading it needs a NEW in-band attribution arm and parser -- a second producer beside the
 // live readers -- so it is PR 2's decision, not this change's.
 data altrad8ud_identity_readers_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when an ALTRAD8UD FRU reader and an ALTRAD8UD SMBIOS type-2 reader mint IdentityFromCommittedCapture for srv13 or srv14 from digest-checked committed captures (PR 2's live readers over the actual target, or committed captures of them); NOT satisfied by the witness mints above, which mint IdentityWitnessSupplied and exist only to carry a tested fold" as NonEmptyStr,
+  description: "dissolves when an ALTRAD8UD FRU reader and an ALTRAD8UD SMBIOS type-2 reader mint FruFromCommittedCapture and SmbiosFromCommittedCapture (the baseboard arm carries its SOL attribution by construction) for srv13 or srv14 from digest-checked committed captures (PR 2's live readers over the actual target, or committed captures of them); NOT satisfied by the witness mints above, which mint FruIdentityWitnessSupplied / SmbiosIdentityWitnessSupplied and exist only to carry a tested fold" as NonEmptyStr,
 )
 
 // SEALED: minted only by read_mtjade1_smbios_type2 -- or by witness_recorded_smbios_serial below --
 // downstream of the file read and the scoped decode, keeping its subject and source beside the serial.
 type RecordedSmbiosObservation sole_constructor {
   subject: NonEmptyStr
-  source: IdentityEvidenceSource
+  source: SmbiosEvidenceSource
   serial: NonEmptyStr
 }
 
@@ -835,10 +846,10 @@ fn read_mtjade1_smbios_type2() -> SmbiosRead uses fs: std.resources.Filesystem {
           SmbiosObserved {
             observation: RecordedSmbiosObservation {
               subject: "mtjade1",
-              source: IdentityFromCommittedCapture {
+              source: SmbiosFromCommittedCapture {
                 capture_path: mtjade1_smbios_type2_capture_path,
                 capture_sha256: mtjade1_smbios_type2_capture_sha256,
-                sol_session: Present { value: mtjade1_smbios_sol_attribution },
+                sol_session: mtjade1_smbios_sol_attribution,
               },
               serial: sn,
             },
