@@ -1,43 +1,36 @@
-module gunbc.machine_intake.mtcollins1_fan_capture_receipt
+module test.fixture.machine_intake.mtcollins1_fan_capture
 
-// THE TYPING OF srv1's BLANK-READING STATUS ROWS, READ ONCE FROM THE BMC AND COMMITTED AS BYTES.
+// SUPPLIED FIXTURE: srv1's verbose SDR repository, as ONE read of the BMC printed it.
 //
-// WHAT THIS MODULE IS, AND WHAT IT IS NOT. It is the raw stdout of one read, kept as BYTES so the
-// admission rule can be grounded on what a BMC actually printed rather than on a shape we invented, and
-// so the witnesses can inhabit those bytes. It is NOT a rung: it mints no ObservedByReceipt, holds no
-// sealed entry, and no production path reads it - boot admission comes from the live per-round verbose
-// read alone (gunbc.machine_intake.mtcollins1_boot_fan_gate), which is what keeps a stale or wrong
-// capture unable to admit anything. "Receipt" in the name means the run's record of what it read.
+// Witness-layer data, not a production module: no production path reads this, and it exists so the
+// claims that ground the blank-reading admission rule can do it on bytes a BMC printed rather than on a
+// shape we invented. Boot admission is decided from the live per-round verbose read alone
+// (gunbc.machine_intake.chassis_fan_establishment, fed by gunbc.machine_intake.mtcollins1_boot_fan_gate),
+// which is what keeps a stale or wrong fixture unable to admit anything.
 //
-// The gate in gunbc.machine_intake.chassis_fan_establishment refuses a row whose reading cell is empty.
-// Four rows on srv1 are printed that way while healthy, and ipmitool's own SDR repository says why:
-// they are not threshold sensors, so a reading is not expected. That fact is not modelled here and not
-// hand-written - it is the raw verbose output of ONE read of the repository, committed beside the
-// digest recorded for it, and parsed by the same extdeps.bmc.ipmi_sdr parser the live read uses.
+// PROVENANCE, AS COMMENTARY RATHER THAN AS DECLARATIONS. Run 41406891344, dispatched as
+//   fleet-converge.yml --ref main -f mode=mtcollins1_fan_observe -f host=srv1
+// artifact mtcollins1-fan-observation, committed at
+//   artifacts/bmc/mtcollins1-fan-observe-run-41406891344-host-off/mtcollins1-fan-observation.txt
+// sha256 4f418a57e1a249a5f0178e36b862106ba83039881cde7be7fa25f26bb2855337, 144775 bytes.
+// Nothing in the substrate re-checks the lines below against that artifact, so the digest is a claim
+// ABOUT the artifact, not a verified property of it: declared as data and read by nothing it would be an
+// uncited figure (DESIGN.md §5) and a dangling declaration (§3c), which is why the provenance is a
+// pointer for whoever re-verifies it rather than a datum a claim could nod at. The claims below assert
+// only what the shared parser makes of these lines. exit_code below stays data solely because
+// fan_observe_witness consumes it.
 //
-// THE SEAM, NAMED (extdeps/external_authority.dag:32-36). The bytes below are a BOUNDARY TRANSCRIPTION:
-// they were committed beside the run's recorded digest, and nothing in the substrate re-checks them
-// against the run that produced them. The digest here is therefore a claim about the artifact, not a
-// verified property of it; the artifact path and run id are what an operator re-fetches to check.
-// TRIGGER: re-capture by re-running fleet-converge.yml mode=mtcollins1_fan_observe host=srv1 and
-// replacing these lines with the new run's output; a row whose record is absent stays refused, so a
-// stale capture can only ever refuse, never admit.
+// WHAT IS QUOTED: the file at that path holds 197 records; the lines below are the four the boot-5 gate
+// refused plus one threshold control, verbatim. Nothing in the rule reads a record outside a capture,
+// and nothing reads a sensor NUMBER - the capture types EndOfPost as
+// 'Sensor Type (Discrete): Unknown (0xd0)', an OEM code, which a name- or number-keyed rule refused.
 //
-// WHY THESE FIVE AND NOT THE WHOLE REPOSITORY: the file at the path below holds 197 records; the
-// records quoted here are the four the boot-5 gate refused plus one threshold control, kept verbatim. Nothing in the rule reads a
-// record that is not in a capture, and nothing reads a sensor NUMBER: the committed capture types
-// EndOfPost as 'Sensor Type (Discrete): Unknown (0xd0)', an OEM code, which a name- or number-keyed
-// rule would have refused.
-
+// TRIGGER to re-ground: re-run fleet-converge.yml mode=mtcollins1_fan_observe host=srv1 and replace
+// these lines with the new run's output. A row whose record is absent stays refused, so a stale fixture
+// can only ever refuse, never admit.
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.bmc.ipmi_sdr { SdrVerboseReadout, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrVerboseUnreadable, sdr_verbose_readout, sdr_repository_carries_both_kinds }
 
-data mtcollins1_fan_capture_run_id: String = "41406891344"
-data mtcollins1_fan_capture_dispatch: String = "fleet-converge.yml --ref main -f mode=mtcollins1_fan_observe -f host=srv1"
-data mtcollins1_fan_capture_artifact_name: String = "mtcollins1-fan-observation"
-data mtcollins1_fan_capture_artifact_path: String = "artifacts/bmc/mtcollins1-fan-observe-run-41406891344-host-off/mtcollins1-fan-observation.txt"
-data mtcollins1_fan_capture_artifact_sha256: String = "4f418a57e1a249a5f0178e36b862106ba83039881cde7be7fa25f26bb2855337"
-data mtcollins1_fan_capture_artifact_bytes: Int = 144775
 // The receipt's own run-scope marker line was `run=0 verbose_exit=0`; the parse below is allowed only
 // because the read itself succeeded, so the exit status is carried rather than assumed.
 data mtcollins1_fan_capture_exit_code: Int = 0
