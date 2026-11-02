@@ -1590,6 +1590,12 @@ fn acquisition_module_path(module: AcquiredModule) -> String {
   source_root_child_path(directory: module.host_directory, name: module.file.relative_path)
 }
 
+// THE ONE SPELLING OF A MEMBER'S FILE IN A LOCUS: the witness's compilation unit, and so the key every
+// file-refusal index and every consumer that joins a path to a located diagnostic uses.
+fn acquisition_compilation_unit(file: ModuleFileRef) -> Symbol {
+  symbol_intern_lexeme(lexeme: module_file_key(file: file))
+}
+
 fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
   acquisition_read_witness(file: module.file, host_directory: module.host_directory, content: module.content)
 }
@@ -1604,7 +1610,7 @@ fn acquisition_read_witness(file: ModuleFileRef, host_directory: String, content
   DagSourceReadWitness {
     source: Medium { carried: content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
-    compilation_unit: symbol_intern_lexeme(lexeme: module_file_key(file: file)),
+    compilation_unit: acquisition_compilation_unit(file: file),
     source_root: file.tree
   }
 }
