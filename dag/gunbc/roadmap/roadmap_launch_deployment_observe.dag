@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_launch_deployment_observe
 
+import gunbc.spool_queue { SpoolRole, SpoolAttemptExit, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused, spool_role_label }
 import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 
@@ -16,9 +17,8 @@ import extdeps.languages.json.parse {
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
 import gunbc.running_release_identity { RunningReleaseIdentity, observe_running_release_identity }
 import gunbc.durable_handoff_host {
-  HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   HostSpoolHealthEntry, HostSpoolHealthBound, HostSpoolHealthClear, HostSpoolHealthStale, HostSpoolHealthUnobserved,
-  host_spool_health_judge, host_spool_stage_wire,
+  host_spool_health_judge,
 }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import gunbc.roadmap.roadmap_belt_actuate {
@@ -350,36 +350,36 @@ fn event_backlog_queued_bound() -> Second? {
   Present { value: second(count: second_count(s: belt_tick_run_bound) + second_count(s: event_backlog_drain_bound)) }
 }
 
-fn event_backlog_bound(stage: HostSpoolStage) -> Second? {
+fn event_backlog_bound(stage: SpoolRole) -> Second? {
   match stage {
-    AttemptExitInbox => Present { value: event_backlog_drain_bound }
-    AttemptExitQueued => event_backlog_queued_bound()
-    AttemptExitRunning => event_backlog_queued_bound()
-    AttemptExitDone => none
-    AttemptExitRefused => none
+    RolePending => Present { value: event_backlog_drain_bound }
+    RoleHandedOff => event_backlog_queued_bound()
+    RoleClaimed => event_backlog_queued_bound()
+    RoleDone => none
+    RoleRefused => none
   }
 }
 
 // The stage is the spool's own closed sum (gunbc.roadmap.roadmap_attempt_exit_spool), not a label.
 type EventBacklogEntry {
-  stage: HostSpoolStage
+  stage: SpoolRole
   entry: String
   age: Second
 }
 
 type EventBacklogFact
   = EventBacklogClear { inbox: Int, queued: Int }
-  | StaleBacklog { stage: HostSpoolStage, entry: String, age: Second, bound: Second }
+  | StaleBacklog { stage: SpoolRole, entry: String, age: Second, bound: Second }
   | EventSpoolStalled { waiting: Int, head: String }
   | EventBacklogUnobserved { detail: String }
 
 fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
   concat([
-    HostSpoolHealthBound { stage: AttemptExitInbox, bound: event_backlog_drain_bound },
+    HostSpoolHealthBound { stage: RolePending, bound: event_backlog_drain_bound },
   ], match event_backlog_queued_bound() {
     Present { value: q } => [
-      HostSpoolHealthBound { stage: AttemptExitQueued, bound: q },
-      HostSpoolHealthBound { stage: AttemptExitRunning, bound: q },
+      HostSpoolHealthBound { stage: RoleHandedOff, bound: q },
+      HostSpoolHealthBound { stage: RoleClaimed, bound: q },
     ]
     Absent => []
   })
@@ -396,7 +396,7 @@ fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
 // stall record's consumer (DESIGN section 3c).
 fn event_backlog_judge(stalled: List<String>, entries: List<EventBacklogEntry>) -> EventBacklogFact {
   match stalled.first() {
-    Present { value: head } => EventSpoolStalled { waiting: count(entries |> filter(e => e.stage == AttemptExitInbox || e.stage == AttemptExitQueued)), head: head }
+    Present { value: head } => EventSpoolStalled { waiting: count(entries |> filter(e => e.stage == RolePending || e.stage == RoleHandedOff)), head: head }
     Absent => event_backlog_aged_judge(entries: entries)
   }
 }
@@ -406,7 +406,7 @@ fn event_backlog_aged_judge(entries: List<EventBacklogEntry>) -> EventBacklogFac
     entries: map(entries, e => HostSpoolHealthEntry { stage: e.stage, entry: e.entry, age: e.age }),
     bounds: event_backlog_health_bounds(),
   ) {
-    HostSpoolHealthClear { depth_inbox: inbox, depth_queued: queued, depth_running: _ } =>
+    HostSpoolHealthClear { depth_pending: inbox, depth_handed_off: queued, depth_claimed: _ } =>
       EventBacklogClear { inbox: inbox, queued: queued }
     HostSpoolHealthStale { stage: stage, entry: entry, age: age, bound: bound } =>
       StaleBacklog { stage: stage, entry: entry, age: age, bound: bound }
@@ -418,7 +418,7 @@ fn event_backlog_text(f: EventBacklogFact) -> String {
   match f {
     EventBacklogClear { inbox, queued } => join(["clear (", to_string(value: inbox), " in inbox, ", to_string(value: queued), " queued, none past bound)"], "")
     EventSpoolStalled { waiting, head } => join(["exit spool stalled: ", to_string(value: waiting), " entries waiting behind ", head], "")
-    StaleBacklog { stage, entry, age, bound } => join(["StaleBacklog: ", host_spool_stage_wire(stage: stage), " entry ", entry, " is ", to_string(value: second_count(s: age)), "s old, past the ", to_string(value: second_count(s: bound)), "s bound"], "")
+    StaleBacklog { stage, entry, age, bound } => join(["StaleBacklog: ", spool_role_label(kind: SpoolAttemptExit, role: stage), " entry ", entry, " is ", to_string(value: second_count(s: age)), "s old, past the ", to_string(value: second_count(s: bound)), "s bound"], "")
     EventBacklogUnobserved { detail } => join(["unobserved: ", detail], "")
   }
 }

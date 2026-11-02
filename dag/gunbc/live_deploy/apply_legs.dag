@@ -64,6 +64,7 @@ import gunbc.live_deploy.spec {
   tree_sync_unit_path, gunbc_service_uid,
 }
 import gunbc.host.host_layout { instance_receipts_dir }
+import gunbc.spool_queue { SpoolKind, SpoolRole, SpoolAttemptExit, SpoolAttemptUnit, SpoolPublication, RolePending, RoleClaimed, RoleRefused, SpoolDirectoryOwnerOnly, SpoolDirectoryGroupBlindWrite, spool_role_directory_shape, spool_role_dirs, spool_declared_roles, spool_role_label }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
 import gunbc.live_deploy.release_locus { HelperLocus }
 import gunbc.live_deploy.retract_legs { retract_remove_files }
@@ -80,8 +81,8 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly }
 import gunbc.host.host_layout {
-  attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
+  attempt_unit_spool_root, attempt_unit_spool_staging_dir,
+  attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
 import gunbc.roadmap.attempt_system_unit_launch {
@@ -135,8 +136,8 @@ import gunbc.live_deploy.emit {
   publication_spool_answer_mode,
 }
 import gunbc.host.host_layout {
-  publication_spool_root, publication_request_dir, publication_answer_dir, publication_refused_dir, publication_bare_mirror_path,
-  attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
+  publication_spool_root, publication_answer_dir, publication_bare_mirror_path,
+  attempt_exit_spool_root,
 }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_program, tailscale_serve_enable_argv }
 import extdeps.systemd.unit_file { SystemdUnitFile }
@@ -606,18 +607,42 @@ fn apply_root_directory_leg(step: String, mode: FileMode, group: NonEmptyStr, pa
   apply_install_directory_leg(step: step, mode: mode, owner: approval_broker_helper_root_principal, group: group, path: path)
 }
 
+// Mode and group of a spool role directory, DERIVED from the writers column (spool_role_directory_shape): a role a
+// non-drainer principal writes is group-blind-write for the service group, otherwise owner-only for the owner's group.
+fn spool_role_leg_mode(kind: SpoolKind, role: SpoolRole) -> FileMode {
+  match spool_role_directory_shape(kind: kind, role: role) {
+    SpoolDirectoryGroupBlindWrite => publication_spool_request_mode
+    SpoolDirectoryOwnerOnly => declared_directory_mode(m: DirectoryOwnerOnly)
+  }
+}
+
+fn spool_role_leg_group(kind: SpoolKind, role: SpoolRole, owner_group: NonEmptyStr, writer_group: NonEmptyStr) -> NonEmptyStr {
+  match spool_role_directory_shape(kind: kind, role: role) {
+    SpoolDirectoryGroupBlindWrite => writer_group
+    SpoolDirectoryOwnerOnly => owner_group
+  }
+}
+
 fn deploy_apply_attempt_spool_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
   let root = approval_broker_helper_root_principal
   let service = spec.service.service_user
   let instance_root = spec.service.instance_root as String
-  [
-    apply_root_directory_leg(step: "attempt-spool-root", mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse), group: root, path: attempt_unit_spool_root(instance_root: instance_root)),
-    apply_root_directory_leg(step: "attempt-spool-staging", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_staging_dir(instance_root: instance_root)),
-    apply_root_directory_leg(step: "attempt-spool-request", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_request_dir(instance_root: instance_root)),
-    apply_root_directory_leg(step: "attempt-spool-claimed", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: root, path: attempt_unit_spool_claimed_dir(instance_root: instance_root)),
-    apply_root_directory_leg(step: "attempt-spool-answer", mode: attempt_unit_spool_answer_mode, group: service, path: attempt_unit_spool_answer_dir(instance_root: instance_root)),
-    apply_root_directory_leg(step: "attempt-spool-stalled", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_stalled_dir(instance_root: instance_root)),
-  ]
+  concat(
+    concat(
+      concat(
+        [
+          apply_root_directory_leg(step: "attempt-spool-root", mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse), group: root, path: attempt_unit_spool_root(instance_root: instance_root)),
+          apply_root_directory_leg(step: "attempt-spool-staging", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_staging_dir(instance_root: instance_root)),
+        ],
+        map(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: instance_root, roles: [RolePending]), d => apply_root_directory_leg(step: "attempt-spool-request", mode: spool_role_leg_mode(kind: SpoolAttemptUnit, role: RolePending), group: spool_role_leg_group(kind: SpoolAttemptUnit, role: RolePending, owner_group: root, writer_group: service), path: d)),
+      ),
+      map(spool_role_dirs(kind: SpoolAttemptUnit, instance_root: instance_root, roles: [RoleClaimed]), d => apply_root_directory_leg(step: "attempt-spool-claimed", mode: spool_role_leg_mode(kind: SpoolAttemptUnit, role: RoleClaimed), group: spool_role_leg_group(kind: SpoolAttemptUnit, role: RoleClaimed, owner_group: root, writer_group: service), path: d)),
+    ),
+    [
+      apply_root_directory_leg(step: "attempt-spool-answer", mode: attempt_unit_spool_answer_mode, group: service, path: attempt_unit_spool_answer_dir(instance_root: instance_root)),
+      apply_root_directory_leg(step: "attempt-spool-stalled", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_stalled_dir(instance_root: instance_root)),
+    ],
+  )
 }
 
 // THE ROOT-OWNED CREDSTORE COPY A DEDICATED WORKER UNIT IS HANDED (gunbc.roadmap.dispatch_worker_unit_confinement
@@ -915,18 +940,20 @@ fn deploy_apply_publication_legs(spec: DeploymentSpec, path: NonEmptyStr) -> Lis
   let pub = spec.names.publication_principal
   let instance_root = spec.service.instance_root as String
   concat(
-    [
-      apply_install_directory_leg(step: "publication-spool-root", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_spool_root(instance_root: instance_root)),
-      apply_install_directory_leg(step: "publication-spool-request", mode: publication_spool_request_mode, owner: pub, group: spec.service.service_user, path: publication_request_dir(instance_root: instance_root)),
-      apply_install_directory_leg(step: "publication-spool-answer", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_answer_dir(instance_root: instance_root)),
-      apply_install_directory_leg(step: "publication-spool-refused", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_refused_dir(instance_root: instance_root)),
-      apply_install_directory_leg(step: "publication-bare-mirror", mode: declared_directory_mode(m: DirectoryOwnerOnly), owner: pub, group: pub, path: publication_bare_mirror_path(instance_root: instance_root) as String),
-      apply_staged_leg(step: "publication-service-unit", dest: deployment_publication_service_unit_path(names: spec.names) as String, payload: render(doc: emit_publication_service_unit_doc(spec: spec), proto: live_deploy_protocol)),
-      apply_staged_leg(step: "publication-path-unit", dest: path as String, payload: render(doc: emit_publication_path_unit_doc(spec: spec), proto: live_deploy_protocol)),
-    ],
     concat(
-      apply_leftover_timer_legs(step: "publication-timer-retire", unit: deployment_publication_timer_unit_name(names: spec.names), path: deployment_publication_timer_unit_path(names: spec.names)),
-      apply_enable_restart_legs(step: "publication-path", unit: deployment_publication_path_unit_name(names: spec.names)),
+      concat([apply_install_directory_leg(step: "publication-spool-root", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_spool_root(instance_root: instance_root)),], map(spool_role_dirs(kind: SpoolPublication, instance_root: instance_root, roles: [RolePending]), d => apply_install_directory_leg(step: "publication-spool-request", mode: spool_role_leg_mode(kind: SpoolPublication, role: RolePending), owner: pub, group: spool_role_leg_group(kind: SpoolPublication, role: RolePending, owner_group: pub, writer_group: spec.service.service_user), path: d))),
+      concat([apply_install_directory_leg(step: "publication-spool-answer", mode: publication_spool_answer_mode, owner: pub, group: pub, path: publication_answer_dir(instance_root: instance_root)),], map(spool_role_dirs(kind: SpoolPublication, instance_root: instance_root, roles: [RoleRefused]), d => apply_install_directory_leg(step: "publication-spool-refused", mode: publication_spool_answer_mode, owner: pub, group: pub, path: d))),
+    ),
+    concat(
+      [
+        apply_install_directory_leg(step: "publication-bare-mirror", mode: declared_directory_mode(m: DirectoryOwnerOnly), owner: pub, group: pub, path: publication_bare_mirror_path(instance_root: instance_root) as String),
+        apply_staged_leg(step: "publication-service-unit", dest: deployment_publication_service_unit_path(names: spec.names) as String, payload: render(doc: emit_publication_service_unit_doc(spec: spec), proto: live_deploy_protocol)),
+        apply_staged_leg(step: "publication-path-unit", dest: path as String, payload: render(doc: emit_publication_path_unit_doc(spec: spec), proto: live_deploy_protocol)),
+      ],
+      concat(
+        apply_leftover_timer_legs(step: "publication-timer-retire", unit: deployment_publication_timer_unit_name(names: spec.names), path: deployment_publication_timer_unit_path(names: spec.names)),
+        apply_enable_restart_legs(step: "publication-path", unit: deployment_publication_path_unit_name(names: spec.names)),
+      ),
     ),
   )
 }
@@ -939,14 +966,15 @@ fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<Deplo
   let instance_root = spec.service.instance_root as String
   let n = spec.names
   concat(
-    [
+    concat(
+      concat(
+        [
       apply_owned_directory_leg(spec: spec, step: "instance-receipts-dir", path: instance_receipts_dir(instance_root: instance_root)),
       apply_owned_directory_leg(spec: spec, step: "attempt-exit-spool", path: attempt_exit_spool_root(instance_root: instance_root)),
-      apply_owned_directory_leg(spec: spec, step: "attempt-exit-inbox", path: attempt_exit_inbox_dir(instance_root: instance_root)),
-      apply_owned_directory_leg(spec: spec, step: "attempt-exit-queued", path: attempt_exit_queued_dir(instance_root: instance_root)),
-      apply_owned_directory_leg(spec: spec, step: "attempt-exit-running", path: attempt_exit_running_dir(instance_root: instance_root)),
-      apply_owned_directory_leg(spec: spec, step: "attempt-exit-done", path: attempt_exit_done_dir(instance_root: instance_root)),
-      apply_owned_directory_leg(spec: spec, step: "attempt-exit-refused", path: attempt_exit_refused_dir(instance_root: instance_root)),
+        ],
+        flat_map(spool_declared_roles(kind: SpoolAttemptExit), r => map(spool_role_dirs(kind: SpoolAttemptExit, instance_root: instance_root, roles: [r]), d => apply_owned_directory_leg(spec: spec, step: join(["attempt-exit-", spool_role_label(kind: SpoolAttemptExit, role: r)], ""), path: d))),
+      ),
+      [
       apply_staged_leg(step: "belt-service-unit", dest: deployment_belt_service_unit_path(names: n) as String, payload: render(doc: emit_belt_service_unit_doc(spec: spec), proto: live_deploy_protocol)),
       apply_belt_unit_leg(step: "belt-exit-drain-unit", dest: deployment_belt_exit_drain_service_unit_path(names: n), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
       apply_belt_unit_leg(step: "belt-discovery-unit", dest: deployment_belt_discovery_service_unit_path(names: n), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
@@ -956,7 +984,8 @@ fn deploy_apply_belt_legs(spec: DeploymentSpec, path: NonEmptyStr) -> List<Deplo
       apply_belt_unit_leg(step: "belt-exit-path-unit", dest: path, file: live_deploy_belt_exit_path_unit_file(spec: spec)),
       apply_root_leg(step: "belt-daemon-reload", argv: systemctl_daemon_reload_argv()),
       apply_root_leg(step: "belt-exit-drain-enable", argv: systemctl_enable_argv(unit: deployment_belt_exit_drain_service_unit_name(names: n))),
-    ],
+      ],
+    ),
     concat(
       concat(
         apply_enable_restart_legs(step: "belt-exit-path", unit: deployment_belt_exit_path_unit_name(names: n)),

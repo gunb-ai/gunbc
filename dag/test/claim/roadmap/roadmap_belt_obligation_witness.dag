@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_belt_obligation_witness
 
+import std.optional { Present, Absent }
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
@@ -22,7 +23,7 @@ import gunbc.live_deploy.emit { live_deploy_belt_exit_path_unit_file, live_deplo
 import gunbc.live_deploy.spec { deployment_belt_exit_drain_service_unit_name, deployment_owned_steps, DeploymentArtifactStep }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
-import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_stalled_dir }
+import gunbc.host.host_layout { attempt_exit_stalled_dir }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
 
 // THE OBLIGATION MODEL'S DECISIONS over supplied evidence (DESIGN section 3: a witness discriminates at
@@ -30,6 +31,7 @@ import extdeps.systemd.unit_file { systemd_unit_file_lines }
 // production route that consumes them -- gunbc.roadmap.roadmap_belt_actuate belt_attempt_obligations_run and
 // belt_discover_for_instance -- reads the same derivation; the wet witness beside this file runs the
 // exit drain over a real spool.
+import gunbc.spool_queue { SpoolAttemptExit, SpoolRole, RolePending, spool_open, spool_role_path, SpoolKind }
 
 fn seg(kind: WorkflowSegmentKind, state: WorkflowSegmentState) -> WorkflowSegment {
   WorkflowSegment { kind: kind, state: state, detail: "" }
@@ -109,7 +111,7 @@ test fn a_long_verify_does_not_delay_another_attempts_publish_or_the_observation
 test fn the_deployment_wakes_the_drain_on_an_exit_and_installs_no_belt_timer() -> Bool {
   let spec = deployment_spec_srv1()
   let lines = systemd_unit_file_lines(file: live_deploy_belt_exit_path_unit_file(spec: spec))
-  let inbox = attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String)
+  let inbox = spool_witness_dir(kind: SpoolAttemptExit, instance_root: spec.service.instance_root as String, role: RolePending)
   let steps = deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
   any(lines, l => l == join(["DirectoryNotEmpty=", inbox], ""))
     && any(lines, l => l == join(["Unit=", deployment_belt_exit_drain_service_unit_name(names: spec.names) as String], ""))
@@ -140,4 +142,11 @@ test fn each_operator_route_declares_the_obligations_it_enqueues() -> Bool {
     && follow_up_keys(action: OperatorStop) == "observe,launch"
     && follow_up_keys(action: OperatorPublish) == "observe"
     && follow_up_keys(action: OperatorIssueWrite) == "observe"
+}
+
+fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
+    Present { value: d } => d
+    Absent => "<the spool declares no directory for this role>"
+  }
 }

@@ -56,14 +56,19 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
 }
 import extdeps.shell
+import gunbc.spool_queue {
+  SpoolAttemptUnit, RolePending, RoleClaimed, SpoolRole, SpoolStore, SpoolEntryKey, SpoolListed, SpoolListingUnreadable, SpoolKeyMinted, SpoolKeyRefused,
+  SpoolClaimWon, SpoolClaimWonUnrecorded, SpoolClaimLost, SpoolClaimAbsentEntry, SpoolClaimNotDone, SpoolClaimUnmovable,
+  spool_open, spool_queue_list, spool_queue_claim, spool_entry_key_of_name, spool_entry_path,
+}
 import extdeps.tools.stat {
   stat_file_type_reading, StatFileTypeRead, StatFileTypeUnanswered, StatFileKind,
   SymbolicLinkKind, DirectoryKind, RegularFileKind, FifoKind, SocketKind,
   CharacterDeviceKind, BlockDeviceKind, UnknownKind,
 }
 import gunbc.host.host_layout {
-  attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
+  attempt_unit_spool_staging_dir,
+  attempt_unit_spool_answer_dir,
   attempt_unit_spool_stalled_dir, attempt_unit_spool_stall_record_path,
 }
 import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_step_text, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
@@ -150,16 +155,15 @@ fn attempt_system_unit_request_entry_name(node_id: String, attempt_key: String) 
   join([node_id, attempt_exit_entry_separator, attempt_key], "")
 }
 
-fn attempt_system_unit_request_path(instance_root: String, entry: String) -> String {
-  join([attempt_unit_spool_request_dir(instance_root: instance_root), "/", entry], "")
+fn attempt_system_unit_role_path(instance_root: String, role: SpoolRole, entry: String) -> String? {
+  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: entry) {
+    SpoolKeyMinted { key } => spool_entry_path(store: spool_open(kind: SpoolAttemptUnit, instance_root: instance_root), role: role, key: key)
+    SpoolKeyRefused { detail: _ } => Absent
+  }
 }
 
 fn attempt_system_unit_staging_path(instance_root: String, entry: String) -> String {
   join([attempt_unit_spool_staging_dir(instance_root: instance_root), "/", entry, ".staging"], "")
-}
-
-fn attempt_system_unit_claimed_path(instance_root: String, entry: String) -> String {
-  join([attempt_unit_spool_claimed_dir(instance_root: instance_root), "/", entry], "")
 }
 
 fn attempt_system_unit_answer_path(instance_root: String, entry: String) -> String {
@@ -632,7 +636,9 @@ fn attempt_system_unit_enqueue_request(instance_root: String, node_id: String, a
   } else {
     let entry = attempt_system_unit_request_entry_name(node_id: node_id, attempt_key: attempt_key)
     let staging = attempt_system_unit_staging_path(instance_root: instance_root, entry: entry)
-    let dest = attempt_system_unit_request_path(instance_root: instance_root, entry: entry)
+    match attempt_system_unit_role_path(instance_root: instance_root, role: RolePending, entry: entry) {
+     Absent => AttemptSystemUnitEnqueueRefused { detail: "request entry name is not a spool entry key of the attempt-unit spool" }
+     Present { value: dest } =>
     if !shell.Mkdir.NewOwnerOnly(path: staging as FilePath).success {
       AttemptSystemUnitEnqueueRefused { detail: join(["could not create-only the staging directory ", staging], "") }
     } else {
@@ -644,6 +650,7 @@ fn attempt_system_unit_enqueue_request(instance_root: String, node_id: String, a
       } else {
         AttemptSystemUnitEnqueueOccupied { entry: entry }
       }
+    }
     }
   }
 }
@@ -743,12 +750,25 @@ fn attempt_system_unit_claimed_kind_is_directory(path: String) -> Bool {
 // with the source still PRESENT, or its presence unestablishable: Unmovable, which the drain's verdict counts.
 // The name guard refuses only names a directory listing cannot return, and reports them unmovable too.
 fn attempt_system_unit_claim_entry(instance_root: String, entry: String) -> AttemptSystemUnitClaim {
-  if entry == "" || entry == "." || entry == ".." || string_contains(s: entry, pattern: "/") {
-    AttemptSystemUnitClaimUnmovable { entry: entry, cause: "request entry name is not one path segment" }
-  } else {
-    let source = attempt_system_unit_request_path(instance_root: instance_root, entry: entry)
-    let dest = attempt_system_unit_claimed_path(instance_root: instance_root, entry: entry)
-    if attempt_system_unit_rename_exact(source: source, destination: dest) {
+  let store = spool_open(kind: SpoolAttemptUnit, instance_root: instance_root)
+  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: entry) {
+    SpoolKeyRefused { detail: _ } => AttemptSystemUnitClaimUnmovable { entry: entry, cause: "request entry name is not a spool entry key of the attempt-unit spool" }
+    SpoolKeyMinted { key } =>
+      match spool_queue_claim(store: store, key: key) {
+        SpoolClaimLost => AttemptSystemUnitAlreadyClaimed { entry: entry }
+        SpoolClaimAbsentEntry => AttemptSystemUnitAlreadyClaimed { entry: entry }
+        SpoolClaimNotDone { assessment: _ } => AttemptSystemUnitClaimUnmovable { entry: entry, cause: "the spool does not admit a claim of this entry from its observed state" }
+        SpoolClaimUnmovable { from: _, into: _, cause: c } => AttemptSystemUnitClaimUnmovable { entry: entry, cause: c }
+        SpoolClaimWon { from: _, into: _ } => attempt_system_unit_claimed_entry(store: store, key: key, entry: entry)
+        SpoolClaimWonUnrecorded { from: _, into: _, cause: _ } => attempt_system_unit_claimed_entry(store: store, key: key, entry: entry)
+      }
+  }
+}
+
+fn attempt_system_unit_claimed_entry(store: SpoolStore, key: SpoolEntryKey, entry: String) -> AttemptSystemUnitClaim {
+  match spool_entry_path(store: store, role: RoleClaimed, key: key) {
+    Absent => AttemptSystemUnitClaimRefused { entry: entry, reason: "the attempt-unit spool declares no claimed directory" }
+    Present { value: dest } =>
       if attempt_system_unit_claimed_kind_is_symlink(path: dest) {
         AttemptSystemUnitClaimSymlink { entry: entry }
       } else if !attempt_system_unit_claimed_kind_is_directory(path: dest) {
@@ -756,17 +776,6 @@ fn attempt_system_unit_claim_entry(instance_root: String, entry: String) -> Atte
       } else {
         AttemptSystemUnitClaimed { entry: entry, path: dest }
       }
-    } else {
-      match filesystem_entry_presence_of_path(path: source) {
-        FilesystemEntryAbsent(_) => AttemptSystemUnitAlreadyClaimed { entry: entry }
-        FilesystemEntryListed { directory: _, name: _ } =>
-          AttemptSystemUnitClaimUnmovable { entry: entry, cause: "the request could not be moved to claimed/ and is still in requests/ (claimed/<entry> may already exist)" }
-        FilesystemEntryPresenceIndeterminate { cause: c } =>
-          AttemptSystemUnitClaimUnmovable { entry: entry, cause: join(["the request could not be moved to claimed/ and its presence could not be established: ", c], "") }
-        FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } =>
-          AttemptSystemUnitClaimUnmovable { entry: entry, cause: join(["the request could not be moved to claimed/ and its path is not admissible: ", c], "") }
-      }
-    }
   }
 }
 
@@ -862,15 +871,9 @@ type AttemptSystemUnitRequestListing
   | AttemptSystemUnitRequestListRefused { reason: String }
 
 fn attempt_system_unit_list_request_entries(instance_root: String) -> AttemptSystemUnitRequestListing {
-  let dir = attempt_unit_spool_request_dir(instance_root: instance_root)
-  let listed = Filesystem.List(path: dir)
-  match filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error) {
-    FilesystemDirectoryListed(admitted) =>
-      AttemptSystemUnitRequestNames { names: filesystem_listing_entry_names(listing: admitted) }
-    FilesystemDirectoryListingRefused { directory, error } =>
-      AttemptSystemUnitRequestListRefused { reason: join(["request spool could not be listed at ", directory as String, ": ", error], "") }
-    FilesystemDirectorySubjectRefused { directory, cause } =>
-      AttemptSystemUnitRequestListRefused { reason: join(["request spool is not an admissible directory ", directory, ": ", cause], "") }
+  match spool_queue_list(store: spool_open(kind: SpoolAttemptUnit, instance_root: instance_root), role: RolePending) {
+    SpoolListed { names } => AttemptSystemUnitRequestNames { names: names }
+    SpoolListingUnreadable { reason } => AttemptSystemUnitRequestListRefused { reason: reason }
   }
 }
 

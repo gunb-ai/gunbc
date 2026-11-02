@@ -17,7 +17,8 @@ import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
 import std.roster_frontier { FrontierExpiryReport }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import extdeps.shell
-import gunbc.host.host_layout { srv1_host_layout, attempt_exit_inbox_dir, attempt_exit_refused_dir }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.spool_queue { SpoolAttemptExit, RolePending, RoleRefused, spool_open, spool_role_path }
 import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_entry_parts, AttemptWorkerRole, attempt_exit_record_put_mkdir_name, attempt_exit_record_observe, attempt_exit_spool_prepare, AttemptExitRecordNone, AttemptExitRecordPutFailed, AttemptExitRecordWriterUnsubstituted }
 import extdeps.systemd.service_exec { exec_word_render, ExecWordRendered, ExecWordRefused }
 import gunbc.deployment_risk { deployment_id }
@@ -28,7 +29,7 @@ import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import gunbc.systemd_unit_invocation_liveness {
   SystemManager, unit_invocation_observation, unit_boot_observation,
 }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
@@ -396,6 +397,10 @@ fn release_text(dir: String) -> String {
 // from the instance, and opens a slot through it: the slot lands in the directory setup created. The directory is
 // absent before setup, so a mint that read some other path is Unready and a write that went elsewhere is not
 // listed here: either leaves this control red.
+fn attempt_exit_inbox_dir(instance_root: String) -> Optional<String> {
+  spool_role_path(store: spool_open(kind: SpoolAttemptExit, instance_root: instance_root), role: RolePending)
+}
+
 test fn setup_and_the_first_lifecycle_write_address_the_same_store() -> Bool {
   let dir = fresh_dir(tag: "c0")
   let instance = instance_at(dir: dir)
@@ -675,15 +680,22 @@ fn launched_with_unexpired_deadline(dir: String) -> Bool {
 // THE ARTIFACT IS SEEDED FROM THE RENDERER, not hand-written: it is the path the unit's ExecStopPost
 // would create, created as-is by something that never went through the manager's substitution.
 fn plant_unsubstituted_worker_exit_entry(instance_root: String) -> Bool {
-  match exec_word_render(parts: attempt_exit_entry_parts(inbox: attempt_exit_inbox_dir(instance_root: instance_root), node_id: node_a, attempt_key: key_a, role: AttemptWorkerRole)) {
-    ExecWordRefused { reason: _ } => false
-    ExecWordRendered { word } => shell.Mkdir.Parents(path: word as FilePath).success
+  match attempt_exit_inbox_dir(instance_root: instance_root) {
+    Absent => false
+    Present { value: inbox } =>
+      match exec_word_render(parts: attempt_exit_entry_parts(inbox: inbox, node_id: node_a, attempt_key: key_a, role: AttemptWorkerRole)) {
+        ExecWordRefused { reason: _ } => false
+        ExecWordRendered { word } => shell.Mkdir.Parents(path: word as FilePath).success
+      }
   }
 }
 
 // A spool entry planted by name, for the controls that need a specific one.
 fn plant_worker_exit_entry(instance_root: String, entry_name: String) -> Bool {
-  shell.Mkdir.Parents(path: join([attempt_exit_inbox_dir(instance_root: instance_root), "/", entry_name], "") as FilePath).success
+  match attempt_exit_inbox_dir(instance_root: instance_root) {
+    Absent => false
+    Present { value: inbox } => shell.Mkdir.Parents(path: join([inbox, "/", entry_name], "") as FilePath).success
+  }
 }
 
 // THE PASS RUNS FOR REAL -- slot store, records directory, ledger, matcher, spool listing -- with ONLY
@@ -919,8 +931,10 @@ test fn a_not_found_unit_with_no_ledger_acquisition_to_bind_to_keeps_the_seat() 
 
 test fn the_spool_put_refuses_a_name_whose_stop_variables_were_never_substituted() -> Bool {
   let dir = fresh_dir(tag: "putrefuse")
-  let inbox = attempt_exit_inbox_dir(instance_root: dir)
   let made = attempt_exit_spool_prepare(instance_root: dir)
+  match attempt_exit_inbox_dir(instance_root: dir) {
+   Absent => false
+   Present { value: inbox } =>
   match exec_word_render(parts: attempt_exit_entry_parts(inbox: inbox, node_id: node_a, attempt_key: key_a, role: AttemptWorkerRole)) {
     ExecWordRefused { reason: _ } => false
     ExecWordRendered { word } =>
@@ -940,6 +954,7 @@ test fn the_spool_put_refuses_a_name_whose_stop_variables_were_never_substituted
           })
       }
   }
+  }
 }
 
 // THE STAGE srv1's ARTIFACT ACTUALLY SITS IN. A stop hook writes into inbox; the drain moves an entry it
@@ -951,7 +966,10 @@ test fn the_production_observer_reads_the_refused_stage_where_srv1s_artifact_sit
   let dir = fresh_dir(tag: "refusedstage")
   let prepared = attempt_exit_spool_prepare(instance_root: dir)
   let entry = join([node_a, "+", key_a, "+worker+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}"], "")
-  let planted = shell.Mkdir.Parents(path: join([attempt_exit_refused_dir(instance_root: dir), "/", entry], "") as FilePath).success
+  let planted = match spool_role_path(store: spool_open(kind: SpoolAttemptExit, instance_root: dir), role: RoleRefused) {
+    Absent => false
+    Present { value: refused } => shell.Mkdir.Parents(path: join([refused, "/", entry], "") as FilePath).success
+  }
   prepared && planted
     && (match attempt_exit_record_observe(instance_root: dir, node_id: node_a, attempt_key: key_a, role: AttemptWorkerRole) {
       AttemptExitRecordWriterUnsubstituted { entries, variables } =>

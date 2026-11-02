@@ -39,10 +39,9 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitClaimed, AttemptSystemUnitAlreadyClaimed, AttemptSystemUnitClaimUnmovable, AttemptSystemUnitClaimSymlink,
   AttemptSystemUnitClaimRefused, attempt_system_unit_read_answer,
   attempt_system_unit_write_answer, attempt_system_unit_launch_cli, attempt_system_unit_drain_pass, attempt_unit_stall_verdict, AttemptUnitStalled, AttemptUnitNotStalled, AttemptUnitDrainPass,
-  attempt_system_unit_claimed_path,
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
-  attempt_system_unit_request_body_path, attempt_system_unit_request_path,
+  attempt_system_unit_request_body_path,
   attempt_system_unit_request_entry_name, attempt_system_unit_read_claimed_body,
   AttemptSystemUnitClaimedBodyRead, AttemptSystemUnitClaimedBodyRefused,
   attempt_system_unit_launch_entry, attempt_system_unit_launch_function,
@@ -50,13 +49,13 @@ import gunbc.roadmap.attempt_system_unit_launch {
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptProcessExitedWith, AttemptProcessSignaled,
-  attempt_exit_stage_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
+  attempt_exit_stage_listings, SpoolListed, SpoolListingUnreadable,
   attempt_exit_vendor_pane_entry_name, attempt_exit_spool_prepare,
 }
 import gunbc.host.host_layout {
-  attempt_exit_inbox_dir, attempt_exit_done_dir,
-  attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stall_record_path,
+  
+  attempt_unit_spool_staging_dir, 
+  attempt_unit_spool_answer_dir, attempt_unit_spool_stall_record_path,
 }
 import gunbc.roadmap.spool_stall { SpoolStallClaim, SpoolStallListRequests, spool_stall_read_at, SpoolStallHeld, SpoolStallNone, SpoolStallUnreadable }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
@@ -65,6 +64,7 @@ import test.claim.roadmap.sandbox_touch_reading {
   SandboxTouchWroteReading, SandboxTouchRefusedReading, SandboxTouchInconclusive, sandbox_touch_reading_of,
 }
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
+import gunbc.spool_queue { SpoolAttemptExit, SpoolAttemptUnit, SpoolRole, RolePending, RoleClaimed, RoleDone, SpoolListed, SpoolListingUnreadable, spool_open, spool_role_path, SpoolKind }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -512,7 +512,7 @@ fn exit_success_cli() -> ProcessExit {
 }
 
 fn launcher_exit_record_names(instance: HostDashboardInstance) -> List<String> {
-  let inbox = attempt_exit_inbox_dir(instance_root: instance.instance_root as String)
+  let inbox = spool_witness_dir(kind: SpoolAttemptExit, instance_root: instance.instance_root as String, role: RolePending)
   let listing = Filesystem.List(path: inbox)
   let observed = filesystem_listing_observation(
     directory: inbox,
@@ -669,8 +669,8 @@ fn wet_record_names(instance_root: String, unit_key: String) -> WetRecordNames {
       WetRecordNamesUnreadable => WetRecordNamesUnreadable
       WetRecordNamesListed { names: so_far } =>
         match listing {
-          AttemptExitStageUnreadable { reason: _ } => WetRecordNamesUnreadable
-          AttemptExitStageNames { names: names } =>
+          SpoolListingUnreadable { reason: _ } => WetRecordNamesUnreadable
+          SpoolListed { names: names } =>
             WetRecordNamesListed { names: concat(so_far, filter(names, n => string_contains(s: n, pattern: prefix))) }
         }
     },
@@ -736,7 +736,7 @@ test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
   } else {
     let root = tmp.path as String
     attempt_exit_spool_prepare(instance_root: root)
-      && wet_plant_record(root: root, stage_dir: attempt_exit_done_dir(instance_root: root), status: 1)
+      && wet_plant_record(root: root, stage_dir: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RoleDone), status: 1)
       && match wet_record_names(instance_root: root, unit_key: "bin") {
         WetRecordNamesUnreadable => false
         WetRecordNamesListed { names: seen } =>
@@ -744,7 +744,7 @@ test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
             SandboxTouchUnrunnable => true
             SandboxTouchRan { exit_code: _ } => false
           })
-            && wet_plant_record(root: root, stage_dir: attempt_exit_inbox_dir(instance_root: root), status: 0)
+            && wet_plant_record(root: root, stage_dir: spool_witness_dir(kind: SpoolAttemptExit, instance_root: root, role: RolePending), status: 0)
             && (match wet_inner_exit_status_poll(instance_root: root, unit_key: "bin", seen: seen, remaining: 0) {
               SandboxTouchUnrunnable => false
               SandboxTouchRan { exit_code } => exit_code == 0
@@ -785,8 +785,8 @@ fn attempt_system_unit_spool_prepare(instance_root: String) -> Bool {
   fold(
     [
       attempt_unit_spool_staging_dir(instance_root: instance_root),
-      attempt_unit_spool_request_dir(instance_root: instance_root),
-      attempt_unit_spool_claimed_dir(instance_root: instance_root),
+      spool_witness_dir(kind: SpoolAttemptUnit, instance_root: instance_root, role: RolePending),
+      spool_witness_dir(kind: SpoolAttemptUnit, instance_root: instance_root, role: RoleClaimed),
       attempt_unit_spool_answer_dir(instance_root: instance_root),
     ],
     init: true,
@@ -815,8 +815,8 @@ test fn two_request_entries_keep_distinct_bodies() -> Bool {
         AttemptSystemUnitEnqueued { entry: a, body: _ } =>
           match attempt_system_unit_enqueue_start_wait(instance_root: root, request: wet_word_request(node_id: "n-b", attempt_key: "k1", argv_word: "two")) {
             AttemptSystemUnitEnqueued { entry: b, body: _ } => {
-              let ra = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: attempt_system_unit_request_path(instance_root: root, entry: a)))
-              let rb = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: attempt_system_unit_request_path(instance_root: root, entry: b)))
+              let ra = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: unit_request_path(instance_root: root, entry: a)))
+              let rb = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: unit_request_path(instance_root: root, entry: b)))
               ra.success && rb.success && ra.content != rb.content && a != b
             }
             AttemptSystemUnitEnqueueOccupied { entry: _ } => false
@@ -889,7 +889,7 @@ test fn a_symlinked_request_entry_is_refused_by_the_claim() -> Bool {
   } else {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
-    let dest = attempt_system_unit_request_path(instance_root: root, entry: entry)
+    let dest = unit_request_path(instance_root: root, entry: entry)
     attempt_system_unit_spool_prepare(instance_root: root)
       && shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", dest]).exit_code == 0
       && match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
@@ -909,7 +909,7 @@ fn claimed_body_refused_after_plant(plant: fn(String) -> Bool, needle: String) -
   } else {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
-    let dir = attempt_system_unit_request_path(instance_root: root, entry: entry)
+    let dir = unit_request_path(instance_root: root, entry: entry)
     let body = attempt_system_unit_request_body_path(dir: dir)
     attempt_system_unit_spool_prepare(instance_root: root)
       && shell.Mkdir.NewOwnerOnly(path: dir as FilePath).success
@@ -1076,7 +1076,7 @@ fn unmovable_request_root(tag: String) -> String? {
   } else {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag)
-    let occupied = attempt_system_unit_claimed_path(instance_root: root, entry: entry)
+    let occupied = join([spool_witness_dir(kind: SpoolAttemptUnit, instance_root: root, role: RoleClaimed), "/", entry], "")
     if attempt_system_unit_spool_prepare(instance_root: root)
       && match attempt_system_unit_enqueue_start_wait(instance_root: root, request: wet_word_request(node_id: "n1", attempt_key: tag, argv_word: "x")) {
         AttemptSystemUnitEnqueued { entry: _, body: _ } => true
@@ -1141,7 +1141,7 @@ test fn a_retired_request_and_an_empty_spool_do_not_stall_the_drain() -> Bool {
   } else {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
-    let dest = attempt_system_unit_request_path(instance_root: root, entry: entry)
+    let dest = unit_request_path(instance_root: root, entry: entry)
     let prepared = attempt_system_unit_spool_prepare(instance_root: root)
     let empty_not_stalled = match attempt_unit_stall_verdict(pass: attempt_system_unit_drain_pass(instance_root: root)) {
       AttemptUnitNotStalled => true
@@ -1169,7 +1169,7 @@ fn planted_symlink_request_root(tag: String, answer_exists: Bool) -> String? {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: tag)
     let prepared = attempt_system_unit_spool_prepare(instance_root: root)
-    let planted = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", attempt_system_unit_request_path(instance_root: root, entry: entry)]).exit_code == 0
+    let planted = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", unit_request_path(instance_root: root, entry: entry)]).exit_code == 0
     let answered = if answer_exists { attempt_system_unit_write_answer(instance_root: root, entry: entry, body: "", answer: AttemptSystemUnitStarted) } else { true }
     if prepared && planted && answered { Present { value: root } } else { none }
   }
@@ -1206,4 +1206,15 @@ fn wet_run_nonce() -> String {
   } else {
     fold(split(s: tmp.path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
   }
+}
+
+fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) -> String {
+  match spool_role_path(store: spool_open(kind: kind, instance_root: instance_root), role: role) {
+    Present { value: d } => d
+    Absent => "<the spool declares no directory for this role>"
+  }
+}
+
+fn unit_request_path(instance_root: String, entry: String) -> String {
+  join([spool_witness_dir(kind: SpoolAttemptUnit, instance_root: instance_root, role: RolePending), "/", entry], "")
 }

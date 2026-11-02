@@ -3,7 +3,7 @@ module gunbc.roadmap.spool_stall
 import std.types { String, Bool, Int, List, FilePath }
 import std.optional { Present, Absent }
 import extdeps.shell
-import gunbc.durable_handoff_host { HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused, host_spool_stage_wire }
+import gunbc.spool_queue { SpoolRole, SpoolAttemptExit, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused, spool_role_label }
 import extdeps.languages.json.emit { JsonValue, JsonArray, serialize_json, json_string, json_array, json_object, json_kv }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
@@ -35,7 +35,7 @@ import extdeps.filesystem.filesystem_io {
 // failures are not stage moves and name no location. Text exists only on disk and in printing: spool_stall_step_text
 // writes it, spool_stall_step_of_text is the one decode at read and refuses a spelling it does not know.
 type SpoolStallStep
-  = SpoolStallMove { from: HostSpoolStage, to: HostSpoolStage }
+  = SpoolStallMove { from: SpoolRole, to: SpoolRole }
   | SpoolStallListRequests
   | SpoolStallClaim
 
@@ -47,13 +47,13 @@ type SpoolStallEntry {
 
 fn spool_stall_step_text(step: SpoolStallStep) -> String {
   match step {
-    SpoolStallMove { from, to } => join([host_spool_stage_wire(stage: from), " -> ", host_spool_stage_wire(stage: to)], "")
+    SpoolStallMove { from, to } => join([spool_role_label(kind: SpoolAttemptExit, role: from), " -> ", spool_role_label(kind: SpoolAttemptExit, role: to)], "")
     SpoolStallListRequests => "list-requests"
     SpoolStallClaim => "claim"
   }
 }
 
-data spool_stall_stages: List<HostSpoolStage> = [AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused]
+data spool_stall_stages: List<SpoolRole> = [RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused]
 
 // The exact spellings written by every earlier head ("inbox -> queued", "list-requests", "claim") decode; anything else is None.
 fn spool_stall_step_of_text(text: String) -> SpoolStallStep? {

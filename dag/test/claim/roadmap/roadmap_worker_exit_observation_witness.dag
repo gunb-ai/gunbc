@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessUnobserved, WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
-  attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
+  attempt_exit_record_from_listings, SpoolListed, SpoolListingUnreadable,
 }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown }
 import gunbc.roadmap.roadmap_session_placement { session_worker_unit_lifecycle, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused }
@@ -22,6 +22,7 @@ import gunbc.systemd_unit_invocation_liveness {
 // 2026-09-05 RemainAfterExit is reversed). Each claim supplies the manager's answer and the spool's
 // listings and runs the production decision and the production WorkerProcessEvidence projection; the
 // wet witness beside this file runs the real spool read.
+import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable }
 
 data unit: NonEmptyStr = "gunbc-attempt-n-1-k1.service" as NonEmptyStr
 
@@ -30,7 +31,7 @@ fn evidence(loaded: AttemptUnitObservation, names: List<String>, start_recorded:
     observation: attempt_worker_unit_observation_of(
       unit: unit,
       loaded: loaded,
-      record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: names }, AttemptExitStageNames { names: [] }, AttemptExitStageNames { names: [] }]),
+      record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: names }, SpoolListed { names: [] }, SpoolListed { names: [] }]),
       start: if start_recorded { AttemptUnitStartRecorded } else { AttemptUnitNeverStarted },
     ),
     unit: unit,
@@ -105,15 +106,15 @@ fn the_boot_cannot_be_ordered() -> SessionHolderEvidenceReading { holder_evidenc
 // the arm that frees only after the launch deadline (session_settle_decide); an unreadable spool frees
 // nothing.
 test fn settlement_reads_the_record_and_keeps_cause_unknown_without_one() -> Bool {
-  let success = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: ["n-1+k1+worker+inv+success+exited+0"] }]), evidence: holder_observed_dead()) {
+  let success = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: ["n-1+k1+worker+inv+success+exited+0"] }]), evidence: holder_observed_dead()) {
     UnitTerminatedSuccess { detail: _ } => true
     _ => false
   }
-  let unknown = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [] }]), evidence: holder_observed_dead()) {
+  let unknown = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: [] }]), evidence: holder_observed_dead()) {
     UnitTerminatedCauseUnknown { detail: _ } => true
     _ => false
   }
-  let unreadable = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageUnreadable { reason: "EACCES" }]), evidence: holder_observed_dead()) {
+  let unreadable = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListingUnreadable { reason: "EACCES" }]), evidence: holder_observed_dead()) {
     UnitLifecycleUnknown { detail: _ } => true
     _ => false
   }
@@ -133,7 +134,7 @@ fn seat_kept_under(record: AttemptExitRecordObservation, reading: SessionHolderE
 }
 
 test fn a_gone_unit_without_bound_death_evidence_keeps_the_seat() -> Bool {
-  let no_record = attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [] }])
+  let no_record = attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: [] }])
   seat_kept_under(record: no_record, reading: boot_predates_the_hold())
     && seat_kept_under(record: no_record, reading: the_unit_still_reports_its_run())
     && seat_kept_under(record: no_record, reading: the_boot_cannot_be_ordered())

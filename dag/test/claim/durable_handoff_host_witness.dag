@@ -3,49 +3,50 @@ module test.claim.durable_handoff_host_witness
 import std.types { Bool, List }
 import std.measure { second, second_count }
 import gunbc.durable_handoff_host {
-  HostSpoolNameAbsent, HostSpoolNamePresent, HostSpoolNameUnreadable,
-  HostSpoolEntryCreated, HostSpoolEntryAlreadyPresent, HostSpoolEnqueueRefused,
-  host_spool_enqueue_assess, HostSpoolHealthEntry, HostSpoolHealthBound,
-  HostSpoolHealthClear, HostSpoolHealthStale, HostSpoolHealthUnobserved,
-  AttemptExitInbox, AttemptExitQueued, AttemptExitDone, host_spool_health_judge,
+  HostSpoolHealthEntry, HostSpoolHealthBound,
+  HostSpoolHealthClear, HostSpoolHealthStale, HostSpoolHealthUnobserved, host_spool_health_judge,
+}
+import gunbc.spool_queue {
+  SpoolPublication, RolePending, RoleHandedOff, RoleDone, spool_enqueue_assess, EnqueueEligible, EnqueueAlreadyPresent, EnqueueRefused,
+  EntryAbsent, EntryStanding, EntryObservationUnavailable,
 }
 
 test fn enqueue_is_create_only_and_does_not_overwrite() -> Bool {
-  (match host_spool_enqueue_assess(name: "a.json", observed: HostSpoolNameAbsent) {
-    HostSpoolEntryCreated { name: n } => n == "a.json"
+  (match spool_enqueue_assess(kind: SpoolPublication, observed: EntryAbsent) {
+    EnqueueEligible { into: r } => r == RolePending
     _ => false
-  }) && (match host_spool_enqueue_assess(name: "a.json", observed: HostSpoolNamePresent) {
-    HostSpoolEntryAlreadyPresent { name: n } => n == "a.json"
+  }) && (match spool_enqueue_assess(kind: SpoolPublication, observed: EntryStanding { role: RolePending }) {
+    EnqueueAlreadyPresent { state: _ } => true
     _ => false
-  }) && (match host_spool_enqueue_assess(name: "a.json", observed: HostSpoolNameUnreadable { detail: "eacces" }) {
-    HostSpoolEnqueueRefused { name: n, detail: d } => n == "a.json" && d == "eacces"
+  }) && (match spool_enqueue_assess(kind: SpoolPublication, observed: EntryObservationUnavailable { detail: "eacces" }) {
+    EnqueueRefused { detail: d } => d == "eacces"
     _ => false
   })
 }
 
 test fn queue_health_names_the_oldest_owed_entry_past_its_bound() -> Bool {
   let bounds = [
-    HostSpoolHealthBound { stage: AttemptExitInbox, bound: second(count: 60) },
-    HostSpoolHealthBound { stage: AttemptExitQueued, bound: second(count: 2700) },
+    HostSpoolHealthBound { stage: RolePending, bound: second(count: 60) },
+    HostSpoolHealthBound { stage: RoleHandedOff, bound: second(count: 2700) },
   ]
   let clear = host_spool_health_judge(entries: [
-    HostSpoolHealthEntry { stage: AttemptExitInbox, entry: "young", age: second(count: 10) },
-    HostSpoolHealthEntry { stage: AttemptExitQueued, entry: "ok", age: second(count: 100) },
+    HostSpoolHealthEntry { stage: RolePending, entry: "young", age: second(count: 10) },
+    HostSpoolHealthEntry { stage: RoleHandedOff, entry: "ok", age: second(count: 100) },
   ], bounds: bounds)
   let stale = host_spool_health_judge(entries: [
-    HostSpoolHealthEntry { stage: AttemptExitInbox, entry: "young", age: second(count: 10) },
-    HostSpoolHealthEntry { stage: AttemptExitInbox, entry: "old", age: second(count: 90) },
-    HostSpoolHealthEntry { stage: AttemptExitQueued, entry: "also-old", age: second(count: 80) },
+    HostSpoolHealthEntry { stage: RolePending, entry: "young", age: second(count: 10) },
+    HostSpoolHealthEntry { stage: RolePending, entry: "old", age: second(count: 90) },
+    HostSpoolHealthEntry { stage: RoleHandedOff, entry: "also-old", age: second(count: 80) },
   ], bounds: bounds)
-  (match clear { HostSpoolHealthClear { depth_inbox: i, depth_queued: q, depth_running: r } => i == 1 && q == 1 && r == 0  _ => false })
+  (match clear { HostSpoolHealthClear { depth_pending: i, depth_handed_off: q, depth_claimed: r } => i == 1 && q == 1 && r == 0  _ => false })
     && (match stale { HostSpoolHealthStale { stage: _, entry: e, age: a, bound: b } => e == "old" && second_count(s: a) == 90 && second_count(s: b) == 60  _ => false })
 }
 
 test fn a_stage_with_no_bound_is_unobserved_never_silently_young() -> Bool {
   match host_spool_health_judge(entries: [
-    HostSpoolHealthEntry { stage: AttemptExitDone, entry: "settled", age: second(count: 1) },
+    HostSpoolHealthEntry { stage: RoleDone, entry: "settled", age: second(count: 1) },
   ], bounds: [
-    HostSpoolHealthBound { stage: AttemptExitInbox, bound: second(count: 60) },
+    HostSpoolHealthBound { stage: RolePending, bound: second(count: 60) },
   ]) {
     HostSpoolHealthUnobserved { detail: d } => d == "no bound for stage done"
     _ => false

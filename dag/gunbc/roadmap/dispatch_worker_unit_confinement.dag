@@ -25,7 +25,7 @@ import gunbc.harness.harness_operator_credential { OperatorCredentialFile, opera
 import extdeps.systemd.systemd_run { EmptyCapabilityBoundingSet, NamedUnitSetting, SystemdRunProperty }
 import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.host.host_layout { attempt_exit_inbox_dir }
+import gunbc.spool_queue { SpoolAttemptExit, RolePending, spool_role_dirs }
 import gunbc.roadmap.dispatch_worker_handed_set {
   HandedEntry, HandedWorkingDirectory, HandedReadWrite, HandedReadOnly, HandedStdout, HandedStderr,
   HandedExitRoot, HandedExecutable, HandedCredentialSource, dispatch_worker_source_roots, dispatch_worker_set_working_directory,
@@ -335,13 +335,19 @@ fn dispatch_worker_handed_set(
 ) -> List<HandedEntry> {
   concat(
     concat(
-      [
-        HandedEntry { role: HandedWorkingDirectory, path: working_directory },
-        HandedEntry { role: HandedExecutable, path: instance.serve_binary as String },
-        HandedEntry { role: HandedExitRoot, path: attempt_exit_inbox_dir(instance_root: instance.instance_root as String) },
-        HandedEntry { role: HandedStdout, path: stdout_path },
-        HandedEntry { role: HandedStderr, path: stderr_path },
-      ],
+      concat(
+        concat(
+          [
+            HandedEntry { role: HandedWorkingDirectory, path: working_directory },
+            HandedEntry { role: HandedExecutable, path: instance.serve_binary as String },
+          ],
+          map(spool_role_dirs(kind: SpoolAttemptExit, instance_root: instance.instance_root as String, roles: [RolePending]), d => HandedEntry { role: HandedExitRoot, path: d }),
+        ),
+        [
+          HandedEntry { role: HandedStdout, path: stdout_path },
+          HandedEntry { role: HandedStderr, path: stderr_path },
+        ],
+      ),
       dispatch_worker_source_roots(repo_root: instance.repo_root as String),
     ),
     concat(

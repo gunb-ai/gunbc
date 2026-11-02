@@ -2,13 +2,13 @@ module gunbc.roadmap.roadmap_attempt_exit_spool
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import extdeps.shell
+import std.optional { Optional, Present, Absent }
 import extdeps.posix.identity { PosixOwnerNames }
-import extdeps.tools.gnu_coreutils { install_directory_owned_argv_command }
+import extdeps.tools.gnu_coreutils { install_directory_owned_argv_command, mkdir_create_only_command }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse, declared_directory_mode }
-import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
-import gunbc.durable_handoff_host {
-  HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
-  host_spool_create_only_command,
+import gunbc.spool_queue {
+  SpoolAttemptExit, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
+  SpoolListing, SpoolListed, SpoolListingUnreadable, spool_open, spool_queue_list, spool_role_path, spool_enqueue_command, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
 }
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
@@ -141,13 +141,21 @@ fn attempt_exit_unexpanded_variables_of(entries: List<String>) -> List<String> {
 // unique, so a repeated hook still names one record.
 data attempt_exit_record_mode: DeclaredDirectoryMode = DirectoryOwnerAllEveryoneTraverse
 
+fn attempt_exit_pending_dir(instance_root: String) -> Optional<String> {
+  spool_role_path(store: spool_open(kind: SpoolAttemptExit, instance_root: instance_root), role: RolePending)
+}
+
 fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String, role: AttemptUnitRole, record_owner: PosixOwnerNames) -> AttemptExitHook {
-  match exec_word_render(parts: attempt_exit_entry_parts(inbox: attempt_exit_inbox_dir(instance_root: instance_root), node_id: node_id, attempt_key: attempt_key, role: role)) {
-    ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
-    ExecWordRendered { word } =>
-      match exec_command_line_full_privileges(command: install_directory_owned_argv_command(mode: declared_directory_mode(m: attempt_exit_record_mode), owner: record_owner.user, group: record_owner.group, path: word as String)) {
-        ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
-        ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
+  match attempt_exit_pending_dir(instance_root: instance_root) {
+    Absent => AttemptExitHookRefused { reason: "attempt exit spool declares no pending directory" }
+    Present { value: pending } =>
+      match exec_word_render(parts: attempt_exit_entry_parts(inbox: pending, node_id: node_id, attempt_key: attempt_key, role: role)) {
+        ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
+        ExecWordRendered { word } =>
+          match exec_command_line_full_privileges(command: install_directory_owned_argv_command(mode: declared_directory_mode(m: attempt_exit_record_mode), owner: record_owner.user, group: record_owner.group, path: word as String)) {
+            ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
+            ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
+          }
       }
   }
 }
@@ -245,16 +253,6 @@ fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
 // WHERE IN THE SPOOL AN ENTRY STANDS, which is responsibility, not evidence: the record means the
 // same thing in every stage. Inbox: no obligation has taken it. Queued: recorded and handed off, no run has
 // claimed it. Running: a live run claimed it and has not settled it. Done: its obligation's receipt exists. Refused: the drain could not hand it off.
-fn attempt_exit_spool_stage_dir(instance_root: String, stage: HostSpoolStage) -> String {
-  match stage {
-    AttemptExitInbox => attempt_exit_inbox_dir(instance_root: instance_root)
-    AttemptExitQueued => attempt_exit_queued_dir(instance_root: instance_root)
-    AttemptExitRunning => attempt_exit_running_dir(instance_root: instance_root)
-    AttemptExitDone => attempt_exit_done_dir(instance_root: instance_root)
-    AttemptExitRefused => attempt_exit_refused_dir(instance_root: instance_root)
-  }
-}
-
 // THE EXIT RECORD OF ONE ATTEMPT, as the process observer needs it. Three arms and only three:
 // a record was found; the spool was read in every stage and holds none for this attempt; or a
 // stage could not be read. The third is never the second -- "I could not look" is not "there is
@@ -273,20 +271,6 @@ type AttemptExitRecordObservation
   | AttemptExitRecordWriterUnsubstituted { entries: List<String>, variables: List<String> }
   | AttemptExitRecordUnreadable { reason: String }
 
-type AttemptExitStageListing
-  = AttemptExitStageNames { names: List<String> }
-  | AttemptExitStageUnreadable { reason: String }
-
-fn attempt_exit_stage_listing(listing: FilesystemListingObservation) -> AttemptExitStageListing {
-  match listing {
-    FilesystemDirectoryListed(admitted) => AttemptExitStageNames { names: filesystem_listing_entry_names(listing: admitted) }
-    FilesystemDirectoryListingRefused { directory, error } =>
-      AttemptExitStageUnreadable { reason: join(["the attempt-exit spool stage ", directory as String, " could not be listed: ", error], "") }
-    FilesystemDirectorySubjectRefused { directory, cause } =>
-      AttemptExitStageUnreadable { reason: join(["the attempt-exit spool stage ", directory, " is not an admissible directory: ", cause], "") }
-  }
-}
-
 // PURE OVER THE THREE LISTINGS, so the decision is exercised on supplied listings and the wet read
 // below is only the listing. A launch runs once per (attempt, role), so a second record for one subject
 // is a second invocation of one unit, which the dispatch path does not do -- it is reported as
@@ -295,7 +279,7 @@ fn attempt_exit_record_from_listings(
   node_id: String,
   attempt_key: String,
   role: AttemptUnitRole,
-  listings: List<AttemptExitStageListing>,
+  listings: List<SpoolListing>,
 ) -> AttemptExitRecordObservation {
   attempt_exit_record_matching(matches: (n, a, r) => n == node_id && a == attempt_key && r == attempt_unit_role_token(role: role), listings: listings)
 }
@@ -313,18 +297,18 @@ fn attempt_exit_entry_names_subject(matches: fn(String, String, String) -> Bool,
 // re-deriving the name.
 fn attempt_exit_record_matching(
   matches: fn(String, String, String) -> Bool,
-  listings: List<AttemptExitStageListing>,
+  listings: List<SpoolListing>,
 ) -> AttemptExitRecordObservation {
   let unreadable = listings |> flat_map(l => match l {
-    AttemptExitStageUnreadable { reason } => [reason]
-    AttemptExitStageNames { names: _ } => [] as List<String>
+    SpoolListingUnreadable { reason } => [reason]
+    SpoolListed { names: _ } => [] as List<String>
   })
   match unreadable.first() {
     Present { value: why } => AttemptExitRecordUnreadable { reason: why }
     Absent => {
       let names = listings |> flat_map(l => match l {
-        AttemptExitStageNames { names } => names
-        AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+        SpoolListed { names } => names
+        SpoolListingUnreadable { reason: _ } => [] as List<String>
       })
       let malformed = names |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
         AttemptExitEntryDecoded { record: _ } => [] as List<String>
@@ -339,8 +323,8 @@ fn attempt_exit_record_matching(
           && count(attempt_exit_entry_unexpanded_variables(entry_name: name)) > 0)
       let records = listings
         |> flat_map(l => match l {
-          AttemptExitStageNames { names } => names
-          AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+          SpoolListed { names } => names
+          SpoolListingUnreadable { reason: _ } => [] as List<String>
         })
         |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
           AttemptExitEntryDecoded { record } => if matches(record.node_id, record.attempt_key, record.role) { [record] } else { [] as List<AttemptExitRecord> }
@@ -368,20 +352,8 @@ fn attempt_exit_record_matching(
   }
 }
 
-fn attempt_exit_stage_list(instance_root: String, stage: HostSpoolStage) -> AttemptExitStageListing {
-  let dir = attempt_exit_spool_stage_dir(instance_root: instance_root, stage: stage)
-  let listed = Filesystem.List(path: dir)
-  attempt_exit_stage_listing(listing: filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error))
-}
-
-fn attempt_exit_stage_listings(instance_root: String) -> List<AttemptExitStageListing> {
-  [
-    attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitInbox),
-    attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitQueued),
-    attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitRunning),
-    attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitDone),
-    attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitRefused),
-  ]
+fn attempt_exit_stage_listings(instance_root: String) -> List<SpoolListing> {
+  [RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused] |> map(r => spool_queue_list(store: spool_open(kind: SpoolAttemptExit, instance_root: instance_root), role: r))
 }
 
 fn attempt_exit_record_observe(instance_root: String, node_id: String, attempt_key: String, role: AttemptUnitRole) -> AttemptExitRecordObservation {
@@ -390,15 +362,12 @@ fn attempt_exit_record_observe(instance_root: String, node_id: String, attempt_k
 
 fn attempt_exit_spool_prepare(instance_root: String) -> Bool {
   fold(
-    [
-      attempt_exit_inbox_dir(instance_root: instance_root),
-      attempt_exit_queued_dir(instance_root: instance_root),
-      attempt_exit_running_dir(instance_root: instance_root),
-      attempt_exit_done_dir(instance_root: instance_root),
-      attempt_exit_refused_dir(instance_root: instance_root),
-    ],
+    [RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused],
     init: true,
-    f: (ok, dir) => ok && shell.Mkdir.Parents(path: dir as FilePath).success,
+    f: (ok, r) => ok && match spool_role_path(store: spool_open(kind: SpoolAttemptExit, instance_root: instance_root), role: r) {
+      Present { value: dir } => shell.Mkdir.Parents(path: dir as FilePath).success
+      Absent => false
+    },
   )
 }
 
@@ -479,7 +448,7 @@ fn attempt_exit_vendor_pane_entry_name_of_death(node_id: String, attempt_key: St
 
 // Vendor tmux panes have no ExecStopPost. The belt writes an inbox mkdir-name when it first sees
 // the dead pane, before it may reap. Callers that will reap must CHECK the result and keep the
-// dead pane when the write fails. Create-only mkdir is `host_spool_create_only_command`: the spool must
+// dead pane when the write fails. Create-only mkdir is `mkdir_create_only_command`: the spool must
 // already exist; a missing or read-only inbox is a failed write, not a parent-creating success.
 fn attempt_exit_record_put_mkdir_name(instance_root: String, entry_name: String) -> AttemptExitRecordPut {
   // A NAME THE WRITER NEVER EXPANDED IS NOT AN ENTRY. This mkdir route takes the entry name as TEXT
@@ -501,17 +470,22 @@ fn attempt_exit_record_put_mkdir_name(instance_root: String, entry_name: String)
       ),
     }
   } else {
-  let path = join([attempt_exit_inbox_dir(instance_root: instance_root), "/", entry_name], "")
-  let command = host_spool_create_only_command(path: path)
-  let ran = shell.Exec.RunArgv(
-    program: command.program.invocation as String,
-    arguments: command.arguments,
-  )
-  if ran.exit_code == 0 {
-    AttemptExitRecordPutOk
-  } else {
-    AttemptExitRecordPutFailed {
-      reason: join(["mkdir -- ", path, " failed: ", ran.stderr], ""),
+  match attempt_exit_pending_dir(instance_root: instance_root) {
+    Absent => AttemptExitRecordPutFailed { reason: "attempt exit spool declares no pending directory" }
+    Present { value: pending } => {
+      let path = join([pending, "/", entry_name], "")
+      let command = mkdir_create_only_command(path: path)
+      let ran = shell.Exec.RunArgv(
+        program: command.program.invocation as String,
+        arguments: command.arguments,
+      )
+      if ran.exit_code == 0 {
+        AttemptExitRecordPutOk
+      } else {
+        AttemptExitRecordPutFailed {
+          reason: join(["mkdir -- ", path, " failed: ", ran.stderr], ""),
+        }
+      }
     }
   }
   }

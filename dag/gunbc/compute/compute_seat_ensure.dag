@@ -34,7 +34,7 @@ import gunbc.compute.compute_producer_lease {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptWorkerRole, attempt_unit_role_token,
-  AttemptExitStageListing, AttemptExitStageNames, AttemptExitStageUnreadable, attempt_exit_stage_listings,
+  SpoolListing, SpoolListed, SpoolListingUnreadable, attempt_exit_stage_listings,
   AttemptExitEntryDecoded, AttemptExitEntryMalformed, attempt_exit_entry_decode,
 }
 
@@ -56,6 +56,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // Readback is independent of the door's own report: the ledger's committed figure is read before and
 // after, and a release only counts when committed fell by exactly the attempt's grant.
 // RecoverySettledButHeld, or a release the readback does not confirm, is SeatEnsureRed -- never success.
+import gunbc.spool_queue { SpoolListing, SpoolListed, SpoolListingUnreadable }
+
 type SeatEnsureOutcome
   = SeatEnsureNoop { reference: String, why: String }
   | SeatEnsureReleased { reference: String, committed_before: Kibibyte, committed_after: Kibibyte }
@@ -426,11 +428,11 @@ type SeatOwnerKey {
   attempt_key: String
 }
 
-fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<SeatOwnerKey> {
+fn seat_worker_exit_owners(listings: List<SpoolListing>) -> List<SeatOwnerKey> {
   distinct_by_key(
     xs: listings |> flat_map(l => match l {
-      AttemptExitStageNames { names } => names
-      AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+      SpoolListed { names } => names
+      SpoolListingUnreadable { reason: _ } => [] as List<String>
     }) |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
       AttemptExitEntryDecoded { record } =>
         if record.role == attempt_unit_role_token(role: AttemptWorkerRole) { [SeatOwnerKey { node_id: record.node_id, attempt_key: record.attempt_key }] } else { [] as List<SeatOwnerKey> }
@@ -439,10 +441,10 @@ fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<Seat
     key: fn(o) { join([o.node_id, "\n", o.attempt_key], "") })
 }
 
-fn seat_exit_listings_unreadable(listings: List<AttemptExitStageListing>) -> List<String> {
+fn seat_exit_listings_unreadable(listings: List<SpoolListing>) -> List<String> {
   listings |> flat_map(l => match l {
-    AttemptExitStageUnreadable { reason: r } => [r]
-    AttemptExitStageNames { names: _ } => [] as List<String>
+    SpoolListingUnreadable { reason: r } => [r]
+    SpoolListed { names: _ } => [] as List<String>
   })
 }
 

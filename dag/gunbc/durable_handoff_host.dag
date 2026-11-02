@@ -3,80 +3,39 @@ module gunbc.durable_handoff_host
 import std.types { String, Bool, List }
 import std.measure { Second, second_count }
 import std.optional { Present, Absent }
-import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
+import gunbc.spool_queue { SpoolAttemptExit, SpoolRole, RolePending, RoleHandedOff, RoleClaimed, spool_role_label }
 
 // ONE HOST SPOOL, over an entry codec. The belt exit spool
-// (gunbc.roadmap.roadmap_attempt_exit_spool) is the first instance: its stage names are kept
-// exactly, because bytes and unit names already on disk are a compatibility contract. The
+// (gunbc.roadmap.roadmap_attempt_exit_spool) is the first instance: its directory names are kept
+// exactly (gunbc.spool_queue spool_role_dir owns them), because bytes and unit names already on disk are a
+// compatibility contract. A stage is a gunbc.spool_queue SpoolRole; this module spells none. The
 // publication helper's requests/answers/refused directories are the second instance: they
 // inhabit the same enqueue law (create-only) rather than overwrite.
 //
 // Standings of the item the entry names are Wave C's projection; this module does not invent
 // them. A stage is responsibility for the ENTRY, not the work's standing.
 //
-// ENQUEUE IS CREATE-ONLY. A second write of the same name does not replace the first. The
-// publication request disk write is Filesystem.WriteCreateNew (gunbc.roadmap_publication_helper
-// publication_request_enqueue), assessed here.
-
-type HostSpoolStage
-  = AttemptExitInbox
-  | AttemptExitQueued
-  | AttemptExitRunning
-  | AttemptExitDone
-  | AttemptExitRefused
-
-fn host_spool_stage_wire(stage: HostSpoolStage) -> String {
-  match stage {
-    AttemptExitInbox => "inbox"
-    AttemptExitQueued => "queued"
-    AttemptExitRunning => "running"
-    AttemptExitDone => "done"
-    AttemptExitRefused => "refused"
-  }
-}
-
-type HostSpoolCreateObservation
-  = HostSpoolNameAbsent
-  | HostSpoolNamePresent
-  | HostSpoolNameUnreadable { detail: String }
-
-type HostSpoolEnqueue
-  = HostSpoolEntryCreated { name: String }
-  | HostSpoolEntryAlreadyPresent { name: String }
-  | HostSpoolEnqueueRefused { name: String, detail: String }
-
-fn host_spool_enqueue_assess(name: String, observed: HostSpoolCreateObservation) -> HostSpoolEnqueue {
-  match observed {
-    HostSpoolNameAbsent => HostSpoolEntryCreated { name: name }
-    HostSpoolNamePresent => HostSpoolEntryAlreadyPresent { name: name }
-    HostSpoolNameUnreadable { detail: d } => HostSpoolEnqueueRefused { name: name, detail: d }
-  }
-}
-
-fn host_spool_create_only_command(path: String) -> ArgvCommand {
-  mkdir_create_only_command(path: path)
-}
+// ENQUEUE IS CREATE-ONLY, and is gunbc.spool_queue spool_enqueue_assess: this module keeps no second enqueue law.
 
 // QUEUE HEALTH: depth by stage and the oldest owed age, with bounds as per-queue rows.
 // gunbc.roadmap_launch_deployment_observe event_backlog_judge is the first reading of this.
 type HostSpoolHealthEntry {
-  stage: HostSpoolStage
+  stage: SpoolRole
   entry: String
   age: Second
 }
 
 type HostSpoolHealthBound {
-  stage: HostSpoolStage
+  stage: SpoolRole
   bound: Second
 }
 
 type HostSpoolHealth
-  = HostSpoolHealthClear { depth_inbox: Int, depth_queued: Int, depth_running: Int }
-  | HostSpoolHealthStale { stage: HostSpoolStage, entry: String, age: Second, bound: Second }
+  = HostSpoolHealthClear { depth_pending: Int, depth_handed_off: Int, depth_claimed: Int }
+  | HostSpoolHealthStale { stage: SpoolRole, entry: String, age: Second, bound: Second }
   | HostSpoolHealthUnobserved { detail: String }
 
-fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: HostSpoolStage) -> Second? {
+fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: SpoolRole) -> Second? {
   match filter(bounds, b => b.stage == stage) |> first {
     Present { value: b } => Present { value: b.bound }
     Absent => none
@@ -114,13 +73,13 @@ fn host_spool_health_judge(entries: List<HostSpoolHealthEntry>, bounds: List<Hos
           bound: b,
         }
         Absent => HostSpoolHealthUnobserved {
-          detail: join(["no bound for stage ", host_spool_stage_wire(stage: o.stage)], ""),
+          detail: join(["no bound for stage ", spool_role_label(kind: SpoolAttemptExit, role: o.stage)], ""),
         }
       }
     HostSpoolNoStaleYet => HostSpoolHealthClear {
-      depth_inbox: count(filter(entries, e => e.stage == AttemptExitInbox)),
-      depth_queued: count(filter(entries, e => e.stage == AttemptExitQueued)),
-      depth_running: count(filter(entries, e => e.stage == AttemptExitRunning)),
+      depth_pending: count(filter(entries, e => e.stage == RolePending)),
+      depth_handed_off: count(filter(entries, e => e.stage == RoleHandedOff)),
+      depth_claimed: count(filter(entries, e => e.stage == RoleClaimed)),
     }
   }
 }

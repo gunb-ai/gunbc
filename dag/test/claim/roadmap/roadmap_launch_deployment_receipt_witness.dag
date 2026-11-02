@@ -124,6 +124,7 @@ import gunbc.roadmap.roadmap_launch_deployment_receipt {
   roadmap_launch_deployment_verdict,
   verdict_receipt_identity,
 }
+import gunbc.spool_queue { RolePending }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -780,7 +781,7 @@ fn with_backlog(f: RoadmapLaunchDeploymentFacts, b: EventBacklogFact) -> Roadmap
 }
 
 test fn witness_stale_backlog_is_incomplete_and_names_its_oldest_entry() -> Bool {
-  let stale = StaleBacklog { stage: AttemptExitInbox, entry: "n+k+worker+inv+success+exited+0", age: second(count: second_count(s: event_backlog_drain_bound) + 60), bound: event_backlog_drain_bound }
+  let stale = StaleBacklog { stage: RolePending, entry: "n+k+worker+inv+success+exited+0", age: second(count: second_count(s: event_backlog_drain_bound) + 60), bound: event_backlog_drain_bound }
   incomplete_at(facts: with_backlog(f: rlm_complete_facts(), b: stale), member: "event_backlog")
 }
 
