@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.an_under_determined_match_arm_licenses_a_wrong_sibling_application
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+
+data an_under_determined_match_arm_licenses_a_wrong_sibling_application: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_under_determined_match_arm_licenses_a_wrong_sibling_application" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "a match arm that applies one generic template to a concrete argument disagreeing with its siblings' is refused at the arm join (v1.compiler.infer arm_application_argument_refused, consuming application_arguments_inhabitance) on the real acceptance path; executed on srv2 kh-arm2 at 5ececb024048 (gunbc dc0cd15f…, mirrors at first_generation_equal=true), test.claim.match_arm_application_witness 6 of 6, both REDs ACCEPTED before (srv2 kh-recprobe2, gunbc 7ccccac4…); an arm holding an unsolved variable stays Undecidable and joins" as NonEmptyStr },
+  },
+
+  receipts: [
+    "**an under-determined match arm licenses a wrong sibling application** (a match whose arms type as one generic template applied to DISAGREEING concrete arguments is accepted, because a bare nullary variant arm takes its argument from the expected type, becomes the elected arm type, and the sibling's concrete disagreement is never judged).",
+
+    "INVALID STATE: an Accepted program in which `match r { Lost => Lost  Got {..} => s }` returns Res<RB> where Res<RA> is declared: the elected arm type Res<RA> (the nullary arm, elaborated against the expected type) satisfies the declared return while the other arm carries a distinct record.",
+
+    "HARM: a value of the wrong record type reaches the consumer of the declared return; the first field read or pattern over the declared type misreads it.",
+
+    "SPECIMEN (2026-11-01, routed by keen-otter-392 from quick-newt-573): src/v2/test/claim/compiler/width_literal_admission.dag wla_inferred_with is declared '-> Outcome<InferredTree>' and its Accepted arm returns infer(tree: resolved), an Outcome<ObligatedInferredTree>, beside a Rejected arm that fixes no type argument. Its consumer migration, discharging the obligations through v2.compiler.refinement_discharge infer_and_discharge, is bold-dove-340's gunbc#15630.",
+
+    "LOCATED BY EXECUTION, not by reading: srv2 kh-recprobe refused a bare distinct record and a user-generic PRODUCT but accepted the coproduct-from-a-match-arm shape; srv2 kh-recprobe2 refused the coproduct returned directly, through a call, and from a match whose arms all agree, and accepted only a match with a bare nullary sibling arm. The earliest unjustified link: v1.compiler.infer match_arm_join_diagnostics judged a disagreeing arm only for bare/optional mixing and proven-disjoint heads.",
+
+    "ROOT GENERALIZATION (parent ruling): the arm-level twin of Q2's 'an unsolved K does not license a wrong V'. One rule serves both: application_pair widened from collections to two applications of ONE RESOLVED DECLARATION (by identity, never spelling), and the arm join consumes Q2's application_arguments_inhabitance.",
+
+    "RUNG: found BELOW the ladder -- accepted with no diagnostic.",
+
+    "CEILING 3, structurally guaranteed: a concrete per-argument disagreement between arms of one template is refused; a still-unsolved argument is Undecidable, never agreement.",
+
+    "REVIEW TELL: an arm-join check that compares only heads or optionality, or a per-argument judgment admitted only for collection templates.",
+  ],
+
+  evidence: [],
+}
