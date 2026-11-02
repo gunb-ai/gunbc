@@ -63,6 +63,7 @@ import gunbc.boot_artifact_delivery {
   DeliveryTargetControllerMismatch,
   DeliveryTargetSubjectMismatch,
   DeliveryNoBootSourceOverride,
+  DeliveryNoEligibleNetworkTransport,
   DeliveryNoEligibleTransport,
   MegaRacRestRemoteMedia,
   OpenBmcConfigfsUsbGadget,
@@ -106,6 +107,7 @@ type OsInstallMechanismRefusalCause
   | InstallTargetContextMismatch { requested: BootDeliveryTarget }
   | InstallNoBootSourceOverride { firmware: BmcFirmwareReleaseIdentity }
   | InstallBootControlUnestablished { cause: BootDeliveryRefusalCause }
+  | InstallNoEligibleNetworkTransport { considered: List<BootDeliveryCandidateVerdict> }
   | InstallNoEligibleTransport {
       firmware: BmcFirmwareReleaseIdentity,
       considered: List<BootDeliveryCandidateVerdict>,
@@ -169,6 +171,7 @@ fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallM
         DeliveryBootControlRouteNotInProfile { observed: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
         DeliveryBootControlRouteNotControlCapable { observed: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
         DeliveryBootControlRouteAmbiguous { observed: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryNoEligibleNetworkTransport { considered: considered } => OsInstallMechanismRefused { cause: InstallNoEligibleNetworkTransport { considered: considered } }
         DeliveryNoEligibleTransport { firmware: fw, considered: considered } =>
           OsInstallMechanismRefused { cause: InstallNoEligibleTransport { firmware: fw, considered: considered } }
       }

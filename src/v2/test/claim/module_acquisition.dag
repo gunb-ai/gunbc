@@ -1,7 +1,7 @@
 module v2.test.claim.module_acquisition
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, List, Map }
-import v2.compiler.module_acquisition { AcquiredFromFile, AcquireEntry, AcquireImportedModule, AcquireImportedMember, AcquireQualifiedReference, AcquiredModule, AcquisitionAdvanced, AcquisitionExact, AcquisitionExactness, AcquisitionEntryUnderivable, AcquireImportClosure, AcquisitionEnv, AcquisitionGrammarUnprepared, AcquisitionKind, AcquisitionMemberNotRead, AcquisitionMarkedDeclaration, AcquisitionMarkerRead, AcquisitionMarkersRead, AcquisitionMarkersRefused, AcquisitionMemberRead, AcquisitionMemberRefused, AcquisitionMemberIdentityDisagrees, AcquisitionDerivedRosterRefused, AcquisitionMemberSitesUnreadable, AcquisitionLookupRefused, AcquisitionMemberReadOk, AcquisitionMemberReadRefused, AcquisitionReadNotRequested, AcquisitionReadTwice, AcquisitionReadWithoutMember, AcquisitionRequest, AcquisitionRequestedNotRead, AcquisitionTreeUnbound, AcquisitionUnknownModule, AcquisitionState, AcquisitionStepRefused, MemberParseRefused, MemberParses, SourceRootBinding, acquisition_env_over, acquisition_exactness, acquisition_ingest, acquisition_member_requests, acquisition_module_path, acquisition_parse, acquisition_step, acquisition_test_markers, acquisition_refusal_text, bound_modules_prepended, namespace_directory_is_the_absent_path, namespace_module_name, namespace_relative_directory, namespace_top_level, top_level_namespaces, bound_modules_admitted, BoundModules, BoundModulesListed, BoundModulesRefused }
+import v2.compiler.module_acquisition { AcquiredFromFile, AcquireEntry, AcquireImportedModule, AcquireImportedMember, AcquireQualifiedReference, AcquiredModule, AcquisitionAdvanced, AcquisitionExact, AcquisitionExactness, AcquisitionEntryUnderivable, AcquireImportClosure, AcquisitionEnv, AcquisitionGrammarUnprepared, AcquisitionKind, AcquisitionMemberNotRead, AcquisitionMarkedDeclaration, AcquisitionMarkerRead, AcquisitionMarkersRead, AcquisitionMarkersRefused, AcquisitionMemberRead, AcquisitionMemberRefused, AcquisitionMemberIdentityDisagrees, AcquisitionDerivedRosterRefused, AcquisitionMemberSitesUnreadable, AcquisitionLookupRefused, AcquisitionMemberReadOk, AcquisitionMemberReadRefused, AcquisitionReadNotRequested, AcquisitionReadTwice, AcquisitionReadWithoutMember, AcquisitionRequest, AcquisitionRequestedNotRead, AcquisitionTreeUnbound, AcquisitionUnknownModule, AcquisitionState, AcquisitionStepRefused, MemberParseRefused, MemberParses, SourceRootBinding, acquisition_env_over, acquisition_exactness, acquisition_ingest, acquisition_member_requests, acquisition_module_path, acquisition_parse, acquisition_step, acquisition_test_markers, acquisition_refusal_text, bound_modules_prepended, namespace_directory_is_the_absent_path, namespace_module_name, namespace_relative_directory, namespace_top_level, top_level_namespaces, bound_modules_admitted, BoundModules, BoundModulesListed, BoundModulesRefused, AcquisitionEntriesDerived, AcquisitionEntriesRefused, AcquisitionEntryNamespaceUndeclared, acquisition_entry_requests }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
 import v2.compiler.tokenize { prepare_lex_rules }
@@ -12,9 +12,6 @@ import std.algebra { string_contains, length, list_head, list_map, empty_map, ma
 import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
-
-
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WITNESSES FOR THE ACQUIRER'S EXACTNESS VERDICT (gunbc.plans.source_layout_authority R9: the read set
@@ -1137,6 +1134,7 @@ test fn an_undeclared_namespace_dag_to_v2_acquisition_refuses_without_reading() 
                 }
             AcquisitionGrammarUnprepared { diagnostics: _ } => false
             AcquisitionEntryUnderivable { entry: _, cause: _ } => false
+            AcquisitionEntryNamespaceUndeclared { entry: _, namespace: _ } => false
             AcquisitionTreeUnbound { tree: _, request: _ } => false
             AcquisitionUnknownModule { request: _ } => false
             AcquisitionMemberRefused { module: _, file: _, diagnostics: _ } => false
@@ -1236,4 +1234,63 @@ test fn the_import_depth_read_refuses_a_member_that_declares_another_module_exac
   let other = "module v2.test.other\nfn subject() -> Bool { true }\n"
   depth_text_at(content: other, import_depth: true) == depth_text_at(content: other, import_depth: false)
     && !starts_with(s: depth_text_at(content: other, import_depth: true), prefix: "read|")
+}
+
+test fn an_entry_in_an_undeclared_namespace_refuses_before_any_request() -> Bool {
+  match acquisition_entry_requests(
+    layout: repository_storage_layout(),
+    pending: ["fixture.native_ingest.copied_dag"],
+    acc: []
+  ) {
+    AcquisitionEntriesRefused { refusal: refusal } =>
+      match refusal {
+        AcquisitionEntryNamespaceUndeclared { entry: named, namespace: space } =>
+          named == "fixture.native_ingest.copied_dag"
+            && space == "fixture.native_ingest"
+        AcquisitionGrammarUnprepared { diagnostics: _ } => false
+        AcquisitionEntryUnderivable { entry: _, cause: _ } => false
+        AcquisitionTreeUnbound { tree: _, request: _ } => false
+        AcquisitionUnknownModule { request: _ } => false
+        AcquisitionLookupRefused { request: _, lookup: _ } => false
+        AcquisitionMemberRefused { module: _, file: _, diagnostics: _ } => false
+        AcquisitionMemberSitesUnreadable { module: _, file: _ } => false
+        AcquisitionMemberIdentityDisagrees { module: _, file: _, declared: _ } => false
+        AcquisitionDerivedRosterRefused { module: _, refusal: _ } => false
+      }
+    AcquisitionEntriesDerived { requests: _ } => false
+  }
+}
+
+// THE CONTROL OF ENTRY-SIDE MEMBERSHIP, differing from the red above in the entry's namespace alone:
+// `gunbc` is a row, so `gunbc.native_cli_door_probe` - the entry the native-lane CLI-door control passes -
+// still enters the acquisition as one entry request on the tree the layout stores it in.
+test fn an_entry_in_a_declared_namespace_still_enters_the_acquisition() -> Bool {
+  match acquisition_entry_requests(
+    layout: repository_storage_layout(),
+    pending: ["gunbc.native_cli_door_probe"],
+    acc: []
+  ) {
+    AcquisitionEntriesDerived { requests: requests } =>
+      match list_head(xs: requests) {
+        Present { value: request } =>
+          request.spelling == "gunbc.native_cli_door_probe"
+            && length(xs: requests) == 1
+            && match request.kind {
+              AcquireEntry => true
+              AcquireImportedModule => false
+              AcquireImportedMember => false
+              AcquireQualifiedReference => false
+            }
+        Absent => false
+      }
+    AcquisitionEntriesRefused { refusal: _ } => false
+  }
+}
+
+// The refusal sentence an undeclared entry produces, pinned so a change to it is visible: this is the text
+// the native lane prints when a fixture entry is no longer admissible.
+test fn the_undeclared_entry_refusal_names_the_namespace() -> Bool {
+  acquisition_refusal_text(
+    refusal: AcquisitionEntryNamespaceUndeclared { entry: "fixture.native_ingest.copied_dag", namespace: "fixture.native_ingest" }
+  ) == "entry fixture.native_ingest.copied_dag lies in namespace fixture.native_ingest, which has no row in the declared layout, so no module of it is a compilable entry"
 }

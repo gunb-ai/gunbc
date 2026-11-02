@@ -132,6 +132,7 @@ type DerivedRosterRefusal
 type AcquisitionRefusal
   = AcquisitionGrammarUnprepared { diagnostics: NonEmptyDiagnostics }
   | AcquisitionEntryUnderivable { entry: String, cause: String }
+  | AcquisitionEntryNamespaceUndeclared { entry: String, namespace: String }
   | AcquisitionTreeUnbound { tree: String, request: AcquisitionRequest }
   | AcquisitionUnknownModule { request: AcquisitionRequest }
   | AcquisitionLookupRefused { request: AcquisitionRequest, lookup: ReferenceLookup }
@@ -1205,7 +1206,21 @@ fn acquisition_loop(env: AcquisitionEnv, state: AcquisitionState, entries: List<
 }
 
 // The initial requests, one entry request per entry in the order given. An entry the layout cannot
-// derive a file for refuses the whole acquisition before any read.
+// derive a file for refuses the whole acquisition before any read, and so does an entry whose namespace
+// has no row in the declared layout (gunbc.source_layout_namespaces): the acquirer route used to ask
+// derivability alone, which let a compile ENTER a namespace the storage policy does not declare - the
+// finding named beside ruling gunbc.design_ruling cross_tree_admission_is_namespace_membership.
+//
+// WHY THE MEMBERSHIP ASK SITS HERE AND NOT IN THE IMPORT MODEL. An entry spelling names a module, so its
+// namespace is a namespace and the ask is decidable before any read. The import edge is charged inside
+// v2.std.cross_tree.import_model cross_tree_import_admitted, which this route reaches per PROBE: longest
+// first over the dotted prefixes of a reference (v2.compiler.source_authority reference_next_read_derived),
+// so the first probe of `product.y.projection_same_named_value` has namespace `product.y`, which is a
+// module, not a row. That path therefore SKIPS a rowless candidate rather than refusing it (stated at
+// v2.compiler.source_authority above storage_candidate_unstorable); charging a same-tree DENIAL there would
+// refuse ordinary qualified references, which is what a first attempt at this finding did and what the
+// v2-native-cli leg caught. The module-level fact for a same-tree import is enforced where the module is
+// known: bound_modules_admitted below refuses a module whose namespace has no row, naming the namespace.
 type AcquisitionEntries
   = AcquisitionEntriesDerived { requests: List<AcquisitionRequest> }
   | AcquisitionEntriesRefused { refusal: AcquisitionRefusal }
@@ -1222,11 +1237,17 @@ fn acquisition_entry_requests(
         ModuleNameUnderivable { name: name, cause: cause } =>
           AcquisitionEntriesRefused { refusal: AcquisitionEntryUnderivable { entry: name, cause: cause } }
         ModuleFileDerived { file: file } =>
-          acquisition_entry_requests(
-            layout: layout,
-            pending: skip(xs: pending, n: 1),
-            acc: list_snoc_item(xs: acc, item: AcquisitionRequest { from_module: "", from_tree: file.tree, spelling: entry, kind: AcquireEntry })
-          )
+          if !namespace_declared(rows: layout.namespace_rows, namespace: module_namespace(name: entry)) {
+            AcquisitionEntriesRefused {
+              refusal: AcquisitionEntryNamespaceUndeclared { entry: entry, namespace: module_namespace(name: entry) }
+            }
+          } else {
+            acquisition_entry_requests(
+              layout: layout,
+              pending: skip(xs: pending, n: 1),
+              acc: list_snoc_item(xs: acc, item: AcquisitionRequest { from_module: "", from_tree: file.tree, spelling: entry, kind: AcquireEntry })
+            )
+          }
       }
   }
 }
@@ -1389,6 +1410,7 @@ fn census_block_locality(refusal: AcquisitionRefusal) -> CensusBlockLocality {
     AcquisitionTreeUnbound { tree: t, request: q } => CensusBlockedEdge { refusal: CensusEdgeTreeUnbound { tree: t, request: q } }
     AcquisitionGrammarUnprepared { diagnostics: _ } => CensusBlockNotLocal
     AcquisitionEntryUnderivable { entry: _, cause: _ } => CensusBlockNotLocal
+    AcquisitionEntryNamespaceUndeclared { entry: _, namespace: _ } => CensusBlockNotLocal
     AcquisitionDerivedRosterRefused { module: _, refusal: _ } => CensusBlockNotLocal
   }
 }
@@ -1561,11 +1583,17 @@ fn acquire_census_closure_of(layout: SourceStorageLayout, bindings: List<SourceR
 
 // ---- the acquired set as the compiler's source ingest ----------------------------------------------
 
-// The host path an acquired member was read from. It is the artifact id, the artifact path and the
-// compilation unit of the member's witness, so a consumer that names the member's file (a discovery
-// row's entry, a diagnostic locus) names this path and no second spelling of it.
+// The host path an acquired member was read from. It is the artifact id and the artifact path of the
+// member's witness; the witness's compilation unit (what a diagnostic locus names) is the
+// root-relative module_file_key, so a located diagnostic does not depend on where the root is mounted.
 fn acquisition_module_path(module: AcquiredModule) -> String {
   source_root_child_path(directory: module.host_directory, name: module.file.relative_path)
+}
+
+// THE ONE SPELLING OF A MEMBER'S FILE IN A LOCUS: the witness's compilation unit, and so the key every
+// file-refusal index and every consumer that joins a path to a located diagnostic uses.
+fn acquisition_compilation_unit(file: ModuleFileRef) -> Symbol {
+  symbol_intern_lexeme(lexeme: module_file_key(file: file))
 }
 
 fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
@@ -1574,13 +1602,15 @@ fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
 
 // ONE WITNESS SHAPE FOR EVERY READ THE ACQUIRER MADE, admitted or blocked: the path is the host path
 // the bytes came from, and the bytes are the ones read, so a census reporting a blocked member reports
-// it from acquisition's read and never from a second one.
+// it from acquisition's read and never from a second one. The COMPILATION UNIT is the root-relative
+// source identity (module_file_key), not the host path, so a located diagnostic names the same file
+// whatever directory the root is mounted at.
 fn acquisition_read_witness(file: ModuleFileRef, host_directory: String, content: String) -> DagSourceReadWitness {
   let path = source_root_child_path(directory: host_directory, name: file.relative_path)
   DagSourceReadWitness {
     source: Medium { carried: content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
-    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    compilation_unit: acquisition_compilation_unit(file: file),
     source_root: file.tree
   }
 }
@@ -1868,6 +1898,8 @@ fn acquisition_refusal_text(refusal: AcquisitionRefusal) -> String {
     AcquisitionGrammarUnprepared { diagnostics: _ } => "the dag grammar did not prepare"
     AcquisitionEntryUnderivable { entry: entry, cause: cause } =>
       concat("entry ", entry, " names no storable module: ", cause)
+    AcquisitionEntryNamespaceUndeclared { entry: entry, namespace: namespace } =>
+      concat("entry ", entry, " lies in namespace ", namespace, ", which has no row in the declared layout, so no module of it is a compilable entry")
     AcquisitionTreeUnbound { tree: tree, request: request } =>
       concat("no source root is bound to the ", tree, " tree, which holds ", acquisition_request_text(request: request))
     AcquisitionUnknownModule { request: request } =>

@@ -1,0 +1,202 @@
+module gunbc.recurring_failure_mode.a_closure_capture_chain_releases_by_host_stack_recursion
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A CLOSURE-CAPTURE CHAIN HAD NO ITERATIVE RELEASE, SO DROPPING ONE ABORTED THE HOST; THE `Env` PART OF
+// IT IS REPAIRED, THE `Rc<Node>` PART IS STILL UNPROBED. Found 2026-10-31 by a probe arm run at the
+// manager's direction (tidy-ant-251), in the same test module that carries the iterative-release pins
+// landed with PR #15360. The seed's iterative `Value` release then covered exactly the carrier families
+// `detach_owned_children` has arms for — `List`, `Map`, and the `Record`/`Variant` `fields` — and
+// `Value::drop`'s final match released only `List` and `Map`. `Value` also carries
+// `Closure { params, body: Rc<Node>, env: Rc<Env> }`, and `Env` is itself a heap-shaped structure
+// (`bindings: im::HashMap<Symbol, Value>`, `parent: Option<Rc<Env>>`). Neither had an arm, so a chain of
+// closures captured through one another kept drop glue and cost one host stack frame per level. The same
+// day, the seed lane landed `impl Drop for Env` (PR #15500, main `59ce2dba0dccede6af3fa8058cfea80d6ac2370e`),
+// which drains an `Env` chain iteratively; see the `REPAIRED BY #15500` receipt for what that covers and
+// the `RESIDUAL` receipt for what it does not. This row files the class, its RED, the repair, and the
+// residual; it funded no Rust and it claims no consumer on the corpus.
+
+data a_closure_capture_chain_releases_by_host_stack_recursion: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_closure_capture_chain_releases_by_host_stack_recursion" as NonEmptyStr,
+
+  // FOUND BELOW THE LADDER, AND STILL THERE AFTER THE REPAIR. No rung check, no required run and no
+  // witness says anything about this state: the probe of that name and shape is now a landed control on
+  // main (`t9_host_recursion_probes::probe_closure_capture_chain_drops`), but the lane that runs it is off
+  // the merge path (`gunbc.rung_drop.rust_unit_tests_off_the_merge_path`), which is also where #15500's
+  // other controls live. The ceiling is MechanicallyPreventable: one check that
+  // names every heap carrier a `Value` release must walk and refuses a release that omits one would refuse
+  // this state at the earliest boundary that cannot be justified. The repair is hand-written for one
+  // family (`Env`), so the invalid state stays WRITABLE for the families the check would name — the rung
+  // does not move on a repair that nothing enforces.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability to refuse a `Value` release that omits a heap carrier the type declares: a check that enumerates the carriers reachable from a `Value` (`List`, `Map`, `Set`, `Record`, `Variant`, `Closure.env`, `Closure.body`, `Fn.node`) and rejects a `detach_owned_children`, a `Value::drop` or an `Env::drop` release that covers a proper subset of them, together with the trigger already named by `gunbc.rung_drop.rust_unit_tests_off_the_merge_path`, which is what would put a probe arm of this shape on the merge path. SUFFICIENT FOR the state to stop being silent; INDIFFERENT to which fix is chosen, and it retires no drop — the v1 unit-test lane stays withdrawn in every other respect."
+    },
+  },
+
+  receipts: [
+    "**INVALID STATE.** A value graph whose depth is bounded only by the heap — a fold that wraps a
+    closure around the previous closure, each level's `Env` holding the previous closure in its
+    `bindings` — aborted the host process when it was released: the test thread reported that it had
+    overflowed its stack and the process died by SIGABRT, with no compiler diagnostic, no located cause,
+    and no claim verdict. `CALL_DEPTH_LIMIT` bounds interpreted *call* depth; it says nothing about the
+    depth of a value, which is the standing reading in the seed's own depth module: a value is as deep as
+    its data, and that depth is bounded by the heap, not by the call stack. The `Env` part of this shape is
+    repaired at `59ce2dba0dccede6af3fa8058cfea80d6ac2370e`; see the `REPAIRED` and `RESIDUAL` receipts for
+    the boundary of that claim.",
+
+    "**THE RED, NAMED AS AN INSTRUMENT.** Arm: `v1_interpreter::value_depth_walker_tests::probe_closure_capture_chain_drops`
+    — 262,144 levels, the module's own `DEPTH`, the depth its `#15360` pins already use, so the RED is
+    not an artifact of a depth I chose. That shape and name are on main now as
+    `t9_host_recursion_probes::probe_closure_capture_chain_drops`, landed green by #15500's repair; the
+    measurement below was taken on the probe tree before it. Re-run it with the two commands the module's
+    header names: the
+    compile gate `cargo test --no-run --release --locked -p v1-compiler`, then one process per arm
+    `cargo test --release --locked -p v1-compiler -- --exact <the name as cargo --list prints it>
+    --nocapture`. Measured rows, one process each, at head `cf06f08f749664b10a523bde47633e07f88c5a6f`,
+    test binary `target/release/deps/v1_compiler-502c4d2086e78370`, in an `app.slice` scope with
+    `MemoryMax=16G MemorySwapMax=0` and a 2400 s bound:
+      `probe_closure_capture_chain_drops` rc=101 wall=2s ran=0 exit-signal=SIGABRT — RED. Its output
+      carries exactly two failure lines, `thread '...probe_closure_capture_chain_drops' (216422) has
+      overflowed its stack` and `fatal runtime error: stack overflow, aborting`, followed by the cargo
+      trailer `process didn't exit successfully: ... --exact ... --nocapture (signal: 6, SIGABRT:
+      process abort signal)`; `ran=0` because no `test result:` line is produced once the process aborts;
+      `probe_env_parent_chain_drops` rc=0 wall=7s ran=1 overflow=0 — the same carrier WITHOUT the value
+      level: an `Rc<Env>` parent chain bound to `Int`s only releases at the same depth;
+      `a_weak_held_list_chain_drops` rc=0 wall=6s ran=1 overflow=0 — the `#15360` pin, so the iterative
+      machinery is alive for the families it covers.
+    Artifacts (shared runner, `~/valiant-15258/probes-closure/`): `compile.log` (gate rc=0 wall=637s),
+    `list.log` (the name source of truth), `run-probe_closure_capture_chain_drops.out` (761 B, the two
+    failure lines), `run-probe_env_parent_chain_drops.out`, `run-a_weak_held_list_chain_drops.out`; the
+    peak-resident line is in `~/valiant-15258/probes-closure.time` (written beside the directory). Those
+    paths are runner-local, so each artifact is pinned by full sha256 in this PR's evidence-preservation
+    comment, which is the citable form from here on. Patch
+    guard: 154 lines added, 0 removed against the head, 6 probe functions.",
+
+    "**NO DISK-ERROR CONFOUND.** The operator invalidated runs that hit a full disk. This pass predates
+    that condition and its own evidence is clean of it: across every file in
+    `~/valiant-15258/probes-closure/`, the count of lines matching `No space left` or `ENOSPC` is 0
+    (measured 2026-10-31, same host, same account), and the failure it reports is a stack overflow
+    aborting by SIGABRT — a host-stack fact, not an I/O error. The pass wrote no target/ growth of its
+    own beyond the incremental rebuild of one crate's test target.",
+
+    "**WHERE THE RECURSION IS, BY THE SIBLING ARM.** The `Rc<Env>` parent chain alone does NOT overflow,
+    while the chain that puts Values inside `Env.bindings` does. The reading of that difference — stated
+    as a reading, the measurements above being the facts — is that `parent` is `Env`'s last field, so
+    releasing it sits in tail position and drop glue turns it into a loop, whereas `bindings` is an
+    `im::HashMap` of Values dropped before that field, and each of those Values is a `Closure` whose own
+    `env` then drops. So the recursion is through the captured bindings, which is exactly the part no arm
+    of `detach_owned_children` reaches: the function detaches `List`, `Map` and the `Record`/`Variant`
+    `fields`, and `Value::drop`'s closing match releases `List` and `Map` inline while the depth is
+    raised. `Closure` and `Env` appear in neither place.",
+
+    "**REPAIRED THE SAME DAY, AND WHAT THE REPAIR COVERS.** The seed lane landed `impl Drop for Env` in
+    `src/v1/stage0/src/v1_interpreter.rs` at main `59ce2dba0dccede6af3fa8058cfea80d6ac2370e` (PR #15500,
+    `Env drops iteratively: closure/Env chains no longer abort the seed interpreter`), routed there by the
+    manager's ruling that carried this row's RED. The outermost `Env` drop drains a thread-local worklist
+    (`ENV_DROP_DRAINING`, `ENV_DROP_QUEUE`), so an `Env` chain — the parent chain and every `Env` a
+    binding's `Closure` owns — is released without costing one host frame per level. THE FAILURE MODE NOW
+    PREVENTED, concretely: releasing the graph this row's RED builds, a 262,144-deep chain in which each
+    level's `Env.bindings` holds the previous `Closure`, no longer aborts the process by SIGABRT with no
+    diagnostic. That graph is a landed control on main, in the seed's own test module
+    `t9_host_recursion_probes`: the arm `probe_closure_capture_chain_drops` builds this same shape — each
+    level's `Env` binding holding the previous `Closure` — at `depth()` = 262,144, the depth this row's RED
+    used, and it passes after the repair, beside `probe_closure_via_env_parent_chain_drops`,
+    `probe_closure_env_list_of_closures_drops`, `probe_closure_env_map_value_drops` and
+    `control_shallow_closure_chain_drops`. The `Env.parent`-only arm `probe_env_parent_chain_drops` defaults
+    to 1,000,000 levels instead: that module records those shapes holding at 262,144 and aborting only at
+    1,000,000 before the fix, which is the same reading this row's sibling arm measured, and the 1,000,000
+    runs are `--ignored` because they peak near 2.4 GB. Those controls are #15500's evidence, on the Rust
+    unit-test surface — which is still off the merge path, the standing
+    reading in `gunbc.rung_drop.rust_unit_tests_off_the_merge_path`. This row did not re-run its own probe
+    arm at the repair head (the manager ruled no new stack experiment).",
+
+    "**RESIDUAL, NOT COVERED BY THE REPAIR: THE `Rc<Node>` CARRIERS.** `Value::Closure { body: Rc<Node> }`
+    and `Value::Fn { node: Rc<Node> }` still name a heap carrier that no release walks: `Node` has no
+    iterative release arm, and it appears in none of `detach_owned_children`, `Value::drop` or `Env::drop`.
+    Whether a deep `Node` chain aborts is UNKNOWN — it has never been probed, and this row does not claim
+    that it does; a `Node` chain is bounded by source text rather than by heap-built data, which is a
+    reason to measure before filing anything about it. What IS claimable is the writability: the state this
+    row files — a `Value` release that omits a carrier the type declares — remains writable for those two
+    carriers, and the trigger capability named in the rung above is the check that would refuse it. This is
+    one residual of the filed class with that trigger, not a second defect.",
+
+    "**WHAT THE CLASS ROW SAYS, AND WHERE IT IS WIDER THAN THE CODE.** The class row
+    `gunbc.recurring_failure_mode.recursion_over_value_depth_uncounted_by_the_call_limit` records that
+    its build-time census sees DIRECT self-recursive walkers over `Value` — the census is
+    `unguarded_recursive_value_walkers` in `src/v1/stage0/build.rs` — and its receipts state, as part of
+    what that census does not see, that `Drop` is iterative. At the head this row was filed the code
+    supported a narrower sentence: `Drop` was iterative over the carrier families it detached and the two
+    it released inline, and a family with no arm kept drop glue. #15500 narrowed that gap by giving `Env`
+    an iterative arm of its own, and `Node` remains where the sentence was — so the narrower reading still
+    holds, with one family added. This row does not claim the class row was wrong when it was filed — the
+    closure chain was measured now, not then — and it does not amend that row; amending a landed row is its
+    owner's call, and this row exists so the narrower sentence is on the record beside the measurement.",
+
+    "**CEILING AND TRIGGER, WITHOUT FUNDED WORK.** The ceiling is a check that enumerates the heap carriers
+    a `Value` release must walk and refuses a release covering a proper subset of them; that is mechanical
+    and unbuilt, so the blocker is ClimbableButUnbuilt. THIS ROW FUNDED NO RUST. What it did was author the
+    RED and route the finding: the manager's ruling was that the RED is authorable and that the repair
+    decision comes after the finding, and the seed lane then chose and landed the repair (#15500). Of the
+    two shapes visible when this was filed — an arm for the `Closure` carrier in the shape of the existing
+    four, or a single traversal authority over `Value` children, which is the ceiling the class row already
+    names as rung 3 — the repair took a third: an arm on `Env`, the structure the chain actually passes
+    through. Nothing about the ceiling changed by that: it is still the unbuilt check named in the rung.",
+  ],
+
+  // WHAT IS NOT CLAIMED, so the row cannot be read wider than its measurement.
+  //
+  // 1. NO OBSERVED CONSUMER. The corpus specimen that started this investigation — the 12 h `rung_drop`
+  //    core, `core.claim_batch.3426020`, 44,866,076,672 bytes, built at `9de26fc458bb` with binary
+  //    sha256 prefix `6bc4c64c5490` — faults in a chain of `Value::Variant` elements over two-element
+  //    sized chunks: 62,891 frames, 58,293 of them at ONE `Rc::drop_slow` pc, the recursing element's
+  //    discriminant word `0x9` = `Variant` at 58,292 of those levels, and ZERO `Closure` frames. Census
+  //    artifacts: `~/valiant-15258/rungcore-frame-census-v3.txt`, `rungcore-refcount-census-v2.txt`, pinned
+  //    by full sha256 in this PR's evidence-preservation comment; the core file itself was deleted after
+  //    that record (44,866,076,672 B freed), so the outputs and the program revision are the citable
+  //    evidence from here on. So this class is LATENT — reachable by a program shape, not observed in one
+  //    — and the observed class is retired: the same probe module releases the census shape at 262,144
+  //    levels both with a `Weak` outstanding on every carrier and with genuine sharing
+  //    (`probe_census_shape_weak_held_drops`, `probe_census_shape_unique_owned_drops`,
+  //    `probe_genuinely_shared_census_shape_drops`, all rc=0 ran=1 overflow=0, in
+  //    `~/valiant-15258/probes-census-main/` and `probes-census-deep/`).
+  //
+  // 2. THE RED MEASUREMENT IS NOT A RED TEST ON A REQUIRED SURFACE. The arms that measured it live in a
+  //    deliberately dirty tree, `~/valiant-15258/probes-376cc44fa836`, 154 additive lines applied by
+  //    `~/probe_census_patch.py` and `~/probe_closure_patch.py`, and by ruling no failing arm of mine
+  //    lands in the seed. What IS on main is #15500's own set — the same shape, at the same depth, green
+  //    after its repair — so the remaining deficit is the surface, not the absence of a control: the
+  //    Rust unit-test lane is off the merge path (this lane files that as
+  //    `a_rust_test_target_that_does_not_compile_reads_green`, and the rung_drop row in `evidence` keeps
+  //    the lane withdrawn).
+  //
+  // 3. NO DEPTH THRESHOLD IS CLAIMED. The RED is measured at the module's `DEPTH` of 262,144 and the
+  //    release is measured there too; no search for the smallest aborting depth was run. #15500's own
+  //    controls run the `Env.parent`-only shapes at 1,000,000, which says where they discriminate, not
+  //    where the limit is.
+  //
+  // 4. `Fn { node: Rc<Node> }` AND `Closure { body: Rc<Node> }` ARE UNPROBED, and that gap survives the
+  //    repair: it is written up as the `RESIDUAL` receipt above, with the trigger capability that would
+  //    close it. A chain of `Rc<Node>` is a recursion over the syntax tree, not over values, and the core's
+  //    chain was `Value::drop` frames — so this row says nothing about whether a deep `Node` chain releases.
+  //
+  // 5. WHAT IS AND IS NOT CLAIMED ABOUT THE REPAIR. #15500's controls show the `Env`-shaped chains
+  //    releasing at the depths those controls name; this row claims nothing further — not that every
+  //    closure shape now releases, not what the drain costs, and not that the abort is unreachable by any
+  //    other carrier. The arithmetic that settled the sharing question for `#15360` (a shared carrier's
+  //    release is a decrement that frees nothing, so only unique ownership can ever reach the recursion)
+  //    is the standing reason sharing is not the mechanism here.
+
+  evidence: [
+    decl_ref(module_path: "gunbc.recurring_failure_mode.recursion_over_value_depth_uncounted_by_the_call_limit", decl_name: "recursion_over_value_depth_uncounted_by_the_call_limit"),
+    decl_ref(module_path: "gunbc.rung_drop.rust_unit_tests_off_the_merge_path", decl_name: "rust_unit_tests_off_the_merge_path"),
+  ],
+}

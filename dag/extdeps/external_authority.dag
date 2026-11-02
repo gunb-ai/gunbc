@@ -50,6 +50,8 @@ fn observed_receipt(receipt: DeclarationRef) -> ObservedReceipt
     decl_ref(module_path: "gunbc.host.host_software_surface", decl_name: "srv1_software_inhabitance_ground"),
     decl_ref(module_path: "gunbc.ci.ci_fleet", decl_name: "mtcollins1_socket0_cpu_part_standing"),
     decl_ref(module_path: "gunbc.host.srv1_serving_startup_receipt", decl_name: "srv1_serving_startup_ground"),
+    decl_ref(module_path: "product.p4261.evidence", decl_name: "p4261_e1_revision_standing"),
+    decl_ref(module_path: "product.p4261.evidence", decl_name: "p4261_k1_revision_standing"),
   ]
   = ObservedReceipt { receipt: receipt }
 

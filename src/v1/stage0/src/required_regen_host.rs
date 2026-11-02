@@ -3716,7 +3716,8 @@ fn rebuild_scope_decision_with(
 
 /// The modules the host shell crate declares PLUS the shell's own root, read from the same file:
 /// the rebuild-scope fold owns a mirror through this declaration alone, so the root file is a
-/// fact this read supplies (its stem), not a spelling the fold recognises.
+/// fact this read supplies (its stem), not a spelling the fold recognises. `closure_modules`
+/// reads the declaration transitively, so a hand file a root module declares is owned too.
 fn host_shell_scope_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
     let mut modules = super::emitted_closure_compile_host::closure_modules(lib_rs)?;
     let root = lib_rs
@@ -10490,5 +10491,54 @@ mod boundary_population_tests {
             boundary_drift_from_producer_report(br#"{"schema":"other","divergent":[]}"#),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod host_shell_scope_modules_tests {
+    use super::host_shell_scope_modules;
+
+    // DISCRIMINATING: `compile_clean` is declared by `cli_run`, not by lib.rs, and `drain` is
+    // reached by a `#[path]` attribute. Reading lib.rs alone left both unowned, so a hand edit to
+    // either refused `MirrorHasNoOwningPackage`. `stray.rs` sits in the same directory but is
+    // declared nowhere, so it must stay unowned (the refusal for a path with no owning package).
+    #[test]
+    fn nested_and_path_attributed_modules_are_owned_and_undeclared_files_are_not() {
+        let dir = std::env::temp_dir().join(format!("host_shell_scope_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("cli_run")).unwrap();
+        std::fs::write(dir.join("lib.rs"), "mod cli_run;\nmod plain;\n").unwrap();
+        std::fs::write(dir.join("plain.rs"), "").unwrap();
+        std::fs::write(
+            dir.join("cli_run.rs"),
+            "mod compile_clean;\n#[path = \"drain_file.rs\"]\nmod drain;\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("cli_run/compile_clean.rs"), "").unwrap();
+        std::fs::write(
+            dir.join("drain_file.rs"),
+            "mod deeper;\n#[path = \"sibling.rs\"]\nmod via_sibling;\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("deeper.rs"), "").unwrap();
+        std::fs::write(dir.join("sibling.rs"), "").unwrap();
+        std::fs::write(dir.join("stray.rs"), "").unwrap();
+        let modules = host_shell_scope_modules(&dir.join("lib.rs")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        for owned in [
+            "cli_run",
+            "plain",
+            "compile_clean",
+            "drain_file",
+            "deeper",
+            "sibling",
+            "lib",
+        ] {
+            assert!(
+                modules.iter().any(|m| m == owned),
+                "{owned} unowned: {modules:?}"
+            );
+        }
+        assert!(!modules.iter().any(|m| m == "stray"), "{modules:?}");
     }
 }
