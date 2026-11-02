@@ -73,6 +73,8 @@
 // src/std_import_statement.rs
 // src/std_induction.rs
 // src/std_integer.rs
+// src/std_integer_interval.rs
+// src/std_integer_width_construction.rs
 // src/std_interface_summary.rs
 // src/std_kernel_type_name.rs
 // src/std_keyed_roster.rs
