@@ -86,9 +86,9 @@ data ce_duplicate_b_source: String = "module v2.test.ce_duplicate\n\nimport std.
 data ce_unparseable_source: String = "module v2.test.ce_unparseable\nfn ce_broken( -> Int { x }\n"
 
 // A member whose body does not lower: the entry reaches it, so the refusal is a member's.
-data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport std.types { Bool }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { v2.test.ce_refusing_member.ce_refusing_fn(p: p) }\n"
+data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport std.types { Bool }\nimport v2.test.ce_refusing_member { ce_refusing_fn }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { ce_refusing_fn(p: p) }\n"
 
-data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\n\nfn ce_refusing_fn(p: Bool) -> Bool { if p { p } }\n"
+data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\n\nfn ce_refusing_fn(p: Bool) -> Bool {\n  if p {\n    p\n  }\n  p\n}\n"
 
 fn ce_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
