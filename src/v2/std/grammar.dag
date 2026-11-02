@@ -351,9 +351,10 @@ fn grammar_expr_not_predicate(element: GrammarExpr) -> GrammarExpr {
 // reject-on-reject without touching input. The probe runs under the FIRST gate of `e`'s own
 // element, so a token that can never start `e` rejects the peek outright.
 // WHERE THE GRAMMAR MUST ADMIT a subproduction only when what FOLLOWS it continues a larger
-// shape, this is the node: dag_grammar_condition_record_expr admits a record at a condition
-// head only when its residue continues with `{` or an infix operator (the block or operator
-// reading), never when a new statement begins after it -- the seed's condition separation
+// shape, this is the node: dag_grammar_condition_ident_suffix_expr admits a record at a condition
+// head only when its residue continues with `{` or an infix operator the chain will actually take
+// (the `-` row carries the table's newline guard, #12817), never when a new statement begins
+// after it -- the seed's condition separation
 // (v1 02_parse parse_expr_bp_no_brace), realized in the grammar instead of a parser retry.
 fn grammar_expr_and_predicate(element: GrammarExpr) -> GrammarExpr {
   grammar_expr_not_predicate(element: grammar_expr_not_predicate(element: element))
