@@ -8,6 +8,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data two_items: List<Int> = [1, 2]
 data one_item: List<Int> = [7]
+// Declared, not a bare []: an empty list literal in the LEFT operand of list_append leaves the element type without a
+// declaration to resolve against, and '==' on the result is then refused ("declaration identity unavailable"). The
+// identity arms below need the empty operand TYPED to be judged at all.
+data no_items: List<Int> = []
 
 // list_append IS the concatenation the ambient `append` spelled, in the shape the roster row moves it to
 // (src/v2/workflow/roster_import_sweep.dag, the append row): the `right` parameter is a LIST joined wholesale, not one item
@@ -41,9 +45,9 @@ test fn list_append_keeps_the_left_items_first() -> Bool {
 // THE IDENTITIES, so an empty operand is a join and not a replace: an empty `right` keeps the left list, an empty `left`
 // yields the right list.
 test fn list_append_of_empty_right_is_the_left_list() -> Bool {
-  list_append(left: two_items, right: []) == [1, 2]
+  list_append(left: two_items, right: no_items) == [1, 2]
 }
 
 test fn list_append_of_empty_left_is_the_right_list() -> Bool {
-  list_append(left: [], right: two_items) == [1, 2]
+  list_append(left: no_items, right: two_items) == [1, 2]
 }
