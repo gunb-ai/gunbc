@@ -1322,9 +1322,9 @@ fn installation_snapshot_text(i: InstallationSnapshot) -> String {
 }
 
 fn compared_side_text(s: ComparedSide) -> String {
-  let claim = match s.claim {
+  let claim = match s.assessment {
     Absent => "no population claim"
-    Present { value: c } => join(["reconstructed claim ", population_outcome_text(o: c.assessment.outcome)], "")
+    Present { value: a } => join(["reconstructed claim ", population_outcome_text(o: a.outcome)], "")
   }
   join([s.asset as String, ": ", claim, ", ", installation_snapshot_text(i: s.installation)], "")
 }

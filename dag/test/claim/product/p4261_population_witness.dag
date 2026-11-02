@@ -400,7 +400,7 @@ test fn presence_is_read_never_inferred_from_silence() -> Bool {
   let rec = match e1.measured { Present { value: b } => b.bench, Absent => no_bench_record }
   let q4 = claimed(p: e1_at(d: "Q4_P5"), part: PartRow { row: tmp275_dgk })
   let converter = (filter(e1.components, c => component_identity_eq(a: c.component, b: e1_converter_near))).first()
-  let c = compare_boards(e1_layout: e1, k1_layout: p4261_k1_layout, e1_standings: [], k1_standings: [])
+  let c = compare_boards(e1_layout: e1, k1_layout: p4261_k1_layout, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
   match converter {
     Absent => false
     Present { value: x } => match place_against(r: rec, asset: e1.asset, seen: x.seen, keys: [e1_u10p2_lift.key]) { BeforeEvery => true, _ => false }
@@ -422,7 +422,7 @@ test fn an_absence_counts_only_where_it_is_placed() -> Bool {
   let before_lift = with_parts(base: k1, components: map(k1.components, x => if component_identity_eq(a: x.component, b: k1_converter_near_footprint) { InstalledComponent { seen: BeforeIncidents { keys: [k1_u10p2_lift.key] }, component: x.component, terminals: x.terminals, identification: x.identification } } else { x }), readings: k1.designator_readings)
   let unplaced = with_parts(base: k1, components: reseen(cs: k1.components, c: k1_converter_near_footprint), readings: k1.designator_readings)
   let refit = k1_lift_refitted()
-  let c = compare_boards(e1_layout: p4261_e1_layout, k1_layout: refit, e1_standings: [], k1_standings: [])
+  let c = compare_boards(e1_layout: p4261_e1_layout, k1_layout: refit, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
   supported(o: assess_on(layout: k1, p: u10))
     && conflicting(o: assess_on(layout: before_lift, p: u10))
     && missing_unplaced(o: assess_on(layout: unplaced, p: u10), n: 1)
@@ -491,15 +491,13 @@ test fn row_sets_are_compared_conservatively() -> Bool {
 // another part are contradicted on each board, and the comparison reports the agreement beside the
 // two contradictions without merging them.
 test fn observed_agreement_is_kept_apart_from_the_claims() -> Bool {
-  let e1_claim = claimed(p: e1_at(d: "U1_P5"), part: PartRow { row: tmp275_dgk })
-  let k1_claim = claimed(p: k1_at(d: "U1_P5"), part: PartRow { row: tmp275_dgk })
-  let e1s = [PositionStanding { assessment: assess_population(position: e1_claim, layout: p4261_e1_layout, admitted: admit_correspondence(layout: p4261_e1_layout).admitted), standing: TranscribedUncited { read_obligation: "supplied" } }]
-  let k1s = [PositionStanding { assessment: assess_population(position: k1_claim, layout: p4261_k1_layout, admitted: admit_correspondence(layout: p4261_k1_layout).admitted), standing: TranscribedUncited { read_obligation: "supplied" } }]
-  match compared_at(c: compare_boards(e1_layout: p4261_e1_layout, k1_layout: p4261_k1_layout, e1_standings: e1s, k1_standings: k1s), d: "U1_P5") {
+  let e1_positions = map(p4261_e1_positions, x => if (x.position.designator as String) == "U1_P5" { claimed(p: x, part: PartRow { row: tmp275_dgk }) } else { x })
+  let k1_positions = map(p4261_k1_positions, x => if (x.position.designator as String) == "U1_P5" { claimed(p: x, part: PartRow { row: tmp275_dgk }) } else { x })
+  match compared_at(c: compare_boards(e1_layout: p4261_e1_layout, k1_layout: p4261_k1_layout, e1_positions: e1_positions, k1_positions: k1_positions), d: "U1_P5") {
     Absent => false
     Present { value: p } => is_same_part(r: p.observed)
-      && match p.e1.claim { Present { value: s } => contradicted(o: s.assessment.outcome), Absent => false }
-      && match p.k1.claim { Present { value: s } => contradicted(o: s.assessment.outcome), Absent => false }
+      && match p.e1.assessment { Present { value: a } => contradicted(o: a.outcome), Absent => false }
+      && match p.k1.assessment { Present { value: a } => contradicted(o: a.outcome), Absent => false }
   }
 }
 
@@ -513,7 +511,9 @@ test fn the_held_boards_are_compared_label_by_label() -> Bool {
   let text = population_comparison_text(c: c)
   match compared_at(c: c, d: "U1_P5") {
     Absent => false
-    Present { value: p } => is_same_part(r: p.observed) && match p.e1.claim { Present { value: s } => receipt_on(s: s.standing, decl: "p4261_e1_layout"), Absent => false }
+    Present { value: p } => is_same_part(r: p.observed)
+      && match p.e1.standing { Present { value: s } => receipt_on(s: s, decl: "p4261_e1_layout"), Absent => false }
+      && match p.e1.assessment { Present { value: a } => supported(o: a.outcome), Absent => false }
   }
     && match compared_at(c: c, d: "U10_P2") { Present { value: p } => incomplete_on(r: p.observed, boards: 1), Absent => false }
     && match compared_at(c: c, d: "F300") { Present { value: p } => incomplete_on(r: p.observed, boards: 2), Absent => false }
@@ -523,14 +523,31 @@ test fn the_held_boards_are_compared_label_by_label() -> Bool {
 
 // ── ATTRIBUTION, CHRONOLOGY, SNAPSHOT AND RATING CONSISTENCY ──────────────────────────────────
 
-// AN ASSESSMENT SPEAKS ONLY FOR THE BOARD IT ASSESSED. The second E1, with nothing read, compared using
-// the E1-B's standings: its side at U1_P5 carries no claim assessment, never the E1-B's support.
-test fn an_assessment_speaks_only_for_the_board_it_assessed() -> Bool {
-  let c = compare_boards(e1_layout: second_e1(components: [], readings: []), k1_layout: p4261_k1_layout, e1_standings: p4261_e1_population_standings(), k1_standings: p4261_k1_population_standings())
-  match compared_at(c: c, d: "U1_P5") {
+// AN ASSESSMENT SPEAKS ONLY FOR THE EVIDENCE BESIDE IT. A side's claim assessment is computed from that
+// side's own records, and a receipt is attached only to the held boards' comparison. The second E1, with
+// nothing read: its U1_P5 claim is not attributable, and it carries no standing. The E1-B with an empty
+// footprint also read at U1_P5: its claim assessment is the conflict its own readings show, beside an
+// unknown snapshot -- never the original E1-B's support -- while the held boards' comparison still
+// carries the E1-B's minted receipt.
+test fn an_assessment_speaks_only_for_the_evidence_beside_it() -> Bool {
+  let second = compare_boards(e1_layout: second_e1(components: [], readings: []), k1_layout: p4261_k1_layout, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  let empty_pad = component_instance_identity(design: e1_design, local_identity: "supplied empty footprint read at U1_P5")
+  let both = with_parts(base: p4261_e1_layout, components: concat(p4261_e1_layout.components, [InstalledComponent { seen: seen_unordered(), component: empty_pad, terminals: [], identification: FootprintUnpopulated { evidence: photo() } }]), readings: concat(p4261_e1_layout.designator_readings, [read(c: empty_pad, d: "U1_P5")]))
+  let changed = compare_boards(e1_layout: both, k1_layout: p4261_k1_layout, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  match compared_at(c: second, d: "U1_P5") {
     Absent => false
-    Present { value: p } => match p.e1.claim { Absent => true, Present { value: _ } => false } && match p.k1.claim { Present { value: _ } => true, Absent => false }
+    Present { value: p } => match p.e1.assessment { Present { value: a } => gap_is(o: a.outcome, want: 1), Absent => false } && match p.e1.standing { Absent => true, Present { value: _ } => false }
   }
+    && match compared_at(c: changed, d: "U1_P5") {
+      Absent => false
+      Present { value: p } => match p.e1.assessment { Present { value: a } => conflicting(o: a.outcome), Absent => false }
+        && match p.e1.standing { Absent => true, Present { value: _ } => false }
+        && match p.e1.installation { InstallationUnknown => true, _ => false }
+    }
+    && match compared_at(c: p4261_comparison(), d: "U1_P5") {
+      Absent => false
+      Present { value: p } => match p.e1.standing { Present { value: s } => receipt_on(s: s, decl: "p4261_e1_layout"), Absent => false }
+    }
 }
 
 // A CONTRADICTORY ORDER PLACES NOTHING. The K1's bare footprint ordered both after and before the lift is
@@ -554,8 +571,8 @@ test fn a_removal_is_now_only_with_nothing_fitted_after_it() -> Bool {
   let replaced = with_parts(base: k1, components: concat(k1.components, [seen_later]), readings: concat(k1.designator_readings, [read(c: later_part, d: "U10_P2")]))
   let empty_pad = component_instance_identity(design: e1_design, local_identity: "supplied empty footprint read at U1_P5")
   let both = with_parts(base: p4261_e1_layout, components: concat(p4261_e1_layout.components, [InstalledComponent { seen: seen_unordered(), component: empty_pad, terminals: [], identification: FootprintUnpopulated { evidence: photo() } }]), readings: concat(p4261_e1_layout.designator_readings, [read(c: empty_pad, d: "U1_P5")]))
-  let c_replaced = compare_boards(e1_layout: p4261_e1_layout, k1_layout: replaced, e1_standings: [], k1_standings: [])
-  let c_both = compare_boards(e1_layout: both, k1_layout: k1, e1_standings: [], k1_standings: [])
+  let c_replaced = compare_boards(e1_layout: p4261_e1_layout, k1_layout: replaced, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  let c_both = compare_boards(e1_layout: both, k1_layout: k1, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
   supported(o: assess_on(layout: replaced, p: k1_at(d: "U10_P2")))
     && match compared_at(c: c_replaced, d: "U10_P2") { Present { value: p } => match p.k1.installation { InstallationUnknown => true, _ => false }, Absent => false }
     && conflicting(o: assess_on(layout: both, p: e1_at(d: "U1_P5")))

@@ -9,9 +9,12 @@ import product.electrical.connectivity { component_identity_eq }
 import product.electrical.bench_session { alteration_refitted, removals_of }
 import product.electrical.identification { InstalledComponent, ObservedPresence, PartPresent, PartAbsent, PresenceUnobserved, observed_presence }
 import product.p4261.carrier { CarrierLayoutObservation, CorrespondenceAdmission, CorrespondenceRefusal, SpecimenPosition, admit_correspondence }
+import extdeps.external_authority { CitedFigureStanding }
 import product.p4261.evidence {
   AttributionGap,
+  PopulationAssessment,
   PositionStanding,
+  assess_population,
   ScopedObservations,
   common_rows,
   established_rows,
@@ -23,7 +26,6 @@ import product.p4261.evidence {
   rows_disjoint,
   rows_equal,
   same_position,
-  scoped_observations,
   unattributed,
 }
 import product.p4261.e1_b { p4261_e1_layout }
@@ -68,13 +70,18 @@ type InstallationSnapshot
   | SeenAbsent
   | InstallationUnknown
 
+// A side's claim assessment is computed from the side's own admitted context, in the same evaluation
+// as its observations -- never supplied by a caller -- so the two always describe one body of evidence.
+// A standing (a receipt where the board's readings support the claim) is attached only by
+// p4261_comparison, whose boards are the very records the minting folds read.
 type ComparedSide {
   asset: PhysicalAssetIdentity
   position: P4261DesignPosition
   bindings: List<SpecimenPosition>
   gap: AttributionGap?
   scoped: ScopedObservations
-  claim: PositionStanding?
+  assessment: PopulationAssessment?
+  standing: CitedFigureStanding?
   installation: InstallationSnapshot
 }
 
@@ -143,24 +150,30 @@ fn installation(layout: CarrierLayoutObservation, bindings: List<SpecimenPositio
   }
 }
 
-// A supplied assessment belongs to a side only when it assessed this position ON THIS BOARD: one board's
-// standing never stands for another's, whatever the position.
-fn claim_at(standings: List<PositionStanding>, position: P4261DesignPosition, asset: PhysicalAssetIdentity) -> PositionStanding? {
-  (filter(standings, s => same_position(a: s.assessment.position, b: position) && physical_asset_identity_eq(a: s.assessment.asset, b: asset))).first()
-}
-
-fn side(layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>, standings: List<PositionStanding>, position: P4261DesignPosition) -> ComparedSide {
-  let bindings = filter(admitted, s => same_position(a: s.position, b: position))
-  let scoped = scoped_observations(layout: layout, bindings: bindings)
+fn side(layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>, position: P4261DesignPosition) -> ComparedSide {
+  let a = assess_population(position: position, layout: layout, admitted: admitted)
   ComparedSide {
     asset: layout.asset,
     position: position,
-    bindings: bindings,
-    gap: unattributed(position: position, layout: layout, bindings: bindings),
-    scoped: scoped,
-    claim: claim_at(standings: standings, position: position, asset: layout.asset),
-    installation: installation(layout: layout, bindings: bindings, scoped: scoped),
+    bindings: a.bindings,
+    gap: unattributed(position: position, layout: layout, bindings: a.bindings),
+    scoped: a.scoped,
+    assessment: match position.population { Absent => Absent, Present { value: _ } => Present { value: a } },
+    standing: Absent,
+    installation: installation(layout: layout, bindings: a.bindings, scoped: a.scoped),
   }
+}
+
+// The fold's standing for this side's position, on the board the fold assessed.
+fn standing_at(standings: List<PositionStanding>, s: ComparedSide) -> CitedFigureStanding? {
+  match (filter(standings, x => same_position(a: x.assessment.position, b: s.position) && physical_asset_identity_eq(a: x.assessment.asset, b: s.asset))).first() {
+    Absent => Absent
+    Present { value: x } => Present { value: x.standing }
+  }
+}
+
+fn with_standing(s: ComparedSide, standing: CitedFigureStanding?) -> ComparedSide {
+  ComparedSide { asset: s.asset, position: s.position, bindings: s.bindings, gap: s.gap, scoped: s.scoped, assessment: s.assessment, standing: standing, installation: s.installation }
 }
 
 fn no_row_sets() -> List<List<ElectronicComponentRow>> {
@@ -229,23 +242,35 @@ fn labelled_on(positions: List<P4261DesignPosition>, d: NonEmptyStr) -> P4261Des
   (filter(positions, p => (p.position.designator as String) == (d as String))).first()
 }
 
-fn compare_boards(e1_layout: CarrierLayoutObservation, k1_layout: CarrierLayoutObservation, e1_standings: List<PositionStanding>, k1_standings: List<PositionStanding>) -> P4261Comparison {
+// Two boards over two revisions' position catalogues (the upstream ones in production; a witness may
+// supply others to vary a claim). No assessment is accepted from the caller.
+fn compare_boards(e1_layout: CarrierLayoutObservation, k1_layout: CarrierLayoutObservation, e1_positions: List<P4261DesignPosition>, k1_positions: List<P4261DesignPosition>) -> P4261Comparison {
   let e1_admission = admit_correspondence(layout: e1_layout)
   let k1_admission = admit_correspondence(layout: k1_layout)
   P4261Comparison {
     e1: coverage(layout: e1_layout, a: e1_admission),
     k1: coverage(layout: k1_layout, a: k1_admission),
-    positions: flat_map(p4261_e1_positions, p => match labelled_on(positions: p4261_k1_positions, d: p.position.designator) {
+    positions: flat_map(e1_positions, p => match labelled_on(positions: k1_positions, d: p.position.designator) {
       Absent => []
       Present { value: q } => {
-        let e1 = side(layout: e1_layout, admitted: e1_admission.admitted, standings: e1_standings, position: p)
-        let k1 = side(layout: k1_layout, admitted: k1_admission.admitted, standings: k1_standings, position: q)
+        let e1 = side(layout: e1_layout, admitted: e1_admission.admitted, position: p)
+        let k1 = side(layout: k1_layout, admitted: k1_admission.admitted, position: q)
         [PositionComparison { designator: p.position.designator, e1: e1, k1: k1, observed: relate(e1: e1, k1: k1) }]
       }
     }),
   }
 }
 
+// The held boards, compared, with each claim's standing from the minting folds. The folds assessed these
+// same committed records (p4261_e1_layout, p4261_k1_layout) over these same catalogues, so a standing
+// attached here describes the evidence its side shows.
 fn p4261_comparison() -> P4261Comparison {
-  compare_boards(e1_layout: p4261_e1_layout, k1_layout: p4261_k1_layout, e1_standings: p4261_e1_population_standings(), k1_standings: p4261_k1_population_standings())
+  let c = compare_boards(e1_layout: p4261_e1_layout, k1_layout: p4261_k1_layout, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  let e1s = p4261_e1_population_standings()
+  let k1s = p4261_k1_population_standings()
+  P4261Comparison {
+    e1: c.e1,
+    k1: c.k1,
+    positions: map(c.positions, p => PositionComparison { designator: p.designator, e1: with_standing(s: p.e1, standing: standing_at(standings: e1s, s: p.e1)), k1: with_standing(s: p.k1, standing: standing_at(standings: k1s, s: p.k1)), observed: p.observed }),
+  }
 }
