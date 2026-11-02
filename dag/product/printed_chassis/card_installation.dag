@@ -64,11 +64,13 @@ fn card_separation(from: InstalledCard, to: InstalledCard) -> CardSeparation? {
 
 // ═══ WHETHER AN INSTALLATION CAN EXIST ═══
 // Each instance id once; each slot on its board; no two cards in one slot; and no card in a slot that the
-// card before it already covers with its width.
+// card before it already covers with its width. A partition of an installation that fails this is refused
+// (partition_installation), so no consumer of a group sees cards that cannot be where they are said to be.
 
 type InstallationRefusal
   = InstanceRepeated { instance: NonEmptyStr }
   | SlotNotOnBoard { instance: NonEmptyStr, designator: NonEmptyStr }
+  | SlotShared { instance: NonEmptyStr, with: NonEmptyStr }
   | SlotsOutOfOrder { instance: NonEmptyStr, after: NonEmptyStr }
   | SlotCoveredByNeighbour { instance: NonEmptyStr, covered_by: NonEmptyStr }
   | SlotCountUnread { instance: NonEmptyStr }
@@ -80,7 +82,7 @@ fn pair_refusals(a: InstalledCard, b: InstalledCard) -> List<InstallationRefusal
     Absent => []
     Present { value: p } => match installed_position(c: b) {
       Absent => []
-      Present { value: q } => if q <= p { [SlotsOutOfOrder { instance: b.instance.id, after: a.instance.id }] } else {
+      Present { value: q } => if q == p { [SlotShared { instance: b.instance.id, with: a.instance.id }] } else if q < p { [SlotsOutOfOrder { instance: b.instance.id, after: a.instance.id }] } else {
         match row_field_value(field: a.instance.card.row.slot_count) {
           Absent => [SlotCountUnread { instance: a.instance.id }]
           Present { value: n } => if q - p < (n as Int) { [SlotCoveredByNeighbour { instance: b.instance.id, covered_by: a.instance.id }] } else { [] }
@@ -104,6 +106,17 @@ fn installation_refusals(inst: CardInstallation) -> List<InstallationRefusal> {
   concat(concat(repeated, off_board), pairs.refusals)
 }
 
+fn installation_refusal_text(r: InstallationRefusal) -> String {
+  match r {
+    InstanceRepeated { instance: i } => join([i as String, " is installed twice"], "")
+    SlotNotOnBoard { instance: i, designator: d } => join([i as String, " is in ", d as String, ", which is not on its board"], "")
+    SlotShared { instance: i, with: w } => join([i as String, " is in the same slot as ", w as String], "")
+    SlotsOutOfOrder { instance: i, after: a } => join([i as String, " is listed after ", a as String, " but sits before it"], "")
+    SlotCoveredByNeighbour { instance: i, covered_by: c } => join([i as String, " is in a slot ", c as String, " already covers"], "")
+    SlotCountUnread { instance: i } => join([i as String, " has no stated slot count"], "")
+  }
+}
+
 // ═══ A CHECKED PARTITION OF THE INSTALLED CARDS ═══
 //
 // The groups name instances. The result establishes that every installed instance occurs exactly once,
@@ -124,6 +137,7 @@ type PartitionRefusal
   | PartitionMemberUnknown { instance: NonEmptyStr }
   | PartitionGroupEmpty { index: Int }
   | PartitionSizesDoNotCover { requested: Int, installed: Int }
+  | PartitionInstallationRefused { refusals: List<InstallationRefusal> }
 
 type Partition
   = Partitioned { groups: List<CardGroup> }
@@ -144,6 +158,8 @@ fn build_group(ids: List<NonEmptyStr>, inst: CardInstallation) -> CardGroup? {
 }
 
 fn partition_installation(inst: CardInstallation, groups: List<List<NonEmptyStr>>) -> Partition {
+  let invalid = installation_refusals(inst: inst)
+  if length(list: invalid) > 0 { return PartitionRefused { causes: [PartitionInstallationRefused { refusals: invalid }] } }
   let named = fold(groups, init: [], f: (acc, g) => concat(acc, g))
   let unknown = fold(named, init: [], f: (acc, id) => match installed_card(inst: inst, id: id) {
     Present { value: _ } => acc
@@ -175,6 +191,17 @@ fn partition_by_sizes(inst: CardInstallation, sizes: List<Int>) -> Partition {
   if total != length(list: inst.cards) { return PartitionRefused { causes: [PartitionSizesDoNotCover { requested: total, installed: length(list: inst.cards) }] } }
   let sliced = fold(sizes, init: SizeSlice { taken: 0, groups: [] }, f: (acc, n) => SizeSlice { taken: acc.taken + n, groups: concat(acc.groups, [ids_from(inst: inst, start: acc.taken, n: n)]) })
   partition_installation(inst: inst, groups: sliced.groups)
+}
+
+fn partition_refusal_text(r: PartitionRefusal) -> String {
+  match r {
+    PartitionMemberMissing { instance: i } => join([i as String, " is in no group"], "")
+    PartitionMemberRepeated { instance: i } => join([i as String, " is in more than one group"], "")
+    PartitionMemberUnknown { instance: i } => join([i as String, " is not installed"], "")
+    PartitionGroupEmpty { index: n } => join(["group ", to_string(value: n), " is empty"], "")
+    PartitionSizesDoNotCover { requested: a, installed: b } => join(["the sizes cover ", to_string(value: a), " cards and ", to_string(value: b), " are installed"], "")
+    PartitionInstallationRefused { refusals: rs } => join(["the installation cannot exist: ", join(map(rs, x => installation_refusal_text(r: x)), "; ")], "")
+  }
 }
 
 // A shared manifold needs its members side by side: consecutive in the installation and in adjacent

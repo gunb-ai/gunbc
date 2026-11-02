@@ -10,11 +10,13 @@ import product.printed_chassis.assembly_geometry {
 }
 import product.printed_chassis.fit_observations { a2_row_fit_plate_fit_display }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy }
-import product.printed_chassis.card_end_interface { CardEndInterface, FinFreeBands, BandTaper, feature_value, missing_feature }
+import product.printed_chassis.card_end_interface {
+  CardEndInterface, FinFreeBands, BandTaper, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved, feature_value, missing_feature,
+}
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFaceNeedsReading }
 import product.printed_chassis.gpu_duct { card_envelope_of }
 import product.printed_chassis.card_installation {
-  CardInstallation, InstalledCard, CardGroup, group_members, Partition, Partitioned, PartitionRefused, partition_by_sizes,
+  CardInstallation, InstalledCard, CardGroup, group_members, Partition, Partitioned, PartitionRefused, PartitionRefusal, partition_by_sizes,
   GroupContiguous, GroupNotConsecutive, GroupSlotsNotRecorded, group_contiguity, card_separation, a2_altra_installation,
 }
 
@@ -29,8 +31,12 @@ import product.printed_chassis.card_installation {
 // WHAT IT IS BUILT FROM, AND NOTHING ELSE: the members' read end faces (product.printed_chassis
 // .card_end_interface), their separations from the installation (card_installation card_separation, the
 // board's slot positions times the CEM slot width), and the print-proven wall, flange and sleeve allowances
-// (duct_fit_policy plug_and_flange_print_policy). It needs no inserts and no header; it needs the fin-free
-// bands, because that is where its tabs go, and a card whose bands were not read refuses by name.
+// (duct_fit_policy plug_and_flange_print_policy). It fastens to no inserts, so it does not need them; it
+// needs the fin-free bands, because that is where its tabs go, and a card whose bands were not read refuses
+// by name. It covers each member's whole end face, so a member must have been OBSERVED to have no header
+// there: a present header, or one nobody looked for, refuses until this realization carries a keep-out.
+// Its members come from a checked partition of the installation (card_installation partition_by_sizes),
+// which refuses an installation that cannot exist, so no geometry is drawn for cards that cannot be there.
 //
 // THIS REALIZATION'S OWN LIMITS, each refused rather than assumed away: its members must be side by side in
 // the installation, and they must be one card model, because the part aligns their faces along the card's
@@ -56,14 +62,9 @@ fn group_duct_plan(id: NonEmptyStr) -> GroupDuctPlan? {
 
 type IndexedGroup { index: Int, found: CardGroup? }
 
-fn plan_group(p: GroupDuctPlan) -> CardGroup? {
-  match partition_by_sizes(inst: p.installation, sizes: p.sizes) {
-    PartitionRefused { causes: _ } => Absent
-    Partitioned { groups: gs } => {
-      let r = fold(gs, init: IndexedGroup { index: 0, found: Absent }, f: (acc, g) => IndexedGroup { index: acc.index + 1, found: match acc.found { Present { value: v } => Present { value: v } Absent => if acc.index == p.group { Present { value: g } } else { Absent } } })
-      r.found
-    }
-  }
+fn nth_group(gs: List<CardGroup>, n: Int) -> CardGroup? {
+  let r = fold(gs, init: IndexedGroup { index: 0, found: Absent }, f: (acc, g) => IndexedGroup { index: acc.index + 1, found: match acc.found { Present { value: v } => Present { value: v } Absent => if acc.index == n { Present { value: g } } else { Absent } } })
+  r.found
 }
 
 // ═══ ADMISSION ═══
@@ -72,10 +73,12 @@ type GroupMemberFace { member: InstalledCard, face: CardEndInterface, bands: Fin
 
 type GroupFitPlateAdmission
   = GroupFitPlateAdmitted { parts: List<AssemblyPart>, interfaces: List<MechanicalInterface> }
+  | GroupPartitionRefused { causes: List<PartitionRefusal> }
   | GroupPlanUnresolved { reason: String }
   | GroupMembersNotSideBySide { reason: String }
   | GroupMembersMixCardModels { first: NonEmptyStr, other: NonEmptyStr }
   | GroupMemberFaceUnfit { instance: NonEmptyStr, reason: String }
+  | GroupMemberConnectorNotClear { instance: NonEmptyStr, reason: String }
 
 fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
   match m.instance.card.end_face {
@@ -112,9 +115,28 @@ fn member_unfit_reason(first: InstalledCard, m: InstalledCard) -> String {
   }
 }
 
+// The plate covers the member's whole end face. Only a header OBSERVED absent is clear of it.
+fn connector_not_clear(m: InstalledCard) -> String? {
+  match m.instance.card.end_face {
+    EndFaceNeedsReading { read_obligation: o } => Present { value: join(["end face not read: ", o as String], "") }
+    EndFaceRead { face: f } => match f.connector {
+      FeatureAbsentObserved => Absent
+      FeaturePresent { value: _ } => Present { value: "the end face carries a power header, and this plate covers the whole face with no keep-out for it" }
+      FeatureNotObserved { read_obligation: o } => Present { value: join(["whether the end face carries a power header was not observed: ", o as String], "") }
+    }
+  }
+}
+
 fn admit_group_fit_plate(p: GroupDuctPlan) -> GroupFitPlateAdmission {
-  match plan_group(p: p) {
-    Absent => GroupPlanUnresolved { reason: join(["plan ", p.id as String, " does not partition its installation, or names no such group"], "") }
+  match partition_by_sizes(inst: p.installation, sizes: p.sizes) {
+    PartitionRefused { causes: cs } => GroupPartitionRefused { causes: cs }
+    Partitioned { groups: gs } => admit_group_member_faces(p: p, chosen: nth_group(gs: gs, n: p.group))
+  }
+}
+
+fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?) -> GroupFitPlateAdmission {
+  match chosen {
+    Absent => GroupPlanUnresolved { reason: join(["plan ", p.id as String, " names group ", to_string(value: p.group), ", which its partition does not have"], "") }
     Present { value: g } => {
       match group_contiguity(inst: p.installation, g: g) {
         GroupContiguous => {}
@@ -127,6 +149,8 @@ fn admit_group_fit_plate(p: GroupDuctPlan) -> GroupFitPlateAdmission {
       match mixed { Present { value: other } => return GroupMembersMixCardModels { first: first.instance.card.row.id, other: other } Absent => {} }
       let unfit = fold(ms, init: Absent, f: (acc, m) => match acc { Present { value: v } => Present { value: v } Absent => match member_face(first: first, m: m) { Present { value: _ } => Absent Absent => Present { value: GroupMemberFaceUnfit { instance: m.instance.id, reason: member_unfit_reason(first: first, m: m) } } } })
       match unfit { Present { value: refused } => return refused Absent => {} }
+      let blocked = fold(ms, init: Absent, f: (acc, m) => match acc { Present { value: v } => Present { value: v } Absent => match connector_not_clear(m: m) { Present { value: r } => Present { value: GroupMemberConnectorNotClear { instance: m.instance.id, reason: r } } Absent => Absent } })
+      match blocked { Present { value: refused } => return refused Absent => {} }
       let faces = fold(ms, init: [], f: (acc, m) => match member_face(first: first, m: m) { Present { value: mf } => concat(acc, [mf]) Absent => acc })
       let parts = group_fit_plate_parts(faces: faces)
       GroupFitPlateAdmitted { parts: parts, interfaces: group_fit_plate_joints(cards: map(filter(parts, x => match x.kind { Purchased => true _ => false }), x => x.id)) }

@@ -18,8 +18,7 @@ import product.printed_chassis.card_cooling_route { required_flow, free_air_cfm_
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFaceNeedsReading, duct_card_dims, duct_card_unread_reason }
 import product.printed_chassis.card_installation {
   CardInstallation, InstalledCard, CardGroup, group_members, group_ids, Partition, Partitioned, PartitionRefused,
-  PartitionRefusal, PartitionMemberMissing, PartitionMemberRepeated, PartitionMemberUnknown, PartitionGroupEmpty, PartitionSizesDoNotCover,
-  partition_by_sizes, installation_refusals, InstallationRefusal, InstanceRepeated, SlotNotOnBoard, SlotsOutOfOrder, SlotCoveredByNeighbour, SlotCountUnread,
+  partition_by_sizes, partition_refusal_text,
   GroupContiguity, GroupContiguous, GroupNotConsecutive, GroupSlotsNotRecorded, group_contiguity, card_separation,
   a2_altra_installation, a16_installation,
 }
@@ -301,30 +300,8 @@ fn group_text(inst: CardInstallation, g: CardGroup) -> List<String> {
   concat(concat(concat(concat([head], needs), fabrication), [join(["    fan arrangements, screened at ", to_string(value: celsius_delta_count(delta: screening_rise) as Int), " K with ", to_string(value: percent_count(p: screening_free_air_fraction) as Int), " % of free air assumed delivered:"], "")]), concat(arrangements, qualification))
 }
 
-fn partition_refusal_text(r: PartitionRefusal) -> String {
-  match r {
-    PartitionMemberMissing { instance: i } => join([i as String, " is in no group"], "")
-    PartitionMemberRepeated { instance: i } => join([i as String, " is in more than one group"], "")
-    PartitionMemberUnknown { instance: i } => join([i as String, " is not installed"], "")
-    PartitionGroupEmpty { index: n } => join(["group ", to_string(value: n), " is empty"], "")
-    PartitionSizesDoNotCover { requested: a, installed: b } => join(["the sizes cover ", to_string(value: a), " cards and ", to_string(value: b), " are installed"], "")
-  }
-}
-
-fn installation_refusal_text(r: InstallationRefusal) -> String {
-  match r {
-    InstanceRepeated { instance: i } => join([i as String, " is installed twice"], "")
-    SlotNotOnBoard { instance: i, designator: d } => join([i as String, " is in ", d as String, ", which is not on its board"], "")
-    SlotsOutOfOrder { instance: i, after: a } => join([i as String, " is listed after ", a as String, " but sits before it"], "")
-    SlotCoveredByNeighbour { instance: i, covered_by: c } => join([i as String, " is in a slot ", c as String, " already covers"], "")
-    SlotCountUnread { instance: i } => join([i as String, " has no stated slot count"], "")
-  }
-}
-
 fn plan_text(inst: CardInstallation, sizes: List<Int>) -> List<String> {
   let label = join(["== ", inst.name as String, ", grouped [", join(map(sizes, n => to_string(value: n)), ", "), "]"], "")
-  let refused = installation_refusals(inst: inst)
-  if length(list: refused) > 0 { return [label, join(["  installation refused: ", join(map(refused, r => installation_refusal_text(r: r)), "; ")], "")] }
   match partition_by_sizes(inst: inst, sizes: sizes) {
     PartitionRefused { causes: cs } => [label, join(["  partition refused: ", join(map(cs, c => partition_refusal_text(r: c)), "; ")], "")]
     Partitioned { groups: gs } => concat([label], fold(gs, init: [], f: (acc, g) => concat(acc, group_text(inst: inst, g: g))))

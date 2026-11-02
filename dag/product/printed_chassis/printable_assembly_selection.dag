@@ -20,9 +20,11 @@ import product.printed_chassis.gpu_duct {
 import std.optional { Present, Absent }
 import product.printed_chassis.duct_review_schema { duct_review_schema }
 import product.printed_chassis.duct_card_catalog { DuctCard, DuctCardDims, duct_cards, duct_card, duct_card_dims, duct_card_unread_reason }
+import product.printed_chassis.card_installation { partition_refusal_text }
 import product.printed_chassis.group_duct {
   GroupDuctPlan, group_duct_plans, group_duct_plan, admit_group_fit_plate, group_fit_plate_readme,
-  GroupFitPlateAdmitted, GroupPlanUnresolved, GroupMembersNotSideBySide, GroupMembersMixCardModels, GroupMemberFaceUnfit,
+  GroupFitPlateAdmitted, GroupPartitionRefused, GroupPlanUnresolved, GroupMembersNotSideBySide, GroupMembersMixCardModels, GroupMemberFaceUnfit,
+  GroupMemberConnectorNotClear,
 }
 import product.printed_chassis.card_cooling_route {admit_home, RouteSubject, PlaneOnEnd, RouteAdmission, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, RouteHomeUnmeasured, RouteProposalOnly, RouteAdmitted, demand_display}
 import product.printed_chassis.assembly_geometry {Printed, Purchased, Metal}
@@ -206,8 +208,9 @@ fn duct_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims, mount: DuctC
 }
 
 // THE GROUP FIT PLATE: the card interface of a duct serving several installed cards side by side
-// (product.printed_chassis.group_duct). It needs no inserts and no header, so it has no keep-out; its refusals
-// are the realization's own, quoted.
+// (product.printed_chassis.group_duct). It fastens to no inserts, and its admission refuses any member whose
+// end-face header is present or unobserved, so there is no keep-out to list; its refusals are the
+// realization's own, quoted.
 fn group_fit_plate_selection(root: PrintedAssemblyRoot, plan: GroupDuctPlan) -> PrintableAssemblySelection {
   match admit_group_fit_plate(p: plan) {
     GroupFitPlateAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
@@ -223,9 +226,11 @@ fn group_fit_plate_selection(root: PrintedAssemblyRoot, plan: GroupDuctPlan) -> 
         presentation: [],
       }
     }
+    GroupPartitionRefused { causes: cs } => PrintableAssemblyRefused { reason: join(["the plan's partition is refused: ", join(map(cs, c => partition_refusal_text(r: c)), "; ")], "") }
     GroupPlanUnresolved { reason: r } => PrintableAssemblyRefused { reason: r }
     GroupMembersNotSideBySide { reason: r } => PrintableAssemblyRefused { reason: join(["group members are not side by side: ", r], "") }
     GroupMembersMixCardModels { first: a, other: b } => PrintableAssemblyRefused { reason: join(["one plate cannot align ", a as String, " and ", b as String, " faces: mixed card models are unsupported by this realization"], "") }
     GroupMemberFaceUnfit { instance: i, reason: r } => PrintableAssemblyRefused { reason: join([i as String, ": ", r], "") }
+    GroupMemberConnectorNotClear { instance: i, reason: r } => PrintableAssemblyRefused { reason: join([i as String, ": ", r], "") }
   }
 }
