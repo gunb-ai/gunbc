@@ -1,6 +1,6 @@
 module gunbc.stage0_partition_rebuild_scope
 
-import std.types { String, List, Bool, Int }
+import std.types { String, List, Bool, Int, list_length }
 import gunbc.source_layout { layout_module_storage_path }
 import gunbc.regen_affected_set {
   AffectedSetBound,
