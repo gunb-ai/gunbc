@@ -382,7 +382,8 @@ data k1_measured: MeasuredBoard = MeasuredBoard {
 // unknown. The labels read "0000-100" where the listing title says "000-100"; the label is the reading.
 // THE DESIGNATORS READ ON THE K1. F1 to C12_P5 were read off the seller's listing photographs of this
 // unit. S1 and S2 are named only on a board-corner photograph whose carrier was not stated, so they
-// carry no reading and stay uncovered.
+// carry no reading and stay uncovered. J68 and J30 were read on the K1 but have no component
+// observation recorded, so they carry no reading either.
 data k1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: k1_component(local: "F1"), designator: "F1", evidence: k1_listing },
   DesignatorReading { specimen: k1_component(local: "F300"), designator: "F300", evidence: k1_listing },
@@ -390,8 +391,6 @@ data k1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: k1_component(local: "C10_P5"), designator: "C10_P5", evidence: k1_listing },
   DesignatorReading { specimen: k1_component(local: "C12_P5"), designator: "C12_P5", evidence: k1_listing },
   DesignatorReading { specimen: k1_u1_p5, designator: "U1_P5", evidence: k1_arrow_photo },
-  DesignatorReading { specimen: k1_j68, designator: "J68", evidence: k1_two_4r7_photo_1031 },
-  DesignatorReading { specimen: k1_j30, designator: "J30", evidence: k1_j30_said },
   DesignatorReading { specimen: k1_u100, designator: "U100", evidence: k1_two_4r7_photo_1031 },
   DesignatorReading { specimen: k1_converter_near, designator: "U10_P2", evidence: k1_two_4r7_photo_1031 },
   DesignatorReading { specimen: k1_converter_near_footprint, designator: "U10_P2", evidence: k1_two_4r7_photo_1031 },

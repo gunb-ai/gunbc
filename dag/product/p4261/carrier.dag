@@ -210,11 +210,18 @@ type CarrierLayoutObservation {
 // A JOIN IS ADMITTED, NEVER AUTHORED. SpecimenPosition is sealed, and its one mint resolves a reading
 // against the catalogue of THE BOARD'S OWN REVISION only, so an E1 component cannot be bound to a K1
 // position, and the two roles cannot be swapped (a position is not a component identity). A reading is
-// refused, with its cause, when its component belongs to another board's identity space, when its
+// refused, with its cause, when its component belongs to another board's identity space or has no
+// component observation on this board, when its
 // designator names no position of the board's revision (or names one the catalogue lists twice), or
 // when one component was read under two designators -- then every reading of that component is refused,
 // never the first taken. Several of our components may sit at one position (a part, and later the
-// footprint it was lifted from): each is admitted, and an assessment weighs them all.
+// footprint it was lifted from): each is admitted, and an assessment places each against the
+// position's removals before weighing it (product.p4261.evidence).
+//
+// ADMITTED IS NOT ATTRIBUTED. Admission resolves designators against the board's SELECTED revision;
+// whether the board is that revision is the Stage A judgment (product.p4261.evidence
+// revision_supported), which every assessment and comparison requires before a reading here can
+// support anything.
 type DesignatorReading {
   specimen: ComponentInstanceIdentity
   designator: NonEmptyStr
@@ -229,6 +236,7 @@ type SpecimenPosition sole_constructor {
 
 type CorrespondenceRefusal
   = SpecimenOfAnotherBoard { reading: DesignatorReading }
+  | SpecimenNotObserved { reading: DesignatorReading }
   | NoSuchPosition { reading: DesignatorReading }
   | PositionListedTwice { reading: DesignatorReading }
   | SpecimenReadUnderTwoDesignators { reading: DesignatorReading }
@@ -249,6 +257,7 @@ fn read_under_another_designator(layout: CarrierLayoutObservation, r: Designator
 fn correspondence_refusal(layout: CarrierLayoutObservation, r: DesignatorReading) -> CorrespondenceRefusal? {
   let named = positions_named(layout: layout, d: r.designator)
   if !design_identity_eq(a: r.specimen.design, b: layout.design) { Present { value: SpecimenOfAnotherBoard { reading: r } } }
+  else if !any(layout.components, c => component_identity_eq(a: c.component, b: r.specimen)) { Present { value: SpecimenNotObserved { reading: r } } }
   else if count(named) == 0 { Present { value: NoSuchPosition { reading: r } } }
   else if count(named) > 1 { Present { value: PositionListedTwice { reading: r } } }
   else if read_under_another_designator(layout: layout, r: r) { Present { value: SpecimenReadUnderTwoDesignators { reading: r } } }

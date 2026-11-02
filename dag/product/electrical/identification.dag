@@ -2,7 +2,7 @@ module product.electrical.identification
 
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { Ampere, Volt, ampere_count, volt_count }
+import std.measure { Ampere, Volt, volt_count }
 import extdeps.electronic_component.types {
   CapacitorRatedVoltage,
   DrainSourceMaximum,
@@ -45,21 +45,6 @@ type MarkingReading {
 
 type PrintedRating = PrintedFuseRating { current: Ampere, interrupt_voltage: Volt? }
 
-fn optional_volts_eq(a: Volt?, b: Volt?) -> Bool {
-  match a {
-    Absent => match b { Absent => true, Present { value: _ } => false }
-    Present { value: x } => match b { Absent => false, Present { value: y } => volt_count(v: x) == volt_count(v: y) }
-  }
-}
-
-fn printed_rating_eq(a: PrintedRating, b: PrintedRating) -> Bool {
-  match a {
-    PrintedFuseRating { current: ca, interrupt_voltage: va } => match b {
-      PrintedFuseRating { current: cb, interrupt_voltage: vb } => ampere_count(a: ca) == ampere_count(a: cb) && optional_volts_eq(a: va, b: vb)
-    }
-  }
-}
-
 type ComponentIdentification
   = IdentifiedByMarking { row: ElectronicComponentRow, marking: MarkingReading }
   | MarkingSharedByMakers { rows: List<ElectronicComponentRow>, marking: MarkingReading }
@@ -73,13 +58,35 @@ type ComponentIdentification
 // the vocabulary its readings use (product.electrical.continuity ReadingOrder). A part removed from the
 // board later is still the part that was seen fitted before, and only an order stated against that
 // removal says which side of it the observation fell on (product.electrical.bench_session
-// fitted_at_observation). Whether the part is fitted in some state of the board is never authored
-// here: the board's alteration ledger answers it.
+// place_against). Whether a part was there at all is what the observation saw (observed_presence), and
+// whether it has been removed is the board's alteration ledger: neither is authored here.
 type InstalledComponent {
   component: ComponentInstanceIdentity
   terminals: List<TerminalIdentity>
   identification: ComponentIdentification
   seen: ReadingOrder
+}
+
+// WHAT AN OBSERVATION ESTABLISHES ABOUT PRESENCE. A part read in any way -- a matched, shared,
+// candidate or unresolved marking, a printed rating, a resistance code -- was seen on the board; an
+// empty footprint was seen without one. An entry with no marking read and no other reading records a
+// part named in the session, not one seen: its presence is unobserved, and the entry's type name is
+// not evidence.
+type ObservedPresence
+  = PartPresent
+  | PartAbsent
+  | PresenceUnobserved
+
+fn observed_presence(i: ComponentIdentification) -> ObservedPresence {
+  match i {
+    IdentifiedByMarking { row: _, marking: _ } => PartPresent
+    MarkingSharedByMakers { rows: _, marking: _ } => PartPresent
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => PartPresent
+    RatingPrintedOnBody { rating: _, marking: _ } => PartPresent
+    ResistanceCodeRead { milliohms: _, marking: _ } => PartPresent
+    MarkingUnresolved { marking, discriminator: _ } => match marking { Present { value: _ } => PartPresent, Absent => PresenceUnobserved }
+    FootprintUnpopulated { evidence: _ } => PartAbsent
+  }
 }
 
 // An observation whose order against the board's dividing events was not stated: it is placed against

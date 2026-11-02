@@ -401,31 +401,23 @@ fn is_disposition(d: ReadingDisposition, want: ReadingDisposition) -> Bool {
   }
 }
 
-// ── INSTALLATION: WHETHER A PART WAS FITTED, DERIVED FROM THE ALTERATION LEDGER ──────────────────
+// ── PLACING AN OBSERVATION AGAINST CHOSEN EVENTS ──────────────────────────────────────────────
 //
-// Whether a part is on the board is never authored beside the part: the ledger's removals (AssetAlteration
-// PartRemoved, whose part names the component) are the one record of it. Two questions are asked of it.
+// Whether a part was on the board is never authored beside the part, and the ledger's silence is not
+// presence: an observation of the part establishes presence (product.electrical.identification
+// observed_presence), and the ledger's removals (AssetAlteration PartRemoved, naming the component)
+// establish removal. What joins them is the observation's order. place_against answers one question
+// about it: relative to these events, which side did the observation fall on?
 //
-// WAS IT FITTED WHEN IT WAS SEEN? A component observation states its order against the board's dividing
-// events (product.electrical.identification InstalledComponent seen). With no recorded removal of the
-// part, an observation of it on the board saw it fitted. With one, only an order stated against that
-// removal places the observation: before it, the part was seen fitted; after it, the part had been
-// removed; otherwise the order is unknown and the observation supplies no fitted-state evidence. A
-// removal recorded as refitted is one event for two changes, so which side an observation fell on is
-// not distinguishable (Stage A's refusal, kept).
-type FittedAtObservation
-  = SeenFitted
-  | SeenAfterRemoval { key: NonEmptyStr }
-  | FittedOrderUnknown
-  | SeenAcrossRemovalAndRefit
-
-// IS IT REMOVED NOW? After every event the board's record holds, the part is removed when the ledger
-// records its removal. NotRemovedByRecord says only that no recorded removal names this component --
-// for an empty footprint that is not "fitted", and for any part it is not a reading of the board today.
-type InstallationAfterRecord
-  = NotRemovedByRecord
-  | RemovedBy { key: NonEmptyStr }
-  | RemovalRefitIndistinguishable
+// Its references are resolved first against the asset's WHOLE event catalogue (recorded_events), as a
+// reading's are (reading_placement): an unresolved reference makes the observation unplaced, whatever
+// events are then asked about, and a reference to an event that is not among them is simply not
+// consulted. Before every one of the events, after at least one, or neither stated.
+type EventPlacement
+  = BeforeEvery
+  | AfterEvent { key: NonEmptyStr }
+  | OrderNotStated { key: NonEmptyStr }
+  | PlacementUnresolved { keys: List<NonEmptyStr> }
 
 fn removal_of(a: AssetAlteration) -> Bool {
   match a.change {
@@ -456,23 +448,15 @@ fn seen_after(o: ReadingOrder, k: NonEmptyStr) -> Bool {
   }
 }
 
-fn fitted_at_observation(r: BenchRecord, asset: PhysicalAssetIdentity, c: ComponentInstanceIdentity, seen: ReadingOrder) -> FittedAtObservation {
-  let rs = removals_of(r: r, asset: asset, c: c)
-  let after = filter(rs, a => seen_after(o: seen, k: a.key))
-  if any(rs, a => alteration_refitted(a: a)) { SeenAcrossRemovalAndRefit } else {
-    match after.first() {
-      Present { value: a } => SeenAfterRemoval { key: a.key }
-      Absent => if all(rs, a => seen_before(o: seen, k: a.key)) { SeenFitted } else { FittedOrderUnknown }
-    }
-  }
-}
-
-fn installation_after_record(r: BenchRecord, asset: PhysicalAssetIdentity, c: ComponentInstanceIdentity) -> InstallationAfterRecord {
-  let rs = removals_of(r: r, asset: asset, c: c)
-  if any(rs, a => alteration_refitted(a: a)) { RemovalRefitIndistinguishable } else {
-    match rs.first() {
-      Present { value: a } => RemovedBy { key: a.key }
-      Absent => NotRemovedByRecord
+fn place_against(r: BenchRecord, asset: PhysicalAssetIdentity, seen: ReadingOrder, keys: List<NonEmptyStr>) -> EventPlacement {
+  let unresolved = filter(order_keys(o: seen), k => !key_listed(keys: recorded_events(r: r, asset: asset), k: k))
+  if count(unresolved) > 0 { PlacementUnresolved { keys: unresolved } } else {
+    match (filter(keys, k => seen_after(o: seen, k: k))).first() {
+      Present { value: k } => AfterEvent { key: k }
+      Absent => match (filter(keys, k => !seen_before(o: seen, k: k))).first() {
+        Present { value: k } => OrderNotStated { key: k }
+        Absent => BeforeEvery
+      }
     }
   }
 }

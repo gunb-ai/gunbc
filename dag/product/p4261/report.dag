@@ -125,7 +125,13 @@ import product.electrical.investigation_hypothesis { hypothesis_text }
 import product.p4261.comparison {
   P4261Comparison,
   ComparedSide,
-  PositionConclusion,
+  InstallationSnapshot,
+  RemovedBy,
+  RemovalRefitIndistinguishable,
+  SeenWithNoLaterRemoval,
+  SeenAbsent,
+  InstallationUnknown,
+  ObservedRelation,
   SameIdentifiedPart,
   DifferentParts,
   SameCandidateConstraint,
@@ -138,6 +144,7 @@ import product.p4261.evidence {
   SupportedOnSpecimen,
   EvidenceMissing,
   Contradicted,
+  ObservationsConflict,
   NotAttributable,
 }
 import product.p4261.carrier {
@@ -1283,13 +1290,13 @@ fn comparison_rows_text(rows: List<ElectronicComponentRow>) -> String {
   join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or ")
 }
 
-fn comparison_conclusion_text(c: PositionConclusion) -> String {
+fn comparison_conclusion_text(c: ObservedRelation) -> String {
   match c {
     SameIdentifiedPart { row } => join(["both read ", comparison_rows_text(rows: [row])], "")
     DifferentParts { e1, k1 } => join(["different parts: the E1 reads ", comparison_rows_text(rows: e1), ", the K1 ", comparison_rows_text(rows: k1)], "")
     SameCandidateConstraint { rows } => join(["both read a code shared by ", comparison_rows_text(rows: rows), ", which does not make the fitted parts the same"], "")
     DifferenceUndetermined { e1, k1 } => join(["undetermined: the E1 reads ", comparison_rows_text(rows: e1), ", the K1 ", comparison_rows_text(rows: k1)], "")
-    ComparisonIncomplete { boards } => join(["incomplete: no part row read on ", join(map(boards, b => b as String), " or ")], "")
+    ComparisonIncomplete { boards } => join(["incomplete: no part row established as received on ", join(map(boards, b => b as String), " or ")], "")
     BoardReadingsDisagree { asset, observations } => join([asset as String, "'s own ", to_string(count(observations)), " readings there disagree"], "")
   }
 }
@@ -1299,21 +1306,33 @@ fn population_outcome_text(o: PopulationOutcome) -> String {
     SupportedOnSpecimen { supporting: _ } => "supported on this board"
     EvidenceMissing { undecided: _ } => "not established by this board's readings"
     Contradicted { contradicting: _, supporting: _ } => "contradicted by this board's readings"
+    ObservationsConflict { observations: _ } => "undecidable: this board's own readings there disagree"
     NotAttributable { gap: _ } => "not attributable to this board"
   }
 }
 
-fn compared_side_text(s: ComparedSide) -> String {
-  match s.claim {
-    Absent => join([s.asset as String, ": no population claim"], "")
-    Present { value: c } => join([s.asset as String, ": reconstructed claim ", population_outcome_text(o: c.assessment.outcome)], "")
+fn installation_snapshot_text(i: InstallationSnapshot) -> String {
+  match i {
+    RemovedBy { key } => join(["now removed (", key as String, ")"], "")
+    RemovalRefitIndistinguishable => "removed and refitted in one recorded event, so its state since is not distinguishable"
+    SeenWithNoLaterRemoval => "seen fitted, no removal recorded since"
+    SeenAbsent => "seen absent"
+    InstallationUnknown => "presence unrecorded"
   }
+}
+
+fn compared_side_text(s: ComparedSide) -> String {
+  let claim = match s.claim {
+    Absent => "no population claim"
+    Present { value: c } => join(["reconstructed claim ", population_outcome_text(o: c.assessment.outcome)], "")
+  }
+  join([s.asset as String, ": ", claim, ", ", installation_snapshot_text(i: s.installation)], "")
 }
 
 fn population_comparison_text(c: P4261Comparison) -> String {
   join([
     "at the designators both revisions' silkscreens carry (a shared label, not an established circuit correspondence): ",
-    join(map(c.positions, p => join([p.designator as String, " ", comparison_conclusion_text(c: p.conclusion), " (", compared_side_text(s: p.e1), "; ", compared_side_text(s: p.k1), ")"], "")), "; "),
+    join(map(c.positions, p => join([p.designator as String, " as received ", comparison_conclusion_text(c: p.observed), " (", compared_side_text(s: p.e1), "; ", compared_side_text(s: p.k1), ")"], "")), "; "),
     ". Not covered: ", to_string(count(c.e1.uncovered)), " components observed on ", c.e1.asset as String, " and ", to_string(count(c.k1.uncovered)), " on ", c.k1.asset as String,
     " have no admitted designator reading, and ", to_string(count(c.e1.refused) + count(c.k1.refused)), " readings were refused",
   ], "")
