@@ -1493,32 +1493,97 @@ mod runtime_calibration_suite_tests {
     }
 }
 
-/// The rust module basenames the crate's `lib.rs` declares, in its own order -- public or not,
-/// and including `#[cfg(test)]` ones: a private `mod` (the host shell's
-/// `#[cfg(test)] mod compiler_tests;`) is a module of the crate as much as a `pub mod` is, and an
-/// edge from it is covered by this crate (emitted-edge coverage needs that).
+/// The rust module file stems the crate declares, in declaration order -- public or not, and
+/// including `#[cfg(test)]` ones: a private `mod` (the host shell's `#[cfg(test)] mod
+/// compiler_tests;`) is a module of the crate as much as a `pub mod` is, and an edge from it is
+/// covered by this crate (emitted-edge coverage needs that).
+///
+/// THE DECLARATION IS READ TRANSITIVELY. A file a declared module itself declares (`cli_run`'s
+/// `mod compile_clean;`) or names by `#[path]` is a module of the crate too, so one reader answers
+/// both the roster and the rebuild-scope ownership of a hand file. A `mod x;` of `a.rs` lives in
+/// `a/x.rs` (or `a/x/mod.rs`); a `#[path]` is relative to the directory of the declaring file, and a file loaded by `#[path]` resolves its own `mod`s from its own directory. A
+/// module whose file is not on disk is still listed (the declaration is the fact) and is not
+/// descended into.
 ///
 /// AN UNREADABLE MANIFEST IS RETURNED, NOT RENDERED AS AN EMPTY CLOSURE. An empty vector reads as
 /// `this crate declares no modules`, so a caller would answer `entry module not declared` for a
 /// crate it never read -- execution-provenance loss, misattributing a filesystem defect to the
 /// emission.
 pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
-    let content = std::fs::read_to_string(lib_rs).map_err(|e| e.to_string())?;
-    Ok(declared_modules(&content, true))
+    let src_dir = lib_rs
+        .parent()
+        .ok_or_else(|| format!("{} has no directory", lib_rs.display()))?;
+    let mut modules = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut pending = vec![(lib_rs.to_path_buf(), src_dir.to_path_buf())];
+    while let Some((file, child_dir)) = pending.pop() {
+        if !seen.insert(file.clone()) {
+            continue;
+        }
+        let content = std::fs::read_to_string(&file).map_err(|e| e.to_string())?;
+        let file_dir = file.parent().unwrap_or(src_dir).to_path_buf();
+        for decl in declared_mod_decls(&content, true) {
+            let child = match &decl.path {
+                Some(rel) => file_dir.join(rel),
+                None => {
+                    let flat = child_dir.join(format!("{}.rs", decl.name));
+                    if flat.is_file() {
+                        flat
+                    } else {
+                        child_dir.join(&decl.name).join("mod.rs")
+                    }
+                }
+            };
+            let stem = match &decl.path {
+                Some(_) => child
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&decl.name)
+                    .to_string(),
+                None => decl.name.clone(),
+            };
+            if !modules.contains(&stem) {
+                modules.push(stem);
+            }
+            if child.is_file() {
+                let nested =
+                    if decl.path.is_some() || child.file_name().is_some_and(|f| f == "mod.rs") {
+                        child.parent().unwrap_or(&child_dir).to_path_buf()
+                    } else {
+                        child_dir.join(&decl.name)
+                    };
+                pending.push((child, nested));
+            }
+        }
+    }
+    Ok(modules)
 }
 
-/// The subset of `closure_modules` compiled into the seed BINARY: a `mod` item whose attribute
-/// run carries `#[cfg(test)]` is never in it, so reporting it as seed membership makes the regen
-/// model refuse its generated mirror (`NonSeedGeneratedOutput` over `SeedEmbedded`).
+/// The subset of the crate's `lib.rs` declarations compiled into the seed BINARY: a `mod` item
+/// whose attribute run carries `#[cfg(test)]` is never in it, so reporting it as seed membership
+/// makes the regen model refuse its generated mirror (`NonSeedGeneratedOutput` over
+/// `SeedEmbedded`). Top-level only: the seed partition rows own the nested files.
 pub(crate) fn binary_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
     let content = std::fs::read_to_string(lib_rs).map_err(|e| e.to_string())?;
     Ok(declared_modules(&content, false))
 }
 
+struct ModDecl {
+    name: String,
+    path: Option<String>,
+}
+
+fn declared_modules(content: &str, include_test_only: bool) -> Vec<String> {
+    declared_mod_decls(content, include_test_only)
+        .into_iter()
+        .map(|decl| decl.name)
+        .collect()
+}
+
 // The attribute run is tracked across lines because `#[allow(...)]` between the cfg and the
 // `mod` spans several.
-fn declared_modules(content: &str, include_test_only: bool) -> Vec<String> {
-    let mut modules = Vec::new();
+fn declared_mod_decls(content: &str, include_test_only: bool) -> Vec<ModDecl> {
+    let mut decls = Vec::new();
     let mut attrs = String::new();
     let mut depth: i32 = 0;
     for line in content.lines() {
@@ -1532,18 +1597,27 @@ fn declared_modules(content: &str, include_test_only: bool) -> Vec<String> {
             continue;
         }
         let test_only = attrs.replace(' ', "").contains("cfg(test)");
+        let path = attrs
+            .find("#[path")
+            .and_then(|at| attrs[at..].split('"').nth(1))
+            .map(str::to_string);
         attrs.clear();
         if let Some(m) = line
-            .strip_prefix("pub mod ")
+            .strip_prefix("pub(crate) mod ")
+            .or_else(|| line.strip_prefix("pub(super) mod "))
+            .or_else(|| line.strip_prefix("pub mod "))
             .or_else(|| line.strip_prefix("mod "))
             .and_then(|rest| rest.strip_suffix(';'))
         {
             if include_test_only || !test_only {
-                modules.push(m.trim().to_string());
+                decls.push(ModDecl {
+                    name: m.trim().to_string(),
+                    path,
+                });
             }
         }
     }
-    modules
+    decls
 }
 
 #[cfg(test)]
