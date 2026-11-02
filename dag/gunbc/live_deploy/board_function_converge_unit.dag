@@ -4,9 +4,9 @@ import std.types { List, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size, second, second_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.systemd.unit_file {
-  SystemdUnitFile, ServiceUnitFile,
-  Description, After, Before,
-  ServiceType, OneshotMode, RemainAfterExit, ExecStart, WorkingDirectory, TimeoutStartSec,
+  SystemdUnitFile, ServiceUnitFile, SystemdDropIn, DropInUnitSection,
+  Description, After, Requires,
+  ServiceType, OneshotMode, RemainAfterExit, ExecStart, ExecReload, WorkingDirectory, TimeoutStartSec,
   ServiceResourceControl, service_memory_max, service_memory_swap_max,
   Installable, WantedBy,
 }
@@ -17,6 +17,7 @@ import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding, HelperLocus, helper_locus_dir, release_locus_tree_subdirs, approval_broker_helper_root_principal,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner.runner_unit { runner_unit_template_name, runner_unit_dropin_path }
 
 // HOW THE BOARD-FUNCTION CONVERGE ROUTE REACHES A HOST (operator decision 2026-11-02, escalation
 // msg_a7082369: join live_deploy's unit set and run from its per-revision release). The route
@@ -95,15 +96,11 @@ type BoardFunctionConvergeUnitFile
   = BoardFunctionConvergeUnitReady { file: SystemdUnitFile }
   | BoardFunctionConvergeUnitRefused { cause: NamedArgumentAdmission }
 
-// Before= the container runtimes: CI jobs and serving workloads start there, and the removal should be in
-// place before they do. This is ORDERING, NOT GATING. A refusal fails this unit and leaves the host exactly as
-// it was before this change -- the function enumerated and its link up -- and the container runtimes still
-// start, deliberately: the hazard is the link, not the workloads, so holding them back would take the host's
-// CI and serving down without making the link any safer. The failure stays visible, as this unit in the
-// failed state (RemainAfterExit keeps a converged run active, so `systemctl is-active` reads whether this
-// boot's removal held), and in a deploy, where the restart leg's failure stops the apply. What does not
-// exist yet is anything that alerts on the boot-time failure; until it does, a failed boot converge is seen
-// only by reading the unit.
+// THE UNIT. ExecReload runs the same converge as ExecStart, and that is what a deploy uses to re-run it
+// (systemctl reload-or-restart, extdeps.systemd.systemctl): the gated workloads Require= this unit, and
+// systemd propagates a restart of a required unit to every unit that requires it, so restarting it would
+// restart docker, containerd and every runner on each deploy. RemainAfterExit keeps a converged run active,
+// so `systemctl is-active` reads whether this boot's removal held; a refusal leaves it failed.
 fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisionBinding) -> BoardFunctionConvergeUnitFile {
   match board_function_converge_argv(host: host, revision: revision) {
     BoardFunctionConvergeArgvRefused { cause } => BoardFunctionConvergeUnitRefused { cause: cause }
@@ -112,7 +109,6 @@ fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisi
         unit: [
           Description { text: "gunbc board-function converge: remove the board functions no consumer admits (gunbc.fleet.board_function_admission)" as NonEmptyStr },
           After { target: "local-fs.target" as NonEmptyStr },
-          Before { target: "docker.service containerd.service" as NonEmptyStr },
         ],
         service: [
           ServiceType { mode: OneshotMode },
@@ -122,10 +118,49 @@ fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisi
           ServiceResourceControl { directive: service_memory_max(bytes: board_function_converge_memory_max) },
           ServiceResourceControl { directive: service_memory_swap_max(bytes: board_function_converge_memory_swap_max) },
           ExecStart { command: join(argv, " ") as NonEmptyStr },
+          ExecReload { command: join(argv, " ") as NonEmptyStr },
         ],
         install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
       } }
   }
+}
+
+// THE WORKLOADS A FAILED CONVERGE KEEPS FROM STARTING. Successful convergence is a prerequisite at the
+// workload-admission boundary, declared on the workload's side: each gated unit gets a drop-in with
+// Requires= and After= this unit, so when the converge fails, times out or is missing, systemd does not start
+// the workload (measured on systemd 255, srv1 2026-11-02: a dependency job failed and the dependent stayed
+// inactive). The gated set is where workloads are admitted on a fleet host: the container runtimes and the
+// GitHub Actions runner template, whose drop-in directory applies to every runner instance.
+//
+// DELIBERATELY NOT GATED: sshd, tailscaled, the serial console and the gunbc management surface (the
+// dashboard and approval broker). Those are how an operator reaches a host whose converge failed, and the
+// requirement is to block workload admission, not to make the machine unmanageable. Recovery is to fix
+// the cause and start this unit (or the workload, which pulls it in); to admit workloads without the
+// removal, the operator removes the drop-in, a deliberate act outside this route.
+type BoardFunctionGatedWorkload {
+  unit: NonEmptyStr
+  drop_in_path: NonEmptyStr
+}
+
+data board_function_converge_drop_in_name: NonEmptyStr = "10-gunbc-board-function-converge.conf"
+
+fn system_unit_drop_in_path(unit: NonEmptyStr, file_name: NonEmptyStr) -> NonEmptyStr {
+  join(["/etc/systemd/system/", unit as String, ".d/", file_name as String], "") as NonEmptyStr
+}
+
+fn board_function_converge_gated_workloads() -> List<BoardFunctionGatedWorkload> {
+  [
+    BoardFunctionGatedWorkload { unit: "docker.service", drop_in_path: system_unit_drop_in_path(unit: "docker.service", file_name: board_function_converge_drop_in_name) },
+    BoardFunctionGatedWorkload { unit: "containerd.service", drop_in_path: system_unit_drop_in_path(unit: "containerd.service", file_name: board_function_converge_drop_in_name) },
+    BoardFunctionGatedWorkload { unit: runner_unit_template_name, drop_in_path: runner_unit_dropin_path(file_name: board_function_converge_drop_in_name) },
+  ]
+}
+
+fn board_function_converge_gate_drop_in() -> SystemdDropIn {
+  SystemdDropIn { sections: [DropInUnitSection { directives: [
+    Requires { target: board_function_converge_unit_name },
+    After { target: board_function_converge_unit_name },
+  ] }] }
 }
 
 // THE HAND-INSTALLED UNIT THIS REPLACES, retired on the host that carries it in the same apply that installs

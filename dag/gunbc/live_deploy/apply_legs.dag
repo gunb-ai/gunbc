@@ -71,7 +71,10 @@ import gunbc.live_deploy.board_function_converge_unit {
   board_function_converge_unit_name, board_function_converge_unit_path, board_function_converge_locus,
   board_function_converge_helpers_root, board_function_converge_unit_file,
   BoardFunctionConvergeUnitReady, BoardFunctionConvergeUnitRefused, retired_hand_installed_removals_on,
+  board_function_converge_gated_workloads, board_function_converge_gate_drop_in,
 }
+import extdeps.systemd.unit_file { serialize_systemd_drop_in }
+import extdeps.systemd.systemctl { systemctl_reload_or_restart_argv }
 import extdeps.sudo.visudo { visudo_check_command }
 import std.measure { Second }
 import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_process }
@@ -828,11 +831,16 @@ fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) ->
 }
 
 // THE BOARD-FUNCTION CONVERGE UNIT (gunbc.live_deploy.board_function_converge_unit), a host singleton
-// installed only by the deployment that holds the host's role singletons. The order: the root-owned
-// snapshot the unit runs from; the unit; the retirement of any hand-installed removal it replaces on this
-// host (disable if loaded, then remove its files -- both idempotent); a reload; enable and restart, which
-// runs the converge now, so a removal that does not read back stops the apply here; and only then the
-// retirement of the superseded snapshot, once the unit that names the new one stands.
+// installed only by the deployment that holds the host's role singletons, on EVERY apply rather than only
+// when the serve unit is rewritten: its own state -- unit, gate drop-ins, snapshot, the converge's result --
+// is not the serve unit's, so a drifted or missing converge is repaired by the next apply whatever the
+// serve unit's standing. The order: the root-owned snapshot the unit runs from; the unit; the gate drop-ins
+// on the workload units (gunbc.live_deploy.board_function_converge_unit board_function_converge_gated_workloads);
+// the retirement of any hand-installed removal it replaces (disable if loaded, then remove its files, both
+// idempotent); a reload; enable; then reload-or-restart, which runs the converge now -- a start on first
+// install, ExecReload after -- so a removal that does not read back stops the apply here, and the workloads
+// that require it are not restarted (a restart would propagate to them). Only then is the superseded snapshot
+// retired, once the unit that names the new one stands.
 fn deploy_apply_board_function_converge_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
   if !deployment_owns_the_host_approval_broker(spec: spec) { ApplyPlanReady { legs: [] } } else {
     match board_function_converge_unit_file(host: spec.target.host.identity, revision: revision) {
@@ -840,6 +848,11 @@ fn deploy_apply_board_function_converge_plan(spec: DeploymentSpec, revision: Rel
         ApplyPlanRefused { step: "board-function-converge-unit", reason: "live-deploy apply refused: the board-function converge host argument was not admitted, so no unit naming a false argv is installed" }
       BoardFunctionConvergeUnitReady { file: unit } => {
         let locus = board_function_converge_locus()
+        let gate = serialize_systemd_drop_in(drop_in: board_function_converge_gate_drop_in())
+        let gates = flat_map(board_function_converge_gated_workloads(), w => [
+          apply_root_leg(step: "board-function-converge-gate-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: w.drop_in_path as String))),
+          apply_staged_leg(step: "board-function-converge-gate", dest: w.drop_in_path as String, payload: apply_unit_text(file_text: gate)),
+        ])
         let retire = flat_map(retired_hand_installed_removals_on(host: spec.target.host.identity), r => match r.paths {
           Empty => [ApplyLegRetract { step: "board-function-hand-unit-disable", leg: RetractDisableIfLoaded { unit: r.unit } }]
           Cons { head: h, tail: rest } => [
@@ -850,9 +863,11 @@ fn deploy_apply_board_function_converge_plan(spec: DeploymentSpec, revision: Rel
         ApplyPlanReady { legs: concat(concat(concat(concat([
           ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotInstall },
           apply_staged_leg(step: "board-function-converge-unit", dest: board_function_converge_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: unit))),
-        ], retire), [
+        ], gates), retire), [
           apply_root_leg(step: "board-function-converge-reload", argv: systemctl_daemon_reload_argv()),
-        ]), apply_enable_restart_legs(step: "board-function-converge", unit: board_function_converge_unit_name)), [
+          apply_root_leg(step: "board-function-converge-enable", argv: systemctl_enable_argv(unit: board_function_converge_unit_name)),
+          apply_root_leg(step: "board-function-converge-run", argv: systemctl_reload_or_restart_argv(unit: board_function_converge_unit_name)),
+        ]), [
           ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotRetireSuperseded },
         ]) }
       }
@@ -870,16 +885,16 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
         first: if !plan_writes_unit(plan: plan) { ApplyPlanReady { legs: [] } } else {
           deploy_apply_chain(
             first: deploy_apply_worker_sandbox_plan(spec: spec, revision: revision),
-            rest: deploy_apply_chain(
-              first: deploy_apply_board_function_converge_plan(spec: spec, revision: revision),
-              rest: ApplyPlanReady { legs: list_append(
-                left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision),
-                right: [apply_staged_leg(step: "serve-unit", dest: deployment_systemd_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
-              ) },
-            ),
+            rest: ApplyPlanReady { legs: list_append(
+              left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision),
+              right: [apply_staged_leg(step: "serve-unit", dest: deployment_systemd_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
+            ) },
           )
         },
-        rest: ApplyPlanReady { legs: deploy_apply_lifecycle_legs(spec: spec, plan: plan) },
+        rest: deploy_apply_chain(
+          first: deploy_apply_board_function_converge_plan(spec: spec, revision: revision),
+          rest: ApplyPlanReady { legs: deploy_apply_lifecycle_legs(spec: spec, plan: plan) },
+        ),
       )
   }
 }

@@ -2,13 +2,14 @@ module test.claim.live_deploy.board_function_converge_unit_witness
 
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
-import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_systemd_drop_in }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled }
 import gunbc.live_deploy.board_function_converge_unit {
   board_function_converge_unit_file, BoardFunctionConvergeUnitReady, BoardFunctionConvergeUnitRefused,
   board_function_converge_argv, BoardFunctionConvergeArgvReady, BoardFunctionConvergeArgvRefused,
   retired_hand_installed_removals_on,
+  board_function_converge_gated_workloads, board_function_converge_gate_drop_in,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -42,17 +43,33 @@ test fn the_unit_runs_the_converge_entry_from_the_root_snapshot_for_its_host() -
     && all(words, w => !contains(w, "/opt/gunbc/approval-broker"))
 }
 
-// A boot oneshot, ordered before the container runtimes, with its own memory bound and no swap; a refusal
-// fails the unit and RemainAfterExit keeps a converged boot readable as active.
-test fn the_unit_is_a_bounded_boot_oneshot_before_the_container_runtime() -> Bool {
+// A bounded boot oneshot whose reload re-runs the same converge, so a deploy re-runs it without the restart
+// that Requires= would propagate to the gated workloads.
+test fn the_unit_is_a_bounded_boot_oneshot_that_reloads_into_the_same_converge() -> Bool {
   let t = unit_text()
+  let exec = join(argv(), " ")
   contains(t, "Type=oneshot")
     && contains(t, "RemainAfterExit=yes")
-    && contains(t, "Before=docker.service containerd.service")
+    && contains(t, concat("ExecStart=", exec))
+    && contains(t, concat("ExecReload=", exec))
+    && !contains(t, "Before=")
     && contains(t, "MemoryMax=3221225472")
     && contains(t, "MemorySwapMax=0")
     && contains(t, "TimeoutStartSec=600")
     && contains(t, "WantedBy=multi-user.target")
+}
+
+// THE GATE IS ON THE WORKLOAD'S SIDE: every gated unit's drop-in Requires= and orders After= the converge, so a
+// failed converge keeps it from starting; the management surface is not in the gated set.
+test fn the_workloads_require_the_converge_and_the_management_surface_does_not() -> Bool {
+  let d = serialize_systemd_drop_in(drop_in: board_function_converge_gate_drop_in())
+  let units = map(board_function_converge_gated_workloads(), w => w.unit as String)
+  contains(d, "[Unit]")
+    && contains(d, "Requires=gunbc-board-function-converge.service")
+    && contains(d, "After=gunbc-board-function-converge.service")
+    && units == ["docker.service", "containerd.service", "actions-runner@.service"]
+    && all(board_function_converge_gated_workloads(), w => starts_with(s: w.drop_in_path as String, prefix: concat(concat("/etc/systemd/system/", w.unit as String), ".d/")))
+    && all(["ssh.service", "tailscaled.service", "gunbc-roadmap.service", "gunbc-approval-broker.service"], u => !any(units, g => g == u))
 }
 
 // The hand-installed removal is retired only where it was installed.

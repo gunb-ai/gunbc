@@ -71,8 +71,16 @@ type BelowBridgeReading
   | BelowBridgeNotEnumerated
   | BelowBridgeUnread { cause: String }
 
+// WHAT THE ROOT PORT LEADS TO, read from the root port's own directory rather than from the route: the
+// bridge's parentage is established by it being listed there, and once the bridge is gone, by the root port
+// leading to nothing. Remembered addresses being absent is not evidence of what the link now serves.
+type ChildFunctionsReading
+  = ChildFunctionsListed { addresses: List<String> }
+  | ChildFunctionsUnread { cause: String }
+
 type PcieDetachObservation {
   root_port: PcieFunctionReading
+  root_children: ChildFunctionsReading
   detached: PcieFunctionReading
   behind: List<BehindReading>
   below: BelowBridgeReading
@@ -142,6 +150,21 @@ fn pcie_detach_decision(route: PcieDetachRoute, observation: PcieDetachObservati
   }
 }
 
+// The root port's children must be exactly the bridge while it is enumerated, and nothing once it is gone.
+fn root_children_refusal(route: PcieDetachRoute, observation: PcieDetachObservation, bridge_enumerated: Bool) -> String? {
+  match observation.root_children {
+    ChildFunctionsUnread { cause } => Present { value: join(["the functions the root port ", function_ids_text(f: route.root_port), " leads to could not be listed: ", cause], "") }
+    ChildFunctionsListed { addresses } =>
+      if bridge_enumerated {
+        if length(addresses) == 1 && all(addresses, a => a == (route.detached.address as String)) { none }
+        else { Present { value: join(["the root port ", function_ids_text(f: route.root_port), " leads to [", join(addresses, ", "), "], not to the route's bridge alone, so the bridge's parentage is not the observed one"], "") } }
+      } else {
+        if length(addresses) == 0 { none }
+        else { Present { value: join(["the route's bridge is gone but the root port ", function_ids_text(f: route.root_port), " now leads to [", join(addresses, ", "), "], which the route never read, so its link is not disabled on the route's account"], "") } }
+      }
+  }
+}
+
 fn pcie_detach_decision_below_root(route: PcieDetachRoute, observation: PcieDetachObservation, pairs: List<BehindReading>) -> PcieDetachDecision {
   let unread_behind = flat_map(pairs, p => match reading_unread_cause(r: p.reading) { Present { value: c } => [c] Absent => [] })
   let foreign_behind = filter(pairs, p => reading_enumerated(r: p.reading) && !reading_matches(r: p.reading, f: p.identity))
@@ -162,7 +185,10 @@ fn pcie_detach_decision_below_root(route: PcieDetachRoute, observation: PcieDeta
                 BelowBridgeNotEnumerated => DetachRefused { cause: join(["the bridge ", function_ids_text(f: route.detached), " read as enumerated but its directory was not listed"], "") }
                 BelowBridgeListed { functions } =>
                   if length(functions) == length(route.behind) && all(route.behind, f => length(filter(functions, a => a == (f.address as String))) == 1) {
-                    DetachApply { remove_detached: true, disable_link: !pcie_link_control_link_disabled(value: value) }
+                    match root_children_refusal(route: route, observation: observation, bridge_enumerated: true) {
+                      Present { value: cause } => DetachRefused { cause: cause }
+                      Absent => DetachApply { remove_detached: true, disable_link: !pcie_link_control_link_disabled(value: value) }
+                    }
                   } else {
                     DetachRefused { cause: join(["below the bridge ", function_ids_text(f: route.detached), " the host enumerates ", join(functions, ", "), ", which is not exactly the functions the route names, so removing the bridge would remove something the route never read"], "") }
                   }
@@ -176,8 +202,12 @@ fn pcie_detach_decision_below_root(route: PcieDetachRoute, observation: PcieDeta
             if any(pairs, p => reading_enumerated(r: p.reading)) {
               DetachRefused { cause: join(["a function behind ", function_ids_text(f: route.detached), " is enumerated while the bridge is not, which is a tree the route does not describe"], "") }
             } else {
-              if pcie_link_control_link_disabled(value: value) { DetachConverged }
-              else { DetachApply { remove_detached: false, disable_link: true } }
+              match root_children_refusal(route: route, observation: observation, bridge_enumerated: false) {
+                Present { value: cause } => DetachRefused { cause: cause }
+                Absent =>
+                  if pcie_link_control_link_disabled(value: value) { DetachConverged }
+                  else { DetachApply { remove_detached: false, disable_link: true } }
+              }
             }
           }
       }
@@ -223,10 +253,6 @@ fn observe_link_control(root_port: PcieFunctionIdentity) -> LinkControlReading {
   }
 }
 
-type ChildFunctionsReading
-  = ChildFunctionsListed { addresses: List<String> }
-  | ChildFunctionsUnread { cause: String }
-
 fn list_child_functions(directory: String) -> ChildFunctionsReading {
   let listed = Filesystem.List(path: directory)
   match filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error) {
@@ -256,6 +282,7 @@ fn observe_pcie_detach(route: PcieDetachRoute) -> PcieDetachObservation {
   let detached = observe_pcie_function(f: route.detached)
   PcieDetachObservation {
     root_port: observe_pcie_function(f: route.root_port),
+    root_children: list_child_functions(directory: sysfs_pci_function_dir(address: route.root_port.address)),
     detached: detached,
     behind: map(route.behind, f => BehindReading { identity: f, reading: observe_pcie_function(f: f) }),
     below: observe_below_bridge(route: route, detached: detached),
@@ -283,32 +310,63 @@ type PcieDetachOutcome
   | DetachConvergedAfterApply { removed: Bool, disabled: Bool }
   | DetachNotConverged { cause: String }
 
-// Remove first, then disable the link: the kernel detaches the driver while the link is still up, and the
-// link is taken down only once nothing is bound behind it. The readback is a fresh observation decided by
-// the same fold, so the effects are judged by what the host shows afterwards, never by their exit codes.
-fn converge_pcie_detach(route: PcieDetachRoute) -> PcieDetachOutcome {
-  match pcie_detach_decision(route: route, observation: observe_pcie_detach(route: route)) {
-    DetachRefused { cause } => DetachNotConverged { cause: cause }
-    DetachConverged => DetachAlreadyConverged
+// THE ORCHESTRATION, OVER PORTS, so the sequence itself -- not only the decision -- is exercised against
+// supplied readings and writes. Remove first, then disable the link: the kernel detaches the driver while the
+// link is still up, and the link is taken down only once nothing is bound behind it. A failed removal stops
+// before the link write; a failed link write never reports convergence; and the readback is a fresh
+// observation decided by the same fold, so writes whose commands succeeded but whose effect does not show
+// refuse. `writes` records each write attempted, in order, so a refusal can be shown to have written nothing.
+type PcieDetachPorts {
+  observe: fn(Int) -> PcieDetachObservation
+  remove: fn(PcieDetachRoute) -> String?
+  disable: fn(PcieDetachRoute) -> String?
+}
+
+type PcieDetachRun {
+  outcome: PcieDetachOutcome
+  writes: List<String>
+}
+
+fn converge_pcie_detach_over(route: PcieDetachRoute, ports: PcieDetachPorts) -> PcieDetachRun {
+  let observe = ports.observe
+  let remove = ports.remove
+  let disable = ports.disable
+  match pcie_detach_decision(route: route, observation: observe(0)) {
+    DetachRefused { cause } => PcieDetachRun { outcome: DetachNotConverged { cause: cause }, writes: [] }
+    DetachConverged => PcieDetachRun { outcome: DetachAlreadyConverged, writes: [] }
     DetachApply { remove_detached, disable_link } => {
-      let removal = if remove_detached { remove_detached_function(route: route) } else { none }
+      let removal = if remove_detached { remove(route) } else { none }
+      let removed_writes = if remove_detached { ["remove"] } else { [] }
       match removal {
-        Present { value: cause } => DetachNotConverged { cause: cause }
+        Present { value: cause } => PcieDetachRun { outcome: DetachNotConverged { cause: cause }, writes: removed_writes }
         Absent => {
-          let disabling = if disable_link { set_link_disable(route: route) } else { none }
+          let disabling = if disable_link { disable(route) } else { none }
+          let writes = concat(removed_writes, if disable_link { ["disable"] } else { [] })
           match disabling {
-            Present { value: cause } => DetachNotConverged { cause: cause }
+            Present { value: cause } => PcieDetachRun { outcome: DetachNotConverged { cause: cause }, writes: writes }
             Absent =>
-              match pcie_detach_decision(route: route, observation: observe_pcie_detach(route: route)) {
-                DetachConverged => DetachConvergedAfterApply { removed: remove_detached, disabled: disable_link }
-                DetachApply { remove_detached: _, disable_link: _ } => DetachNotConverged { cause: "the effects ran but the readback still shows the bridge enumerated or the link enabled" }
-                DetachRefused { cause } => DetachNotConverged { cause: concat("the readback after the effects refused: ", cause) }
+              match pcie_detach_decision(route: route, observation: observe(1)) {
+                DetachConverged => PcieDetachRun { outcome: DetachConvergedAfterApply { removed: remove_detached, disabled: disable_link }, writes: writes }
+                DetachApply { remove_detached: _, disable_link: _ } => PcieDetachRun { outcome: DetachNotConverged { cause: "the writes reported success but the readback still shows the bridge enumerated or the link enabled" }, writes: writes }
+                DetachRefused { cause } => PcieDetachRun { outcome: DetachNotConverged { cause: concat("the readback after the writes refused: ", cause) }, writes: writes }
               }
           }
         }
       }
     }
   }
+}
+
+fn host_pcie_detach_ports(route: PcieDetachRoute) -> PcieDetachPorts {
+  PcieDetachPorts {
+    observe: fn(round) { observe_pcie_detach(route: route) },
+    remove: fn(r) { remove_detached_function(route: r) },
+    disable: fn(r) { set_link_disable(route: r) },
+  }
+}
+
+fn converge_pcie_detach(route: PcieDetachRoute) -> PcieDetachOutcome {
+  converge_pcie_detach_over(route: route, ports: host_pcie_detach_ports(route: route)).outcome
 }
 
 // ── one host's plans ────────────────────────────────────────────────────────────────────────────
