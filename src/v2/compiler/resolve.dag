@@ -3416,6 +3416,130 @@ fn resolve_sole_declared_payload_path(ctx: ResolveContext, paths: List<Qualified
 // pattern FORM in both (v2.std.node_query is_wildcard_pattern): it binds nothing and names nothing,
 // so it is kept as it is at every depth. Lowering mints it, so it is recognised by form, never by
 // comparing an atom's spelling to `_`.
+// WHAT A BARE ATOM IN PATTERN POSITION DENOTES. The same question is asked by two consumers that must
+// not answer it differently -- this walk, which binds the atom, and the binder collection, which must not
+// treat a constructor as a binder (v2.compiler.resolve pattern_binders already excludes an atom whose
+// spelling is a constructor VISIBLE by name; an arm of the expected type that this module cannot name is
+// the other half, and it is excluded here, at that one collection point, from the same reading).
+//
+// The order is the one ruled with jolly-cat-271 and approved by tidy-ant-251: an atom naming a value the
+// arm can already see was refused before this runs (resolve_reason_pattern_atom_names_visible_value), so
+// whatever reaches here names no visible value; then the expected type's declared constructor set decides.
+// An atom it declares IS that constructor. An atom it does not declare keeps today's meaning, a binder.
+// Where no set is readable -- an unannotated let, a type parameter, a call result -- an atom whose
+// spelling names a NULLARY constructor visible in scope refuses instead of binding silently as a binder
+// that catches everything the author meant as a constructor: one text must not change meaning with
+// whether a type happened to be reachable (DESIGN 5, no silent fallback). A fresh lowercase binder names
+// no constructor and is untouched.
+type PatternAtomConstructorReading
+  = AtomConstructorBound { spelling: Symbol, path: QualifiedName }
+  | AtomConstructorTypeUnresolved { spelling: Symbol }
+  | AtomNotConstructor
+
+fn resolve_pattern_atom_constructor_reading(
+  ctx: ResolveContext,
+  pat: Node,
+  expected: Optional<ResolveExpectation>
+) -> PatternAtomConstructorReading {
+  match pat.kind {
+    TypeNode { connective: Atom { identity: name } } =>
+      if length(xs: pat.children) == 0 {
+        match resolve_expected_constructor_set(ctx: ctx, x: expected) {
+          ConstructorSetOf { arms: arms } =>
+            match expected_constructor_arms_named(arms: arms, tag: name) {
+              Cons { head: path, tail: Empty } => AtomConstructorBound { spelling: name, path: path }
+              // No arm of the expected type carries the spelling: today's meaning, a binder -- the arm
+              // does not invent a refusal the name door never raised. More than one arm carrying it is
+              // ambiguous, and the set never picks one; the atom stays what it is today.
+              _ => AtomNotConstructor
+            }
+          ConstructorSetUnavailable =>
+            match resolve_pattern_visible_nullary_constructor_path(ctx: ctx, name: name) {
+              Present { value: _path } => AtomConstructorTypeUnresolved { spelling: name }
+              Absent => AtomNotConstructor
+            }
+        }
+      } else {
+        AtomNotConstructor
+      }
+    _ => AtomNotConstructor
+  }
+}
+
+// A CONSTRUCTOR VISIBLE IN SCOPE THAT DECLARES NO PAYLOAD FIELDS: the spelling alone is the whole
+// pattern, which is what lets it read as a binder at all. The visibility authority is the one the name
+// door and the binder exclusion already use (v2.std.symbol_index symbol_index_lexical_lookup_for_declared_payload
+// over v2.compiler.symbol_index_fill's VariantArmPayload / RecordTypePayload marks); the added test is
+// that the payload declares no fields, so a constructor with a payload is left exactly as today.
+fn resolve_pattern_visible_nullary_constructor_path(ctx: ResolveContext, name: Symbol) -> Optional<QualifiedName> {
+  match symbol_index_lexical_lookup_for_declared_payload(
+    index: ctx.namespace.symbol_index,
+    position: symbol_index_lookup_position(ctx: ctx),
+    name: name
+  ) {
+    LexicalHit { node: _, path: path } =>
+      if resolve_constructor_declares_no_payload_fields(ctx: ctx, path: path) {
+        optional_present(value: path)
+      } else {
+        optional_absent()
+      }
+    LexicalAmbiguous { candidates: _ } => optional_absent()
+    LexicalUnbound => optional_absent()
+  }
+}
+
+fn resolve_constructor_declares_no_payload_fields(ctx: ResolveContext, path: QualifiedName) -> Bool {
+  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Absent => false
+    Present { value: payload } =>
+      match declared_field_list(payload: payload) {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+  }
+}
+
+// THE ATOMS A WHOLE PATTERN READS AS CONSTRUCTORS, position by position, from the same producers the
+// walk uses: the pattern position's expected type, then each field's declared type at the arm the tag
+// names (resolve_pattern_field_edge's authority). Identified by OCCURRENCE, never by spelling, so the
+// collection point and the walk cannot diverge on a nested position whose expected type differs from the
+// arm's. This is the list the binder collection excludes; the walk re-derives each atom's own answer from
+// resolve_pattern_atom_constructor_reading, so there is one rule read twice, not two rules.
+fn resolve_pattern_constructor_atom_occurrences(
+  ctx: ResolveContext,
+  pat: Node,
+  expected: Optional<ResolveExpectation>
+) -> List<NodeOccurrenceIdentity> {
+  match resolve_pattern_atom_constructor_reading(ctx: ctx, pat: pat, expected: expected) {
+    AtomConstructorBound { spelling: _, path: _ } => list_snoc_item(xs: [], item: pat.occurrence_id)
+    AtomConstructorTypeUnresolved { spelling: _ } => []
+    AtomNotConstructor =>
+      match resolve_pattern_tag_declared_payload_path_optional(ctx: ctx, pat: pat) {
+        Absent => []
+        Present { value: tag_path } =>
+          fold(construct_field_edges(n: pat), init: [], f: fn(acc, e) {
+            concat(
+              acc,
+              resolve_pattern_constructor_atom_occurrences(
+                ctx: ctx,
+                pat: e.target,
+                expected: match e.label {
+                  Authored { name: field } =>
+                    match resolve_record_field_type_optional(ctx: ctx, record: tag_path, field: field) {
+                      Present { value: t } =>
+                        optional_present(value: ResolveExpectation { expected: t, position: tag_path, at_use_site: false })
+                      Absent => optional_absent()
+                    }
+                  StructuralLabel { label: _ } => optional_absent()
+                  Positional => optional_absent()
+                }
+              )
+            )
+          })
+      }
+  }
+}
+
 fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
   resolve_pattern_node_walk_in(ctx: ctx, pat: pat, expected: optional_absent())
 }
@@ -3428,7 +3552,26 @@ fn resolve_pattern_node_walk_in(ctx: ResolveContext, pat: Node, expected: Option
     ResolveWalkAccepted { value: pat, diagnostics: None, bindings: [] }
   } else {
     match construct_tag_optional(n: pat) {
-      Absent => resolve_node_walk_in(ctx: ctx, n: pat, expected: expected)
+      // A payload-absent atom carries no construct tag, so the door never sees it: the constructor
+      // reading for a pattern atom is here, and it is the same reading the binder exclusion uses.
+      Absent =>
+        match resolve_pattern_atom_constructor_reading(ctx: ctx, pat: pat, expected: expected) {
+          AtomConstructorBound { spelling: _, path: path } =>
+            resolve_walk_of_atom(o: resolve_atom_bound(
+              ctx: ctx,
+              n: pat,
+              path: path,
+              route: ExpectedTypeConstructorRoute,
+              pending: None
+            ))
+          AtomConstructorTypeUnresolved { spelling: _ } =>
+            resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
+              reason: ^resolve_reason_pattern_atom_constructor_type_unresolved,
+              at: node_locus(node: pat),
+              correction: Unavailable { reason: CorrectionNotModeled }
+            }))
+          AtomNotConstructor => resolve_node_walk_in(ctx: ctx, n: pat, expected: expected)
+        }
       Present { value: reference } =>
         resolve_construct_walk(ctx: ctx, n: pat, reference: reference, expected: expected, field: fn(e, record) {
           resolve_pattern_field_edge(ctx: ctx, e: e, record: record)
