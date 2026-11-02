@@ -1469,14 +1469,25 @@ fn text_crossing_or_type_mismatch_error(expected: Node, got: Node, env: TypeEnv,
   let si = env.source_indices
   let plain = type_mismatch_error(expected: node_type_shape(n: expected, source_indices: si), got: node_type_shape(n: got, source_indices: si), span: span, module_name: module_name)
   if text_crossing_by_identity(left: expected, right: got, env: env) {
-    match text_representation_by_identity(n: got, env: env) {
-      HostText => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
-      CodePointSequence => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_fold", si: si, span: span, module_name: module_name)
-      NotText => plain
-      TextRepresentationUnidentified => plain
+    match text_crossing_route_of_produced(produced: text_representation_by_identity(n: got, env: env)) {
+      Present { value: route } => text_crossing_route_error(expected: expected, got: got, route: route, si: si, span: span, module_name: module_name)
+      Absent => plain
     }
   } else {
     plain
+  }
+}
+
+// THE ROUTE A CROSSING'S REFUSAL NAMES, chosen by the PRODUCED side's representation: the unfold when it
+// is host text, the fold when it is a code-point sequence. It is decided once, here, for every position
+// that refuses a crossing (a declared return, a call argument). A side that is not identified text names
+// no route.
+fn text_crossing_route_of_produced(produced: TextRepresentation) -> String? {
+  match produced {
+    HostText => Present { value: "unicode_scalar_unfold" }
+    CodePointSequence => Present { value: "unicode_scalar_fold" }
+    NotText => Absent
+    TextRepresentationUnidentified => Absent
   }
 }
 
@@ -7387,7 +7398,12 @@ fn direct_call_arg_mismatch_diags(
           let actual_text = argument_text_representation(value: actual_expr, type_env: type_env)
           let unjudged = text_unjudged_advisories(a: formal_text, b: actual_text, position: "a call argument", span: actual_expr.span, module_name: module_name)
           concat(unjudged, if text_representations_cross(a: formal_text, b: actual_text) {
-            [make_error_node(diagnostic: InternalError { message: concat("text representation crossing at a call argument: declared ", node_type_shape(n: formal, source_indices: source_indices), ", produced ", node_type_shape(n: actual, source_indices: source_indices), " -- host text and a code-point sequence (FreeMonoid<Char>) meet only through the Unicode scalar unfold, which is applied to a host value at a code-point formal; a code-point sequence has no declared route into host text"), span: actual_expr.span }, module_name: module_name)]
+            match text_crossing_route_of_produced(produced: actual_text) {
+              Present { value: route } => [text_crossing_route_error(expected: formal, got: actual, route: route, si: source_indices, span: actual_expr.span, module_name: module_name)]
+              // A crossing has a text reading on both sides (text_representations_cross), so the produced side
+              // always names a route; reaching this arm is a broken invariant of that rule, not a user error.
+              Absent => [make_error_node(diagnostic: InternalError { message: "text representation crossing at a call argument whose produced side is not identified text", span: actual_expr.span }, module_name: module_name)]
+            }
           } else if text_representations_both_code_point(a: formal_text, b: actual_text) {
             []
           } else if direct_call_arg_type_mismatch(
