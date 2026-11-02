@@ -610,12 +610,7 @@ fn render_series(rounds: List<FanObservationRound>) -> String {
 // record of what the controller said.
 type RunVerboseCapture
   = RunVerboseNotTaken
-  | RunVerboseCaptured {
-    readout: SdrVerboseReadout,
-    exit_code: Int,
-    raw_stdout: String,
-    raw_stderr: String,
-  }
+  | RunVerboseCaptured { readout: SdrVerboseReadout, exit_code: Int, raw_stdout: String, raw_stderr: String }
 
 // ONE READ, UNCONDITIONALLY, READ-ONLY (extdeps.bmc.ipmi SdrElistVerbose is readonly; it issues
 // `ipmitool sdr elist -v` and touches nothing). The deadline/kill-after bounds are the same pair every
