@@ -199,6 +199,10 @@ data k1_pin21_photo: EvidenceRef = k1_photo(locator: "K1 photograph of U1_P5 wit
 
 data k1_u1_p5: ComponentInstanceIdentity = k1_component(local: "U1_P5")
 
+// The input connector the seller's listing photograph shows, counted there. Its designator was not read
+// on the received board, so it is bound to no design position.
+data k1_listed_input_connector: ComponentInstanceIdentity = k1_component(local: "input connector counted on the seller's listing photograph (designator not read on the received board)")
+
 data k1_200: ComponentInstanceIdentity = k1_component(local: "'200' resistor below U1_P5, under the '95C' resistor")
 
 data k1_beige: ComponentInstanceIdentity = k1_component(local: "beige two-terminal part directly across from U1_P5 pin 21")
@@ -413,7 +417,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   backplane_connectors: [
     BackplaneConnectorObservation { seen: 2, face: Absent, guide_pin_seen: false, power_blade_seen: false, evidence: k1_listing },
   ],
-  j20: CountedFromPhotograph { positions: 16, evidence: k1_listing },
+  j20: CountedFromPhotograph { component: k1_listed_input_connector, positions: 16, evidence: k1_listing },
   j20_calipers: [],
   edge_high_speed_connectors: CensusPartial {
     counted_at_least: 10,

@@ -156,12 +156,13 @@ import product.electrical.identification {
 }
 import product.p4261.carrier {
   PcbCode,
-  AwayFromLatch,
   CarrierLayoutObservation,
   ConnectorHousing,
   HousingPosition,
   InputConnector,
-  LatchSide,
+  RowRead,
+  away_side,
+  latch_side,
   lv165a_pins,
   ManagementIoSurvey,
   AnalysisSelection,
@@ -472,6 +473,7 @@ import product.electrical.carrier_phase {
   transition_text, phase_standing_text,
 }
 import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1 }
+import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
@@ -600,7 +602,7 @@ test fn a_reading_on_the_e1_cannot_qualify_the_k1() -> Bool {
     PolarityContradicted { readings: _ } => false
   }
   unpolarized && is_unestablished_bound(b: input_bound(layout: k1_given_e1))
-    && j20_position_count(layout: p4261_k1_layout) == 16
+    && match j20_position_count(layout: p4261_k1_layout) { Present { value: n } => n == 16, Absent => false }
     && physical_asset_identity_eq(a: e1_measured.asset, b: p4261_e1_b)
 }
 
@@ -622,9 +624,8 @@ test fn identical_labels_on_another_design_do_not_join() -> Bool {
 
 fn row_is(s: RowSide, away: Bool) -> Bool {
   match s {
-    AwayFromLatch => away
-    LatchSide => !away
     SideUnrecorded => false
+    RowRead { row } => match row { AwayFromLatchRow => away, LatchRow => !away }
   }
 }
 
@@ -634,12 +635,12 @@ fn housing_with_sides(latch_row: RowSide, away_row: RowSide) -> ConnectorHousing
     positions: map(e1_j20_housing.positions, p => HousingPosition {
       terminal: p.terminal,
       side: match p.side {
-        LatchSide => latch_row
-        AwayFromLatch => away_row
         SideUnrecorded => SideUnrecorded
+        RowRead { row } => match row { LatchRow => latch_row, AwayFromLatchRow => away_row }
       },
       index: p.index,
     }),
+    coverage: e1_j20_housing.coverage,
     sides_evidence: e1_j20_housing.sides_evidence,
   }
 }
@@ -666,12 +667,12 @@ test fn j20_polarity_is_derived_from_the_readings() -> Bool {
     PolarityContradicted { readings: _ } => false
     PolarityUnestablished { gaps: _ } => false
   }
-  let swapped = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: AwayFromLatch, away_row: LatchSide))) {
+  let swapped = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: away_side(), away_row: latch_side()))) {
     PolarityEstablished { fused_side, return_side: _, fused: _, returns: _, isolation: _ } => row_is(s: fused_side, away: false)
     PolarityContradicted { readings: _ } => false
     PolarityUnestablished { gaps: _ } => false
   }
-  let unrecorded = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: LatchSide, away_row: SideUnrecorded))) {
+  let unrecorded = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: latch_side(), away_row: SideUnrecorded))) {
     PolarityUnestablished { gaps } => any(gaps, g => match g {
       SidesUnrecorded => true
       _ => false
@@ -872,7 +873,7 @@ fn rl_diode(o: DiodeModeObservation) -> DiodeModeObservation {
 }
 
 fn rl_housing(h: ConnectorHousing) -> ConnectorHousing {
-  ConnectorHousing { component: rl_c(c: h.component), positions: map(h.positions, p => HousingPosition { terminal: rl_t(t: p.terminal), side: p.side, index: p.index }), sides_evidence: h.sides_evidence }
+  ConnectorHousing { component: rl_c(c: h.component), positions: map(h.positions, p => HousingPosition { terminal: rl_t(t: p.terminal), side: p.side, index: p.index }), coverage: h.coverage, sides_evidence: h.sides_evidence }
 }
 
 fn rl_draw(o: SourceDrawObservation) -> SourceDrawObservation {
@@ -1073,10 +1074,9 @@ test fn a_shared_marking_supports_only_what_every_candidate_supports() -> Bool {
 // COUNTS ARE DERIVED. J20's position count is its contact inventory's length -- nine a side -- and the
 // K1's is the photograph count; component counts are counts of instances.
 test fn counts_are_derived_from_inventories() -> Bool {
-  j20_position_count(layout: p4261_e1_layout) == count(e1_j20_housing.positions)
-    && j20_position_count(layout: p4261_e1_layout) == 18
-    && count(side_terminals(h: e1_j20_housing, side: LatchSide)) == 9
-    && count(side_terminals(h: e1_j20_housing, side: AwayFromLatch)) == 9
+  match j20_position_count(layout: p4261_e1_layout) { Present { value: n } => n == count(e1_j20_housing.positions) && n == 18, Absent => false }
+    && count(side_terminals(h: e1_j20_housing, side: latch_side())) == 9
+    && count(side_terminals(h: e1_j20_housing, side: away_side())) == 9
     && count(component_of(layout: p4261_e1_layout, c: e1_c10)) == 1
     && count(component_of(layout: p4261_e1_layout, c: e1_c12)) == 1
 }

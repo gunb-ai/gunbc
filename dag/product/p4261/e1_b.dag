@@ -168,7 +168,6 @@ import product.p4261.carrier {
   AnalysisSelection,
   AlongRow,
   AssemblyLabel,
-  AwayFromLatch,
   BackplaneConnectorObservation,
   beige_part_discriminator,
   CaliperSpan,
@@ -181,7 +180,10 @@ import product.p4261.carrier {
   footprint_pad_terminals,
   HousingPosition,
   InputConnector,
-  LatchSide,
+  EveryPositionMapped,
+  RowRead,
+  away_side,
+  latch_side,
   lm5066i_terminals,
   lv165a_pins,
   MappedOnHousing,
@@ -225,6 +227,7 @@ import product.p4261.bench {
   t4_basis,
 }
 import extdeps.nvidia.p4261 { p4261_e1 }
+import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
 
 // THE E1 BOARD WE HOLD (asset p4261-e1-b; NVIDIA assembly revision E1, extdeps.nvidia.p4261 p4261_e1):
 // its bench records, phases, incidents and its own fault hypotheses. A reading here is of this board,
@@ -313,9 +316,8 @@ data j20_row_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 fn j20_row_name(side: RowSide) -> String {
   match side {
-    LatchSide => "latch-side row"
-    AwayFromLatch => "row away from the latch"
     SideUnrecorded => "row of unrecorded side"
+    RowRead { row } => match row { LatchRow => "latch-side row", AwayFromLatchRow => "row away from the latch" }
   }
 }
 
@@ -329,7 +331,8 @@ fn j20_row(side: RowSide) -> List<HousingPosition> {
 
 data e1_j20_housing: ConnectorHousing = ConnectorHousing {
   component: e1_j20,
-  positions: concat(j20_row(side: LatchSide), j20_row(side: AwayFromLatch)),
+  positions: concat(j20_row(side: latch_side()), j20_row(side: away_side())),
+  coverage: EveryPositionMapped,
   sides_evidence: e1_photo(taken_on: "2026-10-16", locator: "J20 photograph annotated RAIL (row by F1 and D2) and GROUND (latch-side row), sent in the session"),
 }
 
@@ -342,9 +345,9 @@ fn e1_j20_at(side: RowSide, index: Nat) -> ElectricalTerminalRef {
 }
 
 // The two reference contacts the operator's "power" and "ground" stand for.
-data e1_rail_ref: ElectricalTerminalRef = e1_j20_at(side: AwayFromLatch, index: 1)
+data e1_rail_ref: ElectricalTerminalRef = e1_j20_at(side: away_side(), index: 1)
 
-data e1_ground_ref: ElectricalTerminalRef = e1_j20_at(side: LatchSide, index: 1)
+data e1_ground_ref: ElectricalTerminalRef = e1_j20_at(side: latch_side(), index: 1)
 
 data e1_f1_near: ElectricalTerminalRef = e1_terminal(c: e1_f1, name: "end nearer J20")
 
@@ -2216,10 +2219,10 @@ data e1_measured: MeasuredBoard = MeasuredBoard {
   analysis: AnalysisSelection { after: [e1_bridge_incident.key], module: ModuleRemoved },
   continuity: concat(concat(concat(concat(
     // each fused-row position to both ends of F1: both points named
-    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: AwayFromLatch, index: i), b: e1_f1_near, record: both_points_recorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said)),
-    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: AwayFromLatch, index: i), b: e1_f1_far, record: both_points_recorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said))),
+    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: away_side(), index: i), b: e1_f1_near, record: both_points_recorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said)),
+    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: away_side(), index: i), b: e1_f1_far, record: both_points_recorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said))),
     // each latch-side position to the row's ground reference
-    map(filter(j20_row_indices, i => i > 1), i => e1_read(a: e1_j20_at(side: LatchSide, index: i), b: e1_ground_ref, record: second_point_inferred(basis: e1_row_basis), result: BuzzerAsserted, evidence: e1_bottom_row_said))),
+    map(filter(j20_row_indices, i => i > 1), i => e1_read(a: e1_j20_at(side: latch_side(), index: i), b: e1_ground_ref, record: second_point_inferred(basis: e1_row_basis), result: BuzzerAsserted, evidence: e1_bottom_row_said))),
     [
       to_rail(a: e1_d2_near, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
       to_ground(a: e1_d2_far, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
