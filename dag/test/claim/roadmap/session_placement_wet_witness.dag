@@ -401,10 +401,6 @@ fn attempt_exit_inbox_dir(instance_root: String) -> Optional<String> {
   spool_role_path(store: spool_open(kind: SpoolAttemptExit, instance_root: instance_root), role: RolePending)
 }
 
-fn attempt_exit_refused_dir(instance_root: String) -> Optional<String> {
-  spool_role_path(store: spool_open(kind: SpoolAttemptExit, instance_root: instance_root), role: RoleRefused)
-}
-
 test fn setup_and_the_first_lifecycle_write_address_the_same_store() -> Bool {
   let dir = fresh_dir(tag: "c0")
   let instance = instance_at(dir: dir)
@@ -970,7 +966,7 @@ test fn the_production_observer_reads_the_refused_stage_where_srv1s_artifact_sit
   let dir = fresh_dir(tag: "refusedstage")
   let prepared = attempt_exit_spool_prepare(instance_root: dir)
   let entry = join([node_a, "+", key_a, "+worker+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}"], "")
-  let planted = match attempt_exit_refused_dir(instance_root: dir) {
+  let planted = match spool_role_path(store: spool_open(kind: SpoolAttemptExit, instance_root: dir), role: RoleRefused) {
     Absent => false
     Present { value: refused } => shell.Mkdir.Parents(path: join([refused, "/", entry], "") as FilePath).success
   }
