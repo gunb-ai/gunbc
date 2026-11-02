@@ -1,4 +1,8 @@
-module fixture.native_projection.qualified
+module test.fixture.native_projection_qualified
+
+// RETARGETED 2026-11-01 into `test.fixture` for the same reason as native_projection_projected.dag beside
+// it: an entry's namespace must have a row, and `fixture.*` never can. The same-named module this entry
+// names for real stays at product/y.dag, whose namespace `product` is a row.
 
 // THE POSITIVE CONTROL OF THE SAME WALK: `product.y.projection_same_named_value` names no binder -- nothing
 // here binds `product` -- so it IS a qualified module reference, and the module `product.y` is read for
