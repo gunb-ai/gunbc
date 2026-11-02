@@ -152,28 +152,52 @@ fn mtcollins1_fan_capture_records() -> List<SdrVerboseRecord> {
 // is the operator re-fetching the artifact named at the top of this file (THE SEAM, named per
 // extdeps/external_authority.dag:32-36, which is why the artifact path and run id are carried).
 //
+// WHETHER A READOUT TYPES THESE ROWS AT ALL - the decision, WITHOUT the mint.
+//
+// This takes a readout and returns a Bool, and it deliberately cannot construct an ObservedReceipt.
+// observed_receipt is sealed precisely so "no admitted caller can be handed a reference or a reading to
+// mint for, and none is a constructor proxy" (extdeps/external_authority.dag:28-31); a fold that mints
+// from an argument is a proxy whatever its name says, and its reachability from a witness is what gives
+// it away - a witness that builds its own two-kind record list would be handed a receipt for bytes no
+// BMC ever printed. Keeping the DECISION here and the MINT in the zero-argument fold below is what lets
+// the witnesses drive this with readouts they construct themselves - a failed read, an empty repository,
+// the threshold-only subset - and go red without any of them being able to obtain a receipt.
+fn mtcollins1_fan_capture_types_the_rows(readout: SdrVerboseReadout) -> Bool {
+  match readout {
+    SdrVerboseRead { records: recs } => sdr_repository_carries_both_kinds(records: recs)
+    // An empty repository types nothing, and a FAILED read is not an empty repository. Both say no.
+    SdrVerboseEmptyRepository => false
+    SdrVerboseUnreadable => false
+  }
+}
+
+// THE FOLD: the only observed_receipt call site in this module, and it takes NO argument.
+//
+// The mint is the SHARED PARSER EXECUTING ON THE COMMITTED BYTES - the same sdr_verbose_readout the live
+// boot path runs on the tool's stdout, and the same classifier that will decide the rows. What that can
+// establish is only ever: these bytes PARSE, and what they parse into met BOTH sides of ipmi_sdr.h:427
+// (one threshold record, one not), so the test the rule rests on was actually exercised by them. What no
+// fold can establish from inside the substrate is that these are the bytes the BMC printed - that check
+// is the operator re-fetching the artifact named at the top of this file (THE SEAM, named per
+// extdeps/external_authority.dag:32-36, which is why the artifact path and run id are carried).
+//
 // So the mint is deliberately NOT a count of these lines compared against a number written down beside
 // them: a comparison between two literals in one file can only fail by someone editing a declaration,
 // which is the oracle rule (DESIGN.md §5), not an observation. The count (five: the four refused rows
 // plus the threshold control) lives in the witnesses, where a change detector belongs. A capture that
 // lost a record still parses and still stands, and the row it lost stays REFUSED by the rule itself -
 // which is the direction that has to be safe.
-fn mtcollins1_fan_typing_standing_for(readout: SdrVerboseReadout) -> CitedFigureStanding {
-  match readout {
-    SdrVerboseRead { records: recs } => if sdr_repository_carries_both_kinds(records: recs) {
-      ObservedByReceipt {
-        observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_capture_receipt", decl_name: "mtcollins1_fan_capture_records")),
-      }
-    } else {
-      TranscribedUncited { read_obligation: mtcollins1_fan_capture_read_obligation }
-    }
-    // An empty repository does not type these rows, and a FAILED read is not an empty repository: both
-    // fall back, and the fallback names the read that must happen rather than defaulting quietly.
-    SdrVerboseEmptyRepository => TranscribedUncited { read_obligation: mtcollins1_fan_capture_read_obligation }
-    SdrVerboseUnreadable => TranscribedUncited { read_obligation: mtcollins1_fan_capture_read_obligation }
-  }
-}
-
+//
+// The TranscribedUncited arm below is the one this fold cannot exercise while the bytes stand, and that
+// is the shape the admitted precedent shares (gunbc.ci.ci_fleet:152 mtcollins1_socket0_cpu_part_standing
+// mints only when its census reading agrees with the catalog, and its bet arm is likewise unexercised in
+// the green case). What the witnesses DO exercise is the decision that selects between the two arms.
 fn mtcollins1_fan_discrete_typing_standing() -> CitedFigureStanding {
-  mtcollins1_fan_typing_standing_for(readout: mtcollins1_fan_capture_readout())
+  if mtcollins1_fan_capture_types_the_rows(readout: mtcollins1_fan_capture_readout()) {
+    ObservedByReceipt {
+      observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_capture_receipt", decl_name: "mtcollins1_fan_capture_records")),
+    }
+  } else {
+    TranscribedUncited { read_obligation: mtcollins1_fan_capture_read_obligation }
+  }
 }

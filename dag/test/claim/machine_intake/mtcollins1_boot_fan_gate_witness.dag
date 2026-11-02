@@ -13,8 +13,8 @@ import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanS
 import gunbc.machine_intake.bmc_fan_observation { SdrVerboseNotRequired, SdrVerboseCaptured, FanObservationRound, ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable, fan_observation, thermal_observation, render_round_block }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGatePowered, FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, post_power_fan_gate_stop_section, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, PostPowerFanGateReading, PostPowerFanGateReached, PostPowerFanGateNotReached, post_power_fan_gate_exit, post_power_fan_gate_text, post_power_fan_gate_pre_stop_text, post_power_fan_refusal_text }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set }
-import gunbc.machine_intake.mtcollins1_fan_capture_receipt { mtcollins1_fan_capture_readout, mtcollins1_fan_capture_records, mtcollins1_fan_discrete_typing_standing, mtcollins1_fan_typing_standing_for, mtcollins1_fan_capture_read_obligation }
-import extdeps.external_authority { ObservedByReceipt, TranscribedUncited, observed_receipt_ref }
+import gunbc.machine_intake.mtcollins1_fan_capture_receipt { mtcollins1_fan_capture_readout, mtcollins1_fan_capture_records, mtcollins1_fan_discrete_typing_standing, mtcollins1_fan_capture_types_the_rows, mtcollins1_fan_capture_read_obligation }
+import extdeps.external_authority { ObservedByReceipt, observed_receipt_ref }
 
 // SUPPLIED ROUNDS at the verdict and outcome boundaries. The effectful route (settle, read, write-before-stop,
 // PowerDown, readback, one repeat, step-summary append) is the live boot step. The gate-to-boot decision is paired in
@@ -476,42 +476,41 @@ test fn the_capture_typing_stands_by_receipt_naming_the_read() -> Bool {
   }
 }
 
-// THE MINT GOES RED, ON INPUTS THAT ARE NOT EDITS TO A NUMBER. The standing above is the green side;
-// these are the discriminating half. None of them touches a count in this file or in the receipt: they
-// drive the SAME mint with readouts that did not produce a typed repository, and the mint has to fall
-// back for each. If the mint were the label it used to be - a literal checked against a literal - all
-// three would pass anyway, which is exactly the defect this replaces.
-test fn a_failed_read_falls_back_to_the_obligation_never_to_a_receipt() -> Bool {
-  match mtcollins1_fan_typing_standing_for(readout: SdrVerboseUnreadable) {
-    TranscribedUncited { read_obligation: ob } => ob == mtcollins1_fan_capture_read_obligation
-    _ => false
-  }
+// THE DECISION GOES RED, ON INPUTS THAT ARE NOT EDITS TO A NUMBER. The standing above is the green side;
+// these are the discriminating half. They drive mtcollins1_fan_capture_types_the_rows - the decision
+// WITHOUT the mint - with readouts they build themselves, which is what keeps the seal intact: a claim can
+// hand the decision a reading, but nothing a claim hands can produce an ObservedReceipt (see the fold's
+// comment: a fold that minted from an argument would be a constructor proxy, and these four would then be
+// the witnesses proving it). None of them touches a count in this file or in the receipt; had the mint
+// stayed the label it was - a literal checked against a literal - all of these would pass anyway.
+test fn the_committed_capture_types_the_rows_by_the_parsers_verdict() -> Bool {
+  mtcollins1_fan_capture_types_the_rows(readout: mtcollins1_fan_capture_readout())
 }
 
-// An empty repository types nothing, so it cannot stand as the reason a row was admitted. Distinct from
-// the claim above: a failed read is not an empty read, and neither is a receipt.
-test fn an_empty_repository_does_not_type_the_rows_and_does_not_stand() -> Bool {
-  match mtcollins1_fan_typing_standing_for(readout: SdrVerboseEmptyRepository) {
-    TranscribedUncited { read_obligation: ob } => ob == mtcollins1_fan_capture_read_obligation
-    _ => false
-  }
+// A failed read types nothing. It is not an empty repository either, and the two stay separate states.
+test fn a_failed_read_types_no_rows() -> Bool {
+  !mtcollins1_fan_capture_types_the_rows(readout: SdrVerboseUnreadable)
 }
 
-// THE CONTROL THAT MAKES THE MINT MEAN SOMETHING. The threshold-only subset of the SAME committed
-// records - bytes that never met the not-threshold side of ipmi_sdr.h:427 - must not stand, while the
-// whole repository does (the claim above). Both sides are the parser's verdict over real bytes: the
+test fn an_empty_repository_types_no_rows() -> Bool {
+  !mtcollins1_fan_capture_types_the_rows(readout: SdrVerboseEmptyRepository)
+}
+
+// THE CONTROL THAT MAKES THE DECISION MEAN SOMETHING. The threshold-only subset of the SAME committed
+// records - bytes that never met the not-threshold side of ipmi_sdr.h:427 - must not type the rows, while
+// the whole repository does (the first claim). Both sides are the parser's verdict over real bytes: the
 // subset is taken by the classifier itself, so if the classifier called a discrete record threshold the
 // subset would carry a not-threshold record too, carry both kinds, and this claim would go red.
-test fn bytes_that_never_met_both_sides_of_the_threshold_line_do_not_stand() -> Bool {
+test fn bytes_that_never_met_both_sides_of_the_threshold_line_type_no_rows() -> Bool {
   let threshold_only = flat_map(mtcollins1_fan_capture_records(), r => if sdr_record_is_threshold(record: r) { [r] } else { [] })
-  if threshold_only.length() == 0 {
-    false
-  } else {
-    match mtcollins1_fan_typing_standing_for(readout: SdrVerboseRead { records: threshold_only }) {
-      TranscribedUncited { read_obligation: _ } => true
-      _ => false
-    }
-  }
+  threshold_only.length() > 0 && !mtcollins1_fan_capture_types_the_rows(readout: SdrVerboseRead { records: threshold_only })
+}
+
+// The fallback the fold cannot reach while the bytes stand still has to name a real read, not a shrug.
+// (review 89982: the mint moved to the zero-argument fold, so the TranscribedUncited arm is exercised by
+// this claim on the obligation it must carry, and by the four decision claims above.)
+test fn the_read_obligation_names_the_read_that_would_ground_it() -> Bool {
+  string_contains(s: mtcollins1_fan_capture_read_obligation as String, pattern: "mtcollins1_fan_observe")
 }
 
 // A FAILED VERBOSE READ IS UNREAD, NEVER ZERO RECORDS: an unread repository must not read as a
