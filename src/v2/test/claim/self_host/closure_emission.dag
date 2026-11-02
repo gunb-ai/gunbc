@@ -574,3 +574,50 @@ test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
           _ => false })
   }
 }
+
+// PROBE ONLY (branch probe/keen-koi-376-symstr, never for landing): what do a std.types String and a
+// declared v2.std.node Symbol do at fn-return and record-field positions through the closure emitter.
+data ce_ss_node_source: String = "module v2.std.node\n\ntype Symbol\n"
+
+data ce_ss_string_fn_source: String = "module v2.test.ce_ss_string_fn\n\nimport std.types { String }\n\nfn ce_ss_string_fn(p: String) -> String { p }\n"
+
+data ce_ss_string_field_source: String = "module v2.test.ce_ss_string_field\n\nimport std.types { String }\n\ntype CeSsRec { name: String }\n"
+
+data ce_ss_symbol_fn_source: String = "module v2.test.ce_ss_symbol_fn\n\nimport v2.std.node { Symbol }\n\nfn ce_ss_symbol_fn(p: Symbol) -> Symbol { p }\n"
+
+data ce_ss_symbol_field_source: String = "module v2.test.ce_ss_symbol_field\n\nimport v2.std.node { Symbol }\n\ntype CeSsSymRec { name: Symbol }\n"
+
+fn ce_ss_one(label: String, source: String, id: Symbol, path: String, entry: String) -> String {
+  let located = ce_emit(
+    ingest: [
+      ce_read(source: ce_ss_node_source, id: ^ce_ss_node_read, path: "src/v2/std/node.dag"),
+      ce_read(source: source, id: id, path: path)
+    ],
+    entry: entry
+  )
+  match located.outcome {
+    Rejected { diagnostics: d } =>
+      concat(label, concat(" REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans)))
+    Accepted { value: e, diagnostics: _ } =>
+      concat(label, concat(" ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans)))
+  }
+}
+
+fn ce_probe_symstr_text() -> String {
+  concat(
+    ce_ss_one(label: "STRING_FN", source: ce_ss_string_fn_source, id: ^ce_ss_string_fn_read, path: "src/v2/test/ce_ss_string_fn.dag", entry: "v2.test.ce_ss_string_fn"),
+    concat("\n",
+      concat(
+        ce_ss_one(label: "STRING_FIELD", source: ce_ss_string_field_source, id: ^ce_ss_string_field_read, path: "src/v2/test/ce_ss_string_field.dag", entry: "v2.test.ce_ss_string_field"),
+        concat("\n",
+          concat(
+            ce_ss_one(label: "SYMBOL_FN", source: ce_ss_symbol_fn_source, id: ^ce_ss_symbol_fn_read, path: "src/v2/test/ce_ss_symbol_fn.dag", entry: "v2.test.ce_ss_symbol_fn"),
+            concat("\n",
+              ce_ss_one(label: "SYMBOL_FIELD", source: ce_ss_symbol_field_source, id: ^ce_ss_symbol_field_read, path: "src/v2/test/ce_ss_symbol_field.dag", entry: "v2.test.ce_ss_symbol_field")
+            )
+          )
+        )
+      )
+    )
+  )
+}
