@@ -1028,7 +1028,10 @@ test fn mbt_an_arm_spelled_as_a_foreign_coproduct_s_arm_refuses_the_site_not_the
 // THE POSITIVE CONTROL, so the absence above is a measurement and not a construction. A lowercase binder
 // names no declaration at all, so it stays today's catch-all, and the arm after it IS unreachable -- at this
 // head and at main. If the classifier were merely disabling the catch-all reading, this claim would go red.
-data mbt_lowercase_binder_before_an_arm_src: String = "module p\n\ntype C\n  = CA\n  | CB\n\nfn f(c: C) -> Int {\n  match c {\n    other => 0\n    CA => 1\n    CB => 2\n  }\n}\n"
+// The binder is READ (`other => g(other)`), the way the module's other catch-all fixtures read theirs: an
+// UNREAD arm binder is refused by resolve's catch-all-binder-read gate before inference ever runs, and the
+// claim would be red for a reason that has nothing to do with the classifier.
+data mbt_lowercase_binder_before_an_arm_src: String = "module p\n\ntype C\n  = CA\n  | CB\n\nfn g(c: C) -> Int {\n  match c {\n    CA => 1\n    CB => 2\n  }\n}\n\nfn f(c: C) -> Int {\n  match c {\n    other => g(other)\n    CA => 1\n    CB => 2\n  }\n}\n"
 
 test fn mbt_a_lowercase_binder_before_a_real_arm_is_still_a_catch_all_and_the_later_arm_refuses_holds() -> Bool {
   mbp_reports(reading: mbp_reading(src: mbt_lowercase_binder_before_an_arm_src), reason: ^infer_match_arm_unreachable)
