@@ -9,11 +9,11 @@ import v1.std.core { Node, InferredNode, Resolved, NoConnective, Required, NotAM
 import v1.compiler.infer_env { TypeEnv, TypeBinding, empty_type_env, symbol_index_insert_decl, settled_type }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
 import v2.test.claim.compiler.width_literal_admission {
-  wla_marker_fixture_alone_is_accepted,
-  wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit,
-  wla_ordinary_alias_to_the_marker_still_unfolds,
-  wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments,
-  wla_an_unrelated_local_phantom_is_not_the_marker
+  wla_marker_fixture_alone_is_accepted_holds,
+  wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit_holds,
+  wla_ordinary_alias_to_the_marker_still_unfolds_holds,
+  wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments_holds,
+  wla_an_unrelated_local_phantom_is_not_the_marker_holds
 }
 
 // Supplied values at the seed's settled_type boundary, paired with v2's existing
@@ -105,11 +105,11 @@ fn opacity_cases() -> List<OpacityCase> {
     OpacityCase { name: "seed_plain_marker_retains_identity", held: opacity_seed_holds(generic: false, through_alias: false, canonical_phantom: true) },
     OpacityCase { name: "seed_alias_to_marker_retains_application", held: opacity_seed_holds(generic: true, through_alias: true, canonical_phantom: true) },
     OpacityCase { name: "seed_foreign_phantom_remains_transparent", held: opacity_seed_holds(generic: true, through_alias: true, canonical_phantom: false) },
-    OpacityCase { name: "v2_same_marker_accepts", held: wla_marker_fixture_alone_is_accepted() },
-    OpacityCase { name: "v2_cross_width_refuses", held: wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit() },
-    OpacityCase { name: "v2_alias_accepts", held: wla_ordinary_alias_to_the_marker_still_unfolds() },
-    OpacityCase { name: "v2_alias_cross_width_refuses", held: wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments() },
-    OpacityCase { name: "v2_foreign_phantom_remains_transparent", held: wla_an_unrelated_local_phantom_is_not_the_marker() }
+    OpacityCase { name: "v2_same_marker_accepts", held: wla_marker_fixture_alone_is_accepted_holds() },
+    OpacityCase { name: "v2_cross_width_refuses", held: wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit_holds() },
+    OpacityCase { name: "v2_alias_accepts", held: wla_ordinary_alias_to_the_marker_still_unfolds_holds() },
+    OpacityCase { name: "v2_alias_cross_width_refuses", held: wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments_holds() },
+    OpacityCase { name: "v2_foreign_phantom_remains_transparent", held: wla_an_unrelated_local_phantom_is_not_the_marker_holds() }
   ]
 }
 

@@ -522,15 +522,21 @@ test fn fn_value_forwarding_bounds_only_the_instantiated_generic() -> Bool {
   w_fn_value_forwarding_bounds_only_the_instantiated_generic()
 }
 
-// HEAP REFERENCE: a heap handle carries its OWN Clone -- impl<T: ?Sized> Clone for Rc<T>, and the Arc
-// twin -- so a field written List<Route<H>>, which this emitter lowers to Rc<Vec<Rc<Route<H>>>> with a
-// handle at both levels, asks NOTHING of H. v1.compiler.trait_derive_emit
-// v1_type_expr_clone_impl_needs_param used to descend through the handle as if it bounded its argument,
-// and the row came out with H: Clone in its serde bound clause and in its hand-written Debug and
-// PartialEq impl headers. That is the shape that reddened the fleet lane: extdeps.http.server
+// DECLARED ELEMENT, NOT A HEAP HANDLE: this witness authors `routes: List<HeapRoute<H>>` and asserts the
+// emitted row is declared bare. HeapRoute<H> declares no bound of its own, so H owes nothing and the row
+// must carry no `H: Clone` in its serde bound clause or in its hand-written Debug and PartialEq headers.
+// The emitter adds the `Rc<Vec<Rc<...>>>` wrapping afterwards, at the renderer's spelling layer, so the
+// handle in the asserted text is not what this case is about. v1.compiler.trait_derive_emit
+// v1_freemonoid_element_params used to ask whether the parameter merely OCCURRED inside the element, and
+// the row came out bounded anyway. That is the shape that reddened the fleet lane: extdeps.http.server
 // ServedRouteTable over ServedRoute, six rustc diagnostics in the emitted crate for
-// gunbc.auth.approval_device_crypto_serve. Red at the defective emission, green after the repair.
-fn w_heap_reference_carrier_owes_no_clone_bound() -> Bool {
+// gunbc.auth.approval_device_crypto_serve. Red at the defective emission, green after the repair. There is
+// no heap-reference half to this rule any more: an earlier revision carried one and it was deleted as
+// unreachable, because no authored source writes `Rc<...>` in a field position and an attempt to author one
+// is refused by v1.compiler.trait_derive_emit's undecidable-head rule -- that refusal, not any control, is
+// the answer to that input. The measurement is recorded in the rule comment above
+// heap_reference_carrier_cases in gunbc.instruments.native_emission_controls.
+fn w_declared_element_carrier_owes_no_clone_bound() -> Bool {
   compile_dag_rust_emit_check(
     "module generic_item_witness.heap_carrier\n\ntype HeapRoute<H>\n  = StaticRoute { path_label: String }\n  | DynamicRoute { handler: H }\n\ntype HeapRow<H> {\n  routes: List<HeapRoute<H>>\n}\n",
     "src/generic_item_witness_heap_carrier.rs",
@@ -544,8 +550,8 @@ fn w_heap_reference_carrier_owes_no_clone_bound() -> Bool {
   )
 }
 
-test fn heap_reference_carrier_owes_no_clone_bound() -> Bool {
-  w_heap_reference_carrier_owes_no_clone_bound()
+test fn declared_element_carrier_owes_no_clone_bound() -> Bool {
+  w_declared_element_carrier_owes_no_clone_bound()
 }
 
 // THE OWED SIDE, which the repair must NOT relax. OwedLeaf<P> has a bare P field, so its own declaration

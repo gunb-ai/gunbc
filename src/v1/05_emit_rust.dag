@@ -188,7 +188,7 @@ import v1.compiler.trait_bound_witness {
   v1_equality_bound_param_name
 }
 
-import std.types { is_container_type, is_kernel_type, container_template_algebra }
+import std.types { is_container_type, is_kernel_type, container_template_algebra, container_spelling_is_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
@@ -1078,7 +1078,7 @@ fn rust_declaration_checkpoint_grounding_at(module_path: String, decl_name: Stri
 }
 
 fn rust_seed_host_container_base(name: String) -> String? {
-  if name == "List" || name == "FreeMonoid" {
+  if container_spelling_is_algebra(name: name, algebra: "FreeMonoid") {
     Present { value: "Vec" }
   } else {
     none
@@ -1133,7 +1133,7 @@ fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>)
   let nm = authored_name_at(source_indices: source_indices, node: n)
   if nm == "String" {
     !provenance_declares_structurally(dag_name: "String", p: type_reference_provenance(n: n))
-  } else if nm == "FreeMonoid" || nm == "List" {
+  } else if container_spelling_is_algebra(name: nm, algebra: "FreeMonoid") {
     if rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) != "Char" {
       false
     } else {
