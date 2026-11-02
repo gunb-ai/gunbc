@@ -1,0 +1,49 @@
+module test.claim.omitted_optional_field_observation
+
+import std.types { Bool, Int }
+import std.optional { Optional, Present, Absent }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
+
+// Probe only: this omission is the specimen, not an admitted authoring policy.
+// Observe acceptance, interpreted read and native read separately.
+type OptionalFieldProbe {
+  required: Int
+  optional_value: Optional<Int>
+}
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn omitted_constructs() -> Bool {
+  let specimen = OptionalFieldProbe { required: 7 }
+  specimen.required == 7
+}
+
+fn omitted_reads_absent() -> Bool {
+  let specimen = OptionalFieldProbe { required: 7 }
+  specimen.optional_value == Absent
+}
+
+fn explicit_absent_reads_absent() -> Bool {
+  let specimen = OptionalFieldProbe { required: 7, optional_value: Absent }
+  specimen.optional_value == Absent
+}
+
+fn explicit_present_reads_value() -> Bool {
+  let specimen = OptionalFieldProbe { required: 7, optional_value: Present { value: 9 } }
+  specimen.optional_value == Present { value: 9 }
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let constructed = omitted_constructs()
+  let omitted = omitted_reads_absent()
+  let absent_control = explicit_absent_reads_absent()
+  let present_control = explicit_present_reads_value()
+  NativeClaimReport {
+    stdout: concat("omitted_constructs=", if constructed { "true" } else { "false" },
+      " omitted_reads_absent=", if omitted { "true" } else { "false" },
+      " explicit_absent_reads_absent=", if absent_control { "true" } else { "false" },
+      " explicit_present_reads_value=", if present_control { "true" } else { "false" }, "\n"),
+    terminal: if absent_control && present_control { NativeClaimHeld }
+      else { NativeClaimNotHeld { reason: "Explicit optional field controls failed" } }
+  }
+}
