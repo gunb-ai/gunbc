@@ -3498,7 +3498,7 @@ fn dashboard_instance_legacy_writer_fence(instance: HostDashboardInstance) -> Le
 }
 
 // THE CLOSING-MARKER WRITER, PER INSTANCE, in the same shape as the identity fence above -- and BUILT FROM THE
-// DERIVATION, not typed by hand: `belt_instance_obligation_enqueue` (roadmap_belt_actuate:14910) passes
+// DERIVATION, not typed by hand: `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes
 // `belt_instance_obligation_unit_name(instance_id, kind)` as the unit it starts, so the unit named here IS the
 // unit the obligation runner launches and the two cannot drift apart. Only the DIRECT writer is fenced: the
 // metering obligation unit's ExecStart is what reaches `metering_roster_seal` (the symbol trace is in

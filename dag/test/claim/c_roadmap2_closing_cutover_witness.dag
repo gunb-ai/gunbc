@@ -29,8 +29,9 @@ import gunbc.roadmap.roadmap_metering_closing_cutover {
 // to be excluded across the deploy, the way #15413's identity-store move excludes its legacy dispatcher.
 //
 // Review 89888 (1): the fence is not hand-typed. The rows are built from belt_instance_obligation_unit_name, and
-// what is checked here is BEHAVIOUR: the fence names exactly the unit the obligation enqueue launches
-// (roadmap_belt_actuate:14910 passes that same call as the unit it starts). No literal-vs-function pin.
+// what is checked here is BEHAVIOUR: the fence names exactly the unit the obligation enqueue launches --
+// `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes that same call as the unit it
+// starts. No literal-vs-function pin.
 // Review 89888 (2): the disposition has a consumer -- the instance's own apply plan, the route that already
 // consumes #15413's fence model. The last claims run THAT route: the gate refuses a writer that is not excluded,
 // proceeds when it is excluded and no plain marker remains, and refuses while a plain marker is still on the host.
@@ -73,7 +74,8 @@ fn fx_fence_stub(i: HostDashboardInstance, active: String, enabled: String) -> L
 }
 
 // 1. THE FENCE NAMES THE UNIT THE OBLIGATION ENQUEUE LAUNCHES -- for both instances that declare one. The unit
-// is spelled by the same call roadmap_belt_actuate:14910 passes as the unit to start, and the fence holds that
+// is spelled by the same call `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes
+// as the unit to start, and the fence holds that
 // one unit and no other. Change the kind key, the derivation, or the rows and this claim is the one that goes red.
 test fn the_fence_names_the_unit_the_obligation_enqueue_launches() -> Bool {
   [srv1_lab_dashboard_instance(), srv2_lab_dashboard_instance()].all(fn(i) {

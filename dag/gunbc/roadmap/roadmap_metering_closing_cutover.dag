@@ -20,21 +20,22 @@ import gunbc.roadmap.roadmap_attempt_state_layout_move {
 // requires (`legacy_writer_fence_for`, `legacy_writer_exclusion` in gunbc.roadmap.roadmap_attempt_state_layout_move).
 //
 // THE WRITER, BY SYMBOL. `metering_roster_seal` (gunbc.roadmap.roadmap_attempt_metering) is the only route
-// that takes the closing hold, and it has exactly one production caller: `metering_persist_current`
-// (roadmap_attempt_metering.dag:1800), reached from `metering_persist_for_attempt` (:1767), reached from
-// `belt_metering_for_attempt` (roadmap_belt_actuate.dag:8643) and `belt_metering_departed` (:8661), which are
-// called only from `belt_metering_attempts_for_instance` (:8666, calls at :8674 and :8675), which is called
-// only from `belt_instance_obligation_run` under `BeltInstanceObligation.MeteringObligation`
-// (roadmap_belt_tick_cli.dag:514). That obligation is what the metering obligation unit's ExecStart runs:
-// `belt_instance_obligation_cli("metering")` (roadmap_belt_tick_cli.dag:545-551).
+// that takes the closing hold, and it has exactly one production caller: `metering_persist_current`, reached
+// from `metering_persist_for_attempt` (both in gunbc.roadmap.roadmap_attempt_metering), reached from
+// `belt_metering_for_attempt` and `belt_metering_departed` (gunbc.roadmap.roadmap_belt_actuate), which are
+// called only from `belt_metering_attempts_for_instance` (same module), which is called only from
+// `belt_instance_obligation_run` under `BeltInstanceObligation.MeteringObligation`
+// (gunbc.roadmap.roadmap_belt_tick_cli). That obligation is what the metering obligation unit's ExecStart
+// runs: `belt_instance_obligation_cli("metering")` (same module).
 //
-// THE WRITER, BY HOST UNIT. `belt_instance_obligation_unit_name(instance_id, MeteringObligation)` spells it
-// `gunbc-obligation-<instance_id>-<kind_key>.service` (roadmap_belt_obligation.dag:216) and the kind key for
-// MeteringObligation is "metering" (:195) -- so on srv1's lab instance the direct writer is
-// `gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service`. The unit that ENQUEUES that obligation is
-// the belt service unit, `<stem>-belt.service` (gunbc.live_deploy.spec `deployment_belt_service_unit_name`,
-// :736-737), whose tick reaches `belt_attempt_obligations_pass` (roadmap_belt_tick_cli.dag:455, called at :475
-// and :486); the per-attempt obligation units `gunbc-obligation-attempt-<node>-<key>.service` run
+// THE WRITER, BY HOST UNIT. `belt_instance_obligation_unit_name(instance_id, MeteringObligation)`
+// (gunbc.roadmap.roadmap_belt_obligation) spells it `gunbc-obligation-<instance_id>-<kind_key>.service` and
+// the kind key `belt_instance_obligation_kind_key` gives MeteringObligation is "metering" -- so on srv1's lab
+// instance the direct writer is `gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service`. The unit that
+// ENQUEUES that obligation is the belt service unit, `<stem>-belt.service`
+// (gunbc.live_deploy.spec `deployment_belt_service_unit_name`), whose tick reaches
+// `belt_attempt_obligations_pass` (gunbc.roadmap.roadmap_belt_tick_cli); the per-attempt obligation units
+// `gunbc-obligation-attempt-<node>-<key>.service` (spelled by `belt_attempt_obligation_unit_name`) run
 // `belt_attempt_obligations_cli` and are transient -- one per attempt, so they are not a fixed list, and the
 // activation step below drains in-flight ones rather than masking a name that does not persist.
 //
@@ -65,9 +66,10 @@ data metering_closing_enqueue_unit_family_stem: NonEmptyStr = "gunbc-obligation-
 // `legacy_writer_fences` -- because the route that acts on a cutover is the instance's own apply route, and a
 // fence that lives anywhere else is a fact no route reads. What lives HERE is the answer the route asks that
 // fence for: given the units the fence names, what states were observed for them, and what plain markers are on
-// the host, what does the cutover do. The unit names are not spelled here at all: the rows are built from
-// `belt_instance_obligation_unit_name`, the same call the belt's obligation enqueue passes as the unit it
-// starts (roadmap_belt_actuate:14910), so the fence and the launched unit cannot drift apart.
+// the host, what does the cutover do. The unit names are not spelled here at all: the rows (declared in
+// gunbc.roadmap.roadmap_dashboard_instance) are built from `belt_instance_obligation_unit_name`, the same call
+// `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes as the unit it starts, so the
+// fence and the launched unit cannot drift apart.
 
 // WHAT WAS OBSERVED ABOUT ONE WRITER UNIT, as systemctl reads it: is-active and is-enabled words.
 type MeteringClosingWriterObservation { unit: NonEmptyStr, active_state: String, enabled_state: String }

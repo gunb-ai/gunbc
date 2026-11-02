@@ -1,0 +1,37 @@
+module test.claim.c_roadmap2_plan_count_probe_witness
+
+// SCRATCH PROBE (not for commit): the two plan-shape counts in
+// test.claim.roadmap.roadmap_dashboard_instance_witness disagree with the plan at this head, and the
+// claim body reports no detail. Pin the actual length by elimination, one run, so the edit is a fact
+// rather than a guess.
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardInstanceProvisionOp,
+  srv1_lab_dashboard_instance,
+  srv2_lab_dashboard_instance,
+  dashboard_instance_provision_plan,
+}
+
+test fn srv1_count_is_12() -> Bool {
+  count(dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance())) == 12
+}
+
+test fn srv1_count_is_13() -> Bool {
+  count(dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance())) == 13
+}
+
+test fn srv1_count_is_14() -> Bool {
+  count(dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance())) == 14
+}
+
+test fn srv2_count_is_10() -> Bool {
+  count(dashboard_instance_provision_plan(instance: srv2_lab_dashboard_instance())) == 10
+}
+
+test fn srv2_count_is_11() -> Bool {
+  count(dashboard_instance_provision_plan(instance: srv2_lab_dashboard_instance())) == 11
+}
+
+test fn srv2_count_is_12() -> Bool {
+  count(dashboard_instance_provision_plan(instance: srv2_lab_dashboard_instance())) == 12
+}
