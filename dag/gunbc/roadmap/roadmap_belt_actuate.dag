@@ -11987,10 +11987,14 @@ fn belt_launch_process(instance: HostDashboardInstance, node_id: String, attempt
         AttemptExitRecordNone =>
           attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: belt_launch_start_standing(instance: instance, node_id: node_id, attempt_key: attempt_key, metered: metered))
         AttemptExitRecordFound { record: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
-        // An unsubstituted entry proves the unit was started (its hook ran), so the start standing is
-        // recorded; what the artifact cannot do is report the end's status, and it is not evidence that
-        // the holder lives.
-        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+        // THE ARTIFACT DOES NOT EVEN PROVE THE START. A decodable exit record implies the hook ran, and
+        // the hook only runs for a unit that started, which is why the two arms above may record the
+        // start standing without reading it. An entry whose name still spells the stop variables was
+        // written by something that never substituted them -- on srv1, a path run as the operator, not
+        // as the unit's user -- so it is not known to be this unit's hook at all. The start standing is
+        // READ here, exactly as in the no-record arm. Either way the observation is indeterminate: the
+        // artifact reports no end status, and it is not evidence that the holder lives or started.
+        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: belt_launch_start_standing(instance: instance, node_id: node_id, attempt_key: attempt_key, metered: metered))
         AttemptExitRecordUnreadable { reason: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
       }
     }
