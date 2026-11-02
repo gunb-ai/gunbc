@@ -77,8 +77,7 @@ import gunbc.clock_read {
   ObserverClockModeled,
   observer_clock_modeled,
   observer_instant_millis,
-  observer_instant_precedes,
-  observer_instants_on_one_clock,
+  order_observer_instants,
 }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
 import gunbc.fleet.convergence_fold {
@@ -1009,6 +1008,11 @@ type FactoryFreshOrQuarantine
 // reads a PriorLifeArchiveIndeterminateAcrossForcedWrite and answers it. Until one exists the verdict
 // stands (it blocks fleet admission by being an incomplete the fold never establishes), and the options
 // stay nullary -- a prefilled receipt would fabricate the very decision the operator owes.
+//
+// READ BY, not just declared (§3c): the decision_frontier field of PriorLifeIndeterminateAcrossForcedWrite,
+// set by prior_life_indeterminate_across_forced_write below, so the stop itself carries the trigger that
+// would dissolve it to whoever reads it; and the witness claim
+// w_the_indeterminate_stop_carries_its_own_dissolution_trigger.
 data prior_life_operator_decision_frontier: DissolutionCondition = unbound_dissolution(
   description: "dissolves when an operator decision surface consumes PriorLifeIndeterminateAcrossForcedWrite.options -- an authenticated operator route that records ConfirmFactoryFresh or QuarantineUnit for the named subject as its own sealed fact (with the deciding operator and instant) and admits or quarantines the unit accordingly; NOT satisfied by any run minting either variant itself" as NonEmptyStr,
 )
@@ -1086,23 +1090,34 @@ fn forced_first_rotation_write_leg(write: AdmittedForcedFirstRotation, began_mil
   }
 }
 
-// ONE CLOCK FOR THE WHOLE FORCED-WRITE WINDOW: two reads of the run's own observer clock, or modeled instants
-// of the SAME realization -- never a measured read against a dry schedule, or one realization's clock against
-// another's. The clock fact itself is DECLARED in gunbc.clock_read (observer_instants_on_one_clock), because
-// ObserverInstantSource is declared there: keeping a copy here would leave the next consumer of the same fact
-// free to order two clocks (§3, §6b). gunbc.clock_read observer_instant_precedes still compares millis only,
-// so every consumer that can mix clocks asks this one first -- here, the write window and both archive reads.
-// Consumers: dry_archive_prior_life_across_forced_write, and the RED that mixes a foreign realization's
-// instant into the same window.
-//
-// Linear, not quadratic: source agreement is an equality, so each instant need only agree with the first.
-// An empty list is refused rather than passed -- with no instant to name, nothing can be shown to share a
-// clock (§5, fail closed).
-fn forced_write_instants_share_clock(instants: List<ObserverClockInstant>) -> Bool {
-  match instants.first() {
-    Absent => false
-    Present { value: head } =>
-      fold(instants, init: true, f: (acc, x) => acc && observer_instants_on_one_clock(left: head, right: x))
+// ORDERING THIS RUN'S TWO ARCHIVE READS AROUND ITS FORCED WRITE, through gunbc.clock_read's typed ordering.
+// A cross-clock comparison is refused BY THE ORDERING ITSELF (InstantClocksDiffer), not by a guard this module
+// remembers to ask first -- so a pre-capture from another observer source cannot be ordered into this window at
+// all (§5: make the wrong state unwritable; §6b: the rule lives with the clock, not at the call site). The two
+// leg instants are already ordered through the same operation by forced_first_rotation_write_transition, so
+// their agreement is transitive here and needs no separate check. The outcome keeps the two failure kinds
+// apart, so the refusal says which: instants from different clocks, or an ordering that points the wrong way.
+// Consumers: dry_archive_prior_life_across_forced_write (the pre-capture joins below).
+type ForcedWritePreCaptureOrdering
+  = PreCaptureOrderingHolds
+  | PreCaptureInstantsFromDifferentClocks
+  | PreCaptureOrderingWrongWay
+
+fn forced_write_pre_capture_ordering(
+  pre_read: ObserverClockInstant,
+  write_began: ObserverClockInstant,
+  write_finished: ObserverClockInstant,
+  post_read: ObserverClockInstant,
+) -> ForcedWritePreCaptureOrdering {
+  match order_observer_instants(left: pre_read, right: write_began) {
+    InstantBefore =>
+      match order_observer_instants(left: write_finished, right: post_read) {
+        InstantBefore => PreCaptureOrderingHolds
+        InstantClocksDiffer { left: _, right: _ } => PreCaptureInstantsFromDifferentClocks
+        _ => PreCaptureOrderingWrongWay
+      }
+    InstantClocksDiffer { left: _, right: _ } => PreCaptureInstantsFromDifferentClocks
+    _ => PreCaptureOrderingWrongWay
   }
 }
 
@@ -1195,12 +1210,19 @@ fn forced_first_rotation_write_transition(leg: ForcedFirstRotationWriteLeg, appl
   }
   let lands_inside_the_leg = match leg_account {
     Absent => false
+    // THE WRITE LANDS INSIDE THE LEG IT WAS ADMITTED UNDER, ordered by gunbc.clock_read's typed ordering: an
+    // instant taken from another observer source refuses the ordering (InstantClocksDiffer), so a transition
+    // cannot be built across two clocks at all -- the mint below returns none rather than trusting millis.
     Present { value: account } =>
       (applied.account as String) == (account as String)
-        // THE WRITE LANDS INSIDE THE LEG IT WAS ADMITTED UNDER. Both instants are on this realization's
-        // clock, so the comparison is a same-clock ordering, not a cross-clock one.
-        && observer_instant_precedes(earlier: leg.deadline.started, later: applied.applied_at)
-        && observer_instant_precedes(earlier: applied.applied_at, later: leg.completed.finished)
+        && (match order_observer_instants(left: leg.deadline.started, right: applied.applied_at) {
+             InstantBefore =>
+               match order_observer_instants(left: applied.applied_at, right: leg.completed.finished) {
+                 InstantBefore => true
+                 _ => false
+               }
+             _ => false
+           })
   }
   if !declaration_ref_eq(a: leg_deadline_leg(d: leg.deadline), b: leg_completed_leg(c: leg.completed)) || !lands_inside_the_leg {
     none
@@ -1252,6 +1274,10 @@ type PriorLifeIndeterminateAcrossForcedWrite sole_constructor {
   grounds: PreCaptureGroundsNothing
   standing: PostWriteEntryStanding
   options: List<FactoryFreshOrQuarantine>
+  // THE DEBT THIS STOP IS WAITING ON, carried WITH the stop rather than left in a module the reader would
+  // have to open: the incomplete step that keeps the unit out of the fleet names its own dissolution
+  // trigger. This is also what READS the frontier row (§3c: a declaration names its consumer).
+  decision_frontier: DissolutionCondition
 }
 
 // WHY NO PRE-WRITE ENTRY IS GROUNDED, derived by the boundary. Consumers: the verdict above; the REDs that
@@ -1288,6 +1314,7 @@ fn prior_life_indeterminate_across_forced_write(
     grounds: grounds,
     standing: standing,
     options: [ConfirmFactoryFresh {}, QuarantineUnit {}],
+    decision_frontier: prior_life_operator_decision_frontier,
   }
 }
 
@@ -1337,6 +1364,7 @@ fn dry_archive_prior_life_across_forced_write(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_post_write_archive_passed_as_the_pre_capture_does_not_establish"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_refusal_across_the_forced_write_stays_a_refusal"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "forced_call_is_indeterminate"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_the_indeterminate_stop_carries_its_own_dissolution_trigger"),
   ]
 {
   let forced_inference = match across {
@@ -1356,19 +1384,28 @@ fn dry_archive_prior_life_across_forced_write(
           let grounds = match tr.pre_capture {
             Absent => NoPreCapture {}
             Present { value: a } =>
+              // ONE ORDERING CALL, typed by gunbc.clock_read: a read from another observer source is refused by
+              // the ordering itself (InstantClocksDiffer), so it cannot be ordered into this write's window at
+              // all; the three arms keep their own names, so the refusal says which kind of failure it is.
+              let ordering = forced_write_pre_capture_ordering(
+                pre_read: a.read_at,
+                write_began: began,
+                write_finished: finished,
+                post_read: r.archive.read_at,
+              )
               if !forced_pre_capture_is_of_subject(archive: a, subject: subject) {
                 PreCaptureOfAnotherSubject {}
               } else if (tr.leg.write.attempt as String) != (subject.attempt_id as String) {
                 WriteNotThisSubjectsAttempt {}
-              } else if !forced_write_instants_share_clock([a.read_at, began, finished, r.archive.read_at]) {
-                PreCaptureOnAnotherClock {}
-              } else if !observer_instant_precedes(earlier: a.read_at, later: began) || !observer_instant_precedes(earlier: finished, later: r.archive.read_at) {
-                PreCaptureNotBeforeTheWrite {}
               } else {
-                // Ordered, and this run's. Whether it establishes is then decided by the standing alone:
-                // an archive that shares no entry with this run's pre-capture is the erased-then-refilled
-                // shape, and it grounds nothing.
-                PreCaptureOrderedForThisRun {}
+                match ordering {
+                  // Ordered, and this run's. Whether it establishes is then decided by the standing alone:
+                  // an archive that shares no entry with this run's pre-capture is the erased-then-refilled
+                  // shape, and it grounds nothing.
+                  PreCaptureOrderingHolds => PreCaptureOrderedForThisRun {}
+                  PreCaptureInstantsFromDifferentClocks => PreCaptureOnAnotherClock {}
+                  PreCaptureOrderingWrongWay => PreCaptureNotBeforeTheWrite {}
+                }
               }
           }
           // Only a pre-capture that PASSED every join above is this run's; any other arm leaves the

@@ -5,7 +5,8 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { content_hash_equal }
 import std.measure { positive_millisecond, PositiveMeasureSuccessor }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { length }
+import std.algebra { length, string_contains }
+import std.dissolution { dissolution_description }
 import extdeps.bmc.redfish_telemetry {
   RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint, RedfishTemperatureCelsius, RedfishReadingValue, RedfishHealthOk, RedfishStateEnabled,
 }
@@ -600,6 +601,38 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the
                 // The ordered pre-capture grounded nothing, because the post-write archive holds no entry at
                 // all -- and the verdict names the write's own begin/completion, taken from the sealed leg.
                 && (match v.grounds { PreCaptureOrderedForThisRun {} => true  _ => false })
+            _ => false
+          }
+      }
+  }
+}
+
+// THE STOP CARRIES ITS OWN DISSOLUTION TRIGGER. The indeterminate verdict carries the frontier row that
+// declares the operator surface it is waiting on, so whoever reads the incomplete step sees what would
+// dissolve it without opening the module -- and this is the claim that READS prior_life_operator_decision_frontier
+// alongside the mint (§3c: a declaration names its consumer). Rung: witness over the dry archive arm; the
+// positive control is the same call that establishes in w_pre_write_entries_before_the_write_instant_establish.
+test fn w_the_indeterminate_stop_carries_its_own_dissolution_trigger() -> Bool {
+  match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
+    Absent => false
+    Present { value: pre } =>
+      match forced_ctx(pre: Present { value: pre }, began: t_write_began_p, finished: t_write_finished_p, applied: t_write_applied_p) {
+        Absent => false
+        Present { value: ctx } =>
+          match dry_archive_prior_life_across_forced_write(
+            key: key_p(),
+            consumed_identity: identity_p(),
+            subject: subject_p(),
+            platform: mt_jade_platform_ref,
+            world: zero_entry_world(),
+            across: Present { value: ctx },
+          ).outcome {
+            // The verdict is the third outcome (not a refusal, not a pass) AND it carries the trigger: the
+            // row names both options it is waiting on and refuses to be satisfied by a run minting either.
+            PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
+              string_contains(s: dissolution_description(condition: v.decision_frontier), pattern: "ConfirmFactoryFresh")
+                && string_contains(s: dissolution_description(condition: v.decision_frontier), pattern: "QuarantineUnit")
+                && string_contains(s: dissolution_description(condition: v.decision_frontier), pattern: "NOT satisfied by any run minting either variant itself")
             _ => false
           }
       }
