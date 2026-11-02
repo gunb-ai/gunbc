@@ -16052,7 +16052,7 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 // actual under a `P?` formal binds as it is. v1 cardinality is one layer (v1.std.core Cardinality), so
 // removing one layer is with_required_cardinality.
 fn generic_binding_through_formal_cardinality(formal: Node, actual: Node) -> Node {
-  if formal.return_cardinality == CardOptional && actual.return_cardinality == CardOptional {
+  if (formal.return_cardinality == CardOptional) && (actual.return_cardinality == CardOptional) {
     with_required_cardinality(n: actual)
   } else {
     actual
