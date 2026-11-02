@@ -50,8 +50,8 @@ no name row for that symbol — the repair cannot be more import rows, which are
 | Filesystem.Write | 1 | constructor `Write` of `type Verb` in **std.effect_grant**, written with a qualified head | qualified head not read |
 | Optional | 1 | constructor of `type GrammarExpr` in **v2.std.grammar** — the spelling also names `std.optional.Optional` | collision |
 | Node | 1 | `v2.std.node.Node` is a type, and the same spelling is a constructor in several sums | collision |
-| Map | 5 | `type Map<K,V> = FinitelySupportedFunction {…}` in **std.types**; sites write the **elided head** `Map { lookup: … }` | elided construct head, expected type not derived |
-| PartialFunction | 2 | record type `type PartialFunction<K,V> { lookup: fn(K) -> V? }` in **std.algebra** (module imported, name not named) | elided/record-introduction head |
+| Map | 5 | type `Map<K,V>` in **std.types**, referenced in **annotation position** (`exports: Map<ModuleId, List<Node>>` in v2.std.compilers.compilation_unit, `keyword_literals: Map<String, LiteralValue>` in std.syntax); those modules' `import std.types { … }` rows omit it | no declared home for the TYPE name (membership lane) |
+| PartialFunction | 2 | record type `type PartialFunction<K,V> { lookup: fn(K) -> V? }` in **std.algebra** (module imported, name not named); used both as an annotation and as a construct head | no declared home for the TYPE name (membership lane) |
 | List | 11 | type in **std.types** (4 of 11 modules import `std.types` without naming `List`) | no declared home |
 | Disposition | 1 | type in **std.disposition** | no declared home |
 | TargetEffectApplyShape | 1 | type in **v2.std.compilers.target_model** (module imported, name not named) | no declared home |
