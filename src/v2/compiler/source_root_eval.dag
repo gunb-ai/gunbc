@@ -216,6 +216,7 @@ import v2.compiler.module_acquisition {
   acquisition_first_duplicate,
   acquisition_ingest,
   acquisition_module_path,
+  acquisition_compilation_unit,
   acquisition_refusal_text,
   census_acquisition_ingest,
   enumerate_bound_modules,
@@ -1493,7 +1494,7 @@ type NativeLaneSourceFacts {
 fn native_lane_member_facts(member: AcquiredModule) -> NativeLaneSourceFacts {
   NativeLaneSourceFacts {
     module: member.name,
-    path: symbol_intern_lexeme(lexeme: acquisition_module_path(module: member)),
+    path: acquisition_compilation_unit(file: member.file),
     discovery: discover_floor_rows_for_source(
       repo_path: acquisition_module_path(module: member),
       marked: member.test_markers,

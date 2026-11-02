@@ -104,6 +104,12 @@ const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poiso
 const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root/dag";
 const MALFORMED_MATERIALIZED_PATH: &str =
     "target/v2-native-lane/malformed-control-root/dag/gunbc/malformed_specimen.dag";
+/// The specimen's SOURCE IDENTITY as the driver names it in a refusal: the root-relative key
+/// (`<source root label>:<path under the root>`, v2.compiler.source_authority `module_file_key`), not
+/// the host path, so a refusal does not depend on where the control root is mounted. The control
+/// requires a refusal whose path IS that key, so a refusal naming any other file does not
+/// satisfy it.
+const MALFORMED_SPECIMEN_KEY: &str = "dag:gunbc/malformed_specimen.dag";
 
 /// THE TWO DOORS' CONTROL INPUTS, AS THE THREE FACTS THEIR ARGV IS BUILT FROM.
 ///
@@ -1942,11 +1948,11 @@ fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<String, Stri
     let Some(refusal) = poisoned
         .file_refusals
         .iter()
-        .find(|fr| fr.path.contains(MALFORMED_MATERIALIZED_PATH))
+        .find(|fr| fr.path == MALFORMED_SPECIMEN_KEY)
     else {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=EvalDriverAcceptedThePoisonSpecimen — the driver reported no \
-             per-file refusal naming {MALFORMED_MATERIALIZED_PATH}; a route that accepts a source \
+             per-file refusal naming {MALFORMED_SPECIMEN_KEY}; a route that accepts a source \
              whose string never terminates has a dead front-end refusal arm, and every refusal \
              verdict it reports elsewhere is then worthless"
         ));
@@ -4447,7 +4453,7 @@ fn run_required_v2_native_inner(
     let malformed_control = match control_output
         .file_refusals
         .iter()
-        .find(|fr| fr.path.contains(MALFORMED_MATERIALIZED_PATH))
+        .find(|fr| fr.path == MALFORMED_SPECIMEN_KEY)
     {
         Some(fr) => (fr.path.clone(), fr.fatal_reason.clone()),
         None => (String::new(), String::new()),
