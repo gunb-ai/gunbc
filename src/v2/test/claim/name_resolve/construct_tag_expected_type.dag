@@ -379,3 +379,56 @@ test fn a_payload_absent_arm_is_not_a_construct_node_and_stays_unbound() -> Bool
     Present { value: vs } => ctee_refuses_with(v: vs.nullary, reason: ^resolve_reason_unbound_symbol)
   }
 }
+
+// DIAGNOSTIC ELIMINATION (temporary; removed once the cause is found). The claim runner prints no
+// detail, so the observed fatal is located by elimination: for each of the four modules whose claim is
+// red, one arm per candidate reason. Exactly one arm per module should be green, and which one it is
+// says whether the site is unbound (no expectation reached it), ambiguous, or refused by the new cause.
+test fn probe_field_user_fatal_is_unbound() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.field, reason: ^resolve_reason_unbound_symbol) }
+}
+
+test fn probe_field_user_fatal_is_ambiguous() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.field, reason: ^resolve_reason_ambiguous_symbol) }
+}
+
+test fn probe_field_user_fatal_is_new_cause() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.field, reason: ^resolve_construct_tag_not_in_expected_type) }
+}
+
+test fn probe_pattern_user_fatal_is_unbound() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.pattern, reason: ^resolve_reason_unbound_symbol) }
+}
+
+test fn probe_pattern_user_fatal_is_ambiguous() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.pattern, reason: ^resolve_reason_ambiguous_symbol) }
+}
+
+test fn probe_pattern_user_fatal_is_new_cause() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.pattern, reason: ^resolve_construct_tag_not_in_expected_type) }
+}
+
+test fn probe_alias_user_fatal_is_unbound() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.alias_user, reason: ^resolve_reason_unbound_symbol) }
+}
+
+test fn probe_alias_user_fatal_is_ambiguous() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.alias_user, reason: ^resolve_reason_ambiguous_symbol) }
+}
+
+test fn probe_alias_user_fatal_is_new_cause() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.alias_user, reason: ^resolve_construct_tag_not_in_expected_type) }
+}
+
+test fn probe_optional_position_fatal_is_unbound() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.optional_position, reason: ^resolve_reason_unbound_symbol) }
+}
+
+test fn probe_optional_position_fatal_is_ambiguous() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.optional_position, reason: ^resolve_reason_ambiguous_symbol) }
+}
+
+test fn probe_optional_position_fatal_is_new_cause() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.optional_position, reason: ^resolve_construct_tag_not_in_expected_type) }
+}
+
