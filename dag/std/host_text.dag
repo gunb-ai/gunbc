@@ -1,8 +1,7 @@
 module std.host_text
 
 import std.types { Char, List }
-import std.algebra { fold_list }
-import std.nat { Nat, Zero, Succ }
+import std.nat { Nat }
 
 // THE HOST-TEXT CARRIER AND THE OPERATIONS WHOSE SEMANTICS NEED IT (operator ruling H2, 2026-10-17,
 // v2-namespace-cutover). HostText is the opaque, native representation of text a host hands the
@@ -66,18 +65,10 @@ fn text_of_chars(scalars: List<Char>) -> HostText {
 // std.primitive_projection row, and a ModeledProjection body is intercepted by the builtin arm --
 // dead code that looks live, measured: a body returning Zero left every claim holding. So the
 // realization binds by THIS declaration's identity (primitive_string_length, a HostRealizedSeam row)
-// and no call reaches the body.
-//
-// THE BODY IS THE FOLD FOR ONE PR, NOT YET THE SEAM'S SELF-CALL, AND IT IS DEAD CODE. The heal job
-// builds its generator from main's stage0 mirrors (claim_executor --base-mirror), and main carries no
-// row for this declaration until this PR lands, so a self-call here would emit as Rust recursion
-// (observed twice on this PR). The fold keeps the emitted body total meanwhile; every call routes
-// through the row, so nothing executes it. Trigger: the row is on main; the follow-up PR replaces the
-// body with the self-call string_length(text: text) and drops the fold's imports. Class: the
-// bootstrap admission one, gunbc.recurring_failure_mode
-// population_admission_compiled_into_the_comparator_refuses_a_first_time_artifact (here a roster row).
-// Dissolution trigger of the seam itself: a .dag realization (this scalar-count fold over chars)
+// and the body is a self-call no realization reaches; without the row the import binds the
+// self-call and refuses.
+// Dissolution trigger: a .dag realization (the scalar-count fold over chars)
 // replaces the host one once an explicit import outranks the ambient primitive.
 fn string_length(text: HostText) -> Nat {
-  fold_list(xs: chars(text: text), empty: Zero, cons: fn(n, _) { Succ { prev: n } })
+  string_length(text: text)
 }
