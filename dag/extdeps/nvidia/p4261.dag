@@ -1,6 +1,6 @@
 module extdeps.nvidia.p4261
 
-import std.types { NonEmptyStr }
+import std.types { Bool, NonEmptyStr }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.nvidia { nvidia }
@@ -23,6 +23,11 @@ type P4261AssemblyRevision {
   revision_code: NonEmptyStr
   pcb_code: NonEmptyStr
   standing: CitedFigureStanding
+}
+
+// Two rows name the same revision when every identifier the revision is read by agrees.
+fn p4261_revision_eq(a: P4261AssemblyRevision, b: P4261AssemblyRevision) -> Bool {
+  a.model == b.model && a.assembly_part_number == b.assembly_part_number && a.revision_code == b.revision_code && a.pcb_code == b.pcb_code
 }
 
 data p4261_k1: P4261AssemblyRevision = P4261AssemblyRevision {

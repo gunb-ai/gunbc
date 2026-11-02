@@ -66,6 +66,7 @@ import gunbc.roadmap.roadmap_status {
   TicketUpdate,
   Unsigned,
   RoadmapItem,
+  line_ticket,
 }
 import std.markdown {
   MarkdownBlock,

@@ -5,7 +5,7 @@ import std.types { String, NonEmptyStr, List }
 import std.nat { Nat, nat_min, nat_max }
 import std.measure { Millivolt, Volt, millivolt_count, volt_count }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
-import product.electrical.connectivity { ElectricalTerminalRef, ComponentInstanceIdentity, terminal_ref_equal }
+import product.electrical.connectivity { ElectricalTerminalRef, ComponentInstanceIdentity, component_identity_eq, terminal_ref_equal }
 import product.electrical.continuity {
   AfterIncidents,
   BeforeIncidents,
@@ -279,11 +279,9 @@ type SpecimenState sole_constructor {
   module: ModuleState
 }
 
+// Of the recorded alterations, a removal divides states; a thermal-interface change touches no terminal.
 fn alteration_divides_state(a: AssetAlteration) -> Bool {
-  match a.change {
-    ThermalInterfaceChanged { removed: _, applied: _ } => false
-    PartRemoved { refitted: _ } => true
-  }
+  removal_of(a: a)
 }
 
 fn alteration_refitted(a: AssetAlteration) -> Bool {
@@ -369,7 +367,7 @@ fn reading_placement(r: BenchRecord, asset: PhysicalAssetIdentity, o: ReadingOrd
       BeforeIncidents { keys } => if all(boundaries, b => key_listed(keys: keys, k: b)) { placed_before_all() } else { OrderUncovered }
       AfterIncidents { keys } => if all(boundaries, b => key_listed(keys: keys, k: b)) { PlacedAfter { after: boundaries } } else { OrderUncovered }
       BetweenIncidents { after, before } =>
-        if all(boundaries, b => key_listed(keys: after, k: b) || key_listed(keys: before, k: b)) && !any(after, k => key_listed(keys: before, k: k)) {
+        if all(boundaries, b => key_listed(keys: after, k: b) || key_listed(keys: before, k: b)) && count(order_contradictions(o: o)) == 0 {
           PlacedAfter { after: filter(boundaries, b => key_listed(keys: after, k: b)) }
         } else { OrderUncovered }
       OrderUnrecorded { relative_to: _ } => if count(boundaries) == 0 { placed_before_all() } else { OrderUncovered }
@@ -400,6 +398,84 @@ fn is_disposition(d: ReadingDisposition, want: ReadingDisposition) -> Bool {
     OfAnotherConfiguration => match want { OfAnotherConfiguration => true, _ => false }
     Uncovered => match want { Uncovered => true, _ => false }
     Unresolved => match want { Unresolved => true, _ => false }
+  }
+}
+
+// ── PLACING AN OBSERVATION AGAINST CHOSEN EVENTS ──────────────────────────────────────────────
+//
+// Whether a part was on the board is never authored beside the part, and the ledger's silence is not
+// presence: an observation of the part establishes presence (product.electrical.identification
+// observed_presence), and the ledger's removals (AssetAlteration PartRemoved, naming the component)
+// establish removal. What joins them is the observation's order. place_against answers one question
+// about it: relative to these events, which side did the observation fall on?
+//
+// Its references are resolved first against the asset's WHOLE event catalogue (recorded_events), as a
+// reading's are (reading_placement): an unresolved reference makes the observation unplaced, whatever
+// events are then asked about, and a reference to an event that is not among them is simply not
+// consulted. An order naming one event both before and after it is contradicted and places nothing.
+// Otherwise: before every one of the events, after at least one, or neither stated.
+type EventPlacement
+  = BeforeEvery
+  | AfterEvent { key: NonEmptyStr }
+  | OrderNotStated { key: NonEmptyStr }
+  | PlacementUnresolved { keys: List<NonEmptyStr> }
+  | OrderContradicted { keys: List<NonEmptyStr> }
+
+// Events an order states the observation both followed and preceded: an order that names one is
+// self-contradictory, and places the observation nowhere (shared by reading_placement).
+fn order_contradictions(o: ReadingOrder) -> List<NonEmptyStr> {
+  match o {
+    BetweenIncidents { after, before } => filter(after, k => key_listed(keys: before, k: k))
+    BeforeIncidents { keys: _ } => no_keys()
+    AfterIncidents { keys: _ } => no_keys()
+    OrderUnrecorded { relative_to: _ } => no_keys()
+  }
+}
+
+fn no_keys() -> List<NonEmptyStr> {
+  []
+}
+
+fn removal_of(a: AssetAlteration) -> Bool {
+  match a.change {
+    ThermalInterfaceChanged { removed: _, applied: _ } => false
+    PartRemoved { refitted: _ } => true
+  }
+}
+
+fn removals_of(r: BenchRecord, asset: PhysicalAssetIdentity, c: ComponentInstanceIdentity) -> List<AssetAlteration> {
+  filter(alterations_of(r: r, asset: asset), a => removal_of(a: a) && component_identity_eq(a: a.part, b: c))
+}
+
+fn seen_before(o: ReadingOrder, k: NonEmptyStr) -> Bool {
+  match o {
+    BeforeIncidents { keys } => key_listed(keys: keys, k: k)
+    AfterIncidents { keys: _ } => false
+    BetweenIncidents { after: _, before } => key_listed(keys: before, k: k)
+    OrderUnrecorded { relative_to: _ } => false
+  }
+}
+
+fn seen_after(o: ReadingOrder, k: NonEmptyStr) -> Bool {
+  match o {
+    BeforeIncidents { keys: _ } => false
+    AfterIncidents { keys } => key_listed(keys: keys, k: k)
+    BetweenIncidents { after, before: _ } => key_listed(keys: after, k: k)
+    OrderUnrecorded { relative_to: _ } => false
+  }
+}
+
+fn place_against(r: BenchRecord, asset: PhysicalAssetIdentity, seen: ReadingOrder, keys: List<NonEmptyStr>) -> EventPlacement {
+  let unresolved = filter(order_keys(o: seen), k => !key_listed(keys: recorded_events(r: r, asset: asset), k: k))
+  if count(unresolved) > 0 { PlacementUnresolved { keys: unresolved } }
+  else if count(order_contradictions(o: seen)) > 0 { OrderContradicted { keys: order_contradictions(o: seen) } } else {
+    match (filter(keys, k => seen_after(o: seen, k: k))).first() {
+      Present { value: k } => AfterEvent { key: k }
+      Absent => match (filter(keys, k => !seen_before(o: seen, k: k))).first() {
+        Present { value: k } => OrderNotStated { key: k }
+        Absent => BeforeEvery
+      }
+    }
   }
 }
 
