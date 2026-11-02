@@ -1,0 +1,68 @@
+module test.claim.optional_field_omission_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { String, Bool, Int }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// One type, one obligation (gunbc#14087): `T?` denotes the canonical Optional application
+// (optional_sugar_is_declaration_bound) and Optional values are never implicitly wrapped
+// (explicit_present_is_the_authoring_policy), so a record literal that OMITS an optional field
+// owes a located MissingField for BOTH spellings; only a declared default exempts. Each arm hands
+// source to the real v1 checker (compile_dag_diagnostic_census); a CensusNotRunnable answers -1,
+// which no arm accepts, so an unrunnable instrument can neither pass a RED nor a control.
+
+data sugar_omitted_source: String = "module ofo.sugar_omitted\nimport std.optional { Optional, Absent, Present }\ntype Row { label: String, width: Int? }\nfn f() -> Row { Row { label: \"a\" } }\n"
+data nominal_omitted_source: String = "module ofo.nominal_omitted\nimport std.optional { Optional, Absent, Present }\ntype Row { label: String, width: Optional<Int> }\nfn f() -> Row { Row { label: \"a\" } }\n"
+data sugar_absent_source: String = "module ofo.sugar_absent\nimport std.optional { Optional, Absent, Present }\ntype Row { label: String, width: Int? }\nfn f() -> Row { Row { label: \"a\", width: Absent } }\n"
+data sugar_present_source: String = "module ofo.sugar_present\nimport std.optional { Optional, Absent, Present }\ntype Row { label: String, width: Int? }\nfn f() -> Row { Row { label: \"a\", width: Present { value: 1 } } }\n"
+data nominal_absent_source: String = "module ofo.nominal_absent\nimport std.optional { Optional, Absent, Present }\ntype Row { label: String, width: Optional<Int> }\nfn f() -> Row { Row { label: \"a\", width: Absent } }\n"
+data nominal_present_source: String = "module ofo.nominal_present\nimport std.optional { Optional, Absent, Present }\ntype Row { label: String, width: Optional<Int> }\nfn f() -> Row { Row { label: \"a\", width: Present { value: 1 } } }\n"
+data defaulted_omitted_source: String = "module ofo.defaulted_omitted\nimport std.optional { Optional, Absent, Present }\ntype Row { label: String, width: Int? = none }\nfn f() -> Row { Row { label: \"a\" } }\n"
+
+fn missing_field_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "MissingField")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// RED: one MissingField after the fix, zero before it (the `?` sugar carried CardOptional, which
+// declared_field_is_required exempted).
+test fn an_omitted_sugar_optional_field_owes_a_missing_field() -> Bool {
+  missing_field_count(source: sugar_omitted_source) == 1
+}
+
+// CONTROL (one before and after): the nominal spelling of the same type.
+test fn an_omitted_nominal_optional_field_owes_a_missing_field() -> Bool {
+  missing_field_count(source: nominal_omitted_source) == 1
+}
+
+// CONTROLS (zero blocking before and after): explicit Absent and Present, both spellings.
+test fn explicit_absent_and_present_are_accepted_for_both_spellings() -> Bool {
+  blocking_count(source: sugar_absent_source) == 0
+    && blocking_count(source: sugar_present_source) == 0
+    && blocking_count(source: nominal_absent_source) == 0
+    && blocking_count(source: nominal_present_source) == 0
+}
+
+// CONTROL (zero before and after): a declared default is the only exemption.
+test fn an_omitted_optional_field_with_a_declared_default_is_accepted() -> Bool {
+  blocking_count(source: defaulted_omitted_source) == 0
+}
