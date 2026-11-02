@@ -1,45 +1,318 @@
 module gunbc.systemd_unit_invocation_liveness
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Int, Bool, EpochSecs, Seconds }
+import std.optional { Present, Absent }
+import std.algebra { trim, list_at_optional }
+import std.types { list_length }
 import std.durable_exclusive_hold {
   DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
 }
+import extdeps.uuid { Uuid }
+import extdeps.systemd.invocation_id { SystemdInvocationId, systemd_invocation_id_of }
+import extdeps.linux.kernel_random { kernel_boot_id_of }
+import extdeps.linux.proc_stat { proc_stat_boot_time, BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch }
 
-// ONE SYSTEMD-UNIT HOLDER OBSERVER, keyed by InvocationID. It answers whether this unit start
-// is still the live holder. It does not yet retire the other spellings; those are residue sites
-// (gunbc.recurring_failure_mode.holds_spools_retry_consolidation_residue):
+// ONE SYSTEMD-UNIT HOLDER OBSERVER, keyed by the OBSERVED IDENTITY OF A UNIT RUN. It answers whether
+// this run of the unit is still the live holder. It does not yet retire the other spellings; those
+// are residue sites (gunbc.recurring_failure_mode.holds_spools_retry_consolidation_residue):
 //   - gunbc.compute.attempt_lifecycle UnitLifecycle — outcome / seat-freeing, not this question
 //   - gunbc.roadmap_dispatch_actuator AttemptUnitObservation — LoadState/SubState/exit
-//   - gunbc.workspace_acquisition_invocation WorkspacePriorActorStanding — wraps this fold
+//   - the ~30 runner sites that thread a caller-minted `invocation_id` parameter (an attempt token, not
+//     systemd's InvocationID; the observation-side reading is gunbc.runner.runner_microvm_lifecycle
+//     UnitAttemptBindingReading)
 //
-// The belt hold has no CasGeneration. InvocationID is that hold's fence: it names one start of
-// the unit. A later start is a different hold, whoever owns the unit name.
+// A RUN IS (manager, boot, InvocationID), each read from the host, none asserted by the caller:
+//   - manager: the instance the reading was taken from (the system manager, or one user's);
+//   - boot: extdeps.linux.kernel_random kernel_boot_id_of over /proc/sys/kernel/random/boot_id, and the
+//     boot's START INSTANT (extdeps.linux.proc_stat proc_stat_boot_time, /proc/stat btime, whole seconds,
+//     so a consumer comparing it with another clock owns the skew bound). The instant is evidence beside
+//     the id, not part of run equality: it is derived from the boot and can wobble with clock steps;
+//   - invocation: extdeps.systemd.invocation_id systemd_invocation_id_of over the unit's InvocationID
+//     property, or $INVOCATION_ID inside the unit as the manager exports it.
+// The id alone does not name a run: managers draw ids independently and a reboot ends every run of the
+// boot, so equality is over the triple.
+//
+// The belt hold has no CasGeneration. The run is that hold's fence: it names one start of the unit. A
+// later start is a different hold, whoever owns the unit name.
 //
 // Recovery is decided by this observation, never by age.
+//
+// A MISSING OR MALFORMED COMPONENT IS A TYPED REFUSAL, never a default: UnitInvocationUnreadable carries
+// the located cause, so "the run is gone" (an observed different run) and "the run could not be asked"
+// are never one value. CONSUMERS (§3c): gunbc.workspace_acquisition_invocation (migrated in this change),
+// the slot-unit create-once request binding (bold-dove-340) and the srv1 session-memory lease holder-death
+// proof (snappy-carp-24) are declared frontiers, each adopting this observation in its own change.
+type SystemdManagerInstance
+  = SystemManager
+  | UserManager { uid: Int }
 
+type UnitRunIdentity {
+  manager: SystemdManagerInstance
+  boot_id: Uuid
+  boot_started_at: EpochSecs
+  invocation_id: SystemdInvocationId
+}
+
+// An observation names the SUBJECT it concerns (the unit, and the manager it was asked of), so a verdict about a
+// recorded holder can refuse an observation of another unit or another manager. Subject binding lives here, in the
+// observation interface, not in the run identity: a run names one start of one unit, whoever else shares its id shape.
 type UnitInvocationObservation
-  = UnitInvocationPresent { invocation_id: NonEmptyStr }
-  | UnitInvocationAbsent
+  = UnitInvocationPresent { unit: NonEmptyStr, run: UnitRunIdentity }
+  | UnitInvocationAbsent { unit: NonEmptyStr, manager: SystemdManagerInstance, boot_id: Uuid, boot_started_at: EpochSecs }
   | UnitInvocationUnreadable { cause: NonEmptyStr }
 
+fn systemd_manager_wire(manager: SystemdManagerInstance) -> String {
+  match manager {
+    SystemManager => "system"
+    UserManager { uid: u } => concat("user", concat("", u))
+  }
+}
+
+// ADMISSION from the raw readings. An empty InvocationID is a unit that has not run (Absent: observed
+// gone); any other component that fails its wire decode is Unreadable.
+fn unit_invocation_observation(manager: SystemdManagerInstance, unit: NonEmptyStr, boot_id_text: String, proc_stat_text: String, invocation_text: String) -> UnitInvocationObservation {
+  match unit_boot_observation(boot_id_text: boot_id_text, proc_stat_text: proc_stat_text) {
+    BootUnreadable { cause: c } => UnitInvocationUnreadable { cause: c }
+    BootObserved { boot_id: boot, boot_started_at: t } =>
+      if trim(s: invocation_text) == "" { UnitInvocationAbsent { unit: unit, manager: manager, boot_id: boot, boot_started_at: t } }
+      else { match systemd_invocation_id_of(text: invocation_text) {
+        Absent => UnitInvocationUnreadable { cause: "InvocationID is not 32 lowercase hex digits (systemd.exec(5))" as NonEmptyStr }
+        Present { value: inv } => UnitInvocationPresent { unit: unit, run: UnitRunIdentity { manager: manager, boot_id: boot, boot_started_at: t, invocation_id: inv } }
+      } }
+  }
+}
+
+// IDENTITY COMPARISON IS NOT DEATH ADJUDICATION. A DEATH verdict needs an observation that concerns the recorded
+// holder's own unit and manager: a different unit, or a different manager, is a FOREIGN SUBJECT and is
+// HolderLivenessUnobservable, never dead. Within the right subject, a later boot ended every run of the earlier one
+// (the observed boot must START AFTER the recorded one, else the order is unobservable), a different InvocationID on
+// the same boot is a later start of the unit, and an empty InvocationID is a unit with no start ON A BOOT THAT PASSES THE
+// SAME ORDER CHECK (an absent reading carries its boot, so an earlier or equal-start boot is unobservable, not dead). Only the full triple
+// matching is live.
 fn unit_invocation_holder_liveness(
-  recorded_invocation: NonEmptyStr,
+  recorded: UnitRunIdentity,
+  holder_unit: NonEmptyStr,
   observed: UnitInvocationObservation,
 ) -> DurableHoldHolderLiveness {
   match observed {
     UnitInvocationUnreadable { cause: c } => HolderLivenessUnobservable { cause: c }
-    UnitInvocationAbsent =>
-      HolderObservedDead {
-        evidence: "the unit has no InvocationID; the recorded start is gone" as NonEmptyStr,
+    UnitInvocationAbsent { unit: u, manager: m, boot_id: b, boot_started_at: t } =>
+      if (u as String) != (holder_unit as String) { HolderLivenessUnobservable { cause: "the observation concerns another unit than the recorded holder's" as NonEmptyStr } }
+      else if systemd_manager_wire(manager: m) != systemd_manager_wire(manager: recorded.manager) { HolderLivenessUnobservable { cause: "the observation is from another systemd manager than the recorded holder's" as NonEmptyStr } }
+      else if (b as String) != (recorded.boot_id as String) && t <= recorded.boot_started_at { HolderLivenessUnobservable { cause: "the observed boot does not start after the recorded boot" as NonEmptyStr } }
+      else { HolderObservedDead { evidence: "the holder's unit has no InvocationID on the recorded boot or a later one; the recorded start is gone" as NonEmptyStr } }
+    UnitInvocationPresent { unit: u, run: o } =>
+      if (u as String) != (holder_unit as String) { HolderLivenessUnobservable { cause: "the observation concerns another unit than the recorded holder's" as NonEmptyStr } }
+      else if systemd_manager_wire(manager: o.manager) != systemd_manager_wire(manager: recorded.manager) { HolderLivenessUnobservable { cause: "the observation is from another systemd manager than the recorded holder's" as NonEmptyStr } }
+      else if (o.boot_id as String) != (recorded.boot_id as String) {
+        if o.boot_started_at > recorded.boot_started_at { HolderObservedDead { evidence: "the holder's unit is observed on a later boot; the recorded boot has ended" as NonEmptyStr } }
+        else { HolderLivenessUnobservable { cause: "the observed boot does not start after the recorded boot" as NonEmptyStr } }
       }
-    UnitInvocationPresent { invocation_id: id } =>
-      if (id as String) == (recorded_invocation as String) {
-        HolderObservedLive {
-          evidence: "InvocationID still matches the recorded start" as NonEmptyStr,
+      else if (o.invocation_id as String) != (recorded.invocation_id as String) { HolderObservedDead { evidence: "the holder's unit is observed on the same boot with another InvocationID; the recorded start is gone" as NonEmptyStr } }
+      else { HolderObservedLive { evidence: "manager, boot and InvocationID of the holder's unit still match the recorded run" as NonEmptyStr } }
+  }
+}
+
+// PERSISTED FORM of a run (the workspace actor record stores it in one field): manager|boot|btime|invocation.
+// A text that is not exactly that, including a pre-carrier bare InvocationID, decodes to Absent: a recorded run
+// that cannot be read back is never guessed at.
+fn unit_run_wire(run: UnitRunIdentity) -> String {
+  join([systemd_manager_wire(manager: run.manager), run.boot_id as String, concat("", run.boot_started_at), run.invocation_id as String], "|")
+}
+
+fn unit_run_of_wire(wire: String) -> UnitRunIdentity? {
+  let parts = split(s: wire, delimiter: "|")
+  if list_length(items: parts) != 4 { none }
+  else { match list_at_optional(xs: parts, index: 0) {
+    Absent => none
+    Present { value: m } => match unit_run_manager_of_wire(text: m) {
+      Absent => none
+      Present { value: mgr } => match list_at_optional(xs: parts, index: 1) {
+        Absent => none
+        Present { value: b } => match kernel_boot_id_of(text: b) {
+          Absent => none
+          Present { value: boot } => match list_at_optional(xs: parts, index: 2) {
+            Absent => none
+            Present { value: t } => match parse_int(s: t) {
+              Absent => none
+              Present { value: ts } => match list_at_optional(xs: parts, index: 3) {
+                Absent => none
+                Present { value: i } => match systemd_invocation_id_of(text: i) {
+                  Absent => none
+                  Present { value: inv } => Present { value: UnitRunIdentity { manager: mgr, boot_id: boot, boot_started_at: ts, invocation_id: inv } }
+                }
+              }
+            }
+          }
         }
+      }
+    }
+  } }
+}
+
+fn unit_run_manager_of_wire(text: String) -> SystemdManagerInstance? {
+  if text == "system" { Present { value: SystemManager } }
+  else if starts_with(s: text, prefix: "user") {
+    match parse_int(s: substring(s: text, start: 4, end: string_length(s: text))) {
+      Present { value: u } => Present { value: UserManager { uid: u } }
+      Absent => none
+    }
+  } else { none }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE BOOT, WITHOUT THE UNIT: for a holder whose run identity was never recorded.
+//
+// A transient attempt unit is started by a manager that never hands its InvocationID to the code that
+// later has to settle the hold that unit took. What that code holds is a lease REFERENCE, a unit NAME,
+// and the ledger's own record of when the hold was acquired; nothing recorded the run. So the run-typed
+// reading above has nothing to compare against, and the question "is this holder dead" cannot be answered
+// by identity equality.
+//
+// The host fact that can still bind a name to a lifetime is the BOOT. A boot that began strictly after the
+// hold was acquired contains no process started before that acquisition, so if the manager that ran the
+// unit also reports no such unit, every run that could have taken that hold has ended. A boot that began
+// before the acquisition proves nothing in the other direction: the process may still be running in it.
+//
+// THIS IS A WEAKER CARRIER THAN UnitRunIdentity AND IS POSITIONED AS SUCH. UnitRunIdentity proves THIS
+// RUN ended. The boot reading proves the BOOT ended, conjoined with the unit standing from the manager
+// that ran it; it cannot distinguish a unit that exited and was collected from one whose manager was
+// restarted without it. That is the rung gunbc.recurring_failure_mode
+// hold_recovered_by_age_not_observed_holder_death names for this class (its next-rung observer is this
+// module), and it is why the arm below is a conjunction and never either half alone: a bare not-found by
+// name, with no boot relation, is exactly the "recovered by age" mistake wearing an observation costume.
+// Where a run identity WAS recorded, use unit_invocation_holder_liveness instead; it is strictly stronger.
+// THE HOST PAIR, read once and typed once: which boot a reading was taken from, and when that boot began.
+// It is ONE type and ONE function because the run reading above and the boot-order reading below must not
+// be able to disagree about what a non-UUID boot_id or a malformed btime MEANS -- two spellings of the same
+// refusal are two chances to get it wrong, and the refusal is the value a consumer acts on (DESIGN 3, one
+// fact in one place; DESIGN 2, no second name for one concept). The refusals are this function's; nothing
+// here invents a default.
+type UnitBootObservation
+  = BootObserved { boot_id: Uuid, boot_started_at: EpochSecs }
+  | BootUnreadable { cause: NonEmptyStr }
+
+fn unit_boot_observation(boot_id_text: String, proc_stat_text: String) -> UnitBootObservation {
+  match kernel_boot_id_of(text: boot_id_text) {
+    Absent => BootUnreadable { cause: "boot_id is not a UUID (random(4))" as NonEmptyStr }
+    Present { value: boot } => match proc_stat_boot_time(content: proc_stat_text) {
+      BootTimeLineAbsent => BootUnreadable { cause: "/proc/stat has no btime line" as NonEmptyStr }
+      BootTimeUnparseable { field: _ } => BootUnreadable { cause: "/proc/stat btime is not an integer" as NonEmptyStr }
+      BootTimeBeforeEpoch { field: _ } => BootUnreadable { cause: "/proc/stat btime precedes the epoch" as NonEmptyStr }
+      BootTimeObserved { epoch_seconds: t } => BootObserved { boot_id: boot, boot_started_at: t }
+    }
+  }
+}
+
+// BOOT ORDER against the instant the hold was acquired. btime is whole seconds kept by the kernel, and the
+// acquisition instant is whole seconds recorded by a process at another moment; both are the host's clock,
+// but a clock set from the RTC before synchronization and a later step can put them apart by more than a
+// second. So the comparison carries a skew bound the CALLER supplies from its own policy -- this module
+// does not invent a number it cannot justify for someone else's hold -- and an overlap is a typed refusal.
+// BootOrderUnreadable is kept apart from BootOrderUndecided on purpose: "there is no reading to order" and
+// "the reading cannot be ordered" are different facts for whoever has to explain why a hold was kept.
+type UnitBootOrder
+  = BootStartsAfterAcquisition { boot_started_at: EpochSecs, acquired_at: EpochSecs }
+  | BootStartsBeforeAcquisition { boot_started_at: EpochSecs, acquired_at: EpochSecs }
+  | BootOrderUndecided { boot_started_at: EpochSecs, acquired_at: EpochSecs, skew_bound_seconds: Seconds }
+  | BootOrderUnreadable { cause: NonEmptyStr }
+
+fn unit_boot_order(boot: UnitBootObservation, acquired_at: EpochSecs, skew_bound_seconds: Seconds) -> UnitBootOrder {
+  match boot {
+    BootUnreadable { cause: c } => BootOrderUnreadable { cause: c }
+    BootObserved { boot_id: _, boot_started_at: started } =>
+      if started > (acquired_at + skew_bound_seconds) {
+        BootStartsAfterAcquisition { boot_started_at: started, acquired_at: acquired_at }
       } else {
-        HolderObservedDead {
-          evidence: "InvocationID moved; the recorded start is a different activation" as NonEmptyStr,
+        if acquired_at > (started + skew_bound_seconds) {
+          BootStartsBeforeAcquisition { boot_started_at: started, acquired_at: acquired_at }
+        } else {
+          BootOrderUndecided { boot_started_at: started, acquired_at: acquired_at, skew_bound_seconds: skew_bound_seconds }
+        }
+      }
+  }
+}
+
+// THE OBSERVED-REBOOT ARM, producing the SAME proof type the run-typed arm produces: no second kind of
+// death evidence exists, so no consumer can be handed a claim stronger than the reading behind it.
+//
+// SUBJECT BINDING FIRST, the same rule the run-typed arm applies to its observation: the reading must concern
+// the holder's own unit, and it must come from the manager named for that holder. A reading about another
+// unit, or taken from another manager, is HolderLivenessUnobservable -- it is a fact about somebody else, and
+// no boot fact can repair that. The binding is checked here rather than trusted from the caller, so a route
+// cannot get a DEATH verdict out of a foreign subject by construction.
+//
+// Conjunction, in order: the named manager must report no such unit (UnitInvocationAbsent -- the standing of
+// a name that is not loaded and has no InvocationID), AND the boot this reading was taken from must start
+// strictly after the instant the ledger acquired the hold, by more than the caller's skew bound. Anything
+// else keeps the hold and says why: a unit that still reports an InvocationID has not been observed to end;
+// a boot that predates the acquisition can still hold the process; an unreadable standing or an unorderable
+// boot is not evidence at all. A malformed exit artifact never appears here, because an artifact is a fact
+// about its writer and this function takes none.
+fn unit_reboot_holder_liveness(
+  standing: UnitInvocationObservation,
+  holder_unit: NonEmptyStr,
+  holder_manager: SystemdManagerInstance,
+  boot: UnitBootObservation,
+  acquired_at: EpochSecs,
+  skew_bound_seconds: Seconds,
+) -> DurableHoldHolderLiveness {
+  match standing {
+    UnitInvocationUnreadable { cause: c } =>
+      HolderLivenessUnobservable { cause: join(["the unit standing could not be read: ", c], "") }
+    UnitInvocationPresent { unit: u, run: r } =>
+      if (u as String) != (holder_unit as String) {
+        HolderLivenessUnobservable { cause: "the standing concerns another unit than the recorded holder's" as NonEmptyStr }
+      } else if systemd_manager_wire(manager: r.manager) != systemd_manager_wire(manager: holder_manager) {
+        // A unit name is not a holder. The same name under a DIFFERENT manager is a different subject: a
+        // user manager can run a unit whose name the system manager also uses, and neither run's life or
+        // death says anything about the other. Live is as much a verdict about the holder as Dead is, so the
+        // subject binding is required before either.
+        HolderLivenessUnobservable { cause: join(["the standing was read from ", systemd_manager_wire(manager: r.manager), ", not from ", systemd_manager_wire(manager: holder_manager), ", the manager named for this holder; a run of that unit name under another manager is a different subject"], "") }
+      } else {
+        HolderObservedLive {
+          evidence: join([systemd_manager_wire(manager: r.manager), " still reports an InvocationID (", (r.invocation_id as String), ") for ", (u as String), " on boot ", (r.boot_id as String), "; that run has not been observed to end"], ""),
+        }
+      }
+    // THE ABSENT READING CARRIES ITS OWN BOOT, and the order is taken against THAT boot, not against a
+    // second reading that happens to be nearby. The boot operand is kept as a cross-check rather than as the
+    // source: if the boot offered for ordering is not the boot the standing was taken on, the two are not one
+    // reading and the conjunction is not established, so this refuses. An earlier boot is UNOBSERVABLE and not
+    // "live": a unit that is not loaded in a boot that began before the acquisition may simply never have been
+    // started in it, and asserting life from that is the same over-claim, in the other direction, as asserting
+    // death from a bare not-found.
+    UnitInvocationAbsent { unit: u, manager: m, boot_id: b, boot_started_at: standing_started } =>
+      if (u as String) != (holder_unit as String) {
+        HolderLivenessUnobservable { cause: "the standing concerns another unit than the recorded holder's" as NonEmptyStr }
+      } else if systemd_manager_wire(manager: m) != systemd_manager_wire(manager: holder_manager) {
+        HolderLivenessUnobservable { cause: join(["the standing was read from ", systemd_manager_wire(manager: m), ", not from ", systemd_manager_wire(manager: holder_manager), ", the manager named for this holder"], "") }
+      } else {
+        match boot {
+          BootUnreadable { cause: c } =>
+            HolderLivenessUnobservable { cause: join(["there is no boot reading to cross-check the standing against: ", c], "") }
+          BootObserved { boot_id: offered_boot, boot_started_at: offered_started } =>
+            if (offered_boot as String) != (b as String) || offered_started != standing_started {
+              HolderLivenessUnobservable {
+                cause: join(["the not-found standing was taken on boot ", (b as String), " beginning ", to_string(value: standing_started), ", but the boot offered for ordering is ", (offered_boot as String), " beginning ", to_string(value: offered_started), "; these are not one reading, so no boot fact here is bound to that standing"], ""),
+              }
+            } else {
+              match unit_boot_order(boot: BootObserved { boot_id: b, boot_started_at: standing_started }, acquired_at: acquired_at, skew_bound_seconds: skew_bound_seconds) {
+                BootStartsAfterAcquisition { boot_started_at: started, acquired_at: acquired } =>
+                  HolderObservedDead {
+                    evidence: join([systemd_manager_wire(manager: m), " reports no such unit as ", (u as String), " on boot ", (b as String), ", and that boot began at ", to_string(value: started), ", after the hold was acquired at ", to_string(value: acquired), ": no run that predates the acquisition survives this boot"], ""),
+                  }
+                BootStartsBeforeAcquisition { boot_started_at: started, acquired_at: acquired } =>
+                  HolderLivenessUnobservable {
+                    cause: join(["the boot the standing was taken on began at ", to_string(value: started), ", before the hold was acquired at ", to_string(value: acquired), "; a unit not loaded in that boot may never have been started in it, so the boot neither ends the holder nor proves it running"], ""),
+                  }
+                BootOrderUndecided { boot_started_at: started, acquired_at: acquired, skew_bound_seconds: bound } =>
+                  HolderLivenessUnobservable {
+                    cause: join(["the boot start ", to_string(value: started), " is within ", to_string(value: bound), " seconds of the acquisition at ", to_string(value: acquired), "; boot and acquisition cannot be ordered, so the boot says nothing about the holder"], ""),
+                  }
+                BootOrderUnreadable { cause: c } =>
+                  HolderLivenessUnobservable { cause: join(["there is no boot reading to order against the acquisition: ", c], "") }
+              }
+            }
         }
       }
   }
