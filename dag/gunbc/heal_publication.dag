@@ -227,8 +227,9 @@ fn rest_refusal_text(o: RestRefusal) -> String {
 //   * the run facts are the workflow_run event payload the fold already parsed (parameter `run`);
 //   * the pull-request IDENTITY (number, head/base refs) is the SEALED CANDIDATE'S OWN -- credential-free
 //     admit has no transport that answers number/head/base independently, so it does NOT claim to verify
-//     them here; the LIVE cross-check (github.Pulls.Get number + head.ref vs the sealed candidate) runs at
-//     PUBLISH, at the credential site next to the write (see classify_publish_pull_request);
+//     them here; the LIVE cross-check (github.Pulls.Get number + head.ref + base.ref vs the sealed
+//     candidate) runs at PUBLISH, at the credential site next to the write (see
+//     classify_publish_pull_request), so a pull request retargeted after sealing fails closed;
 //   * head LIVENESS is a live, credential-free `git ls-remote` of refs/pull/<n>/head against the
 //     PUBLIC repository, whose sha lands in observations.branch_head_sha -- the boundary then refuses
 //     with HeadMoved if it disagrees with the sealed expected_head_sha, and with
@@ -598,7 +599,7 @@ fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
     PublisherRunRefused { cause } => exit_failure(reason: cause)
     PublisherRunNothingToPublish => ExitSuccess
     PublisherRunAdmitted { admitted, blobs, pull_number } =>
-      match ensure_pull_request_open_wet(subject: subject, pull_number: pull_number, expected_head_ref: admitted.head_ref as String) {
+      match ensure_pull_request_open_wet(subject: subject, pull_number: pull_number, expected_head_ref: admitted.head_ref as String, expected_base_ref: admitted.base_ref as String) {
         PullRequestOpenCheckRefused { reason } => exit_failure(reason: reason)
         PullRequestOpenCheckPassed =>
           match env_value(name: heal_publisher_wif_access_token_env_name) {
@@ -636,26 +637,29 @@ type PullRequestOpenCheck = PullRequestOpenCheckPassed | PullRequestOpenCheckRef
 // The pull request exactly as the publish step OBSERVES it from the LIVE github.Pulls.Get read (made under
 // the job token), held separate from the decision so every arm is checkable hermetically on supplied values.
 type PublishPullRequestState =
-    PublishPrObserved { number: Int, head_ref: String, open: Bool }
+    PublishPrObserved { number: Int, head_ref: String, base_ref: String, open: Bool }
   | PublishPrStateUnreadable { detail: String }
   | PublishPrCredentialAbsent
 
 // THE DECISION, pure and offline-testable. Fail-closed first: an absent credential or an unreadable state
 // refuses, because a publish that cannot READ the pull request must not write. Then the identity cross-check
 // the credential-free admit cannot perform: the LIVE pull request must be the very one the sealed candidate
-// describes (its number, and its head ref), or a different pull request would be fast-forwarded. Then the
-// OPEN check. Any failure refuses BEFORE the App token is minted and before any write.
-fn classify_publish_pull_request(obs: PublishPullRequestState, pull_number: Int, expected_head_ref: String) -> PullRequestOpenCheck {
+// describes (its number, its head ref, and its BASE ref), or a different or retargeted pull request would be
+// fast-forwarded onto the wrong branch. Then the OPEN check. Any failure refuses BEFORE the App token is
+// minted and before any write.
+fn classify_publish_pull_request(obs: PublishPullRequestState, pull_number: Int, expected_head_ref: String, expected_base_ref: String) -> PullRequestOpenCheck {
   match obs {
     PublishPrCredentialAbsent =>
       PullRequestOpenCheckRefused { reason: "HealPublishPreconditionUnmet: the publish step's own token is absent, so the pull request cannot be verified; refusing to publish" }
     PublishPrStateUnreadable { detail } =>
       PullRequestOpenCheckRefused { reason: join(["HealPublishPreconditionUnmet: the pull request could not be read; refusing to publish: ", detail], "") }
-    PublishPrObserved { number, head_ref, open } =>
+    PublishPrObserved { number, head_ref, base_ref, open } =>
       if number != pull_number {
         PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNumberDisagreed { candidate: pull_number, observed: number }) }
       } else if head_ref != expected_head_ref {
         PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestHeadRefDisagreed { candidate: expected_head_ref, observed: head_ref }) }
+      } else if base_ref != expected_base_ref {
+        PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestBaseRefDisagreed { candidate: expected_base_ref, observed: base_ref }) }
       } else if !open {
         PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNotOpen { pull_number: pull_number }) }
       } else {
@@ -664,15 +668,15 @@ fn classify_publish_pull_request(obs: PublishPullRequestState, pull_number: Int,
   }
 }
 
-fn ensure_pull_request_open_wet(subject: HealPublicationSubject, pull_number: Int, expected_head_ref: String) -> PullRequestOpenCheck {
+fn ensure_pull_request_open_wet(subject: HealPublicationSubject, pull_number: Int, expected_head_ref: String, expected_base_ref: String) -> PullRequestOpenCheck {
   let obs = match env_value(name: github_token_env_name) {
     Absent => PublishPrCredentialAbsent
     Present { value: job_token } =>
       match github.Pulls.Get(auth_token: job_token as Secret, owner: subject.repository.owner, repo: subject.repository.name, pull_number: pull_number) {
         RestRefused { refusal } => PublishPrStateUnreadable { detail: rest_refusal_text(o: refusal) }
         RestAnswered { answer: pr } =>
-          PublishPrObserved { number: pr.pr.number, head_ref: pr.pr.head.ref as String, open: match pr.pr.state { Open => true  Closed => false } }
+          PublishPrObserved { number: pr.pr.number, head_ref: pr.pr.head.ref as String, base_ref: pr.pr.base.ref as String, open: match pr.pr.state { Open => true  Closed => false } }
       }
   }
-  classify_publish_pull_request(obs: obs, pull_number: pull_number, expected_head_ref: expected_head_ref)
+  classify_publish_pull_request(obs: obs, pull_number: pull_number, expected_head_ref: expected_head_ref, expected_base_ref: expected_base_ref)
 }

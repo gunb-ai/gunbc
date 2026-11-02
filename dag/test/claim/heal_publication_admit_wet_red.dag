@@ -38,6 +38,7 @@ import extdeps.github.effect { RepositoryPath }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitTreeMode, GitRegularBlobMode }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.heal_publication_boundary { CandidateEntry, HealRepairCandidate, TriggeringRunFacts }
 import gunbc.heal_publication {
   observe_candidate_world_wet, HealPublicationSubject, public_heal_publication_subject,
@@ -93,6 +94,16 @@ fn driver_run() -> TriggeringRunFacts {
   }
 }
 
+// Record the verdict to a greppable file in the fixture dir (a sibling of the composition dir), THEN return
+// the ProcessExit. At BASE the observation aborts inside observe_candidate_world_wet (the pre-send guard),
+// so this never runs and the file is never written; the caller removes it before the head run. This lets the
+// out-of-tree runner assert the EXACT discriminating token (VERDICT:BaseBlobDisagreed) rather than infer it
+// from a bare exit code, so a degenerate Admitted or an unrelated refusal cannot masquerade as the pass.
+fn record_exit(verdict: String, code: ProcessExit) -> ProcessExit {
+  let _ = Filesystem.Write(path: "/tmp/heal-admit-wet-red.verdict", content: verdict)
+  code
+}
+
 // THE CONTROL. At base this never returns (the pre-send guard aborts); at head it returns and we assert the
 // refusal is a policy/liveness refusal, NOT AuthDeclaredButUnwired.
 fn admit_did_not_reach_auth_guard() -> ProcessExit {
@@ -103,12 +114,13 @@ fn admit_did_not_reach_auth_guard() -> ProcessExit {
     run: driver_run()
   )
   match result {
-    PublisherRunAdmitted { admitted: _, blobs: _, pull_number: _ } => ExitSuccess
+    PublisherRunAdmitted { admitted: _, blobs: _, pull_number: _ } =>
+      record_exit(verdict: "VERDICT:ADMITTED-unexpected", code: exit_failure(reason: "unexpected: candidate was admitted; the base blob 2222... must disagree with the frozen #500 tree"))
     PublisherRunNothingToPublish =>
-      exit_failure(reason: "unexpected: no entries observed -- the credential-free route did not enumerate the sealed tree")
+      record_exit(verdict: "VERDICT:NothingToPublish", code: exit_failure(reason: "unexpected: no entries observed -- the credential-free route did not enumerate the sealed tree"))
     PublisherRunRefused { cause } =>
       if contains(haystack: cause, needle: "AuthDeclaredButUnwired") {
-        exit_failure(reason: "admit still reaches an auth-declaring read at head: AuthDeclaredButUnwired")
+        record_exit(verdict: "VERDICT:AuthDeclaredButUnwired", code: exit_failure(reason: "admit still reaches an auth-declaring read at head: AuthDeclaredButUnwired"))
       } else if contains(haystack: cause, needle: "BaseBlobDisagreed") {
         // The expected refusal, and the point of the whole control. BaseBlobDisagreed is produced ONLY after
         // observe_candidate_world_wet fetched the sealed tree ANONYMOUSLY (ls-remote + fetch), enumerated it
@@ -120,9 +132,9 @@ fn admit_did_not_reach_auth_guard() -> ProcessExit {
         // the top of the observation, or one that never consults the fetched tree, would FAIL this control.
         // This is the DESIGN section 3 "the ROUTE, not only the answer" requirement on the one control that
         // reaches the real public repository.
-        ExitSuccess
+        record_exit(verdict: "VERDICT:BaseBlobDisagreed", code: ExitSuccess)
       } else {
-        exit_failure(reason: concat("admit did not reach the base-blob compare of the credential-free route against the live tree; got: ", cause))
+        record_exit(verdict: concat("VERDICT:OTHER:", cause), code: exit_failure(reason: concat("admit did not reach the base-blob compare of the credential-free route against the live tree; got: ", cause)))
       }
   }
 }

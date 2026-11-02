@@ -180,6 +180,7 @@ type HealPublicationRefusal
   | PullRequestNumberDisagreed { candidate: Int, observed: Int }
   | PullRequestNotOpen { pull_number: Int }
   | PullRequestHeadRefDisagreed { candidate: String, observed: String }
+  | PullRequestBaseRefDisagreed { candidate: String, observed: String }
   | BaseRefNotTheDefaultBranch { base_ref: String, default_branch: String }
   | HeadMoved { expected: String, observed: String }
   | BranchRefUnreadable { head_ref: String, detail: String }
@@ -227,6 +228,7 @@ fn heal_publication_refusal_token(r: HealPublicationRefusal) -> NonEmptyStr {
     PullRequestNumberDisagreed { candidate: _, observed: _ } => "PullRequestNumberDisagreed"
     PullRequestNotOpen { pull_number: _ } => "PullRequestNotOpen"
     PullRequestHeadRefDisagreed { candidate: _, observed: _ } => "PullRequestHeadRefDisagreed"
+    PullRequestBaseRefDisagreed { candidate: _, observed: _ } => "PullRequestBaseRefDisagreed"
     BaseRefNotTheDefaultBranch { base_ref: _, default_branch: _ } => "BaseRefNotTheDefaultBranch"
     HeadMoved { expected: _, observed: _ } => "HeadMoved"
     BranchRefUnreadable { head_ref: _, detail: _ } => "BranchRefUnreadable"
@@ -266,6 +268,7 @@ fn heal_publication_refusal_detail(r: HealPublicationRefusal) -> String {
       join(["candidate=", to_string(candidate), " observed=", to_string(observed)], "")
     PullRequestNotOpen { pull_number } => concat("pull_number=", to_string(pull_number))
     PullRequestHeadRefDisagreed { candidate, observed } => join(["candidate=", candidate, " observed=", observed], "")
+    PullRequestBaseRefDisagreed { candidate, observed } => join(["candidate=", candidate, " observed=", observed], "")
     BaseRefNotTheDefaultBranch { base_ref, default_branch } => join(["base_ref=", base_ref, " default_branch=", default_branch], "")
     HeadMoved { expected, observed } => join(["expected_head=", expected, " branch_head=", observed], "")
     BranchRefUnreadable { head_ref, detail } => join(["head_ref=", head_ref, " ", detail], "")
@@ -634,6 +637,7 @@ type AdmittedEntry {
 type AdmittedHealPublication sole_constructor {
   repository_full_name: NonEmptyStr
   head_ref: NonEmptyStr
+  base_ref: NonEmptyStr
   expected_head_sha: CommitSha
   base_tree_sha: String
   message: NonEmptyStr
@@ -868,6 +872,7 @@ fn admit_heal_publication(
               admitted: AdmittedHealPublication {
                 repository_full_name: o.repository_full_name,
                 head_ref: c.head_ref,
+                base_ref: c.base_ref,
                 expected_head_sha: c.expected_head_sha,
                 base_tree_sha: o.base_tree_sha,
                 message: heal_publication_message(c: c),

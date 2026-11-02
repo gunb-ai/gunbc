@@ -509,7 +509,7 @@ test fn witness_a_published_path_holding_another_blob_is_unverified() -> Bool {
 
 test fn witness_a_closed_pull_request_is_refused_at_publish() -> Bool {
   match classify_publish_pull_request(
-    obs: PublishPrObserved { number: 11493, head_ref: branch, open: false }, pull_number: 11493, expected_head_ref: branch
+    obs: PublishPrObserved { number: 11493, head_ref: branch, base_ref: "main", open: false }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
   ) {
     PullRequestOpenCheckRefused { reason } => reason == refusal_line(refusal: PullRequestNotOpen { pull_number: 11493 })
     PullRequestOpenCheckPassed => false
@@ -519,14 +519,14 @@ test fn witness_a_closed_pull_request_is_refused_at_publish() -> Bool {
 test fn witness_an_open_matching_pull_request_is_admitted_at_publish() -> Bool {
   // The positive control: the arms below must not be satisfied by a predicate that always refuses.
   classify_publish_pull_request(
-    obs: PublishPrObserved { number: 11493, head_ref: branch, open: true }, pull_number: 11493, expected_head_ref: branch
+    obs: PublishPrObserved { number: 11493, head_ref: branch, base_ref: "main", open: true }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
   ) == PullRequestOpenCheckPassed
 }
 
 test fn witness_a_pull_request_whose_number_is_not_the_candidate_is_refused_at_publish() -> Bool {
   // The live read answered a DIFFERENT pull request than the sealed candidate -> refuse (identity).
   match classify_publish_pull_request(
-    obs: PublishPrObserved { number: 999, head_ref: branch, open: true }, pull_number: 11493, expected_head_ref: branch
+    obs: PublishPrObserved { number: 999, head_ref: branch, base_ref: "main", open: true }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
   ) {
     PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "PullRequestNumberDisagreed")
     PullRequestOpenCheckPassed => false
@@ -536,9 +536,21 @@ test fn witness_a_pull_request_whose_number_is_not_the_candidate_is_refused_at_p
 test fn witness_a_pull_request_whose_head_ref_is_not_the_candidate_is_refused_at_publish() -> Bool {
   // The live read answered the right number but a different head ref -> refuse (identity).
   match classify_publish_pull_request(
-    obs: PublishPrObserved { number: 11493, head_ref: "someone-elses-lane", open: true }, pull_number: 11493, expected_head_ref: branch
+    obs: PublishPrObserved { number: 11493, head_ref: "someone-elses-lane", base_ref: "main", open: true }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
   ) {
     PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "PullRequestHeadRefDisagreed")
+    PullRequestOpenCheckPassed => false
+  }
+}
+
+test fn witness_a_pull_request_retargeted_after_sealing_is_refused_at_publish() -> Bool {
+  // The live read answered the right number and head ref, but the pull request was RETARGETED to a
+  // different base after the candidate was sealed -> refuse. Without this arm a retargeted pull request
+  // (whose candidate-side base_ref still names main) would be fast-forwarded onto the new base.
+  match classify_publish_pull_request(
+    obs: PublishPrObserved { number: 11493, head_ref: branch, base_ref: "release/other", open: true }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
+  ) {
+    PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "PullRequestBaseRefDisagreed")
     PullRequestOpenCheckPassed => false
   }
 }
@@ -546,7 +558,7 @@ test fn witness_a_pull_request_whose_head_ref_is_not_the_candidate_is_refused_at
 test fn witness_an_unreadable_pull_request_refuses_rather_than_passes() -> Bool {
   // Rate-limited / unreachable is NOT a pass. Fail-closed: a publish that cannot read the pull request must not write.
   match classify_publish_pull_request(
-    obs: PublishPrStateUnreadable { detail: "403 rate limit" }, pull_number: 11493, expected_head_ref: branch
+    obs: PublishPrStateUnreadable { detail: "403 rate limit" }, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main"
   ) {
     PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "could not be read")
     PullRequestOpenCheckPassed => false
@@ -554,7 +566,7 @@ test fn witness_an_unreadable_pull_request_refuses_rather_than_passes() -> Bool 
 }
 
 test fn witness_an_absent_publish_credential_refuses_rather_than_passes() -> Bool {
-  match classify_publish_pull_request(obs: PublishPrCredentialAbsent, pull_number: 11493, expected_head_ref: branch) {
+  match classify_publish_pull_request(obs: PublishPrCredentialAbsent, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main") {
     PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "token is absent")
     PullRequestOpenCheckPassed => false
   }
