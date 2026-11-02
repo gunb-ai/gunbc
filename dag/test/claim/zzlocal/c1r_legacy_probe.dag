@@ -1,0 +1,2234 @@
+module test.claim.zzlocal.c1r_legacy_probe
+
+import std.types { String }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
+}
+
+// C1r GATE (option-1 design, #15640 comment 6578228894): every captured srv1 exit-spool name must
+// decode under the merged-B decoder. Names captured read-only 2026-11-02T13:07Z; see /tmp/srv1-entries.txt.
+// Expected reds: the 5 hand-in files (no 4-part arm) and the 3 unexpanded entries. Anything else red is
+// a strictness regression B introduces over main.
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+worker+${INVOCATION_ID}+${SERVICE_RESULT}+${EXIT_CODE}+${EXIT_STATUS}
+test fn c1r_cur_000_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+worker+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-realization.1ec7a05fe2df77db4085c534576b4e5f39576578+85af12b201594032959330aa4fa0ad20+oom-kill+killed+KILL
+test fn c1r_cur_001_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-realization.1ec7a05fe2df77db4085c534576b4e5f39576578+85af12b201594032959330aa4fa0ad20+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d harness-checkpoint-subject-planner+87c54f21004bc7ee+worker+7f612a98602946399c3180be6dff6995+success+exited+0
+test fn c1r_cur_002_harness_checkpoint_subject_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "harness-checkpoint-subject-planner+87c54f21004bc7ee+worker+7f612a98602946399c3180be6dff6995+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-minimize-redundancy.1ec7a05fe2df77db4085c534576b4e5f39576578+02c3691b4fbe4f9f9e5c73940693237f+success+exited+0
+test fn c1r_cur_003_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-minimize-redundancy.1ec7a05fe2df77db4085c534576b4e5f39576578+02c3691b4fbe4f9f9e5c73940693237f+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-compute.387c088173728752ea8971ecea93b519dd19ebce+460a01e9654a4daf9f4de819093ae133+exit-code+exited+218
+test fn c1r_cur_004_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-compute.387c088173728752ea8971ecea93b519dd19ebce+460a01e9654a4daf9f4de819093ae133+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-cron-entry-line-builder+8254c17e69f10f43+obligation+01dc5ce8143341e4a2f0b6a1c25b03a8+success+exited+0
+test fn c1r_cur_005_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+8254c17e69f10f43+obligation+01dc5ce8143341e4a2f0b6a1c25b03a8+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur f shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+handin+dfcaf489ad87742c
+test fn c1r_cur_006_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+handin+dfcaf489ad87742c") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-cardinality-absence.387c088173728752ea8971ecea93b519dd19ebce+7ffeeeb268b04dee9d58d127c93c5a9f+exit-code+exited+218
+test fn c1r_cur_007_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-cardinality-absence.387c088173728752ea8971ecea93b519dd19ebce+7ffeeeb268b04dee9d58d127c93c5a9f+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-selection-precedes-convergence.387c088173728752ea8971ecea93b519dd19ebce+48c63f15e1c8451ba3551a2454db3f5e+exit-code+exited+218
+test fn c1r_cur_008_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-selection-precedes-convergence.387c088173728752ea8971ecea93b519dd19ebce+48c63f15e1c8451ba3551a2454db3f5e+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-root-generalization.1ec7a05fe2df77db4085c534576b4e5f39576578+d970fa3a4b96465a8566c223ed1e0fd4+success+exited+0
+test fn c1r_cur_009_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-root-generalization.1ec7a05fe2df77db4085c534576b4e5f39576578+d970fa3a4b96465a8566c223ed1e0fd4+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d harness-conversation-log-forking+0790ee7fd5d5d98c+obligation+d4297aef730a4fecb3cb61db5e7345b9+success+exited+0
+test fn c1r_cur_010_harness_conversation_log_for() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "harness-conversation-log-forking+0790ee7fd5d5d98c+obligation+d4297aef730a4fecb3cb61db5e7345b9+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-seed-growth-orphan-justifications-closing-contract+20ac756029140986+worker+9b8acb71d8584e48b01be63a8e66494f+exit-code+exited+1
+test fn c1r_cur_011_debt_seed_growth_orphan_just() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-seed-growth-orphan-justifications-closing-contract+20ac756029140986+worker+9b8acb71d8584e48b01be63a8e66494f+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-root-generalization.387c088173728752ea8971ecea93b519dd19ebce+2d498c31f711419dade4acd8e240a896+exit-code+exited+218
+test fn c1r_cur_012_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-root-generalization.387c088173728752ea8971ecea93b519dd19ebce+2d498c31f711419dade4acd8e240a896+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+778a9b9fedb64670ba741e1f58297a23+timeout+killed+TERM
+test fn c1r_cur_013_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+778a9b9fedb64670ba741e1f58297a23+timeout+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-witness-one-interface.387c088173728752ea8971ecea93b519dd19ebce+e87c4baa00c74fafa9e80b62e9518266+exit-code+exited+218
+test fn c1r_cur_014_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-witness-one-interface.387c088173728752ea8971ecea93b519dd19ebce+e87c4baa00c74fafa9e80b62e9518266+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d harness-conversation-log-forking+0790ee7fd5d5d98c+worker+c798562df7e2421f863a75e14467ddd0+exit-code+exited+1
+test fn c1r_cur_015_harness_conversation_log_for() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "harness-conversation-log-forking+0790ee7fd5d5d98c+worker+c798562df7e2421f863a75e14467ddd0+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-identity.387c088173728752ea8971ecea93b519dd19ebce+834c690eb7084247998d5a7ca2def054+exit-code+exited+218
+test fn c1r_cur_016_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-identity.387c088173728752ea8971ecea93b519dd19ebce+834c690eb7084247998d5a7ca2def054+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+ee56f360ef4f44b789929fd2058f2d07+timeout+killed+TERM
+test fn c1r_cur_017_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+ee56f360ef4f44b789929fd2058f2d07+timeout+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-observability.387c088173728752ea8971ecea93b519dd19ebce+097e4408adfb4b7792fbdc2b7b4dcc32+exit-code+exited+218
+test fn c1r_cur_018_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-observability.387c088173728752ea8971ecea93b519dd19ebce+097e4408adfb4b7792fbdc2b7b4dcc32+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-nfr-mint-era-lens-batch+eb4694f555a88697+obligation+9284c88a13ec4d9bbcde66ea4c1746fd+exit-code+exited+1
+test fn c1r_cur_019_debt_nfr_mint_era_lens_batch() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-nfr-mint-era-lens-batch+eb4694f555a88697+obligation+9284c88a13ec4d9bbcde66ea4c1746fd+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+92281e0dc77d4941aac447f948455cec+success+exited+0
+test fn c1r_cur_020_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+92281e0dc77d4941aac447f948455cec+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-witness-one-interface.1ec7a05fe2df77db4085c534576b4e5f39576578+82014f22d76441428c3e7f7447a87796+oom-kill+killed+KILL
+test fn c1r_cur_021_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-witness-one-interface.1ec7a05fe2df77db4085c534576b4e5f39576578+82014f22d76441428c3e7f7447a87796+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-consumption.387c088173728752ea8971ecea93b519dd19ebce+f82afda3a50044c483955a695f46610f+exit-code+exited+218
+test fn c1r_cur_022_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-consumption.387c088173728752ea8971ecea93b519dd19ebce+f82afda3a50044c483955a695f46610f+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+audit.387c088173728752ea8971ecea93b519dd19ebce+4957070b8495435aac8ee2728a539b32+exit-code+exited+218
+test fn c1r_cur_023_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+audit.387c088173728752ea8971ecea93b519dd19ebce+4957070b8495435aac8ee2728a539b32+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-decision.387c088173728752ea8971ecea93b519dd19ebce+34b9c3ca33c143ddac34efc28c7df9a6+exit-code+exited+218
+test fn c1r_cur_024_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-decision.387c088173728752ea8971ecea93b519dd19ebce+34b9c3ca33c143ddac34efc28c7df9a6+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-how-to-work.387c088173728752ea8971ecea93b519dd19ebce+734c4f4f7a0444d5be4374deaa3a370a+exit-code+exited+218
+test fn c1r_cur_025_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-how-to-work.387c088173728752ea8971ecea93b519dd19ebce+734c4f4f7a0444d5be4374deaa3a370a+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-expected-red-mock-totality-dead-rows+e5a42384c6a5e13d+worker+674fd27590314bddadf5c612d6147362+exit-code+exited+1
+test fn c1r_cur_026_debt_expected_red_mock_total() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-expected-red-mock-totality-dead-rows+e5a42384c6a5e13d+worker+674fd27590314bddadf5c612d6147362+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur f debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+handin+ee2cea720b7f568f
+test fn c1r_cur_027_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+handin+ee2cea720b7f568f") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+d5ea6ad9ef62443d9cba3750e8416098+success+exited+0
+test fn c1r_cur_028_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+d5ea6ad9ef62443d9cba3750e8416098+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-leasing.1ec7a05fe2df77db4085c534576b4e5f39576578+905d0c040c7a4a1194709aeb1ed5437f+success+exited+0
+test fn c1r_cur_029_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-leasing.1ec7a05fe2df77db4085c534576b4e5f39576578+905d0c040c7a4a1194709aeb1ed5437f+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-fmt-gate-line+23cb64f67c7707da+obligation+8aa230f299ec4ff7bed02fe2f93d056c+success+exited+0
+test fn c1r_cur_030_shell_dag_ci_fmt_gate_line_2() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-fmt-gate-line+23cb64f67c7707da+obligation+8aa230f299ec4ff7bed02fe2f93d056c+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-closed-grounded-substrate.1ec7a05fe2df77db4085c534576b4e5f39576578+c45df56842bb42deac6f8662279b909e+oom-kill+killed+KILL
+test fn c1r_cur_031_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-closed-grounded-substrate.1ec7a05fe2df77db4085c534576b4e5f39576578+c45df56842bb42deac6f8662279b909e+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-fs-absence-roster-restate-closing-contract+9f28ee38791f7a6a+obligation+da796124f5a1416a914c066f822e5257+success+exited+0
+test fn c1r_cur_032_debt_fs_absence_roster_resta() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-fs-absence-roster-restate-closing-contract+9f28ee38791f7a6a+obligation+da796124f5a1416a914c066f822e5257+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-identity.1ec7a05fe2df77db4085c534576b4e5f39576578+5e8c6a41cff441f88a6dc5bae69bf7af+oom-kill+killed+KILL
+test fn c1r_cur_033_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-identity.1ec7a05fe2df77db4085c534576b4e5f39576578+5e8c6a41cff441f88a6dc5bae69bf7af+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+060690588d634b73b507955992a0fd09+exit-code+exited+1
+test fn c1r_cur_034_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+060690588d634b73b507955992a0fd09+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-cardinality-absence.1ec7a05fe2df77db4085c534576b4e5f39576578+b09fb76cb6214bb2aeda9b3a2fe98ac1+oom-kill+killed+KILL
+test fn c1r_cur_035_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-cardinality-absence.1ec7a05fe2df77db4085c534576b4e5f39576578+b09fb76cb6214bb2aeda9b3a2fe98ac1+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-nfr-mint-era-lens-batch+eb4694f555a88697+obligation+63d0eacd26d447d68f7541ea55ab956f+exit-code+exited+1
+test fn c1r_cur_036_debt_nfr_mint_era_lens_batch() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-nfr-mint-era-lens-batch+eb4694f555a88697+obligation+63d0eacd26d447d68f7541ea55ab956f+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+3323986a130649a2944d1faeeb051122+timeout+killed+TERM
+test fn c1r_cur_037_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+3323986a130649a2944d1faeeb051122+timeout+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-how-to-work.1ec7a05fe2df77db4085c534576b4e5f39576578+ca750b44b4bd4725b0a634c2c553018c+oom-kill+killed+KILL
+test fn c1r_cur_038_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-how-to-work.1ec7a05fe2df77db4085c534576b4e5f39576578+ca750b44b4bd4725b0a634c2c553018c+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-cron-entry-line-builder+8254c17e69f10f43+worker+1719b4f02052448891a14c623e045b47+exit-code+exited+1
+test fn c1r_cur_039_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+8254c17e69f10f43+worker+1719b4f02052448891a14c623e045b47+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-leasing.387c088173728752ea8971ecea93b519dd19ebce+d14ad668b9bd45279f5edea508ac9c47+exit-code+exited+218
+test fn c1r_cur_040_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-leasing.387c088173728752ea8971ecea93b519dd19ebce+d14ad668b9bd45279f5edea508ac9c47+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d v2-emitter-direct-rust-door+21506bc00739c8f1+worker+1c8da69c5ba84f5895aa719a1e1c723c+exit-code+exited+78
+test fn c1r_cur_041_v2_emitter_direct_rust_door() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v2-emitter-direct-rust-door+21506bc00739c8f1+worker+1c8da69c5ba84f5895aa719a1e1c723c+exit-code+exited+78") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d v1-rust-source-observation+71ac07ca21af8e29+obligation+158a446169d34f27b297144f4a8c2719+oom-kill+killed+KILL
+test fn c1r_cur_042_v1_rust_source_observation_7() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-rust-source-observation+71ac07ca21af8e29+obligation+158a446169d34f27b297144f4a8c2719+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d harness-checkpoint-subject-planner+87c54f21004bc7ee+obligation+49ec1c25d8d8405eadc550a14686a4b8+oom-kill+killed+KILL
+test fn c1r_cur_043_harness_checkpoint_subject_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "harness-checkpoint-subject-planner+87c54f21004bc7ee+obligation+49ec1c25d8d8405eadc550a14686a4b8+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+obligation+97c862cf5aef4718a7624614ead60191+success+exited+0
+test fn c1r_cur_044_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+obligation+97c862cf5aef4718a7624614ead60191+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d harness-checkpoint-subject-planner+87c54f21004bc7ee+obligation+280774f74c154044b6e5f0738d525609+success+exited+0
+test fn c1r_cur_045_harness_checkpoint_subject_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "harness-checkpoint-subject-planner+87c54f21004bc7ee+obligation+280774f74c154044b6e5f0738d525609+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-closed-grounded-substrate.387c088173728752ea8971ecea93b519dd19ebce+985cf644c52441d3816f2082b03974f4+exit-code+exited+218
+test fn c1r_cur_046_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-closed-grounded-substrate.387c088173728752ea8971ecea93b519dd19ebce+985cf644c52441d3816f2082b03974f4+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-fail-closed.387c088173728752ea8971ecea93b519dd19ebce+0e00329c2ad846bf91e7afad648aba94+exit-code+exited+218
+test fn c1r_cur_047_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-fail-closed.387c088173728752ea8971ecea93b519dd19ebce+0e00329c2ad846bf91e7afad648aba94+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-extdeps.387c088173728752ea8971ecea93b519dd19ebce+9436520d24c9418da5fac4e194393728+exit-code+exited+218
+test fn c1r_cur_048_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-extdeps.387c088173728752ea8971ecea93b519dd19ebce+9436520d24c9418da5fac4e194393728+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d v1-rust-source-observation+71ac07ca21af8e29+obligation+76e48a3cd3524b0086e66eec7346cb23+success+exited+0
+test fn c1r_cur_049_v1_rust_source_observation_7() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-rust-source-observation+71ac07ca21af8e29+obligation+76e48a3cd3524b0086e66eec7346cb23+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d v2-emitter-direct-rust-door+21506bc00739c8f1+obligation+f1164b9ecd5e4cd3a848fdb31b423100+success+exited+0
+test fn c1r_cur_050_v2_emitter_direct_rust_door() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v2-emitter-direct-rust-door+21506bc00739c8f1+obligation+f1164b9ecd5e4cd3a848fdb31b423100+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d v1-rust-source-observation+71ac07ca21af8e29+obligation+a04cb70ceb96486b8783c924fb0c3f47+success+exited+0
+test fn c1r_cur_051_v1_rust_source_observation_7() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-rust-source-observation+71ac07ca21af8e29+obligation+a04cb70ceb96486b8783c924fb0c3f47+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur f v1-rust-source-observation+71ac07ca21af8e29+handin+9846af6cac0e2b79
+test fn c1r_cur_052_v1_rust_source_observation_7() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-rust-source-observation+71ac07ca21af8e29+handin+9846af6cac0e2b79") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-extdeps.1ec7a05fe2df77db4085c534576b4e5f39576578+ef7112a95204448eaac50f99bdb0cb6d+oom-kill+killed+KILL
+test fn c1r_cur_053_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-extdeps.1ec7a05fe2df77db4085c534576b4e5f39576578+ef7112a95204448eaac50f99bdb0cb6d+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-nfr-mint-era-lens-batch+eb4694f555a88697+obligation+77fae6d806824a1fa06310c311ea3ea1+success+exited+0
+test fn c1r_cur_054_debt_nfr_mint_era_lens_batch() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-nfr-mint-era-lens-batch+eb4694f555a88697+obligation+77fae6d806824a1fa06310c311ea3ea1+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-selection-precedes-convergence.1ec7a05fe2df77db4085c534576b4e5f39576578+c6a6bd66d1dd4c47b8ffb5fcb3952e5c+oom-kill+killed+TERM
+test fn c1r_cur_055_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-selection-precedes-convergence.1ec7a05fe2df77db4085c534576b4e5f39576578+c6a6bd66d1dd4c47b8ffb5fcb3952e5c+oom-kill+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-observability.1ec7a05fe2df77db4085c534576b4e5f39576578+83eacc4d377a4d3e97a9253e77bce81d+oom-kill+killed+KILL
+test fn c1r_cur_056_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-observability.1ec7a05fe2df77db4085c534576b4e5f39576578+83eacc4d377a4d3e97a9253e77bce81d+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-consumption.1ec7a05fe2df77db4085c534576b4e5f39576578+6a2e609ec44548a39b3f5afdc7fb59a6+oom-kill+killed+KILL
+test fn c1r_cur_057_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-consumption.1ec7a05fe2df77db4085c534576b4e5f39576578+6a2e609ec44548a39b3f5afdc7fb59a6+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-single-authority.1ec7a05fe2df77db4085c534576b4e5f39576578+64079338cf6947af867ea46f565672c4+oom-kill+killed+KILL
+test fn c1r_cur_058_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-single-authority.1ec7a05fe2df77db4085c534576b4e5f39576578+64079338cf6947af867ea46f565672c4+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+audit.1ec7a05fe2df77db4085c534576b4e5f39576578+7b25d522b04344aa89d4d92afdda7291+success+exited+0
+test fn c1r_cur_059_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+audit.1ec7a05fe2df77db4085c534576b4e5f39576578+7b25d522b04344aa89d4d92afdda7291+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-compute.1ec7a05fe2df77db4085c534576b4e5f39576578+7e2b4a2b4bca4059a80bc019008bd58c+oom-kill+killed+KILL
+test fn c1r_cur_060_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-compute.1ec7a05fe2df77db4085c534576b4e5f39576578+7e2b4a2b4bca4059a80bc019008bd58c+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-expected-red-mock-totality-dead-rows+e5a42384c6a5e13d+obligation+0451fcec2b8b46519ff73677d1c76962+success+exited+0
+test fn c1r_cur_061_debt_expected_red_mock_total() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-expected-red-mock-totality-dead-rows+e5a42384c6a5e13d+obligation+0451fcec2b8b46519ff73677d1c76962+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+be481331157c478293bd8f11195a0fca+success+exited+0
+test fn c1r_cur_062_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+be481331157c478293bd8f11195a0fca+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-fmt-gate-line+23cb64f67c7707da+worker+238338a2d77042f4a276e1d5a31cf501+exit-code+exited+1
+test fn c1r_cur_063_shell_dag_ci_fmt_gate_line_2() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-fmt-gate-line+23cb64f67c7707da+worker+238338a2d77042f4a276e1d5a31cf501+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-minimize-redundancy.387c088173728752ea8971ecea93b519dd19ebce+b0239e6bc902463b9a5579331a89e3af+exit-code+exited+218
+test fn c1r_cur_064_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-minimize-redundancy.387c088173728752ea8971ecea93b519dd19ebce+b0239e6bc902463b9a5579331a89e3af+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+e7f7cc2ddb434397b59d170345360942+success+exited+0
+test fn c1r_cur_065_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+obligation+e7f7cc2ddb434397b59d170345360942+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+worker+3954adfce3024072b69e0dbca088d668+exit-code+exited+1
+test fn c1r_cur_066_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+worker+3954adfce3024072b69e0dbca088d668+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-realization.387c088173728752ea8971ecea93b519dd19ebce+6887f8b741894feba74faaf809e6e21d+exit-code+exited+218
+test fn c1r_cur_067_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-conformance-realization.387c088173728752ea8971ecea93b519dd19ebce+6887f8b741894feba74faaf809e6e21d+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-slot-population-census-read+3d363e8edfd9e334+obligation+15e62d4b1f384b29b76f01a1bc1509ae+success+exited+0
+test fn c1r_cur_068_shell_dag_slot_population_ce() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-slot-population-census-read+3d363e8edfd9e334+obligation+15e62d4b1f384b29b76f01a1bc1509ae+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-fail-closed.1ec7a05fe2df77db4085c534576b4e5f39576578+458cdb98cc74471da497537ad381f306+oom-kill+killed+KILL
+test fn c1r_cur_069_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-fail-closed.1ec7a05fe2df77db4085c534576b4e5f39576578+458cdb98cc74471da497537ad381f306+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-fs-absence-roster-restate-closing-contract+9f28ee38791f7a6a+worker+47817432a07b4686a73b435b4981a9e4+exit-code+exited+1
+test fn c1r_cur_070_debt_fs_absence_roster_resta() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-fs-absence-roster-restate-closing-contract+9f28ee38791f7a6a+worker+47817432a07b4686a73b435b4981a9e4+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-single-authority.387c088173728752ea8971ecea93b519dd19ebce+1dd2dda7b7c34992904c7bad0535aae3+exit-code+exited+218
+test fn c1r_cur_071_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+review.d2bc3d3375641fa2-single-authority.387c088173728752ea8971ecea93b519dd19ebce+1dd2dda7b7c34992904c7bad0535aae3+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d v1-rust-source-observation+71ac07ca21af8e29+worker+2513ec0327e0465db4d68a17f92e7782+exit-code+exited+1
+test fn c1r_cur_072_v1_rust_source_observation_7() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-rust-source-observation+71ac07ca21af8e29+worker+2513ec0327e0465db4d68a17f92e7782+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-seed-growth-orphan-justifications-closing-contract+20ac756029140986+obligation+9f28983f84f047be9b87ee74826e1220+success+exited+0
+test fn c1r_cur_073_debt_seed_growth_orphan_just() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-seed-growth-orphan-justifications-closing-contract+20ac756029140986+obligation+9f28983f84f047be9b87ee74826e1220+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+obligation+81f144ac4e494f7fa83ca601956dfff6+success+exited+0
+test fn c1r_cur_074_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61c671002a6d4+obligation+81f144ac4e494f7fa83ca601956dfff6+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d harness-checkpoint-subject-planner+87c54f21004bc7ee+obligation+fc6239bff80a4e188e240d0f58312ce6+exit-code+exited+1
+test fn c1r_cur_075_harness_checkpoint_subject_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "harness-checkpoint-subject-planner+87c54f21004bc7ee+obligation+fc6239bff80a4e188e240d0f58312ce6+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d v2-emitter-direct-rust-door+21506bc00739c8f1+obligation+d221eeea7b694cd79c728d5545e889f3+oom-kill+killed+KILL
+test fn c1r_cur_076_v2_emitter_direct_rust_door() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v2-emitter-direct-rust-door+21506bc00739c8f1+obligation+d221eeea7b694cd79c728d5545e889f3+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-slot-population-census-read+3d363e8edfd9e334+worker+fa933c8e33b24c48b8b1c30e7e768d91+exit-code+exited+1
+test fn c1r_cur_077_shell_dag_slot_population_ce() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-slot-population-census-read+3d363e8edfd9e334+worker+fa933c8e33b24c48b8b1c30e7e768d91+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// cur d shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-decision.1ec7a05fe2df77db4085c534576b4e5f39576578+2b387aa1665b40f0a61344e897f06acf+oom-kill+killed+KILL
+test fn c1r_cur_078_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+43d2bc0ea4c42999+review.d2bc3d3375641fa2-conformance-decision.1ec7a05fe2df77db4085c534576b4e5f39576578+2b387aa1665b40f0a61344e897f06acf+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+worker+${INVOCATION_ID}+${SERVICE_RESULT}+${EXIT_CODE}+${EXIT_STATUS}
+test fn c1r_old_079_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+worker+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+${INVOCATION_ID}+${SERVICE_RESULT}+${EXIT_CODE}+${EXIT_STATUS}
+test fn c1r_old_080_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-root-generalization.b76a8691ce351ab796db7234f2fa5e1d7804638d+3c4ca45f6b20425898d41561d5e8585f+exit-code+exited+218
+test fn c1r_old_081_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-root-generalization.b76a8691ce351ab796db7234f2fa5e1d7804638d+3c4ca45f6b20425898d41561d5e8585f+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-compute.b76a8691ce351ab796db7234f2fa5e1d7804638d+107c762b4d7144c1b58131b9ac08fdfd+exit-code+exited+218
+test fn c1r_old_082_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-compute.b76a8691ce351ab796db7234f2fa5e1d7804638d+107c762b4d7144c1b58131b9ac08fdfd+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-extdeps.b76a8691ce351ab796db7234f2fa5e1d7804638d+c93be9e961a64d29ac43c7b0f60717fb+success+killed+TERM
+test fn c1r_old_083_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-extdeps.b76a8691ce351ab796db7234f2fa5e1d7804638d+c93be9e961a64d29ac43c7b0f60717fb+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-realization.b76a8691ce351ab796db7234f2fa5e1d7804638d+79020a5b4b8040fda34c98c3e1457775+exit-code+exited+1
+test fn c1r_old_084_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-realization.b76a8691ce351ab796db7234f2fa5e1d7804638d+79020a5b4b8040fda34c98c3e1457775+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-realization.b76a8691ce351ab796db7234f2fa5e1d7804638d+04f4adafeb0c427e87312773d6ba20fe+success+killed+TERM
+test fn c1r_old_085_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-realization.b76a8691ce351ab796db7234f2fa5e1d7804638d+04f4adafeb0c427e87312773d6ba20fe+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-leasing.b76a8691ce351ab796db7234f2fa5e1d7804638d+18ee14b2c29d4d2d9783e3d7126266ab+exit-code+exited+1
+test fn c1r_old_086_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-leasing.b76a8691ce351ab796db7234f2fa5e1d7804638d+18ee14b2c29d4d2d9783e3d7126266ab+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-identity.b76a8691ce351ab796db7234f2fa5e1d7804638d+530311597a664a0bb26767bbdf67da03+success+killed+TERM
+test fn c1r_old_087_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-identity.b76a8691ce351ab796db7234f2fa5e1d7804638d+530311597a664a0bb26767bbdf67da03+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+63994ee223b29ebd+obligation+0bb73d97ce45452fb7c6eb27f5081ed1+success+exited+0
+test fn c1r_old_088_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+63994ee223b29ebd+obligation+0bb73d97ce45452fb7c6eb27f5081ed1+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-codex-app-server-trip-script+4c6bd9a694732702+worker+949d5892e8524fedba99c7f443981263+exit-code+exited+1
+test fn c1r_old_089_shell_dag_codex_app_server_t() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-codex-app-server-trip-script+4c6bd9a694732702+worker+949d5892e8524fedba99c7f443981263+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-extdeps.857878f4fab80338cf0c844c03e220488b548b4a+711f87323a224a848de80bb4f2a64643+exit-code+exited+218
+test fn c1r_old_090_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-extdeps.857878f4fab80338cf0c844c03e220488b548b4a+711f87323a224a848de80bb4f2a64643+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-decision.b76a8691ce351ab796db7234f2fa5e1d7804638d+167981696e684068bac79eb569249f97+exit-code+exited+218
+test fn c1r_old_091_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-decision.b76a8691ce351ab796db7234f2fa5e1d7804638d+167981696e684068bac79eb569249f97+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+8cf463d57ab94e1ebeaeea16ef8c4d41+success+exited+0
+test fn c1r_old_092_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+8cf463d57ab94e1ebeaeea16ef8c4d41+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+050f36c7b55745bba4a689d3d49798d0+success+exited+0
+test fn c1r_old_093_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+050f36c7b55745bba4a689d3d49798d0+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-leasing.b76a8691ce351ab796db7234f2fa5e1d7804638d+9f15aafc739e4e70a072f7798950ea45+success+killed+TERM
+test fn c1r_old_094_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-leasing.b76a8691ce351ab796db7234f2fa5e1d7804638d+9f15aafc739e4e70a072f7798950ea45+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+eebde60e7dfd4a928c671a205550ebfc+success+exited+0
+test fn c1r_old_095_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+eebde60e7dfd4a928c671a205550ebfc+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+66003426ab49c696+obligation+e5ddda36f35d48859d926c4f73a2a546+success+exited+0
+test fn c1r_old_096_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+66003426ab49c696+obligation+e5ddda36f35d48859d926c4f73a2a546+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-expected-red-mock-totality-dead-rows+e5a42084c6a5dc24+obligation+f1b0ea6ce13f4eea9829c494d712c0eb+success+exited+0
+test fn c1r_old_097_debt_expected_red_mock_total() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-expected-red-mock-totality-dead-rows+e5a42084c6a5dc24+obligation+f1b0ea6ce13f4eea9829c494d712c0eb+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+1c9b5bec8253061b+obligation+d1cf14f53ebd419bb32489358c7f79b6+success+exited+0
+test fn c1r_old_098_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+1c9b5bec8253061b+obligation+d1cf14f53ebd419bb32489358c7f79b6+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+3273c1b480be4db09fd08fe8da25b19b+success+exited+0
+test fn c1r_old_099_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+3273c1b480be4db09fd08fe8da25b19b+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+39446e2064971039+worker+a286c7e1a53b4446b11924ceb8fb1cbc+exit-code+exited+3
+test fn c1r_old_100_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+39446e2064971039+worker+a286c7e1a53b4446b11924ceb8fb1cbc+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-extdeps.857878f4fab80338cf0c844c03e220488b548b4a+a4a7a360f2404ea5a1f0f5dd787c3d32+success+exited+0
+test fn c1r_old_101_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-extdeps.857878f4fab80338cf0c844c03e220488b548b4a+a4a7a360f2404ea5a1f0f5dd787c3d32+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d runner-retirement-surplus-agreement-host+88f07681ced338ce+obligation+82042d680e2f4ad885d400d262a1f8d8+success+exited+0
+test fn c1r_old_102_runner_retirement_surplus_ag() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "runner-retirement-surplus-agreement-host+88f07681ced338ce+obligation+82042d680e2f4ad885d400d262a1f8d8+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+6b3a62efe7ba67c1+obligation+0241f7b0a5f2437c85323f269baced56+success+exited+0
+test fn c1r_old_103_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+6b3a62efe7ba67c1+obligation+0241f7b0a5f2437c85323f269baced56+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-consumption.857878f4fab80338cf0c844c03e220488b548b4a+fd29fcdc761d426fbbc5eb8d5c8506b4+exit-code+exited+218
+test fn c1r_old_104_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-consumption.857878f4fab80338cf0c844c03e220488b548b4a+fd29fcdc761d426fbbc5eb8d5c8506b4+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-single-authority.857878f4fab80338cf0c844c03e220488b548b4a+07d1cb5c01a14db49f91285ca6b1ac48+exit-code+exited+218
+test fn c1r_old_105_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-single-authority.857878f4fab80338cf0c844c03e220488b548b4a+07d1cb5c01a14db49f91285ca6b1ac48+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-compile-pool-slice-install+6cf24e9f27613d9e+obligation+7ed19fcc633f48838edd79c7326f74a6+success+exited+0
+test fn c1r_old_106_shell_dag_compile_pool_slice() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-compile-pool-slice-install+6cf24e9f27613d9e+obligation+7ed19fcc633f48838edd79c7326f74a6+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-fail-closed.b76a8691ce351ab796db7234f2fa5e1d7804638d+1f2cbeec0e8244a39ec42b5131a13c82+exit-code+exited+218
+test fn c1r_old_107_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-fail-closed.b76a8691ce351ab796db7234f2fa5e1d7804638d+1f2cbeec0e8244a39ec42b5131a13c82+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+03117b1d01344fc997f47619c6dc19d9+success+exited+0
+test fn c1r_old_108_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+03117b1d01344fc997f47619c6dc19d9+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+eb73ec3efbd94de0b9937356ccddae4c+success+exited+0
+test fn c1r_old_109_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+eb73ec3efbd94de0b9937356ccddae4c+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-witness-one-interface.b76a8691ce351ab796db7234f2fa5e1d7804638d+84d536fad0f04a40a1e2c6023f5be06d+success+killed+TERM
+test fn c1r_old_110_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-witness-one-interface.b76a8691ce351ab796db7234f2fa5e1d7804638d+84d536fad0f04a40a1e2c6023f5be06d+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d frontend-escape-scan-construction-closing-contract+cddd7121bcea417c+obligation+820afbb990eb43d3b5c7d66326a0d276+success+exited+0
+test fn c1r_old_111_frontend_escape_scan_constru() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "frontend-escape-scan-construction-closing-contract+cddd7121bcea417c+obligation+820afbb990eb43d3b5c7d66326a0d276+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-how-to-work.b76a8691ce351ab796db7234f2fa5e1d7804638d+4d5522ae664642e99eaeb4ea399d3d3f+exit-code+exited+1
+test fn c1r_old_112_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-how-to-work.b76a8691ce351ab796db7234f2fa5e1d7804638d+4d5522ae664642e99eaeb4ea399d3d3f+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-compile-pool-slice-install+6cf24e9f27613d9e+worker+0b14cc95a4c4478db0908ae7abc4be6a+exit-code+exited+3
+test fn c1r_old_113_shell_dag_compile_pool_slice() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-compile-pool-slice-install+6cf24e9f27613d9e+worker+0b14cc95a4c4478db0908ae7abc4be6a+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-selection-precedes-convergence.b76a8691ce351ab796db7234f2fa5e1d7804638d+02ede1f97a66404d8ecd3e07bf64d032+success+killed+TERM
+test fn c1r_old_114_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-selection-precedes-convergence.b76a8691ce351ab796db7234f2fa5e1d7804638d+02ede1f97a66404d8ecd3e07bf64d032+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-single-authority.b76a8691ce351ab796db7234f2fa5e1d7804638d+7a61b04716934952954c9c403af0a828+exit-code+exited+1
+test fn c1r_old_115_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-single-authority.b76a8691ce351ab796db7234f2fa5e1d7804638d+7a61b04716934952954c9c403af0a828+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-heal-regen-invoke+59b82eb247e1ee6f+obligation+7b6edc7131ee4352ac4e5f32f202ba4a+success+exited+0
+test fn c1r_old_116_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+59b82eb247e1ee6f+obligation+7b6edc7131ee4352ac4e5f32f202ba4a+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-observability.b76a8691ce351ab796db7234f2fa5e1d7804638d+3168eee4c4b04f25afb191253d3dc077+exit-code+exited+218
+test fn c1r_old_117_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-observability.b76a8691ce351ab796db7234f2fa5e1d7804638d+3168eee4c4b04f25afb191253d3dc077+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-realization.b76a8691ce351ab796db7234f2fa5e1d7804638d+13055b97198e48aab81d71bf4b989351+exit-code+exited+1
+test fn c1r_old_118_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-realization.b76a8691ce351ab796db7234f2fa5e1d7804638d+13055b97198e48aab81d71bf4b989351+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-exclusion-frontier-excludes-nothing+6ea61f671002abed+worker+3ba05d7eb415492896aa6846aa485406+success+exited+0
+test fn c1r_old_119_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61f671002abed+worker+3ba05d7eb415492896aa6846aa485406+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+6f5733580e6b4c13ab2adbd912308e1c+success+exited+0
+test fn c1r_old_120_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+6f5733580e6b4c13ab2adbd912308e1c+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-restart-tailscale+479d93cd577a1d53+worker+3842f0c6796b44198262eabb14777697+success+killed+TERM
+test fn c1r_old_121_shell_dag_live_deploy_restar() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-restart-tailscale+479d93cd577a1d53+worker+3842f0c6796b44198262eabb14777697+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-selection-precedes-convergence.b76a8691ce351ab796db7234f2fa5e1d7804638d+fffb9fc07be4435a9a00c004416850e3+exit-code+exited+1
+test fn c1r_old_122_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-selection-precedes-convergence.b76a8691ce351ab796db7234f2fa5e1d7804638d+fffb9fc07be4435a9a00c004416850e3+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-single-authority.b76a8691ce351ab796db7234f2fa5e1d7804638d+8b8cdc8af18141a29d8c94b6096c0f42+exit-code+exited+218
+test fn c1r_old_123_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-single-authority.b76a8691ce351ab796db7234f2fa5e1d7804638d+8b8cdc8af18141a29d8c94b6096c0f42+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-floor-peak-calibration-rows+bb29307f8f9bf3f9+worker+29a6ebac142b4d7ca8d21a2c67140f6b+exit-code+exited+1
+test fn c1r_old_124_shell_dag_floor_peak_calibra() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-floor-peak-calibration-rows+bb29307f8f9bf3f9+worker+29a6ebac142b4d7ca8d21a2c67140f6b+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-observability.b76a8691ce351ab796db7234f2fa5e1d7804638d+0c2b090308954eed9476af4d43d57706+success+killed+TERM
+test fn c1r_old_125_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-observability.b76a8691ce351ab796db7234f2fa5e1d7804638d+0c2b090308954eed9476af4d43d57706+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-closed-grounded-substrate.857878f4fab80338cf0c844c03e220488b548b4a+e781c1c178a34e7bb3804bb2e069fe5f+success+exited+0
+test fn c1r_old_126_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-closed-grounded-substrate.857878f4fab80338cf0c844c03e220488b548b4a+e781c1c178a34e7bb3804bb2e069fe5f+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-compute.857878f4fab80338cf0c844c03e220488b548b4a+859a5427ee614c9790c3f92371f5bb92+success+exited+0
+test fn c1r_old_127_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-compute.857878f4fab80338cf0c844c03e220488b548b4a+859a5427ee614c9790c3f92371f5bb92+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+63994ee223b29ebd+worker+865780b78a1c40f6951605b80aac6acd+success+exited+0
+test fn c1r_old_128_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+63994ee223b29ebd+worker+865780b78a1c40f6951605b80aac6acd+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+3f0491e0986637ad+obligation+f04056abb1194254b96558d71bedc736+success+exited+0
+test fn c1r_old_129_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+3f0491e0986637ad+obligation+f04056abb1194254b96558d71bedc736+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+3dd80f33a027447c901881cd0a629ea5+success+exited+0
+test fn c1r_old_130_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+3dd80f33a027447c901881cd0a629ea5+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-codex-app-server-trip-script+4c6bd9a694732702+obligation+5aae322752ea439d91415a7acea51840+oom-kill+killed+KILL
+test fn c1r_old_131_shell_dag_codex_app_server_t() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-codex-app-server-trip-script+4c6bd9a694732702+obligation+5aae322752ea439d91415a7acea51840+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+audit.857878f4fab80338cf0c844c03e220488b548b4a+d06ab693eef645dc9e68ed06a7040282+success+exited+0
+test fn c1r_old_132_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+audit.857878f4fab80338cf0c844c03e220488b548b4a+d06ab693eef645dc9e68ed06a7040282+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-compile-pool-slice-install+08b9c2a5cdcb7359+obligation+38a91ee836ca4777a02bac1d2f53d672+success+exited+0
+test fn c1r_old_133_shell_dag_compile_pool_slice() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-compile-pool-slice-install+08b9c2a5cdcb7359+obligation+38a91ee836ca4777a02bac1d2f53d672+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-single-authority.b76a8691ce351ab796db7234f2fa5e1d7804638d+74de1dc4dd494c3a8ecad61ab85287a6+success+killed+TERM
+test fn c1r_old_134_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-single-authority.b76a8691ce351ab796db7234f2fa5e1d7804638d+74de1dc4dd494c3a8ecad61ab85287a6+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-minimize-redundancy.b76a8691ce351ab796db7234f2fa5e1d7804638d+6f75f5ded3a743d6abafc201c634c948+success+killed+TERM
+test fn c1r_old_135_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-minimize-redundancy.b76a8691ce351ab796db7234f2fa5e1d7804638d+6f75f5ded3a743d6abafc201c634c948+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-decision.857878f4fab80338cf0c844c03e220488b548b4a+0b4fcbe5db65481ca83d0711d73535dd+exit-code+exited+218
+test fn c1r_old_136_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-decision.857878f4fab80338cf0c844c03e220488b548b4a+0b4fcbe5db65481ca83d0711d73535dd+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-observability.857878f4fab80338cf0c844c03e220488b548b4a+ca9b9399982a4f1b837af6182251c0ad+exit-code+exited+218
+test fn c1r_old_137_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-observability.857878f4fab80338cf0c844c03e220488b548b4a+ca9b9399982a4f1b837af6182251c0ad+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-leasing.b76a8691ce351ab796db7234f2fa5e1d7804638d+f55e0fc881784e5c87a93964cc728e22+exit-code+exited+218
+test fn c1r_old_138_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-leasing.b76a8691ce351ab796db7234f2fa5e1d7804638d+f55e0fc881784e5c87a93964cc728e22+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-cardinality-absence.857878f4fab80338cf0c844c03e220488b548b4a+2d877345ad9141ea954b68335a370dc9+success+exited+0
+test fn c1r_old_139_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-cardinality-absence.857878f4fab80338cf0c844c03e220488b548b4a+2d877345ad9141ea954b68335a370dc9+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+4d63bc0993a64853a024ee0a89a48ffb+success+exited+0
+test fn c1r_old_140_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+4d63bc0993a64853a024ee0a89a48ffb+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-fail-closed.b76a8691ce351ab796db7234f2fa5e1d7804638d+5127d1dad97e486680cc9820dbb28d0b+exit-code+exited+1
+test fn c1r_old_141_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-fail-closed.b76a8691ce351ab796db7234f2fa5e1d7804638d+5127d1dad97e486680cc9820dbb28d0b+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-restart-tailscale+479d93cd577a1d53+obligation+34856cb1d5184ac8ae7ee4b1c0c42a09+success+exited+0
+test fn c1r_old_142_shell_dag_live_deploy_restar() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-restart-tailscale+479d93cd577a1d53+obligation+34856cb1d5184ac8ae7ee4b1c0c42a09+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+55cce57bfcc34f5f8ab838bfeba4af79+success+exited+0
+test fn c1r_old_143_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+55cce57bfcc34f5f8ab838bfeba4af79+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-how-to-work.857878f4fab80338cf0c844c03e220488b548b4a+0abe05674c2d4a589394eb75c76a1e0f+exit-code+exited+218
+test fn c1r_old_144_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-how-to-work.857878f4fab80338cf0c844c03e220488b548b4a+0abe05674c2d4a589394eb75c76a1e0f+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+66003426ab49c696+worker+af9d1709341e42e2abcfe42a6bb5f125+exit-code+exited+3
+test fn c1r_old_145_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+66003426ab49c696+worker+af9d1709341e42e2abcfe42a6bb5f125+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-observability.b76a8691ce351ab796db7234f2fa5e1d7804638d+ef7731246f5845599ff3016392a0925f+exit-code+exited+1
+test fn c1r_old_146_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-observability.b76a8691ce351ab796db7234f2fa5e1d7804638d+ef7731246f5845599ff3016392a0925f+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-cardinality-absence.b76a8691ce351ab796db7234f2fa5e1d7804638d+6c07d81d220349af86a82301d00e1812+exit-code+exited+218
+test fn c1r_old_147_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-cardinality-absence.b76a8691ce351ab796db7234f2fa5e1d7804638d+6c07d81d220349af86a82301d00e1812+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-realization.857878f4fab80338cf0c844c03e220488b548b4a+929f3a3b54464364be8952fefb7a4fb7+success+exited+0
+test fn c1r_old_148_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-realization.857878f4fab80338cf0c844c03e220488b548b4a+929f3a3b54464364be8952fefb7a4fb7+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+worker+3e700ea2cc584bddaae995de9e111876+exit-code+exited+200
+test fn c1r_old_149_debt_rung_drop_measurement_b() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+worker+3e700ea2cc584bddaae995de9e111876+exit-code+exited+200") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+83f2e964c14e506a+worker+26ff64c240f2470d99b7cf83fe7b1be7+exit-code+exited+3
+test fn c1r_old_150_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+83f2e964c14e506a+worker+26ff64c240f2470d99b7cf83fe7b1be7+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+e8a6e2ef79084a0a83b2bb0e444e97a9+success+exited+0
+test fn c1r_old_151_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+e8a6e2ef79084a0a83b2bb0e444e97a9+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-leasing.857878f4fab80338cf0c844c03e220488b548b4a+e48434c2147f48a6974dccf844946936+exit-code+exited+218
+test fn c1r_old_152_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-leasing.857878f4fab80338cf0c844c03e220488b548b4a+e48434c2147f48a6974dccf844946936+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-minimize-redundancy.b76a8691ce351ab796db7234f2fa5e1d7804638d+b2654be123da4771a5af2b20329e87bc+exit-code+exited+1
+test fn c1r_old_153_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-minimize-redundancy.b76a8691ce351ab796db7234f2fa5e1d7804638d+b2654be123da4771a5af2b20329e87bc+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-decision.b76a8691ce351ab796db7234f2fa5e1d7804638d+a30430674cf4458cb4d9015782319000+success+killed+TERM
+test fn c1r_old_154_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-decision.b76a8691ce351ab796db7234f2fa5e1d7804638d+a30430674cf4458cb4d9015782319000+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-typed-invocation+7cb9492adc7912c1+obligation+615d6b10e5c14494b7b5187df42f85f8+success+exited+0
+test fn c1r_old_155_shell_typed_invocation_7cb94() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-typed-invocation+7cb9492adc7912c1+obligation+615d6b10e5c14494b7b5187df42f85f8+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-how-to-work.b76a8691ce351ab796db7234f2fa5e1d7804638d+dfed79e3bc6c4ddd859938c09b2ebe4f+exit-code+exited+218
+test fn c1r_old_156_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-how-to-work.b76a8691ce351ab796db7234f2fa5e1d7804638d+dfed79e3bc6c4ddd859938c09b2ebe4f+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+3f0491e0986637ad+worker+ec9189970b744e429eb0d708ef1b2b8e+exit-code+exited+3
+test fn c1r_old_157_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+3f0491e0986637ad+worker+ec9189970b744e429eb0d708ef1b2b8e+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+ebe317765dd84d91badeb8b2607aaf7e+success+exited+0
+test fn c1r_old_158_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+ebe317765dd84d91badeb8b2607aaf7e+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-how-to-work.857878f4fab80338cf0c844c03e220488b548b4a+9b29cadb5f194c968a0e2623fab6bf29+success+exited+0
+test fn c1r_old_159_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-how-to-work.857878f4fab80338cf0c844c03e220488b548b4a+9b29cadb5f194c968a0e2623fab6bf29+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-expected-red-mock-totality-dead-rows+e5a42084c6a5dc24+worker+9c8fc24a55694fab8141fa34b4b3a53c+success+exited+0
+test fn c1r_old_160_debt_expected_red_mock_total() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-expected-red-mock-totality-dead-rows+e5a42084c6a5dc24+worker+9c8fc24a55694fab8141fa34b4b3a53c+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+d8de243c3d374f338ca9076536dfe989+success+exited+0
+test fn c1r_old_161_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+d8de243c3d374f338ca9076536dfe989+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-exclusion-frontier-excludes-nothing+6ea61f671002abed+obligation+a88b3c29204549d1b206cba38a42c263+success+exited+0
+test fn c1r_old_162_debt_exclusion_frontier_excl() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-exclusion-frontier-excludes-nothing+6ea61f671002abed+obligation+a88b3c29204549d1b206cba38a42c263+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-witness-one-interface.857878f4fab80338cf0c844c03e220488b548b4a+bf621b68f7474b30a994e1b2bb6d0462+success+exited+0
+test fn c1r_old_163_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-witness-one-interface.857878f4fab80338cf0c844c03e220488b548b4a+bf621b68f7474b30a994e1b2bb6d0462+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-decision.b76a8691ce351ab796db7234f2fa5e1d7804638d+fadce4d6175445bfbdea50403ca5e59e+exit-code+exited+1
+test fn c1r_old_164_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-decision.b76a8691ce351ab796db7234f2fa5e1d7804638d+fadce4d6175445bfbdea50403ca5e59e+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-identity.857878f4fab80338cf0c844c03e220488b548b4a+24d2832543704179a96c2ab0dc066006+exit-code+exited+218
+test fn c1r_old_165_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-identity.857878f4fab80338cf0c844c03e220488b548b4a+24d2832543704179a96c2ab0dc066006+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-selection-precedes-convergence.b76a8691ce351ab796db7234f2fa5e1d7804638d+ffef81b253f8471892c27171f94dd300+exit-code+exited+218
+test fn c1r_old_166_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-selection-precedes-convergence.b76a8691ce351ab796db7234f2fa5e1d7804638d+ffef81b253f8471892c27171f94dd300+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-single-authority.b76a8691ce351ab796db7234f2fa5e1d7804638d+0e51f3404cf84bc1bef2c1a878d6bf7c+exit-code+exited+1
+test fn c1r_old_167_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-single-authority.b76a8691ce351ab796db7234f2fa5e1d7804638d+0e51f3404cf84bc1bef2c1a878d6bf7c+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+cbbff7f6f24d6049+worker+e9de4aad430b4b2b9581989f65b9ca26+success+exited+0
+test fn c1r_old_168_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+cbbff7f6f24d6049+worker+e9de4aad430b4b2b9581989f65b9ca26+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+1c9b5bec8253061b+worker+029df54a09854765a55fe9b5626f8000+success+exited+0
+test fn c1r_old_169_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+1c9b5bec8253061b+worker+029df54a09854765a55fe9b5626f8000+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-compile-pool-slice-install+6475efc08fc9b7cf+obligation+c36313e42f7445c1be90a1fb437b4856+success+exited+0
+test fn c1r_old_170_shell_dag_compile_pool_slice() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-compile-pool-slice-install+6475efc08fc9b7cf+obligation+c36313e42f7445c1be90a1fb437b4856+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d runner-retirement-surplus-agreement-host+88f07681ced338ce+obligation+ddb074b7e06e45b7a5f6f5933b14b98d+success+exited+0
+test fn c1r_old_171_runner_retirement_surplus_ag() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "runner-retirement-surplus-agreement-host+88f07681ced338ce+obligation+ddb074b7e06e45b7a5f6f5933b14b98d+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-root-generalization.857878f4fab80338cf0c844c03e220488b548b4a+964638f289854bb7b67778b6d98952e1+exit-code+exited+218
+test fn c1r_old_172_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-root-generalization.857878f4fab80338cf0c844c03e220488b548b4a+964638f289854bb7b67778b6d98952e1+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d compute-exact-work-contract-closing-contract+78ac4a32601cc589+obligation+b2b8e5a573f44be2a0ff4e06dde6b028+success+exited+0
+test fn c1r_old_173_compute_exact_work_contract() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "compute-exact-work-contract-closing-contract+78ac4a32601cc589+obligation+b2b8e5a573f44be2a0ff4e06dde6b028+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-single-authority.857878f4fab80338cf0c844c03e220488b548b4a+bc79d99ad81b4bb3ada3354150455941+success+exited+0
+test fn c1r_old_174_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-single-authority.857878f4fab80338cf0c844c03e220488b548b4a+bc79d99ad81b4bb3ada3354150455941+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-cardinality-absence.b76a8691ce351ab796db7234f2fa5e1d7804638d+2cc0a2917c454cc29dc82d9434b85d2a+exit-code+exited+1
+test fn c1r_old_175_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-cardinality-absence.b76a8691ce351ab796db7234f2fa5e1d7804638d+2cc0a2917c454cc29dc82d9434b85d2a+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-compile-pool-slice-install+08b9c2a5cdcb7359+worker+c24f39babf314637b98a41a266cac0c0+exit-code+exited+1
+test fn c1r_old_176_shell_dag_compile_pool_slice() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-compile-pool-slice-install+08b9c2a5cdcb7359+worker+c24f39babf314637b98a41a266cac0c0+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+audit.b76a8691ce351ab796db7234f2fa5e1d7804638d+52b9680f658247cfbf78c2a738fc7464+exit-code+exited+1
+test fn c1r_old_177_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+audit.b76a8691ce351ab796db7234f2fa5e1d7804638d+52b9680f658247cfbf78c2a738fc7464+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-cardinality-absence.857878f4fab80338cf0c844c03e220488b548b4a+898cd0e62a81477098fe5d91c061ef66+exit-code+exited+218
+test fn c1r_old_178_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-cardinality-absence.857878f4fab80338cf0c844c03e220488b548b4a+898cd0e62a81477098fe5d91c061ef66+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-selection-precedes-convergence.857878f4fab80338cf0c844c03e220488b548b4a+61e50c45d07044f582c66a21124a126a+exit-code+exited+218
+test fn c1r_old_179_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-selection-precedes-convergence.857878f4fab80338cf0c844c03e220488b548b4a+61e50c45d07044f582c66a21124a126a+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+8c250e4c6a0e4e8cb094521545279ec6+success+exited+0
+test fn c1r_old_180_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+8c250e4c6a0e4e8cb094521545279ec6+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-minimize-redundancy.857878f4fab80338cf0c844c03e220488b548b4a+33ff4bac8cc0439d8db8f66732216c45+exit-code+exited+218
+test fn c1r_old_181_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-minimize-redundancy.857878f4fab80338cf0c844c03e220488b548b4a+33ff4bac8cc0439d8db8f66732216c45+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-codex-app-server-trip-script+4c6bd9a694732702+obligation+49f9fb9cd7fe415993082efba1952277+oom-kill+killed+KILL
+test fn c1r_old_182_shell_dag_codex_app_server_t() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-codex-app-server-trip-script+4c6bd9a694732702+obligation+49f9fb9cd7fe415993082efba1952277+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-fail-closed.b76a8691ce351ab796db7234f2fa5e1d7804638d+15880231b021447b86f5d9ba553e54ab+success+killed+TERM
+test fn c1r_old_183_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-fail-closed.b76a8691ce351ab796db7234f2fa5e1d7804638d+15880231b021447b86f5d9ba553e54ab+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-closed-grounded-substrate.b76a8691ce351ab796db7234f2fa5e1d7804638d+df6fc9488f4444bfad1f336c75712304+exit-code+exited+218
+test fn c1r_old_184_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-closed-grounded-substrate.b76a8691ce351ab796db7234f2fa5e1d7804638d+df6fc9488f4444bfad1f336c75712304+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-minimize-redundancy.857878f4fab80338cf0c844c03e220488b548b4a+014f4ac165f34c1d98e23588e9e1babc+success+exited+0
+test fn c1r_old_185_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-minimize-redundancy.857878f4fab80338cf0c844c03e220488b548b4a+014f4ac165f34c1d98e23588e9e1babc+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+6b3a62efe7ba67c1+worker+9e1c0000e7a3417aac2640dde534a208+exit-code+exited+3
+test fn c1r_old_186_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+6b3a62efe7ba67c1+worker+9e1c0000e7a3417aac2640dde534a208+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-extdeps.b76a8691ce351ab796db7234f2fa5e1d7804638d+8a0974c0d4d8460c849651d016c1787e+exit-code+exited+1
+test fn c1r_old_187_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-extdeps.b76a8691ce351ab796db7234f2fa5e1d7804638d+8a0974c0d4d8460c849651d016c1787e+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-floor-peak-calibration-rows+f3630f05539fdf01+obligation+504b86a843f044de995fa9cf11f44d2b+success+exited+0
+test fn c1r_old_188_shell_dag_floor_peak_calibra() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-floor-peak-calibration-rows+f3630f05539fdf01+obligation+504b86a843f044de995fa9cf11f44d2b+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-realization.b76a8691ce351ab796db7234f2fa5e1d7804638d+e842f32f079b46c69e3551993fae741d+exit-code+exited+218
+test fn c1r_old_189_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-realization.b76a8691ce351ab796db7234f2fa5e1d7804638d+e842f32f079b46c69e3551993fae741d+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+6b13c69d5767d56c+obligation+e4a76d72a77c49d7847990e9544479a6+success+exited+0
+test fn c1r_old_190_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+6b13c69d5767d56c+obligation+e4a76d72a77c49d7847990e9544479a6+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-extdeps.b76a8691ce351ab796db7234f2fa5e1d7804638d+57f7a0818a6a4907b083b309fc82b1c0+exit-code+exited+218
+test fn c1r_old_191_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-extdeps.b76a8691ce351ab796db7234f2fa5e1d7804638d+57f7a0818a6a4907b083b309fc82b1c0+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-heal-regen-invoke+59b82eb247e1ee6f+obligation+ba62fe9e53a646648d52f20c24d0c384+success+exited+0
+test fn c1r_old_192_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+59b82eb247e1ee6f+obligation+ba62fe9e53a646648d52f20c24d0c384+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+0fe6d2ba2c1a4f0bbc7c909acdf26970+success+exited+0
+test fn c1r_old_193_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+0fe6d2ba2c1a4f0bbc7c909acdf26970+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-closed-grounded-substrate.b76a8691ce351ab796db7234f2fa5e1d7804638d+e4992ea2fbf243088277bbe804c71844+success+killed+TERM
+test fn c1r_old_194_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-closed-grounded-substrate.b76a8691ce351ab796db7234f2fa5e1d7804638d+e4992ea2fbf243088277bbe804c71844+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-extdeps.b76a8691ce351ab796db7234f2fa5e1d7804638d+349c8b2bc6424995b453de52a0f70914+exit-code+exited+1
+test fn c1r_old_195_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-extdeps.b76a8691ce351ab796db7234f2fa5e1d7804638d+349c8b2bc6424995b453de52a0f70914+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+b18be90d855f4b31bd2682c3990f4ffd+success+exited+0
+test fn c1r_old_196_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+b18be90d855f4b31bd2682c3990f4ffd+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-consumption.b76a8691ce351ab796db7234f2fa5e1d7804638d+847386b8cfa24c6d856bbadf0c5095c7+success+killed+TERM
+test fn c1r_old_197_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-consumption.b76a8691ce351ab796db7234f2fa5e1d7804638d+847386b8cfa24c6d856bbadf0c5095c7+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-fail-closed.857878f4fab80338cf0c844c03e220488b548b4a+82f2213b49d147deba9db4f4ca85cda8+success+exited+0
+test fn c1r_old_198_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-fail-closed.857878f4fab80338cf0c844c03e220488b548b4a+82f2213b49d147deba9db4f4ca85cda8+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-floor-peak-calibration-rows+bb29307f8f9bf3f9+obligation+6aeca5badf1448a0ab38a492d319f961+success+exited+0
+test fn c1r_old_199_shell_dag_floor_peak_calibra() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-floor-peak-calibration-rows+bb29307f8f9bf3f9+obligation+6aeca5badf1448a0ab38a492d319f961+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-compute.b76a8691ce351ab796db7234f2fa5e1d7804638d+ff1251ace4014e7abaaf1c25596f6536+exit-code+exited+1
+test fn c1r_old_200_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-compute.b76a8691ce351ab796db7234f2fa5e1d7804638d+ff1251ace4014e7abaaf1c25596f6536+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-floor-peak-calibration-rows+bb29307f8f9bf3f9+obligation+29044cb79767404c86425171b9be5ded+success+exited+0
+test fn c1r_old_201_shell_dag_floor_peak_calibra() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-floor-peak-calibration-rows+bb29307f8f9bf3f9+obligation+29044cb79767404c86425171b9be5ded+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-closed-grounded-substrate.b76a8691ce351ab796db7234f2fa5e1d7804638d+5f53273fcfc34feb809993cde20044c2+exit-code+exited+1
+test fn c1r_old_202_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-closed-grounded-substrate.b76a8691ce351ab796db7234f2fa5e1d7804638d+5f53273fcfc34feb809993cde20044c2+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-witness-one-interface.857878f4fab80338cf0c844c03e220488b548b4a+d2a3bb6728f84485aa2acbb5a325f0b9+exit-code+exited+218
+test fn c1r_old_203_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-witness-one-interface.857878f4fab80338cf0c844c03e220488b548b4a+d2a3bb6728f84485aa2acbb5a325f0b9+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+b08e820ff3709ab2+obligation+79fcddc0e271433b879448f73cdb575c+success+exited+0
+test fn c1r_old_204_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+b08e820ff3709ab2+obligation+79fcddc0e271433b879448f73cdb575c+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d host-conservation-shakedown-fixture-at-22-gib+f288128c72d5db94+obligation+56cf05df44b843f9ad71ecf05d9bce23+success+exited+0
+test fn c1r_old_205_host_conservation_shakedown() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "host-conservation-shakedown-fixture-at-22-gib+f288128c72d5db94+obligation+56cf05df44b843f9ad71ecf05d9bce23+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+ef2b12b742074aeda34edcf8e32db50c+success+exited+0
+test fn c1r_old_206_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+ef2b12b742074aeda34edcf8e32db50c+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+obligation+d1ea1bb0efd849dda30334e481d71a06+success+exited+0
+test fn c1r_old_207_debt_rung_drop_measurement_b() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+obligation+d1ea1bb0efd849dda30334e481d71a06+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-consumption.b76a8691ce351ab796db7234f2fa5e1d7804638d+3300a12fa45541279ee03dbfaf4c7424+exit-code+exited+218
+test fn c1r_old_208_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-consumption.b76a8691ce351ab796db7234f2fa5e1d7804638d+3300a12fa45541279ee03dbfaf4c7424+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old f runner-retirement-surplus-agreement-host+88f07681ced338ce+handin+67645379e9b9f781
+test fn c1r_old_209_runner_retirement_surplus_ag() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "runner-retirement-surplus-agreement-host+88f07681ced338ce+handin+67645379e9b9f781") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+obligation+2197d0379e5d44e9a899646f564e252e+success+exited+0
+test fn c1r_old_210_debt_rung_drop_measurement_b() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+obligation+2197d0379e5d44e9a899646f564e252e+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-minimize-redundancy.b76a8691ce351ab796db7234f2fa5e1d7804638d+d5f4f57ef39b4e5d9f5a61a06e46df77+exit-code+exited+1
+test fn c1r_old_211_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-minimize-redundancy.b76a8691ce351ab796db7234f2fa5e1d7804638d+d5f4f57ef39b4e5d9f5a61a06e46df77+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d ci-executed-coverage-receipt-closing-contract+d5f9e6d04ad07939+obligation+ca0ef548a8a9411dac8f1013de381b7e+success+exited+0
+test fn c1r_old_212_ci_executed_coverage_receipt() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "ci-executed-coverage-receipt-closing-contract+d5f9e6d04ad07939+obligation+ca0ef548a8a9411dac8f1013de381b7e+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d host-conservation-shakedown-fixture-at-22-gib+f288128c72d5db94+worker+d8b7c3cab4bc42c8b4bb66c9e496dc42+exit-code+exited+1
+test fn c1r_old_213_host_conservation_shakedown() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "host-conservation-shakedown-fixture-at-22-gib+f288128c72d5db94+worker+d8b7c3cab4bc42c8b4bb66c9e496dc42+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-decision.857878f4fab80338cf0c844c03e220488b548b4a+2f06efa1d78d4d4d98579859b79c08ec+success+exited+0
+test fn c1r_old_214_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-decision.857878f4fab80338cf0c844c03e220488b548b4a+2f06efa1d78d4d4d98579859b79c08ec+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+11e4418252ba46d7963f4435326ef33c+success+exited+0
+test fn c1r_old_215_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+11e4418252ba46d7963f4435326ef33c+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-selection-precedes-convergence.b76a8691ce351ab796db7234f2fa5e1d7804638d+f98e7d14bd304c4f8dc5c2590d98e36b+exit-code+exited+1
+test fn c1r_old_216_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-selection-precedes-convergence.b76a8691ce351ab796db7234f2fa5e1d7804638d+f98e7d14bd304c4f8dc5c2590d98e36b+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-how-to-work.b76a8691ce351ab796db7234f2fa5e1d7804638d+6dba2da0bdf64a269e696b00b20d5738+success+killed+TERM
+test fn c1r_old_217_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-how-to-work.b76a8691ce351ab796db7234f2fa5e1d7804638d+6dba2da0bdf64a269e696b00b20d5738+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-observability.857878f4fab80338cf0c844c03e220488b548b4a+dde4073c7f9d4330833888f2cd498261+success+exited+0
+test fn c1r_old_218_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-observability.857878f4fab80338cf0c844c03e220488b548b4a+dde4073c7f9d4330833888f2cd498261+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-observability.b76a8691ce351ab796db7234f2fa5e1d7804638d+4ab17f05019c4cbcb199907c40b737ad+exit-code+exited+1
+test fn c1r_old_219_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-observability.b76a8691ce351ab796db7234f2fa5e1d7804638d+4ab17f05019c4cbcb199907c40b737ad+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-selection-precedes-convergence.857878f4fab80338cf0c844c03e220488b548b4a+ad024d2f375249bab427536fa98f2cff+success+exited+0
+test fn c1r_old_220_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-selection-precedes-convergence.857878f4fab80338cf0c844c03e220488b548b4a+ad024d2f375249bab427536fa98f2cff+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-leasing.b76a8691ce351ab796db7234f2fa5e1d7804638d+55321e677f5f44d19cf14e33852e579a+exit-code+exited+1
+test fn c1r_old_221_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-leasing.b76a8691ce351ab796db7234f2fa5e1d7804638d+55321e677f5f44d19cf14e33852e579a+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-heal-regen-invoke+59b82eb247e1ee6f+worker+d76085904d114f2d86ea66a8b7a9ad08+exit-code+exited+1
+test fn c1r_old_222_shell_dag_ci_heal_regen_invo() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-heal-regen-invoke+59b82eb247e1ee6f+worker+d76085904d114f2d86ea66a8b7a9ad08+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-realization.857878f4fab80338cf0c844c03e220488b548b4a+caceb01389294de59d33d4b9cb38c3b1+exit-code+exited+218
+test fn c1r_old_223_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-realization.857878f4fab80338cf0c844c03e220488b548b4a+caceb01389294de59d33d4b9cb38c3b1+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-consumption.b76a8691ce351ab796db7234f2fa5e1d7804638d+cf0d757dcb0b4f4cbb6913cb1210b49a+exit-code+exited+1
+test fn c1r_old_224_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-consumption.b76a8691ce351ab796db7234f2fa5e1d7804638d+cf0d757dcb0b4f4cbb6913cb1210b49a+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+e5438bb3147d4e808f0e7651f230b1a1+success+exited+0
+test fn c1r_old_225_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+e5438bb3147d4e808f0e7651f230b1a1+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-fail-closed.857878f4fab80338cf0c844c03e220488b548b4a+60405a34b4ab49b2b77f84698848043f+exit-code+exited+218
+test fn c1r_old_226_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-fail-closed.857878f4fab80338cf0c844c03e220488b548b4a+60405a34b4ab49b2b77f84698848043f+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+3998f824aa4a4b00acc54c4de26a2e34+success+exited+0
+test fn c1r_old_227_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+3998f824aa4a4b00acc54c4de26a2e34+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+5a52703eae1a4d19b03fe90e30ae801d+success+exited+0
+test fn c1r_old_228_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+5a52703eae1a4d19b03fe90e30ae801d+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-compute.b76a8691ce351ab796db7234f2fa5e1d7804638d+4478150614564bf1a8fa6f5077a4084c+success+killed+TERM
+test fn c1r_old_229_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.0e5b550131480e82-conformance-compute.b76a8691ce351ab796db7234f2fa5e1d7804638d+4478150614564bf1a8fa6f5077a4084c+success+killed+TERM") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+63994ee223b29ebd+obligation+16964e8a4a6a4d2e86deaa81b568de9b+success+exited+0
+test fn c1r_old_230_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+63994ee223b29ebd+obligation+16964e8a4a6a4d2e86deaa81b568de9b+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-closed-grounded-substrate.857878f4fab80338cf0c844c03e220488b548b4a+45bef5728e6d4d919955e7d15e192616+exit-code+exited+218
+test fn c1r_old_231_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-closed-grounded-substrate.857878f4fab80338cf0c844c03e220488b548b4a+45bef5728e6d4d919955e7d15e192616+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-decision.b76a8691ce351ab796db7234f2fa5e1d7804638d+1d5bd655bbc44351b92cdf5267bde875+exit-code+exited+1
+test fn c1r_old_232_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-decision.b76a8691ce351ab796db7234f2fa5e1d7804638d+1d5bd655bbc44351b92cdf5267bde875+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-identity.857878f4fab80338cf0c844c03e220488b548b4a+77eae3313b8540f19061f858e7902d38+success+exited+0
+test fn c1r_old_233_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-identity.857878f4fab80338cf0c844c03e220488b548b4a+77eae3313b8540f19061f858e7902d38+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-witness-one-interface.b76a8691ce351ab796db7234f2fa5e1d7804638d+17b3675249d04e6388f2d90bf086fdf7+exit-code+exited+1
+test fn c1r_old_234_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-witness-one-interface.b76a8691ce351ab796db7234f2fa5e1d7804638d+17b3675249d04e6388f2d90bf086fdf7+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+39446e2064971039+obligation+5f8f59823b61497ca86f448867344a24+success+exited+0
+test fn c1r_old_235_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+39446e2064971039+obligation+5f8f59823b61497ca86f448867344a24+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-identity.b76a8691ce351ab796db7234f2fa5e1d7804638d+32ea6c5ce18843e0bc2237f1ea07fec0+exit-code+exited+1
+test fn c1r_old_236_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-identity.b76a8691ce351ab796db7234f2fa5e1d7804638d+32ea6c5ce18843e0bc2237f1ea07fec0+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-codex-app-server-trip-script+4c6bd9a694732702+obligation+862b230a65a74085b99f888132b428d8+oom-kill+killed+KILL
+test fn c1r_old_237_shell_dag_codex_app_server_t() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-codex-app-server-trip-script+4c6bd9a694732702+obligation+862b230a65a74085b99f888132b428d8+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+obligation+637aee2eec5a4e3f90ae5810b6887d48+success+exited+0
+test fn c1r_old_238_debt_rung_drop_measurement_b() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+obligation+637aee2eec5a4e3f90ae5810b6887d48+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-leasing.857878f4fab80338cf0c844c03e220488b548b4a+502582dacd984451be58eabead60c9b3+success+exited+0
+test fn c1r_old_239_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-conformance-leasing.857878f4fab80338cf0c844c03e220488b548b4a+502582dacd984451be58eabead60c9b3+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+9e6b681843944848a74f718ab350f534+success+exited+0
+test fn c1r_old_240_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+9e6b681843944848a74f718ab350f534+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+worker+b77482eeed684961898ad48c912fa7c9+success+exited+0
+test fn c1r_old_241_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+worker+b77482eeed684961898ad48c912fa7c9+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-consumption.857878f4fab80338cf0c844c03e220488b548b4a+e83cbbe2459749d2bb8181c271faa516+success+exited+0
+test fn c1r_old_242_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.59f042af438525dd-consumption.857878f4fab80338cf0c844c03e220488b548b4a+e83cbbe2459749d2bb8181c271faa516+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+obligation+6bf9178b113a44a0aee80507d8393398+success+exited+0
+test fn c1r_old_243_debt_rung_drop_measurement_b() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-rung-drop-measurement-bankruptcy-retire+ccb8f38ceb3cd6a7+obligation+6bf9178b113a44a0aee80507d8393398+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-compile-pool-slice-install+6475efc08fc9b7cf+worker+bf6c38337d1947bfb090bcbdbef46caa+exit-code+exited+3
+test fn c1r_old_244_shell_dag_compile_pool_slice() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-compile-pool-slice-install+6475efc08fc9b7cf+worker+bf6c38337d1947bfb090bcbdbef46caa+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-witness-one-interface.b76a8691ce351ab796db7234f2fa5e1d7804638d+590c3a3baf4644c0a10107345807573c+exit-code+exited+218
+test fn c1r_old_245_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-witness-one-interface.b76a8691ce351ab796db7234f2fa5e1d7804638d+590c3a3baf4644c0a10107345807573c+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+6466d7c824bdb6b6+obligation+df7d9a84c298491793497f80d6a020b7+success+exited+0
+test fn c1r_old_246_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+6466d7c824bdb6b6+obligation+df7d9a84c298491793497f80d6a020b7+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d runner-retirement-surplus-agreement-host+88f07681ced338ce+worker+374cf8e72ff9463a8e8e8badafa9e6e8+exit-code+exited+1
+test fn c1r_old_247_runner_retirement_surplus_ag() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "runner-retirement-surplus-agreement-host+88f07681ced338ce+worker+374cf8e72ff9463a8e8e8badafa9e6e8+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+66b9342f5b224f909765193e466595da+success+exited+0
+test fn c1r_old_248_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+66b9342f5b224f909765193e466595da+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+dc86e9d33eb840e6b374deb68cee7635+success+exited+0
+test fn c1r_old_249_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+obligation+dc86e9d33eb840e6b374deb68cee7635+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-witness-one-interface.b76a8691ce351ab796db7234f2fa5e1d7804638d+4218f5ef76954c96978827923d814f8e+exit-code+exited+1
+test fn c1r_old_250_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-witness-one-interface.b76a8691ce351ab796db7234f2fa5e1d7804638d+4218f5ef76954c96978827923d814f8e+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-compute.857878f4fab80338cf0c844c03e220488b548b4a+1ea8dbed979e471bbaaa8e6adf2b7c06+exit-code+exited+218
+test fn c1r_old_251_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+review.3f7ebbbca024a5c2-conformance-compute.857878f4fab80338cf0c844c03e220488b548b4a+1ea8dbed979e471bbaaa8e6adf2b7c06+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+b08e820ff3709ab2+worker+57717dcfc60144c3a9c6dc3b0a1a5a0b+success+exited+0
+test fn c1r_old_252_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+b08e820ff3709ab2+worker+57717dcfc60144c3a9c6dc3b0a1a5a0b+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d ci-required-run-cost-closing-contract+3ed1f4db02537905+obligation+6d5beb401d2443db968296355805e81b+success+exited+0
+test fn c1r_old_253_ci_required_run_cost_closing() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "ci-required-run-cost-closing-contract+3ed1f4db02537905+obligation+6d5beb401d2443db968296355805e81b+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-identity.b76a8691ce351ab796db7234f2fa5e1d7804638d+7803b2415f0b4f29812599ecd7decd91+exit-code+exited+1
+test fn c1r_old_254_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-conformance-identity.b76a8691ce351ab796db7234f2fa5e1d7804638d+7803b2415f0b4f29812599ecd7decd91+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+6b13c69d5767d56c+worker+3933c65c2f144986887c4652c760fb8f+exit-code+exited+3
+test fn c1r_old_255_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+6b13c69d5767d56c+worker+3933c65c2f144986887c4652c760fb8f+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-ci-deploy-invoke-prelude+cbbff7f6f24d6049+obligation+d425e9658828490e843e51b6b900242b+success+exited+0
+test fn c1r_old_256_shell_dag_ci_deploy_invoke_p() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-ci-deploy-invoke-prelude+cbbff7f6f24d6049+obligation+d425e9658828490e843e51b6b900242b+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-fail-closed.b76a8691ce351ab796db7234f2fa5e1d7804638d+68a64a6f91374241afd5cd9651a55424+exit-code+exited+1
+test fn c1r_old_257_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-fail-closed.b76a8691ce351ab796db7234f2fa5e1d7804638d+68a64a6f91374241afd5cd9651a55424+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+83f2e964c14e506a+obligation+e6c3f307763e436589ecf904e69266c3+success+exited+0
+test fn c1r_old_258_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+83f2e964c14e506a+obligation+e6c3f307763e436589ecf904e69266c3+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+69ea7356ef914479b69c5c1b0c0fed05+success+exited+0
+test fn c1r_old_259_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+69ea7356ef914479b69c5c1b0c0fed05+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-compute.b76a8691ce351ab796db7234f2fa5e1d7804638d+c9bec97eb903488dbc73c49b161deb5f+exit-code+exited+1
+test fn c1r_old_260_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-conformance-compute.b76a8691ce351ab796db7234f2fa5e1d7804638d+c9bec97eb903488dbc73c49b161deb5f+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-floor-peak-calibration-rows+f3630f05539fdf01+worker+2176174eaa0e4080a5ad01956238bcba+exit-code+exited+1
+test fn c1r_old_261_shell_dag_floor_peak_calibra() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-floor-peak-calibration-rows+f3630f05539fdf01+worker+2176174eaa0e4080a5ad01956238bcba+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+1c9b5bec8253061b+obligation+bcd43017528d4b02bdda9828c7d852ea+success+exited+0
+test fn c1r_old_262_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+1c9b5bec8253061b+obligation+bcd43017528d4b02bdda9828c7d852ea+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+d9c4bb6758d36403+obligation+72d48ffe059d4e2cb0e0497a95309ada+success+exited+0
+test fn c1r_old_263_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+d9c4bb6758d36403+obligation+72d48ffe059d4e2cb0e0497a95309ada+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-codex-app-server-trip-script+4c6bd9a694732702+obligation+260d6a9aefca426cad11269a1b407833+success+exited+0
+test fn c1r_old_264_shell_dag_codex_app_server_t() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-codex-app-server-trip-script+4c6bd9a694732702+obligation+260d6a9aefca426cad11269a1b407833+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+1c9b5bec8253061b+obligation+d3c7f47b844243cf92775dc90eb54a5c+success+exited+0
+test fn c1r_old_265_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+1c9b5bec8253061b+obligation+d3c7f47b844243cf92775dc90eb54a5c+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+6466d7c824bdb6b6+worker+105114003f3449918da277bdf8cb6485+exit-code+exited+3
+test fn c1r_old_266_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+6466d7c824bdb6b6+worker+105114003f3449918da277bdf8cb6485+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-nfr-mint-era-lens-batch+eb468ff555a87e18+worker+b4ed6c8b411f438c980f61b3445b71bb+oom-kill+killed+KILL
+test fn c1r_old_267_debt_nfr_mint_era_lens_batch() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-nfr-mint-era-lens-batch+eb468ff555a87e18+worker+b4ed6c8b411f438c980f61b3445b71bb+oom-kill+killed+KILL") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-cron-entry-line-builder+d9c4bb6758d36403+worker+65cfd79002be4ed2866e7c68ea94b953+exit-code+exited+3
+test fn c1r_old_268_shell_dag_cron_entry_line_bu() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-cron-entry-line-builder+d9c4bb6758d36403+worker+65cfd79002be4ed2866e7c68ea94b953+exit-code+exited+3") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d debt-nfr-mint-era-lens-batch+eb468ff555a87e18+obligation+40b6dadc6e0c4803a1258793810dd111+success+exited+0
+test fn c1r_old_269_debt_nfr_mint_era_lens_batch() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "debt-nfr-mint-era-lens-batch+eb468ff555a87e18+obligation+40b6dadc6e0c4803a1258793810dd111+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-how-to-work.b76a8691ce351ab796db7234f2fa5e1d7804638d+ae9776bd490a442795b569d0681d643c+exit-code+exited+1
+test fn c1r_old_270_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.59f042af438525dd-how-to-work.b76a8691ce351ab796db7234f2fa5e1d7804638d+ae9776bd490a442795b569d0681d643c+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old f v1-interpreter-primitive-dispatch-authority+25de491353dd507f+handin+eb1ec191e8f18aa5
+test fn c1r_old_271_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+handin+eb1ec191e8f18aa5") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-minimize-redundancy.b76a8691ce351ab796db7234f2fa5e1d7804638d+dd3266c72d074351a198a8ea35fe01af+exit-code+exited+218
+test fn c1r_old_272_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-minimize-redundancy.b76a8691ce351ab796db7234f2fa5e1d7804638d+dd3266c72d074351a198a8ea35fe01af+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+d159a240d1104c49bef437d72798dde5+success+exited+0
+test fn c1r_old_273_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+d159a240d1104c49bef437d72798dde5+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-closed-grounded-substrate.b76a8691ce351ab796db7234f2fa5e1d7804638d+a84f9775d3a34669b76963f574391a15+exit-code+exited+1
+test fn c1r_old_274_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-closed-grounded-substrate.b76a8691ce351ab796db7234f2fa5e1d7804638d+a84f9775d3a34669b76963f574391a15+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-identity.b76a8691ce351ab796db7234f2fa5e1d7804638d+2f5f0efde4bf4483886570d5d59fbf22+exit-code+exited+218
+test fn c1r_old_275_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.3f7ebbbca024a5c2-conformance-identity.b76a8691ce351ab796db7234f2fa5e1d7804638d+2f5f0efde4bf4483886570d5d59fbf22+exit-code+exited+218") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+84995c781b46478b9347462bd880ec10+success+exited+0
+test fn c1r_old_276_v1_interpreter_primitive_dis() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "v1-interpreter-primitive-dispatch-authority+25de491353dd507f+obligation+84995c781b46478b9347462bd880ec10+success+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// old d shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-consumption.b76a8691ce351ab796db7234f2fa5e1d7804638d+289b6d5d8fb4404e81dd6c2ecdaac1f6+exit-code+exited+1
+test fn c1r_old_277_shell_dag_live_deploy_instal() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "shell-dag-live-deploy-install-owned+9eebe4d74f8a6757+review.7f53e72ea2d6215a-consumption.b76a8691ce351ab796db7234f2fa5e1d7804638d+289b6d5d8fb4404e81dd6c2ecdaac1f6+exit-code+exited+1") {
+    AttemptExitEntryDecoded { record: _ } => true
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
