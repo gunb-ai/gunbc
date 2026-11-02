@@ -41,7 +41,7 @@ import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.tools.gnu_coreutils { coreutils_install_file_owned_argv, mktemp_directory_command, install_file_mode_command, rm_force_command, rmdir_command }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
 import extdeps.systemd.unit_file { systemd_system_credstore_directory }
-import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal, ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal, ReleaseRevisionBinding, RevisionBoundAtEmission, release_revision_execstart_text }
 import gunbc.live_deploy.emit { install_file_shared_mode }
 import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
 import extdeps.crypto.hash { Digest }

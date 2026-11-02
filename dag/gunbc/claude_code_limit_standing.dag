@@ -1,6 +1,6 @@
 module gunbc.claude_code_limit_standing
 
-import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.measure { basis_point_count, basis_point_unity_count }
 import std.algebra { trim }
 import std.optional { Present, Absent }

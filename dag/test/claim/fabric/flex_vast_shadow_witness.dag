@@ -89,6 +89,7 @@ import gunbc.secret_provision { fleet_secret_ref }
 import gunbc.harness.harness_operator_route { harness_operator_route }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer, Glm53FlashOnVllm, DeepseekV4FlashOnVllm }
 import gunbc.auth.gcp_secret_access { secret_accessor_grant }
+import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -22,6 +22,8 @@ import gunbc.session_reservation_policy {
 }
 import gunbc.session_admission_policy {
   gunbc_session_admission_policy, SessionAdmissionDeclared, SessionAdmissionUnestablished,
+  session_admission_enforced_concurrency,
+  session_admission_unenforced_reason,
 }
 import gunbc.fleet.fleet_host_budget {
   host_allocation_verdict,
@@ -36,7 +38,6 @@ import gunbc.fleet.fleet_host_budget {
   CompilePoolPlacement,
   CompilePoolSliceDeclared,
   CompilePoolInRunnerSlots,
-  gunbc_compile_pool_placement,
   compile_pool_bytes_for,
   host_cpu_reserve_threads,
 }
@@ -59,6 +60,7 @@ import gunbc.ci.ci_floor_measurement {
 }
 import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 import gunbc.ci.ci_fleet { fleet_intent_offers, fleet_converge_applied_offers, fleet_image_baked_offers, fleet_host_is_image_baked }
+import gunbc.host.host_layout { gunbc_compile_pool_placement }
 
 type WorkloadClass
   = BatchLatencyTolerant

@@ -57,6 +57,7 @@ import gunbc.fleet.fleet_enrollment {
   participation_list_contains,
   ci_runner_enrollment_participation,
 }
+import std.algebra { fold_list }
 
 // WHY THIS EXISTS: host_standup_spine is ONE universal list, and gunbc.host.host_phase_status crossed
 // every enrolled host with all of it. That was correct while every enrolled host was the same kind
