@@ -32,7 +32,7 @@ import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret, fleet_auto
 import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow, ScannedFirstContact, ProvisionedInstall, known_hosts_line, fleet_name_at_ssh_port,
 }
-import gunbc.provisioning.network_install_receipt { NetworkInstallReceipt, InstalledToDisk, InstallNotEstablished, network_install_client }
+import gunbc.provisioning.network_install_receipt { NetworkInstallReceipt, InstalledToDisk, InstallNotEstablished, network_install_client, CurrentInstallForHost, CurrentInstallEstablished, CurrentInstallUnestablished }
 import extdeps.network.mac { mac_addresses_are_equal }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_bound_transport {
@@ -264,6 +264,11 @@ type AnchoredHostBinding
   // and a provisioned pin dies at reinstall even if the presented key still matches the old row -
   // the reused-key case the per-install minting rule exists to forbid.
   | AnchoredBindingInstallSuperseded { pinned_install: String, current_install: String }
+  // The current-install carrier is not established for this transport's host: either no selection
+  // of the latest complete receipt exists yet (the honest production state until the enrolment
+  // fold lands, the carrier's only intended producer), or the carrier names a host other than the
+  // transport's bound host. Never a bind; the comparison refuses without it.
+  | AnchoredBindingCurrentInstallUnestablished { why: String }
   | AnchoredBindingRefused { cause: String }
 
 // THE BOUNDING, generic over the anchored machine; every refusal a typed, located state (§5). The host
@@ -362,9 +367,13 @@ fn anchored_host_transport_against(
 
 // T2's PER-INSTALL COMPARISON (gunbc.plans.host_trust_provisioned_key, the trust axis of
 // gunbc.plans.physical_machine_boot_program): the pin is a ProvisionedInstall row of the catalog,
-// and current_install is the host's LATEST complete install receipt - the fold that enrols and
-// routes joins the console announcement to the attempting record and supplies this host's receipt;
-// that join obligation belongs to the fold (the plan). A provisioned pin vouches only for the
+// and current_install is NOT a bare receipt (side-chat P1 at 7e4e926b): a caller could hand an
+// older complete receipt matching an older pin, and a host still presenting that key would bind
+// though a newer install superseded both. It is the CurrentInstallForHost carrier, minted only by
+// the selection of the latest complete receipt for that host (gunbc.provisioning.network_install_receipt);
+// that selection fold does not exist yet, so production can supply only Unestablished - which
+// refuses, never binds - and the carrier's Established mint is admit_callers-gated to the T2
+// witnesses until the fold lands; the join obligation belongs to the fold (the plan). A provisioned pin vouches only for the
 // installed system its attempt installed: a newer complete record supersedes it, so a reinstall
 // invalidates the old pin EVEN IF the presented key still matches the stale row - the reused-key
 // case per-install minting exists to forbid. The host is never an input: it is read from the
@@ -381,7 +390,7 @@ fn anchored_host_transport_against(
 // and this function is uncalled in production until then, honestly.
 fn anchored_host_transport_provisioned(
   pin: KnownHostKeyRow,
-  current_install: NetworkInstallReceipt,
+  current_install: CurrentInstallForHost,
   transport: HostEffectTransport,
   presented_key_line: String,
 ) -> AnchoredHostBinding admit_callers: [
@@ -392,6 +401,8 @@ fn anchored_host_transport_provisioned(
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_pin_from_another_record_never_vouches_an_installed_contact"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_current_install_carrier_for_another_host_never_binds"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unestablished_current_install_never_binds_a_provisioned_pin"),
 ] {
   match host_bound_transport_of(transport: transport) {
     HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
@@ -403,6 +414,14 @@ fn anchored_host_transport_provisioned(
       } else {
           match pin.provenance {
           ProvisionedInstall { install_client_mac: pinned_mac, install_attempt: pinned_attempt, authority: _ } => match current_install {
+            CurrentInstallUnestablished { why: why } =>
+              AnchoredBindingCurrentInstallUnestablished { why: why as String }
+            CurrentInstallEstablished { host: carrier_host, install: install } =>
+              if !host_identity_eq(a: carrier_host, b: bound.host) {
+                AnchoredBindingCurrentInstallUnestablished {
+                  why: join(["the current-install carrier names ", carrier_host as String, ", not the transport's bound host ", bound.host as String, "; a receipt whose association with this transport's host is unestablished never vouches the contact"], ""),
+                }
+              } else { match install {
             InstallNotEstablished { subject: subject, gaps: _ } =>
               AnchoredBindingInstallNotAttested {
                 why: join(["no complete install record attests the installed system of attempt `", subject.attempt.attempt as String, "`; a provisioned pin vouches only against the complete record of the install that minted it; contacting NO host"], ""),
@@ -425,6 +444,8 @@ fn anchored_host_transport_provisioned(
                   observed_line: presented_key_line,
                 }
               }
+              }
+            }
           }
           ScannedFirstContact { scanned_from: _ } =>
             AnchoredBindingPinNotInstallRecord {
@@ -455,6 +476,7 @@ fn anchored_host_binding_refusal_reason(b: AnchoredHostBinding) -> String {
     AnchoredBindingInstallNotAttested { why: why } => why
     AnchoredBindingInstallSuperseded { pinned_install: pinned, current_install: current } =>
       join(["AnchoredBindingInstallSuperseded: the pin vouches for install `", pinned as String, "` but the host's current complete record is install `", current as String, "`; a reinstall invalidates the old pin, contacting NO host"], "")
+    AnchoredBindingCurrentInstallUnestablished { why: why } => why
     AnchoredBindingRefused { cause: cause } => cause
   }
 }
