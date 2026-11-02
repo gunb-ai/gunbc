@@ -398,6 +398,17 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 entry: "dag/gunbc/instruments/native_materialization_store_closure.dag",
             },
         ),
+        // Seed-growth receipt: mirror the existing gunbc.instrument_targets binding
+        // for phantom-alias-opacity so the v2 width-carrier discriminator can execute.
+        // This adds only a row using NativeClaimProgram, no producer or route.
+        // Enrolled under gunbc.target_invocation_seed_growth.instrument_registry;
+        // dissolves when this registry is emitted from the modeled bindings.
+        (
+            instrument_label("phantom-alias-opacity"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/test/claim/phantom_alias_opacity_native.dag",
+            },
+        ),
         (
             instrument_label("native-emission-controls"),
             TargetProducer::NativeClaimProgram {

@@ -1,0 +1,123 @@
+module test.claim.phantom_alias_opacity_native
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.induction { SubValueUnknown }
+import v1.std.core { Node, InferredNode, Resolved, NoConnective, Required, NotAModuleItem, Unmarked, NoExprData, kernel_span }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, empty_type_env, symbol_index_insert_decl, settled_type }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
+import v2.test.claim.compiler.width_literal_admission {
+  wla_marker_fixture_alone_is_accepted,
+  wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit,
+  wla_ordinary_alias_to_the_marker_still_unfolds,
+  wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments,
+  wla_an_unrelated_local_phantom_is_not_the_marker
+}
+
+// Supplied values at the seed's settled_type boundary, paired with v2's existing
+// real assembly/inference controls. This is a native test entry, not production
+// importing a test. No compiler-generated mirror is the authority for the fixture.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn opacity_node(name: String, declaration: DeclarationRef?, args: List<Node>, params: List<Node>, inferred: InferredNode?) -> Node {
+  Node {
+    occurrence_identity: OccurrenceSynthetic, name: name, ident: Absent,
+    span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) },
+    children: args, connective: NoConnective, params: params, inferred: inferred,
+    return_cardinality: Required, uses: [], body: Absent, transport: Absent,
+    properties: [], type_annotation: Absent, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: Absent, module_item_kind: NotAModuleItem,
+    declaration_marker: Unmarked, declaration: declaration, expr_data: NoExprData
+  }
+}
+
+fn opacity_ref(module_path: String, name: String, args: List<Node>) -> Node {
+  opacity_node(name: name, declaration: Present { value: decl_ref(module_path: module_path, decl_name: name) }, args: args, params: [], inferred: Absent)
+}
+
+fn opacity_parameter(name: String) -> Node {
+  opacity_node(name: name, declaration: Absent, args: [], params: [], inferred: Absent)
+}
+
+fn opacity_args() -> List<Node> {
+  [opacity_ref(module_path: "std.nat", name: "Nat", args: []), opacity_ref(module_path: "test.opacity", name: "Width8", args: [])]
+}
+
+fn opacity_binding(name: String, params: List<Node>, rhs: Node) -> TypeBinding {
+  TypeBinding {
+    name: name,
+    resolved: opacity_node(name: name, declaration: Present { value: decl_ref(module_path: "test.opacity", decl_name: name) }, args: [], params: params, inferred: Present { value: Resolved { node: rhs } }),
+    provenance: SubValueUnknown,
+    alias_rhs: if count(params) == 0 { Present { value: rhs } } else { Absent }
+  }
+}
+
+fn opacity_env(bindings: List<TypeBinding>) -> TypeEnv {
+  let e = empty_type_env()
+  TypeEnv {
+    module_path: "test.opacity", bindings: e.bindings,
+    str_bindings: fold(bindings, init: e.str_bindings, f: (m, b) => map_insert(m, b.name, b)),
+    ancestry_str_bindings: e.ancestry_str_bindings, parents: e.parents,
+    recursive_types: e.recursive_types, recursive_type_set: e.recursive_type_set,
+    inductive_fields: e.inductive_fields, source_indices: e.source_indices,
+    intern_table: e.intern_table, source_visible_names: e.source_visible_names,
+    authored_import_names: e.authored_import_names,
+    symbol_index: fold(bindings, init: e.symbol_index, f: (i, b) => symbol_index_insert_decl(index: i, module_path: "test.opacity", binding: b)),
+    unit_variant_index: e.unit_variant_index, unit_variant_index_observed: e.unit_variant_index_observed
+  }
+}
+
+fn opacity_seed_holds(generic: Bool, through_alias: Bool, canonical_phantom: Bool) -> Bool {
+  let marker_name = if generic { "Mark" } else { "Plain" }
+  let phantom_module = if canonical_phantom { "std.constructors" } else { "test.foreign" }
+  let params = if generic { [opacity_parameter(name: "A"), opacity_parameter(name: "B")] } else { [] }
+  let args = if generic { opacity_args() } else { [] }
+  let marker = opacity_binding(name: marker_name, params: params, rhs: opacity_ref(module_path: phantom_module, name: "Phantom", args: []))
+  let alias_binding = opacity_binding(name: "Alias", params: [], rhs: opacity_ref(module_path: "test.opacity", name: marker_name, args: args))
+  let env = opacity_env(bindings: [marker, alias_binding])
+  let subject = if through_alias { opacity_ref(module_path: "test.opacity", name: "Alias", args: []) } else { opacity_ref(module_path: "test.opacity", name: marker_name, args: args) }
+  match settled_type(n: subject, source_indices: env.source_indices, env: env, fuel: 16) {
+    Absent => false
+    Present { value: s } =>
+      if canonical_phantom {
+        s.head == decl_ref(module_path: "test.opacity", decl_name: marker_name)
+          // These supplied arguments are leaf declaration references. Compare their
+          // ordered declaration identities and require that they remain leaves;
+          // Node equality would also compare function-valued semantic fields.
+          && map(s.args, a => a.declaration) == map(args, a => a.declaration)
+          && count(filter(s.args, a => count(a.children) != 0)) == 0
+      } else {
+        s.head == decl_ref(module_path: "test.foreign", decl_name: "Phantom") && count(s.args) == 0
+      }
+  }
+}
+
+type OpacityCase {
+  name: String
+  held: Bool
+}
+
+fn opacity_cases() -> List<OpacityCase> {
+  [
+    OpacityCase { name: "seed_parameterized_marker_retains_application", held: opacity_seed_holds(generic: true, through_alias: false, canonical_phantom: true) },
+    OpacityCase { name: "seed_plain_marker_retains_identity", held: opacity_seed_holds(generic: false, through_alias: false, canonical_phantom: true) },
+    OpacityCase { name: "seed_alias_to_marker_retains_application", held: opacity_seed_holds(generic: true, through_alias: true, canonical_phantom: true) },
+    OpacityCase { name: "seed_foreign_phantom_remains_transparent", held: opacity_seed_holds(generic: true, through_alias: true, canonical_phantom: false) },
+    OpacityCase { name: "v2_same_marker_accepts", held: wla_marker_fixture_alone_is_accepted() },
+    OpacityCase { name: "v2_cross_width_refuses", held: wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit() },
+    OpacityCase { name: "v2_alias_accepts", held: wla_ordinary_alias_to_the_marker_still_unfolds() },
+    OpacityCase { name: "v2_alias_cross_width_refuses", held: wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments() },
+    OpacityCase { name: "v2_foreign_phantom_remains_transparent", held: wla_an_unrelated_local_phantom_is_not_the_marker() }
+  ]
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = opacity_cases()
+  let failed = filter(cases, c => !c.held)
+  NativeClaimReport {
+    stdout: join(map(cases, c => concat("case ", c.name, if c.held { " held\n" } else { " not_held\n" })), ""),
+    terminal: if count(failed) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: "Phantom alias reading disagrees with the preserved-application contract" } }
+  }
+}
