@@ -14,7 +14,9 @@ import product.printed_chassis.printable_assembly_selection {
   duct_card_root, printed_assembly_root_from_wire, printed_assembly_roots,
 }
 import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, t4_duct_card, a2_duct_card, t10_duct_card, duct_cards, duct_card_unread_reason }
-import product.printed_chassis.gpu_duct { PlugAndFlange, FullDuct }
+import product.printed_chassis.gpu_duct { PlugAndFlange, FullDuct, CardFitRing }
+import extdeps.gpu.passive_card_row { CardRow, NeedsReading }
+import extdeps.gpu.nvidia_a16 { a16_card_row }
 import product.printed_chassis.preparation_identity { manifest_identity }
 
 fn selected(root: PrintedAssemblyRoot) -> PrintableAssembly? {
@@ -194,4 +196,40 @@ test fn w_the_a16_plug_fit_ring_is_the_geometry_that_was_printed_and_fitted() ->
     }
     Absent => false
   }
+}
+
+// SUPPLIED CARD ROW (not a catalogue row): the A16's row with its end face read (a16_duct_card's) and its length
+// stated, but its slot count unread. Only the blower shapes read the slot pitch, so only they may refuse on it.
+data slot_count_unread_card: DuctCard = DuctCard {
+  row: CardRow {
+    id: a16_card_row.id, product: a16_card_row.product, height_class: a16_card_row.height_class,
+    slot_count: NeedsReading { read_obligation: "supplied by the witness: the card's slot count" },
+    length: a16_card_row.length, height: a16_card_row.height, brackets: a16_card_row.brackets,
+    auxiliary_power: a16_card_row.auxiliary_power, board_power: a16_card_row.board_power,
+    required_airflow: a16_card_row.required_airflow, airflow_direction: a16_card_row.airflow_direction,
+    sources: a16_card_row.sources,
+  },
+  end_face: a16_duct_card.end_face,
+}
+
+fn ready(s: PrintableAssemblySelection) -> Bool {
+  match s { PrintableAssemblyReady { assembly: _ } => true PrintableAssemblyRefused { reason: _ } => false }
+}
+
+fn refused_naming_slot_count(s: PrintableAssemblySelection) -> Bool {
+  match s { PrintableAssemblyReady { assembly: _ } => false PrintableAssemblyRefused { reason: r } => string_contains(s: r, pattern: "slot count") }
+}
+
+// An unread slot count refuses only the shapes that read the slot pitch, and names that reading.
+test fn w_an_unread_slot_count_refuses_only_the_blower_shapes() -> Bool {
+  let c = slot_count_unread_card
+  ready(s: duct_selection(root: duct_card_root(card: c, kind: PlugFitRing), card: c, mount: PlugAndFlange, extent: CardFitRing))
+    && ready(s: duct_selection(root: duct_card_root(card: c, kind: PlugDuct), card: c, mount: PlugAndFlange, extent: FullDuct))
+    && refused_naming_slot_count(s: blower_selection(root: duct_card_root(card: c, kind: BlowerDuct), card: c))
+    && refused_naming_slot_count(s: plane_on_end_selection(root: duct_card_root(card: c, kind: BlowerFlatOnEndDuct), card: c))
+}
+
+// CONTROL: the A16 (slot count read) still admits the blower shape through the same function.
+test fn w_the_read_slot_count_admits_the_blower_shape() -> Bool {
+  ready(s: blower_selection(root: duct_card_root(card: a16_duct_card, kind: BlowerDuct), card: a16_duct_card))
 }

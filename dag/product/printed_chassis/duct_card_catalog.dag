@@ -66,16 +66,29 @@ fn end_face_unread(card: DuctCard) -> List<String> {
 // the card's slot pitch from its row. Neither names a card.
 type DuctCardDims { face: EndFaceMeasurement, card: CardEnvelope, wall: GpuDuctDesign, fan: BlowerDuctDesign }
 
-fn duct_card_dims(card: DuctCard) -> DuctCardDims? {
+// The shapes that read ONLY the wall design (PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing: admit_gpu_duct
+// takes the face, the card envelope and the wall design) need neither the fan nor the slot pitch, so an unread
+// slot count does not refuse them. BlowerDuct and BlowerFlatOnEndDuct read dims.fan (the slot pitch) and take
+// duct_card_dims below.
+type DuctCardWallDims { face: EndFaceMeasurement, card: CardEnvelope, wall: GpuDuctDesign }
+
+fn duct_card_wall_dims(card: DuctCard) -> DuctCardWallDims? {
   match card.end_face {
     EndFaceRead { face: f } => match card_envelope_of(row: card.row) {
-      Present { value: l } => match blower_duct_design_of(row: card.row) {
-        Present { value: b } => Present { value: DuctCardDims { face: f, card: l, wall: duct_design(fan: noctua_nf_a9_pwm_mounting_pattern, fan_depth: noctua_nf_a9_pwm_frame_depth, policy: plug_and_flange_print_policy), fan: b } }
-        Absent => Absent
-      }
+      Present { value: l } => Present { value: DuctCardWallDims { face: f, card: l, wall: duct_design(fan: noctua_nf_a9_pwm_mounting_pattern, fan_depth: noctua_nf_a9_pwm_frame_depth, policy: plug_and_flange_print_policy) } }
       Absent => Absent
     }
     EndFaceNeedsReading { read_obligation: _ } => Absent
+  }
+}
+
+fn duct_card_dims(card: DuctCard) -> DuctCardDims? {
+  match duct_card_wall_dims(card: card) {
+    Present { value: w } => match blower_duct_design_of(row: card.row) {
+      Present { value: b } => Present { value: DuctCardDims { face: w.face, card: w.card, wall: w.wall, fan: b } }
+      Absent => Absent
+    }
+    Absent => Absent
   }
 }
 

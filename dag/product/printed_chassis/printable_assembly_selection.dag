@@ -19,7 +19,7 @@ import product.printed_chassis.gpu_duct {
 }
 import std.optional { Present, Absent }
 import product.printed_chassis.duct_review_schema { duct_review_schema }
-import product.printed_chassis.duct_card_catalog { DuctCard, DuctCardDims, duct_cards, duct_card, duct_card_dims, duct_card_unread_reason }
+import product.printed_chassis.duct_card_catalog { DuctCard, DuctCardDims, duct_cards, duct_card, duct_card_dims, DuctCardWallDims, duct_card_wall_dims, duct_card_unread_reason }
 import product.printed_chassis.card_cooling_route {admit_home, RouteSubject, PlaneOnEnd, RouteAdmission, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, RouteHomeUnmeasured, RouteProposalOnly, RouteAdmitted, demand_display}
 import product.printed_chassis.assembly_geometry {Printed, Purchased, Metal}
 
@@ -160,13 +160,13 @@ fn blower_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims) -> Printab
 // names; the package takes the root's wire spelling, so the card-shape pairs each get a distinct package
 // instead of overwriting one another.
 fn duct_selection(root: PrintedAssemblyRoot, card: DuctCard, mount: DuctCardMount, extent: DuctExtent) -> PrintableAssemblySelection {
-  match duct_card_dims(card: card) {
+  match duct_card_wall_dims(card: card) {
     Present { value: dims } => duct_selection_of(root: root, dims: dims, mount: mount, extent: extent)
     Absent => PrintableAssemblyRefused { reason: duct_card_unread_reason(card: card) }
   }
 }
 
-fn duct_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims, mount: DuctCardMount, extent: DuctExtent) -> PrintableAssemblySelection {
+fn duct_selection_of(root: PrintedAssemblyRoot, dims: DuctCardWallDims, mount: DuctCardMount, extent: DuctExtent) -> PrintableAssemblySelection {
   match admit_gpu_duct(f: dims.face, card: dims.card, d: dims.wall, mount: mount, extent: extent) {
     GpuDuctAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
       assembly: PrintableAssembly {
