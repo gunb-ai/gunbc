@@ -76,6 +76,14 @@ data record_let_head_source: String = "module probe.record_let\n\nfn f(x: Int) -
 
 data record_call_arg_source: String = "module probe.record_arg\n\nfn f(x: Int) -> Int {\n  g(R { x })\n}\n"
 
+// keen-heron-809's control (msg_7563c6e8): an if-condition 'x == C {' whose block STARTS with a
+// labeled call. The v1 SEED has a hole here (its retry requires the record attempt to END without
+// error; a labeled call inside the braces errors the attempt, so the seed never retries the bare
+// reading -- keen-heron parenthesized theirs in #15643). The v2 peek does not depend on the attempt's
+// error state: the record arm fails the field shape, the bare reading stands, the block is the if's.
+// Green before AND after this fix on both routes.
+data labeled_call_block_condition_source: String = "module probe.cond_labeled_call_block\n\nfn probe_cond(x: Int, y: Int) -> Int {\n  if x == CardOptional {\n    probe_labeled(n: y)\n  } else {\n    0\n  }\n}\n"
+
 data paren_record_condition_source: String = "module probe.paren_record\n\nfn f(p: Bool, x: Int) -> Bool {\n  if (p { x: 1 }) {\n    true\n  } else {\n    false\n  }\n}\n"
 
 data infix_record_condition_source: String = "module probe.infix_record\n\nfn f(x: Int, y: Int) -> Bool {\n  if x == Present { value: y } {\n    true\n  } else {\n    false\n  }\n}\n"
@@ -95,6 +103,8 @@ fn record_let_head_still_parses() -> Bool { g_parse_accepted(text: record_let_he
 
 fn record_call_arg_still_parses() -> Bool { g_parse_accepted(text: record_call_arg_source, file: ^record_arg_probe) }
 
+fn labeled_call_block_condition_still_parses() -> Bool { g_parse_accepted(text: labeled_call_block_condition_source, file: ^cond_labeled_call_probe) }
+
 fn paren_record_condition_still_parses() -> Bool { g_parse_accepted(text: paren_record_condition_source, file: ^paren_record_probe) }
 
 fn infix_record_condition_still_parses() -> Bool { g_parse_accepted(text: infix_record_condition_source, file: ^infix_record_probe) }
@@ -112,6 +122,8 @@ test fn then_branch_record_parses_holds() -> Bool { then_branch_record_parses() 
 test fn record_let_head_still_parses_holds() -> Bool { record_let_head_still_parses() }
 
 test fn record_call_arg_still_parses_holds() -> Bool { record_call_arg_still_parses() }
+
+test fn labeled_call_block_condition_still_parses_holds() -> Bool { labeled_call_block_condition_still_parses() }
 
 test fn paren_record_condition_still_parses_holds() -> Bool { paren_record_condition_still_parses() }
 

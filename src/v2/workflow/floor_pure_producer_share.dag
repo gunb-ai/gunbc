@@ -1691,6 +1691,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "else_if_chain_still_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "elseless_if_with_tail_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "infix_record_condition_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "labeled_call_block_condition_still_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "paren_record_condition_still_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "record_call_arg_still_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "record_chain_condition_still_parses_holds", standing: ActiveFillDebt },
