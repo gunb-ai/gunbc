@@ -422,7 +422,7 @@ fn setup_switch_readback(menu: String, item: String, board_name: String?, bios_v
       match ras_setup_checkbox_row(menu: menu, item: item) {
         Absent => SetupSwitchUnrouted { cause: "the route's item has no varstore row" }
         Present { value: row } =>
-          if board_name != Present { value: setup_firmware_board_name as String } {
+          if board_name != optional_present_name() {
             SetupSwitchUnrouted { cause: "the board is not the ALTRAD8UD-1L2T the varstore layout is grounded for (DMI board_name)" }
           } else {
           match bios_version {
@@ -453,6 +453,10 @@ fn setup_switch_readback(menu: String, item: String, board_name: String?, bios_v
           }
       }
   }
+}
+
+fn optional_present_name() -> String? {
+  Present { value: setup_firmware_board_name as String }
 }
 
 fn read_dmi_board_name() -> String? {
