@@ -526,7 +526,7 @@ test fn the_read_obligation_names_the_read_that_would_ground_it() -> Bool {
 
 // THE COMMITTED CAPTURE AS A ROUND'S READ, so the row-level claims ask the judgement the same question
 // the gate asks it: "what did this round have to type against".
-fun the_committed_repository() -> SdrVerboseReadout? {
+fn the_committed_repository() -> SdrVerboseReadout? {
   Present { value: mtcollins1_fan_capture_readout() }
 }
 
@@ -626,7 +626,7 @@ test fn a_captured_verbose_record_prints_its_lines_verbatim() -> Bool {
 //
 // A WITNESS-LOCAL PROJECTION, which is allowed of a witness (§3: a witness discriminates at one
 // interface) and would not be allowed as a production helper: it exists so each shape is separately red.
-fun typing_unread_shape(refusal: SdrRowRefusal) -> String {
+fn typing_unread_shape(refusal: SdrRowRefusal) -> String {
   match refusal {
     SdrRowRefusedTypingUnread { row: _, readout: ro } => match ro {
       Absent => "never issued"
@@ -640,7 +640,7 @@ fun typing_unread_shape(refusal: SdrRowRefusal) -> String {
   }
 }
 
-fun refusals_of(rows: List<String>, typing: SdrVerboseReadout?) -> List<SdrRowRefusal> {
+fn refusals_of(rows: List<String>, typing: SdrVerboseReadout?) -> List<SdrRowRefusal> {
   match thermal_refusal(
     thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: rows, unrecognised_readings: [] },
     typing: typing,
