@@ -42,12 +42,12 @@ fn machine_width_carrier_signedness(carrier: MachineWidthArgumentFacts) -> Optio
 }
 
 fn machine_width_argument_bits(argument: MachineWidthArgumentFacts) -> Optional<BitWidth> {
-  if count(argument.natural_arguments) != 1 { Absent }
-  else {
-    match first(argument.natural_arguments) {
-      Present { value: Present { value: n } } => Present { value: bit_width(count: n) }
-      _ => Absent
+  match argument.natural_arguments {
+    Cons { head: natural, tail: Empty } => match natural {
+      Present { value: n } => Present { value: bit_width(count: n) }
+      Absent => Absent
     }
+    _ => Absent
   }
 }
 
