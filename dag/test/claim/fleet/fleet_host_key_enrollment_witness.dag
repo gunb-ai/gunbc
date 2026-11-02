@@ -148,7 +148,10 @@ test fn witness_the_same_public_half_enrolled_twice_refuses_the_catalog() -> Boo
     sha256_fingerprint: "SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
     provenance: ProvisionedInstall { install_attempt: "attempt-9v-1", authority: "fixture: console capture plus receipt" },
   }
+  // The verbatim paste: the SAME ROW twice, the most likely copy-paste mistake, is a
+  // contradiction too -- a check that field-compares two rows waves it through.
   fleet_host_key_public_halves_are_unique([shared, distinct])
+    && !fleet_host_key_public_halves_are_unique([distinct, distinct])
     && !fleet_host_key_public_halves_are_unique([shared, same_key_other_host])
     && !fleet_host_key_public_halves_are_unique([shared, same_key_later_install])
     && !fleet_host_key_public_halves_are_unique([shared, same_key_other_host, distinct])

@@ -3,6 +3,7 @@ module gunbc.fleet.fleet_host_key_enrollment
 import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.auth.fleet_convergence_federation { fleet_convergence_principal_set, fleet_convergence_provider_resource }
 import std.algebra { trim }
+import std.list { first_duplicate_by_key }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -206,10 +207,15 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
 // a cloned disk would put one private key at two identities), and not under two installs of
 // ONE host (the key belongs to ITS install; a reinstall mints a new one and re-enrols).
 // This rule did not exist before T2: the Spark rows' key-distinctness cross-check was
-// manual prose. It compares the public half itself, so provenance arms cannot dodge it;
-// rows are field-compared, so two rows differing only in citation still contradict.
+// manual prose. It compares the public half itself, so provenance arms cannot dodge it.
+// The scan is std.list's single-pass fold over a key-see map: linear in the catalog, and
+// it catches the VERBATIM DUPLICATE -- the same row pasted twice, the most likely
+// copy-paste mistake, which a field-compare of two rows would wave through.
 fn fleet_host_key_public_halves_are_unique(rows: List<KnownHostKeyRow>) -> Bool {
-  !any(rows, a => any(rows, b => b != a && b.public_key_base64 == a.public_key_base64))
+  match first_duplicate_by_key(xs: rows, key: k => k.public_key_base64) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-receipt.txt"
