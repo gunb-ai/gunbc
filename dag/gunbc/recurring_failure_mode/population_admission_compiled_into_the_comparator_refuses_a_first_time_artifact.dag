@@ -1,0 +1,56 @@
+module gunbc.recurring_failure_mode.population_admission_compiled_into_the_comparator_refuses_a_first_time_artifact
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE SIBLING OF `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, ON THE OTHER
+// SIDE OF THAT ROW'S REMEDY. That row's cure is that heal round 1 compiles the BASE commit's
+// committed stage0 mirror, never the pull request branch's; this row records what that cure costs.
+// The constant saying which committed files are hand-retained and which are generated is compiled
+// INTO the binary that performs the population join, and that binary is the base-built one. So the
+// head can declare a new generated artifact in every modelled authority and the join still cannot
+// see the declaration: the admission exists only in the tree the pull request exists to produce.
+
+data population_admission_compiled_into_the_comparator_refuses_a_first_time_artifact: RecurringFailureMode = RecurringFailureMode {
+  identity: "population_admission_compiled_into_the_comparator_refuses_a_first_time_artifact" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the regen round's population join reads its hand-retention and generated-mirror membership from the tree it is comparing, the same tree the writer writes into, rather than from a constant compiled into the comparator; the admission then has one authority -- the declaration that also produces the file -- and a first-time committed artifact is admitted by the pull request that introduces it. Sufficient for: a pull request adding the first committed member of a generated population passing heal without pre-landing the admission or splitting the change." } },
+
+  receipts: [
+    "**population admission compiled into the comparator refuses a first-time generated artifact** (a bootstrap deadlock on the membership fact, not on the bytes). INVALID STATE: a population join decides membership from a constant compiled into the judge, where the membership it is deciding is the pull request's own tree. The judge's copy of the fact is the base commit's, so the head's declaration of a new generated file cannot reach the verdict that consumes it.",
+
+    "HARM: a pull request that adds the first committed instance of a generated population is refused by a check the pull request cannot move, with a message that describes the OPPOSITE defect (a mirror the model no longer produces), and its stated repair ('restore the authority') points at an authority that already lists the file. The cheap responses are to stop generating the file and hand-write it, or to drop the artifact and keep the hand copy the pull request exists to delete -- concealment under DESIGN section 5, and the second re-opens the fork the pull request was cutting.",
+
+    "DISTINGUISHING FACTS: the refusal names a file the model DOES emit; the same head, run as its own base, passes, so the fact under test is the judge's compile-time copy and not the tree; and the two populations are computed by different means -- `emitted` from the manifest the emitter declares, `committed` from a directory listing minus a compiled constant, with `is_compared_generated_basename` being 'ends with .rs' -- so a file written by a route outside the emitter's manifest is admitted by exactly one mechanism, the constant.",
+
+    "OBSERVED (gunb-ai/gunbc#15598, T7: the instrument table the host wrote by hand, replaced by a generated `src/v1/stage0/src/instrument_registry_generated.rs` rendered from `gunbc.instrument_targets` `instrument_bindings()`). The job heal-generated-artifacts refused five times, at heads e5e5e8aae72f, 777661b71c1c, b47d8b4a40bb, ec4ccf45613a and 6a2741912cb3, each time with the same line: `regen-round-cost: refused: regen refused before convergence planning: refusal: committed mirror is no longer emitted -- [\"instrument_registry_generated.rs\"]` (run 41312917364, job 124866870162 at the last of those heads). The job's own log names the binary that judged: `round 1 builds the whole src/v1/stage0 crate from the base mirror commit=f531bafb8671a8ac1f0c5b0394aecbf1d5042c7a paths=306`.",
+
+    "THE JUDGE, AT `src/v1/stage0/src/required_regen_host.rs`. `validate_compared_populations` takes `committed` from a listing of `src/v1/stage0/src` with `is_hand_maintained_path` subtracted and `emitted` from the manifest the emitter declares. A file written by the wet actuator is in no manifest -- which is why every sibling in that population (`instrument_targets_generated.rs`, `seed_boundary_generated.rs`, `native_route_seed_boundary_generated.rs`) is admitted solely by `HAND_MAINTAINED_STAGE0_FILES`, a `pub const`: bytes inside the binary that performs the comparison. The comparator that ran is the round-1 seed compiled from the base mirror commit, so the head's row is not in it.",
+
+    "THE HEAD HAD THE ADMISSION, IN THE MODEL, NOT BY HAND. `WetActuatorGeneratedRegistration { basename: \"instrument_registry_generated\", declaration_route: PlainPubMod }` in `wet_actuator_generated_registrations` regenerates the constant (the committed copy carries the basename inside `HAND_MAINTAINED_STAGE0_FILES` at `src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs`), and `retained_reason_undeclared(path: \"src/instrument_registry_generated.rs\", cause: WetActuatorGeneratedSource)` is the section-7 declaration in `seed_retention_frontier_hand_maintained_hosts`. Neither is read at run time by the join; both are inputs to a build that happens after the verdict.",
+
+    "IT IS NOT THE SIBLING CLASS. `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair` is the head's mirror carrying a refusal that the same pull request repairs; its remedy -- build round 1 from the BASE mirror -- is what makes this class unreachable from the head. That remedy is correct and stays; this row records its price, which is that the remedy's judge cannot learn a fact the pull request introduces. The two rows share a boundary and differ in subject: bytes there, membership here.",
+
+    "IT IS NOT A FALLBACK OR A LYING ARTIFACT. The file is byte-reproducible from the model: the wet writer at the author head (`gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/seed_build_artifacts_regen.dag --function main_wet`, rc 0, 13 artifacts) produced `instrument_registry_generated.rs` at sha256 735e06c29077c224e617c062a8bbe115e08093e4c5ae018246a08a952ce8474d, and a clean srv1 clone at 777661b71c1c rebuilding the compiler from that clone regenerated the identical bytes (sha256 match, `git status` empty across all 13 artifacts). The refusal is about the judge's compile-time copy of a population fact, not about the artifact.",
+
+    "MITIGATION, AND ITS EVIDENCE STATUS. Bind the round's base mirror to the pull request's own head, which is exactly the post-merge state: the same environment the step already reads (`gunbc.heal_workflow` `heal_round_base_mirror_env`, normally the immutable `github.event.pull_request.base.sha`) pointed at the head instead. The run doing it is clever-crane-830-r15598 (srv1, 32G, `claim_executor --regen-round-cost --base-mirror`, base mirror 6a2741912cb3). RUNNING WHEN THIS ROW WAS FILED -- convergence is not yet an executed fact, so `current` claims only that a mitigation exists and is being exercised, not that it converged. If it converges, append that run's own receipt (host, head, argv, the empty diff). If it does not, the mitigation is the two-step landing instead -- admission first, artifact second -- and this row is re-filed with that as the executed mitigation.",
+
+    "WHY THE LADDER STOPS AT MECHANICALLY PREVENTABLE. The join could compare the constant with the tree it judges inside the same round and refuse the SKEW (a constant that predates the tree it joins) rather than refusing the file; that is a check a machine can run, not a property the type system or the emitter can make unrepresentable while the population fact stays a `pub const` in the judge. Reaching the ceiling means the admission lives in one place that writer and judge both read at run time -- at which point the constant is a cache, and a stale cache is a compile failure or a refusal rather than a false verdict.",
+
+    "REACHED BY: PR #15598 (T7, the instrument-subject fork) adding the first committed wet-actuator artifact since that population acquired the join; five heal runs on the pull request, all identical, with v2-bootstrap green at every head.",
+
+    "THE COST, STATED AT ITS REAL SIZE. `heal-generated-artifacts` is NOT a required status check: the main ruleset requires exactly one (`gh api repos/gunb-ai/gunbc/rules/branches/main` gives required_status_checks = [v2-bootstrap]), which is what DESIGN 'Building & checks' means when it says heal repairs two generated populations, judges nothing, and is not a required context. So this class does not block a merge. What it costs is a DECLARED EXCEPTION AT LANDING: a pull request adding the first committed member of a generated population arrives with heal refusing, the refusal is not this change's defect, and the landing rule that watches heal must be given the class and the receipt before the change lands -- which is the price an author pays, and the reason the mitigation is worth building.",
+
+    "THE REFUSAL TEXT DOES NOT SAY WHICH WAY TO MOVE. A genuinely dropped mirror and a first-time artifact produce the same string, so until the two are distinguished, 'committed mirror is no longer emitted' sends the author to restore an authority that already lists the file.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.ci.ci_spec", decl_name: "gunbc_ci_stage0_round_invoke", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_registrations", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.self_host.seed_retention_frontier", decl_name: "seed_retention_frontier_hand_maintained_hosts", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.heal_round_one_bootstraps_from_the_mirror_the_change_must_repair", decl_name: "heal_round_one_bootstraps_from_the_mirror_the_change_must_repair", field: WholeDeclaration },
+  ],
+}

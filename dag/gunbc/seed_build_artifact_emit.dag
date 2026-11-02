@@ -8,7 +8,8 @@ import gunbc.generated_artifact {
   Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
   ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact,
-  NativeRouteSeedBoundaryGeneratedRsArtifact
+  NativeRouteSeedBoundaryGeneratedRsArtifact,
+  InstrumentRegistryGeneratedRsArtifact
 }
 import gunbc.repo.cargo_config_emit { expected_cargo_config_toml }
 import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
@@ -22,6 +23,7 @@ import gunbc.stage0.seed_retention_frontier_emit { expected_seed_retention_front
 import gunbc.evaluation_budget_consequence_emit { expected_evaluation_budget_consequence_generated_rs }
 import gunbc.release_locus_seed_constants_emit { expected_release_locus_seed_constants_generated_rs }
 import gunbc.native_route_seed_boundary_emit { expected_native_route_seed_boundary_generated_rs }
+import gunbc.instruments.instrument_registry_emit { expected_instrument_registry_generated_rs, InstrumentRegistryGenerated, InstrumentRegistryGenerationRefused }
 import gunbc.v1.v1_interpreter_dispatch_emit {
   expected_v1_interpreter_dispatch_generated_rs, V1InterpreterDispatchGenerated, V1InterpreterDispatchGenerationRefused
 }
@@ -55,7 +57,8 @@ fn seed_build_artifacts() -> List<GeneratedArtifact> {
     EvaluationBudgetConsequenceGeneratedRsArtifact,
     ReleaseLocusSeedConstantsGeneratedRsArtifact,
     FileTransportRealizationGeneratedRsArtifact,
-    NativeRouteSeedBoundaryGeneratedRsArtifact
+    NativeRouteSeedBoundaryGeneratedRsArtifact,
+    InstrumentRegistryGeneratedRsArtifact
   ]
 }
 
@@ -79,6 +82,10 @@ fn seed_build_artifact_body(a: GeneratedArtifact) -> SeedBuildArtifactBody {
     }
     FileTransportRealizationGeneratedRsArtifact => SeedBuildArtifactProduced { content: expected_gunbc_file_transport_generated_rs() }
     NativeRouteSeedBoundaryGeneratedRsArtifact => SeedBuildArtifactProduced { content: expected_native_route_seed_boundary_generated_rs() }
+    InstrumentRegistryGeneratedRsArtifact => match expected_instrument_registry_generated_rs() {
+      InstrumentRegistryGenerated { content } => SeedBuildArtifactProduced { content: content }
+      InstrumentRegistryGenerationRefused { reason } => SeedBuildArtifactRefused { reason: reason }
+    }
     _ => SeedBuildArtifactNotSeedBuild
   }
 }
