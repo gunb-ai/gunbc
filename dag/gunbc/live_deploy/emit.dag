@@ -3025,7 +3025,7 @@ fn composed_artifact_upsert(
 // THIS IS THE PRODUCTION WRITER. `gunbc.host.host_axis_caps` authors the per-slot drop-in content and
 // THIS path applies it -- `gunbc converge` does not (operator privilege hold, 2026-08-13) -- so a
 // gate that lives only beside the authoring helpers leaves the reachable route intact. Until this
-// parameter existed the guard here checked author-before-shadow-revert composition and a nonempty
+// parameter existed the guard here checked author-before-shadow-residue-removal composition and a nonempty
 // unit list, neither of which is evidence that the surplus old slots have finished.
 //
 // THE DEFAULT IS WITHHELD AND THAT IS DELIBERATE. No caller yet supplies a live
@@ -3035,7 +3035,7 @@ fn composed_artifact_upsert(
 // default the previous shape did not have.
 //
 // IT REFUSES BOTH HALVES. The withheld arm emits neither the authoring script NOR the per-unit
-// shadow reverts that follow it, because a revert is a change to the same subject and authorising
+// shadow residue removals that follow it, because removing residue is a change to the same subject and authorising
 // half a transaction is how the ordering hazard returns under a different name.
 // THE WITHHELD LINE IS A REPORT, NOT A FAILURE: the same __GUNBC_CONVERGE_WITHHELD__ spelling the
 // fleet plan's slot teardown uses (gunbc.runner.runner_slot_provision slot_removal_withheld_line), so a
@@ -3088,8 +3088,8 @@ fn deploy_memory_cap_fragments(
       )
     CapAuthorizedForThisHost { desired: members, authorized_retiring: _, target_units: units } => {
       let script = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
-      let ordered = if host_axis_caps_author_before_revert_enforced
-        && deploy_memory_cap_script_author_precedes_shadow_revert(
+      let ordered = if host_axis_caps_author_before_shadow_residue_removal_enforced
+        && deploy_memory_cap_script_author_precedes_shadow_residue_removal(
           script: script,
           members: members,
           units: units,
