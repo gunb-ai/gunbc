@@ -2233,7 +2233,7 @@ fn qualified_key_module(key: &str) -> Result<&str, DeclFactsKeyedRefusal> {
 fn layout_pool_root(root: &str) -> Result<String, DeclFactsKeyedRefusal> {
     let rel = repo_rel(&workspace_root().join(root));
     let rel = rel.trim_end_matches('/').to_string();
-    let inside = ["dag", "src/v2"]
+    let inside = crate::cli_run::source_layout_lookup::LAYOUT_TREE_DIRECTORIES
         .iter()
         .any(|tree| rel == *tree || rel.starts_with(&format!("{tree}/")));
     if inside {
