@@ -11,7 +11,7 @@ import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog }
 import extdeps.boards.gigabyte { gigabyte_mp72_hb0_catalog }
 import gunbc.fleet.board_function_admission {
   BoardFunctionRemoval, NothingToRemove, RemovedAtBoard, RemovedByHostAfterBoot,
-  VerifiedByHostObservation, RemovalUnmodeled,
+  RemovalUnmodeled,
   HostBoardFunctionPlan,
   board_functions, board_function_listed, board_function_removal, fleet_board_function_plans,
 }
@@ -45,13 +45,6 @@ fn removed_at_board_by_setup_item(r: BoardFunctionRemoval, item: String) -> Bool
 fn removed_by_host_after_boot(r: BoardFunctionRemoval) -> Bool {
   match r {
     RemovedByHostAfterBoot { residue: _ } => true
-    _ => false
-  }
-}
-
-fn verified_by_host_observation(r: BoardFunctionRemoval) -> Bool {
-  match r {
-    VerifiedByHostObservation { discriminator: _ } => true
     _ => false
   }
 }
@@ -96,11 +89,12 @@ test fn bmc_graphics_is_removed_by_the_narrowest_stated_route() -> Bool {
     && removed_at_board_by_jumper(r: board_function_removal(catalog: supermicro_h11ssl_catalog, f: BmcGraphicsController), designator: "JPG1")
 }
 
-// Firmware-first handling: switched off in setup where the manual states the item, verified by
-// observation where it states none.
+// Firmware-first handling: switched off in setup where the manual states the item; where it states
+// none, unmodeled. The _OSC AER grant is not accepted as proof the handler is off: it shows who owns
+// the AER registers, a separate fact from whether firmware takes an error source first.
 test fn firmware_first_error_handling_is_not_admitted() -> Bool {
   removed_at_board_by_setup_item(r: board_function_removal(catalog: asrock_altrad8ud_1l2t_catalog, f: PcieErrorFirmwareFirstHandling), item: "PCIe AER Firmware First")
-    && verified_by_host_observation(r: board_function_removal(catalog: supermicro_h11ssl_catalog, f: PcieErrorFirmwareFirstHandling))
+    && removal_unmodeled(r: board_function_removal(catalog: supermicro_h11ssl_catalog, f: PcieErrorFirmwareFirstHandling))
 }
 
 // A board whose switches were never read refuses by name for every function it does not admit,

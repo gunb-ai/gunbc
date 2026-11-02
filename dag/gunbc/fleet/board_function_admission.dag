@@ -63,15 +63,16 @@ fn board_function_listed(f: BoardFunction) -> Bool {
 
 // HOW A FUNCTION THE FLEET DOES NOT ADMIT IS REMOVED ON ONE BOARD. RemovedAtBoard is the board's own
 // stated switch. Where the manual states none, the host side is what remains, and it is weaker in a
-// way the arm carries: a device the OS removes after boot was still brought up by the firmware first,
-// and a firmware behaviour the OS cannot switch off can only be verified by reading what the firmware
-// granted. Neither host-side arm is masking: removing a device removes its errors, and suppressing a
-// device's error reporting while it runs is DESIGN §5's concealment, which no arm here admits.
+// way the arm carries: a device the OS removes after boot was still brought up by the firmware first.
+// A firmware behaviour the board states no switch for, and the host cannot switch off, has no removal
+// here: it stays RemovalUnmodeled until a verification route grounded for that board and firmware
+// exists, rather than being certified by a reading of some neighbouring fact. The host-side arm is not
+// masking: removing a device removes its errors, and suppressing a device's error reporting while it
+// runs is DESIGN §5's concealment, which no arm here admits.
 type BoardFunctionRemoval
   = NothingToRemove { consumer: DeclarationRef }
   | RemovedAtBoard { switch: BoardFunctionSwitch }
   | RemovedByHostAfterBoot { residue: NonEmptyStr }
-  | VerifiedByHostObservation { discriminator: NonEmptyStr }
   | RemovalUnmodeled { cause: NonEmptyStr }
 
 // The dispatch among board products is the consuming layer's, never the extdeps hub's (DESIGN §3,
@@ -97,8 +98,8 @@ fn host_side_removal(f: BoardFunction) -> BoardFunctionRemoval {
     BmcGraphicsController => RemovedByHostAfterBoot {
       residue: "the firmware brings the controller's PCIe link up on every boot before the host removes the function and disables its root port's link, so the link is exposed until the OS acts",
     }
-    PcieErrorFirmwareFirstHandling => VerifiedByHostObservation {
-      discriminator: "the kernel's ACPI _OSC negotiation lists AER among the capabilities the OS now controls",
+    PcieErrorFirmwareFirstHandling => RemovalUnmodeled {
+      cause: "the board states no setup item for firmware-first PCIe error handling, and no host-side reading is grounded as proof that it is off: the ACPI _OSC grant establishes that the OS owns the AER registers, while whether firmware handles an error source first is a separate fact (the ACPI HEST FIRMWARE_FIRST flag, which the specification says neither grants nor denies AER register access)",
     }
   }
 }
@@ -150,6 +151,6 @@ data board_function_admission_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.fleet.board_function_admission", decl_name: "fleet_board_function_plans"),
     reason: "No converge route realizes the per-host board-function plans: the one host-side removal in service (srv1's BMC graphics link) was installed by hand, and setup-item switches are set by the operator with no readback.",
-    dissolution: unbound_dissolution(description: "A fleet converge route reads each host's board-function plan, applies its host-side removals at boot, and reads back both that every removed function is absent and the ACPI _OSC AER grant, refusing on drift."),
+    dissolution: unbound_dissolution(description: "A fleet converge route reads each host's board-function plan, applies its host-side removals at boot, and reads back that every removed function is absent, refusing on drift. A firmware behaviour removed in setup is read back by a route grounded for that board and firmware, never by the ACPI _OSC AER grant alone, which shows OS ownership of the AER registers and not the absence of a firmware-first handler."),
   ),
 ]
