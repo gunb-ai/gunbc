@@ -1,0 +1,69 @@
+module gunbc.roadmap.roadmap_session_attempt_slots_root
+
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+
+// THE SESSION ATTEMPT SLOT STORE'S ROOT (its consumer is gunbc.roadmap.roadmap_session_placement
+// SessionPlacementStores), kept in a leaf module for the reason the worktree claim root is
+// (gunbc.roadmap.roadmap_attempt_worktree_claim_root): the instance directory list must import the
+// declaration, and session placement sits above the belt, which the list's own importers reach.
+// THE ONE DECLARATION OF THE STORE: the member it lives under in the instance's dispatch attempt state root
+// and the mode its directory is created with. The store (session_attempt_slots_store) and the directory row
+// (session_attempt_slots_directory) both read it, so there is no second place a path or a mode is written.
+// Owner-only: a slot records which session holds which seat.
+type SessionAttemptSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data session_attempt_slots: SessionAttemptSlotsDeclaration = SessionAttemptSlotsDeclaration {
+  member: "session-attempts" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
+}
+
+fn session_attempt_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", session_attempt_slots.member as String], "") as NonEmptyStr
+}
+
+// THE SESSION SLOT STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as WorktreeClaimStore is: sole_constructor,
+// built in one place (session_attempt_slots_store), which takes the instance and no path: the root is derived
+// here from session_attempt_slots, and only a directory listed (Filesystem.List) yields a store. Session placement takes this type, so a SlotStore
+// minted for another declaration or from a bare root is not a session slot store; the root is a field of the SlotStore it holds and field reads are not
+// module-private, so a holder CAN read it (declared residual:
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
+// The mint takes no path, but the instance it takes is buildable over any root
+// (gunbc.roadmap.roadmap_dashboard_instance isolated_dashboard_instance), so a chosen path DOES reach this store
+// through it: route 3 of the same residual (test.claim.attempt_store_seal_witness
+// a_session_store_over_a_chosen_instance_root_is_accepted_today, expecting-red). Non-generic and never a variant arm (test.claim.sole_constructor_completeness_audit_probe
+// f13). NOT established, as for the claim store: that a store minted for instance A is refused where B is
+// required.
+type SessionAttemptSlotsStore sole_constructor {
+  instance: NonEmptyStr
+  slots: SlotStore
+}
+
+type SessionAttemptSlotsStoreReading
+  = SessionAttemptSlotsStoreReady { store: SessionAttemptSlotsStore }
+  | SessionAttemptSlotsStoreUnready { detail: String }
+
+fn session_attempt_slots_store(instance: HostDashboardInstance) -> SessionAttemptSlotsStoreReading {
+  match listed_slot_store(member: session_attempt_slots.member as String, root: session_attempt_slots_path(instance: instance)) {
+    SlotStoreRefused { detail: d } => SessionAttemptSlotsStoreUnready { detail: d }
+    SlotStoreListed { root: r } => SessionAttemptSlotsStoreReady { store: SessionAttemptSlotsStore { instance: instance.instance_id, slots: file_slot_store(root: r) } }
+  }
+}
+
+// THE SESSION SLOT ROOT IS A DEMANDED DIRECTORY, enrolled in the one instance directory list
+// (gunbc.roadmap.dashboard_instance_directories). It replaces the belt's own `install -d -m 0700` of the
+// same path (the second creator gunbc.recurring_failure_mode a_store_root_nothing_creates named as the
+// consolidation follow-up), so the list is its only creator. Its consumers are the belt alone (acquisition,
+// settlement, activation; the worker never writes it), so ownership is never adopted.
+fn session_attempt_slots_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: session_attempt_slots.member,
+    path: session_attempt_slots_path(instance: instance) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: session_attempt_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
