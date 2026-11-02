@@ -150,7 +150,7 @@ import extdeps.storage.types {
 }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
-import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliverySolution, BootDeliveryPlanned, BootDeliveryRefused, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliveryPlan, BootDeliverySolution, BootDeliveryPlanned, PxeChainBoot, BootDeliveryRefused, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, BiosX86, UefiX86_64, UefiArm64, HttpBootX86_64, HttpBootArm64 }
 import extdeps.os.ubuntu_kernel_nic_coverage { UbuntuKernelFlavour, r8169_claims_pci_device }
 import extdeps.pci.identity { PciDeviceId }
@@ -310,7 +310,7 @@ fn admit_provisioning_target(
 // THE SEED NEEDS BOTH ANSWERS WITHOUT ONE IMPLYING THE OTHER. Whether the BMC serves a serial-over-LAN
 // console is a property of the BMC firmware family (extdeps.bmc.endpoint's closed set — reused, not
 // restated). Whether the image arrives by PXE, HTTP boot, or BMC virtual media is a property of delivery,
-// which the S0 seam decides and hands over. Collapsing them would let a strategy name change what the
+// which the BootDeliveryPlan solved by gunbc.boot_artifact_delivery carries. Collapsing them would let a strategy name change what the
 // seed promises about its console, which is the per-host branching this program forbids.
 // THE DELIVERY AXIS IS THE ROUTE AUTHORITY'S OWN VOCABULARY: gunbc.boot_artifact_delivery BootControlTarget says how
 // the board is told to boot, and the observed DHCP client architecture (extdeps.provisioning.dhcp_client_arch) says what
@@ -2394,7 +2394,6 @@ fn build_ubuntu_autoinstall_seed(
   // admitted BootDeliveryPlan; a refused solution yields no seed, so a caller cannot name removable media beside a
   // plan that selected PXE.
   solution: BootDeliverySolution,
-  client_arch: DhcpProcessorArchitecture?,
   keyboard: CeremonialKeyboardLayout,
 ) -> Optional<UbuntuAutoinstallSeed> {
   match solution {
@@ -2404,8 +2403,18 @@ fn build_ubuntu_autoinstall_seed(
         target: target, network: network, install_drivers: install_drivers, loadable_modules: loadable_modules,
         late_drivers: late_drivers, install_packages: install_packages, late_packages: late_packages, disk: disk,
         entry: entry, credential: credential, password_read: password_read, locale: locale,
-        delivery: planned.boot_control, client_arch: client_arch, keyboard: keyboard,
+        delivery: planned.boot_control, client_arch: plan_observed_client_arch(plan: planned), keyboard: keyboard,
       )
+  }
+}
+
+// THE CLIENT ARCHITECTURE IS THE PLAN'S, NOT A SECOND INPUT. The firmware that answered DHCP is read from the
+// solved plan's own PxeChainBoot evidence; a plan that carries no such observation (virtual media, HTTP boot)
+// yields none, and the seed's PXE audit then refuses rather than choosing a console stanza.
+fn plan_observed_client_arch(plan: BootDeliveryPlan) -> DhcpProcessorArchitecture? {
+  match plan.delivery {
+    PxeChainBoot { evidence: e } => Present { value: e.client.client.arch }
+    _ => none
   }
 }
 

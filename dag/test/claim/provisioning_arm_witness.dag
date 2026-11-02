@@ -1,6 +1,7 @@
 module test.claim.provisioning_arm_witness
 
 import gunbc.boot_artifact_delivery { BootDeliverySolution }
+import test.claim.machine_intake.boot_artifact_delivery_witness { solver_emitted_pxe_solution, solver_emitted_media_solution }
 import test.fixture.boot_delivery_plans { pxe_solution, refused_solution, removable_media_solution }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
@@ -444,4 +445,15 @@ test fn a_solution_that_planned_nothing_refuses_the_arm_whatever_the_evidence() 
     ArmRefused { cause: BootDeliveryNotPlanned { cause: _ } } => true
     _ => false
   }
+}
+
+// INHABITANCE: the solutions the REAL solver emits (not the supplied fixtures) drive the arm, and the arm
+// follows the plan's route: a solved PXE plan yields the PXE arm, a solved media plan the media arm. The
+// shapes also equal those derived from the supplied fixtures, so the fixtures inhabit the interface.
+test fn the_solvers_emitted_plans_drive_the_arm_by_their_route() -> Bool {
+  let p = derive(solution: solver_emitted_pxe_solution(), evidence: full_evidence(), unit: "unit-alpha")
+  let v = derive(solution: solver_emitted_media_solution(), evidence: full_evidence(), unit: "unit-alpha")
+  p == derive(solution: pxe_solution, evidence: full_evidence(), unit: "unit-alpha")
+    && v == derive(solution: removable_media_solution, evidence: full_evidence(), unit: "unit-alpha")
+    && p != v
 }

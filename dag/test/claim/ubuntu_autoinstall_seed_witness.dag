@@ -1191,7 +1191,7 @@ test fn the_h11ssl_amd64_seed_renders_from_its_rows() -> Bool {
             credential: PasswordUnset,
             password_read: password_read_for(credential: PasswordUnset),
             locale: EnUsUtf8,
-            solution: removable_media_solution, client_arch: none,
+            solution: removable_media_solution,
             keyboard: UsLayout,
           ) {
             Absent => false
@@ -2320,8 +2320,7 @@ fn build_seed_fixture_with_modules(
         credential: credential,
         password_read: password_read_for(credential: credential),
         locale: EnUsUtf8,
-        solution: solution_selecting_control(control: delivery),
-        client_arch: client_arch,
+        solution: solution_selecting_control(control: delivery, client_arch: client_arch),
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -2365,8 +2364,7 @@ fn build_seed_fixture_under_rule(
         credential: credential,
         password_read: password_read_for(credential: credential),
         locale: EnUsUtf8,
-        solution: solution_selecting_control(control: delivery),
-        client_arch: client_arch,
+        solution: solution_selecting_control(control: delivery, client_arch: client_arch),
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -2420,7 +2418,7 @@ fn build_seed_fixture_with_read(
         credential: credential,
         password_read: read,
         locale: EnUsUtf8,
-        solution: removable_media_solution, client_arch: none,
+        solution: removable_media_solution,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -4188,7 +4186,7 @@ fn build_seed_with_late(late: List<PackageIntent>) -> Optional<UbuntuAutoinstall
         credential: seeded_handle,
         password_read: password_read_for(credential: seeded_handle),
         locale: EnUsUtf8,
-        solution: removable_media_solution, client_arch: none,
+        solution: removable_media_solution,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -6041,7 +6039,6 @@ fn build_seed_for_solution(solution: BootDeliverySolution) -> Optional<UbuntuAut
         password_read: password_read_for(credential: seeded_handle),
         locale: EnUsUtf8,
         solution: solution,
-        client_arch: Present { value: UefiArm64 },
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -6066,5 +6063,20 @@ test fn the_seed_route_is_the_selected_plans_control_target() -> Bool {
         BootFromRemovableMedia => False
         BootFromUefiHttp => False
       }
+  }
+}
+
+// RED: the seed's client architecture is the one the plan observed; there is no caller input to contradict it.
+// A BIOS-observing PXE plan yields a seed carrying BiosX86 (console suppressed), a UEFI-observing one UefiArm64.
+test fn the_seed_client_arch_is_the_plans_observation() -> Bool {
+  let bios = build_seed_for_solution(solution: solution_selecting_control(control: BootFromNetworkPxe, client_arch: Present { value: BiosX86 }))
+  let uefi = build_seed_for_solution(solution: pxe_solution)
+  match bios {
+    Present { value: b } =>
+      match uefi {
+        Present { value: u } => b.client_arch == Present { value: BiosX86 } && u.client_arch == Present { value: UefiArm64 }
+        Absent => false
+      }
+    Absent => false
   }
 }
