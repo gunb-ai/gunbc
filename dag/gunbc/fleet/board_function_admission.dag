@@ -51,17 +51,19 @@ fn board_function_admission(host: HostIdentity, f: BoardFunction) -> BoardFuncti
   }
 }
 
-fn port_shared_with_bmc(row: OnboardEthernetPortRow) -> Bool {
-  match row.bmc_sharing {
-    BmcSharingStated => true
-    BmcSharingNotStated => false
+// AN ETHERNET PORT HAS TWO POSSIBLE CONSUMERS: the host's primary network, and the BMC, which may
+// reach the network through a port it shares. The port is admitted when the host's primary NIC is
+// bound to it. Otherwise it stays unread: a manual that marks the port shared names the BMC as a
+// consumer, and a manual that is silent about sharing establishes nothing about the BMC, so neither
+// licenses switching the port off on the host's account. What would is a read of which port the BMC
+// reaches the network through.
+fn bmc_dependency_obligation(port: OnboardEthernetPortRow) -> NonEmptyStr {
+  match port.bmc_sharing {
+    BmcSharingStated => concat("the manual marks ", concat(port.designator as String, " as shared with the BMC, and which port the BMC reaches the network through is not read")) as NonEmptyStr
+    BmcSharingNotStated => concat("the manual is silent on whether the BMC shares ", concat(port.designator as String, ", and which port the BMC reaches the network through is not read, so the BMC's dependency on it is unresolved")) as NonEmptyStr
   }
 }
 
-// AN ETHERNET PORT'S CONSUMER IS THE HOST'S PRIMARY NETWORK. The port is admitted when the host's
-// primary NIC is bound to it; when the NIC is bound to another port, this one is not admitted unless
-// its manual marks it shared with the BMC, whose reach through it has not been read. Every other case
-// is unread.
 fn onboard_port_admission(host: HostIdentity, port: OnboardEthernetPortRow) -> BoardFunctionAdmission {
   let designator = port.designator
   let primary_nics = map(filter(host_primary_network_rows, d => host_identity_eq(a: d.host, b: host)), d => d.nic)
@@ -75,11 +77,7 @@ fn onboard_port_admission(host: HostIdentity, port: OnboardEthernetPortRow) -> B
       if any(bound, b => b.port == port) {
         FunctionAdmitted { consumer: decl_ref(module_path: "gunbc.host.host_primary_network_desired", decl_name: "host_primary_network_rows") }
       } else {
-        if port_shared_with_bmc(row: port) {
-          AdmissionUnread { obligation: concat("the manual marks ", concat(designator as String, " as shared with the BMC, and which port the BMC reaches the network through is not read")) as NonEmptyStr }
-        } else {
-          FunctionNotAdmitted { reason: concat("the host's primary network runs on another port, and no other fleet consumer uses ", designator as String) as NonEmptyStr }
-        }
+        AdmissionUnread { obligation: bmc_dependency_obligation(port: port) }
       }
     }
   }
@@ -140,8 +138,8 @@ fn host_side_removal(f: BoardFunction) -> BoardFunctionRemoval {
     BmcGraphicsController => RemovedByHostAfterBoot {
       residue: "the firmware brings the controller's PCIe link up on every boot before the host removes the function and disables its root port's link, so the link is exposed until the OS acts",
     }
-    OnboardEthernetPort { port: _ } => RemovedByHostAfterBoot {
-      residue: "the firmware brings the port's controller up on every boot; the host identifies the port's PCI function by reading it and removes that function, so the controller stays powered and its link is exposed until the OS acts. Where one controller carries two ports, disabling its root port's link would take both, so it is not used for one",
+    OnboardEthernetPort { port: _ } => RemovalUnmodeled {
+      cause: "no host-side route isolates one Ethernet port: removing its PCI function detaches it from the kernel and its driver without powering the controller off or taking its link down, and where one controller carries two ports their root port's link is shared, so disabling it cannot remove one",
     }
     PcieErrorFirmwareFirstHandling => RemovalUnmodeled {
       cause: "the board states no setup item for firmware-first PCIe error handling, and no host-side reading is grounded as proof that it is off: the ACPI _OSC grant establishes that the OS owns the AER registers, while whether firmware handles an error source first is a separate fact (the ACPI HEST FIRMWARE_FIRST flag, which the specification says neither grants nor denies AER register access)",

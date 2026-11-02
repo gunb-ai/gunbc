@@ -118,13 +118,15 @@ test fn an_unread_board_refuses() -> Bool {
 }
 
 // ETHERNET PORTS ARE ADMITTED PER HOST, BY THE HOST'S PRIMARY NETWORK. srv1's network is on its
-// I210 (LAN3), so LAN3 is kept for host_primary_network_rows and LAN2 is removed by the host; LAN1 is
-// the board's shared NIC, so it waits on a read of the BMC's port rather than being removed on the
-// host's account. srv4 has no primary-network row, so none of its ports may be removed: a plan that
-// removed srv4's X550 by the board-wide default could take the port its network runs on.
+// I210 (LAN3), so LAN3 is kept for host_primary_network_rows. LAN1 is the board's shared NIC and LAN2's
+// sharing is unstated, so both wait on a read of the BMC's port: the manual's silence about LAN2 is not
+// evidence that the BMC does not use it. srv4 has no primary-network row, so none of its ports may be
+// removed: a plan that removed srv4's X550 by a board-wide default could take the port its network
+// runs on.
 test fn ethernet_ports_follow_the_host_primary_network() -> Bool {
   kept_for(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan3)), module_path: "gunbc.host.host_primary_network_desired", decl_name: "host_primary_network_rows")
-    && removed_by_host_after_boot(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan2)))
+    && removal_unmodeled(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan2)))
+    && !removed_by_host_after_boot(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan2)))
     && removal_unmodeled(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan1)))
     && removal_unmodeled(r: board_function_removal(host: operator_host_srv4, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan2)))
     && removal_unmodeled(r: board_function_removal(host: operator_host_6ce85c, catalog: supermicro_h11ssl_catalog, f: port(p: supermicro_h11ssl_lan1)))
