@@ -1,0 +1,64 @@
+module test.claim.projection_factor_ladder_witness
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE FACTOR AT A TIME TOWARD generated_provider_unavailable_diagnostics (heal run 41354242261). The minimal
+// same-module projection passed on srv2 (nested_field_projection_through_generic_field_witness), so that claim
+// does not discriminate. Each rung below adds exactly one factor of the real site; the first red rung names it.
+// Rung order: variant payload -> concat element -> nested flat_map over the inner sequence -> all three together.
+
+fn rung_variant_payload_projection_emits_without_error_cascade() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_ladder_variant_payload_projection\n\ntype ProbeSeq<T> {\n  head: T\n  tail: List<T>\n}\n\ntype ProbeSite {\n  line: Int\n}\n\ntype ProbeDemand {\n  tag: Int\n  sites: ProbeSeq<ProbeSite>\n}\n\ntype ProbeRefusal {\n  demand: ProbeDemand\n  cause: Int\n}\n\ntype ProbeStep\n  = ProbeDone\n  | ProbeRefused { refusals: ProbeSeq<ProbeRefusal> }\n\nfn probe_f1(s: ProbeStep) -> Int {\n  match s {\n    ProbeRefused { refusals: rs } => rs.head.demand.tag\n    ProbeDone => 0\n  }\n}\n",
+    "src/probe_ladder_variant_payload_projection.rs",
+    ["pub fn probe_f"],
+    ["error type cascade", "compile_error"]
+  )
+}
+
+test fn rung_variant_payload_projection() -> Bool {
+  rung_variant_payload_projection_emits_without_error_cascade()
+}
+
+fn rung_concat_element_projection_emits_without_error_cascade() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_ladder_concat_element_projection\n\ntype ProbeSeq<T> {\n  head: T\n  tail: List<T>\n}\n\ntype ProbeSite {\n  line: Int\n}\n\ntype ProbeDemand {\n  tag: Int\n  sites: ProbeSeq<ProbeSite>\n}\n\ntype ProbeRefusal {\n  demand: ProbeDemand\n  cause: Int\n}\n\ntype ProbeStep\n  = ProbeDone\n  | ProbeRefused { refusals: ProbeSeq<ProbeRefusal> }\n\nfn probe_f2(rs: ProbeSeq<ProbeRefusal>) -> List<Int> {\n  ([rs.head] |> concat(rs.tail)) |> map(r => r.demand.tag)\n}\n",
+    "src/probe_ladder_concat_element_projection.rs",
+    ["pub fn probe_f"],
+    ["error type cascade", "compile_error"]
+  )
+}
+
+test fn rung_concat_element_projection() -> Bool {
+  rung_concat_element_projection_emits_without_error_cascade()
+}
+
+fn rung_flat_map_nested_sites_emits_without_error_cascade() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_ladder_flat_map_nested_sites\n\ntype ProbeSeq<T> {\n  head: T\n  tail: List<T>\n}\n\ntype ProbeSite {\n  line: Int\n}\n\ntype ProbeDemand {\n  tag: Int\n  sites: ProbeSeq<ProbeSite>\n}\n\ntype ProbeRefusal {\n  demand: ProbeDemand\n  cause: Int\n}\n\ntype ProbeStep\n  = ProbeDone\n  | ProbeRefused { refusals: ProbeSeq<ProbeRefusal> }\n\nfn probe_f3(rs: ProbeSeq<ProbeRefusal>) -> List<Int> {\n  ([rs.head] |> concat(rs.tail)) |> flat_map(r =>\n    ([r.demand.sites.head] |> concat(r.demand.sites.tail)) |> map(site => site.line + r.cause)\n  )\n}\n",
+    "src/probe_ladder_flat_map_nested_sites.rs",
+    ["pub fn probe_f"],
+    ["error type cascade", "compile_error"]
+  )
+}
+
+test fn rung_flat_map_nested_sites() -> Bool {
+  rung_flat_map_nested_sites_emits_without_error_cascade()
+}
+
+fn rung_full_shape_over_variant_emits_without_error_cascade() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_ladder_full_shape_over_variant\n\ntype ProbeSeq<T> {\n  head: T\n  tail: List<T>\n}\n\ntype ProbeSite {\n  line: Int\n}\n\ntype ProbeDemand {\n  tag: Int\n  sites: ProbeSeq<ProbeSite>\n}\n\ntype ProbeRefusal {\n  demand: ProbeDemand\n  cause: Int\n}\n\ntype ProbeStep\n  = ProbeDone\n  | ProbeRefused { refusals: ProbeSeq<ProbeRefusal> }\n\nfn probe_f4(s: ProbeStep) -> List<Int> {\n  match s {\n    ProbeRefused { refusals: rs } =>\n      ([rs.head] |> concat(rs.tail)) |> flat_map(r =>\n        ([r.demand.sites.head] |> concat(r.demand.sites.tail)) |> map(site => site.line + r.cause + r.demand.tag)\n      )\n    ProbeDone => []\n  }\n}\n",
+    "src/probe_ladder_full_shape_over_variant.rs",
+    ["pub fn probe_f"],
+    ["error type cascade", "compile_error"]
+  )
+}
+
+test fn rung_full_shape_over_variant() -> Bool {
+  rung_full_shape_over_variant_emits_without_error_cascade()
+}
+
