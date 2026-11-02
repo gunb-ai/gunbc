@@ -5,8 +5,9 @@ import std.optional { Absent, Present }
 import std.measure { rpm_count }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import extdeps.bmc.ipmi_sdr {
-  SdrVerboseReadout,
-  SdrRowAdmittedDiscrete, SdrRowRefusal, SdrRowRefused, sdr_blank_ok_row_judgement,
+  SdrVerboseReadout, SdrVerboseRecord, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseUnreadable,
+  SdrBlockThreshold, SdrBlockNotThreshold, SdrBlockUntyped, sdr_verbose_block_typing,
+  sdr_row_cells, SdrRowCells,
   SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrEmptyReadingRow, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
 import gunbc.machine_intake.bmc_fan_observation { ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorObservation, FanSensorsRead, FanSensorsUnreadable, fan_failure_sensor_name }
@@ -173,6 +174,116 @@ fn first_failure_sensor_refusal(lines: List<SdrTypeLine>, failure_rows: List<Sdr
     }
   }
 }
+
+// THE RECORDS A ROUND MAY TYPE AGAINST, OR NONE. Every state that has no records - the read was never
+// issued, it was issued and failed, it was issued and parsed to nothing - answers the same question here
+// ("is there anything to type against"), and THAT question is the only place they may be collapsed: the
+// refusal that uses it carries the readout itself, so the distinction survives into the verdict rather
+// than being lost here.
+fn sdr_typing_records(typing: SdrVerboseReadout?) -> List<SdrVerboseRecord> {
+  match typing {
+    Absent => []
+    Present { value: t } => match t {
+      SdrVerboseRead { records: recs } => recs
+      SdrVerboseEmptyRepository => []
+      SdrVerboseUnreadable => []
+    }
+  }
+}
+
+// WHY A BLANK CELL IS NOT AN UNDECODABLE ROW, AND WHAT IT TAKES TO SAY SO.
+//
+// The row's reading cell has three print paths in ipmitool (lib/ipmi_sdr.c at be11d948): a discrete
+// sensor prints its ASSERTED state strings via ipmi_sdr_print_discrete_state_mini (:1858-1866),
+// then "Disabled" (:1869), then "No Reading" (:1872). With no state asserted the discrete path
+// prints NOTHING, which is what the committed capture of srv1 shows: the rows this rule was written
+// for carry an empty cell after the last pipe, while the sensors that genuinely have no reading
+// print the literal "No Reading". A blank cell therefore means "status ok, nothing asserted" - the
+// reading is absent BY DESIGN - and refusing it as undecodable was refusing a healthy sensor.
+//
+// That is the mechanism, not an authority: it is read off the tool's print path and corroborated by
+// committed bytes. The authority this judgement rests on is the label test above (ipmi_sdr.h:427 at
+// be11d948), and NOTHING here reads the sensor number, the sensor type NAME (the committed capture
+// types EndOfPost as 'Sensor Type (Discrete): Unknown (0xd0)', an OEM code, so a name-keyed rule
+// would refuse a healthy row), or the row's position. A row is admitted only when a record in the
+// repository carries it: no record, no admission.
+type SdrRowRefusal
+  = SdrRowRefusedNotAnElistRow { row: String }
+  | SdrRowRefusedCarriesReading { row: String }
+  | SdrRowRefusedStatusNotOk { row: String }
+  | SdrRowRefusedTypingUnread { row: String, readout: SdrVerboseReadout? }
+  | SdrRowRefusedNoRecordNamed { row: String }
+  | SdrRowRefusedNameAmbiguous { row: String }
+  | SdrRowRefusedThresholdTyped { row: String }
+  | SdrRowRefusedUnlabelledRecord { row: String }
+
+type SdrUndecodedRowJudgement
+  = SdrRowAdmittedDiscrete { row: String }
+  | SdrRowRefused { refusal: SdrRowRefusal }
+
+// WHY a row stayed refused is a RULING, not a sentence. Each cause is its own variant carrying the row
+// it refused, so a caller can match on the reason and a witness can pin each one separately (DESIGN.md
+// §4c: a ruling belongs in a typed carrier; §5: refusals are typed and located). One variant with a
+// String field chosen from eight hard-coded sentences is a sum type the code never declared, and the
+// difference matters: the variants can be matched, counted and tested, and a typo in one is a
+// compile error rather than a string nobody compares against.
+//
+// SdrRowRefusedTypingUnread is a cause of its own because "this round had no repository to type
+// against" is a materially different fact from "a record named this row and refused it" - the first
+// says the read never happened, the second says the sensor is not a not-threshold one - and the two
+// must not leave the same text behind (§3: one name, two meanings). It carries the round's readout so
+// the verdict says WHICH of the three it was: never issued (Absent), issued and failed
+// (SdrVerboseUnreadable), or issued and parsed to nothing (SdrVerboseEmptyRepository).
+//
+// Refusal is NESTED under SdrRowRefused rather than flattened into the judgement sum so that a list of
+// refusals cannot contain an admitted row: the consumer that carries such a list
+// (gunbc.machine_intake.chassis_fan_establishment PostPowerThermalRowsUndecoded) then has no arm to
+// write for a case that cannot occur, which is what an honest sum is for.
+fn sdr_blank_ok_row_judgement(text: String, typing: SdrVerboseReadout?) -> SdrUndecodedRowJudgement {
+  match sdr_row_cells(text: text) {
+    Absent => SdrRowRefused { refusal: SdrRowRefusedNotAnElistRow { row: text } }
+    Present { value: cells } => match cells.reading_text {
+      Present { value: _ } => SdrRowRefused { refusal: SdrRowRefusedCarriesReading { row: text } }
+      Absent => if cells.status != "ok" {
+        SdrRowRefused { refusal: SdrRowRefusedStatusNotOk { row: text } }
+      } else {
+        let blocks = sdr_typing_records(typing: typing)
+        // A name shared by two records is refused: which sensor typed the row would be a guess, and a
+        // guess here admits a reading nobody read. Below that, the record's OWN typing decides - matched
+        // straight off SdrBlockTyping, because a Bool per variant would be a second representation of the
+        // distinction the type already carries (§5).
+        let named = flat_map(blocks, b => if b.name == cells.name { [b] } else { [] })
+        let not_threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockNotThreshold => [b] SdrBlockThreshold => [] SdrBlockUntyped => [] })
+        let threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockThreshold => [b] SdrBlockNotThreshold => [] SdrBlockUntyped => [] })
+        if blocks.length() == 0 {
+          // Nothing to type against, for one of the three reasons the readout distinguishes.
+          SdrRowRefused { refusal: SdrRowRefusedTypingUnread { row: text, readout: typing } }
+        } else if named.length() == 0 {
+          SdrRowRefused { refusal: SdrRowRefusedNoRecordNamed { row: text } }
+        } else if named.length() > 1 {
+          SdrRowRefused { refusal: SdrRowRefusedNameAmbiguous { row: text } }
+        } else if not_threshold.length() == 1 {
+          SdrRowAdmittedDiscrete { row: text }
+        } else if threshold.length() == 1 {
+          SdrRowRefused { refusal: SdrRowRefusedThresholdTyped { row: text } }
+        } else {
+          // Not threshold, not not-threshold: the record printed neither label, so its event/reading type
+          // is unknown, and an unknown type is not a permission to admit.
+          SdrRowRefused { refusal: SdrRowRefusedUnlabelledRecord { row: text } }
+        }
+      }
+    }
+  }
+}
+
+// THE BLANK-READING ADMISSION RULE -- CONSUMER POLICY, THEREFORE HERE, NOT IN extdeps.
+//
+// DESIGN.md 3b: product policy and the observations this repository makes belong to the consuming
+// layer, never to extdeps. What extdeps.bmc.ipmi_sdr keeps is ipmitool's OWN facts only: the block
+// parser (sdr_block_open, sdr_verbose_group), the printed-label typing (SdrBlockTyping,
+// sdr_verbose_block_typing, cited to ipmi_sdr.h:427 at be11d948) and the elist cell split. Which blank
+// 'ok' cell this product may admit, grounded on the capture THIS repository took of srv1, is a ruling
+// about our machines and lives beside its only consumer, thermal_refusal (review 90055).
 
 // THE TYPING THE GATE MAY READ, OR NOTHING. Absent (the round never read the repository), a read that
 // FAILED, and a repository that parsed to ZERO records all yield no records: an empty repository is not
