@@ -82,7 +82,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var,
   bash_build_word_concat_from_nodes,
-  bash_build_word_cmdsubst,
   bash_build_command_with_words,
   bash_build_assign,
   bash_build_assign_lit,
@@ -484,7 +483,7 @@ fn capture_compile_exit_code(roots: List<String>, overlay: OverlayIngest, annota
       redir: ^bash_production_fold_redir_stderr_to_stdout
     ),
     then_body: statements_of(stmts: [bash_build_assign_lit(name: "code", text: "0")]),
-    else_body: statements_of(stmts: [bash_build_assign(name: "code", value: bash_build_word_cmdsubst(body: bash_build_word_lit(text: "?")))])
+    else_body: statements_of(stmts: [bash_build_assign(name: "code", value: bash_build_word_var(name: "?"))])
   )
 }
 
@@ -543,7 +542,7 @@ fn read_refusals_or_refuse(annotation: AnnotationStep) -> Node {
       bash_build_exit(code: "1")
     ]),
     else_body: statements_of(stmts: [
-      bash_build_assign(name: "reader", value: bash_build_word_cmdsubst(body: bash_build_word_lit(text: "?"))),
+      bash_build_assign(name: "reader", value: bash_build_word_var(name: "?")),
       bash_build_if(
         cond: bash_build_negation(
           inner: bash_build_test_bracket(words: [

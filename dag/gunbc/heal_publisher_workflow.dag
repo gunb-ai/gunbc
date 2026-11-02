@@ -42,7 +42,7 @@ import gunbc.ci.repository_ci_profile {
 }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.heal_workflow {
-  heal_job_holds_publication_credential, step_uses_action, job_permissions_carry_write
+  heal_job_holds_publication_credential, step_uses_action
 }
 import gunbc.heal_publication_boundary {
   heal_repair_candidate_artifact_name, heal_repair_candidate_blob_file_prefix,
@@ -215,8 +215,33 @@ fn heal_publisher_gated(step_name: String, run: String, env: List<YamlKeyValue>?
   }
 }
 
-fn heal_publisher_candidate_directory_env_row() -> YamlKeyValue {
-  kv(key: heal_publication_candidate_directory_env as String, value: yaml_string(s: heal_publisher_candidate_directory))
+// THE CANDIDATE DIRECTORY IS ONE NAME WITH TWO RENDERINGS, because its consumers resolve differently and
+// getting this wrong is silent. The download step and the `hashFiles` gate run at the job workspace and stay
+// RELATIVE there - an absolute path makes `hashFiles` match nothing, which would quietly retire the gate.
+// A COMPOSED phase step is different: it cds into the composed root under `runner.temp` before it runs, so a
+// relative value would resolve inside the composed tree, where the downloaded candidate has never been - the
+// phases would report "no candidates" for a candidate sitting in the workspace, the same quiet-green shape
+// as a lost artifact. So the composed route carries the SAME directory anchored to the workspace, which
+// resolves identically from wherever its shell stands; the own route keeps the workspace-relative spelling
+// because it never leaves the workspace, and both name one constant.
+fn heal_publisher_candidate_directory_absolute() -> String {
+  join(["${{ github.workspace }}/", heal_publisher_candidate_directory], "")
+}
+
+fn heal_publisher_candidate_is_composed(composed: Optional<HealPublisherComposedRoot>) -> Bool {
+  match composed {
+    Present { value: _ } => true,
+    Absent { } => false
+  }
+}
+
+fn heal_publisher_candidate_directory_env_row(composed: Bool) -> YamlKeyValue {
+  let spelling = if composed {
+    heal_publisher_candidate_directory_absolute()
+  } else {
+    heal_publisher_candidate_directory
+  }
+  kv(key: heal_publication_candidate_directory_env as String, value: yaml_string(s: spelling))
 }
 
 // THE CREDENTIAL-FREE GATE. It reads the event, the candidate and the forge with the job's own
@@ -238,7 +263,7 @@ fn heal_publisher_admit_step(profile: RepositoryCiProfile, job: HealPublisherPol
           run: script,
           env: Present {
             value: [
-              heal_publisher_candidate_directory_env_row(),
+              heal_publisher_candidate_directory_env_row(composed: heal_publisher_candidate_is_composed(composed: composed)),
               kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))
             ]
           },
@@ -344,7 +369,7 @@ fn heal_publisher_publish_step(profile: RepositoryCiProfile, job: HealPublisherP
           run: script,
           env: Present {
             value: [
-              heal_publisher_candidate_directory_env_row(),
+              heal_publisher_candidate_directory_env_row(composed: heal_publisher_candidate_is_composed(composed: composed)),
               kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
               kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", heal_publisher_wif_step_id, ".outputs.access_token }}"], "")))
             ]

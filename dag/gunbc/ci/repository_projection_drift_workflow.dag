@@ -32,6 +32,7 @@ import extdeps.github.actions {
 }
 import gunbc.action_use_admission { upload_artifact_action }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
+import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.ci.repository_ci_profile {
   DagInvocation,
   HealSeal,
@@ -279,11 +280,11 @@ fn projection_drift_steps(
             uses: upload_artifact_action,
             with: Present {
               value: [
-                kv(key: "name", value: yaml_string(s: seal.candidate_artifact as String)),
+                kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name)),
                 kv(
                   key: "path",
                   value: yaml_string(
-                    s: join(["${{ runner.temp }}/", seal.compose_dir_name as String, "/target/", seal.candidate_artifact as String, "/"], "")
+                    s: join(["${{ runner.temp }}/", seal.compose_dir_name as String, "/target/", heal_repair_candidate_artifact_name, "/"], "")
                   )
                 ),
                 kv(key: "if-no-files-found", value: yaml_string(s: "error"))

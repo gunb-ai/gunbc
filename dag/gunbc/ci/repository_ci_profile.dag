@@ -5,7 +5,6 @@ import std.measure { ByteSize, Minute, minute, minute_count }
 import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
-import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.ci.ci_spec {
   gunbc_ci_tier_o_drift_check_target,
   gunbc_ci_heal_publication_admit_target,
@@ -200,7 +199,6 @@ type HealSeal {
   head_tree_dir_name: NonEmptyStr
   head_link_name: NonEmptyStr
   compose_dir_name: NonEmptyStr
-  candidate_artifact: NonEmptyStr
   banner: NonEmptyStr
 }
 
@@ -224,7 +222,6 @@ type HealPublisherPolicy {
   runner: CiRunnerTarget
   timeout: Minute
   trigger_workflow: NonEmptyStr
-  candidate_artifact: NonEmptyStr
   admit_invocation: DagInvocation
   publish_invocation: DagInvocation
   federation: HealPublisherFederation
@@ -324,7 +321,6 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         runner: github_hosted_publisher_runner_target(),
         timeout: minute(45),
         trigger_workflow: heal_workflow_authority_name,
-        candidate_artifact: heal_repair_candidate_artifact_name,
         // The two subjects, taken from the targets ci_spec declares for them, which is where the
         // declared-target census folds them. The emitter no longer names either one.
         admit_invocation: DagInvocation {
@@ -526,6 +522,11 @@ fn profile_routes_to_dispatcher_while_building_a_second_compiler(profile: Reposi
 // A PROFILE IS WELL FORMED when its halves agree and no job pins itself to a pool nothing ensures.
 // Called by every emitter before it renders a byte, so a mis-shapen row is a refusal at emit time rather
 // than a workflow that fails on a runner that was never created, or a seal no publisher will ever read.
+//
+// THE ORDER IS PART OF THE DIAGNOSTIC. The composition question - a row that composes an overlay must say
+// what it composes against - is asked BEFORE the build route, because a route is only interpretable once a
+// seed exists: asked the other way, a row missing its seed reports a route problem and sends an operator to
+// the wrong field.
 fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEmptyStr> {
   if profile_heal_is_whole(profile: profile) == false {
     Present { value: "REFUSE: this profile seals repair candidates without a publisher to land them, or publishes candidates that no job sealed. Declare both halves or neither (gunbc.ci.repository_ci_profile profile_heal_is_whole): a seal with no publisher is a candidate no one can land, and a publisher with no seal is a job that can only fail." }
@@ -533,10 +534,12 @@ fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEm
     Present { value: "REFUSE: a job pins itself to a runner group that gunbc.runner.runner_group_restriction_ensure does not declare. Ensure the group, or select another CiRunnerTarget (gunbc.ci.ci_runner_target FleetSelfHostedInDeclaredGroup)." }
   } else if profile_publisher_trigger_is_declared(profile: profile) == false {
     Present { value: "REFUSE: the publisher is triggered by the completion of a workflow this profile does not declare, so it can never run with anything to publish. Name the heal or drift workflow that seals the candidate (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared)." }
-  } else if profile_publisher_build_route_is_coherent(profile: profile) == false {
-    Present { value: "REFUSE: the publisher says it builds its compiler from the profile's public seed, and the profile declares no seed to build - a step that would check out nothing and compile nothing. Name the seed, or select Own_checkout_under_witness_floor and build from this checkout (gunbc.ci.repository_ci_profile profile_publisher_build_route_is_coherent)." }
   } else if profile_overlay_has_a_declared_seed(profile: profile) == false {
     Present { value: "REFUSE: this profile composes an overlay into a detached tree, and declares no public seed to check that tree out. The copy has nowhere to land, and a publisher over such a row would seal a candidate from one composition and admit it against another - the drift the publisher exists to prevent. Name the seed, or route the roster through the instrument dispatcher with no overlay (gunbc.ci.repository_ci_profile profile_overlay_has_a_declared_seed)." }
+  } else if profile_publisher_build_route_is_coherent(profile: profile) == false {
+    Present { value: "REFUSE: the publisher says it builds its compiler from the profile's public seed, and the profile declares no seed to build - a step that would check out nothing and compile nothing. Name the seed, or select Own_checkout_under_witness_floor and build from this checkout (gunbc.ci.repository_ci_profile profile_publisher_build_route_is_coherent)." }
+  } else if profile_publisher_build_route_composes_with_the_overlay(profile: profile) == false {
+    Present { value: "REFUSE: the publisher says it builds its compiler in its own checkout while the profile also composes an overlay, so the phases would `cd` into the composed root and run a compiler that was never built inside the composition the candidate was sealed from. Select Declared_seed so the compiler the phases run is the one the composition built (gunbc.ci.repository_ci_profile profile_publisher_build_route_composes_with_the_overlay)." }
   } else if profile_optional_job_timeouts_are_positive(profile: profile) == false {
     Present { value: "REFUSE: a declared job carries a timeout that is not positive, so it would be killed before it could report a reason. The gate's timeout is refused at zero; heal, drift and publisher timeouts are held to the same bound (gunbc.ci.repository_ci_profile profile_optional_job_timeouts_are_positive)." }
   } else if minute_count(m: profile.roster.timeout) == 0 {
@@ -595,12 +598,37 @@ fn profile_publisher_build_route_is_coherent(profile: RepositoryCiProfile) -> Bo
     Absent => true
     Present { value: p } =>
       match p.build_route {
+        // An own checkout builds its compiler in the job's own checkout, which is not under the composed
+        // root; a row that also composes an overlay has its phases cd into that root and run the compiler
+        // THERE, so the compiler the phases would run was never built inside the composition the candidate
+        // was sealed from. Refused, not rendered: this is the same drift, arriving from the other side.
         Own_checkout_under_witness_floor { required_bins: _ } => true
         Declared_seed =>
           match profile.public_seed {
             Present { value: _ } => true
             Absent => false
           }
+      }
+  }
+}
+
+// A ROUTE ALSO HAS TO AGREE WITH THE COMPOSITION. `heal_publisher_composed_root` resolves the tree the
+// phases run in from the row's seed and overlay, and the composed phase `cd`s into that root and runs the
+// compiler THERE. A publisher that says it builds its compiler in its own checkout while the row also
+// composes an overlay therefore has its phases run a compiler that was never built inside the composition
+// the candidate was sealed from - the same drift as a missing overlay arriving from the other side, and it
+// is refused rather than rendered, because nothing downstream could tell the two compositions apart.
+fn profile_publisher_build_route_composes_with_the_overlay(profile: RepositoryCiProfile) -> Bool {
+  match profile.publisher {
+    Absent => true
+    Present { value: p } =>
+      match p.build_route {
+        Own_checkout_under_witness_floor { required_bins: _ } =>
+          match profile_overlay(profile: profile) {
+            Absent => true
+            Present { value: _ } => false
+          }
+        Declared_seed => true
       }
   }
 }
@@ -767,7 +795,6 @@ fn profile_with_publisher_runner(profile: RepositoryCiProfile, runner: CiRunnerT
           runner: runner,
           timeout: job.timeout,
           trigger_workflow: job.trigger_workflow,
-          candidate_artifact: job.candidate_artifact,
           admit_invocation: job.admit_invocation,
           publish_invocation: job.publish_invocation,
           federation: job.federation,
@@ -803,7 +830,6 @@ fn profile_with_publisher_build_route(profile: RepositoryCiProfile, route: Publi
             runner: job.runner,
             timeout: job.timeout,
             trigger_workflow: job.trigger_workflow,
-            candidate_artifact: job.candidate_artifact,
             admit_invocation: job.admit_invocation,
             publish_invocation: job.publish_invocation,
             federation: job.federation,

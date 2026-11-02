@@ -1,13 +1,16 @@
 module test.claim.repository_ci_profile_witness
 
 import gunbc.heal_workflow { heal_workflow_yml_for, HealWorkflowGenerated, HealWorkflowGenerationRefused }
+import gunbc.heal_publication { heal_publication_candidate_directory_env }
+import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.heal_publisher_workflow {
   heal_publisher_workflow_yml_for, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused,
   heal_publisher_route_steps, heal_publisher_resolved_steps, heal_publisher_steps_refusal_reason,
-  HealPublisherBoundStep
+  heal_publisher_candidate_directory, HealPublisherBoundStep, HealPublisherPolicy, HealPublisherComposedRoot,
+  heal_publisher_download_step, heal_publisher_admit_step, heal_publisher_publish_step, heal_publisher_composed_root
 }
 import gunbc.ci.ci_materialization { step_display_name }
-import v2.std.diagnostic { diagnostics_reason_lexemes }
+import v2.std.diagnostic { diagnostics_reason_lexemes, Accepted, Rejected }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
 import gunbc.drift_watch_workflow { drift_watch_workflow_yml_for, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_yml_for }
@@ -32,7 +35,7 @@ import gunbc.ci.repository_ci_profile {
   profile_with_publisher_runner, profile_with_required_context,
 }
 import gunbc.auth.heal_publisher_federation { public_heal_publisher_federation }
-import extdeps.github.actions { PermWrite }
+import extdeps.github.actions { PermWrite, Step, RunStep, UsesStep }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
 import gunbc.witness.witness_roster {
@@ -241,6 +244,123 @@ test fn a_subject_is_invoked_through_its_own_roots_entry_and_function() -> Bool 
   }
 }
 
+// ── THE CANDIDATE'S IDENTITY IS ONE AUTHORITY ON BOTH SIDES OF THE HAND-OFF ────────────────────
+//
+// THE DRIFT JOB UPLOADS the artifact the publisher DOWNLOADS, and the two sides are emitted by two
+// different modules. While each carried its own row field they could disagree without any check noticing,
+// and a `download-artifact` whose pattern matches nothing is not an error: the publisher ran its phases over
+// an empty candidate directory and reported "no candidates" -- green, with nothing published. The field is
+// now DELETED from both rows and the name is one constant in gunbc.heal_publication_boundary that the seal
+// uploads under `name:` (actions/upload-artifact's selector) and the publisher downloads under `pattern:`
+// (actions/download-artifact's). The control reads both sides FROM THE CONSUMERS -- the download step's own
+// `with` entry and the emitted seal workflow -- so it is the rendering that is checked, not a helper.
+fn lookup_yaml_entry(entries: List<YamlKeyValue>, key: String) -> String {
+  fold(entries, init: "", f: fn(acc, entry) {
+    if entry.key == key {
+      match entry.value {
+        YamlString { value: text } => text
+        _ => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn step_with_entry(step: Step, key: String) -> String {
+  match step {
+    UsesStep { name: _, id: _, uses: _, with: rows, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match rows {
+        Present { value: entries } => lookup_yaml_entry(entries: entries, key: key)
+        Absent => ""
+      }
+    _ => ""
+  }
+}
+
+fn step_env_entry(step: Step, key: String) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: rows, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match rows {
+        Present { value: entries } => lookup_yaml_entry(entries: entries, key: key)
+        Absent => ""
+      }
+    _ => ""
+  }
+}
+
+// THE TWO PHASES' CANDIDATE-DIRECTORY VALUES, in one string. A step the emitter refuses yields "", which
+// cannot equal either expected spelling, so a refusal can only read as red -- there is no branch here where
+// "it did not render" and "it rendered correctly" agree.
+fn publisher_phase_candidate_directories(
+  profile: RepositoryCiProfile,
+  job: HealPublisherPolicy,
+  composed: Optional<HealPublisherComposedRoot>
+) -> String {
+  let admit = match heal_publisher_admit_step(profile: profile, job: job, composed: composed) {
+    Accepted { value: step, diagnostics: _ } => step_env_entry(step: step, key: heal_publication_candidate_directory_env as String)
+    Rejected { diagnostics: _ } => ""
+  }
+  let publish = match heal_publisher_publish_step(profile: profile, job: job, composed: composed) {
+    Accepted { value: step, diagnostics: _ } => step_env_entry(step: step, key: heal_publication_candidate_directory_env as String)
+    Rejected { diagnostics: _ } => ""
+  }
+  join([admit, "|", publish], "")
+}
+
+test fn the_candidate_artifact_name_is_one_authority_read_by_both_emitters() -> Bool {
+  let row = mirror_profile(seal: true, publish: true)
+  let authority = heal_repair_candidate_artifact_name as String
+  let seal = match expected_projection_drift_workflow_yml(profile: row, program: mirror_drift_program()) {
+    ProjectionDriftWorkflowGenerated { content: text } => text
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => ""
+  }
+  step_with_entry(step: heal_publisher_download_step(), key: "pattern") == authority
+    && step_with_entry(step: heal_publisher_download_step(), key: "path") == heal_publisher_candidate_directory
+    && string_contains(s: seal, pattern: join(["name: ", authority], ""))
+    && string_contains(s: seal, pattern: join(["target/", authority, "/"], ""))
+}
+
+// ── THE CANDIDATE DIRECTORY IS ONE NAME WITH THE TWO RENDERINGS ITS CONSUMERS NEED ─────────────
+//
+// `HEAL_CANDIDATE_DIRECTORY` is read by two consumers that stand in different places. The download step and
+// the `hashFiles` gate run AT THE JOB WORKSPACE, where the path must stay relative -- an absolute value
+// makes `hashFiles` match nothing, which quietly retires the gate that keeps a hand-edited mirror from
+// publishing. The PHASE STEPS of a composed publisher `cd` into the composed root under the runner temp
+// before they read it; there a relative value resolves inside the composed tree, where the downloaded
+// candidate has never been, and the phases report "no candidates" for a candidate sitting in the workspace -
+// the same quiet-green shape as the lost artifact above.
+//
+// SO THE ROUTE DECIDES THE SPELLING, and the control asks the EMITTED STEPS: with the row's own composed
+// root resolved, both phases must carry the workspace-anchored value; with no composition (gunbc's own
+// publisher, which never leaves its checkout) both must carry the relative one; and the download step's
+// `path:` stays relative under BOTH routes, because its consumer never moves.
+test fn the_candidate_directory_is_anchored_only_where_a_phase_leaves_the_workspace() -> Bool {
+  let composed = join(["${{ github.workspace }}/", heal_publisher_candidate_directory], "")
+  let relative = heal_publisher_candidate_directory
+  let mirror_row = mirror_profile(seal: true, publish: true)
+  let own_row = gunbc_repository_ci_profile()
+  match mirror_row.publisher {
+    Absent => false
+    Present { value: mirror_job } =>
+      match own_row.publisher {
+        Absent => false
+        Present { value: own_job } =>
+          publisher_phase_candidate_directories(
+            profile: mirror_row,
+            job: mirror_job,
+            composed: heal_publisher_composed_root(profile: mirror_row)
+          ) == join([composed, "|", composed], "")
+            && publisher_phase_candidate_directories(
+              profile: own_row,
+              job: own_job,
+              composed: heal_publisher_composed_root(profile: own_row)
+            ) == join([relative, "|", relative], "")
+            && step_with_entry(step: heal_publisher_download_step(), key: "path") == relative
+      }
+  }
+}
+
 fn with_roster_timeout(limit: Minute) -> RepositoryCiProfile {
   let base = public_profile()
   RepositoryCiProfile {
@@ -336,7 +456,6 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
               head_tree_dir_name: "example-mirror-head",
               head_link_name: "head_repo",
               compose_dir_name: "example-mirror-heal-compose",
-              candidate_artifact: "repair-candidate",
               banner: "the candidate is sealed here and published by another job"
             }
           }
@@ -355,7 +474,6 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
           runner: github_hosted_publisher_runner_target(),
           timeout: minute(45),
           trigger_workflow: "projection-drift",
-          candidate_artifact: "repair-candidate",
           admit_invocation: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_admit" },
           publish_invocation: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_publish" },
           // The fixture borrows the public federation rather than inventing a provider path: the claim is
@@ -363,12 +481,73 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
           // witness does not own.
           federation: public_heal_publisher_federation(),
           pull_requests: PermWrite,
-          build_route: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] }
+          // A MIRROR ROW BUILDS ITS COMPILER FROM THE SEED IT CHECKS OUT BESIDE ITSELF. The alternative
+          // arm, Own_checkout_under_witness_floor, belongs to a row with no overlay - gunbc's own row -
+          // because a composed phase cd's into the composed root and runs the compiler there: a publisher
+          // that built in its own checkout while the row composes an overlay would run a compiler that was
+          // never built inside the composition the candidate was sealed from, which
+          // profile_publisher_build_route_composes_with_the_overlay refuses.
+          build_route: Declared_seed
         }
       }
     } else {
       Absent
     }
+  }
+}
+
+// THE MIRROR ROW WITH ITS ANNOTATION ARM ATTACHED, and with the composition rooted in a directory the
+// caller owns. The 4c body reads RUNNER_TMP_ROOT as `${RUNNER_TMP:-<compose_root_env_default>}`, so binding
+// the default to a per-test temporary directory is what lets the REAL emitted body run against a real tree
+// instead of writing into a fixed /tmp name that another concurrent run could be using. The overlay ingest
+// keeps every other fact of the fixture; only where the composition lands changes.
+fn mirror_profile_with_annotation(lane_root: String) -> RepositoryCiProfile {
+  let base = mirror_profile(seal: false, publish: false)
+  RepositoryCiProfile {
+    repository: base.repository,
+    default_branch: base.default_branch,
+    heal: base.heal,
+    roster: RosterGate {
+      workflow_file: base.roster.workflow_file,
+      workflow_name: base.roster.workflow_name,
+      job_id: base.roster.job_id,
+      job_display_name: base.roster.job_display_name,
+      required_context: base.roster.required_context,
+      runner: base.roster.runner,
+      timeout: base.roster.timeout,
+      source_roots: base.roster.source_roots,
+      schedule: base.roster.schedule,
+      memory_budget: base.roster.memory_budget,
+      route: ComposedOverlayInterpreterRoster {
+        overlay: OverlayIngest {
+          overlay_dir_name: "overlay",
+          entry_prefix: "overlay/dag/",
+          repo_link_name: "head_repo",
+          compose_dir_name: "compose",
+          compose_root_env_default: lane_root as NonEmptyStr,
+          overlay_copy_dissolves_when: unbound_dissolution(description: "gunbc admits an extra --source-root outside the process workspace roots"),
+          local_runs_warning: "compose in a temporary directory, never in a session worktree"
+        },
+        run_roster_step_name: "Run the roster over the composed root"
+      },
+      annotation: Present {
+        value: AnnotationStep {
+          step_name: "Establish the section 4c annotation wall" as NonEmptyStr,
+          invocation: DagInvocation { entry: "dag/claim/annotation.dag", function: "annotation_wall" },
+          // THE PREFIX IS THE ONLY HANDSHAKE THE READER HAS with the compiler it reads: the fake compiler
+          // in test.claim.repository.mirror_lane_4c_execution_local_wet prints this text and the emitted
+          // reader has to find it. It is a fixture fact of that exchange, not a claim about the public
+          // lane's prefix, which the private row supplies from its own authority.
+          refusal_prefix: "REFUSE-4C-ANNOTATION" as NonEmptyStr,
+          output_dir_suffix: "annotation" as NonEmptyStr,
+          subject_banner: "the annotation wall" as NonEmptyStr,
+          closure_narrowing_dissolves_when: unbound_dissolution(description: "the closure narrow is expressed as a capability the check asks for")
+        }
+      }
+    },
+    public_seed: base.public_seed,
+    drift: base.drift,
+    publisher: base.publisher
   }
 }
 
@@ -678,7 +857,7 @@ test fn the_drift_emission_seals_at_the_head_and_uploads_the_candidate() -> Bool
     ProjectionDriftWorkflowGenerated { content: text } =>
       string_contains(s: text, pattern: "--detach")
         && string_contains(s: text, pattern: "\"$HEAD_TREE\"")
-        && string_contains(s: text, pattern: "name: repair-candidate")
+        && string_contains(s: text, pattern: join(["name: ", heal_repair_candidate_artifact_name], ""))
         && string_contains(s: text, pattern: "if-no-files-found: error")
         && string_contains(s: text, pattern: "steps.heal_seal.outcome == 'success'")
     ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
@@ -1044,12 +1223,10 @@ test fn the_publisher_build_route_selects_the_build_steps_and_not_the_presence_o
   let seed_route = publisher_route_step_names(
     row: profile_with_publisher_build_route(profile: mirror_profile(seal: true, publish: true), route: Declared_seed)
   )
-  let own_route = publisher_route_step_names(
-    row: profile_with_publisher_build_route(
-      profile: mirror_profile(seal: true, publish: true),
-      route: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] }
-    )
-  )
+  // THE OWN-CHECKOUT SIDE IS READ FROM THE ROW THAT OWNS IT: gunbc, which declares no overlay and builds
+  // its own compiler under the witness floor. Asking a mirror row to take this route is not a second shape
+  // of the same emitter, it is the contradiction the control below says the row refuses.
+  let own_route = publisher_route_step_names(row: gunbc_repository_ci_profile())
   match seed_route {
     Absent => false
     Present { value: seed_names } =>
@@ -1065,6 +1242,26 @@ test fn the_publisher_build_route_selects_the_build_steps_and_not_the_presence_o
             any(seed_names, n => n == fixture_seed().build_step_name as String) &&
             all(own_names, n => n != fixture_seed().build_step_name as String)
       }
+  }
+}
+
+// THE CONTRADICTION FINDING 2 NAMES: an overlay row whose publisher builds in its own checkout. The row
+// refuses it and the emitter refuses to render it - both directions, because an admitted contradiction that
+// still emits is the silent half, and the phases would `cd` into the composed root and run a compiler that
+// nothing built there.
+test fn a_mirror_publisher_that_builds_its_own_checkout_under_a_composed_overlay_is_refused() -> Bool {
+  let row = profile_with_publisher_build_route(
+    profile: mirror_profile(seal: true, publish: true),
+    route: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] }
+  )
+  match repository_ci_profile_refusal(profile: row) {
+    Absent => false
+    Present { value: why } =>
+      string_contains(s: why as String, pattern: "composes an overlay")
+        && match heal_publisher_workflow_yml_for(profile: row) {
+            HealPublisherWorkflowGenerationRefused { reason: _ } => true
+            HealPublisherWorkflowGenerated { content: _ } => false
+          }
   }
 }
 
