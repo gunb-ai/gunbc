@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.admitted_file_effect_carries_a_base_path_the_emission_never_reads
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE INVALID STATE: a file effect admitted for a native entry is bound to a struct that CARRIES a base path
+// the emitted code never reads, so every relative path the entry passes resolves against whatever the process
+// cwd happens to be. The model shows a declared root; the emission has one in the struct and none in the
+// behavior. Found while answering the manager's 2026-11-02 ask to file the sibling of
+// admitted_shell_effect_spawned_at_an_ambient_working_root -- the file transport is the same class, and the
+// finding is worse than the shell one: the field is not defaulted to a wrong value, it is inert.
+data admitted_file_effect_carries_a_base_path_the_emission_never_reads: RecurringFailureMode = RecurringFailureMode {
+  identity: "admitted_file_effect_carries_a_base_path_the_emission_never_reads" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability of giving the file transport a declared working root at the same boundary the 2026-11-01 CargoBuild ruling gives the shell transport -- the native entry's declared working-root argument -- and refusing the effect when that argument is absent, instead of letting a relative path reach the syscall with the process cwd as its only context"
+    }
+  },
+
+  receipts: [
+    "**EXECUTED, NOT READ OFF A TEMPLATE.** A narrow emission of the admitted file module (gunbc compile --entry dag/extdeps/filesystem/filesystem_io.dag, 2026-11-02, tree at 91d547a6b4f2) renders, in extdeps_filesystem_filesystem_io.rs, 'pub base_path: String,' at :816 and 'base_path: \".\".to_string(),' at :824 -- and then NO FURTHER OCCURRENCE OF THE NAME IN THE FILE. The field is constructed and never read: the emitted operations pass their path argument to the host syscall directly. So the emitted file effect has no root at all, and a relative path argument is answered relative to the process cwd, while the struct implies one.",
+
+    "**WHERE THE \".\" COMES FROM.** v1.languages Rust service-field templates: file_decl 'pub base_path: String,' and file_ctor 'base_path: \".\".to_string(),' (src/v1/languages.dag:426, :430), imported as transport_base_path (src/v1/05_emit_rust.dag:79). It is a template constant, not a value any module declares. The model DOES name the root -- extdeps.transports.file FileTransportConfig { base_path: String } (dag/extdeps/transports/file.dag:20), and that module is explicit that a transport block declares the request fields and not FileTransportConfig, 'the host's base path' (:70-71) -- but no declaration supplies a value for it, and the emission never consults the constructed field. That gap between a named config type and an unread field is why the ceiling is not yet MechanicallyPreventable.",
+
+    "**THE POPULATION THAT CONSUMES IT, BY CITED READ.** The compiler route's declared set names extdeps.filesystem.filesystem_io Filesystem as one of its two members (std.compiler_entry native_compiler_route_denominator), and the src/v2 service census over the roots both compiler-route subjects compile is 82 Filesystem operation sites -- Read 49, Write 17, Delete 7, List 5, WriteCreateNew 4 -- the heaviest modules src/v2/workflow/roster_import_sweep.dag (17) and src/v2/cli/compile_cli.dag (7). Those sites pass source-root spellings such as 'dag' and 'src/v2': RELATIVE paths, so the answer the emitted compiler gives depends on where the process was started. The same service is bound with Filesystem::new(Default::default()) on the claim route (src/v1/05_emit_rust.dag:20533) and Type::new(Default::default()) on the compiler route (:20361), neither of which supplies a root.",
+
+    "**RUNG FOUND AT: Mitigatable.** Nothing is fabricated and no wrong bytes are written silently today: the cwd is a real, single context, the same one the seed host runs under, and every instrument starts from the repository root. It is not yet MechanicallyPreventable because the root is not an input anywhere -- a host that starts the emitted compiler from another directory gets a different answer for the same argv, with no diagnostic and no declared value to compare against.",
+
+    "**DISSOLUTION CONDITION, CONCRETE.** The row dissolves when the native entry's declared working-root argument (the 2026-11-02 C2 ruling on std.compiler_entry) is also fed to the FILE transport's realization, and an executed control shows the same relative source-root argument resolving under that declared root, with an entry that declares no root refusing instead of reading the cwd. The inert base_path field is then either read or deleted -- leaving a constructed field no operation consults is itself the second half of the invalid state. NO FIX IS CLAIMED HERE: this cut files the class, with its consumers cited, and changes no emission.",
+
+    "**NAMED OWNER.** The native-backend lane (manager clever-crane-830, work item adhoc-b3b5b3ae-af9), which owns the native realization and the C2 binding that would carry the root.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
+    decl_ref(module_path: "std.compiler_entry", decl_name: "native_compiler_route_denominator"),
+    decl_ref(module_path: "std.compiler_entry", decl_name: "native_claim_route_denominator"),
+    decl_ref(module_path: "extdeps.transports.file", decl_name: "FileTransportConfig"),
+  ],
+}
