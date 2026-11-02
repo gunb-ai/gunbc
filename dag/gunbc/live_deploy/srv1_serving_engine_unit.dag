@@ -80,8 +80,8 @@ fn srv1_serving_engine_hosted_on(host: HostIdentity) -> Bool {
 }
 
 // The unit installed by hand on 2026-11-02 16:20Z to bring the engine back before this landed. It runs the
-// same wrapper from the operator's copy and carries no ExecStop (removed 16:4xZ), so retiring it -- which
-// disables it with --now -- stops nothing.
+// same wrapper from the operator's copy. It is retired by removing these paths -- the unit file and its only
+// enablement link, since it is WantedBy=multi-user.target alone -- so retiring it never stops it.
 data srv1_serving_engine_retired_hand_units: List<RetiredHandInstalledRemoval> = [
   RetiredHandInstalledRemoval {
     host: operator_host_srv1,
