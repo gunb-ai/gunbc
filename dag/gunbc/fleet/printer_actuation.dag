@@ -25,6 +25,7 @@ import extdeps.shell.exec { ProcessOutputPresent }
 import gunbc.fleet.printer_report { report_using_session }
 import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.printer_start_reconciliation {reconcile_start}
+import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_legacy_entry}
 import gunbc.fleet.printer_workflow_artifact {printer_starts_member_path,printer_state_directory,printer_starts_legacy_scan,PrinterStartsClean,PrinterStartsLegacyEntries,PrinterStartsUnreadable}
 import gunbc.host_state_root {HostStateTree}
 import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirectoryMode}
@@ -171,7 +172,7 @@ type PrinterStartClaimsReading = PrinterStartClaimsReady {store:PrinterStartClai
 // (<key>.claimed.<kind>.json) and batch-state.json, an observation file of a start path deleted in #14945 that
 // nothing reads and is retained here as evidence. A completion record (<key>.claimed.completed.json) is the
 // completion store's.
-fn printer_start_claim_legacy_entry(name:String) -> Bool { (string_contains(s:name,pattern:".claimed") && !print_completion_legacy_entry(name:name)) || name=="batch-state.json" }
+fn printer_start_claim_legacy_entry(name:String) -> Bool { (string_contains(s:name,pattern:".claimed") && !print_completion_legacy_entry(name:name) && !start_evidence_legacy_entry(name:name)) || name=="batch-state.json" }
 
 // THE MINT TAKES THE TREE AND NOTHING ELSE; it refuses while the parent still holds a claim-store entry of the flat
 // layout (a claim left there would read as absent here and admit a second start of that attempt).
@@ -228,7 +229,7 @@ fn printer_start_claim_version(claims:PrinterStartClaims,key:NonEmptyStr) -> Non
 }
 
 type ClaimedPrinterStart sole_constructor {
- printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,claims:PrinterStartClaims,
+ printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,claims:PrinterStartClaims,evidence:StartEvidenceStore,
 }
 // Only the gate/claim arm above can mint this input. Authentication is not start authority.
 fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
@@ -256,12 +257,12 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
             }
             if !fresh_authority { return exit_failure(reason:"Print approval expired or no longer matches after upload; claim retained") }
             match start_print_with_session(session:claim.session, remote_name:remote) {
-              PrintStartPublished { receipt: _ } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:"publish-acknowledged",cleanup_issue:"")
+              PrintStartPublished { receipt: _ } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-acknowledged",cleanup_issue:"")
               PrintStartRefused { printer: _, cause: c } => exit_failure(reason: c as String)
               PrintStartRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start refused; credential residue remains: ", c as String))
-              PrintStartOutcomeUnknown { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:c as String,cleanup_issue:"")
-              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:"publish-uncertain",cleanup_issue:c as String)
-              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:"publish-acknowledged",cleanup_issue:c as String)
+              PrintStartOutcomeUnknown { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:c as String,cleanup_issue:"")
+              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-uncertain",cleanup_issue:c as String)
+              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_evidence_prefix(claims:claim.claims,key:attempt_claim_key(attempt:claim.request.attempt as String)),evidence_store:claim.evidence,claim_key:attempt_claim_key(attempt:claim.request.attempt as String),publish_standing:"publish-acknowledged",cleanup_issue:c as String)
             }
           }
           ProjectDeliveryRefused { printer: _, cause: c } => exit_failure(reason: c as String)
@@ -278,7 +279,7 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
 
 // The one boundary that uploads and starts a printer job. A caller cannot
 // bypass the live readiness check, durable claim, payload binding or grant recheck.
-fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>) -> ProcessExit {
+fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,evidence:StartEvidenceStore,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>) -> ProcessExit {
 
  let host=os.Hostname.ReadShort()
  if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !hold_current(hold:hold) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session/controller hold mismatch")}
@@ -293,6 +294,6 @@ fn start_authorized(hold:PrinterExecutionHold,claims:PrinterStartClaims,printer:
  if !permitted {return exit_failure(reason:"No current approval for this printer start")}
                     match printer_start_claim_commit(claims:claims,key:claim_key,subject:request.subject) {
                       PrinterStartClaimRefused {cause:c}=>exit_failure(reason:join([c,"; do not replay"],""))
-                      PrinterStartClaimed=>print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,token_source:token_source,session:session,authorization:authorization,request:request,claims:claims})
+                      PrinterStartClaimed=>print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,token_source:token_source,session:session,authorization:authorization,request:request,claims:claims,evidence:evidence})
                     }
 }

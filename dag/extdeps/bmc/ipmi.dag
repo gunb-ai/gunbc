@@ -321,6 +321,26 @@ service diagnostic.ipmi.Tool {
     }
   }
 
+  // THE VERBOSE SDR LIST (admission-rule capture, manager msg_4049c507/msg_56f4f57b): the plain elist
+  // prints name | RECORD_ID | status | entity | reading, and its second field is the BMC-ASSIGNED
+  // SENSOR NUMBER, not the sensor type - classifying rows by it would be number-matching. The sensor
+  // TYPE and the Event/Reading Type code live only in the verbose records (-v reads them from the SDR
+  // repository, host powered OFF is fine - the repository is BMC-side). This read is dispatched ONLY
+  // when a thermal round leaves undecoded rows, so the bytes answer exactly the question the refusal
+  // printed. Dry lane: NO realization from invented bytes - the reply exists only once a capture is
+  // committed (bmc_dry_realization carries the refusal reason).
+  operation SdrElistVerbose {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "sdr", "elist", "-v"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sdr elist verbose failed"
+    }
+  }
+
   operation SelList {
     requires Network
     input { bmc_host: NonEmptyStr, cipher_suite_argv: List<String> }

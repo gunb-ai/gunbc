@@ -1,8 +1,6 @@
 module gunbc.tools.bmc_onboard
 
 import extdeps.bmc.http
-import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.entropy
 import extdeps.cloud.gcp.secret_manager {
   sm_resolved_version_id,
@@ -47,11 +45,7 @@ import extdeps.bmc.redfish {
 }
 import gunbc.bmc.bmc_onboarding {
   BmcOnboardingPlan,
-  srv1_onboarding_plan,
-  srv2_onboarding_plan,
   srv3_onboarding_plan,
-  srv4_onboarding_plan,
-  srv13_onboarding_plan,
   BmcCredentialProbeResult,
   FactoryCredentialActive,
   RotatedCredentialActive,
@@ -65,23 +59,17 @@ import gunbc.auth.access_token_source {
   AccessTokenReady,
   AccessTokenUpsertRequired,
   GcloudPrintToken,
-  AccessTokenSourceSelected,
-  AccessTokenSourceUnavailable,
-  select_access_token_source,
-  access_token_upsert_required_reason,
   ensure_access_token,
 }
-import std.types { FilePath, NonEmptyStr, Secret, String }
+import std.types { NonEmptyStr, Secret, String }
 import extdeps.transports.rest {
   RestResult, RestAnswered, RestRefused,
   RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
   classify_rest_refusal, RestMutationExchange,
   RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
 }
-import std.algebra { trim }
 import std.logic { Bool }
 import std.bytes { utf8_encode_bytes }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.json.emit {
@@ -102,14 +90,6 @@ data bmc_credential_length_chars_unit_debt: Disposition = Scaffold {
 }
 
 data bmc_credential_length_chars: Int = 16
-
-// THE BODY IS A SECRET BECAUSE IT CONTAINS ONE, and it goes to SetAccountPassword on stdin, so it
-// is never written to a path.
-fn account_password_body(new_password: Secret) -> Secret {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "Password", value: json_string(s: new_password as String)),
-  ])) as Secret
-}
 
 fn boot_override_body(target: String, enabled: String, mode: String) -> String {
   serialize_json(v: json_object(members: [
@@ -139,46 +119,32 @@ fn mint_bmc_credential() -> Secret {
   Urandom.ReadPassword(count: bmc_credential_length_chars).password as Secret
 }
 
-// ONE AUTHENTICATED REDFISH CALL, MADE INSIDE A PER-CALL PRIVATE NETRC THAT IS GONE WHEN IT RETURNS.
+// ONE AUTHENTICATED REDFISH READ, MADE INSIDE A PER-CALL PRIVATE NETRC THAT IS GONE WHEN IT RETURNS.
 //
 // WHAT THIS REPLACES. Every caller here used to write one fixed path, /tmp/bmc_onboard_netrc, and
 // none removed it, so after a run that file held whichever BMC credential the run used last, which
-// after a rotation is the NEW password. The rotation body sat beside it at
-// /tmp/bmc_onboard_pwbody.json, written with the ambient umask. The body now goes to curl on stdin
-// (extdeps.bmc.http SetAccountPassword). The netrc still has to be a file, because curl --netrc-file
+// after a rotation is the NEW password. The netrc still has to be a file, because curl --netrc-file
 // reads a path, so it is placed through gunbc.auth.netrc_binding with_private_netrc_binding: a fresh
 // 0700 directory, a 0600 O_EXCL file, and a checked removal of both on every arm out.
 //
-// THE CALLS ARE A CLOSED SET rather than a callback, so the bracket's body cannot be anything but one
-// Redfish request: nothing else can run while the credential is on disk.
-type BmcRedfishCall
-  = BmcGetSystem
-  | BmcSetAccountPassword { account_id: NonEmptyStr, request_body: Secret }
-
+// THE BRACKET'S BODY IS FIXED rather than a callback, so it cannot be anything but the one Redfish
+// read (GetSystem): nothing else can run while the credential is on disk. It was a closed set of two
+// calls until the legacy rotation's password PATCH was deleted.
 type BmcRedfishReply {
   success: Bool
   body: String
 }
 
-fn bmc_redfish_call(host: NonEmptyStr, netrc: NonEmptyStr, call: BmcRedfishCall) -> BmcRedfishReply
+fn bmc_redfish_get_system(host: NonEmptyStr, netrc: NonEmptyStr) -> BmcRedfishReply
 {
-  match call {
-    BmcGetSystem => {
-      r = redfish.Http.GetSystem(bmc_host: host, netrc_file: netrc)
-      return BmcRedfishReply { success: r.success, body: r.body }
-    }
-    BmcSetAccountPassword { account_id: a, request_body: b } => {
-      r = redfish.Http.SetAccountPassword(bmc_host: host, netrc_file: netrc, account_id: a, request_body: b)
-      return BmcRedfishReply { success: r.success, body: r.body }
-    }
-  }
+  r = redfish.Http.GetSystem(bmc_host: host, netrc_file: netrc)
+  return BmcRedfishReply { success: r.success, body: r.body }
 }
 
 // A CALL THAT NEVER REACHED THE BMC IS NOT A BMC ANSWER, and a credential left on disk is a refusal
 // even when the BMC said yes. CallRefused carries a located reason that says which happened, so an
 // operator is sent to this host's disk rather than to the BMC. When the shred fails after the BMC
-// answered, the reason states that answer, because a PATCH that succeeded has already changed the
-// password, and saying only "refused" would hide that.
+// answered, the reason states that answer, because saying only "refused" would hide what the BMC said.
 type BmcAuthenticatedCall
   = BmcCallAnswered { reply: BmcRedfishReply }
   | BmcCallRefused { reason: String }
@@ -192,14 +158,13 @@ fn bmc_authenticated_call(
   host: NonEmptyStr,
   account: NonEmptyStr,
   password: Secret,
-  call: BmcRedfishCall,
 ) -> BmcAuthenticatedCall
 {
   match with_private_netrc_binding(
     machine: host,
     login: account,
     password: password,
-    use: fn(binding) { bmc_redfish_call(host: host, netrc: netrc_binding_path(binding: binding) as NonEmptyStr, call: call) },
+    use: fn(binding) { bmc_redfish_get_system(host: host, netrc: netrc_binding_path(binding: binding) as NonEmptyStr) },
   ) {
     PrivateSecretFileCompleted { value: reply } => BmcCallAnswered { reply: reply }
     PrivateSecretFileCompletedResidueRemains { value: reply } =>
@@ -224,38 +189,6 @@ fn bmc_call_failure_reason(outcome: BmcAuthenticatedCall, rejected_prefix: Strin
   match outcome {
     BmcCallAnswered { reply: r } => concat(rejected_prefix, r.body)
     BmcCallRefused { reason: reason } => reason
-  }
-}
-
-// THE POST-ROTATION REAUTH AUTHENTICATES WITH THE NEW CREDENTIAL in its own private netrc, so it
-// cannot pass by reading the previous credential's file: each call places its own and removes it.
-fn bmc_rotate_credential(plan: BmcOnboardingPlan, current_password: Secret, new_credential: Secret) -> ProcessExit
-{
-  let host = plan.bmc.host
-  let account = plan.factory_login.username
-
-  let rot = bmc_authenticated_call(
-    stage: "rotate",
-    host: host,
-    account: account,
-    password: current_password,
-    call: BmcSetAccountPassword { account_id: account, request_body: account_password_body(new_password: new_credential) },
-  )
-  if bmc_call_succeeded(outcome: rot) == false {
-    return exit_failure(reason: bmc_call_failure_reason(outcome: rot, rejected_prefix: "rotate: password PATCH refused: "))
-  }
-
-  let verify = bmc_authenticated_call(
-    stage: "rotate post-rotation reauth",
-    host: host,
-    account: account,
-    password: new_credential,
-    call: BmcGetSystem,
-  )
-  return if bmc_call_succeeded(outcome: verify) {
-    ExitSuccess
-  } else {
-    exit_failure(reason: bmc_call_failure_reason(outcome: verify, rejected_prefix: "rotate: reauth with new credential rejected: "))
   }
 }
 
@@ -342,7 +275,7 @@ fn bmc_establish_custody_container(secret_id: NonEmptyStr, token: Secret) -> Bmc
 // A REFUSED AddVersion IS TWO DIFFERENT FACTS WITH OPPOSITE REMEDIES. AddVersion mints a version on
 // every success, so a status the service decided on may be retried while a lost or server-error
 // answer may have minted one; classify_rest_refusal over RestMutationExchange separates them.
-// Either way nothing has been sent to the BMC, because the store precedes the rotation.
+// Either way nothing has been sent to the BMC, because the store precedes every use of the credential.
 fn bmc_add_version_refusal_reason(refusal: RestRefusal) -> String {
   match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
     RestExchangeStatusRefused { status, body } =>
@@ -364,9 +297,10 @@ fn bmc_read_back_refusal_text(refusal: RestRefusal) -> String {
   }
 }
 
-// STORE, THEN READ BACK THE EXACT VERSION, BEFORE THE CREDENTIAL IS PUT TO USE ANYWHERE. Shared by
-// every flow that mints a BMC credential -- the administrator rotation and the health-reader account
-// -- because the rule is the same for both: a credential the BMC accepts but custody cannot return
+// STORE, THEN READ BACK THE EXACT VERSION, BEFORE THE CREDENTIAL IS PUT TO USE ANYWHERE. Its caller
+// is the health-reader account (gunbc.tools.bmc_health_reader_converge); the administrator rotation
+// that also used it is retired to gunbc.machine_intake.bmc_secure, whose custody step keeps the same
+// rule: a credential the BMC accepts but custody cannot return
 // is a lockout, so nothing is sent to the BMC until custody has proven it holds these bytes.
 fn bmc_store_credential_verified(secret_id: NonEmptyStr, token: Secret, credential: Secret, host_label: String) -> BmcCustodyContainer
 {
@@ -418,53 +352,10 @@ fn bmc_store_credential_verified(secret_id: NonEmptyStr, token: Secret, credenti
   }
 }
 
-fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret, current_password: Secret) -> ProcessExit
-{
-  match ensure_access_token(source: token_source) {
-    AccessTokenUpsertRequired { plan: upsert_plan } =>
-      return exit_failure(
-        reason: access_token_upsert_required_reason(plan: upsert_plan),
-      )
-    AccessTokenEnsureRefused { reason: reason } =>
-      return exit_failure(reason: reason as String)
-    AccessTokenReady { token: token } => {
-      match bmc_store_credential_verified(secret_id: onboarding_secret_id(plan: plan), token: token, credential: credential, host_label: plan.bmc.host as String) {
-        BmcCustodyRefused { reason: r } => return exit_failure(reason: r)
-        BmcCustodyEstablished => return bmc_rotate_credential(plan: plan, current_password: current_password, new_credential: credential)
-      }
-    }
-  }
-}
-
-fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
-{
-  let host = plan.bmc.host
-  let account = plan.factory_login.username
-
-  root_resp = redfish.Http.GetServiceRoot(bmc_host: host)
-  if root_resp.success == false {
-    return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
-  }
-  let acq = bmc_authenticated_call(stage: "acquire", host: host, account: account, password: plan.factory_login.published_password as Secret, call: BmcGetSystem)
-  if bmc_factory_login_accepted(outcome: acq) == false {
-    return exit_failure(reason: bmc_call_failure_reason(outcome: acq, rejected_prefix: "acquire: factory login failed: "))
-  }
-
-  return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential(), current_password: plan.factory_login.published_password as Secret)
-}
-
-// A NETRC THAT COULD NOT BE WRITTEN IS NOT EVIDENCE ABOUT THE CREDENTIAL, and this probe keeps those
-// apart. Each write failure returns CredentialStateUnknown rather than falling through to the next
-// arm, because reporting `factory login failed` for a local filesystem fault would send an operator
-// to the BMC to investigate a problem that is on this host. The same rule governs the stored-
-// credential arm below it.
-
-
-
 // THE PUBLISHED CREDENTIAL IS ACTIVE WHEN THE BMC ACCEPTS IT, including when the firmware
 // accepts it only to demand a password change (Redfish Base PasswordChangeRequired, OpenBMC
-// 3.22.00 on the ALTRAD8UD-1L2T). That state admits exactly the PATCH bmc_rotate_credential
-// performs, so it is the factory phase, not an unknown one: reading it as a failure stopped
+// 3.22.00 on the ALTRAD8UD-1L2T). That state admits only the first password write (the
+// rotation itself is gunbc.machine_intake.bmc_secure's), so it is the factory phase, not an unknown one: reading it as a failure stopped
 // onboarding at its first step on a freshly flashed BMC.
 fn factory_login_accepted(succeeded: Bool, body: String) -> Bool {
   succeeded || (match redfish_password_change_verdict(body: body) {
@@ -488,12 +379,17 @@ fn bmc_factory_login_accepted(outcome: BmcAuthenticatedCall) -> Bool {
   }
 }
 
+// A NETRC THAT COULD NOT BE WRITTEN IS NOT EVIDENCE ABOUT THE CREDENTIAL, and this probe keeps those
+// apart. Each write failure returns CredentialStateUnknown rather than falling through to the next
+// arm, because reporting `factory login failed` for a local filesystem fault would send an operator
+// to the BMC to investigate a problem that is on this host. The same rule governs the stored-
+// credential arm below it.
 fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult
 {
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  let factory_check = bmc_authenticated_call(stage: "factory credential probe", host: host, account: account, password: plan.factory_login.published_password as Secret, call: BmcGetSystem)
+  let factory_check = bmc_authenticated_call(stage: "factory credential probe", host: host, account: account, password: plan.factory_login.published_password as Secret)
   match factory_check {
     BmcCallRefused { reason: r } => return CredentialStateUnknown { reason: r }
     BmcCallAnswered { reply: _ } => {}
@@ -514,7 +410,7 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
         CustodyCredentialUnreadable { cause: c } =>
           return CredentialStateUnknown { reason: concat("the factory credential was refused and the stored credential could not be read from custody: ", c) }
         CustodyCredentialHeld { password: password } => {
-          return match bmc_authenticated_call(stage: "stored credential probe", host: host, account: account, password: password as Secret, call: BmcGetSystem) {
+          return match bmc_authenticated_call(stage: "stored credential probe", host: host, account: account, password: password as Secret) {
             BmcCallRefused { reason: r } => CredentialStateUnknown { reason: r }
             BmcCallAnswered { reply: rotated_verify } =>
               if rotated_verify.success {
@@ -529,114 +425,7 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
   }
 }
 
-fn bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
-{
-  root_resp = redfish.Http.GetServiceRoot(bmc_host: plan.bmc.host)
-  if root_resp.success == false {
-    return exit_failure(reason: concat("credential converge: BMC unreachable: ", root_resp.body))
-  }
-
-  probe = bmc_probe_credential_phase(plan: plan, token_source: token_source)
-  match probe {
-    FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential(), current_password: plan.factory_login.published_password as Secret)
-    RotatedCredentialActive => return ExitSuccess
-    CredentialAccessUpsertRequired { plan: upsert_plan } =>
-      return exit_failure(
-        reason: access_token_upsert_required_reason(plan: upsert_plan),
-      )
-    CredentialEnsureRefused { reason: reason } =>
-      return exit_failure(reason: reason as String)
-    CredentialStateUnknown { reason: r } =>
-      return exit_failure(reason: concat("credential converge: unknown phase: ", r))
-  }
-}
-
 fn srv3_probe_credential_phase() -> BmcCredentialProbeResult
 {
   bmc_probe_credential_phase(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
-}
-
-fn srv3_converge_credential() -> ProcessExit
-{
-  bmc_converge_credential(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
-}
-
-fn srv4_converge_credential() -> ProcessExit
-{
-  bmc_converge_credential(plan: srv4_onboarding_plan, token_source: GcloudPrintToken)
-}
-
-// srv13 arrives on OpenBMC 3.22.00, whose published credential is accepted only to demand a
-// password change; the factory probe reads that as the factory phase and rotates from it.
-fn srv13_converge_credential() -> ProcessExit
-{
-  bmc_converge_credential_selected(plan: srv13_onboarding_plan)
-}
-
-// srv1 AND srv2 TAKE WHATEVER CREDENTIAL THE RUN HAS -- the Workload Identity token in a federated
-// workflow, or an operator token file in a session -- through the one selection authority, rather
-// than the gcloud CLI the older srv3/srv4 entries hard-code.
-fn bmc_converge_credential_selected(plan: BmcOnboardingPlan) -> ProcessExit
-{
-  match select_access_token_source() {
-    AccessTokenSourceUnavailable { cause: c } => return exit_failure(reason: c as String)
-    AccessTokenSourceSelected { source: s } => return bmc_converge_credential(plan: plan, token_source: s)
-  }
-}
-
-// TAKEOVER: a BMC whose admin password was set by hand, outside custody. srv1 and srv2 were brought
-// up as a demo on an operator-chosen root password (operator, 2026-09-18), so neither the factory
-// probe nor custody can authenticate to them. The operator supplies that current password ONCE, in
-// a file named by the environment -- never in source, since this repository is its own audit log --
-// and it is proven against the BMC before anything is written. From there the flow is the factory
-// flow's: establish custody, mint, store, read back, rotate FROM the supplied password, re-authenticate.
-// After a takeover the supplied password is dead, which is the point: it has lived outside custody.
-data bmc_takeover_password_file_env: NonEmptyStr = "GUNBC_BMC_TAKEOVER_PASSWORD_FILE" as NonEmptyStr
-
-fn bmc_takeover_credential(plan: BmcOnboardingPlan) -> ProcessExit
-{
-  let path = match shell.Env.Get(name: bmc_takeover_password_file_env).value {
-    Absent => ""
-    Present { value: raw } => trim(s: raw)
-  }
-  if path == "" {
-    return exit_failure(reason: concat(bmc_takeover_password_file_env as String, " is not set: a takeover needs the BMC's current password in a file"))
-  }
-  let read = Filesystem.Read(path: path)
-  if read.success == false {
-    return exit_failure(reason: concat("takeover: the current-password file could not be read: ", read.error))
-  }
-  let current = trim(s: read.content)
-  if current == "" {
-    return exit_failure(reason: "takeover: the current-password file is empty")
-  }
-  let proof = bmc_authenticated_call(stage: "takeover current credential", host: plan.bmc.host, account: plan.factory_login.username, password: current as Secret, call: BmcGetSystem)
-  if bmc_call_succeeded(outcome: proof) == false {
-    return exit_failure(reason: bmc_call_failure_reason(outcome: proof, rejected_prefix: "takeover: the supplied current password was refused; nothing was written: "))
-  }
-  match select_access_token_source() {
-    AccessTokenSourceUnavailable { cause: c } => return exit_failure(reason: c as String)
-    AccessTokenSourceSelected { source: s } =>
-      return bmc_store_and_rotate(plan: plan, token_source: s, credential: mint_bmc_credential(), current_password: current as Secret)
-  }
-}
-
-fn srv1_takeover_credential() -> ProcessExit
-{
-  bmc_takeover_credential(plan: srv1_onboarding_plan)
-}
-
-fn srv2_takeover_credential() -> ProcessExit
-{
-  bmc_takeover_credential(plan: srv2_onboarding_plan)
-}
-
-fn srv1_converge_credential() -> ProcessExit
-{
-  bmc_converge_credential_selected(plan: srv1_onboarding_plan)
-}
-
-fn srv2_converge_credential() -> ProcessExit
-{
-  bmc_converge_credential_selected(plan: srv2_onboarding_plan)
 }

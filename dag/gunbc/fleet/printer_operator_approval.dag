@@ -9,6 +9,7 @@ import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterS
 import gunbc.fleet.printer_execution_hold {with_execution_hold, PrinterExecutionHoldStore, printer_operator_approval_window}
 import gunbc.fleet.fleet_printer_access {read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
+import gunbc.fleet.printer_start_evidence_store { StartEvidenceStore }
 import gunbc.fleet.printer_actuation { PrinterStartClaims, print_request, start_authorized, printer_state_generation, report_allows_start }
 import gunbc.fleet.printer_report { report_using_session }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -25,7 +26,7 @@ import gunbc.auth.approval_gate {
 // that grant to gunbc.fleet.printer_actuation start_authorized, which owns every physical effect.
 // The human approves the printer state read before filing; start_authorized re-reads it and
 // refuses if it moved.
-fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStartClaims, printer: String, path: String, digest: String, version: String, attempt: String, token_source: AccessTokenSource) -> ProcessExit {
+fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStartClaims, evidence: StartEvidenceStore, printer: String, path: String, digest: String, version: String, attempt: String, token_source: AccessTokenSource) -> ProcessExit {
   let host=os.Hostname.ReadShort()
   if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) {
     return exit_failure(reason:"Print starts must run on the modeled printer LAN host so approvals share one durable claim store")
@@ -61,7 +62,7 @@ fn approve_and_print(hold_store: PrinterExecutionHoldStore, claims: PrinterStart
             PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
               GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
               GateAdmitted { authorization: authorization } =>
-                with_execution_hold(store:hold_store,escalation_id:request.escalation_id,use:h=>start_authorized(hold:h,claims:claims,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request))
+                with_execution_hold(store:hold_store,escalation_id:request.escalation_id,use:h=>start_authorized(hold:h,claims:claims,evidence:evidence,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request))
             }
           }
         }
