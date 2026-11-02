@@ -1,0 +1,53 @@
+module gunbc.recurring_failure_mode.admitted_shell_effect_spawned_at_an_ambient_working_root
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE INVALID STATE, STATED FIRST: an admitted shell effect is spawned at a working root nobody declared.
+// Filing this is required by the H1 ruling (operator via root, relayed by clever-crane-830 2026-11-02):
+// the ruling confines the new no-ambient-cwd rule to shell effects admitted on the COMPILER route, so the
+// sibling route keeps this state on purpose, and it gets a row rather than a footnote.
+//
+// THIS ROW DOES NOT CLAIM ambient defaults were eliminated anywhere. In this PR the compiler route gains
+// the explicit-binding rule; the claim route below is unchanged, and nothing here says otherwise.
+data admitted_shell_effect_spawned_at_an_ambient_working_root: RecurringFailureMode = RecurringFailureMode {
+  identity: "admitted_shell_effect_spawned_at_an_ambient_working_root" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the claim route adopting the working-root binding H1 introduces on the compiler route: the native entry receives its working root as a typed argument and native_effect_binding_of constructs the service config from it, refusing at startup when it is absent"
+    }
+  },
+
+  receipts: [
+    "**WHAT IS INVALID, NOT MERELY IMPRECISE.** A native (emitted) program that calls a shell-transport service runs that program in a directory no row named. v1.compiler.emit_rust `native_effect_binding_of` constructs every admitted service as `Type::new(Default::default())`, which leaves extdeps.transports.shell `ShellTransportConfig.working_dir` = None, and `emit_shell_call` renders `.current_dir(self.working_dir.as_deref().unwrap_or(\".\"))`. The fallback is the process's ambient cwd, so the SAME entry on two runners, or on a runner after a `cd`, addresses different packages: an invalid state, not a style preference.",
+
+    "**THE ACTUAL CONSUMERS, CITED RATHER THAN HYPOTHESIZED.** The claim route admits exactly one shell effect (std.compiler_entry `native_claim_route_denominator`, ruling gunbc.design_ruling `native_claim_route_admits_the_docker_cli`), extdeps.docker.cli_service `DockerCli`, and the native claim programs that call it are gunbc.instruments.router_proxy_falsifier (`router_proxy_falsifier_report`, whose comment states the posture as \"every process is started through extdeps.docker.cli_service DockerCli, the one admitted effect\") and gunbc.instruments.serving_benchmark_run (`serving_benchmark_run_report`, `DockerCli.Version`). Both spawn a container or a client whose file arguments are resolved relative to the ambient cwd; both pass absolute-ish paths today by convention, and nothing in the model enforces that convention.",
+
+    "**CEILING AND WHY IT IS REACHABLE.** MechanicallyPreventable: the fix is one more declared value at the binding site, not a new capability -- v1.compiler.emit_rust `native_effect_binding_of` can construct the config from a declared value and refuse when that value is absent, which is exactly the rule the same ruling imposes on the compiler route in this change. Below ceiling for one reason: `ClimbableButUnbuilt`. The compiler-route half is ruled and scheduled (H1 C2); the claim-route half is deliberately NOT taken in this PR, because moving DockerCli's binding at the same time would regress the sibling control the ruling requires to stay green (condition (4)).",
+
+    "**RUNG FOUND AT: Mitigatable, and the mitigation that exists today is convention.** The instruments' relative paths happen to resolve because the host process starts in the checkout. Nothing refuses when that stops being true, which is why this is not yet MechanicallyPreventable and why an executed control, not prose, closes it.",
+
+    "**DISSOLUTION CONDITION, CONCRETE.** The row dissolves when a claim runs a native claim-route entry that calls DockerCli with a file argument reachable ONLY under a declared working root, and the run (a) passes with the root declared and (b) REFUSES with a typed cause when the root is not declared -- the same pair H1 specifies for the compiler route, applied to extdeps.docker.cli_service `DockerCli` on the NativeClaimDriver denominator. Until then the row stays below ceiling with the trigger named.",
+
+    "**NAMED OWNER.** The native-backend lane (manager clever-crane-830, work item adhoc-b3b5b3ae-af9, H1): the compiler-route half lands under that item; the claim-route half is filed here as the next rung rather than folded into H1's scope, per the ruling's scope answer.",
+
+    "**BOUNDARY AGAINST OTHER ROWS.** Not `population_admission_compiled_into_the_comparator_refuses_a_first_time_artifact` (that is about the judge reading a compiled-in population); not a transport-config style question. The class is: an effect admitted by NAME at the denominator can still be parameterized by an AMBIENT value at the binding, so admitting it does not pin what it will do.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "native_effect_binding_of"),
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_shell_call"),
+    decl_ref(module_path: "extdeps.transports.shell", decl_name: "ShellTransportConfig"),
+    decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "router_proxy_falsifier_report"),
+    decl_ref(module_path: "gunbc.instruments.serving_benchmark_run", decl_name: "serving_benchmark_run_report"),
+    decl_ref(module_path: "std.compiler_entry", decl_name: "native_claim_route_denominator"),
+  ],
+}
