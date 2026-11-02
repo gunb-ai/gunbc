@@ -1,6 +1,7 @@
 module test.claim.side_mount_duct_witness
 
 import std.types { Bool, List, String }
+import product.printed_chassis.assembly_geometry { Printed }
 import std.measure { micrometer, micrometer_count }
 import std.optional { Present, Absent }
 import product.printed_chassis.printable_assembly {
@@ -23,14 +24,15 @@ fn a16_side_root(side: CardFaceSide) -> String {
 fn has(a: PrintableAssembly, id: String) -> Bool { any(a.parts, p => p.id == id) }
 
 // Both faces are roots of one kind, spelled the way the printer is told, and both select through
-// select_printable_assembly with two printed parts, the blower, the card and the 8-pin keep-out.
-test fn both_faces_select_two_printed_parts_and_the_keepout() -> Bool {
+// select_printable_assembly as ONE printed part (no lid: the chamber's back wall is part of the duct), the
+// blower, the card and the 8-pin keep-out.
+test fn both_faces_select_one_printed_part_and_the_keepout() -> Bool {
   a16_side_root(side: BackFaceSide) == "a16-blower-side-mount-back-duct"
     && a16_side_root(side: FrontFaceSide) == "a16-blower-side-mount-front-duct"
     && all([BackFaceSide, FrontFaceSide], s => match printed_assembly_root_from_wire(s: a16_side_root(side: s)) {
       Present { value: r } => match select_printable_assembly(root: r) {
         PrintableAssemblyReady { assembly: a } =>
-          has(a: a, id: "DUCT") && has(a: a, id: "LID") && has(a: a, id: "FAN") && has(a: a, id: "CARD") && has(a: a, id: "POWER-KEEPOUT")
+          has(a: a, id: "DUCT") && !has(a: a, id: "LID") && count(filter(a.parts, p => match p.kind { Printed => true _ => false })) == 1 && has(a: a, id: "FAN") && has(a: a, id: "CARD") && has(a: a, id: "POWER-KEEPOUT")
             && any(a.required_keepouts, k => k == "POWER-KEEPOUT")
         PrintableAssemblyRefused { reason: _ } => false
       }
