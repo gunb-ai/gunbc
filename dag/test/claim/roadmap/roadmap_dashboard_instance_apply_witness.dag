@@ -308,9 +308,11 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  // no length is asserted: dashboard_provision_plan_names_its_steps_in_order in this file pins the plan's
-  // steps by name and order, which is what catches a dropped or renamed step; a copied count is a change
-  // detector (DESIGN 5).
+  // no length is asserted here. A count copied off the tree is a change detector (DESIGN 5) -- the eleven
+  // this claim used to carry had already rotted on main, whose plan is fourteen -- and the steps this claim
+  // is about are named below one by one, which is what catches a dropped or renamed step. The plan's FULL
+  // step identity, in order, is asserted in test.claim.roadmap.roadmap_dashboard_instance_witness by
+  // provision_plan_names_its_steps_in_order.
     && !any(rows, row => row.kind == "ensure-provider-state-root" || row.kind == "ensure-directory")
     && any(rows, row => row.kind == "assert-metering-closing-writer-excluded")
     && any(rows, row => row.kind == "ensure-serve-binary")
