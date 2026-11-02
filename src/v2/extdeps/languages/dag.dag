@@ -58,6 +58,7 @@ import v2.std.grammar {
   grammar_expr_after_line_break,
   grammar_expr_expect,
   grammar_expr_not_predicate,
+  grammar_expr_and_predicate,
   grammar_expr_refuse_on_match,
   grammar_expr_infix_table,
   InfixAssociativity,
@@ -1846,12 +1847,18 @@ fn dag_grammar_field_init_list_helper() -> GrammarExpr {
 // not-predicate on the named head, so the field's kind is a production identity the lowering dispatches
 // on. The headless list (dag_grammar_field_init_list_helper) keeps `name: e` only: `{ x }` there is a
 // block, and reading it as an anonymous record `{ x: x }` would be a silent misread.
-// The tagged list has the same ambiguity at a lowercase head: in `if flag { x } else { y }` the condition
-// `flag` is followed by a block, not by the record `flag { x }`. v1 separates them by an uppercase head,
-// which v2's grammar cannot read. The cut is the exact ambiguous shape: `{ name }` directly before `else`
-// (dag_grammar_block_of_one_name_before_else_expr) is a block, never a record. Every other record keeps
-// its place, including `if c then R { s: e } else d` and `R { s, t }`; the one declared limit is a
-// single-pun record as a then-branch, `if c then R { s } else d`, which refuses (spell `s: s`).
+// The tagged list has the same ambiguity at a lowercase head: in `if flag { x }` the condition
+// `flag` is followed by a block, not by the record `flag { x }`. v1 separates them by an uppercase
+// head, which v2's grammar cannot read, so v2 separates them by POSITION: at a condition head (if
+// condition, match scrutinee) the record arm of the ident suffix carries
+// and_predicate(expr_continuation_head) -- the record is admitted only when its residue continues
+// with the block brace or an infix operator; when a new statement would start after the braces the
+// peek refuses the arm, the name parses bare, and the braces fall to the if-block (v1 02_parse
+// parse_expr_bp_no_brace realizes the same separation as a re-parse retry; v2 states it as one
+// grammar production both executors read). Every other record keeps its place, including
+// `if c then R { s } else d`: the then-branch has no block slot, the earlier guard keyed on a
+// one-name brace run before ELSE refused that record as a misfire, and the position rule needs it
+// nowhere -- the declared then-branch limitation is retired with the guard.
 fn dag_grammar_record_field_init_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(
@@ -1984,39 +1991,148 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_block_of_one_name_before_else_expr() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
-    right: dag_grammar_sequence(
-      left: dag_grammar_binding_name_terminal(),
-      right: dag_grammar_sequence(
-        left: dag_grammar_repeat(element: dag_grammar_binding_name_terminal()),
-        right: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_rbrace),
-          right: dag_grammar_terminal(token_class: ^dag_token_kw_else)
-        )
-      )
-    )
-  )
-}
 
 fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_choice(
       left: dag_grammar_postfix_call_suffix_expr(),
       right: dag_grammar_sequence(
-        left: grammar_expr_not_predicate(element: dag_grammar_block_of_one_name_before_else_expr()),
+        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
+          left: dag_grammar_record_field_init_list_helper(),
+          right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+        )
+      )
+    )
+  )
+}
+
+// THE CONTINUATION HEAD SET: tokens that can legally FOLLOW a complete condition expression --
+// the `{` of the if/match block, or the first token of an infix operator that continues the
+// expression. Derived from ONE authority: the `{` terminal plus the token classes of
+// dag_infix_operators() itself, so a new operator row extends the peek without a second edit
+// (v1 02_parse parse_expr_bp_no_brace tests the same set -- '{' or an operator class -- before it
+// abandons a record read back to a bare head). Postfix heads (dot, index, call, as, is) are
+// DELIBERATELY EXCLUDED, matching the seed's set exactly; any widening is a stated divergence
+// needing per-head claims (grammar-owner review).
+fn dag_grammar_expr_continuation_head_expr() -> GrammarExpr {
+  let rows = dag_infix_operators()
+  match rows {
+    Empty => dag_grammar_terminal(token_class: ^dag_token_lbrace)
+    Cons(head, rest) =>
+      dag_grammar_choice(
+        left: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+          right: dag_grammar_terminal(token_class: head.token_class)
+        ),
+        right: fold(rest, init: dag_grammar_terminal(token_class: head.token_class), f: fn(acc, row) {
+          dag_grammar_choice(left: dag_grammar_terminal(token_class: row.token_class), right: acc)
+        })
+      )
+  }
+}
+
+// THE CONDITION-POSITION IDENT SUFFIX: same optional call-or-record shape as
+// dag_grammar_primary_ident_suffix_expr, with the record arm admitted only when its residue
+// continues with the block brace or an infix operator -- the positive-lookahead dual
+// and_predicate over the derived continuation heads. When the peek refuses, the optional accepts
+// empty, the name parses bare, and the braces belong to the enclosing if-block or match arm. The
+// arm carries NO '{name}+ else' guard: the peek subsumes it (a brace run ending before ELSE ends
+// outside the continuation set), which also frees the then-branch record `if c then R { s } else d`
+// -- that branch has no block slot, so the record reading is the only one that fits there.
+fn dag_grammar_condition_ident_suffix_expr() -> GrammarExpr {
+  dag_grammar_optional(
+    element: dag_grammar_choice(
+      left: dag_grammar_postfix_call_suffix_expr(),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+        right: dag_grammar_sequence(
+          left: dag_grammar_record_field_init_list_helper(),
           right: dag_grammar_sequence(
-            left: dag_grammar_record_field_init_list_helper(),
-            right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+            left: dag_grammar_terminal(token_class: ^dag_token_rbrace),
+            right: grammar_expr_and_predicate(element: dag_grammar_expr_continuation_head_expr())
           )
         )
       )
     )
   )
 }
+
+fn dag_grammar_condition_postfix_dot_suffix_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_dot),
+    right: dag_grammar_sequence(
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_condition_ident_suffix_expr()
+    )
+  )
+}
+
+fn dag_grammar_condition_postfix_expr_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: ^dag_production_condition_primary_expr),
+    right: dag_grammar_repeat(
+      element: dag_grammar_choice(
+        left: dag_grammar_condition_postfix_dot_suffix_expr(),
+        right: dag_grammar_choice(
+          left: dag_grammar_postfix_as_suffix_expr(),
+          right: dag_grammar_choice(
+            left: dag_grammar_postfix_is_suffix_expr(),
+            right: dag_grammar_postfix_index_suffix_expr()
+          )
+        )
+      )
+    )
+  )
+}
+
+fn dag_grammar_condition_unary_expr_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_bang),
+      right: dag_grammar_nonterminal(production: ^dag_production_condition_unary_expr)
+    ),
+    right: dag_grammar_choice(
+      left: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_minus),
+        right: dag_grammar_nonterminal(production: ^dag_production_condition_unary_expr)
+      ),
+      right: dag_grammar_nonterminal(production: ^dag_production_condition_postfix_expr)
+    )
+  )
+}
+
+fn dag_grammar_condition_binary_expr_expr() -> GrammarExpr {
+  grammar_expr_infix_table(
+    operand: dag_grammar_nonterminal(production: ^dag_production_condition_unary_expr),
+    continuation_guard: dag_grammar_additive_newline_minus_guard(),
+    operators: dag_infix_operators()
+  )
+}
+
+// THE CONDITION PRODUCTION: the expression arms are the ordinary ones; only the binary LEAF is
+// threaded to the peek-carrying chain, so fn-literals and parenthesised expressions (inside
+// parens the ORDINARY chain runs -- `if (p { x: 1 })` keeps its record) are untouched.
+// WHERE: the if-condition and the match-scrutinee slots read this production; WHY: the seed's
+// parse_if and parse_match share one no-brace condition parser (v1 02_parse parse_if,
+// parse_match -> parse_expr_no_brace), and v2 keeps that separation in one grammar production
+// read in both directions (DESIGN section 4), not in a parser-side retry.
+fn dag_grammar_condition_expr_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_fn_literal_expr(),
+    right: dag_grammar_choice(
+      left: dag_grammar_block_expr_expr(),
+      right: dag_grammar_choice(
+        left: dag_grammar_sequence(
+          left: grammar_expr_not_predicate(element: dag_grammar_arrow_lambda_name_head_expr()),
+          right: dag_grammar_nonterminal(production: ^dag_production_condition_binary_expr)
+        ),
+        right: dag_grammar_nonterminal(production: ^dag_production_condition_binary_expr)
+      )
+    )
+  )
+}
+
 
 // The name a caret symbol carries is lexeme-stamped like every other declared name
 // (dag_grammar_ident_or_type_decl_modifier_name), so `^a` and `^b` publish different identities
@@ -2027,6 +2143,17 @@ fn dag_grammar_caret_symbol_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_caret),
     right: dag_grammar_ident_or_type_decl_modifier_name()
+  )
+}
+
+fn dag_grammar_primary_expr_core() -> GrammarExpr {
+  dag_grammar_primary_expr_core_with_suffix(suffix: dag_grammar_primary_ident_suffix_expr())
+}
+
+fn dag_grammar_condition_primary_expr_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_caret_symbol_expr(),
+    right: dag_grammar_primary_expr_core_with_suffix(suffix: dag_grammar_condition_ident_suffix_expr())
   )
 }
 
@@ -2097,7 +2224,7 @@ fn dag_grammar_string_template_expr() -> GrammarExpr {
 // reading and no binding can shadow it. A literal terminal stamps the token class, not the word, so
 // only the production's emitted identity (^dag_surface_none_literal) says `none` was written. Lowering
 // is v2.compiler.body_lowering_fold body_lower_none_literal.
-fn dag_grammar_primary_expr_core() -> GrammarExpr {
+fn dag_grammar_primary_expr_core_with_suffix(suffix: GrammarExpr) -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_none_literal),
     right: dag_grammar_choice(
@@ -2105,7 +2232,7 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
       left: grammar_expr_not_predicate(element: dag_grammar_keyword_expr(lexeme: "none")),
       right: dag_grammar_sequence(
         left: dag_grammar_primary_name_expr(),
-        right: dag_grammar_primary_ident_suffix_expr()
+        right: suffix
       )
     ),
     right: dag_grammar_choice(
@@ -4185,6 +4312,11 @@ fn dag_grammar_root() -> GrammarRoot {
       unary_expr,
       postfix_expr,
       primary_expr,
+      condition_expr,
+      condition_binary_expr,
+      condition_unary_expr,
+      condition_postfix_expr,
+      condition_primary_expr,
       block_expr,
       arg,
       field_init,
