@@ -1,0 +1,140 @@
+module test.claim.product.p4261_finding_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.p4261.carrier { CarrierLayoutObservation }
+import product.p4261.findings {
+  CarrierFinding,
+  CarrierPhaseObserved,
+  ComponentAcrossInput,
+  ComponentIdentified,
+  ControllerEnableState,
+  ControllerOvervoltageState,
+  EnableInputProjection,
+  FindingJudgment,
+  InputSwitchState,
+  InputUpperBound,
+  J20ContactInventory,
+  J20EnergizedDraw,
+  J20InventoryMatchesRevision,
+  J20Polarity,
+  NotAComponent,
+  PhaseJudged,
+  BusJudged,
+  PolarityJudged,
+  IdentificationJudged,
+  ProtectedInputBusInPhase,
+  finding_established,
+  judge_finding,
+}
+import product.p4261.readings { J24Reading, PolarityEstablished, PolarityGap, PolarityUnestablished, installed }
+import product.p4261.report { FindingEstablished, FindingNotEstablished, FindingStanding, carrier_finding, j24_text, j24_text_of, render_finding }
+import product.p4261.e1_b { p4261_e1_layout, e1_d2, e1_d5, e1_c10, e1_f300, e1_u1_p5, e1_converter_near, e1_third_can, e1_q21, e1_q22 }
+import product.p4261.k1_a { p4261_k1_layout, k1_u1_p5, k1_converter_near }
+
+// THE OUTCOMES BEFORE THE CUT. Each case is a board, a finding, and whether it was established at public
+// 5ca956b322a, before Stage B4 moved the judgment out of the report -- recorded by running the old
+// is_finding_established(carrier_finding(...)) over these cases on that revision (an offline
+// differential reference, not a retained path). The cut must leave every one as it was.
+type BaselineCase {
+  name: String
+  layout: CarrierLayoutObservation
+  finding: CarrierFinding
+  established: Bool
+}
+
+fn baseline_cases() -> List<BaselineCase> {
+  [
+    BaselineCase { name: "base_e1_j20inv", layout: p4261_e1_layout, finding: J20ContactInventory, established: true },
+    BaselineCase { name: "base_e1_j20rev", layout: p4261_e1_layout, finding: J20InventoryMatchesRevision, established: true },
+    BaselineCase { name: "base_e1_j20pol", layout: p4261_e1_layout, finding: J20Polarity, established: true },
+    BaselineCase { name: "base_e1_bound", layout: p4261_e1_layout, finding: InputUpperBound, established: true },
+    BaselineCase { name: "base_e1_draw", layout: p4261_e1_layout, finding: J20EnergizedDraw, established: true },
+    BaselineCase { name: "base_e1_across_d2", layout: p4261_e1_layout, finding: ComponentAcrossInput { component: e1_d2 }, established: true },
+    BaselineCase { name: "base_e1_across_d5", layout: p4261_e1_layout, finding: ComponentAcrossInput { component: e1_d5 }, established: true },
+    BaselineCase { name: "base_e1_across_c10", layout: p4261_e1_layout, finding: ComponentAcrossInput { component: e1_c10 }, established: false },
+    BaselineCase { name: "base_e1_across_f300", layout: p4261_e1_layout, finding: ComponentAcrossInput { component: e1_f300 }, established: false },
+    BaselineCase { name: "base_e1_id_c10", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_c10 }, established: true },
+    BaselineCase { name: "base_e1_id_d2", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_d2 }, established: true },
+    BaselineCase { name: "base_e1_id_u1", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_u1_p5 }, established: true },
+    BaselineCase { name: "base_e1_id_conv", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_converter_near }, established: false },
+    BaselineCase { name: "base_e1_id_third", layout: p4261_e1_layout, finding: ComponentIdentified { component: e1_third_can }, established: false },
+    BaselineCase { name: "base_e1_sw_q21", layout: p4261_e1_layout, finding: InputSwitchState { component: e1_q21 }, established: false },
+    BaselineCase { name: "base_e1_sw_q22", layout: p4261_e1_layout, finding: InputSwitchState { component: e1_q22 }, established: false },
+    BaselineCase { name: "base_e1_en_u1", layout: p4261_e1_layout, finding: ControllerEnableState { component: e1_u1_p5 }, established: true },
+    BaselineCase { name: "base_e1_ov_u1", layout: p4261_e1_layout, finding: ControllerOvervoltageState { component: e1_u1_p5 }, established: true },
+    BaselineCase { name: "base_e1_proj_u1", layout: p4261_e1_layout, finding: EnableInputProjection { component: e1_u1_p5 }, established: false },
+    BaselineCase { name: "base_e1_phase_p3", layout: p4261_e1_layout, finding: CarrierPhaseObserved { key: "p3-all-poles-on" }, established: false },
+    BaselineCase { name: "base_e1_phase_p0", layout: p4261_e1_layout, finding: CarrierPhaseObserved { key: "p0-bias" }, established: true },
+    BaselineCase { name: "base_e1_phase_none", layout: p4261_e1_layout, finding: CarrierPhaseObserved { key: "no-such-phase" }, established: false },
+    BaselineCase { name: "base_e1_bus_p3", layout: p4261_e1_layout, finding: ProtectedInputBusInPhase { key: "p3-all-poles-on" }, established: true },
+    BaselineCase { name: "base_e1_bus_p0", layout: p4261_e1_layout, finding: ProtectedInputBusInPhase { key: "p0-bias" }, established: false },
+    BaselineCase { name: "base_e1_notcomp", layout: p4261_e1_layout, finding: ComponentIdentified { component: k1_u1_p5 }, established: false },
+    BaselineCase { name: "base_k1_j20inv", layout: p4261_k1_layout, finding: J20ContactInventory, established: false },
+    BaselineCase { name: "base_k1_j20rev", layout: p4261_k1_layout, finding: J20InventoryMatchesRevision, established: false },
+    BaselineCase { name: "base_k1_j20pol", layout: p4261_k1_layout, finding: J20Polarity, established: false },
+    BaselineCase { name: "base_k1_bound", layout: p4261_k1_layout, finding: InputUpperBound, established: false },
+    BaselineCase { name: "base_k1_draw", layout: p4261_k1_layout, finding: J20EnergizedDraw, established: false },
+    BaselineCase { name: "base_k1_id_u1", layout: p4261_k1_layout, finding: ComponentIdentified { component: k1_u1_p5 }, established: true },
+    BaselineCase { name: "base_k1_id_conv", layout: p4261_k1_layout, finding: ComponentIdentified { component: k1_converter_near }, established: true },
+    BaselineCase { name: "base_k1_en_u1", layout: p4261_k1_layout, finding: ControllerEnableState { component: k1_u1_p5 }, established: false },
+    BaselineCase { name: "base_k1_phase_p0", layout: p4261_k1_layout, finding: CarrierPhaseObserved { key: "k1-p0-bias" }, established: false },
+    BaselineCase { name: "base_k1_bus_p0", layout: p4261_k1_layout, finding: ProtectedInputBusInPhase { key: "k1-all-poles-on" }, established: false },
+  ]
+}
+
+fn is_established_arm(s: FindingStanding) -> Bool {
+  match s {
+    FindingEstablished { text: _ } => true
+    FindingNotEstablished { reason: _ } => false
+  }
+}
+
+// EVERY FINDING HOLDS EXACTLY AS IT DID BEFORE THE CUT: sixteen established and nineteen not, across
+// every finding kind on both boards, a phase not recorded and a component of the other board included.
+test fn every_finding_holds_as_before_the_cut() -> Bool {
+  let cs = baseline_cases()
+  count(cs) == 35 && all(cs, c => finding_established(j: judge_finding(layout: c.layout, f: c.finding)) == c.established)
+    && count(filter(cs, c => c.established)) == 16
+}
+
+// THE RENDERED ARM IS THE JUDGMENT'S. For every case, the report's rendered result is the rendering of
+// the judgment findings returns, and its arm agrees with finding_established.
+test fn the_rendered_arm_is_the_judgments() -> Bool {
+  all(baseline_cases(), c => is_established_arm(s: carrier_finding(layout: c.layout, f: c.finding)) == c.established
+    && is_established_arm(s: render_finding(j: judge_finding(layout: c.layout, f: c.finding))) == c.established)
+}
+
+fn no_gaps() -> List<PolarityGap> {
+  []
+}
+
+// THE TYPED BOUNDARY, SUPPLIED. A missing component, a phase not recorded and an unestablished polarity
+// are not established; the E1's real identification judgments are read from the judgment, not its
+// words -- U1_P5's matched marking holds, the converter's candidate does not.
+test fn the_typed_boundary_decides_alone() -> Bool {
+  !finding_established(j: NotAComponent { component: k1_u1_p5 })
+    && !finding_established(j: PhaseJudged { key: "supplied-absent-phase", standing: Absent })
+    && !finding_established(j: BusJudged { key: "supplied-absent-phase", standing: Absent })
+    && !finding_established(j: PolarityJudged { polarity: PolarityUnestablished { gaps: no_gaps() } })
+    && match installed(layout: p4261_e1_layout, c: e1_u1_p5) { Present { value: x } => finding_established(j: IdentificationJudged { observed: x }), Absent => false }
+    && match installed(layout: p4261_e1_layout, c: e1_converter_near) { Present { value: x } => !finding_established(j: IdentificationJudged { observed: x }), Absent => false }
+}
+
+// THE REAL PATH PRODUCES THE TYPED RESULT. The E1's J20 polarity is judged as an established polarity,
+// and the K1's U1_P5 in the E1's observation is judged absent from the board.
+test fn the_real_path_produces_the_typed_result() -> Bool {
+  match judge_finding(layout: p4261_e1_layout, f: J20Polarity) {
+    PolarityJudged { polarity } => match polarity { PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => true, _ => false }
+    _ => false
+  }
+    && match judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: k1_u1_p5 }) { NotAComponent { component: _ } => true, _ => false }
+}
+
+// THE J24 CORRECTION (Stage B4). The report used to say "none near zero" whatever was read; the
+// reading now counts the reported zeros and the words follow the count. The E1, with none, reads as
+// before; a supplied reading with two reported zeros says so instead.
+test fn j24_words_follow_the_count_of_reported_zeros() -> Bool {
+  j24_text(layout: p4261_e1_layout).contains("none near zero, so no position is read as the return")
+    && j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 8, least_positive_ohms: 400, reported_zero: 2 }).contains("2 reporting zero without a baseline")
+    && !j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 8, least_positive_ohms: 400, reported_zero: 2 }).contains("none near zero")
+}
