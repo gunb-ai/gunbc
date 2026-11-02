@@ -1,16 +1,20 @@
 module test.claim.compute_unit_stop_observation_witness
 
 import std.types { Bool, String }
-import gunbc.compile_census_probe { total_blocking_census, census_delta_verdict, census_verdict, census_exit}
+import gunbc.compile_census_probe { total_blocking_census, census_delta_verdict, census_exit }
 import std.process { ProcessExit }
 
 // NEGATIVE CONTROL: compute_run_unit takes a CLOSED LIST of ComputeUnitStopObservation arms, never a
-// property list -- an arm is a closed choice, and composing observations means adding ARMS, not
-// appending properties to the unit,
-// so a caller cannot append MemoryMax/WorkingDirectory/Slice/KillMode against the grant that
-// compute_unit_properties ties to the unit. The forged source passes a raw SystemdRunProperty
-// (MemoryMax) at the observation operand and must be refused as a TypeMismatch (the closure of compute_run_unit carries unrelated census rows, so the assertion is on the class, not the total); the accepted source passes the
-// closed arm and must compile, proving the census ran and the refusal is the operand.
+// property list. An arm is a closed choice, so composing observations means adding ARMS, not appending
+// properties to the unit -- which is how a caller would smuggle MemoryMax, WorkingDirectory, Slice or
+// KillMode past the grant that compute_unit_properties ties to the unit. The forged source passes a
+// well-formed List<SystemdRunProperty> at the observation operand, so the only thing wrong with it is
+// the type the door must refuse. The closure compute_run_unit carries blocking diagnostics of its own,
+// so nothing here asserts an absolute count or a diagnostic CLASS name: each row measures the DELTA
+// against the stats-only baseline module, which differs from the lawful module only in which arms the
+// operand carries.
+
+
 data forged_raw_property_source: String = "module probe_forged_raw_unit_property
 import gunbc.compute.work_provider_local { compute_run_unit, ComputeUnitRunReading, ComputeLayout, NoPathVirtualization }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
@@ -20,6 +24,21 @@ import std.types { String, FilePath }
 import std.measure { kibibyte }
 fn forged(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {
   compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, path_virtualization: NoPathVirtualization, stop_observations: [NamedUnitSetting { property: MemoryMax, value: \"infinity\" }])
+}
+"
+
+// The BASELINE probe: the same lawful module carrying only the sccache-stats arm, which is the shape the
+// door had before the seat's exit record joined the coproduct. The closure compute_run_unit carries
+// blocking diagnostics of its own (unrelated census rows), so an absolute count means nothing here --
+// every assertion below is a DELTA against this module, which differs from the accepted probe only in
+// which closed arms the operand carries.
+data stats_only_observation_source: String = "module probe_stats_only_observation
+import gunbc.compute.work_provider_local { compute_run_unit, ComputeUnitRunReading, ComputeLayout, SccacheStatsAtStop, NoPathVirtualization }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import std.types { String, FilePath }
+import std.measure { kibibyte }
+fn stats_only(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePath) -> ComputeUnitRunReading {
+  compute_run_unit(instance: instance, layout: layout, identity_hex: \"x\", argv: [], env: [], launcher_env: [], granted: kibibyte(count: 1), user_runtime_dir: dir, path_virtualization: NoPathVirtualization, stop_observations: [SccacheStatsAtStop])
 }
 "
 
@@ -42,7 +61,7 @@ test fn a_compute_unit_cannot_take_a_raw_property_at_stop() -> ProcessExit {
   census_exit(
     verdict: census_delta_verdict(
       red: total_blocking_census(source: forged_raw_property_source),
-      control: total_blocking_census(source: accepted_closed_observation_source),
+      control: total_blocking_census(source: stats_only_observation_source),
       holds: fn(n) { n >= 1 }))
 }
 
@@ -51,7 +70,8 @@ test fn a_compute_unit_cannot_take_a_raw_property_at_stop() -> ProcessExit {
 // diagnostic at all.
 test fn a_compute_unit_takes_the_closed_stop_observation() -> ProcessExit {
   census_exit(
-    verdict: census_verdict(
-      census: total_blocking_census(source: accepted_closed_observation_source),
+    verdict: census_delta_verdict(
+      red: total_blocking_census(source: accepted_closed_observation_source),
+      control: total_blocking_census(source: stats_only_observation_source),
       holds: fn(n) { n == 0 }))
 }
