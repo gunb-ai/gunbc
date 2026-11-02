@@ -34,8 +34,6 @@ import gunbc.fleet.site_pxe_edge_converge {
 import gunbc.secure_boot_observation { SecureBootDisabled, VendorCommandRejected }
 import gunbc.provisioning.provisioning_arm {
   ArmRefused,
-  AttemptIdNotThePlansSubject,
-  AttemptUnitNotThePlansSubject,
   BootDeliveryPlanNotCoherent,
   EvidenceNotForThisPlan,
   SeedBoundForOtherAttempt,
@@ -214,11 +212,11 @@ fn full_evidence() -> DeliveryEvidence {
 
 // The attempt every plan in the fixture is solved for: the fixture subject's own unit and intake attempt.
 fn attempt() -> AttemptBinding {
-  AttemptBinding { unit: unit, attempt: attempt_one as NonEmptyStr }
+  AttemptBinding { unit: unit, attempt: attempt_one }
 }
 
 fn arm_for(solution: BootDeliverySolution, evidence: DeliveryEvidence) -> ProvisioningArm {
-  provisioning_arm_derive(solution: solution, evidence: evidence, attempt: attempt())
+  provisioning_arm_derive(solution: solution, evidence: evidence)
 }
 
 fn derive(solution: BootDeliverySolution, evidence: DeliveryEvidence) -> ArmShape {
@@ -465,20 +463,6 @@ fn evidence_with_seed(seed: UbuntuAutoinstallSeedBinding?) -> DeliveryEvidence {
 
 fn refused_for(shape: ArmShape, axis: PlanEvidenceAxis) -> Bool {
   shape == ArmRefused { cause: EvidenceNotForThisPlan { axis: axis } }
-}
-
-test fn an_attempt_for_another_unit_withholds_the_arm() -> Bool {
-  refused_for(
-    shape: provisioning_arm_derive(solution: pxe_solution, evidence: full_evidence(), attempt: AttemptBinding { unit: other_unit(), attempt: attempt_one as NonEmptyStr }).shape,
-    axis: AttemptUnitNotThePlansSubject,
-  )
-}
-
-test fn an_attempt_id_other_than_the_plans_withholds_the_arm() -> Bool {
-  refused_for(
-    shape: provisioning_arm_derive(solution: pxe_solution, evidence: full_evidence(), attempt: AttemptBinding { unit: unit, attempt: other_attempt() as NonEmptyStr }).shape,
-    axis: AttemptIdNotThePlansSubject,
-  )
 }
 
 test fn a_seed_bound_for_another_unit_withholds_both_arms() -> Bool {
