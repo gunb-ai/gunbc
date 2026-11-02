@@ -1791,6 +1791,7 @@ pub fn qualify_borrowed_type_names(
                         let qname =
                             v1_rt::concat(v1_rt::concat(mp.clone(), ".".to_string()), name.clone());
                         Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -1814,7 +1815,6 @@ pub fn qualify_borrowed_type_names(
                             declaration_marker: n.declaration_marker.clone(),
                             declaration: n.declaration.clone(),
                             expr_data: n.expr_data.clone(),
-                            ident: None,
                         })
                     }
                 }
@@ -2599,6 +2599,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
             let tp_binding = Rc::new(TypeBinding {
                 name: tp_name.clone(),
                 resolved: Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: tp_name.clone(),
                     span: crate::v1_std_core::kernel_span(tp_name.clone()),
@@ -2622,7 +2623,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
                 alias_rhs: std::option::Option::None,
@@ -3888,6 +3888,7 @@ pub fn substitute_type_slots_mode(
                                         __result
                                     });
                                     Rc::new(Node {
+                                        ident: std::option::Option::None,
                                         occurrence_identity: child.occurrence_identity.clone(),
                                         name: child.name.clone(),
                                         span: child.span.clone(),
@@ -3911,7 +3912,6 @@ pub fn substitute_type_slots_mode(
                                         declaration_marker: child.declaration_marker.clone(),
                                         declaration: child.declaration.clone(),
                                         expr_data: child.expr_data.clone(),
-                                        ident: None,
                                     })
                                 }
                             } else {
@@ -3944,6 +3944,7 @@ pub fn substitute_type_slots_mode(
                     _ => n.inferred.clone(),
                 };
                 Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: n.occurrence_identity.clone(),
                     name: n.name.clone(),
                     span: n.span.clone(),
@@ -3965,7 +3966,6 @@ pub fn substitute_type_slots_mode(
                     declaration_marker: n.declaration_marker.clone(),
                     declaration: n.declaration.clone(),
                     expr_data: n.expr_data.clone(),
-                    ident: None,
                 })
             }
         }
@@ -4199,6 +4199,7 @@ pub fn alias_rhs_with_index_identity(
         match declaration_named_in_module(spelled, owner_module, env.clone()) {
             std::option::Option::None => std::option::Option::None,
             Some(d) => Some(Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: rhs.occurrence_identity.clone(),
                 name: rhs.name.clone(),
                 span: rhs.span.clone(),
@@ -4220,7 +4221,6 @@ pub fn alias_rhs_with_index_identity(
                 declaration_marker: rhs.declaration_marker.clone(),
                 declaration: Some(d.clone()),
                 expr_data: rhs.expr_data.clone(),
-                ident: None,
             })),
         }
     }
