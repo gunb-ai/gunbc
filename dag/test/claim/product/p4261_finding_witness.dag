@@ -2,7 +2,7 @@ module test.claim.product.p4261_finding_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.p4261.carrier { CarrierLayoutObservation, MeasuredBoard }
-import product.electrical.bench_session { BenchRecord, DisplayAtProbeBaseline, DisplayZeroWithoutBaseline, ResistanceDisplay, ResistanceObservation, ShortedProbeBaseline }
+import product.electrical.bench_session { BenchRecord, DisplayAtProbeBaseline, DisplayValue, DisplayZeroWithoutBaseline, ResistanceDisplay, ResistanceObservation, ShortedProbeBaseline }
 import product.electrical.connectivity { terminal_ref_equal }
 import product.electrical.continuity { OperatorStatement }
 import product.p4261.findings {
@@ -134,10 +134,12 @@ test fn the_real_path_produces_the_typed_result() -> Bool {
 }
 
 // THE J24 CORRECTION (Stage B4). The report used to say "none near zero, so no position is read as the
-// return" whatever was read. Now the readings count each kind and derive what they say of the return,
-// and the report words that: through j24_reading, on the E1's own readings with one swapped -- an
-// unbaselined zero is counted and the words do not deny it; a reading at the probe baseline joins the
-// return; no reading at all leaves the question open instead of answering it.
+// return" whatever was read. Now it summarizes what was recorded and draws no conclusion about the
+// return (a join is the unpowered, state-selected netlist's to admit): readings by kind, and DISTINCT
+// positions covered, never readings counted as positions. Through j24_reading, on the E1's own
+// readings with A1 swapped: an unbaselined zero is counted and not denied; a reading at the probe
+// baseline is reported as recorded there and as joining nothing; no reading covers no position; ten
+// readings of A1 cover one position; two baseline readings of A1 are two readings of one position.
 fn e1_with_j24(rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
   let b = p4261_e1_layout
   let m = match b.measured { Present { value: x } => Present { value: MeasuredBoard {
@@ -161,14 +163,26 @@ fn no_j24_readings() -> List<ResistanceObservation> {
   []
 }
 
+fn baseline_display() -> ResistanceDisplay {
+  DisplayAtProbeBaseline { shown: "supplied 0.3", baseline: ShortedProbeBaseline { full_scale_ohms: 2000, shown: "supplied 0.3", evidence: OperatorStatement { stated_on: "supplied", verbatim: "supplied" } } }
+}
+
+fn a1_only(display: ResistanceDisplay, times: Nat) -> List<ResistanceObservation> {
+  map(filter([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], i => i <= times), i => e1_j24_read(n: "A1", display: display))
+}
+
 test fn j24_words_follow_what_its_readings_establish() -> Bool {
   let zero = j24_text(layout: e1_with_j24(rs: swapped_a1(display: DisplayZeroWithoutBaseline { reported: "supplied 0.0" })))
-  let baseline = j24_text(layout: e1_with_j24(rs: swapped_a1(display: DisplayAtProbeBaseline { shown: "supplied 0.3", baseline: ShortedProbeBaseline { full_scale_ohms: 2000, shown: "supplied 0.3", evidence: OperatorStatement { stated_on: "supplied", verbatim: "supplied" } } })))
+  let baseline = j24_text(layout: e1_with_j24(rs: swapped_a1(display: baseline_display())))
   let unread = j24_text(layout: e1_with_j24(rs: no_j24_readings()))
-  j24_text(layout: p4261_e1_layout).contains("0 reporting zero without a baseline and 0 at the probe baseline: every position read and none at the baseline, so no position is read as the return")
+  let ten_of_a1 = j24_text(layout: e1_with_j24(rs: a1_only(display: DisplayValue { ohms: 428, approximate: false }, times: 10)))
+  let two_baseline_a1 = j24_text(layout: e1_with_j24(rs: a1_only(display: baseline_display(), times: 2)))
+  j24_text(layout: p4261_e1_layout).contains("10 readings recorded to J20's black lead, covering 10 of the 10 positions; 8 with a value (405 ohm the least), 0 reporting zero without a baseline, 0 recorded at the probe baseline")
     && zero.contains("1 reporting zero without a baseline") && !zero.contains("none near zero")
-    && baseline.contains("1 at the probe baseline: 1 joined to the return") && !baseline.contains("no position is read as the return")
-    && unread.contains("10 positions unread, so whether any is joined to the return is open") && !unread.contains("no position is read as the return")
+    && baseline.contains("1 recorded at the probe baseline") && !baseline.contains("joined") && !baseline.contains("no position is read as the return")
+    && unread.contains("0 readings recorded to J20's black lead, covering 0 of the 10 positions") && !unread.contains("no position is read as the return")
+    && ten_of_a1.contains("10 readings recorded to J20's black lead, covering 1 of the 10 positions")
+    && two_baseline_a1.contains("2 readings recorded to J20's black lead, covering 1 of the 10 positions") && two_baseline_a1.contains("2 recorded at the probe baseline") && !two_baseline_a1.contains("joined")
 }
 
 // THE LEAST OF NOTHING IS NOTHING. An empty list has no least value -- not 0 -- and a list's least is its
