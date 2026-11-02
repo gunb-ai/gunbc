@@ -2341,6 +2341,11 @@ fn resolve_kernel_candidates_all_denote(ctx: ResolveContext, class: AmbiguousLoo
     AmbiguousOnLexicalChain { candidates: cs } => resolve_kernel_candidate_list_denotes(ctx: ctx, cs: cs, canonical: canonical)
     AmbiguousAtBindingPosition { candidates: cs } => resolve_kernel_candidate_list_denotes(ctx: ctx, cs: cs, canonical: canonical)
     AmbiguousQualifiedHeadShadowsAbsolute { path: _ } => false
+    // The kernel-dedup rule dissolves a competition only when the competing bindings all DENOTE one
+    // kernel declaration. The paths here are distinct arms of ONE expected coproduct: they denote
+    // different arms of the same type, never the same declaration, so the rule does not dissolve them
+    // and the competition stands.
+    AmbiguousInExpectedConstructorSet { paths: _ } => false
   }
 }
 
@@ -3412,13 +3417,20 @@ fn resolve_sole_declared_payload_path(ctx: ResolveContext, paths: List<Qualified
 // so it is kept as it is at every depth. Lowering mints it, so it is recognised by form, never by
 // comparing an atom's spelling to `_`.
 fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
+  resolve_pattern_node_walk_in(ctx: ctx, pat: pat, expected: optional_absent())
+}
+
+// The pattern door takes the expectation as a parameter for the same reason the value door does: the
+// field rule must not re-walk a pattern target on a private path that skips this function's wildcard
+// test and its non-construct arm.
+fn resolve_pattern_node_walk_in(ctx: ResolveContext, pat: Node, expected: Optional<ResolveExpectation>) -> ResolveNodeWalk {
   if is_wildcard_pattern(pattern: pat) {
     ResolveWalkAccepted { value: pat, diagnostics: None, bindings: [] }
   } else {
     match construct_tag_optional(n: pat) {
-      Absent => resolve_node_walk(ctx: ctx, n: pat)
+      Absent => resolve_node_walk_in(ctx: ctx, n: pat, expected: expected)
       Present { value: reference } =>
-        resolve_construct_walk(ctx: ctx, n: pat, reference: reference, expected: optional_absent(), field: fn(e, record) {
+        resolve_construct_walk(ctx: ctx, n: pat, reference: reference, expected: expected, field: fn(e, record) {
           resolve_pattern_field_edge(ctx: ctx, e: e, record: record)
         })
     }
@@ -3442,26 +3454,13 @@ fn resolve_pattern_field_edge(ctx: ResolveContext, e: Edge, record: Optional<Qua
           match resolve_record_field_type_optional(ctx: ctx, record: path, field: field) {
             Absent => resolve_pattern_node_walk(ctx: ctx, pat: e.target)
             Present { value: t } =>
-              resolve_pattern_edge_expected(ctx: ctx, e: e, x: ResolveExpectation { expected: t, position: path, at_use_site: false })
+              resolve_pattern_node_walk_in(
+                ctx: ctx,
+                pat: e.target,
+                expected: optional_present(value: ResolveExpectation { expected: t, position: path, at_use_site: false })
+              )
           }
       }
-  }
-}
-
-// THE PATTERN ARM OF resolve_expected_edge's shape: an authored construct under an expectation goes
-// to the construct walk carrying it; every other pattern shape keeps the pattern walk exactly as it
-// was (an elided pattern head has no expected type to be read against, and stays a separate question).
-fn resolve_pattern_edge_expected(ctx: ResolveContext, e: Edge, x: ResolveExpectation) -> ResolveNodeWalk {
-  match construct_tag_reading(n: e.target) {
-    ConstructTagAuthored { reference: reference } =>
-      resolve_construct_walk(
-        ctx: ctx,
-        n: e.target,
-        reference: reference,
-        expected: optional_present(value: x),
-        field: fn(ce, record) { resolve_pattern_field_edge(ctx: ctx, e: ce, record: record) }
-      )
-    _ => resolve_pattern_node_walk(ctx: ctx, pat: e.target)
   }
 }
 
@@ -3644,50 +3643,13 @@ type ResolveExpectation {
 fn resolve_expected_edge(ctx: ResolveContext, e: Edge, x: ResolveExpectation) -> ResolveNodeWalk {
   match construct_tag_reading(n: e.target) {
     ConstructTagElided => resolve_elided_construct_walk(ctx: ctx, n: e.target, x: x)
-    ConstructTagAuthored { reference: reference } =>
-      resolve_expected_authored_construct_edge(ctx: ctx, e: e, reference: reference, x: x)
+    ConstructTagAuthored { reference: _ } =>
+      resolve_child_edge_in(ctx: ctx, e: e, expected: optional_present(value: x))
     NotAConstruct =>
       match list_introduction_elements_optional(node: e.target) {
         Present { value: _ } => resolve_list_literal_expected(ctx: ctx, n: e.target, x: x)
         Absent => resolve_child_edge(ctx: ctx, e: e)
       }
-  }
-}
-
-// AN AUTHORED CONSTRUCT CARRYING AN EXPECTATION. The context is the one resolve_labeled_child_edge
-// pushes for the edge -- position extended by the label segment, declaring identity carried across
-// the named edge, the type-member category -- read through resolve_labeled_child_edge_context so a
-// door that consumes an expectation cannot walk a named edge under a different context than the
-// plain door does; the module-root preservation arm keeps resolve_child_edge's answer. The only
-// difference from today is that the tag door below is told what the site is expected to be.
-fn resolve_expected_authored_construct_edge(ctx: ResolveContext, e: Edge, reference: Node, x: ResolveExpectation) -> ResolveNodeWalk {
-  if ctx.under_module_root && resolve_preserve_module_root_named_edge(e: e) {
-    resolve_child_edge(ctx: ctx, e: e)
-  } else {
-    // THE SAME CONTEXT THE PLAIN DOOR PUSHES FOR THIS EDGE, per label kind: a named edge extends the
-    // lexical position and carries the declaring identity; a positional edge pushes nothing. Reading
-    // the expectation may not quietly change the scope a construct is resolved in.
-    match e.label {
-      Positional =>
-        resolve_construct_walk(
-          ctx: ctx,
-          n: e.target,
-          reference: reference,
-          expected: optional_present(value: x),
-          field: fn(ce, record) { resolve_record_field_edge(ctx: ctx, e: ce, record: record) }
-        )
-      _ =>
-        {
-          let pushed = resolve_labeled_child_edge_context(ctx: ctx, e: e)
-          resolve_construct_walk(
-            ctx: pushed,
-            n: e.target,
-            reference: reference,
-            expected: optional_present(value: x),
-            field: fn(ce, record) { resolve_record_field_edge(ctx: pushed, e: ce, record: record) }
-          )
-        }
-    }
   }
 }
 
@@ -4674,15 +4636,33 @@ fn resolve_node_walk(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
+  resolve_node_walk_in(ctx: ctx, n: n, expected: optional_absent())
+}
+
+// THE ONE WALK DOOR, with the expectation as a parameter rather than as a second door. Review of #15671
+// (keen-heron-809): a door that consumes an expectation must not re-enter the target on its own copy of
+// the pipeline, because the plain door runs steps BEFORE the construct reading -- the declaring
+// transition resolve_declaring_entering (which turns DeclaringAt into DeclaringInSpine for a
+// namespace-graft spine and back for its body), and inside resolve_node_walk_entered the generated
+// declaration reference and the where-refinement arms. Copying only the context push walked a spine body
+// under a different declaring position: a bound-to-bound identity change the bounded-diff rule forbids.
+// Everything below is main's walk with one extra argument.
+fn resolve_node_walk_in(
+  ctx: ResolveContext,
+  n: Node,
+  expected: Optional<ResolveExpectation>
+) -> ResolveNodeWalk {
   resolve_node_walk_entered(
     ctx: resolve_ctx_with_declaring(ctx: ctx, declaring: resolve_declaring_entering(declaring: ctx.declaring, n: n)),
-    n: n
+    n: n,
+    expected: expected
   )
 }
 
 fn resolve_node_walk_entered(
   ctx: ResolveContext,
-  n: Node
+  n: Node,
+  expected: Optional<ResolveExpectation>
 ) -> ResolveNodeWalk {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -4711,13 +4691,20 @@ fn resolve_node_walk_entered(
       } else {
         match construct_tag_reading(n: n) {
           ConstructTagElided =>
-            if resolve_elided_construct_is_map_literal(n: n) {
-              resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_no_expected_type)
-            } else {
-              resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
+            // An elided head under an expectation is the elided door's question, the same producer
+            // resolve_expected_edge already reaches for; with no expectation it stays the
+            // anonymous-record refusal. One elided rule either way.
+            match expected {
+              Present { value: x } => resolve_elided_construct_walk(ctx: ctx, n: n, x: x)
+              Absent =>
+                if resolve_elided_construct_is_map_literal(n: n) {
+                  resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_no_expected_type)
+                } else {
+                  resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
+                }
             }
           ConstructTagAuthored { reference: reference } =>
-            resolve_construct_walk(ctx: ctx, n: n, reference: reference, expected: optional_absent(), field: fn(e, record) {
+            resolve_construct_walk(ctx: ctx, n: n, reference: reference, expected: expected, field: fn(e, record) {
               resolve_record_field_edge(ctx: ctx, e: e, record: record)
             })
           NotAConstruct =>
@@ -5459,15 +5446,26 @@ fn resolve_child_edge(
   ctx: ResolveContext,
   e: Edge
 ) -> ResolveNodeWalk {
+  resolve_child_edge_in(ctx: ctx, e: e, expected: optional_absent())
+}
+
+// The same door, expectation-carrying. The expectation reaches the target through the label arms the
+// plain door already uses: nothing about the SCOPE a child is walked in changes because an expectation
+// is in hand -- only which set an authored tag is read from, and which rule walks its fields.
+fn resolve_child_edge_in(
+  ctx: ResolveContext,
+  e: Edge,
+  expected: Optional<ResolveExpectation>
+) -> ResolveNodeWalk {
   match e.label {
-    Authored { name: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
-    StructuralLabel { label: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
+    Authored { name: _ } => resolve_labeled_child_edge_in(ctx: ctx, e: e, expected: expected)
+    StructuralLabel { label: _ } => resolve_labeled_child_edge_in(ctx: ctx, e: e, expected: expected)
     Positional =>
       if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
         ResolveWalkAccepted { value: e.target, diagnostics: None, bindings: [] }
       } else {
-        resolve_node_walk(ctx: ctx, n: e.target)
+        resolve_node_walk_in(ctx: ctx, n: e.target, expected: expected)
       }
   }
 }
@@ -5479,25 +5477,32 @@ fn resolve_child_edge(
 // declaring identity carried across the named edge. resolve_labeled_child_edge and the expected-type
 // construct door below both read it here, so a door that consumes an expectation cannot quietly walk
 // a named edge under a different context than the plain door does.
-fn resolve_labeled_child_edge_context(ctx: ResolveContext, e: Edge) -> ResolveContext {
-  let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(e: e) && !binder_node_edge(e: e) {
-    resolve_ctx_snoc_position(ctx: ctx, segment: label_sort_key(label: e.label))
-  } else {
-    ctx
-  }
-  let walk_ctx = match resolve_type_decl_member_child_walk(ctx: ctx, e: e) {
-    TypeDeclChildrenTypeOccurrence =>
-      resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
-    TypeDeclChildrenInherited => child_ctx
-  }
-  resolve_ctx_with_declaring(ctx: walk_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e))
-}
 
 fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
+  resolve_labeled_child_edge_in(ctx: ctx, e: e, expected: optional_absent())
+}
+
+fn resolve_labeled_child_edge_in(ctx: ResolveContext, e: Edge, expected: Optional<ResolveExpectation>) -> ResolveNodeWalk {
   if ctx.under_module_root && resolve_preserve_module_root_named_edge(e: e) {
     ResolveWalkAccepted { value: e.target, diagnostics: None, bindings: [] }
   } else {
-    resolve_node_walk(ctx: resolve_labeled_child_edge_context(ctx: ctx, e: e), n: e.target)
+    // main's context pipeline, in place rather than in a helper a second door calls separately: one
+    // path builds the child context, whichever door arrived here.
+    let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(e: e) && !binder_node_edge(e: e) {
+      resolve_ctx_snoc_position(ctx: ctx, segment: label_sort_key(label: e.label))
+    } else {
+      ctx
+    }
+    let walk_ctx = match resolve_type_decl_member_child_walk(ctx: ctx, e: e) {
+      TypeDeclChildrenTypeOccurrence =>
+        resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
+      TypeDeclChildrenInherited => child_ctx
+    }
+    resolve_node_walk_in(
+      ctx: resolve_ctx_with_declaring(ctx: walk_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e)),
+      n: e.target,
+      expected: expected
+    )
   }
 }
 
@@ -5748,9 +5753,11 @@ fn resolve_node_consumes_expectation(n: Node) -> Bool {
     // resolved, its declared constructor set is the authority for an authored tag, so an authored
     // construct standing in a declared-return or data-initializer position must be walked UNDER that
     // expectation. What the expectation changes is which set the tag is read from and which rule walks
-    // its fields; the scope the construct is walked in is unchanged
-    // (resolve_expected_authored_construct_edge reads the plain door's own context pipeline), and a tag
-    // the set does not declare refuses with its own typed cause rather than silently binding elsewhere.
+    // its fields; the walk is the plain door itself -- resolve_expected_edge hands the edge to
+    // resolve_child_edge_in, which reaches resolve_node_walk_in carrying the expectation -- so the
+    // declaring transition, the generated declaration reference and the where-refinement arms all still
+    // run, a Positional edge still pushes nothing, and a tag the set does not declare refuses with its
+    // own typed cause rather than silently binding elsewhere.
     ConstructTagAuthored { reference: _ } => true
     NotAConstruct =>
       match list_introduction_elements_optional(node: n) {

@@ -39,7 +39,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // their v2 counterparts import a type and never spell its arms). Each pair below therefore declares
 // the type in one module and uses it in another that imports only the type.
 
-data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\n"
+data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\ntype Tree = Node { child: Int } | Leaf\n"
+
+// A record whose NAME coincides with an arm of Tree above. The spelling has two declarations, one of
+// them a record type in a different module: the expected type's set holds the ARM, and the name door
+// can reach the record instead.
+data ctee_node_record_source: String = "module v2.test.ctee.node_record\n\ntype Node { child: Int }\n"
 
 data ctee_other_source: String = "module v2.test.ctee.other\n\ntype Other = Value | Else\n"
 
@@ -79,6 +84,25 @@ data ctee_imported_arm_source: String = "module v2.test.ctee.imported_arm\n\nimp
 // spelling. Verdict unchanged by this change.
 data ctee_qualified_source: String = "module v2.test.ctee.qualified\n\nimport v2.test.ctee.types { Behavior }\nfn f() -> Behavior { v2.test.ctee.types.Behavior.Value }\n"
 
+// AN ALIAS AS THE DECLARED TYPE: the pure renaming (type BoxAlias = Box) is followed to Box's
+// constructor, exactly as resolve_expected_rename_chain follows List to FreeMonoid.
+data ctee_alias_source: String = "module v2.test.ctee.alias_user\n\nimport v2.test.ctee.types { Box }\ntype BoxAlias = Box\ndata first: BoxAlias = Box { behavior: Value }\n"
+
+// A NEW REFUSAL THE FLIP STATES RATHER THAN DISCOVERS: an authored record standing where the expected
+// type is Optional<Box>. The expected type declares Present and Absent; the record's own name is not
+// one of them, so the site that bound the record by name now refuses with the constructor-set cause.
+// Under explicit_present_is_the_authoring_policy that is the intended reading, but it is a refusal at a
+// declared-return site and is named here so the diff measures it.
+data ctee_optional_position_source: String = "module v2.test.ctee.optional_position\n\nimport v2.test.ctee.types { Box }\nimport std.optional { Optional }\nfn pack() -> Optional<Box> { Box { behavior: Value } }\n"
+
+// THE COINCIDING LABEL: the spelling resolves to a record type in another module, while the expected
+// type's set holds an ARM of that name. The set is the authority, so the record does not bind here.
+data ctee_coinciding_source: String = "module v2.test.ctee.coinciding\n\nimport v2.test.ctee.types { Tree }\nimport v2.test.ctee.node_record { Node }\nfn make() -> Tree { Node { child: 1 } }\n"
+
+// THE TYPE PARAMETER CONTROL: the expected head has binders, so there is no constructor set and the
+// name door answers exactly as it does today.
+data ctee_type_param_source: String = "module v2.test.ctee.type_param\n\nimport v2.test.ctee.types { Box }\nfn pass_through<T>(v: T) -> T { Box { behavior: Value } }\n"
+
 fn ctee_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -99,7 +123,12 @@ fn ctee_context() -> Outcome<NativeTestContext> {
     ctee_read(text: ctee_ambiguous_source, id: ^ctee_ambiguous, path: "src/v2/test/fixture/ctee/ambiguous.dag"),
     ctee_read(text: ctee_no_set_source, id: ^ctee_no_set, path: "src/v2/test/fixture/ctee/no_set.dag"),
     ctee_read(text: ctee_imported_arm_source, id: ^ctee_imported_arm, path: "src/v2/test/fixture/ctee/imported_arm.dag"),
-    ctee_read(text: ctee_qualified_source, id: ^ctee_qualified, path: "src/v2/test/fixture/ctee/qualified.dag")
+    ctee_read(text: ctee_qualified_source, id: ^ctee_qualified, path: "src/v2/test/fixture/ctee/qualified.dag"),
+    ctee_read(text: ctee_node_record_source, id: ^ctee_node_record, path: "src/v2/test/fixture/ctee/node_record.dag"),
+    ctee_read(text: ctee_alias_source, id: ^ctee_alias_user, path: "src/v2/test/fixture/ctee/alias_user.dag"),
+    ctee_read(text: ctee_optional_position_source, id: ^ctee_optional_position, path: "src/v2/test/fixture/ctee/optional_position.dag"),
+    ctee_read(text: ctee_coinciding_source, id: ^ctee_coinciding, path: "src/v2/test/fixture/ctee/coinciding.dag"),
+    ctee_read(text: ctee_type_param_source, id: ^ctee_type_param, path: "src/v2/test/fixture/ctee/type_param.dag")
   ])
 }
 
@@ -113,6 +142,10 @@ type CteeVerdicts {
   no_set: NativeModuleResolveVerdict
   imported_arm: NativeModuleResolveVerdict
   qualified: NativeModuleResolveVerdict
+  alias_user: NativeModuleResolveVerdict
+  optional_position: NativeModuleResolveVerdict
+  coinciding: NativeModuleResolveVerdict
+  type_param: NativeModuleResolveVerdict
 }
 
 fn ctee_verdicts() -> Optional<CteeVerdicts> {
@@ -130,6 +163,10 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
         let no_set = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.no_set", path: ^ctee_no_set)
         let imported_arm = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.imported_arm", path: ^ctee_imported_arm)
         let qualified = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.qualified", path: ^ctee_qualified)
+        let alias_user = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.alias_user", path: ^ctee_alias_user)
+        let optional_position = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.optional_position", path: ^ctee_optional_position)
+        let coinciding = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.coinciding", path: ^ctee_coinciding)
+        let type_param = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.type_param", path: ^ctee_type_param)
         optional_present(value: CteeVerdicts {
           declared_types: declared_types.verdict,
           return_user: return_user.verdict,
@@ -140,6 +177,10 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
           no_set: no_set.verdict,
           imported_arm: imported_arm.verdict,
           qualified: qualified.verdict,
+          alias_user: alias_user.verdict,
+          optional_position: optional_position.verdict,
+          coinciding: coinciding.verdict,
+          type_param: type_param.verdict,
         })
       }
   }
@@ -247,5 +288,46 @@ test fn a_qualified_tag_keeps_its_dotted_door() -> Bool {
   match ctee_verdicts() {
     Absent => false
     Present { value: vs } => ctee_accepted(v: vs.qualified)
+  }
+}
+
+// CONTROL: a pure-renaming alias as the declared type reaches the aliased type's constructor, because
+// the rename chain is followed by the same door the elided head already uses.
+test fn a_pure_renaming_alias_reaches_the_aliased_constructor() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.alias_user)
+  }
+}
+
+// THE NEW REFUSAL, STATED: an authored record in an Optional position. The set is {Present, Absent};
+// the record name is not in it. The flip introduces this refusal at a declared-return site, so it is a
+// claim here rather than a discovery in the diff.
+test fn an_authored_record_under_an_optional_expectation_refuses_with_the_new_cause() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      ctee_refuses_with(v: vs.optional_position, reason: ^resolve_construct_tag_not_in_expected_type)
+  }
+}
+
+// THE COINCIDING LABEL: `Node` names a record type imported from another module, while the expected
+// type declares an ARM of that name. Exactly one arm carries the spelling, so the arm is what binds --
+// the name door's record does not. Resolve accepts either reading, so WHICH declaration won is not
+// visible in a verdict: it is the resolved-path column of the bounded identity diff, which is exactly
+// the comparison the ruling asks for (no site may go from bound to bound with a different identity).
+test fn an_arm_label_that_coincides_with_a_record_type_still_resolves() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.coinciding)
+  }
+}
+
+// CONTROL: the expected head is a binder, so there is no constructor set and the name door answers as
+// it does today.
+test fn a_type_parameter_expectation_keeps_the_name_door() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.type_param)
   }
 }
