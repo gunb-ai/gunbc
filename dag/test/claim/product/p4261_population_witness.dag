@@ -74,6 +74,7 @@ import product.p4261.comparison {
   DifferenceUndetermined,
   DifferentParts,
   InstallationSnapshot,
+  InstallationUnknown,
   ObservedRelation,
   P4261Comparison,
   PositionComparison,
@@ -391,7 +392,8 @@ test fn a_rating_is_judged_on_the_fields_the_claim_asserts() -> Bool {
 // PRESENCE IS READ, NEVER INFERRED FROM THE LEDGER'S SILENCE. The E1's converter, photographed before the
 // lift, is placed before it; both boards' U10_P2 positions are now recorded removed. U1_P5, seen and
 // never removed, is seen with no later removal. Q4_P5, named with no marking read and no removal
-// recorded, has no presence evidence, so a claim there is missing.
+// recorded, has no presence evidence, so a claim there is missing; the K1's U100, likewise unread,
+// has an unknown snapshot where the E1's, its marking read, was seen fitted.
 test fn presence_is_read_never_inferred_from_silence() -> Bool {
   let e1 = p4261_e1_layout
   let rec = match e1.measured { Present { value: b } => b.bench, Absent => no_bench_record }
@@ -405,6 +407,7 @@ test fn presence_is_read_never_inferred_from_silence() -> Bool {
     && missing(o: assess_on(layout: e1, p: q4))
     && match compared_at(c: c, d: "U10_P2") { Present { value: p } => removed_by(i: p.e1.installation, key: e1_u10p2_lift.key) && removed_by(i: p.k1.installation, key: k1_u10p2_lift.key), Absent => false }
     && match compared_at(c: c, d: "U1_P5") { Present { value: p } => match p.e1.installation { SeenWithNoLaterRemoval => true, _ => false }, Absent => false }
+    && match compared_at(c: c, d: "U100") { Present { value: p } => match p.k1.installation { InstallationUnknown => true, _ => false } && match p.e1.installation { SeenWithNoLaterRemoval => true, _ => false }, Absent => false }
 }
 
 // AN ABSENCE COUNTS ONLY WHERE IT IS PLACED. The K1's bare U10_P2 footprint, seen after the lift, is a
