@@ -13,6 +13,7 @@ import gunbc.fleet.board_function_converge {
   PcieFunctionReading, PcieFunctionEnumerated, PcieFunctionNotEnumerated, PcieFunctionUnread,
   LinkControlReading, LinkControlRead, LinkControlUnread,
   BehindReading, PcieDetachObservation,
+  BelowBridgeReading, BelowBridgeListed, BelowBridgeNotEnumerated, BelowBridgeUnread,
   PcieDetachDecision, DetachConverged, DetachApply, DetachRefused,
   pcie_detach_decision, converge_plan,
 }
@@ -34,14 +35,33 @@ fn present(f: PcieFunctionIdentity) -> PcieFunctionReading {
 data link_enabled: LinkControlReading = LinkControlRead { value: 64 }
 data link_disabled: LinkControlReading = LinkControlRead { value: 80 }
 
-fn observation(root: PcieFunctionReading, bridge: PcieFunctionReading, vga: PcieFunctionReading, link: LinkControlReading) -> PcieDetachObservation {
+fn named_below() -> BelowBridgeReading {
+  BelowBridgeListed { functions: map(route().behind, f => f.address as String) }
+}
+
+fn observation_below(root: PcieFunctionReading, bridge: PcieFunctionReading, vga: PcieFunctionReading, below: BelowBridgeReading, link: LinkControlReading) -> PcieDetachObservation {
   let r = route()
   PcieDetachObservation {
     root_port: root,
     detached: bridge,
     behind: map(r.behind, f => BehindReading { identity: f, reading: vga }),
+    below: below,
     link: link,
   }
+}
+
+// What the host lists below the bridge when it holds exactly the named functions, or nothing when the bridge
+// is gone -- the shape observe_below_bridge produces.
+fn below_for(bridge: PcieFunctionReading) -> BelowBridgeReading {
+  match bridge {
+    PcieFunctionEnumerated { vendor: _, device: _ } => named_below()
+    PcieFunctionNotEnumerated => BelowBridgeNotEnumerated
+    PcieFunctionUnread { cause: _ } => BelowBridgeNotEnumerated
+  }
+}
+
+fn observation(root: PcieFunctionReading, bridge: PcieFunctionReading, vga: PcieFunctionReading, link: LinkControlReading) -> PcieDetachObservation {
+  observation_below(root: root, bridge: bridge, vga: vga, below: below_for(bridge: bridge), link: link)
 }
 
 fn decide(o: PcieDetachObservation) -> PcieDetachDecision { pcie_detach_decision(route: route(), observation: o) }
@@ -87,6 +107,19 @@ test fn a_different_tree_refuses_before_anything_is_written() -> Bool {
     && refused(d: decide(o: observation(root: present(f: r.root_port), bridge: other, vga: present(f: vga()), link: link_enabled)))
     && refused(d: decide(o: observation(root: present(f: r.root_port), bridge: present(f: r.detached), vga: other, link: link_enabled)))
     && refused(d: decide(o: observation(root: present(f: r.root_port), bridge: PcieFunctionNotEnumerated, vga: present(f: vga()), link: link_disabled)))
+}
+
+// THE UNNAMED-FUNCTION RED. Removing the bridge removes everything below it, so a function there that the route
+// does not name -- a second function of the VGA device, or one below a function the route names -- refuses
+// before the bridge is touched; and a listing that could not be read is not an empty one.
+test fn an_unnamed_function_below_the_bridge_refuses() -> Bool {
+  let r = route()
+  let named = map(r.behind, f => f.address as String)
+  refused(d: decide(o: observation_below(root: present(f: r.root_port), bridge: present(f: r.detached), vga: present(f: vga()), below: BelowBridgeListed { functions: concat(named, ["0003:02:00.1"]) }, link: link_enabled)))
+    && refused(d: decide(o: observation_below(root: present(f: r.root_port), bridge: present(f: r.detached), vga: present(f: vga()), below: BelowBridgeListed { functions: [] }, link: link_enabled)))
+    && refused(d: decide(o: observation_below(root: present(f: r.root_port), bridge: present(f: r.detached), vga: present(f: vga()), below: BelowBridgeUnread { cause: "listing refused" }, link: link_enabled)))
+    && decide(o: observation_below(root: present(f: r.root_port), bridge: present(f: r.detached), vga: present(f: vga()), below: named_below(), link: link_enabled))
+      == DetachApply { remove_detached: true, disable_link: true }
 }
 
 // An unreadable reading is never read as absence.

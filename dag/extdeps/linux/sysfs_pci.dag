@@ -1,6 +1,6 @@
 module extdeps.linux.sysfs_pci
 
-import std.types { String, NonEmptyStr }
+import std.types { Bool, List, String, NonEmptyStr }
 import std.algebra { trim }
 import std.optional { Present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -59,6 +59,21 @@ fn sysfs_pci_remove_path(address: PciAddress) -> String {
 }
 
 data sysfs_pci_remove_value: NonEmptyStr = "1"
+
+// A BRIDGE'S CHILDREN ARE LISTED INSIDE ITS OWN DIRECTORY, each a directory named by its address in the
+// kernel's fixed form DDDD:BB:DD.F (drivers/pci/probe.c, pci_setup_device: "%04x:%02x:%02x.%d"). The same
+// directory also holds attributes and port-service entries such as "0003:00:01.0:pcie010", which that form
+// excludes, so the names of this form in a listing are exactly the enumerated child functions.
+fn sysfs_pci_is_function_address(name: String) -> Bool {
+  string_length(s: name) == 12
+    && substring(s: name, start: 4, end: 5) == ":"
+    && substring(s: name, start: 7, end: 8) == ":"
+    && substring(s: name, start: 10, end: 11) == "."
+}
+
+fn sysfs_pci_child_functions(entries: List<String>) -> List<String> {
+  filter(entries, n => sysfs_pci_is_function_address(name: n))
+}
 
 // THE ID ATTRIBUTE FORMAT. `vendor` and `device` hold the id as `0x` followed by four lowercase hex
 // digits and a newline (drivers/pci/pci-sysfs.c prints them with "0x%04x\n"). The reading returns the four

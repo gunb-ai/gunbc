@@ -5,13 +5,14 @@ import std.optional { Present, Absent }
 import std.process { ExitSuccess, exit_failure }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, listed_entry_presence,
+  Filesystem, listed_entry_presence, filesystem_listing_observation, filesystem_listing_entry_names,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
 }
 import extdeps.linux.procfs { ProcSelfStatus, procfs_path_literal, procfs_status_effective_uid }
 import extdeps.linux.sysfs_pci {
   sysfs_pci_devices_dir, sysfs_pci_vendor_path, sysfs_pci_device_path, sysfs_pci_remove_path,
-  sysfs_pci_remove_value, sysfs_pci_id_digits,
+  sysfs_pci_remove_value, sysfs_pci_id_digits, sysfs_pci_function_dir, sysfs_pci_child_functions,
 }
 import extdeps.pci.express_link_control { pcie_link_control_link_disabled }
 import extdeps.tools.pciutils_setpci { setpci_link_control_read_command, setpci_link_disable_set_command, setpci_word_reading }
@@ -62,10 +63,19 @@ type BehindReading {
   reading: PcieFunctionReading
 }
 
+// EVERYTHING ENUMERATED BELOW THE BRIDGE, not only what the route names: the bridge's own child functions
+// and each of theirs. Removing the bridge removes all of them, so the route may act only when this set is
+// exactly the functions it names; an unnamed function there would be removed without ever being read.
+type BelowBridgeReading
+  = BelowBridgeListed { functions: List<String> }
+  | BelowBridgeNotEnumerated
+  | BelowBridgeUnread { cause: String }
+
 type PcieDetachObservation {
   root_port: PcieFunctionReading
   detached: PcieFunctionReading
   behind: List<BehindReading>
+  below: BelowBridgeReading
   link: LinkControlReading
 }
 
@@ -147,7 +157,16 @@ fn pcie_detach_decision_below_root(route: PcieDetachRoute, observation: PcieDeta
             if length(unread_behind) > 0 || length(foreign_behind) > 0 {
               DetachRefused { cause: join(["a function behind the bridge ", function_ids_text(f: route.detached), " is unreadable or is not the one the route names, so removing the bridge would remove something unread"], "") }
             } else {
-              DetachApply { remove_detached: true, disable_link: !pcie_link_control_link_disabled(value: value) }
+              match observation.below {
+                BelowBridgeUnread { cause } => DetachRefused { cause: join(["the functions below the bridge ", function_ids_text(f: route.detached), " could not be listed: ", cause], "") }
+                BelowBridgeNotEnumerated => DetachRefused { cause: join(["the bridge ", function_ids_text(f: route.detached), " read as enumerated but its directory was not listed"], "") }
+                BelowBridgeListed { functions } =>
+                  if length(functions) == length(route.behind) && all(route.behind, f => length(filter(functions, a => a == (f.address as String))) == 1) {
+                    DetachApply { remove_detached: true, disable_link: !pcie_link_control_link_disabled(value: value) }
+                  } else {
+                    DetachRefused { cause: join(["below the bridge ", function_ids_text(f: route.detached), " the host enumerates ", join(functions, ", "), ", which is not exactly the functions the route names, so removing the bridge would remove something the route never read"], "") }
+                  }
+              }
             }
           }
         PcieFunctionNotEnumerated =>
@@ -204,11 +223,42 @@ fn observe_link_control(root_port: PcieFunctionIdentity) -> LinkControlReading {
   }
 }
 
+type ChildFunctionsReading
+  = ChildFunctionsListed { addresses: List<String> }
+  | ChildFunctionsUnread { cause: String }
+
+fn list_child_functions(directory: String) -> ChildFunctionsReading {
+  let listed = Filesystem.List(path: directory)
+  match filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(listing) => ChildFunctionsListed { addresses: sysfs_pci_child_functions(entries: filesystem_listing_entry_names(listing: listing)) }
+    FilesystemDirectoryListingRefused { directory: d, error } => ChildFunctionsUnread { cause: join(["listing ", d as String, " failed: ", error], "") }
+    FilesystemDirectorySubjectRefused { directory: _, cause } => ChildFunctionsUnread { cause: cause }
+  }
+}
+
+// Two levels: the bridge's children, then each child's. A child that is itself a bridge with functions
+// below it shows up at the second level, and anything the route does not name at either level refuses.
+fn observe_below_bridge(route: PcieDetachRoute, detached: PcieFunctionReading) -> BelowBridgeReading {
+  if !reading_enumerated(r: detached) { BelowBridgeNotEnumerated } else {
+    match list_child_functions(directory: sysfs_pci_function_dir(address: route.detached.address)) {
+      ChildFunctionsUnread { cause } => BelowBridgeUnread { cause: cause }
+      ChildFunctionsListed { addresses: children } => {
+        let grandchildren = map(children, c => list_child_functions(directory: concat(sysfs_pci_function_dir(address: route.detached.address), concat("/", c))))
+        let unread = flat_map(grandchildren, g => match g { ChildFunctionsUnread { cause } => [cause] ChildFunctionsListed { addresses: _ } => [] })
+        if length(unread) > 0 { BelowBridgeUnread { cause: join(unread, "; ") } }
+        else { BelowBridgeListed { functions: concat(children, flat_map(grandchildren, g => match g { ChildFunctionsListed { addresses } => addresses ChildFunctionsUnread { cause: _ } => [] })) } }
+      }
+    }
+  }
+}
+
 fn observe_pcie_detach(route: PcieDetachRoute) -> PcieDetachObservation {
+  let detached = observe_pcie_function(f: route.detached)
   PcieDetachObservation {
     root_port: observe_pcie_function(f: route.root_port),
-    detached: observe_pcie_function(f: route.detached),
+    detached: detached,
     behind: map(route.behind, f => BehindReading { identity: f, reading: observe_pcie_function(f: f) }),
+    below: observe_below_bridge(route: route, detached: detached),
     link: observe_link_control(root_port: route.root_port),
   }
 }

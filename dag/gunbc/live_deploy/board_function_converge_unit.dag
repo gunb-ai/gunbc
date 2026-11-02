@@ -96,8 +96,14 @@ type BoardFunctionConvergeUnitFile
   | BoardFunctionConvergeUnitRefused { cause: NamedArgumentAdmission }
 
 // Before= the container runtimes: CI jobs and serving workloads start there, and the removal should be in
-// place before they do. RemainAfterExit keeps the unit active after a converged run, so `systemctl is-active`
-// reads whether this boot's removal held; a refusal leaves it failed.
+// place before they do. This is ORDERING, NOT GATING. A refusal fails this unit and leaves the host exactly as
+// it was before this change -- the function enumerated and its link up -- and the container runtimes still
+// start, deliberately: the hazard is the link, not the workloads, so holding them back would take the host's
+// CI and serving down without making the link any safer. The failure stays visible, as this unit in the
+// failed state (RemainAfterExit keeps a converged run active, so `systemctl is-active` reads whether this
+// boot's removal held), and in a deploy, where the restart leg's failure stops the apply. What does not
+// exist yet is anything that alerts on the boot-time failure; until it does, a failed boot converge is seen
+// only by reading the unit.
 fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisionBinding) -> BoardFunctionConvergeUnitFile {
   match board_function_converge_argv(host: host, revision: revision) {
     BoardFunctionConvergeArgvRefused { cause } => BoardFunctionConvergeUnitRefused { cause: cause }
