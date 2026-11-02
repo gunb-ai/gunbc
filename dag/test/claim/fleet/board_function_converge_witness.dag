@@ -239,7 +239,7 @@ data aer_item: String = "PCIe AER Firmware First"
 data srv2_ras_payload: List<Int> = [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 120, 0, 0, 0, 176, 4, 0, 0, 1, 0, 0, 0, 160, 5, 0, 0]
 
 fn aer_readback(bios: String?, payload: List<Int>) -> SetupSwitchReadback {
-  setup_switch_readback(menu: aer_menu, item: aer_item, bios_version: bios, reading: EfiVariableRead { attributes: 7, payload: payload })
+  setup_switch_readback(menu: aer_menu, item: aer_item, board_name: Present { value: "ALTRAD8UD-1L2T" }, bios_version: bios, reading: EfiVariableRead { attributes: 7, payload: payload })
 }
 
 test fn a_switched_off_aer_item_reads_set() -> Bool {
@@ -271,14 +271,21 @@ test fn another_bios_version_or_none_is_unrouted_not_decoded() -> Bool {
 }
 
 test fn an_unread_variable_refuses() -> Bool {
-  match setup_switch_readback(menu: aer_menu, item: aer_item, bios_version: Present { value: "2.06" }, reading: EfiVariableUnread { cause: "x" }) {
+  match setup_switch_readback(menu: aer_menu, item: aer_item, board_name: Present { value: "ALTRAD8UD-1L2T" }, bios_version: Present { value: "2.06" }, reading: EfiVariableUnread { cause: "x" }) {
     SetupSwitchWrong { detail: _ } => true
     _ => false
   }
 }
 
 test fn another_setup_item_has_no_route() -> Bool {
-  match setup_switch_readback(menu: aer_menu, item: "Enable BERT", bios_version: Present { value: "2.06" }, reading: EfiVariableRead { attributes: 7, payload: srv2_ras_payload }) {
+  match setup_switch_readback(menu: aer_menu, item: "Enable BERT", board_name: Present { value: "ALTRAD8UD-1L2T" }, bios_version: Present { value: "2.06" }, reading: EfiVariableRead { attributes: 7, payload: srv2_ras_payload }) {
+    SetupSwitchUnrouted { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn another_board_is_unrouted_even_at_bios_2_06() -> Bool {
+  match setup_switch_readback(menu: aer_menu, item: aer_item, board_name: Present { value: "OTHER" }, bios_version: Present { value: "2.06" }, reading: EfiVariableRead { attributes: 7, payload: srv2_ras_payload }) {
     SetupSwitchUnrouted { cause: _ } => true
     _ => false
   }

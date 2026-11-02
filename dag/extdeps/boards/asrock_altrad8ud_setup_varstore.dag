@@ -42,6 +42,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // RasConfigNVDataStruct does not describe this 47-byte fork. Numeric min, max and step are not modeled.
 data setup_firmware_bios_version: NonEmptyStr = "2.06"
 
+// The layout is grounded for this board AND this BIOS: DMI board_name (read on srv1 as ALTRAD8UD-1L2T) must match too.
+data setup_firmware_board_name: NonEmptyStr = "ALTRAD8UD-1L2T"
+
 data ras_ifr_nv_data_variable: EfiVariableIdentity = EfiVariableIdentity {
   name: "RasIfrNVData"
   vendor_guid: "7f07fb39-004f-4071-a3e3-15c9fbd490ca"
