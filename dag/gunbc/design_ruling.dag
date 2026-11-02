@@ -70,6 +70,13 @@ data consumption_interrogated_separately: DesignRuling = DesignRuling {
   provenance: "Operator: adding dangling modeling is interrogated separately, and the consumption must be understood well.",
 }
 
+data dependencies_are_admitted_by_their_consumer: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dependencies_are_admitted_by_their_consumer"),
+  decided: "2026-11-01",
+  section: "3c",
+  provenance: "Operator, 2026-11-01, after srv1 hung repeatedly while the board's firmware-first PCIe error handler was taking errors from its unused BMC graphics link: 'if we get 100 things on a board, we are effectively signing up for integration work on everything on that board, unless we disable it, and selectively bring it up -- i would make this the default posture for systems.' Generalized the same day: 'my interest is in proper dependency management -- meaning, we should only use exactly what we need -- in hardware we tend to be lax because we're not sophisticated yet, but as convergence matures, it should head in the direction of being more conservative/diligent', to be aligned at the design level and at each domain. On enabling: 'we have to find a diverse set to expose any integration/diverse mechanisms we otherwise couldn't understand, and then model those, and if they expose any new interactions, disable as much as we can.' First domain application: gunbc.fleet.board_function_admission.",
+}
+
 data authorization_pattern_is_a_selection: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "authorization_pattern_is_a_selection"),
   decided: "2026-09-19",
@@ -600,6 +607,7 @@ fn design_rulings() -> List<DesignRuling> {
     flex_first_recipe_is_flash_next,
     conformance_needs_attention,
     consumption_interrogated_separately,
+    dependencies_are_admitted_by_their_consumer,
     epistemic_humility_is_symmetric,
     chain_re_derivation,
     root_generalization_closes_breadth,
