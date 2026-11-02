@@ -47,15 +47,20 @@
 // cargo's own parser, so the route declares the root where it can be enforced: the native entry receives
 // its working root as an explicit typed argument beside its source roots, and the emitted binding
 // constructs the process config from it (operator ruling, option (c)); absence REFUSES at startup with a
-// typed cause and never falls back to ".". That binding is the ruled-but-unbuilt half of this work: it
-// sits in v1.compiler.emit_rust native_effect_binding_of, which today constructs every admitted service
-// with `Type::new(Default::default())`, leaving extdeps.transports.shell ShellTransportConfig.working_dir
-// None and the process in "." (that ambient default on the sibling route is filed as
-// gunbc.recurring_failure_mode admitted_shell_effect_spawned_at_an_ambient_working_root). Nothing in this
-// module claims that binding exists, and in this cut the effect is not admitted anywhere: std.compiler_entry
-// native_compiler_route_denominator lists the file-transport service alone, so an entry reaching this
-// operation fails at the admission boundary and names it. That refusal is the guard while the binding is
-// missing -- measured against the live module by dag/test/claim/cargo_build_native_route_witness.dag.
+// typed cause and never falls back to ".". That binding has now landed, on the compiler route only: v1.compiler.emit_rust
+// native_cli_working_root_startup_block_rs renders the main's startup read of the argument std.compiler_entry
+// native_cli_working_root_argument declares (the spelling read FROM the row at run time, so the emitter holds
+// no copy of it), the closed sum native_cli_effect_binding decides -- its Refused arm prints the row's
+// native_cli_working_root_absent_cause and exits 2 before any binding statement is reached -- and
+// native_cli_shell_effect_binding_constructor then builds the handler as a struct literal naming both
+// working_dir and dry_run, so neither Default nor the spawn's unwrap_or fallback is reachable for a service
+// admitted on this route. The CLAIM route keeps the constructor call with Default (extdeps.docker.cli_service
+// DockerCli is its only shell effect), and that ambient default remains filed, with its owner and trigger, as
+// gunbc.recurring_failure_mode admitted_shell_effect_spawned_at_an_ambient_working_root. The effect is
+// admitted here: std.compiler_entry native_compiler_route_denominator lists it beside the file-transport
+// service, the guard against a spawn without a declared root is the closed sum's Refused arm (executed by
+// dag/test/claim/native_cli_working_root_witness.dag), and the admission set itself is judged by
+// dag/test/claim/cargo_build_native_route_witness.dag.
 
 module extdeps.rust.cargo_build_service
 

@@ -2,7 +2,8 @@ module v2.test.claim.cli.v2_native_cli
 import std.optional { Absent, Optional, Present }
 
 
-import std.algebra { Cons, Empty, FreeMonoid, length, list_head }
+import std.algebra { Cons, Empty, FreeMonoid, length, list_head, list_push }
+import std.compiler_entry { native_cli_working_root_argument }
 import std.process { ExitFailure, ExitSuccess }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import extdeps.process.posix_exit { exit_code_general_error }
@@ -711,4 +712,100 @@ test fn a_refused_population_verdict_exits_general_error_holds() -> Bool {
     ExitSuccess => false
     ExitFailure { code: code, reason: _ } => code == exit_code_general_error
   }
+}
+
+// THE NATIVE ENTRY'S DECLARED WORKING-ROOT ARGUMENT, SEEN FROM THE GRAMMAR SIDE.
+//
+// std.compiler_entry native_cli_working_root_argument is the ONE row that spells this argument; the
+// emitted program's startup parse (v1.compiler.emit_rust
+// native_cli_working_root_startup_block_rs) reads the same row at run time, and this grammar reads it
+// here to accept and skip the argument. Every argv below therefore BUILDS ITS SPELLING FROM THE ROW
+// instead of copying "--work-root": a rename of the row has one place to change, and if either reader
+// stopped following it, the rows below go red rather than quietly agreeing on a stale spelling.
+//
+// THE PAIRING OBLIGATION for this boundary is the second row: the same argv WITHOUT the argument must
+// produce the SAME plan. Accepting the argument must be inert -- it is consumed by the binding, not by
+// the plan -- and a skip that also swallowed a neighbouring option would show up here and nowhere else.
+
+
+fn argv_with_working_root(prefix: FreeMonoid<String>, value: String) -> FreeMonoid<String> {
+  prefix
+    |> list_push(native_cli_working_root_argument.flag)
+    |> list_push(value)
+}
+
+// THE PLAN, REDUCED TO WHAT THE SKIP COULD CHANGE: entry, root count, target spelling. Empty string
+// means the plan refused or carried some other verb, and every row below pairs a read of empty with the
+// refusal-reason helper, so an empty never reads as agreement.
+fn emit_plan_signature(plan: CliPlan) -> String {
+  match plan {
+    CliPlanRefused { reason: _, detail: _ } => ""
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliEmitClosure { entry: entry, source_roots: roots, target: target } =>
+          concat(
+            concat(concat(entry, "|"), to_string(length(xs: roots))),
+            concat("|", cli_emit_target_spelling(t: target))
+          )
+        CliIfArmReaderDifferential { source_roots: _ } => ""
+        CliCheckLayout { source_roots: _ } => ""
+        CliSelectSpelledModules { source_roots: _ } => ""
+        CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => ""
+      }
+  }
+}
+
+// THE ARGUMENT IS ACCEPTED, AND IT IS NOT AN UNKNOWN OPTION: for an argv that carries it the refusal
+// reason must be the not-refused symbol, never ^cli_unknown_option.
+test fn the_working_root_argument_is_accepted_holds() -> Bool {
+  let with_it = v2_cli_parse(
+    argv: argv_of(items: argv_with_working_root(prefix: argv_emit_one_root, value: "/srv/native-root"))
+  )
+  (plan_refusal_reason(plan: with_it) == ^cli_plan_was_not_refused)
+    && string_contains(s: emit_plan_signature(plan: with_it), pattern: "cli_probe")
+}
+
+// THE SKIP IS INERT, AND THE PAIR IS THE SAME ARGV WITHOUT THE ARGUMENT: same entry, same number of
+// roots, same target. A skip that also swallowed a neighbouring option, or shifted a positional, shows
+// up here and nowhere else. Two option positions are asserted (the one-root argv, and the two-root argv
+// whose option chain is longer), because a state machine that skips in only one state would pass a
+// single position.
+test fn the_working_root_argument_changes_nothing_in_the_plan_holds() -> Bool {
+  let one_root_with = emit_plan_signature(plan: v2_cli_parse(
+    argv: argv_of(items: argv_with_working_root(prefix: argv_emit_one_root, value: "/srv/native-root"))
+  ))
+  let one_root_without = emit_plan_signature(plan: v2_cli_parse(argv: argv_of(items: argv_emit_one_root)))
+  let two_roots_with = emit_plan_signature(plan: v2_cli_parse(
+    argv: argv_of(items: argv_with_working_root(prefix: argv_emit_two_roots, value: "/srv/native-root"))
+  ))
+  let two_roots_without = emit_plan_signature(plan: v2_cli_parse(argv: argv_of(items: argv_emit_two_roots)))
+  (one_root_with == one_root_without)
+    && (two_roots_with == two_roots_without)
+    && (length(xs: two_roots_with) > 0)
+}
+
+// A TRAILING DECLARED ARGUMENT IS ITS OWN LOCATED CAUSE, in the same shape as the other
+// missing-value rows: the operator typed the flag and stopped, and the message must say THAT.
+test fn a_trailing_working_root_argument_refuses_at_its_own_cause_holds() -> Bool {
+  let argv = argv_emit_two_roots |> list_push(native_cli_working_root_argument.flag)
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv))) == ^cli_native_root_missing_value
+}
+
+// THE VALUE MUST BE A VALUE: an option where the directory belongs is the same located refusal, not a
+// silently shifted parse.
+test fn a_working_root_argument_eating_an_option_refuses_at_its_own_cause_holds() -> Bool {
+  let argv = argv_emit_two_roots
+    |> list_push(native_cli_working_root_argument.flag)
+    |> list_push("--entry")
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv))) == ^cli_native_root_missing_value
+}
+
+// THE ACCEPTANCE IS BY EXACT SPELLING, and the near miss is BUILT FROM THE ROW so the test cannot
+// drift into agreeing with a stale copy of the flag. An unknown option still refuses: accepting the
+// declared argument did not widen what the grammar tolerates.
+test fn a_misspelled_working_root_argument_is_still_an_unknown_option_holds() -> Bool {
+  let argv = argv_emit_two_roots
+    |> list_push(concat(native_cli_working_root_argument.flag, "-x"))
+    |> list_push("/srv/native-root")
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv))) == ^cli_unknown_option
 }

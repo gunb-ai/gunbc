@@ -1,0 +1,9 @@
+[package]
+name = "native_cli_working_root_fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Its own workspace root: this fixture is built by the native-CLI working-root control, never as a
+# member of the repository workspace above it.
+[workspace]

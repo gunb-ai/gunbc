@@ -1,0 +1,104 @@
+module test.fixture.native_cli_working_root_entry
+
+// THE ENTRY THE NATIVE-CLI WORKING-ROOT CONTROLS COMPILE AND RUN.
+//
+// It exists for one question: does a compiler-route entry whose admitted effect binds a shell
+// transport receive its working root from the declared argument, as built by the emitter, with no
+// ambient fallback? The entry itself reads NO argument -- every path below is relative to the
+// working root the BINDING carries, so a program that spawned at the process directory would build
+// the wrong crate and the controls would see it. Its argv is carried into the outcome and printed,
+// because the controls also check that the emitted main handed the FULL argv down (one argv, two
+// readers: v1.compiler.emit_rust native_cli_working_root_startup_block_rs reads the declared
+// argument and src/v2/cli/compile_cli.dag skips it, and nothing strips it on the way here).
+//
+// Built by:
+//   gunbc compile --entry dag/test/fixture/native_cli_working_root_entry.dag --target rust
+//   cargo build --release                      in the emitted crate
+//   <emitted binary> --work-root <dir>         where <dir> holds one of the sibling fixture crates
+// The executed controls live with the witness module
+// test.claim.native_cli_working_root_witness; the host rows are recorded in
+// docs/measurements/native_cli_working_root/.
+import std.types { Int, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
+import extdeps.rust.cargo_build_service {
+  CargoBuild, CargoProgramWord, CargoProgramWordResolution, CargoProgramWordResolved, CargoProgramWordRefused,
+  CargoBuildProfile, ProfileRelease, cargo_build_program, cargo_build_program_word
+}
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
+
+// EVERY PATH IS RELATIVE TO THE DECLARED WORKING ROOT: the handler spawns cargo with its own
+// working_dir as the process directory, so these names say which crate is built without naming where
+// on earth it lives. The sibling fixture crates (native_cli_working_root_fixture/ok and /broken)
+// both carry this package name, so the only difference a control can introduce is the source.
+data native_cli_working_root_fixture_manifest: String = "Cargo.toml"
+
+data native_cli_working_root_fixture_target_dir: String = "target"
+
+data native_cli_working_root_fixture_package: String = "native_cli_working_root_fixture"
+
+type NativeCliWorkingRootRun
+  = NativeCliWorkingRootRan { exit_code: Int, stdout: String, stderr: String, argv: List<String> }
+  | NativeCliWorkingRootProgramRefused { cause: String }
+
+fn native_cli_working_root_run(argv: List<String>) -> NativeCliWorkingRootRun {
+  let word_resolution = cargo_build_program_word(program: cargo_build_program())
+  match word_resolution {
+    CargoProgramWordResolved { word: word } => {
+      let result = CargoBuild.Build(
+        program: word,
+        manifest_path: native_cli_working_root_fixture_manifest,
+        profile: ProfileRelease,
+        target_dir: native_cli_working_root_fixture_target_dir,
+        package: native_cli_working_root_fixture_package,
+        bin: native_cli_working_root_fixture_package
+      )
+      NativeCliWorkingRootRan {
+        exit_code: result.exit_code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        argv: argv
+      }
+    }
+    CargoProgramWordRefused { program: program, cause: cause } =>
+      NativeCliWorkingRootProgramRefused { cause: cause }
+  }
+}
+
+fn v2_cli_main(argv: List<String>) -> NativeCliWorkingRootRun {
+  native_cli_working_root_run(argv: argv)
+}
+
+// THE OBSERVABLE TEXT OF A RUN: what cargo said, and the argv the entry was handed.
+fn v2_cli_outcome_text(outcome: NativeCliWorkingRootRun) -> String {
+  match outcome {
+    NativeCliWorkingRootRan { exit_code: exit_code, stdout: stdout, stderr: stderr, argv: argv } =>
+      join([
+        "exit_code=",
+        to_string(exit_code),
+        " argv_count=",
+        to_string(length(argv)),
+        " stdout=[",
+        stdout,
+        "] stderr=[",
+        stderr,
+        "]"
+      ], "")
+    NativeCliWorkingRootProgramRefused { cause: cause } =>
+      concat("program word refused: ", cause)
+  }
+}
+
+fn v2_cli_exit(outcome: NativeCliWorkingRootRun) -> ProcessExit {
+  match outcome {
+    NativeCliWorkingRootRan { exit_code: exit_code, stdout: stdout, stderr: stderr, argv: argv } =>
+      if exit_code == 0 {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("cargo build exited ", to_string(exit_code)))
+      }
+    NativeCliWorkingRootProgramRefused { cause: cause } =>
+      exit_failure(reason: concat("cargo program word refused: ", cause))
+  }
+}

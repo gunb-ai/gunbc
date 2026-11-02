@@ -40,10 +40,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // native_compiler_route_admits_the_declared_cargo_build; the sequencing was agreed by the operator
 // 2026-11-02, msg_998d2bf2). Before this cut the compiler route admitted everything except an exclusion
 // list, so a generic-exec service would have been admitted by default and the emitted compiler program had
-// no NAME for the build it needs. The NAME is modelled here; the ADMISSION waits for the cut that binds the
-// effect to an explicitly declared program, working root and dry-run mode, because an admitted effect whose
-// ruled guard is unbuilt is what DESIGN 5 refuses -- so the refusal claim against the real module below is
-// INTENTIONAL C1 behaviour, not a missing H1 handler.
+// no NAME for the build it needs. The NAME is modelled in extdeps.rust.cargo_build_service and the ADMISSION
+// joined this cut, together with the binding the ruling conditions it on: std.compiler_entry
+// native_cli_working_root_argument, native_cli_declared_execution_mode and the closed sum
+// native_cli_effect_binding, consumed by v1.compiler.emit_rust
+// native_cli_working_root_startup_block_rs and native_cli_shell_effect_binding_constructor. An admitted
+// effect whose ruled guard is unbuilt is what DESIGN 5 refuses, so the order matters: the effect and its
+// guard land in the same change, and the guard's own refusals are the claims in
+// dag/test/claim/native_cli_working_root_witness.dag. What this module keeps is the SET: what is on the
+// route, what is not, and that a spelling of a name is not an identity.
 //
 // TWO KINDS OF CLAIM, AND THEY DEPEND ON DIFFERENT THINGS. The structural and model-level claims read the
 // rows in the tree being checked. The fixture claims compile a closure through the real emitter in
@@ -75,11 +80,13 @@ data fx_cli_spawn_source: String = "module nefx.cli\nimport nefx.entry_driver { 
 // that breaks the real CargoBuild lowering cannot leave the control below green (review 89867). The clock
 // subject is the calibration: extdeps.clock Clock sits outside BOTH the NativeAdmitOnly set this PR installs
 // and the excluded list it replaces, so it refuses at any mirror, and a zero count above is then evidence
-// rather than an instrument that never speaks. Measured 2026-11-02: the clock subject carries one refusal row
-// naming extdeps.clock Clock; the CargoBuild subject carried exactly one, naming 'shell transport output key
-// outcome has no modeled channel', which is the wall that made this PR drop that output field (the service
-// module and gunbc.recurring_failure_mode transport_output_field_without_a_native_realization_channel both
-// record the sentence).
+// rather than an instrument that never speaks. READINGS, WITH THEIR REVISION: at 5b0b26d9b399, with the build
+// effect deliberately NOT yet on the list, the clock subject carried one refusal row naming extdeps.clock
+// Clock and the CargoBuild subject carried exactly one, naming 'shell transport output key outcome has no
+// modeled channel' -- the wall that made that cut drop the output field (extdeps.rust.cargo_build_service and
+// gunbc.recurring_failure_mode transport_output_field_without_a_native_realization_channel both record the
+// sentence). The expectation that the CargoBuild subject now carries NO such row is what the claim below
+// measures, at this head, in CI.
 data fx_cli_real_cargo_source: String = "module nefx.cli\nimport std.types { Bool, List, String }\nimport std.compiler_entry { CompilerEntryDriver, NativeCliDriver }\nimport extdeps.rust.cargo_build_service { CargoBuild, CargoProgramWord, CargoProgramWordResolution, CargoProgramWordResolved, CargoProgramWordRefused, CargoBuildProfile, ProfileRelease, cargo_build_program, cargo_build_program_word }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn run_build(word: CargoProgramWord) -> Bool {\n  let r = CargoBuild.Build(program: word, manifest_path: \"m/Cargo.toml\", profile: ProfileRelease, target_dir: \"target\", package: \"p\", bin: \"b\")\n  r.exit_code == 0\n}\nfn v2_cli_main(argv: List<String>) -> Bool {\n  let w = cargo_build_program_word(program: cargo_build_program())\n  match w {\n    CargoProgramWordResolved { word: word } => run_build(word: word)\n    CargoProgramWordRefused { program: program, cause: cause } => false\n  }\n}\n"
 
 data fx_cli_real_clock_source: String = "module nefx.cli\nimport std.types { Bool, List, String }\nimport std.compiler_entry { CompilerEntryDriver, NativeCliDriver }\nimport extdeps.clock { Clock }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn v2_cli_main(argv: List<String>) -> Bool {\n  let r = Clock.UnixSecs()\n  r.unix_secs != \"\"\n}\n"
@@ -118,15 +125,18 @@ fn admitted_declarations() -> List<String> {
 
 // THE SET IS CLOSED, AND IT IS A SET. Reverting the row to NativeAdmitAllExcept -- the shape that admitted
 // a spawn effect by default -- is red here even before any fixture runs, and so is adding or dropping a
-// member. The build effect is ASSERTED ABSENT on purpose: it joins the list in the cut that carries its
-// binding, and this claim is what notices if it is admitted early.
-test fn the_compiler_route_declares_exactly_one_effect_and_not_yet_the_build() -> Bool {
+// member. TWO members now: the file effect the route has always had, and the build effect, which joined in
+// the cut that carries its binding (std.compiler_entry native_cli_working_root_argument,
+// native_cli_declared_execution_mode and the closed sum native_cli_effect_binding). Admitting it earlier,
+// while the emitted handler still took only a Default, is exactly what the previous cut refused; this claim
+// is what notices either way -- a member dropped, or a third one arriving without a ruling.
+test fn the_compiler_route_declares_the_two_effects_the_ruling_admits() -> Bool {
   let rows = admitted_declarations()
   match native_compiler_route_denominator.scope {
     NativeAdmitOnly { admitted: _ } =>
-      (rows |> count) == 1
+      (rows |> count) == 2
       && (rows |> any(r => r == "extdeps.filesystem.filesystem_io Filesystem"))
-      && !(rows |> any(r => r == "extdeps.rust.cargo_build_service CargoBuild"))
+      && (rows |> any(r => r == "extdeps.rust.cargo_build_service CargoBuild"))
       && !(rows |> any(r => r == "outgoing-http"))
     NativeAdmitAllExcept { excluded: _ } => false
   }
@@ -136,7 +146,7 @@ test fn the_compiler_route_declares_exactly_one_effect_and_not_yet_the_build() -
 // depend on how the real service spells its own name (dag/extdeps/shell/exec.dag declares it `shell.Exec`).
 test fn the_declared_set_names_no_generic_exec_and_no_clock() -> Bool {
   let rows = admitted_declarations()
-  (rows |> count) == 1
+  (rows |> count) == 2
   && !(rows |> any(r => string_contains(s: r, pattern: "shell.exec")))
   && !(rows |> any(r => string_contains(s: r, pattern: "clock")))
 }
@@ -176,18 +186,22 @@ test fn a_compiler_route_entry_reaching_an_unlisted_shell_service_refuses() -> B
 
 // INTENTIONAL C1 BEHAVIOUR, NOT AN IMPLEMENTED H1. The modelled build effect is deliberately NOT in the
 // list in this cut, so a compiler-route entry that reaches the REAL extdeps.rust.cargo_build_service
-// CargoBuild, as the tree carries it, must fail at the admission boundary and name it. The subject is the
+// CargoBuild, as the tree carries it, must NOT produce a realization refusal naming it. The subject is the
 // live module resolved against the checkout's own module pool, not a copy of it: the claim measures the
-// refusal that keeps the ambient working root unreachable on this route until the cut binding program,
-// working root and dry-run mode lands. The filter matches the module-path fragment, which is what a real
-// module's subject_name carries; the homonym fixture's service (module nefx.other) cannot match it, so an
-// admission by bare spelling would go red here.
-test fn the_real_cargo_build_service_is_refused_on_the_compiler_route_until_its_binding_lands() -> Bool {
+// lowering of the effect whose binding -- declared cargo program, working root and execution mode, read from
+// std.compiler_entry by the emitted main -- made the admission admissible. THE PAIR THAT KEEPS IT HONEST:
+// the calibration claim below runs the same path over extdeps.clock Clock, a real service the set excludes,
+// and requires a refusal row naming it; and the unlisted-spawn fixture above requires the same for a shell
+// service reached by an unlisted module path. An empty count is therefore a reading of the walk, not an
+// instrument that never speaks. The filter matches the module-path fragment, which is what a real module's
+// subject_name carries; the homonym fixture's service (module nefx.other) cannot match it, so an admission
+// by bare spelling would still go red there.
+test fn the_real_cargo_build_service_lowers_on_the_compiler_route_now_that_its_binding_exists() -> Bool {
   let c = compile_dag_diagnostic_census(source: fx_cli_real_cargo_source)
   match c {
     CensusObserved { rows: rows } =>
       (census_rows_of_class(rows: rows, wanted: "NativeEffectRealizationRefused")
-        |> filter(r => string_contains(s: r.subject_name, pattern: "cargo_build_service CargoBuild")) |> count) > 0
+        |> filter(r => string_contains(s: r.subject_name, pattern: "cargo_build_service CargoBuild")) |> count) == 0
     CensusNotRunnable { cause: cause } => false
   }
 }
