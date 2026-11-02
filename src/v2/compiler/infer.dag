@@ -4469,8 +4469,13 @@ fn infer_declared_position_undecidable_reason(
   type_params: List<Symbol>,
   rigid_binders: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_params) {
-    Present { value: reason } => optional_present(value: reason)
+  // Only a declared position that IS a bare type variable is undecided here: a variable's own position.
+  // A declared type that merely MENTIONS one (`Pair<K, String>`) goes on to the pair judgment, which
+  // undecides the variable's position alone and judges its concrete siblings
+  // (v2.std.inhabitance inhabitance_pair_undecidable_reason); abstaining the whole position here hid a
+  // concrete sibling mismatch before that judgment could run.
+  match infer_type_variable_binder(t: declared, type_params: type_params) {
+    Present { value: _ } => inhabitance_node_undecidable_reason(n: declared, type_variables: type_params)
     Absent =>
       match declared.kind {
         // A rigid binder of an enclosing declaration is a KNOWN type in its scope (the leaf rule,
