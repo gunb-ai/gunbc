@@ -280,6 +280,13 @@ data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
   provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
 }
 
+data boot_delivery_persistence_and_role_are_independent_axes: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "boot_delivery_persistence_and_role_are_independent_axes"),
+  decided: "2026-11-02",
+  section: "3",
+  provenance: "Operator design decision relayed by bold-heron-131 to session merry-fox-82 on 2026-11-02; the wording below is the relay, not a sentence the operator typed. Diskless boot and a disk-backed OS are both supported naturally, without divergent machine workflows. Seven concerns are modeled separately: physical identity and controller capabilities; artifact and architecture; delivery strategy (PXE/HTTP or vendor media); OS storage and persistence policy; initialization; trust establishment; workload role and lifecycle. Delivery is independent of persistence: a network boot may run stateless OR install and then use a local OS. A runner is a consumer of an initialized host, never a boot prerequisite. Repeated convergence preserves correct state, and a destructive disk install requires an explicit target and intent, never a default. Protocol differences live in extdeps adapters bound to verified firmware readings, with no board-name branch and no duplicate capability catalog. The Supermicro H11SSL controller is UNKNOWN: a Supermicro interface implies neither MegaRAC nor standard Redfish media. The operator's answer here concerns storage only. It is NOT a selection among host-key trust strategies (per-boot SOL pin or otherwise), and no such selection is recorded by this ruling.",
+}
+
 data fan_policy_is_one_fleet_management_workflow: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fan_policy_is_one_fleet_management_workflow"),
   decided: "2026-10-17",
@@ -626,6 +633,7 @@ fn design_rulings() -> List<DesignRuling> {
     native_first_complete_cuts,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
+    boot_delivery_persistence_and_role_are_independent_axes,
     physical_and_guest_control_remain_distinct,
     fan_policy_is_one_fleet_management_workflow,
     dimm_population_is_admitted_permissively,
