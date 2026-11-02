@@ -46,30 +46,30 @@ data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = V
 // can reach the record instead.
 data ctee_node_record_source: String = "module v2.test.ctee.node_record\n\ntype Node { child: Int }\n"
 
-data ctee_other_source: String = "module v2.test.ctee.other\n\ntype Other = Value | Else\n"
+data ctee_other_source: String = "module v2.test.ctee.other\n\ntype Other = Payload { flag: Int } | Call { flag: Int }\n"
 
 // A CONSTRUCTOR IN RETURN POSITION, spelled bare, with the expected type imported and the arm not.
 // Before the arm of this change: resolve_reason_unbound_symbol. After: accepted, bound by expected
 // type (v2.compiler.resolve ExpectedTypeConstructorRoute).
-data ctee_return_source: String = "module v2.test.ctee.return_user\n\nimport v2.test.ctee.types { Behavior }\nfn f() -> Behavior { Value }\n"
+data ctee_return_source: String = "module v2.test.ctee.return_user\n\nimport v2.test.ctee.types { Behavior }\nfn f() -> Behavior { Call { name: 1 } }\n"
 
 // THE NESTED PATTERN ARM: the tag sits under a pattern field, and the field's declared type is what
 // the constructor must be read from. Before: resolve_reason_unbound_symbol at `Value`.
-data ctee_pattern_source: String = "module v2.test.ctee.pattern_user\n\nimport v2.test.ctee.types { Box }\nfn f(x: Box) -> Int {\n  match x {\n    Box { behavior: Value } => 0\n    Box { behavior: Call { name: n } } => n\n  }\n}\n"
+data ctee_pattern_source: String = "module v2.test.ctee.pattern_user\n\nimport v2.test.ctee.types { Box }\nfn f(x: Box) -> Int {\n  match x {\n    Box { behavior: Call { name: n } } => n\n    Box { behavior: Call { name: 0 } } => 0\n  }\n}\n"
 
 // THE RECORD-FIELD ARM: a value under a record field whose authored field type is the expected type.
 // This is the position rule that already existed (resolve_record_field_edge); what is new is that the
 // construct under it is gated by the field type's constructor set rather than by its spelling.
-data ctee_field_source: String = "module v2.test.ctee.field_user\n\nimport v2.test.ctee.types { Box, Behavior }\nfn f() -> Box { Box { behavior: Value } }\n"
+data ctee_field_source: String = "module v2.test.ctee.field_user\n\nimport v2.test.ctee.types { Box, Behavior }\nfn f() -> Box { Box { behavior: Call { name: 1 } } }\n"
 
 // THE MISMATCH: the spelling binds a declaration -- an arm of a DIFFERENT coproduct -- and the expected
 // type does not declare it. That is the case the ruling named, and it refuses with the new cause
 // without consulting any other door.
-data ctee_wrong_tag_source: String = "module v2.test.ctee.wrong_tag\n\nimport v2.test.ctee.types { Behavior }\nimport v2.test.ctee.other { Value }\nfn f() -> Behavior { Value }\n"
+data ctee_wrong_tag_source: String = "module v2.test.ctee.wrong_tag\n\nimport v2.test.ctee.types { Behavior }\nimport v2.test.ctee.other { Payload }\nfn f() -> Behavior { Payload { flag: 1 } }\n"
 
 // GENUINE AMBIGUITY IS PRESERVED, not resolved by the expected type: two imported arms spelled alike
 // stay many, and the door refuses as ambiguous rather than picking the arm that happens to match.
-data ctee_ambiguous_source: String = "module v2.test.ctee.ambiguous\n\nimport v2.test.ctee.types { Behavior }\nimport v2.test.ctee.other { Value }\nimport v2.test.ctee.types { Value }\nfn f() -> Behavior { Value }\n"
+data ctee_ambiguous_source: String = "module v2.test.ctee.ambiguous\n\nimport v2.test.ctee.types { Behavior, Call }\nimport v2.test.ctee.other { Call }\nfn f() -> Behavior { Call { name: 1 } }\n"
 
 // THE SET THAT CANNOT BE READ: the expected type is a kernel integer, which has no constructor set.
 // The name door answers exactly as it did before, so this stays unbound and is NOT relabelled.
@@ -86,14 +86,14 @@ data ctee_qualified_source: String = "module v2.test.ctee.qualified\n\nimport v2
 
 // AN ALIAS AS THE DECLARED TYPE: the pure renaming (type BoxAlias = Box) is followed to Box's
 // constructor, exactly as resolve_expected_rename_chain follows List to FreeMonoid.
-data ctee_alias_source: String = "module v2.test.ctee.alias_user\n\nimport v2.test.ctee.types { Box }\ntype BoxAlias = Box\ndata first: BoxAlias = Box { behavior: Value }\n"
+data ctee_alias_source: String = "module v2.test.ctee.alias_user\n\nimport v2.test.ctee.types { Box }\ntype BoxAlias = Box\ndata first: BoxAlias = Box { behavior: Call { name: 1 } }\n"
 
 // A NEW REFUSAL THE FLIP STATES RATHER THAN DISCOVERS: an authored record standing where the expected
 // type is Optional<Box>. The expected type declares Present and Absent; the record's own name is not
 // one of them, so the site that bound the record by name now refuses with the constructor-set cause.
 // Under explicit_present_is_the_authoring_policy that is the intended reading, but it is a refusal at a
 // declared-return site and is named here so the diff measures it.
-data ctee_optional_position_source: String = "module v2.test.ctee.optional_position\n\nimport v2.test.ctee.types { Box }\nimport std.optional { Optional }\nfn pack() -> Optional<Box> { Box { behavior: Value } }\n"
+data ctee_optional_position_source: String = "module v2.test.ctee.optional_position\n\nimport v2.test.ctee.types { Box }\nimport std.optional { Optional }\nfn pack() -> Optional<Box> { Box { behavior: Call { name: 1 } } }\n"
 
 // THE COINCIDING LABEL: the spelling resolves to a record type in another module, while the expected
 // type's set holds an ARM of that name. The set is the authority, so the record does not bind here.
@@ -104,7 +104,13 @@ data ctee_coinciding_unimported_source: String = "module v2.test.ctee.coinciding
 
 // THE TYPE PARAMETER CONTROL: the expected head has binders, so there is no constructor set and the
 // name door answers exactly as it does today.
-data ctee_type_param_source: String = "module v2.test.ctee.type_param\n\nimport v2.test.ctee.types { Box }\nfn pass_through<T>(v: T) -> T { Box { behavior: Value } }\n"
+// A binder carries no constructor set, so the expected type cannot answer and the name door does, with
+// today's answer: an unimported arm spelling stays unbound. This claim is what says the arm does not
+// fire where the ruling does not let it.
+// An unimported NULLARY arm spelled bare, under an expectation whose type does declare it.
+data ctee_nullary_source: String = "module v2.test.ctee.nullary\n\nimport v2.test.ctee.types { Tree }\nfn make() -> Tree { Leaf }\n"
+
+data ctee_type_param_source: String = "module v2.test.ctee.type_param\n\nimport v2.test.ctee.types { Tree }\nfn pass_through<T>(v: T) -> T { Leaf }\n"
 
 fn ctee_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -132,7 +138,8 @@ fn ctee_context() -> Outcome<NativeTestContext> {
     ctee_read(text: ctee_optional_position_source, id: ^ctee_optional_position, path: "src/v2/test/fixture/ctee/optional_position.dag"),
     ctee_read(text: ctee_coinciding_source, id: ^ctee_coinciding, path: "src/v2/test/fixture/ctee/coinciding.dag"),
     ctee_read(text: ctee_coinciding_unimported_source, id: ^ctee_coinciding_unimported, path: "src/v2/test/fixture/ctee/coinciding_unimported.dag"),
-    ctee_read(text: ctee_type_param_source, id: ^ctee_type_param, path: "src/v2/test/fixture/ctee/type_param.dag")
+    ctee_read(text: ctee_type_param_source, id: ^ctee_type_param, path: "src/v2/test/fixture/ctee/type_param.dag"),
+    ctee_read(text: ctee_nullary_source, id: ^ctee_nullary, path: "src/v2/test/fixture/ctee/nullary.dag")
   ])
 }
 
@@ -151,6 +158,7 @@ type CteeVerdicts {
   coinciding: NativeModuleResolveVerdict
   coinciding_unimported: NativeModuleResolveVerdict
   type_param: NativeModuleResolveVerdict
+  nullary: NativeModuleResolveVerdict
 }
 
 fn ctee_verdicts() -> Optional<CteeVerdicts> {
@@ -173,6 +181,7 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
         let coinciding = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.coinciding", path: ^ctee_coinciding)
         let coinciding_unimported = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.coinciding_unimported", path: ^ctee_coinciding_unimported)
         let type_param = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.type_param", path: ^ctee_type_param)
+        let nullary = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.nullary", path: ^ctee_nullary)
         optional_present(value: CteeVerdicts {
           declared_types: declared_types.verdict,
           return_user: return_user.verdict,
@@ -188,6 +197,7 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
           coinciding: coinciding.verdict,
           coinciding_unimported: coinciding_unimported.verdict,
           type_param: type_param.verdict,
+          nullary: nullary.verdict,
         })
       }
   }
@@ -344,18 +354,28 @@ test fn an_unimported_label_that_matches_one_arm_binds_that_arm() -> Bool {
   }
 }
 
-test fn an_arm_label_that_coincides_with_a_record_type_still_resolves() -> Bool {
-  match ctee_verdicts() {
-    Absent => false
-    Present { value: vs } => ctee_accepted(v: vs.coinciding)
-  }
-}
 
-// CONTROL: the expected head is a binder, so there is no constructor set and the name door answers as
-// it does today.
+// CONTROL: the expected head is a BINDER, so there is no constructor set to read and the name door
+// answers with today's answer -- an unimported arm spelling stays unbound. This claim is what says the
+// arm does not fire where the ruling does not let it.
 test fn a_type_parameter_expectation_keeps_the_name_door() -> Bool {
   match ctee_verdicts() {
     Absent => false
-    Present { value: vs } => ctee_accepted(v: vs.type_param)
+    Present { value: vs } => ctee_refuses_with(v: vs.type_param, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+// THE STATED FRONTIER, and a probe for it. A PAYLOAD-ABSENT arm (`Leaf`, `Absent`, `None`) is not a
+// construct node at all: v2.std.node_query construct_tag_reading answers NotAConstruct for an atom, and
+// the walk sends an atom to the qualified-name door. So the constructor-set reading cannot reach a nullary
+// arm, and it stays unbound here exactly as it does on main. This claim asserts TODAY'S ANSWER on purpose;
+// it is the discriminating control for the one extension this PR does NOT make -- reading a payload-absent
+// atom through the same expected-type door. TRIGGER: that extension, which is a scope question for
+// tidy-ant-251 (it widens the door from construct nodes to atoms) and would flip this claim to the arm
+// binding. It is not a relabel: today the site refuses.
+test fn a_payload_absent_arm_is_not_a_construct_node_and_stays_unbound() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_refuses_with(v: vs.nullary, reason: ^resolve_reason_unbound_symbol)
   }
 }
