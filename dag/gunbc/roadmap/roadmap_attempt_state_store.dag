@@ -664,8 +664,12 @@ fn attempt_append_log_member_census_key(member: AttemptLogMember) -> NonEmptyStr
   }
 }
 
-// Census lookup keyed on the variant, not on a caller-supplied string. The slot's own member field IS the
-// authoritative key (DESIGN §3: no nicknaming, no string join at the call site).
+// Census lookup keyed on the variant, not on a caller-supplied string (DESIGN §3: no nicknaming, no string
+// join at the call site). The census row's member field is the CENSUS KEY -- the name of the row. The slot's
+// member field is the ON-DISK FILE NAME. Those are two different facts and must not be conflated: a slot
+// carrying the key makes the mint's claimant/generation scan inspect "AttemptWorkerEvents.<n>" and never the
+// real generations (review 90137). So the join is by key, and the returned slot is rebuilt with the file name
+// from the one file-name authority (attempt_log_member_name).
 fn attempt_append_log_census_slot_from(rows: List<MemberCensusRow>, key: NonEmptyStr) -> AppendLogSlot? {
   match rows {
     Empty {} => Absent
@@ -676,7 +680,11 @@ fn attempt_append_log_census_slot_from(rows: List<MemberCensusRow>, key: NonEmpt
 }
 
 fn attempt_append_log_census_slot(member: AttemptLogMember) -> AppendLogSlot? {
-  attempt_append_log_census_slot_from(rows: append_log_member_census, key: attempt_append_log_member_census_key(member: member))
+  match attempt_append_log_census_slot_from(rows: append_log_member_census, key: attempt_append_log_member_census_key(member: member)) {
+    Absent => Absent
+    Present { value: row_slot } =>
+      Present { value: AppendLogSlot { member: attempt_log_member_name(member: member) as NonEmptyStr, framing: row_slot.framing, writers: row_slot.writers } }
+  }
 }
 
 

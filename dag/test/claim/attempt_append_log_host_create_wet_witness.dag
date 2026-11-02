@@ -24,11 +24,12 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_attempt_state_store {
   AttemptWorkerEvents,
   attempt_append_log_host_create, AttemptAppendLogCreated, AttemptAppendLogAlreadyExists,
-  AttemptAppendLogCreateRefused,
+  AttemptAppendLogCreateRefused, AttemptAppendLogHostUnready, AttemptAppendLogHostLegacyRefused,
   attempt_state_provision, AttemptStateProvision, attempt_state_provision_directory,
   attempt_log_member_directory, attempt_log_provision_path,
   attempt_append_log_events_group_writable_mode,
 }
+import gunbc.durable_append_log_store { LegacyFramingMismatch }
 import std.durable_append_log {
   MemberWriterPolicy, HostCreatesThenSandboxWrites, HostWriter, IntentCreateEmpty,
   AppendWriteAdmitted, AppendWriteRefused, WriterStandingUnknown, WriterStandingUnobserved, append_write_admission,
@@ -160,6 +161,32 @@ test fn the_unobserved_standing_refuses_a_host_create() -> Bool {
       WriterStandingUnknown { cause: _ } => true
       _ => false
     }
+    _ => false
+  }
+}
+
+// LEGACY GENERATION REFUSAL (review 90137): the mint's claimant/generation scan runs over the ON-DISK file name,
+// so a stale pre-migration generation provider-events.jsonl.1 in the member directory is SEEN and the host create
+// refuses with the typed cause, never creating over it. A slot keyed on the CENSUS KEY ("AttemptWorkerEvents")
+// would scan for "AttemptWorkerEvents.<n>", never see this file, and create -- RED here, GREEN on the fix.
+test fn a_planted_legacy_generation_refuses_the_host_create() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let planted = legacy_generation_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  planted && removed.success
+}
+
+fn legacy_generation_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  let dir = attempt_state_provision_directory(
+    provision: attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key"),
+    directory: attempt_log_member_directory(member: AttemptWorkerEvents)
+  )
+  let planted = Filesystem.Write(path: join([dir, "/provider-events.jsonl.1"], ""), content: "{\"stale\":true}\n")
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogHostLegacyRefused { cause: LegacyFramingMismatch { entry: e } } =>
+      ensured && planted.success && e == ("provider-events.jsonl.1" as NonEmptyStr)
     _ => false
   }
 }
