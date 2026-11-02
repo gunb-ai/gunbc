@@ -2154,7 +2154,8 @@ pub fn eval_decl_facts_at(
 /// and none falls back to the walk: a fallback would hide the deficit (DESIGN section 5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclFactsKeyedRefusal {
-    /// The key has no module part, or its module is not a layout-derivable name.
+    /// The key has no module part, so it is not a qualified key at all. (A module part that is
+    /// not a valid module name is a genuine miss, not this refusal: nothing can declare it.)
     KeyUnderivable { key: String, cause: String },
     /// A pool root outside the layout trees: no file the layout derives can lie under it, so an
     /// empty answer there would be a silent miss, not a reading.
@@ -2259,12 +2260,13 @@ fn keyed_decl_facts(
     let mut files: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     for key in qualified {
         let module = qualified_key_module(key)?;
-        let rel = crate::cli_run::source_layout_lookup::module_storage_relative(module).map_err(
-            |cause| DeclFactsKeyedRefusal::KeyUnderivable {
-                key: key.to_string(),
-                cause,
-            },
-        )?;
+        // A module part that is not a dotted identifier sequence is a name no `module` header can
+        // carry and no layout path can store, so nothing in any pool declares it: zero rows is the
+        // exact answer, the one the walk gives, not a hidden deficit. Refusing here instead aborted
+        // the roster sweep's underivable-home control, whose located refusal reads that empty pool.
+        let Ok(rel) = crate::cli_run::source_layout_lookup::module_storage_relative(module) else {
+            continue;
+        };
         files.insert(rel, module.to_string());
     }
     let ws = workspace_root();
@@ -3031,6 +3033,17 @@ mod keyed_decl_facts_tests {
         match keyed_decl_facts(&["dag/std".to_string()], &keys) {
             Err(DeclFactsKeyedRefusal::KeyUnderivable { key, .. }) => assert_eq!(key, "Int"),
             other => panic!("expected KeyUnderivable, got {other:?}"),
+        }
+    }
+
+    // The roster sweep's underivable-home control asks for std.9underivable.chars: a module name no
+    // header can carry. The keyed read answers zero rows, as the walk does, and does not refuse.
+    #[test]
+    fn a_key_whose_module_no_file_can_declare_is_a_miss() {
+        let keys: HashSet<&str> = ["std.9underivable.chars"].into_iter().collect();
+        match keyed_decl_facts(&["dag/std".to_string()], &keys) {
+            Ok(rows) => assert!(rows.is_empty(), "expected no rows, got {}", rows.len()),
+            other => panic!("expected an empty answer, got {other:?}"),
         }
     }
 
