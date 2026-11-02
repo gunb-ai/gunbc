@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { ampere, volt }
 import product.placement_supply { PhysicalAssetIdentity }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalDesignIdentity, component_identity_eq, component_instance_identity }
-import product.electrical.continuity { EvidenceRef, OperatorPhotograph, BeforeIncidents }
+import product.electrical.continuity { EvidenceRef, OperatorPhotograph, AfterIncidents, BeforeIncidents, BetweenIncidents }
 import product.electrical.bench_session {
   AssetAlteration,
   BeforeEvery,
@@ -16,6 +16,7 @@ import product.electrical.bench_session {
   place_against,
 }
 import product.electrical.identification {
+  FootprintUnpopulated,
   IdentifiedByMarking,
   InstalledComponent,
   MarkingReading,
@@ -472,12 +473,15 @@ test fn readings_that_disagree_are_the_boards_conflict() -> Bool {
 
 // ── COMPARISON ────────────────────────────────────────────────────────────────────────────────
 
-// SETS ARE COMPARED CONSERVATIVELY. One row each, the same (repeats aside): the same part. Disjoint:
-// different parts. Equal shared sets in any order: the same candidate constraint, not the same part.
-// Overlapping unequal sets: undetermined.
+// SETS ARE COMPARED CONSERVATIVELY, AS SETS. One row each, the same, repeats on either side and either
+// way round: the same part. Disjoint: different parts. Equal shared sets in any order: the same
+// candidate constraint, not the same part. Overlapping unequal sets: undetermined.
 test fn row_sets_are_compared_conservatively() -> Bool {
   let shared = [tvs_5_0smdj60a, aos_tvs_5_0smdj60a]
-  match rows_relation(a: [lm5066i_pwp], b: [lm5066i_pwp, lm5066i_pwp]) { SameIdentifiedPart { row: _ } => true, _ => false }
+  let a = lm5066i_pwp
+  match rows_relation(a: [a], b: [a, a]) { SameIdentifiedPart { row: _ } => true, _ => false }
+    && match rows_relation(a: [a, a], b: [a]) { SameIdentifiedPart { row: _ } => true, _ => false }
+    && match rows_relation(a: [a, a], b: [a, a, a]) { SameIdentifiedPart { row: _ } => true, _ => false }
     && match rows_relation(a: [lm5066i_pwp], b: [tmp275_dgk]) { DifferentParts { e1: _, k1: _ } => true, _ => false }
     && match rows_relation(a: shared, b: [aos_tvs_5_0smdj60a, tvs_5_0smdj60a]) { SameCandidateConstraint { rows: _ } => true, _ => false }
     && match rows_relation(a: shared, b: [tvs_5_0smdj60a]) { DifferenceUndetermined { e1: _, k1: _ } => true, _ => false }
@@ -515,4 +519,58 @@ test fn the_held_boards_are_compared_label_by_label() -> Bool {
     && match compared_at(c: c, d: "F300") { Present { value: p } => incomplete_on(r: p.observed, boards: 2), Absent => false }
     && text.contains("U1_P5 as received both read Texas Instruments Incorporated")
     && text.contains("not an established circuit correspondence")
+}
+
+// ── ATTRIBUTION, CHRONOLOGY, SNAPSHOT AND RATING CONSISTENCY ──────────────────────────────────
+
+// AN ASSESSMENT SPEAKS ONLY FOR THE BOARD IT ASSESSED. The second E1, with nothing read, compared using
+// the E1-B's standings: its side at U1_P5 carries no claim assessment, never the E1-B's support.
+test fn an_assessment_speaks_only_for_the_board_it_assessed() -> Bool {
+  let c = compare_boards(e1_layout: second_e1(components: [], readings: []), k1_layout: p4261_k1_layout, e1_standings: p4261_e1_population_standings(), k1_standings: p4261_k1_population_standings())
+  match compared_at(c: c, d: "U1_P5") {
+    Absent => false
+    Present { value: p } => match p.e1.claim { Absent => true, Present { value: _ } => false } && match p.k1.claim { Present { value: _ } => true, Absent => false }
+  }
+}
+
+// A CONTRADICTORY ORDER PLACES NOTHING. The K1's bare footprint ordered both after and before the lift is
+// neither a later context nor in scope: it is unplaced, and the U10_P2 claim is no longer supported.
+test fn a_contradictory_order_places_nothing() -> Bool {
+  let k1 = p4261_k1_layout
+  let both = BetweenIncidents { after: [k1_u10p2_lift.key], before: [k1_u10p2_lift.key] }
+  let contradictory = with_parts(base: k1, components: map(k1.components, x => if component_identity_eq(a: x.component, b: k1_converter_near_footprint) { InstalledComponent { seen: both, component: x.component, terminals: x.terminals, identification: x.identification } } else { x }), readings: k1.designator_readings)
+  supported(o: assess_on(layout: k1, p: k1_at(d: "U10_P2")))
+    && missing_unplaced(o: assess_on(layout: contradictory, p: k1_at(d: "U10_P2")), n: 1)
+}
+
+// A REMOVAL SAYS "NOW REMOVED" ONLY WITH NOTHING FITTED SEEN AFTER IT. A part admitted at the K1's U10_P2
+// and seen after the lift leaves the snapshot unknown (B1 infers no replacement), while the claim, read
+// on the part as received, stays supported. Present and absent seen together at U1_P5, with no removal,
+// settle nothing either.
+test fn a_removal_is_now_only_with_nothing_fitted_after_it() -> Bool {
+  let k1 = p4261_k1_layout
+  let later_part = component_instance_identity(design: k1.design, local_identity: "supplied part seen at U10_P2 after the lift")
+  let seen_later = InstalledComponent { seen: AfterIncidents { keys: [k1_u10p2_lift.key] }, component: later_part, terminals: [], identification: IdentifiedByMarking { row: mp2333cgtl, marking: MarkingReading { text: "supplied", evidence: photo() } } }
+  let replaced = with_parts(base: k1, components: concat(k1.components, [seen_later]), readings: concat(k1.designator_readings, [read(c: later_part, d: "U10_P2")]))
+  let empty_pad = component_instance_identity(design: e1_design, local_identity: "supplied empty footprint read at U1_P5")
+  let both = with_parts(base: p4261_e1_layout, components: concat(p4261_e1_layout.components, [InstalledComponent { seen: seen_unordered(), component: empty_pad, terminals: [], identification: FootprintUnpopulated { evidence: photo() } }]), readings: concat(p4261_e1_layout.designator_readings, [read(c: empty_pad, d: "U1_P5")]))
+  let c_replaced = compare_boards(e1_layout: p4261_e1_layout, k1_layout: replaced, e1_standings: [], k1_standings: [])
+  let c_both = compare_boards(e1_layout: both, k1_layout: k1, e1_standings: [], k1_standings: [])
+  supported(o: assess_on(layout: replaced, p: k1_at(d: "U10_P2")))
+    && match compared_at(c: c_replaced, d: "U10_P2") { Present { value: p } => match p.k1.installation { InstallationUnknown => true, _ => false }, Absent => false }
+    && conflicting(o: assess_on(layout: both, p: e1_at(d: "U1_P5")))
+    && match compared_at(c: c_both, d: "U1_P5") { Present { value: p } => match p.e1.installation { InstallationUnknown => true, _ => false }, Absent => false }
+}
+
+// RATINGS MUST AGREE TOO. A second reading at F300 printing 100 A / 125 V beside the body's 100 A / 75 V
+// is the board's conflict, even against a bare 100 A claim both would satisfy; a second reading with its
+// voltage unread conflicts with nothing.
+test fn ratings_must_agree_too() -> Bool {
+  let e1 = p4261_e1_layout
+  let second = component_instance_identity(design: e1_design, local_identity: "supplied second rating read at F300")
+  let claim = claimed(p: e1_at(d: "F300"), part: rated(amperes: 100, volts: Absent))
+  let other_volts = with_parts(base: e1, components: concat(e1.components, [InstalledComponent { seen: seen_unordered(), component: second, terminals: [], identification: RatingPrintedOnBody { rating: rating(amperes: 100, volts: Present { value: 125 }), marking: MarkingReading { text: "supplied", evidence: photo() } } }]), readings: concat(e1.designator_readings, [read(c: second, d: "F300")]))
+  let unread_volts = with_parts(base: e1, components: concat(e1.components, [InstalledComponent { seen: seen_unordered(), component: second, terminals: [], identification: RatingPrintedOnBody { rating: rating(amperes: 100, volts: Absent), marking: MarkingReading { text: "supplied", evidence: photo() } } }]), readings: concat(e1.designator_readings, [read(c: second, d: "F300")]))
+  conflicting(o: assess_on(layout: other_volts, p: claim))
+    && supported(o: assess_on(layout: unread_volts, p: claim))
 }

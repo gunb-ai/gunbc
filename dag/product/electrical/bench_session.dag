@@ -367,7 +367,7 @@ fn reading_placement(r: BenchRecord, asset: PhysicalAssetIdentity, o: ReadingOrd
       BeforeIncidents { keys } => if all(boundaries, b => key_listed(keys: keys, k: b)) { placed_before_all() } else { OrderUncovered }
       AfterIncidents { keys } => if all(boundaries, b => key_listed(keys: keys, k: b)) { PlacedAfter { after: boundaries } } else { OrderUncovered }
       BetweenIncidents { after, before } =>
-        if all(boundaries, b => key_listed(keys: after, k: b) || key_listed(keys: before, k: b)) && !any(after, k => key_listed(keys: before, k: k)) {
+        if all(boundaries, b => key_listed(keys: after, k: b) || key_listed(keys: before, k: b)) && count(order_contradictions(o: o)) == 0 {
           PlacedAfter { after: filter(boundaries, b => key_listed(keys: after, k: b)) }
         } else { OrderUncovered }
       OrderUnrecorded { relative_to: _ } => if count(boundaries) == 0 { placed_before_all() } else { OrderUncovered }
@@ -412,12 +412,29 @@ fn is_disposition(d: ReadingDisposition, want: ReadingDisposition) -> Bool {
 // Its references are resolved first against the asset's WHOLE event catalogue (recorded_events), as a
 // reading's are (reading_placement): an unresolved reference makes the observation unplaced, whatever
 // events are then asked about, and a reference to an event that is not among them is simply not
-// consulted. Before every one of the events, after at least one, or neither stated.
+// consulted. An order naming one event both before and after it is contradicted and places nothing.
+// Otherwise: before every one of the events, after at least one, or neither stated.
 type EventPlacement
   = BeforeEvery
   | AfterEvent { key: NonEmptyStr }
   | OrderNotStated { key: NonEmptyStr }
   | PlacementUnresolved { keys: List<NonEmptyStr> }
+  | OrderContradicted { keys: List<NonEmptyStr> }
+
+// Events an order states the observation both followed and preceded: an order that names one is
+// self-contradictory, and places the observation nowhere (shared by reading_placement).
+fn order_contradictions(o: ReadingOrder) -> List<NonEmptyStr> {
+  match o {
+    BetweenIncidents { after, before } => filter(after, k => key_listed(keys: before, k: k))
+    BeforeIncidents { keys: _ } => no_keys()
+    AfterIncidents { keys: _ } => no_keys()
+    OrderUnrecorded { relative_to: _ } => no_keys()
+  }
+}
+
+fn no_keys() -> List<NonEmptyStr> {
+  []
+}
 
 fn removal_of(a: AssetAlteration) -> Bool {
   match a.change {
@@ -450,7 +467,8 @@ fn seen_after(o: ReadingOrder, k: NonEmptyStr) -> Bool {
 
 fn place_against(r: BenchRecord, asset: PhysicalAssetIdentity, seen: ReadingOrder, keys: List<NonEmptyStr>) -> EventPlacement {
   let unresolved = filter(order_keys(o: seen), k => !key_listed(keys: recorded_events(r: r, asset: asset), k: k))
-  if count(unresolved) > 0 { PlacementUnresolved { keys: unresolved } } else {
+  if count(unresolved) > 0 { PlacementUnresolved { keys: unresolved } }
+  else if count(order_contradictions(o: seen)) > 0 { OrderContradicted { keys: order_contradictions(o: seen) } } else {
     match (filter(keys, k => seen_after(o: seen, k: k))).first() {
       Present { value: k } => AfterEvent { key: k }
       Absent => match (filter(keys, k => !seen_before(o: seen, k: k))).first() {

@@ -124,7 +124,8 @@ fn p4261_k1_revision_standing() -> CitedFigureStanding {
 //
 // WITHIN SCOPE, READINGS MUST AGREE BEFORE THEY BEAR ON THE CLAIM. A part seen present and the footprint
 // seen empty in the same context, or two markings establishing disjoint row sets, are the board's own
-// conflict: returned as such, never resolved by picking one. An absence in scope contradicts the claim
+// conflict: returned as such, never resolved by picking one. So are two printed ratings reading one
+// field differently; a field one leaves unread conflicts with nothing. An absence in scope contradicts the claim
 // as the board was received; it does not show NVIDIA designed the position empty. An absence whose place
 // is unknown blocks support, since it may be either.
 //
@@ -357,6 +358,35 @@ fn rows_conflict(os: List<InstalledComponent>) -> Bool {
   }
 }
 
+// Two printed ratings disagree when they read a field differently; a field one of them leaves unread is
+// compatible with any value the other reads.
+fn ratings_disagree(a: PrintedRating, b: PrintedRating) -> Bool {
+  match a {
+    PrintedFuseRating { current: ca, interrupt_voltage: va } => match b {
+      PrintedFuseRating { current: cb, interrupt_voltage: vb } =>
+        ampere_count(a: ca) != ampere_count(a: cb) || match va {
+          Absent => false
+          Present { value: x } => match vb { Absent => false, Present { value: y } => volt_count(v: x) != volt_count(v: y) }
+        }
+    }
+  }
+}
+
+fn ratings_conflict(os: List<InstalledComponent>) -> Bool {
+  let ratings = flat_map(os, o => match printed_rating_of(i: o.identification) { Absent => no_ratings(), Present { value: r } => [r] })
+  any(ratings, a => any(ratings, b => ratings_disagree(a: a, b: b)))
+}
+
+fn no_ratings() -> List<PrintedRating> {
+  []
+}
+
+// In-scope readings of one position that cannot all be true of one part: row sets with no row in
+// common, or printed ratings reading one field differently.
+fn readings_conflict(os: List<InstalledComponent>) -> Bool {
+  rows_conflict(os: os) || ratings_conflict(os: os)
+}
+
 fn is_bearing(b: ObservationBearing, want: ObservationBearing) -> Bool {
   match b {
     Supports => match want { Supports => true, _ => false }
@@ -373,7 +403,7 @@ fn outcome_of(claim: PopulatedPart, s: ScopedObservations) -> PopulationOutcome 
   let supporting = bearing_of(claim: claim, os: s.present, want: Supports)
   let contradicting = bearing_of(claim: claim, os: s.present, want: Contradicts)
   if count(s.present) > 0 && count(s.absent) > 0 { ObservationsConflict { observations: concat(s.present, s.absent) } }
-  else if rows_conflict(os: s.present) { ObservationsConflict { observations: s.present } }
+  else if readings_conflict(os: s.present) { ObservationsConflict { observations: s.present } }
   else if count(s.absent) > 0 || count(contradicting) > 0 { Contradicted { contradicting: concat(s.absent, contradicting), supporting: supporting } }
   else if count(supporting) > 0 && count(with_presence(os: s.unplaced, want: PartAbsent)) == 0 { SupportedOnSpecimen { supporting: supporting } }
   else { EvidenceMissing { undecided: bearing_of(claim: claim, os: s.present, want: Undecided), unplaced: s.unplaced } }

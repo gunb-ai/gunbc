@@ -2,12 +2,12 @@ module product.p4261.comparison
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import product.placement_supply { PhysicalAssetIdentity }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import extdeps.electronic_component.types { ElectronicComponentRow }
 import extdeps.nvidia.p4261.population { P4261DesignPosition, p4261_e1_positions, p4261_k1_positions }
 import product.electrical.connectivity { component_identity_eq }
 import product.electrical.bench_session { alteration_refitted, removals_of }
-import product.electrical.identification { InstalledComponent }
+import product.electrical.identification { InstalledComponent, ObservedPresence, PartPresent, PartAbsent, PresenceUnobserved, observed_presence }
 import product.p4261.carrier { CarrierLayoutObservation, CorrespondenceAdmission, CorrespondenceRefusal, SpecimenPosition, admit_correspondence }
 import product.p4261.evidence {
   AttributionGap,
@@ -19,7 +19,7 @@ import product.p4261.evidence {
   p4261_e1_population_standings,
   p4261_k1_population_standings,
   read_on_our_board,
-  rows_conflict,
+  readings_conflict,
   rows_disjoint,
   rows_equal,
   same_position,
@@ -123,18 +123,30 @@ fn coverage(layout: CarrierLayoutObservation, a: CorrespondenceAdmission) -> Boa
   }
 }
 
+fn seen_present(os: List<InstalledComponent>) -> Bool {
+  any(os, o => match observed_presence(i: o.identification) { PartPresent => true, PartAbsent => false, PresenceUnobserved => false })
+}
+
+// Where the record leaves the position, refused rather than guessed. A removal says the position is
+// now empty only when nothing fitted was seen there after it or out of order with it: a part seen
+// later, or unplaced, may be a replacement, and B1 infers none. In-scope readings that conflict settle
+// nothing either.
 fn installation(layout: CarrierLayoutObservation, bindings: List<SpecimenPosition>, scoped: ScopedObservations) -> InstallationSnapshot {
   let removals = flat_map(bindings, s => removals_of(r: layout_record(layout: layout), asset: layout.asset, c: s.specimen))
-  if any(removals, a => alteration_refitted(a: a)) { RemovalRefitIndistinguishable } else {
+  let conflicted = (count(scoped.present) > 0 && count(scoped.absent) > 0) || readings_conflict(os: scoped.present)
+  if conflicted { InstallationUnknown }
+  else if any(removals, a => alteration_refitted(a: a)) { RemovalRefitIndistinguishable } else {
     match removals.first() {
-      Present { value: a } => RemovedBy { key: a.key }
+      Present { value: a } => if seen_present(os: scoped.later) || seen_present(os: scoped.unplaced) { InstallationUnknown } else { RemovedBy { key: a.key } }
       Absent => if count(scoped.present) > 0 { SeenWithNoLaterRemoval } else { if count(scoped.absent) > 0 { SeenAbsent } else { InstallationUnknown } }
     }
   }
 }
 
-fn claim_at(standings: List<PositionStanding>, position: P4261DesignPosition) -> PositionStanding? {
-  (filter(standings, s => same_position(a: s.assessment.position, b: position))).first()
+// A supplied assessment belongs to a side only when it assessed this position ON THIS BOARD: one board's
+// standing never stands for another's, whatever the position.
+fn claim_at(standings: List<PositionStanding>, position: P4261DesignPosition, asset: PhysicalAssetIdentity) -> PositionStanding? {
+  (filter(standings, s => same_position(a: s.assessment.position, b: position) && physical_asset_identity_eq(a: s.assessment.asset, b: asset))).first()
 }
 
 fn side(layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>, standings: List<PositionStanding>, position: P4261DesignPosition) -> ComparedSide {
@@ -146,7 +158,7 @@ fn side(layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>, stan
     bindings: bindings,
     gap: unattributed(position: position, layout: layout, bindings: bindings),
     scoped: scoped,
-    claim: claim_at(standings: standings, position: position),
+    claim: claim_at(standings: standings, position: position, asset: layout.asset),
     installation: installation(layout: layout, bindings: bindings, scoped: scoped),
   }
 }
@@ -162,7 +174,7 @@ fn no_boards() -> List<PhysicalAssetIdentity> {
 fn side_rows(s: ComparedSide) -> SideRows {
   match s.gap {
     Present { value: _ } => NoRowsEstablished
-    Absent => if (count(s.scoped.present) > 0 && count(s.scoped.absent) > 0) || rows_conflict(os: s.scoped.present) { BoardDisagrees { observations: concat(s.scoped.present, s.scoped.absent) } } else {
+    Absent => if (count(s.scoped.present) > 0 && count(s.scoped.absent) > 0) || readings_conflict(os: s.scoped.present) { BoardDisagrees { observations: concat(s.scoped.present, s.scoped.absent) } } else {
       let ours = filter(s.scoped.present, o => read_on_our_board(i: o.identification) && count(established_rows(i: o.identification)) > 0)
       let sets = map(ours, o => established_rows(i: o.identification))
       match sets.first() {
@@ -177,8 +189,12 @@ fn incomplete(e1: ComparedSide, k1: ComparedSide, e1_rows: SideRows, k1_rows: Si
   ComparisonIncomplete { boards: concat(match e1_rows { NoRowsEstablished => [e1.asset], _ => no_boards() }, match k1_rows { NoRowsEstablished => [k1.asset], _ => no_boards() }) }
 }
 
+// The one row a set holds, counting distinct rows: [A, A] is the singleton {A}.
 fn single_row(rows: List<ElectronicComponentRow>) -> ElectronicComponentRow? {
-  if count(rows) == 1 { rows.first() } else { Absent }
+  match rows.first() {
+    Absent => Absent
+    Present { value: r } => if rows_equal(a: rows, b: [r]) { Present { value: r } } else { Absent }
+  }
 }
 
 fn rows_relation(a: List<ElectronicComponentRow>, b: List<ElectronicComponentRow>) -> ObservedRelation {
