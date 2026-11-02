@@ -175,18 +175,39 @@ fn native_effect_declared(module_path: String, decl_name: String) -> NativeEffec
   NativeEffectDeclaration { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
 }
 
-// The compiler route keeps the operator's 2026-09-16 ruling (demand-engine-program D11) whole: no
-// clock, no outgoing HTTP, no entropy, no auth context.
+// THE COMPILER ROUTE DECLARES ITS SET RATHER THAN EXCLUDING FROM AN OPEN ONE (operator ruling relayed
+// 2026-11-01, recorded in gunbc.design_ruling native_compiler_route_admits_the_declared_cargo_build on the
+// same D11 row the 2026-09-16 ruling sits on). The set was DERIVED BY READ, not guessed, and the read is
+// reproducible. Population: the roots both subjects compile (["dag","src/v2"] -- gunbc.instrument_targets
+// self_host_source_roots and v2_native_cli_source_roots). Commands, run 2026-11-02 at 5b0b26d9b399:
+//   git grep -h -o -E 'Filesystem[.](Read|Write|Delete|List|WriteCreateNew)[(]' 5b0b26d9b399 -- src/v2
+//     | sort | uniq -c            -> Read 49, Write 17, Delete 7, List 5, WriteCreateNew 4, 82 sites total
+//   the same scan for every other service name declared in dag (83 service declarations, listed with
+//   git grep -h -o -E '^service [A-Za-z0-9_]+' 5b0b26d9b399 -- dag, matching <ServiceName>[.][A-Z]...[(] )
+//                                 -> zero call sites in src/v2
+// so extdeps.filesystem.filesystem_io Filesystem is the only service this route demands today, and no clock,
+// network, entropy or auth-context service is reached. Those counts say WHICH services and how many; they are
+// not the proof that the set is complete -- that proof is the emission refusal at the v2-native-cli entry,
+// which walks the entry's whole closure, and what these greps do NOT cover is call sites inside generated
+// mirrors and services reached only through a lens or a trait demand. The four std.resources resources and extdeps.clock Clock that D11 excluded fall out by
+// not being listed, and NativeOutgoingHttp stays refused by admit_native_service_effect's rest rule. What
+// JOINS the set is the one declared build effect, extdeps.rust.cargo_build_service CargoBuild, so no route
+// needs the generic-exec service extdeps.shell.exec -- which stays out.
+//
+// WHAT THIS ROW DOES NOT JUDGE, STATED SO IT IS NOT READ AS A CLEAN BILL ON BOTH compiler-route subjects.
+// The admission walk (v1.compiler.emit_rust native_entry_effects) runs only for an entry named by
+// native_entry_function_name -- native_serve_handle, v2_cli_main, native_claim_report. The self-host
+// subject's pipeline entry declares SourceRootEvalDriver (src/v2/compiler/source_root_eval.dag
+// compiler_pipeline_entry), which carries no such name, so no denominator judges it: its argv, file,
+// output and exit behavior comes from the emitter's hand-rendered main. v2-native-cli (v2_cli_main,
+// NativeCliDriver) is the subject that judges this list, and a demanded effect missing from it is a hard
+// emission refusal -- THAT refusal, not the self-host build, is the evidence the list is complete.
 data native_compiler_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
   route: NativeCliDriver,
-  ruling: decl_ref(module_path: "gunbc.plans.demand_engine_program", decl_name: "demand_engine_program_plan"),
-  scope: NativeAdmitAllExcept { excluded: [
-    native_effect_declared(module_path: "std.resources", decl_name: "Clock"),
-    native_effect_declared(module_path: "std.resources", decl_name: "Network"),
-    native_effect_declared(module_path: "std.resources", decl_name: "Entropy"),
-    native_effect_declared(module_path: "std.resources", decl_name: "AuthContext"),
-    native_effect_declared(module_path: "extdeps.clock", decl_name: "Clock"),
-    NativeOutgoingHttp
+  ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_compiler_route_admits_the_declared_cargo_build"),
+  scope: NativeAdmitOnly { admitted: [
+    native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
+    native_effect_declared(module_path: "extdeps.rust.cargo_build_service", decl_name: "CargoBuild")
   ] }
 }
 

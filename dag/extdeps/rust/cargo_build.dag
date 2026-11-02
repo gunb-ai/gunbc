@@ -1,11 +1,12 @@
 module extdeps.rust.cargo_build
 
-import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.program { ProgramIdentity }
 
 import std.types { Bool, FilePath, NonEmptyStr, Unit }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command, env_prefixed_command_in }
+import extdeps.rust.cargo_build_service { cargo_build_program }
 import std.env_binding { EnvSet }
 import std.resources { Network }
 
@@ -28,7 +29,11 @@ data cargo_compile_env: Map<String, String> = empty_map()
 // PATH-resolved program name, deliberately, for the reason extdeps.exec.command
 // program_spelling_is_an_observation_claim records once: an absolute path is a filesystem
 // observation this repository has not made about the host the command runs on.
-fn cargo_program() -> ProgramIdentity = uncataloged_program(invocation: "cargo")
+//
+// THE WORD "cargo" IS MINTED ONCE, in extdeps.rust.cargo_build_service, the performing twin the native
+// compiler-route denominator admits; this is that identity read through it, so the argv builders here and
+// the operation there cannot drift apart and the extdeps.exec.program roster keeps one row for it.
+fn cargo_program() -> ProgramIdentity = cargo_build_program()
 
 // THE ONE PLACE THE CLIPPY VERB AND ITS LINT SEPARATOR ARE SPELLED. The Clippy operation below
 // carries the same shape fused to `transport shell`, which is unreachable from any expression --
@@ -137,6 +142,23 @@ service cargo.Build {
     }
   }
 
+  // THE WORKING ROOT AND THE ARTIFACT DIRECTORY AT THESE WORKFLOW-ROUTE CALL SITES, STATED AS MEASURED.
+  // These transports inject `CARGO_TARGET_DIR={target_dir}` through `env` and take their cwd through the
+  // coreutils `env -C` wrapper. Both were left as they are, deliberately and by scope: the ruled H1 change
+  // is the modelled native operation plus its binding, and rewriting an existing workflow-route command
+  // would move emitted workflow argv and generated artifacts that no H1 consumer needs moved.
+  //
+  // The target directory is worth moving to cargo's own `--target-dir` flag on its own item, so that a
+  // build's output location is visible in the argv instead of arriving as configuration; the residue is
+  // filed in gunbc.recurring_failure_mode.build_target_directory_declared_only_through_injected_env.
+  //
+  // WHY THE DIRECTORY CANNOT COME FROM CARGO ITSELF HERE, MEASURED 2026-11-02 on the pinned toolchain
+  // (rust-toolchain.toml channel 1.93.0): `cargo build --workdir p` answers "unexpected argument
+  // '--workdir' found", and `cargo -C p build` answers "the `-C` flag is unstable, pass -Z unstable-options
+  // on the nightly channel". So on this route the only argv that can name a working root for a spawn is
+  // `env -C`, which changes the directory and not the environment. The NATIVE route has no wrapper and
+  // needs none: the working root is an explicit argument of the entry and the emitted binding constructs
+  // the process config from it (gunbc.design_ruling native_compiler_route_admits_the_declared_cargo_build).
   operation BuildManifest {
     requires opaque
     input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }

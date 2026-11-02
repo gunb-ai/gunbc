@@ -1,0 +1,194 @@
+// THE DECLARED CARGO BUILD OPERATION: one named effect a native (emitted) program may be given, as
+// the performing twin of extdeps.rust.cargo_build. That module BUILDS argv and manifest vocabulary for
+// workflows, CI and release recipes; this one DECLARES the single operation and is what the native
+// compiler-route denominator admits (gunbc.design_ruling native_compiler_route_admits_the_declared_cargo_build).
+// It is its own module for the reason extdeps.docker.cli_service states at its head (2026-10-25): a
+// program that PERFORMS must not be fused to the module that assembles the argv and JSON vocabulary for
+// other hosts, because emission is per module -- one .rs per module, measured at the 2026-11-01 native
+// claim emission (222 module files in the emitted crate) -- so importing one function here would carry
+// that module's whole closure into every native build. The identity of the program therefore lives HERE
+// and extdeps.rust.cargo_build cargo_program() delegates to it: the word "cargo" is minted once.
+//
+// THE BOUNDARY, STATED HONESTLY. This is the declared Cargo build operation, NOT "no subprocess
+// execution": cargo runs the package's build scripts (build.rs) and proc-macro crates, and this module
+// declares that rather than hiding it. What is bounded is the INVOCATION. The argv SHAPE is fixed here;
+// every variable part is a named parameter; and the program position can only ever be the declared cargo
+// identity -- never an executable because someone wrote a path or a string. The contrast is deliberate:
+// extdeps.shell.exec is the generic-exec service (its program is a NonEmptyStr parameter), it stays
+// outside the compiler-route denominator, and this service exists so that no route needs it.
+//
+// WHERE THE PROGRAM COMES FROM, BY CITED AUTHORITY. `cargo_build_program` below is the one identity this
+// operation will run, and its mint is admitted in extdeps.exec.program's roster, which that module
+// describes as "the census of every program gunbc invokes through a typed argv"; adding or moving an
+// entry there is a counted review event, which is why this is a delegation and not a second mint. WHERE
+// that word resolves is not this module's fact: gunbc.toolchain_workflow_steps gives each job its own
+// HOME/CARGO_HOME/RUSTUP_HOME, gunbc.toolchain_home_standing makes that an obligation whose absence is
+// the ToolchainHomesNotIsolated refusal, and src/v2/workflow/ci_workflow_run_emit
+// ci_pin_rustup_cargo_bin_resolve_command takes $CARGO_HOME/bin/cargo when the isolated shim is present
+// and refuses through ci_pin_rustup_cargo_bin_missing_command when neither it nor PATH carries one. Those
+// are shims dispatching to the ACTIVE toolchain (extdeps.rust.rustup: "toolchain is a property, not the
+// machine"), which is why the identity is a name and not a path.
+//
+// CWD AND ENV, DECLARED RATHER THAN INHERITED BY ACCIDENT. The operation declares NO environment of its
+// own: the process sees exactly what the seed-build preamble put there and nothing this module adds --
+// contrast the `CARGO_TARGET_DIR=` assignment extdeps.rust.cargo_build STILL pushes through `env` at its
+// three build call sites (cargo.Build `BuildManifest`, `BuildManifestMessages`, `CheckManifestMessages`):
+// this operation names its output directory in the argv, the workflow route does not yet, and that
+// leftover is filed, not fixed here -- gunbc.recurring_failure_mode
+// build_target_directory_declared_only_through_injected_env.
+//
+// THE WORKING ROOT IS NOT A CARGO FLAG, MEASURED, AND THAT IS WHY IT SITS IN THE BINDING. On the pinned
+// toolchain (rust-toolchain.toml channel 1.93.0) `cargo build --workdir p` answers "unexpected argument
+// '--workdir' found" and `cargo -C p build` answers "the `-C` flag is unstable, pass -Z unstable-options
+// on the nightly channel" (measured 2026-11-02). An argv token for the root would therefore fail at
+// cargo's own parser, so the route declares the root where it can be enforced: the native entry receives
+// its working root as an explicit typed argument beside its source roots, and the emitted binding
+// constructs the process config from it (operator ruling, option (c)); absence REFUSES at startup with a
+// typed cause and never falls back to ".". That binding is the ruled-but-unbuilt half of this work: it
+// sits in v1.compiler.emit_rust native_effect_binding_of, which today constructs every admitted service
+// with `Type::new(Default::default())`, leaving extdeps.transports.shell ShellTransportConfig.working_dir
+// None and the process in "." (that ambient default on the sibling route is filed as
+// gunbc.recurring_failure_mode admitted_shell_effect_spawned_at_an_ambient_working_root). Nothing in this
+// module claims that binding exists.
+
+module extdeps.rust.cargo_build_service
+
+import std.types { Int, NonEmptyStr, String, Unit }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/commands/cargo-build.html"
+  }
+}
+
+// THE ONE CARGO IDENTITY the native route runs. extdeps.rust.cargo_build cargo_program() delegates here,
+// and this is the row extdeps.exec.program's uncataloged roster names.
+fn cargo_build_program() -> ProgramIdentity = uncataloged_program(invocation: "cargo")
+
+// THE FIXED argv OF THE DECLARED OPERATION, part by part, so the shape is one row each and a widened
+// invocation is an edit a reviewer can see. The flag names are rows, not strings at a call site.
+data cargo_build_subcommand: NonEmptyStr = "build"
+
+data cargo_build_manifest_path_flag: NonEmptyStr = "--manifest-path"
+
+data cargo_build_target_dir_flag: NonEmptyStr = "--target-dir"
+
+data cargo_build_profile_flag: NonEmptyStr = "--profile"
+
+data cargo_build_package_flag: NonEmptyStr = "--package"
+
+data cargo_build_bin_flag: NonEmptyStr = "--bin"
+
+// THE PROFILE WORDS of `cargo build --profile`. A profile is a closed pair of names here, not a string at
+// a call site: a new profile is a row in this module and a widening of the sum, which is the review event.
+type CargoBuildProfile = ProfileRelease | ProfileDev
+
+data cargo_build_profile_release_word: NonEmptyStr = "release"
+
+data cargo_build_profile_dev_word: NonEmptyStr = "dev"
+
+fn cargo_build_profile_word(profile: CargoBuildProfile) -> NonEmptyStr {
+  match profile {
+    ProfileRelease => cargo_build_profile_release_word
+    ProfileDev => cargo_build_profile_dev_word
+  }
+}
+
+// THE PROGRAM POSITION IS NOT OPEN, AND A GUARD IS NOT ENOUGH TO SAY SO.
+//
+// `CargoProgramWord` is sole_constructor: this module builds the only one there is, and a caller cannot
+// spell one. The only route to it is cargo_build_program_word below, which yields a word for the declared
+// cargo identity and a refusal arm for anything else -- so a caller holding a path, a raw string, or
+// another program's identity has no expression that reaches CargoBuild's `program` input. The refusal
+// travels as a returned arm, which is what lets a claim read it; the operation itself never sees a word
+// that was not checked.
+//
+// WHAT THIS DOES NOT DO, STATED BECAUSE THE GAP IS REAL AND MEASURED: typing does not by itself refuse a
+// string handed to a declared-type position. That exemption is recorded and rung-honest in
+// gunbc.recurring_failure_mode refined_alias_argument_exempt_from_declared_type_inhabitance, and the
+// admission witness in dag/test/claim/cargo_build_native_route_witness.dag reports what the checker does
+// with a raw string in that position rather than assuming the answer.
+type CargoProgramWord sole_constructor { word: NonEmptyStr }
+
+data cargo_program_word_not_cargo_cause: NonEmptyStr =
+  "the program is not the declared cargo identity extdeps.rust.cargo_build_service cargo_build_program"
+
+type CargoProgramWordResolution
+  = CargoProgramWordResolved { word: CargoProgramWord }
+  | CargoProgramWordRefused { program: ProgramIdentity, cause: NonEmptyStr }
+
+// The comparison is identity-to-identity, never to a literal: the right-hand side is the declared row
+// itself, so this function cannot drift from the program the roster mints.
+fn cargo_build_program_word(program: ProgramIdentity) -> CargoProgramWordResolution {
+  if program.invocation == cargo_build_program().invocation {
+    CargoProgramWordResolved { word: CargoProgramWord { word: program.invocation } }
+  } else {
+    CargoProgramWordRefused { program: program, cause: cargo_program_word_not_cargo_cause }
+  }
+}
+
+// The sealed word's only projection, and the only way argv ever sees it.
+fn cargo_program_word_text(word: CargoProgramWord) -> NonEmptyStr = word.word
+
+service CargoBuild {
+  operation Build {
+    requires opaque
+    input {
+      program: CargoProgramWord
+      manifest_path: NonEmptyStr
+      profile: CargoBuildProfile
+      target_dir: NonEmptyStr
+      package: NonEmptyStr
+      bin: NonEmptyStr
+    }
+
+    // A build that ran and failed is an ANSWER read from these fields, not a sentinel exit code. The accepted
+    // shell output keys are owned by v1.compiler.emit -- its shell_emission_refusal_fact sentence enumerates
+    // the modeled channels, and no copy of that list belongs here -- and these three are the ones the success
+    // and nonzero-exit controls read.
+    //
+    // The typed extdeps.transports.shell ShellOutcome sum is NOT one of those keys, and this module learned
+    // that by being refused, not by being told: a compiler-route entry reaching this operation refused at
+    // emit with 'native effect realization refused for entry nefx.cli_probe.v2_cli_main': service
+    // extdeps.rust.cargo_build_service CargoBuild has no native realization: operation 'Build' binds no
+    // transport: shell transport output key 'outcome' has no modeled channel'. So a cargo that never
+    // spawned stays a hard evaluation refusal here (the interpreter's own shell-spawn-refused diagnostic
+    // points the reader at a ShellOutcome output field the native realization cannot lower), and the four
+    // corpus modules that declare one -- extdeps.shell.exec, extdeps.github.ci_runner,
+    // extdeps.github.organizations, extdeps.systemd.systemctl -- have never been realized natively. That
+    // gap is filed as gunbc.recurring_failure_mode
+    // transport_output_field_without_a_native_realization_channel; it is not papered over by declaring the
+    // field and letting the emission refuse.
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+
+    transport shell {
+      argv: [
+        cargo_program_word_text(word: program),
+        cargo_build_subcommand,
+        cargo_build_manifest_path_flag,
+        manifest_path,
+        cargo_build_target_dir_flag,
+        target_dir,
+        cargo_build_profile_flag,
+        cargo_build_profile_word(profile: profile),
+        cargo_build_package_flag,
+        package,
+        cargo_build_bin_flag,
+        bin
+      ]
+    }
+
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+}
