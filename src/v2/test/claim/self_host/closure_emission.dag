@@ -666,3 +666,23 @@ fn ce_probe_blockfinal_text() -> String {
       concat("ACCEPTED: ", closure_emission_json(emission: e))
   }
 }
+
+// PROBE (not for landing): single-production render of the prepared-analysis row, for per-production
+// emitted-vs-interpreted equality claims (runs the first_rows/nullable lookup machinery AS EMITTED CODE
+// when the claim module is judged by the native route). Row shape matches ce_probe_stmt_first_analysis:
+// `<name> NULL| - [class,class,...]`; "MISSING:<name>" when no production carries that name.
+fn ce_probe_first_analysis_named(name: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "PREPARE-REFUSED"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => "PREPARED-VOID"
+        PreparedModeled { modeled: modeled } =>
+          match list_find_first(xs: modeled.validated.root.productions, predicate: fn(p) { symbol_lexeme(sym: p.name) == name }) {
+            Present { value: p } =>
+              concat(concat(concat(concat(symbol_lexeme(sym: p.name), if symbol_list_contains(xs: modeled.analysis.nullable_set, item: p.name) { " NULL" } else { " -" }), " ["), string_concat_join(fields: list_map(xs: production_first_row_lookup(rows: modeled.analysis.first_rows, name: p.name), f: fn(k) { symbol_lexeme(sym: first_key_class(key: k)) }), separator: ",")), "]")
+            Absent => concat("MISSING:", name)
+          }
+      }
+  }
+}
