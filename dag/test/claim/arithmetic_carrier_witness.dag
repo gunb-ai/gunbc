@@ -69,6 +69,22 @@ data freemonoid_plus_list_source: String = "module probe_arith_freemonoid_plus_l
 
 data freemonoid_plus_freemonoid_source: String = "module probe_arith_freemonoid_plus_freemonoid\nimport std.types { Int }\nimport std.algebra { FreeMonoid }\nfn f(a: FreeMonoid<Int>, b: FreeMonoid<Int>) -> FreeMonoid<Int> { a + b }\n"
 
+// A LIST LITERAL OPERAND is typed by the kernel container builder, a use site settled_type cannot substitute, so
+// its carrier is read from the alias declaration's head (v1.compiler.types operand_carrier_ref_settled). Before
+// that, an authored List<T> settled to FreeMonoid and the literal stayed at List, and `xs + [x]` refused at 25
+// corpus sites (srv2 kh-lp2, gunbc 86235c39: both rows below FAIL, the authored-parameter controls PASS).
+data list_plus_int_literal_source: String = "module probe_arith_list_plus_int_literal\nimport std.types { List, Int }\nfn f(a: List<Int>, x: Int) -> List<Int> { a + [x] }\n"
+
+data list_plus_record_literal_source: String = "module probe_arith_list_plus_record_literal\nimport std.types { List, Int }\ntype R { v: Int }\nfn f(a: List<R>, x: R) -> List<R> { a + [x] }\n"
+
+test fn w_list_plus_int_literal_is_one_carrier() -> Bool {
+  blocking_count(source: list_plus_int_literal_source) == 0
+}
+
+test fn w_list_plus_record_literal_is_one_carrier() -> Bool {
+  blocking_count(source: list_plus_record_literal_source) == 0
+}
+
 data freemonoid_plus_int_source: String = "module probe_arith_freemonoid_plus_int\nimport std.types { Int }\nimport std.algebra { FreeMonoid }\nfn f(a: FreeMonoid<Int>, b: Int) -> FreeMonoid<Int> { a + b }\n"
 
 test fn w_list_plus_freemonoid_is_one_carrier() -> Bool {
