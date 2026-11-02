@@ -2,7 +2,7 @@ module gunbc.host.initialized_host
 
 import std.types { String, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.endpoint { SocketAddress }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }
 import gunbc.host.host_bound_transport { HostBoundTransport }
@@ -49,6 +49,9 @@ type InitializedHostRefusal
   | InitializedHostBootUnread { cause: String }
   // the route's terminal readback did not establish what OS is running.
   | InitializedHostRunningOsUnobserved { cause: String }
+  // the running-OS reading is of another machine than the one the transport authenticated: the readback's capture
+  // was bound to observed_host, the pinned key to bound. Agreeing boot ids do not make them one host.
+  | InitializedHostReadingOfAnotherHost { observed_host: HostIdentity, bound_host: HostIdentity }
   // the running OS was observed on one boot and the host is now on another: it rebooted after the readback, so
   // what the readback saw is not what is running now.
   | InitializedHostBootDisagrees { running_observed_on: HostBootId, read_over_transport: HostBootId }
@@ -68,11 +71,15 @@ fn initialized_host_over(binding: AnchoredHostBinding, running: RunningOsReading
         BootIdReadEstablished { boot: boot } =>
           match running {
             RunningOsUnobserved { cause: c } => HostNotInitialized { refusal: InitializedHostRunningOsUnobserved { cause: c } }
-            RunningOsObserved { running: r, observed_on: seen } =>
-              if (seen.boot_id as String) == (boot.boot_id as String) {
-                HostInitialized { host: InitializedHost { bound: b, trust: a, os: InitializedOsIdentity { running: r, boot: boot } } }
+            RunningOsObserved { running: r, observed_host: of, observed_on: seen } =>
+              if host_identity_eq(a: of, b: b.host) == false {
+                HostNotInitialized { refusal: InitializedHostReadingOfAnotherHost { observed_host: of, bound_host: b.host } }
               } else {
-                HostNotInitialized { refusal: InitializedHostBootDisagrees { running_observed_on: seen, read_over_transport: boot } }
+                if (seen.boot_id as String) == (boot.boot_id as String) {
+                  HostInitialized { host: InitializedHost { bound: b, trust: a, os: InitializedOsIdentity { running: r, boot: boot } } }
+                } else {
+                  HostNotInitialized { refusal: InitializedHostBootDisagrees { running_observed_on: seen, read_over_transport: boot } }
+                }
               }
           }
       }
@@ -122,6 +129,8 @@ fn initialized_host_refusal_text(refusal: InitializedHostRefusal) -> String {
     InitializedHostUntrusted { cause: c } => concat("the host is not authenticated against its pinned key: ", c)
     InitializedHostBootUnread { cause: c } => concat("the host's kernel boot id was not established: ", c)
     InitializedHostRunningOsUnobserved { cause: c } => concat("what OS the host is running was not established: ", c)
+    InitializedHostReadingOfAnotherHost { observed_host: o, bound_host: h } =>
+      join(["the running OS was observed on ", o as String, " but the authenticated host is ", h as String], "")
     InitializedHostBootDisagrees { running_observed_on: s, read_over_transport: r } =>
       join(["the running OS was observed on boot ", s.boot_id as String, " but the host is now on boot ", r.boot_id as String], "")
   }

@@ -35,7 +35,7 @@ import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.provisioning.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
 import gunbc.host.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal, bmc_boot_image_export }
-import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_machine }
+import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_machine, boot_subject_host }
 import gunbc.host.running_os { RunningOsReading, RunningOsObserved, RunningOsUnobserved, RunningDeliveredArtifact }
 import gunbc.host.host_boot_id { host_boot_id_of_capture_run }
 import gunbc.machine_intake.host_capture_envelope {
@@ -430,7 +430,7 @@ fn runner_host_running_os(capture: String, subject: AdmittedBootSubject) -> Runn
     RunnerHostUpRefused { refusals: rs } => RunningOsUnobserved { cause: concat("the capture does not establish runner-host-up: ", join(map(rs, x => runner_host_up_refusal_text(refusal: x)), "; ")) }
     RunnerHostUpObserved { up: up } =>
       match host_boot_id_of_capture_run(run: up.run) {
-        Present { value: boot } => RunningOsObserved { running: RunningDeliveredArtifact { digest: subject.medium.digest }, observed_on: boot }
+        Present { value: boot } => RunningOsObserved { running: RunningDeliveredArtifact { digest: subject.medium.digest }, observed_host: boot_subject_host(subject: subject), observed_on: boot }
         Absent => RunningOsUnobserved { cause: "the capture names a historical attempt ordinal, not a kernel boot id" }
       }
   }

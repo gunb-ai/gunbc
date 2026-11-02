@@ -2,6 +2,7 @@ module gunbc.host.running_os
 
 import std.types { String, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.host_identity { HostIdentity }
 import gunbc.host.host_boot_id { HostBootId }
 
 // WHAT OS IS RUNNING ON A BOOTED HOST, keyed on OS persistence and never inferred from the delivery route
@@ -13,11 +14,12 @@ import gunbc.host.host_boot_id { HostBootId }
 type RunningOs
   = RunningDeliveredArtifact { digest: NonEmptyStr }
 
-// A RUNNING-OS FACT IS AN OBSERVATION OF ONE BOOT. The boot is the one the terminal readback observed, so a host
-// that rebooted after it is not credited with what that earlier boot ran (gunbc.host.initialized_host refuses the
-// disagreement).
+// A RUNNING-OS FACT IS AN OBSERVATION OF ONE BOOT OF ONE HOST. The boot is the one the terminal readback observed,
+// so a host that rebooted after it is not credited with what that earlier boot ran; the host is the one the
+// readback's capture was bound to, so a reading of another machine is never credited to the host a transport
+// authenticated, even when the two boot ids agree (gunbc.host.initialized_host refuses both disagreements).
 type RunningOsReading
-  = RunningOsObserved { running: RunningOs, observed_on: HostBootId }
+  = RunningOsObserved { running: RunningOs, observed_host: HostIdentity, observed_on: HostBootId }
   | RunningOsUnobserved { cause: String }
 
 fn running_os_text(running: RunningOs) -> String {
