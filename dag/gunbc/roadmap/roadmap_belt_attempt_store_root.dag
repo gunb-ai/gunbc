@@ -11,7 +11,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.roadmap.roadmap_belt_receipt_store_root { BeltReceiptWrite, BeltReceiptWritten, BeltReceiptWriteRefused, belt_receipt_write }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, attempt_state_directory_text }
 import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, host_exec_argv, dispatch_capability_program }
 import gunbc.roadmap.roadmap_execution_contract { AttemptStateDirectoryCapability }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -42,7 +42,7 @@ data belt_integration_store_slots: BeltAttemptMemberDeclaration = BeltAttemptMem
 data belt_capture_intent_entry_name: NonEmptyStr = "intent.json" as NonEmptyStr
 
 fn belt_attempt_member_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, member: NonEmptyStr) -> String {
-  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", member as String], "")
+  join([attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot), "/", member as String], "")
 }
 
 fn belt_attempt_member_ensure_argv(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, member: NonEmptyStr) -> HostExecArgv {

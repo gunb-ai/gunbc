@@ -104,17 +104,12 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
-    emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
-    run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
-    run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_self_host_frontier, run_type_declaration_use_census_runs,
-    run_v2_census_verb, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
-    run_v2_native_cli_emit, run_v2_native_frontier, run_v2_select_spelled_modules, CensusInferRun,
-    MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured,
-    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases, NativeServeProgramRun,
-    PreparationCause, PreparationRefusal, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
-    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
+    emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
+    run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_census_verb,
+    run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
+    NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
+    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    V2NativeCliHeld,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
@@ -9279,10 +9274,10 @@ mod closure_edge_demand_tests {
         assert!(modules.contains("frontier.child.consumer"), "{modules:?}");
     }
 
-    /// Unique off-chain declarer: UniqueBinding still accepts, so UniqueBare must emit
-    /// (dropping it is an undercount) and the real resolve path must succeed.
+    /// Unique off-chain declarer with no import: the floor refuses (DESIGN 4b "names resolve"),
+    /// and the producer emits no UniqueBare edge for a binding that has no lexical authority.
     #[test]
-    fn unique_off_chain_bare_name_compiles_and_keeps_its_uniquebare_edge() {
+    fn unique_off_chain_bare_name_is_refused_and_emits_no_edge() {
         let fixture = Fixture::new(&[
             (
                 "decl.dag",
@@ -9293,29 +9288,13 @@ mod closure_edge_demand_tests {
                 "module test.user\nfn use_it() -> Int { shared_fn() }\n",
             ),
         ]);
-        let index = fixture.index();
-        let sources =
-            load_sources_for_entry_with_pool(&index, &fixture.0.join("user.dag").to_string_lossy())
-                .expect("UniqueBinding pulls the census-unique off-chain provider");
-        let compiled = v1_compiler_compile::compile_sources(
-            Rc::new(sources.iter().cloned().collect()),
-            crate::v1_compiler_artifact::RenderTarget::Dag,
-        );
-        assert!(
-            !compiled
-                .diagnostics
-                .iter()
-                .any(|d| { is_interpreter_blocking_diagnostic(d.diagnostic.clone()) }),
-            "resolver-accepted UniqueBinding must compile: {:?}",
-            compiled.diagnostics
-        );
         let roots = vec![fixture.0.to_string_lossy().into_owned()];
         let facts = dependency_resolution_facts(&roots, &roots, &[]);
         assert!(
-            facts
+            !facts
                 .iter()
                 .any(|f| f.path.contains("user.dag") && f.import_module == "test.decl"),
-            "resolver-accepted UniqueBinding must remain a UniqueBare edge: {facts:?}"
+            "an off-chain, import-less bare name has no lexical authority and must emit no edge: {facts:?}"
         );
     }
 
@@ -11008,6 +10987,7 @@ pub enum WitnessRuntimeCause {
     NoSuchVariable,
     NoSuchField,
     TypeError,
+    CallDepthExceeded,
     CrossRepresentationEquality,
     StringRealizationStraddle,
     VariantRealizationRefused,
@@ -11052,6 +11032,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::NoSuchVariable => "no-such-variable",
             WitnessRuntimeCause::NoSuchField => "no-such-field",
             WitnessRuntimeCause::TypeError => "type-error",
+            WitnessRuntimeCause::CallDepthExceeded => "call-depth-exceeded",
             WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
             WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
@@ -11089,6 +11070,7 @@ impl WitnessRuntimeCause {
             E::NoSuchVariable { .. } => WitnessRuntimeCause::NoSuchVariable,
             E::NoSuchField { .. } => WitnessRuntimeCause::NoSuchField,
             E::TypeError { .. } => WitnessRuntimeCause::TypeError,
+            E::CallDepthExceeded { .. } => WitnessRuntimeCause::CallDepthExceeded,
             E::CrossRepresentationEquality { .. } => {
                 WitnessRuntimeCause::CrossRepresentationEquality
             }
@@ -11840,7 +11822,6 @@ pub struct MultiEntryIndex {
     intern_table: RefCell<Rc<InternTable>>,
     parse_cache: RefCell<std::collections::HashMap<String, ParseCacheEntry>>,
     normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
-    ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     /// The source roots this index was built from — the tree identities behind the
     /// per-tree bare census layers (a module's bare-name universe is its own tree).
     source_roots: Vec<String>,
@@ -11990,10 +11971,6 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
             index.normalize_diag_cache.borrow().len(),
         ),
         (
-            "ownership_diag_cache",
-            index.ownership_diag_cache.borrow().len(),
-        ),
-        (
             "intern_table_strings",
             index.intern_table.borrow().strings.len(),
         ),
@@ -12049,7 +12026,6 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "module_source_identity" => index.module_source_identity.borrow_mut().clear(),
         "parse_cache" => index.parse_cache.borrow_mut().clear(),
         "normalize_diag_cache" => index.normalize_diag_cache.borrow_mut().clear(),
-        "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
         "pool_parse" => *index.pool_parse.borrow_mut() = None,
         "reference_pool_names" => *index.reference_pool_names.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
@@ -12087,7 +12063,6 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "entry_closure_sources",
         "intern_table",
         "normalize_diag_cache",
-        "ownership_diag_cache",
         "source_hash_by_file",
         "module_source_identity",
     ]
@@ -27234,8 +27209,9 @@ fn on_chain_declarers<'a>(
     out
 }
 
-/// Import-less UniqueBare pick: on-chain unique, else the census-unique declarer the
-/// resolver UniqueBinding-accepts, else nothing (never nearest-prefix among homonyms).
+/// Import-less UniqueBare pick: on-chain unique, else nothing. A census-unique declarer OFF the
+/// chain has no lexical authority (the resolver's UniqueBinding arm now refuses it too), so it
+/// yields no edge; never nearest-prefix among homonyms.
 enum ImportlessBarePick<'a> {
     Unique(&'a String),
     Ambiguous(Vec<&'a String>),
@@ -27250,7 +27226,6 @@ fn pick_importless_bare<'a>(
     match on_chain.len() {
         1 => ImportlessBarePick::Unique(on_chain[0]),
         n if n > 1 => ImportlessBarePick::Ambiguous(on_chain),
-        _ if mods.len() == 1 => ImportlessBarePick::Unique(mods.iter().next().unwrap()),
         _ => ImportlessBarePick::None,
     }
 }

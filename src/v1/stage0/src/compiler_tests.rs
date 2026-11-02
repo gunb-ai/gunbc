@@ -2513,7 +2513,7 @@ mod compiler_tests {
                 // The signature reads the declaration...
                 assert!(
                     emitted.contains(
-                        "-> Result<(bool, String, String), Box<dyn std::error::Error>>"
+                        "-> std::result::Result<(bool, String, String), std::boxed::Box<dyn std::error::Error>>"
                     ),
                     "signature must project the three declared output types, got:\n{}",
                     emitted
@@ -7311,13 +7311,10 @@ mod compiler_tests {
                 let t = Instant::now();
                 let ownership = crate::v1_compiler_compile::extract_ownership_proofs(typed.clone());
                 let ownership_elapsed = t.elapsed();
-                let own_diags =
-                    crate::v1_compiler_compile::ownership_diagnostics(ownership.clone());
                 eprintln!(
-                    "  Ownership:                    {:>8.2?}  ({} proofs, {} diagnostics)",
+                    "  Ownership:                    {:>8.2?}  ({} proofs)",
                     ownership_elapsed,
-                    ownership.len(),
-                    own_diags.len()
+                    ownership.len()
                 );
 
                 // 6. Emit

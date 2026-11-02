@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_attempt_history_evidence_witness
 
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptEnvironmentAdmission, AttemptSpawnFailure, AttemptWorkerEvents, attempt_state_current_text }
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.host_layout { srv1_host_layout }
@@ -7,10 +8,7 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_current_attempt_admission_path_for_instance, dispatch_current_attempt_events_path_for_instance,
-  dispatch_current_attempt_spawn_failure_path_for_instance,
-}
+
 import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_record_paths }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
@@ -58,8 +56,8 @@ test fn two_attempts_of_one_node_never_share_a_record_path() -> Bool {
 test fn a_historical_attempt_never_reads_through_the_current_projection() -> Bool {
   let p = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k1)
   let nid = node as RoadmapNodeId
-  p.admission != dispatch_current_attempt_admission_path_for_instance(instance: instance(), node_id: nid)
-    && p.events != dispatch_current_attempt_events_path_for_instance(instance: instance(), node_id: nid)
-    && p.spawn_failure != dispatch_current_attempt_spawn_failure_path_for_instance(instance: instance(), node_id: nid)
+  p.admission != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptEnvironmentAdmission)
+    && p.events != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptWorkerEvents)
+    && p.spawn_failure != attempt_state_current_text(instance: instance(), node_id: nid, member: AttemptSpawnFailure)
     && !p.admission.contains("-current")
 }

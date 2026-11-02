@@ -16,6 +16,8 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
 import std.types { FilePath }
 import gunbc.command_runner { run_shell_command_capture }
+import gunbc.host_state_root { HostStateTree }
+import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStoreReady, CadRuntimeStoreUnready, cad_environment_interpreter, cad_environment_publication, CadEnvironmentNotBuilt, CadEnvironmentUnpublished, CadEnvironmentPublished, CadEnvironmentMarkerWrong, CadEnvironmentStoreUnreadable }
 import product.printing.cad_runtime_spec { CadRuntimeSpec, cad_runtime_spec, cad_runtime_spec_text, cad_runtime_spec_digest }
 import product.printing.runtime_dependencies { runtime_packages, ubuntu2404, observe_package }
 
@@ -26,19 +28,9 @@ import product.printing.runtime_dependencies { runtime_packages, ubuntu2404, obs
 // print path is launched from that value; no consumer on the path names an interpreter itself.
 //
 // PLACEMENT. The workflow runs on the printer LAN host (print_workflow provision_and_run refuses
-// elsewhere) and observes it with LocalExec. The CAD environment lives under print_runtime_root, in
-// a directory named by the spec digest, so a changed pin names a new environment rather than
-// mutating the one an earlier preparation ran in. Where that root is is a deployment fact about this
-// host, so it is declared here and not in extdeps.
-data print_runtime_root: String = "/var/lib/gunbc/print-runtime"
-
-fn cad_environment_prefix(spec: CadRuntimeSpec) -> String {
-  join([print_runtime_root, "/cad/", cad_runtime_spec_digest(spec: spec)], "")
-}
-
-fn cad_environment_interpreter(spec: CadRuntimeSpec) -> String {
-  concat(cad_environment_prefix(spec: spec), "/bin/python")
-}
+// elsewhere) and observes it with LocalExec. The CAD environment lives under the print runtime's member of
+// the host-state tree (product.printing.cad_runtime_store), in a directory named by the spec digest, so a
+// changed pin names a new environment rather than mutating the one an earlier preparation ran in.
 
 // THE ONLY MINT IS read_cad_environment. A holder of this value holds a published environment
 // whose interpreter was run, answered from its own executable path, reported the spec's CPython
@@ -111,14 +103,6 @@ fn judge_cad_probe(spec: CadRuntimeSpec, interpreter: String, reply: String) -> 
 // the ready marker -- holding the exact spec text -- is written after the probe passes. A prefix
 // without the marker is an unpublished build, never a usable one. The lock is a sibling directory
 // created exclusively (shell.Mkdir NewOwnerOnly), so two convergences cannot build one prefix.
-data cad_environment_ready_marker: String = ".gunbc-cad-runtime-ready"
-
-fn cad_environments_directory() -> String { concat(print_runtime_root, "/cad") }
-fn cad_environment_lock_name(spec: CadRuntimeSpec) -> String { concat(cad_runtime_spec_digest(spec: spec), ".converging") }
-fn cad_environment_lock(spec: CadRuntimeSpec) -> String { join([cad_environments_directory(), "/", cad_environment_lock_name(spec: spec)], "") }
-fn cad_environment_marker(spec: CadRuntimeSpec) -> String { join([cad_environment_prefix(spec: spec), "/", cad_environment_ready_marker], "") }
-
-
 // FOUR READINGS, because they have four remedies: build it, use it, refuse without touching it, and
 // refuse because nobody could look.
 type CadEnvironmentReading
@@ -129,17 +113,20 @@ type CadEnvironmentReading
 
 fn cad_environment_reading_reason(r: CadEnvironmentReading) -> String {
   match r {
-    CadEnvironmentAbsent => concat("No CAD environment at ", cad_environment_prefix(spec: cad_runtime_spec))
+    CadEnvironmentAbsent => "No CAD environment published for the declared spec"
     CadEnvironmentReady { runtime: c } => concat("CAD environment ready at ", c.interpreter as String)
     CadEnvironmentWrong { reason: w } => w
     CadEnvironmentUnreadable { reason: u } => u
   }
 }
 
-fn read_cad_environment() -> CadEnvironmentReading {
+fn read_cad_environment(tree: HostStateTree) -> CadEnvironmentReading {
+  let store = match cad_runtime_store(tree: tree) {
+    CadRuntimeStoreUnready { detail: d } => return CadEnvironmentUnreadable { reason: d }
+    CadRuntimeStoreReady { store: st } => st
+  }
   let spec = cad_runtime_spec
-  let interpreter = cad_environment_interpreter(spec: spec)
-  let prefix = cad_environment_prefix(spec: spec)
+  let interpreter = cad_environment_interpreter(store: store, spec: spec)
   match run_shell_command_capture(command: uname_machine_command(), transport: LocalExec) {
     ProcessRefused { exit_code: _, stderr: e } => return CadEnvironmentUnreadable { reason: concat("Cannot observe host architecture: ", e) }
     ProcessOutputAbsent => return CadEnvironmentUnreadable { reason: "Host architecture observation printed nothing" }
@@ -148,30 +135,15 @@ fn read_cad_environment() -> CadEnvironmentReading {
       RuntimeMatches => {}
     }
   }
-  match listed_entry_presence(directory: cad_environments_directory(), name: cad_environment_lock_name(spec: spec)) {
-    FilesystemEntryAbsent(_) => {}
-    FilesystemEntryListed { directory: _, name: _ } => return CadEnvironmentUnreadable { reason: join(["A CAD environment convergence holds ", cad_environment_lock(spec: spec), ", or died holding it; remove it only after confirming no convergence is running"], "") }
-    FilesystemEntryPresenceIndeterminate { cause: c } => return CadEnvironmentUnreadable { reason: c }
-    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadEnvironmentUnreadable { reason: c }
-  }
-  match listed_entry_presence(directory: cad_environments_directory(), name: cad_runtime_spec_digest(spec: spec)) {
-    FilesystemEntryAbsent(_) => return CadEnvironmentAbsent
-    FilesystemEntryPresenceIndeterminate { cause: c } => return CadEnvironmentUnreadable { reason: c }
-    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadEnvironmentUnreadable { reason: c }
-    FilesystemEntryListed { directory: _, name: _ } => {}
-  }
-  match listed_entry_presence(directory: prefix, name: cad_environment_ready_marker) {
-    FilesystemEntryAbsent(_) => return CadEnvironmentWrong { reason: join(["The CAD environment at ", prefix, " was never published (no ready marker); it is not used or modified -- remove it to rebuild"], "") }
-    FilesystemEntryPresenceIndeterminate { cause: c } => return CadEnvironmentUnreadable { reason: c }
-    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadEnvironmentUnreadable { reason: c }
-    FilesystemEntryListed { directory: _, name: _ } => {}
-  }
-  let marker = Filesystem.Read(path: cad_environment_marker(spec: spec))
-  if !marker.success { return CadEnvironmentUnreadable { reason: concat("Cannot read the CAD environment ready marker: ", marker.error) } }
-  if marker.content != cad_runtime_spec_text(spec: spec) { return CadEnvironmentWrong { reason: concat("The ready marker at ", cad_environment_marker(spec: spec), " names a different spec") } }
-  match probe_cad_interpreter(spec: spec, interpreter: interpreter) {
-    RuntimeMismatch { reason: r } => CadEnvironmentWrong { reason: r }
-    RuntimeMatches => CadEnvironmentReady { runtime: CadRuntimeReady { interpreter: interpreter as NonEmptyStr, spec_digest: cad_runtime_spec_digest(spec: spec) } }
+  match cad_environment_publication(store: store, spec: spec) {
+    CadEnvironmentNotBuilt => CadEnvironmentAbsent
+    CadEnvironmentStoreUnreadable { reason: r } => CadEnvironmentUnreadable { reason: r }
+    CadEnvironmentUnpublished { prefix: prefix } => CadEnvironmentWrong { reason: join(["The CAD environment at ", prefix, " was never published (no ready marker); it is not used or modified -- remove it to rebuild"], "") }
+    CadEnvironmentMarkerWrong { prefix: prefix } => CadEnvironmentWrong { reason: concat("The ready marker at ", prefix, " names a different spec") }
+    CadEnvironmentPublished => match probe_cad_interpreter(spec: spec, interpreter: interpreter) {
+      RuntimeMismatch { reason: r } => CadEnvironmentWrong { reason: r }
+      RuntimeMatches => CadEnvironmentReady { runtime: CadRuntimeReady { interpreter: interpreter as NonEmptyStr, spec_digest: cad_runtime_spec_digest(spec: spec) } }
+    }
   }
 }
 
@@ -191,8 +163,8 @@ fn probe_cad_interpreter(spec: CadRuntimeSpec, interpreter: String) -> RuntimeJu
 
 // OBSERVE THE CAD RUNTIME ON THIS HOST. No install happens here; only a published, matching
 // environment mints the runtime.
-fn observe_cad_runtime() -> CadRuntimeObservation {
-  match read_cad_environment() {
+fn observe_cad_runtime(tree: HostStateTree) -> CadRuntimeObservation {
+  match read_cad_environment(tree: tree) {
     CadEnvironmentReady { runtime: c } => CadRuntimeObserved { runtime: c }
     CadEnvironmentAbsent => CadRuntimeRefused { reason: join([cad_environment_reading_reason(r: CadEnvironmentAbsent), "; converge it with product.printed_chassis.print_workflow.provision_and_run"], "") }
     CadEnvironmentWrong { reason: w } => CadRuntimeRefused { reason: w }
@@ -215,7 +187,7 @@ type PrintRuntimeObservation
   = PrintRuntimeObserved { runtime: PrintRuntimeReady }
   | PrintRuntimeRefused { reason: String }
 
-fn observe_print_runtime(appimage: String, receipt: String) -> PrintRuntimeObservation {
+fn observe_print_runtime(tree: HostStateTree, appimage: String, receipt: String) -> PrintRuntimeObservation {
   let os_read = Filesystem.Read(path: "/etc/os-release")
   if !os_read.success || !ubuntu2404(text: os_read.content) { return PrintRuntimeRefused { reason: "Print runtime requires an observed Ubuntu 24.04 host" } }
   let packages = map(runtime_packages(), p => observe_package(package: p))
@@ -223,7 +195,7 @@ fn observe_print_runtime(appimage: String, receipt: String) -> PrintRuntimeObser
   if count(missing) > 0 {
     return PrintRuntimeRefused { reason: concat("Declared print runtime packages absent or unreadable; use product.printed_chassis.print_workflow.converge_runtime: ", join(map(missing, p => p.package as String), ", ")) }
   }
-  let cad = match observe_cad_runtime() {
+  let cad = match observe_cad_runtime(tree: tree) {
     CadRuntimeObserved { runtime: c } => c
     CadRuntimeRefused { reason: r } => return PrintRuntimeRefused { reason: r }
   }

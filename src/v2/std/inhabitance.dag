@@ -287,16 +287,71 @@ fn inhabitance_declaration_heads_differ(declared: Node, produced: Node) -> Bool 
   }
 }
 
+// A CONCRETE PAIR (no type variable on either side) DISAGREES WHEN THE EXACT STRUCTURAL COMPARISON REFUSES IT:
+// the same find_witness fold declared_type_inhabitance_exact runs, asked only for its refusal.
+fn inhabitance_concrete_pair_disagrees(declared: Node, produced: Node) -> Bool {
+  match find_witness(
+    source_facts: produced,
+    candidates: inhabitance_declared_singleton(declared: declared),
+    predicate: PreservationPredicate {
+      algebra: produced,
+      preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+    },
+    multiplicity_policy: UniqueOnly
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// THREE-VALUED PER POSITION: a type variable undecides only ITS OWN POSITION, never its siblings. A pair
+// DISAGREES when some position that mentions no variable is concretely refused, or two distinct nominal
+// heads meet; a position that mentions a variable and agrees in head is read argument by argument. A
+// disagreeing sibling wins over an undecided position (`Map<K, String>` at `Map<K, Int>` refuses on V
+// whatever K is); where no sibling disagrees the pair stays undecided, because the variable's position
+// may still disagree once instantiated.
+fn inhabitance_positions_disagree(declared: Node, produced: Node, type_variables: List<Symbol>) -> Bool {
+  if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
+    || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
+    if inhabitance_declaration_heads_differ(declared: declared, produced: produced) {
+      true
+    } else {
+      match declaration_denotation_of_type(t: declared) {
+        Absent => false
+        Present { value: dd } =>
+          match declaration_denotation_of_type(t: produced) {
+            Absent => false
+            Present { value: pd } =>
+              inhabitance_argument_lists_disagree(declared: dd.type_arguments, produced: pd.type_arguments, type_variables: type_variables)
+          }
+      }
+    }
+  } else {
+    inhabitance_concrete_pair_disagrees(declared: declared, produced: produced)
+  }
+}
+
+fn inhabitance_argument_lists_disagree(declared: List<Node>, produced: List<Node>, type_variables: List<Symbol>) -> Bool {
+  match declared {
+    Empty => false
+    Cons { head: d, tail: dt } =>
+      match produced {
+        Empty => false
+        Cons { head: p, tail: pt } =>
+          inhabitance_positions_disagree(declared: d, produced: p, type_variables: type_variables)
+            || inhabitance_argument_lists_disagree(declared: dt, produced: pt, type_variables: type_variables)
+      }
+  }
+}
+
 fn inhabitance_pair_undecidable_reason(
   declared: Node,
   produced: Node,
   type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  if inhabitance_declaration_heads_differ(declared: declared, produced: produced) {
+  if inhabitance_declaration_heads_differ(declared: declared, produced: produced)
+    || inhabitance_positions_disagree(declared: declared, produced: produced, type_variables: type_variables) {
     Absent
-  } else if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
-    || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
-    inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
   } else {
     inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
   }

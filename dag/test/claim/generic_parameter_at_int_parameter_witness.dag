@@ -1,0 +1,38 @@
+module test.claim.generic_parameter_at_int_parameter_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// A RIGID TYPE PARAMETER DOES NOT INHABIT A CONCRETE Int PARAMETER (decidable: a rigid T is never Int). Folded into
+// gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel: one mechanism, the terminal
+// Inhabits of declared_type_inhabitance. Evidence: zesty-badger-599, k7.log sha256 741b2557..., zz_k_generic.dag
+// f0893c80..., control zz_k_control.dag 2d48078a.... UNRUN: the RED is expected to FAIL on the current seed, the
+// control to PASS. dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn gpi_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn gpi_source(parameter_type: String) -> String {
+  "module gpi.probe\n\nimport std.types { String }\n\nimport std.integer { Int, int_to_decimal_string }\n\nfn probe<T>(v: " + parameter_type + ") -> String {\n  int_to_decimal_string(value: v)\n}\n"
+}
+
+// RED: a value of rigid type T at the Int parameter must refuse.
+test fn a_rigid_type_parameter_value_at_an_int_parameter_must_refuse() -> Bool {
+  gpi_refusal_count(source: gpi_source(parameter_type: "T")) >= 1
+}
+
+// CONTROL: an Int value at the same parameter is accepted.
+test fn an_int_value_in_a_generic_fn_at_an_int_parameter_is_accepted() -> Bool {
+  gpi_refusal_count(source: gpi_source(parameter_type: "Int")) == 0
+}

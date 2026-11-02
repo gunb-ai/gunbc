@@ -421,7 +421,28 @@ data cable_bend_keepout: ChassisGap = NeedsMeasurement {
   read_obligation: "NOTHING HERE GATES THE PRINT ANY MORE -- the printed-material half was discharged by the geometry itself, not by a reading: across the connector's own band the relief cut opens the shoulder floor from 4.5 mm in front of the end face to 8 mm behind it, and the cable leaves the head's outer end at 7 mm worst case, so no printed wall is in the turn's path (card_cooling_route cable_bend_path, a16_cable_bend_is_discharged_by_the_relief_and_the_head_hits_the_fan_instead). What is still owed, and what the print is actually for: (a) dress the cable plugged in and confirm it really does stay in the plane of the card end -- a run that dips to 4 mm or shallower on its way inboard meets the relief window's inboard edge instead, which is the one printed surface in the neighbourhood, and cable_bend_path names it; and (b) report whether the plugged head meets the blower's housing, which is the finding this reading produced instead of the one it was asked for",
 }
 
-data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, card_end_to_chassis_fan_2026_10_29, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall]
+// THE SINGLE-CARD ARRANGEMENT, 2026-11-02. The rows above were read with two A16s side by side; in the
+// chassis as it stands now the operator says nothing sits beside the card, and asked for a side-mounted
+// blower that works on either face. That is a different arrangement, so it is its own row: side_lane_width
+// keeps what was looked at on 2026-10-27 in the two-card row, and this row does not inherit or overwrite it.
+// Carried as the operator's declared allowance, the same standing as the 2026-10-26 rear bound -- a figure
+// the design may spend, not a reading.
+data single_card_side_allowance_2026_11_02: ChassisGap = Measured {
+  name: "space beside the A16 in the single-card arrangement",
+  from_point: "either side face of the A16, near its plug end",
+  to_point: "the operator reports nothing beside the card; no far boundary was read",
+  distance: micrometer(count: 50000),
+  standing: DeclaredConservativeByOperator {
+    bound: micrometer(count: 50000),
+    reading: Absent,
+    date: "2026-11-02",
+    positions: "either side of the A16 in the current chassis, where no other card sits beside it",
+    basis: "operator, 2026-11-02: 'theres nothing besides the card' and 'right now, practically, i would make sure it works on either side - i would assume ~50mm, but make sure you can easily switch the orientation'",
+    does_not_settle: "no instrument reading of the space on either side; whether the blower's intake has enough free air beyond the part; where the 8-pin cable bends",
+  },
+}
+
+data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, single_card_side_allowance_2026_11_02, card_end_to_chassis_fan_2026_10_29, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall]
 
 // THE HEAD'S WORST-CASE REACH, AT THE ROW ITSELF. A clearance is always checked against the worst credible
 // value, which for an operator-reported figure means the face value plus the width this repository puts on it

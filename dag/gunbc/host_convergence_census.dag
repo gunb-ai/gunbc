@@ -66,8 +66,6 @@ type HostConvergenceSubject
   | MicrovmHost
   | GuestImage
   | Srv3InstallMedia
-  | SrvBmcCredential
-  | BmcSecureAccountState
   | TypedRemoteFileBytes
   | HostToolchain
   | RunnerMemoryCaps
@@ -740,42 +738,6 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: host_effect_apply_id() },
     first_consumer: cite(module_path: "gunbc.srv3.srv3_host_effect_apply", decl_name: "srv3_install_media_fetch_apply"),
-  ),
-  census_row(
-    identity: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
-    subject: SrvBmcCredential,
-    phases: protocol_phases(false, true, true, false, false, true, false),
-    current_authority: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
-    persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: BindToAuthority { target: fleet_plan() },
-    first_consumer: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
-  ),
-  census_row(
-    identity: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
-    subject: SrvBmcCredential,
-    phases: protocol_phases(false, true, true, false, false, true, false),
-    current_authority: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
-    persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: BindToAuthority { target: fleet_plan() },
-    first_consumer: cite(module_path: "gunbc.host.host_standup", decl_name: "host_standup_spine"),
-  ),
-  census_row(
-    identity: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv4_converge_credential"),
-    subject: SrvBmcCredential,
-    phases: protocol_phases(false, true, true, false, false, true, false),
-    current_authority: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
-    persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: BindToAuthority { target: fleet_plan() },
-    first_consumer: cite(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential"),
-  ),
-  census_row(
-    identity: cite(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "inspect_bmc_secure_state"),
-    subject: BmcSecureAccountState,
-    phases: protocol_phases(false, true, true, true, true, true, false),
-    current_authority: cite(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "inspect_bmc_secure_state"),
-    persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: BindToAuthority { target: std_reconcile() },
-    first_consumer: cite(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "plan_bmc_account_action"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.host.host_toolchain_ensure", decl_name: "host_toolchain_ensure"),

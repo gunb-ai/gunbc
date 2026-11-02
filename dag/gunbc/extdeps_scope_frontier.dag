@@ -638,6 +638,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/gpu/nvidia_t10.dag",
   "dag/extdeps/gpu/nvidia_t4.dag",
   "dag/extdeps/gpu/nvidia_a2.dag",
+  "dag/extdeps/gpu/amd.dag",
+  "dag/extdeps/gpu/gigabyte.dag",
   "dag/extdeps/gpu/nvidia_p100.dag",
   "dag/extdeps/gpu/nvidia_v100.dag",
   "dag/extdeps/gpu/nvidia_cmp.dag",

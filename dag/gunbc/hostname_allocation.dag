@@ -25,6 +25,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_183527,
   operator_host_3dde7f,
   operator_host_94c81d,
+  operator_host_6ce85c,
   operator_host_mtjade1,
   operator_host_srv9,
   operator_host_srv10,
@@ -233,6 +234,13 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
       name: FirstOnly { first: "owen" as DnsLabel },
       draw: HumanNameDraw { entropy: 709187867323 },
     },
+  },
+  // H11SSL unit 1 (2026-10-30): the host already answers as h11-a16 on the LAN and in its own hostname,
+  // and that is how the operator addresses it, so it keeps that spelling as a LEGACY name rather than a
+  // drawn one, the same treatment srv9-srv12 get below.
+  HostnameAllocation {
+    fleet_slot: operator_host_6ce85c,
+    name: LegacyHostname { label: "h11-a16" as DnsLabel },
   },
   // THE FIVE DRAWN ROWS (2026-10-27), drawn by the P2 model step of
   // gunbc.plans.fleet_naming_reach_access. srv9-srv12 keep their identity slot as a LEGACY spelling and

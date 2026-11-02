@@ -11,15 +11,7 @@ use std::rc::Rc;
 pub fn rust_decl_type_container_overlay_is_admitted(
     authored_is_leaf: bool,
     closed_alias: bool,
-    applied_arg_count: Option<i64>,
     resolved_child_count: i64,
 ) -> bool {
-    {
-        let has_applied_args = match applied_arg_count.clone() {
-            Some(count) => (count.clone() > 0),
-            std::option::Option::None => false,
-        };
-        ((authored_is_leaf.clone() && !closed_alias.clone())
-            && (has_applied_args.clone() || (resolved_child_count.clone() > 0)))
-    }
+    ((authored_is_leaf.clone() && !closed_alias.clone()) && (resolved_child_count.clone() > 0))
 }

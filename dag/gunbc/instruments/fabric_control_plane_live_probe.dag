@@ -1123,6 +1123,7 @@ fn fci1_canonical_cleanup_disposition(
       }
     }
   }
+  disposition
 }
 fn fci1_write_canonical_cleanup_receipt_in(store: FabricAllocationStore, before_wire: String, authority_path: String, path: String) -> ProcessExit {
   let disposition = fci1_canonical_cleanup_disposition(store: store, before_wire: before_wire, authority_path: authority_path)

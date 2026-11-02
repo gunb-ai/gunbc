@@ -1,4 +1,5 @@
 module gunbc.live_deploy.spec
+import gunbc.owned_directory { ForeignOwnershipRefuses }
 
 import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

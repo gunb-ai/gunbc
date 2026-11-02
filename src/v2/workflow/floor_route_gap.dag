@@ -2425,8 +2425,10 @@ fn floor_route_gap_expectation_chunk_47() -> List<FloorRouteGapExpectation> {
 // recovery -- a dead holder's stale print start is released and retried, an empty slot acquires and
 // admits the next print, a live controller is refused as live and stays held, repeated intruders keep
 // the live cause, an unobservable holder without any observation refuses by type and stays held, an
-// unobservable holder is released by an approved operator observation, and a pending or foreign
-// observation never releases the stale hold. Each row's first effect is shell.Mktemp.DirWithTemplate
+// unobservable holder is released by an approved operator observation, a pending or foreign
+// observation never releases the stale hold, the release-request route asks through the broker rather
+// than conscribing a decision into the store it reads, and an absent or freed slot asks for nothing.
+// Each row's first effect is shell.Mktemp.DirWithTemplate
 // with no mock_response, as chunk_47's sibling hold rows. Triple enrollment as for chunk_47: these
 // expectations, the WetScheduledClaim rows in v2.workflow.local_repo_wet_terminal
 // local_repo_wet_schedule, and the gunbc.ci.ci_layer_roots LocalRepoWetLane row for
@@ -2446,7 +2448,11 @@ fn floor_route_gap_expectation_chunk_48() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.printer_execution_hold_recovery_wet_witness.an_unobservable_holder_is_released_by_an_approved_operator_observation", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.printer_execution_hold_recovery_wet_witness.a_pending_or_foreign_observation_never_releases_the_stale_hold", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.printer_execution_hold_recovery_wet_witness.the_release_request_asks_through_the_broker_and_never_conscribes_a_decision", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.printer_execution_hold_recovery_wet_witness.an_absent_or_freed_slot_asks_for_nothing", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

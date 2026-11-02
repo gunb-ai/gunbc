@@ -1319,8 +1319,11 @@ fn admit_manifest_code(
 //
 // THE SECOND HOP IS PENDING A SIBLING LANE AND IS NOT BUILT HERE. The delivery of a credential to a
 // path under a declared owner, group and mode is being consolidated into ONE custody authority as a
-// closed roster of rows (the roadmap node ntfy-publisher-token-onto-gcp-custody, over the authority
-// gunbc#11679 established). The census App private key belongs in that roster AS A ROW, and minting a
+// closed roster of rows (gunbc.fleet.host_credential_custody_converge, over the authority gunbc#11679
+// established; the roadmap node that tracked that lane, ntfy-publisher-token-onto-gcp-custody, was
+// deleted by the ntfy retirement of 2026-10-30 because its subject -- the ntfy publisher-token row --
+// was removed outright rather than consolidated, and the lane it tracked is now the authority).
+// The census App private key belongs in that roster AS A ROW, and minting a
 // second delivery path here to close this fact sooner would be the fork DESIGN 3 forbids -- so this
 // says plainly that it is pending instead. When that roster lands, this arm gains its sibling and the
 // row carries the SecretRef below, the handoff path, the reading principal and the mode.

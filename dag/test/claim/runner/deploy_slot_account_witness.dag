@@ -162,6 +162,17 @@ test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
     && string_contains(s: nth(xs: lines, i: 3), pattern: "-rf /var/lib/gunbc/stage")
 }
 
+// THE EXTRACT LEAVES THE TREE AT THE MODE THE REBUILD MADE IT. The runner archive's leading `./` entry is
+// drwxr-xr-x, and GNU tar re-applies an existing directory's archived metadata to it, so L2 run 41154097819
+// (2026-10-31) extracted into a 0700 tree and left it 0755; the owner-only readback refused it. RED: the
+// default extract argv, without --no-overwrite-dir.
+test fn the_rebuild_extract_preserves_the_owner_only_tree_mode() -> Bool {
+  let lines = map(deploy_slot_tree_rebuild_commands(slot_dir: "/opt/actions-runner/srv1-02", stage: "/var/lib/gunbc/stage", tarball: "/var/lib/gunbc/stage/runner.tar.gz"), c => join(argv_words(command: c), " "))
+  string_contains(s: nth(xs: lines, i: 2), pattern: "-C /opt/actions-runner/srv1-02")
+    && ends_with(s: nth(xs: lines, i: 2), suffix: "--no-overwrite-dir")
+    && length(filter(lines, l => string_contains(s: l, pattern: "--no-overwrite-dir"))) == 1
+}
+
 // THE ARCHIVE IS WRITABLE BY ROOT ALONE BETWEEN ITS DIGEST CHECK AND ITS EXTRACTION (review 87894): the
 // stage is a member of the root-owned host-state tree, never the /tmp the CI slots' jobs share; it is
 // removed and recreated root-owned before the fetch, and the fetch runs as root. An unelevated fetch or

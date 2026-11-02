@@ -9,7 +9,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observa
 import extdeps.shell
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import extdeps.exec.command { LocalExec }
-import extdeps.tools.tar { tar_create_from_list_command, tar_extract_command, tar_list_command }
+import extdeps.tools.tar { tar_create_from_list_command, tar_extract_command, tar_list_command, TarNoOverwriteDir }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.actions_run_binding { actions_variable_trimmed }
@@ -107,7 +107,7 @@ fn native_product_restore_extract(key: String, store: String, archive: String) -
         if scratch.success == false { Present { value: "no private scratch directory could be minted" } }
         else {
           let dir = scratch.path as String
-          let outcome = match native_product_run_ok(run: run_shell_command_observe_outcome(command: tar_extract_command(archive: archive, into_directory: dir, strip_components: 0), transport: LocalExec)) {
+          let outcome = match native_product_run_ok(run: run_shell_command_observe_outcome(command: tar_extract_command(archive: archive, into_directory: dir, strip_components: 0, existing_directories: TarNoOverwriteDir), transport: LocalExec)) {
             Present { value: why } => Present { value: concat("tar extract refused: ", why) }
             Absent => native_product_run_ok(run: run_shell_command_observe_outcome(command: mv_exact_destination_command(source: join([dir, "/", key], ""), destination: join([store, "/", key], "")), transport: LocalExec))
           }

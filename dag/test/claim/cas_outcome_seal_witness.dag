@@ -45,7 +45,7 @@ fn cas_committed_probe_source(forged_binding: String) -> String {
     + "  0\n}\n"
 }
 
-// RED (EXPECTED, TRIGGER: sole_constructor honored on a coproduct, which the seed parse drops today) — WRITING A COMMITTED OUTCOME OUTSIDE THE MODULE THAT REALIZES IT.
+// RED (EXPECTED, TRIGGER: sealed interface results mintable by declared realization bindings; sole_constructor on a coproduct is honored since gunbc#15451 but would make every realization foreign) — WRITING A COMMITTED OUTCOME OUTSIDE THE MODULE THAT REALIZES IT.
 test fn a_forged_cas_committed_literal_is_refused_at_compile() -> Bool {
   keyed_count(
     source: cas_committed_probe_source(forged_binding: forged_cas_committed_binding),

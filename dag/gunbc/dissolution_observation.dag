@@ -3,6 +3,8 @@ module gunbc.dissolution_observation
 import std.roster_frontier {
   FrontierRow,
   FrontierExpiryReport,
+  DeclSubject,
+  PathSubject,
   fold_frontier_expiry,
 }
 import std.dissolution {
@@ -53,6 +55,51 @@ fn frontier_row_trigger_refs(row: FrontierRow) -> List<DeclarationRef> {
     BoundDissolution { trigger: t } => [dissolution_trigger_ref(trigger: t)]
     UnboundDissolution { description: _ } => []
   }
+}
+
+// THE SUBJECT IS A CITATION TOO. frontier_row_well_formed checks a DeclSubject only for non-empty
+// strings, so a row whose subject names a declaration that is not in the tree passes it (a stale
+// symbol, DESIGN section 3). The same resolver that decides the trigger refs decides these, so a
+// subject ref gets one of the same four verdicts; a PathSubject names a file, not a declaration.
+fn frontier_row_subject_refs(row: FrontierRow) -> List<DeclarationRef> {
+  match row.subject {
+    DeclSubject { ref: r } => [r]
+    PathSubject { path: _ } => []
+  }
+}
+
+fn census_subject_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
+  flat_map(rows, row => frontier_row_subject_refs(row: row))
+}
+
+// Only CensusRefAbsent is a stale subject. OutsideIndex and Ambiguous are UNDECIDED, which is not
+// stale; frontier_undecided_subject_refs reports them so the census refuses on them (DESIGN section 5)
+// exactly as it does for the trigger refs, instead of passing a subject it could not resolve.
+fn frontier_stale_subject_refs(
+  rows: List<FrontierRow>,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>,
+) -> List<DeclarationRef> {
+  census_subject_refs(rows: rows)
+    |> map(ref => census_ref_verdict(ref: ref, facts: facts, modules: modules))
+    |> filter(v => match v {
+      CensusRefAbsent { ref: _ } => true
+      CensusRefPresent { ref: _ } => false
+      CensusRefOutsideIndex { ref: _ } => false
+      CensusRefAmbiguous { ref: _ } => false
+    })
+    |> map(v => census_ref_verdict_ref(verdict: v))
+}
+
+fn frontier_undecided_subject_refs(
+  rows: List<FrontierRow>,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>,
+) -> List<DeclarationRef> {
+  census_subject_refs(rows: rows)
+    |> map(ref => census_ref_verdict(ref: ref, facts: facts, modules: modules))
+    |> filter(v => census_ref_is_undecided(verdict: v))
+    |> map(v => census_ref_verdict_ref(verdict: v))
 }
 
 fn census_trigger_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {

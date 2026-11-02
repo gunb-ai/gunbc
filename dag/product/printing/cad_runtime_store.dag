@@ -1,0 +1,145 @@
+module product.printing.cad_runtime_store
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
+import gunbc.durable_exclusive_hold_file_store { file_hold_acquire, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable, file_hold_release_assess, FileHoldReleasePlanned, FileHoldReleaseNotEligible, file_hold_release_commit, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+import product.printing.cad_runtime_spec { CadRuntimeSpec, cad_runtime_spec_text, cad_runtime_spec_digest }
+
+// THE PRINT RUNTIME'S STATE, SEALED. One member of the host-state tree (gunbc.host_state_root), declared once
+// here: print_runtime_path(tree) is the root every print-runtime reader derives from (the CAD environments, the
+// pinned micromamba and the pinned Orca archive), so no second literal of /var/lib/gunbc/print-runtime exists.
+//
+// THE CAD RUNTIME STORE owns two things under that root, both keyed by the runtime spec's digest:
+//   cad/<digest>/                  the conda prefix, built in place and published by a ready marker
+//                                  (cad/<digest>/.gunbc-cad-runtime-ready, holding the exact spec text)
+//   cad-locks/<digest>.<n>         the convergence lock, a slot of the hold library (gunbc.durable_exclusive_hold_file_store)
+// The prefix layout and the marker bytes are unchanged (sealed in place). The lock used to be a sibling directory
+// cad/<digest>.converging taken with Mkdir NewOwnerOnly; it is a hold now. No lock can be live across the deploy
+// boundary (a convergence is one manual provisioning verb, never running while a deploy installs this code), and a
+// legacy lock directory that is left behind makes the mint refuse permanently (Unready), so no build ever proceeds
+// beside a possible old holder; removing it is the operator's act after confirming no convergence runs.
+type PrintRuntimeDeclaration { member: NonEmptyStr }
+
+data print_runtime_slots: PrintRuntimeDeclaration = PrintRuntimeDeclaration { member: "print-runtime" as NonEmptyStr }
+
+fn print_runtime_path(tree: HostStateTree) -> String {
+  join([host_state_tree_path(tree: tree) as String, "/", print_runtime_slots.member as String], "")
+}
+
+data cad_environments_member: String = "cad"
+data cad_locks_member: String = "cad-locks"
+data cad_environment_ready_marker: String = ".gunbc-cad-runtime-ready"
+data legacy_lock_suffix: String = ".converging"
+data cad_lock_owner: NonEmptyStr = "cad-runtime-converge" as NonEmptyStr
+
+type CadRuntimeStore sole_constructor {
+  root: NonEmptyStr
+  locks: NonEmptyStr
+}
+
+type CadRuntimeStoreReading = CadRuntimeStoreReady { store: CadRuntimeStore } | CadRuntimeStoreUnready { detail: String }
+
+// THE MINT TAKES THE TREE AND NOTHING ELSE. It ensures both directories (as converge always did) and lists the
+// environments directory: a legacy <digest>.converging entry refuses permanently.
+fn cad_runtime_store(tree: HostStateTree) -> CadRuntimeStoreReading {
+  let root = join([print_runtime_path(tree: tree), "/", cad_environments_member], "")
+  let locks = join([print_runtime_path(tree: tree), "/", cad_locks_member], "")
+  if !shell.Mkdir.Parents(path: root as FilePath).success { return CadRuntimeStoreUnready { detail: concat("Cannot create the print runtime directory ", root) } }
+  if !shell.Mkdir.Parents(path: locks as FilePath).success { return CadRuntimeStoreUnready { detail: concat("Cannot create the print runtime lock directory ", locks) } }
+  let listing = Filesystem.List(path: root)
+  match filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => CadRuntimeStoreUnready { detail: join(["the CAD environments directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => CadRuntimeStoreUnready { detail: join(["the CAD environments directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(listed) => {
+      let legacy = filesystem_listing_entry_names(listing: listed).filter(n => ends_with(s: n, suffix: legacy_lock_suffix))
+      if count(legacy) != 0 {
+        CadRuntimeStoreUnready { detail: join(["a legacy CAD convergence lock remains (", join(legacy, ", "), "); a convergence holds it or died holding it, remove it only after confirming no convergence is running"], "") }
+      } else {
+        CadRuntimeStoreReady { store: CadRuntimeStore { root: root as NonEmptyStr, locks: locks as NonEmptyStr } }
+      }
+    }
+  }
+}
+
+fn cad_environment_prefix(store: CadRuntimeStore, spec: CadRuntimeSpec) -> String {
+  join([store.root as String, "/", cad_runtime_spec_digest(spec: spec)], "")
+}
+
+fn cad_environment_interpreter(store: CadRuntimeStore, spec: CadRuntimeSpec) -> String {
+  concat(cad_environment_prefix(store: store, spec: spec), "/bin/python")
+}
+
+// WHAT THE STORE HOLDS FOR A SPEC: nothing, an unpublished build, a published environment, or a marker naming
+// another spec. The marker is compared here, against the spec text, and no reading leaves this module.
+type CadEnvironmentPublication
+  = CadEnvironmentNotBuilt
+  | CadEnvironmentUnpublished { prefix: String }
+  | CadEnvironmentPublished
+  | CadEnvironmentMarkerWrong { prefix: String }
+  | CadEnvironmentStoreUnreadable { reason: String }
+
+fn cad_environment_publication(store: CadRuntimeStore, spec: CadRuntimeSpec) -> CadEnvironmentPublication {
+  let prefix = cad_environment_prefix(store: store, spec: spec)
+  match listed_entry_presence(directory: store.root as String, name: cad_runtime_spec_digest(spec: spec)) {
+    FilesystemEntryAbsent(_) => CadEnvironmentNotBuilt
+    FilesystemEntryPresenceIndeterminate { cause: c } => CadEnvironmentStoreUnreadable { reason: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => CadEnvironmentStoreUnreadable { reason: c }
+    FilesystemEntryListed { directory: _, name: _ } => match listed_entry_presence(directory: prefix, name: cad_environment_ready_marker) {
+      FilesystemEntryAbsent(_) => CadEnvironmentUnpublished { prefix: prefix }
+      FilesystemEntryPresenceIndeterminate { cause: c } => CadEnvironmentStoreUnreadable { reason: c }
+      FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => CadEnvironmentStoreUnreadable { reason: c }
+      FilesystemEntryListed { directory: _, name: _ } => {
+        let marker = Filesystem.Read(path: join([prefix, "/", cad_environment_ready_marker], ""))
+        if !marker.success { CadEnvironmentStoreUnreadable { reason: concat("Cannot read the CAD environment ready marker: ", marker.error) } }
+        else if marker.content != cad_runtime_spec_text(spec: spec) { CadEnvironmentMarkerWrong { prefix: prefix } }
+        else { CadEnvironmentPublished }
+      }
+    }
+  }
+}
+
+type CadPublishResult = CadPublished | CadPublishRefused { cause: String }
+
+// PUBLICATION: the marker is created once, then read back byte-equal to the spec text.
+fn cad_environment_publish(store: CadRuntimeStore, spec: CadRuntimeSpec) -> CadPublishResult {
+  let path = join([cad_environment_prefix(store: store, spec: spec), "/", cad_environment_ready_marker], "")
+  if !Filesystem.WriteCreateNew(path: path, content: cad_runtime_spec_text(spec: spec)).success { return CadPublishRefused { cause: "Cannot write the CAD environment ready marker" } }
+  let back = Filesystem.Read(path: path)
+  if back.success && back.content == cad_runtime_spec_text(spec: spec) { CadPublished } else { CadPublishRefused { cause: "The CAD environment ready marker read back differently from the spec" } }
+}
+
+type CadBuildResult = CadBuilt | CadBuildFailed { reason: String }
+
+// THE BUILD RUNS ONLY UNDER THE HOLD on the spec's digest: acquired through the hold library, released after,
+// every refusal typed. A holder, live or dead, refuses (remove-after-confirming stays the operator's act).
+fn cad_build_under_lock(store: CadRuntimeStore, spec: CadRuntimeSpec, build: fn(String) -> CadBuildResult) -> CadBuildResult {
+  let key = cad_runtime_spec_digest(spec: spec) as NonEmptyStr
+  match file_hold_acquire(root: store.locks, slot_key: key, requested_owner: cad_lock_owner as DurableHoldOwnerRef) {
+    FileHoldAcquired { slot_key: _, owner: o, generation: g } => {
+      let result = build(cad_environment_prefix(store: store, spec: spec))
+      let released = match file_hold_release_assess(root: store.locks, slot_key: key, owner: o, acquired_generation: g, released_by: cad_lock_owner as DurableHoldReleaseRef) {
+        FileHoldReleasePlanned { plan: p } => match file_hold_release_commit(plan: p) {
+          FileHoldReleased { slot_key: _, generation: _ } => true
+          FileHoldReleaseLost { slot_key: _ } => false
+          FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
+          FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => false
+        }
+        FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
+      }
+      if released { result } else {
+        match result {
+          CadBuilt => CadBuildFailed { reason: "Built, but cannot release the convergence lock" }
+          CadBuildFailed { reason: r } => CadBuildFailed { reason: concat(r, "; and the convergence lock could not be released") }
+        }
+      }
+    }
+    FileHoldOccupied { slot_key: _, holder: h, generation: _ } => CadBuildFailed { reason: join(["A CAD environment convergence holds the lock (", h as String, "), or died holding it; remove it only after confirming no convergence is running"], "") }
+    FileHoldAcquireLost { slot_key: _ } => CadBuildFailed { reason: "The CAD environment convergence lock was taken by another convergence" }
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => CadBuildFailed { reason: "Cannot take the CAD environment convergence lock: the store is unavailable" }
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => CadBuildFailed { reason: "The CAD environment convergence lock slot is undecodable" }
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => CadBuildFailed { reason: "The CAD environment lock key is not slot addressable" }
+  }
+}

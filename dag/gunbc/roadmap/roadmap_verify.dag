@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_verify
 
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptVerificationRecord, attempt_state_write_at, attempt_state_provision, attempt_state_provision_path }
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
@@ -45,11 +46,9 @@ import gunbc.roadmap.roadmap_belt_actuate {
   NodeMissing,
   belt_lookup_node,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_verification_path_for_instance,
-}
+
 import extdeps.filesystem.filesystem_io
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemWritten, FilesystemWriteRefused }
 import extdeps.languages.json.emit {
   JsonValue,
   serialize_json,
@@ -587,21 +586,14 @@ fn persist_verification_receipt(
         ], ""),
       }
     DashboardLocalProvision => {
-      let path = dispatch_attempt_verification_path_for_instance(
-        instance: instance,
-        node_id: node.node,
-        attempt_key: receipt.attempt_key,
-      )
-      let write = Filesystem.Write(
-        path: path,
-        content: legacy_single_validation_verification_receipt_json(receipt: receipt),
-      )
-      if write.success {
-        ReceiptPersisted { path: path }
-      } else {
-        ReceiptPersistRefused {
-          reason: join(["verification receipt write failed: ", write.error], ""),
-        }
+      let write = attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: receipt.attempt_key, member: AttemptVerificationRecord, content: legacy_single_validation_verification_receipt_json(receipt: receipt))
+      match write {
+        FilesystemWritten { path: _ } =>
+          ReceiptPersisted { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node.node as String, attempt_key: receipt.attempt_key), member: AttemptVerificationRecord) }
+        FilesystemWriteRefused { path: _, error: e } =>
+          ReceiptPersistRefused {
+            reason: join(["verification receipt write failed: ", e], ""),
+          }
       }
     }
   }

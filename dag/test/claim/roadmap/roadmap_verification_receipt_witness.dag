@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_verification_receipt_witness
 
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptVerificationReceipt, attempt_state_text }
 import std.types { Bool, String, NonEmptyStr, FilePath, CommitSha }
 import std.optional { Present }
 import std.content_hash {
@@ -44,9 +45,7 @@ import gunbc.git_diff_change_window {
   ChangeWindowPersistenceRefused,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_verification_receipt_path_for_instance,
-}
+
 
 // GREEN-BY-CONSTRUCTION witness for the exact-head verification model. The fixture supplies every
 // required subject field, one structural validation operation, one realized program-plus-argv
@@ -150,20 +149,8 @@ test fn attempt_level_pass_is_typed_legacy_and_never_evidence() -> Bool {
 test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
   let instance = srv2_lab_dashboard_instance()
   let absent_identity = git_diff_window_absent_identity().digest as String
-  let path_a = dispatch_attempt_verification_receipt_path_for_instance(
-    instance: instance,
-    node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId,
-    attempt_key: "feedfacefeedface",
-    head_sha: head_a as String,
-    window_identity_hex: absent_identity,
-  )
-  let path_b = dispatch_attempt_verification_receipt_path_for_instance(
-    instance: instance,
-    node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId,
-    attempt_key: "feedfacefeedface",
-    head_sha: head_b as String,
-    window_identity_hex: absent_identity,
-  )
+  let path_a = attempt_state_text(instance: instance, node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId, attempt_key: "feedfacefeedface", member: AttemptVerificationReceipt { head_sha: head_a as String, window_identity_hex: absent_identity })
+  let path_b = attempt_state_text(instance: instance, node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId, attempt_key: "feedfacefeedface", member: AttemptVerificationReceipt { head_sha: head_b as String, window_identity_hex: absent_identity })
   path_a != path_b
     && string_contains(
       s: path_a,

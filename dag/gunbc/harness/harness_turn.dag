@@ -41,6 +41,7 @@ import extdeps.filesystem.filesystem_io { Filesystem,
   filesystem_listing_observation, filesystem_entry_presence,
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
   filesystem_file_observation, filesystem_read_outcome,
+  filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
@@ -509,6 +510,39 @@ fn harness_tool_round_events(uses: List<HarnessWireBlock>) -> List<String> {
 
 fn harness_events_body(events: List<String>) -> String {
   concat(join(events, "\n"), "\n")
+}
+
+// THE EVENTS FILE HAS ONE WRITER AT A TIME, AND THE HANDOFF IS A READ OF WHAT IS THERE. The cli's
+// placement-wait loop (harness_cli harness_bind_seat_waiting) runs to completion BEFORE the bound
+// binding reaches harness_run_turn, which is the only other writer, so the two never overlap in time;
+// the only crossing is this read. Each writer therefore appends to what the file holds instead of
+// replacing it: a wait line used to overwrite the previous wait's line and turn.started used to
+// overwrite every wait line. Absent is "nothing announced yet"; an unreadable file is a refusal and
+// is never projected to an empty list, because writing over bytes that could not be read is the loss.
+// A writer outside this process (the belt) is not excluded by this: that residual is
+// gunbc.recurring_failure_mode attempt_events_file_lost_update.
+type HarnessEventsPrior
+  = HarnessEventsPriorRead { events: List<String> }
+  | HarnessEventsPriorUnreadable { detail: String }
+
+fn harness_events_prior(path: String) -> HarnessEventsPrior {
+  let read = Filesystem.Read(path: path)
+  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+    FilesystemExactPathRead { path: _, content } => HarnessEventsPriorRead { events: split(s: content, delimiter: "\n") |> filter(e => e != "") }
+    FilesystemExactPathAbsent { path: _ } => HarnessEventsPriorRead { events: [] }
+    FilesystemExactPathUnreadable { path: _, kind: _, error } => HarnessEventsPriorUnreadable { detail: join(["prior events unreadable: ", error], "") }
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error } => HarnessEventsPriorUnreadable { detail: join(["prior events unreadable: ", error], "") }
+  }
+}
+
+fn harness_events_append(path: String, lines: List<String>) -> HarnessEventWrite {
+  match harness_events_prior(path: path) {
+    HarnessEventsPriorUnreadable { detail: d } => HarnessEventsUnwritable { detail: d }
+    HarnessEventsPriorRead { events: prior } => {
+      let written = Filesystem.Write(path: path, content: harness_events_body(events: concat(prior, lines)))
+      if written.success { HarnessEventsWritten } else { HarnessEventsUnwritable { detail: written.error } }
+    }
+  }
 }
 
 fn harness_write_events(config: HarnessTurnConfig, events: List<String>) -> HarnessEventWrite {
@@ -1864,7 +1898,13 @@ fn harness_turn_continue(
 // turn saw an initialized-but-silent stream and could not distinguish it from a worker that never
 // started. Writing here makes "the agent began" observable at the moment it becomes true.
 fn harness_run_turn(config: HarnessTurnConfig, prompt: String, step_budget: Int) -> HarnessTurnOutcome {
-  let started = [harness_event_type_only(event_type: "turn.started")]
+  match harness_events_prior(path: config.events_path as String) {
+    HarnessEventsPriorUnreadable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+    HarnessEventsPriorRead { events: prior } => harness_run_turn_seeded(config: config, prompt: prompt, step_budget: step_budget, started: concat(prior, [harness_event_type_only(event_type: "turn.started")]))
+  }
+}
+
+fn harness_run_turn_seeded(config: HarnessTurnConfig, prompt: String, step_budget: Int, started: List<String>) -> HarnessTurnOutcome {
   match harness_write_events(config: config, events: started) {
     HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
     HarnessEventsWritten =>

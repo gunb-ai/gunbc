@@ -3,7 +3,7 @@ module gunbc.repository_census_coverage
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, declaration_ref_identity }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
@@ -17,7 +17,6 @@ import gunbc.repository_census_observation {
   CensusMethodRunIdentity,
   RepositoryCensusObservation,
   census_tagged_identity,
-  census_declaration_ref_identity,
   census_revision_identity,
   census_method_run_identity,
   repository_census_population_identity,
@@ -541,10 +540,10 @@ fn census_resolve_independence(
 ) -> DenominatorIndependence {
   let enumeration_identity = census_method_run_identity(method: enumeration_run)
   let classification_identity = census_method_run_identity(method: classification_run)
-  let enumeration_classifier = census_declaration_ref_identity(
+  let enumeration_classifier = declaration_ref_identity(
     reference: enumeration_run.classifier,
   )
-  let classification_classifier = census_declaration_ref_identity(
+  let classification_classifier = declaration_ref_identity(
     reference: classification_run.classifier,
   )
   let same_run = content_hash_eq_structural(
@@ -755,7 +754,7 @@ fn census_capability_kind_tag(capability: CensusMethodCapability) -> NonEmptyStr
 
 fn census_capability_identity(capability: CensusMethodCapability) -> Fnv1a64Structural {
   let kind = content_hash_atom(value: census_capability_kind_tag(capability: capability))
-  let contract = census_declaration_ref_identity(
+  let contract = declaration_ref_identity(
     reference: census_capability_contract(capability: capability),
   )
   pair_with(left: kind, right: contract)
@@ -833,8 +832,8 @@ fn census_control_run_is_distinct_from_measurement(
   method_run: CensusMethodRunIdentity,
 ) -> Bool {
   let same_classifier = content_hash_eq_structural(
-    left: census_declaration_ref_identity(reference: control_run.classifier),
-    right: census_declaration_ref_identity(reference: method_run.classifier),
+    left: declaration_ref_identity(reference: control_run.classifier),
+    right: declaration_ref_identity(reference: method_run.classifier),
   )
   let same_revision = content_hash_eq_structural(
     left: census_revision_identity(revision: control_run.classifier_revision),
@@ -943,8 +942,8 @@ fn census_method_capability_receipt(
   let contract = census_capability_contract(capability: capability)
   let method_run_identity = census_method_run_identity(method: observation.method_run)
   let contract_names_the_classifier = content_hash_eq_structural(
-    left: census_declaration_ref_identity(reference: contract),
-    right: census_declaration_ref_identity(reference: observation.method_run.classifier),
+    left: declaration_ref_identity(reference: contract),
+    right: declaration_ref_identity(reference: observation.method_run.classifier),
   )
   let conformance_joins = census_conformance_joins_the_method_run(
     conformance: conformance,

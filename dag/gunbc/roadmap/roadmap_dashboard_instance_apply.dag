@@ -62,6 +62,9 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
   dashboard_exec_refused,
   dashboard_local_exec,
   dashboard_target_probe,
+  dashboard_target_run,
+  dashboard_exec_result_of_ran,
+  TargetExec,
   DashboardPathObservation,
   PathObservedPresent,
   PathObservedAbsent,
@@ -75,6 +78,8 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
   dashboard_instance_health_identity_prefix,
@@ -128,6 +133,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardActuating,
   DashboardEnsureGitSharedRepositoryPosture,
   DashboardMigrateGitWorkerSubtree,
+  DashboardMoveAttemptStateEntries,
+  DashboardAssertLegacyWriterExcluded,
   dashboard_ensure_git_shared_repository_posture, dashboard_instance_worker_git_subtree_migration,
   dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
   dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
@@ -191,28 +198,9 @@ fn dashboard_target_exec(
   program: FilePath,
   args: List<String>,
 ) -> DashboardExecResult {
-  match instance.provision_transport {
-    DashboardLocalProvision =>
-      dashboard_local_exec(
-        workdir: dashboard_instance_controller_workdir(instance: instance),
-        program: program,
-        args: args,
-      )
-    DashboardSshProvision { host } =>
-      match typed_argv_exec_over_ssh(
-        host: host,
-        argv: concat([program as String], args),
-      ) {
-        TypedArgvExecConverged { result } =>
-          DashboardExecResult {
-            success: result.success,
-            stdout: result.stdout,
-            stderr: result.stderr,
-          }
-        TypedArgvExecRefused { reason } =>
-          dashboard_exec_refused(detail: reason)
-      }
-  }
+  dashboard_exec_result_of_ran(
+    ran: dashboard_target_run(instance: instance, program: program, args: args, mode: TargetExec),
+  )
 }
 
 type DashboardArgv {
@@ -913,6 +901,239 @@ fn dashboard_apply_provision_op(
         }
       }
       }
+    }
+    // THE MOVE OF A STORE'S FLAT ENTRIES INTO ITS MEMBER, the same arm for every row. The plan is the pure
+    // move_plan over the two listings the target reports. Each entry, in order, stops the line on its first
+    // refusal: (1) its legacy bytes are read; (2) the content the row demands is derived from them (the held
+    // payload, or the bytes themselves); (3) a slot a previous run left is read back and must equal that content
+    // (else a collision, refused), an absent slot is written create-only through
+    // dashboard_target_write_create_new, which on CreateNewWritten is read back byte-equal; (4) only then is the
+    // flat entry removed. Every outcome but CreateNewWritten is a refusal, and nothing is removed on one: no entry
+    // is ever absent from the old place and unwritten in the new, and a rerun after any stop converges. The
+    // readback lists both directories again and refuses unless nothing legacy remains and every entry is present.
+    // THE ACTIVATION GATE: the last step of the plan, before the new dispatcher is started (a declared operator
+    // act for this instance). It re-observes the exclusion and refuses if any declared unit is running or unmasked.
+    DashboardAssertLegacyWriterExcluded { fence: fence } => {
+      let drift = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: false)
+      if drift != "" {
+        dashboard_exec_refused(detail: join([drift, "; the new dispatcher must not be activated"], ""))
+      } else {
+        dashboard_exec_ok(stdout: "every declared legacy writer is stopped and masked at activation")
+      }
+    }
+    DashboardMoveAttemptStateEntries { row: row, fence: fence } => {
+      let parent = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+      let member = join([parent, "/", row.member as String], "")
+      let before = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", parent])
+      let member_before = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", member])
+      if !before.success {
+        before
+      } else if !member_before.success {
+        member_before
+      } else {
+        match move_plan(row: row, parent_listing: before.stdout, member_listing: member_before.stdout) {
+          MoveNoop => {
+            // The same observation on the already-moved route: a store with nothing left to move still proceeds
+            // only while every declared legacy writer is stopped and masked. An undeclared fence has no unit to
+            // observe and no entry to protect here (it refuses on MoveApply, where entries would be taken).
+            let drift = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: false)
+            if drift != "" {
+              dashboard_exec_refused(detail: join([drift, "; the move holds no entries but the writer exclusion must hold"], ""))
+            } else {
+              dashboard_exec_ok(stdout: join(["no flat ", row.legacy_flat_prefix as String, "* entries remain in ", parent], ""))
+            }
+          }
+          MoveRefused { collision: c } =>
+            dashboard_exec_refused(detail: join(["the member ", member, " already holds entries for ", c, " under another name; nothing was moved"], ""))
+          MoveApply { entries: entries } => {
+            // THE LEGACY WRITER IS OBSERVED EXCLUDED before any entry is touched (legacy_writer_exclusion): the
+            // unit's is-active and is-enabled are read through the same target the move runs on. Anything but
+            // stopped AND masked, an unreadable unit, or an undeclared one refuses with nothing moved.
+            let excluded = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: true)
+            let moved = if excluded != "" {
+              dashboard_exec_refused(detail: join([excluded, "; nothing was moved"], ""))
+            } else {
+              fold(
+              entries,
+              init: dashboard_exec_ok(stdout: ""),
+              f: (acc, e) => {
+                let legacy = join([parent, "/", e.legacy_name], "")
+                let slot = join([member, "/", e.slot_name], "")
+                if !acc.success {
+                  acc
+                } else {
+                  // THE EXCLUSION IS RE-OBSERVED at every entry boundary (and again before each removal): a mask
+                  // lifted or a unit restarted mid-move stops the line here, typed, with the entries already
+                  // moved kept and a rerun converging.
+                  let drift_entry = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: true)
+                  let old = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", legacy])
+                  // The transport trims trailing whitespace from stdout, so the text cat returns is not the file. A row
+                  // that carries the bytes themselves recovers the trimmed tail from a byte-per-line hex dump (od, ASCII,
+                  // so nothing is trimmed away) when it is newlines only, and refuses before writing when it is any other
+                  // whitespace. Equality is then proved bytes to bytes: the sha256 of the legacy entry against the sha256
+                  // of the slot, read on the target, never the trimmed text and never a character count.
+                  let hex = match row.content {
+                    HoldPayload => dashboard_exec_ok(stdout: "")
+                    CarryBytes => dashboard_target_exec(instance: instance, program: "/usr/bin/od" as FilePath, args: ["-An", "-v", "-tx1", "-w1", "--", legacy])
+                  }
+                  let tail = fold(split(s: hex.stdout, delimiter: "\n"), init: "", f: (acc, tok) => {
+                    let b = trim(s: tok)
+                    if b == "0a" {
+                      join([acc, "\n"], "")
+                    } else if b == "09" || b == "0b" || b == "0c" || b == "0d" || b == "20" {
+                      join([acc, "?"], "")
+                    } else {
+                      ""
+                    }
+                  })
+                  let src_digest = match row.content {
+                    HoldPayload => ""
+                    CarryBytes => dashboard_target_digest(instance: instance, path: legacy)
+                  }
+                  let sized = match row.content {
+                    HoldPayload => dashboard_exec_ok(stdout: "")
+                    CarryBytes =>
+                      if !hex.success || src_digest == "" {
+                        dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " could not be hashed or dumped on the target; not carried, nothing removed"], ""))
+                      } else if string_contains(s: tail, pattern: "?") {
+                        dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " ends in whitespace other than newlines, which the transport would trim; not carried, nothing removed"], ""))
+                      } else {
+                        dashboard_exec_ok(stdout: "")
+                      }
+                  }
+                  let carried = match row.content {
+                    HoldPayload => old.stdout
+                    CarryBytes => join([old.stdout, tail], "")
+                  }
+                  if drift_entry != "" {
+                    dashboard_exec_refused(detail: join([drift_entry, "; the move stopped before ", legacy, "; entries already moved stay, a rerun converges"], ""))
+                  } else if !old.success {
+                    dashboard_exec_refused(detail: join(["the legacy entry ", legacy, " could not be read: ", old.stderr], ""))
+                  } else if !sized.success {
+                    sized
+                  } else {
+                    let expected = move_expected_content(row: row, legacy_bytes: carried)
+                    let placed = if e.slot_present {
+                      let had = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", slot])
+                      if !had.success {
+                        dashboard_exec_refused(detail: join(["the slot ", slot, " a previous run left could not be read: ", had.stderr], ""))
+                      } else if !dashboard_slot_equals(instance: instance, row: row, slot: slot, text: had.stdout, expected: expected, src_digest: src_digest) {
+                        dashboard_exec_refused(detail: join(["the slot ", slot, " exists with bytes that differ from the legacy entry; refused, nothing removed"], ""))
+                      } else {
+                        dashboard_exec_ok(stdout: "slot already written")
+                      }
+                    } else {
+                      match dashboard_target_write_create_new(instance: instance, path: slot as FilePath, content: expected) {
+                        CreateNewWritten => {
+                          let back = dashboard_target_exec(instance: instance, program: "/bin/cat" as FilePath, args: ["--", slot])
+                          if !back.success {
+                            dashboard_exec_refused(detail: join(["the slot ", slot, " was written but could not be read back: ", back.stderr], ""))
+                          } else if !dashboard_slot_equals(instance: instance, row: row, slot: slot, text: back.stdout, expected: expected, src_digest: src_digest) {
+                            dashboard_exec_refused(detail: join(["the slot ", slot, " read back different bytes than the legacy entry; the flat entry is kept"], ""))
+                          } else {
+                            dashboard_exec_ok(stdout: "slot written")
+                          }
+                        }
+                        CreateNewRefused { exit_code: code, stderr: err } =>
+                          dashboard_exec_refused(detail: join(["the create-only write of ", slot, " was refused (exit ", to_string(value: code), "): ", err], ""))
+                        CreateNewNotDispatched { reason: why } =>
+                          dashboard_exec_refused(detail: join(["the create-only write of ", slot, " was not dispatched: ", why], ""))
+                        CreateNewStagingResidue { stage: stage, landed: _, stderr: err } =>
+                          dashboard_exec_refused(detail: join(["the create-only write of ", slot, " left staging file ", stage, ": ", err], ""))
+                      }
+                    }
+                    if !placed.success {
+                      placed
+                    } else {
+                      let drift_rm = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: true)
+                      if drift_rm != "" {
+                        dashboard_exec_refused(detail: join([drift_rm, "; the slot ", slot, " is in place but the flat entry ", legacy, " was kept; a rerun finishes the removal"], ""))
+                      } else {
+                        let removed = dashboard_target_exec(instance: instance, program: "/bin/rm" as FilePath, args: ["--", legacy])
+                        if removed.success {
+                          dashboard_exec_ok(stdout: join([acc.stdout, e.legacy_name, ": ", placed.stdout, ", ", to_string(value: string_length(s: old.stdout)), " legacy bytes read back; "], ""))
+                        } else {
+                          dashboard_exec_refused(detail: join(["the slot ", slot, " is in place but the flat entry ", legacy, " was not removed: ", removed.stderr, "; a rerun finishes the removal"], ""))
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+            )
+            }
+            let drift_end = if moved.success { dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: true) } else { "" }
+            if !moved.success {
+              moved
+            } else if drift_end != "" {
+              dashboard_exec_refused(detail: join([drift_end, "; observed after the last entry was removed"], ""))
+            } else {
+              let after = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", parent])
+              let member_after = dashboard_target_exec(instance: instance, program: "/bin/ls" as FilePath, args: ["-1A", member])
+              if !after.success {
+                after
+              } else if !member_after.success {
+                member_after
+              } else {
+                let detail = move_readback_refusal(row: row, before_parent: before.stdout, after_parent: after.stdout, after_member: member_after.stdout)
+                if detail == "" {
+                  dashboard_exec_ok(stdout: join(["moved ", to_string(value: length(xs: entries)), " entries into ", member, ", read back: ", moved.stdout], ""))
+                } else {
+                  dashboard_exec_refused(detail: detail)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE ONE OBSERVATION of the legacy writer's exclusion, shared by every boundary that depends on it: "" when every
+// declared unit is stopped (inactive/failed) AND masked, else the typed reason. An unreadable unit reads as not
+// stopped. undeclared_refuses is true where entries are being taken (nothing to observe is a refusal) and false
+// where a fence-less instance has no entry to protect (the Noop and activation routes).
+fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyWriterFence, undeclared_refuses: Bool) -> String {
+  match fence {
+    LegacyWriterUndeclared =>
+      if undeclared_refuses {
+        "no legacy dispatcher unit is declared for this instance (legacy_writer_fences); the old writer cannot be observed excluded"
+      } else {
+        ""
+      }
+    LegacyWriterFenceConflict { instance_id: id, rows: n } =>
+      join(["legacy_writer_fences declares ", to_string(value: n), " rows for instance ", id as String, "; one fence per instance, so the old writer cannot be observed excluded"], "")
+    LegacyWriterUnits { systemctl: ctl, units: units } =>
+      match legacy_writer_exclusion_all(exclusions: map(units, unit => {
+        let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-active", unit as String])
+        let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-enabled", unit as String])
+        legacy_writer_exclusion(unit: unit as String, active_state: trim(s: active.stdout), enabled_state: trim(s: enabled.stdout))
+      })) {
+        LegacyWriterNotExcluded { reason: why } => why
+        LegacyWriterExcluded => ""
+      }
+  }
+}
+
+// sha256 of a file read on the target ("" when it cannot be read): the first word of sha256sum's ASCII output.
+fn dashboard_target_digest(instance: HostDashboardInstance, path: String) -> String {
+  let r = dashboard_target_exec(instance: instance, program: "/usr/bin/sha256sum" as FilePath, args: ["--", path])
+  if r.success {
+    fold(split(s: trim(s: r.stdout), delimiter: " "), init: "", f: (acc, w) => if acc == "" { w } else { acc })
+  } else {
+    ""
+  }
+}
+
+// Whether a slot holds what the row demands: a held payload by its text, carried bytes by digest against the
+// legacy entry's (an empty digest never equals anything).
+fn dashboard_slot_equals(instance: HostDashboardInstance, row: MoveRow, slot: String, text: String, expected: String, src_digest: String) -> Bool {
+  match row.content {
+    HoldPayload => text == expected
+    CarryBytes => {
+      let d = dashboard_target_digest(instance: instance, path: slot)
+      d != "" && d == src_digest
     }
   }
 }
@@ -2232,6 +2453,8 @@ fn dashboard_bootstrap_only_ops(
       // match is exhaustive -- a new op cannot slip into the bootstrap by accident.
       DashboardEnsureGitSharedRepositoryPosture { repo: _ } => false
       DashboardMigrateGitWorkerSubtree { repo: _ } => false
+      DashboardMoveAttemptStateEntries { row: _, fence: _ } => false
+      DashboardAssertLegacyWriterExcluded { fence: _ } => false
     })
 }
 

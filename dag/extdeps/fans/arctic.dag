@@ -1,4 +1,5 @@
 module extdeps.fans.arctic
+import std.measure { gram, milliampere, millilitre_per_second, milliwatt }
 
 import std.types { List }
 import std.measure {Celsius,celsius}
@@ -9,6 +10,7 @@ import extdeps.fans.types {
   fan_mounting_pattern,
   ConventionUnverified, ReadFromVendorDrawing,
   FanCatalogRow,
+  FreeAirFlowPublished, FreeAirFlowUnread,
   FanSpeedRangePublished,
   FanStopsBelowPwm,
   FluidDynamicBearing,
@@ -78,6 +80,7 @@ data arctic_p8_pwm_pst_catalog: FanCatalogRow = FanCatalogRow {
     maximum: rpm(3000),
   },
   published_stop_behavior: FanStopsBelowPwm { threshold: percent(5) },
+  free_air_flow: FreeAirFlowPublished { flow: arctic_p8_published_airflow, standing: arctic_p8_published_airflow_standing },
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -173,4 +176,39 @@ data arctic_p14_wiring_model_scope: ExternalModelScope = ExternalModelScope {
  subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.fans.arctic",decl_name:"arctic_p14_cable_length",field:WholeDeclaration}},
  first_citation:arctic_p14_spec_authority,
  further_citations:[],
+}
+
+// THE P12 PRO REVERSE, the three 120 mm chassis fans in h11-a16 (operator 2026-10-30: "ARCTIC P12 Pro
+// Reverse - 3 Pack - 120 mm ... Reverse Airflow, PWM Fan with Y Cable Splitter, 500-3000 RPM, 0 RPM <5%
+// PWM, hydrodynamic Bearing, 4-Pin"). The row is the single fan, ACFAN00331A (black, no RGB), not the
+// 3-pack: a package is not a model (gunbc.fleet.fleet_fan_wiring), and the Y splitter is the package's
+// wiring, recorded at the header that carries it.
+//
+// THE FIGURES ARE TRANSCRIBED, NOT CITED. Arctic's product page for ACFAN00331A did not render its
+// specification table when read on 2026-10-30, so the speed range, the stop below 5 % PWM and the bearing
+// are the figures the operator's listing and the retailer listings agree on. "Hydrodynamic" in the
+// listing and "fluid dynamic" in the retailer rows name the same bearing; FluidDynamicBearing is that
+// reading, owed to Arctic's sheet like the rest. Reverse is the blade and frame orientation, which is a
+// mounting fact for the chassis, not a catalog figure, so it is not carried here.
+data arctic_p12_pro_reverse_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.arctic.de/en/P12-Pro-Reverse/ACFAN00331A" }
+}
+
+data arctic_p12_pro_reverse_catalog: FanCatalogRow = FanCatalogRow {
+  model: "P12 Pro Reverse",
+  manufacturer: arctic,
+  frame_size: millimeter(120),
+  bearing: FluidDynamicBearing,
+  pwm_controlled: true,
+  published_points: [],
+  published_speed_range: FanSpeedRangePublished {
+    nonzero_minimum: rpm(500),
+    maximum: rpm(3000),
+  },
+  published_stop_behavior: FanStopsBelowPwm { threshold: percent(5) },
+  free_air_flow: FreeAirFlowUnread { read_obligation: "Read the free-air flow for ACFAN00331A (m3/h or CFM) from Arctic's own specification sheet and convert it to mL/s." },
+}
+
+data arctic_p12_pro_reverse_figures_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read the speed range, the 0 rpm-below-5 %-PWM behaviour and the bearing for ACFAN00331A from Arctic's own specification sheet (www.arctic.de/en/P12-Pro-Reverse/ACFAN00331A or support.arctic.de) and cite it in place of this transcription.",
 }

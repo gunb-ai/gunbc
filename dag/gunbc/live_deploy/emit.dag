@@ -159,7 +159,6 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_unit_template_name, microvm_slot_unit_path, microvm_slot_unit_file,
   microvm_slot_unit_timeout_stop_sec,
   microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
-  microvm_slot_controller_receipt_dir,
   microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_path, microvm_slot_reserve_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program, find_owned_regular_files_exec_argv }

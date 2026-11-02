@@ -3,7 +3,7 @@ module gunbc.runner.runner_teardown_receipt
 import std.optional { Optional, Present, Absent }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { ObservationInstant }
-import std.decl_ref { declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity, process_identity_eq }
 import gunbc.runner.runner_job_initiator { RunnerEvidenceSource }
 import gunbc.runner.runner_usage_receipt {
@@ -41,16 +41,74 @@ type HostUnitEnvironmentInventory {
   workspace: NonEmptyStr
 }
 
+// A WHOLE BOOT AS THE ENVIRONMENT (gunbc.plans.mtcollins1_ci_service_legs S7, merry-fox-82's BMC-observer decision of
+// 2026-10-30). On a boot that holds nothing persistent the boot IS the attempt's environment, as the VMM is a
+// microVM's: every unit, cgroup and tmpfs the attempt made lives in its RAM, so the boot ending is the teardown and
+// no per-resource read is owed. That premise is not assumed of a host: the record is minted only from a reading of
+// the boot's own mount table that admits it RAM-only (gunbc.runner.runner_machine_boot_teardown
+// admit_machine_boot_inventory), so a boot with a writable disk cannot be torn down by powering it off.
+type MachineBootEnvironmentInventory sole_constructor {
+  host: NonEmptyStr
+  boot_id: NonEmptyStr
+}
+
+fn mint_machine_boot_inventory(host: NonEmptyStr, boot_id: NonEmptyStr) -> MachineBootEnvironmentInventory admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_machine_boot_teardown", decl_name: "admit_machine_boot_inventory"),
+  decl_ref(module_path: "test.claim.runner.runner_machine_boot_teardown_witness", decl_name: "fixture_machine_boot"),
+] {
+  MachineBootEnvironmentInventory { host: host, boot_id: boot_id }
+}
+
 type RunnerEnvironmentInventory
   = MicroVmInventory { inventory: MicroVmEnvironmentInventory }
   | HostUnitInventory { inventory: HostUnitEnvironmentInventory }
+  | MachineBootInventory { inventory: MachineBootEnvironmentInventory }
 
-// THE PROCESS WHOSE ABSENCE PROVES THE ENVIRONMENT GONE: the VMM for a microVM, the unit's main
-// process for a host unit. Both carry boot and start time, so a reused pid cannot stand in.
-fn runner_environment_process(inventory: RunnerEnvironmentInventory) -> ProcessIdentity {
+// THE BOOT THE ENVIRONMENT LIVES ON: the VMM's for a microVM, the unit's main process's for a host unit, and
+// the boot itself for a machine boot.
+fn runner_environment_boot_id(inventory: RunnerEnvironmentInventory) -> String {
   match inventory {
-    MicroVmInventory { inventory: m } => m.vmm
-    HostUnitInventory { inventory: h } => h.unit_process
+    MicroVmInventory { inventory: m } => m.vmm.boot_id as String
+    HostUnitInventory { inventory: h } => h.unit_process.boot_id as String
+    MachineBootInventory { inventory: b } => b.boot_id as String
+  }
+}
+
+// AN OBSERVER INSIDE THE ENVIRONMENT CANNOT REPORT IT GONE. For a microVM or a host unit that is the one process
+// whose absence proves the environment gone (the VMM, the unit's main process; both carry boot and start time, so a
+// reused pid cannot stand in). For a machine boot it is ANY process on that boot, because the whole boot is what
+// ends: the observer must be off the machine, which is what makes the BMC the observer.
+fn runner_observer_inside_environment(inventory: RunnerEnvironmentInventory, observer: ProcessIdentity) -> Bool {
+  match inventory {
+    MicroVmInventory { inventory: m } => process_identity_eq(a: m.vmm, b: observer)
+    HostUnitInventory { inventory: h } => process_identity_eq(a: h.unit_process, b: observer)
+    MachineBootInventory { inventory: b } => (observer.boot_id as String) == (b.boot_id as String)
+  }
+}
+
+// WHERE THE OBSERVER MUST STAND. A microVM's and a host unit's resources are read by a process on the subject boot
+// (the host that runs them). A machine boot's cannot be: the observer reads the boot from outside it, so this arm
+// requires only what runner_observer_inside_environment already refused, and the boot equality is the
+// environment's and the destroyer's.
+fn runner_observer_boot_admitted(inventory: RunnerEnvironmentInventory, observer: ProcessIdentity, subject_boot: String) -> Bool {
+  match inventory {
+    MicroVmInventory { inventory: _ } => (observer.boot_id as String) == subject_boot
+    HostUnitInventory { inventory: _ } => (observer.boot_id as String) == subject_boot
+    MachineBootInventory { inventory: _ } => true
+  }
+}
+
+// THE ONE INSTRUMENT A MACHINE BOOT'S READING MAY COME FROM. The premise that power-off ends the boot is physics only
+// for a reading of the chassis power line beside the boot's own id (gunbc.runner.runner_machine_boot_teardown
+// machine_boot_reading): an Absent written by any other producer -- a failed SSH read, a fixture -- would carry the
+// physics' conclusion without its evidence. The other arms keep the existing rule (one instrument, unchanged).
+data machine_boot_observation_producer: DeclarationRef = decl_ref(module_path: "gunbc.runner.runner_machine_boot_teardown", decl_name: "machine_boot_reading")
+
+fn runner_instrument_admitted(inventory: RunnerEnvironmentInventory, producer: DeclarationRef) -> Bool {
+  match inventory {
+    MicroVmInventory { inventory: _ } => true
+    HostUnitInventory { inventory: _ } => true
+    MachineBootInventory { inventory: _ } => declaration_ref_eq(a: producer, b: machine_boot_observation_producer)
   }
 }
 
@@ -64,6 +122,7 @@ type RunnerResourceClass
   | RunnerWorkspace
   | RunnerTap
   | RunnerFirewallTable
+  | RunnerMachineBoot
 
 // Parallel representation of RunnerResourceClass, not compiler-enforced enumeration.
 // Adding a variant and a readback_reading arm while omitting this roster can compile and
@@ -81,10 +140,13 @@ data runner_resource_classes: List<RunnerResourceClass> = [
 
 data host_unit_resource_classes: List<RunnerResourceClass> = [RunnerTransientUnit, RunnerCgroup, RunnerWorkspace]
 
+data machine_boot_resource_classes: List<RunnerResourceClass> = [RunnerMachineBoot]
+
 fn runner_resource_classes_for(inventory: RunnerEnvironmentInventory) -> List<RunnerResourceClass> {
   match inventory {
     MicroVmInventory { inventory: _ } => runner_resource_classes
     HostUnitInventory { inventory: _ } => host_unit_resource_classes
+    MachineBootInventory { inventory: _ } => machine_boot_resource_classes
   }
 }
 
@@ -103,6 +165,17 @@ type RunnerEnvironmentReadback {
   workspace: RunnerResourceReading
   tap: RunnerResourceReading
   firewall_table: RunnerResourceReading
+  machine_boot: RunnerResourceReading
+}
+
+// A MACHINE BOOT'S READBACK READS ONE CLASS. The others are not resources of that environment, so they carry an
+// unreadable cause rather than an Absent nobody read: a fold that ever consulted one would refuse, not pass.
+fn machine_boot_readback(reading: RunnerResourceReading) -> RunnerEnvironmentReadback {
+  let unread = RunnerResourceUnreadable { cause: "not a resource of a machine-boot environment; only the boot is read" as NonEmptyStr }
+  RunnerEnvironmentReadback {
+    vmm: unread, unit: unread, cgroup: unread, jail: unread, jail_mount: unread,
+    jit_drive: unread, workspace: unread, tap: unread, firewall_table: unread, machine_boot: reading,
+  }
 }
 
 type RunnerEnvironmentObservation<P> {
@@ -133,6 +206,7 @@ type RunnerTeardownRefusal
   | TeardownObserverInsideEnvironment
   | TeardownObserverChanged
   | TeardownInstrumentChanged
+  | TeardownInstrumentNotAdmitted
   | TeardownBootMismatch
   | TeardownObservationOrderRefused { diagnostic: RunnerInstantOrderRefusal }
   | TeardownPositiveControlMissing { resource: RunnerResourceClass }
@@ -158,6 +232,7 @@ fn runner_environment_inventory_eq(a: RunnerEnvironmentInventory, b: RunnerEnvir
       match b {
         MicroVmInventory { inventory: y } => micro_vm_environment_inventory_eq(a: x, b: y)
         HostUnitInventory { inventory: _ } => false
+        MachineBootInventory { inventory: _ } => false
       }
     HostUnitInventory { inventory: x } =>
       match b {
@@ -166,6 +241,14 @@ fn runner_environment_inventory_eq(a: RunnerEnvironmentInventory, b: RunnerEnvir
           (x.unit as String) == (y.unit as String) && (x.cgroup as String) == (y.cgroup as String) &&
           (x.workspace as String) == (y.workspace as String)
         MicroVmInventory { inventory: _ } => false
+        MachineBootInventory { inventory: _ } => false
+      }
+    MachineBootInventory { inventory: x } =>
+      match b {
+        MachineBootInventory { inventory: y } =>
+          (x.host as String) == (y.host as String) && (x.boot_id as String) == (y.boot_id as String)
+        MicroVmInventory { inventory: _ } => false
+        HostUnitInventory { inventory: _ } => false
       }
   }
 }
@@ -197,6 +280,7 @@ fn readback_reading(class: RunnerResourceClass, readback: RunnerEnvironmentReadb
     RunnerWorkspace => readback.workspace
     RunnerTap => readback.tap
     RunnerFirewallTable => readback.firewall_table
+    RunnerMachineBoot => readback.machine_boot
   }
 }
 
@@ -240,16 +324,18 @@ fn runner_teardown_from_observations<P>(
   } else if process_identity_eq(a: request.destroyer, b: before.observer) ||
             process_identity_eq(a: request.destroyer, b: after.observer) {
     RunnerTeardownRefused { cause: TeardownSelfObservation }
-  } else if process_identity_eq(a: runner_environment_process(inventory: request.inventory), b: before.observer) ||
-            process_identity_eq(a: runner_environment_process(inventory: request.inventory), b: after.observer) {
+  } else if runner_observer_inside_environment(inventory: request.inventory, observer: before.observer) ||
+            runner_observer_inside_environment(inventory: request.inventory, observer: after.observer) {
     RunnerTeardownRefused { cause: TeardownObserverInsideEnvironment }
   } else if !declaration_ref_eq(a: before.evidence.producer, b: after.evidence.producer) {
     RunnerTeardownRefused { cause: TeardownInstrumentChanged }
+  } else if !runner_instrument_admitted(inventory: request.inventory, producer: before.evidence.producer) {
+    RunnerTeardownRefused { cause: TeardownInstrumentNotAdmitted }
   } else if !process_identity_eq(a: before.observer, b: after.observer) {
     RunnerTeardownRefused { cause: TeardownObserverChanged }
-  } else if (runner_environment_process(inventory: request.inventory).boot_id as String) != (request.subject.boot_id as String) ||
+  } else if runner_environment_boot_id(inventory: request.inventory) != (request.subject.boot_id as String) ||
             (request.destroyer.boot_id as String) != (request.subject.boot_id as String) ||
-            (after.observer.boot_id as String) != (request.subject.boot_id as String) {
+            !runner_observer_boot_admitted(inventory: request.inventory, observer: after.observer, subject_boot: request.subject.boot_id as String) {
     RunnerTeardownRefused { cause: TeardownBootMismatch }
   } else {
     match runner_instant_order_refusal(pairs: [
