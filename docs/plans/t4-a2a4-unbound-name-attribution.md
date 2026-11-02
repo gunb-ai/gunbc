@@ -166,3 +166,81 @@ So the identity half is **not a mechanical migration**. The three shapes a decis
 
 Not chosen here; `discriminant` stays unbound in T4 and counted as such until the migration is
 scheduled. The comparison half (47 sites) is unaffected and lands on `match`.
+
+## Addendum 2026-11-02 -- the bounded set, a second closure, and one diagnostic gap
+
+### The bounded set, read off the receipt (not off a guess)
+
+The set the constructor-arm evidence run is bounded to is defined by the receipt, not by eye: the
+**30 modules whose FIRST refusal in the gen-0 emit of `v2.cli.compile_cli` is
+`resolve_reason_unbound_symbol` on an A2 constructor name**, taken from
+`srv2:~/runs/cc2/cc2-15637t2/out/emit.json` (sha256 `4687104a9d...`, tree `d77e2d8a`). All 30 are
+present in a current checkout. Their (module, first-refusal name) pairs:
+
+| module | unbound_ref | module | unbound_ref |
+|---|---|---|---|
+| std.compiler_entry | Disposition | v2.compiler.program_partition | Value |
+| std.algebra | DiscriminantValue | v2.std.compilers.semantic_decl_emission | TypeNode |
+| v2.std.node_query | TargetEffectApplyShape | v2.std.verification | TypeNode |
+| extdeps.languages.json.emit | Value | v2.std.dependency | TypeNode |
+| extdeps.languages.json.grammar | Value | v2.lens.reference_deps | Present |
+| v2.std.list_introduction | Value | std.bytes | Present |
+| extdeps.uri_path | Value | std.list | Present |
+| std.occurrence_binding_resolve | Value | v2.std.compilers.compilation_unit | Present |
+| std.unicode.scalar | None | extdeps.languages.rust.capabilities | None |
+| v2.std.data_initializer_identity | None | std.trait_derive_shape | List |
+| v2.std.decl_index | Optional | extdeps.languages.rust.derive_contracts | List |
+| v2.std.compilers.sugar | Accepted | extdeps.languages.rust.emit | Map |
+| std.graph | Accepted | v2.std.compilers.target_model | Node |
+| v2.std.cardinality | Accepted | v2.std.syntax | Map |
+| v2.compiler.infer | Found | | |
+
+96 modules refuse first on SOME unbound name; 30 of them on an A2 name. A census that counts "modules
+with unbound names" without naming the reference cannot separate those two numbers, which is why the
+A2/A4 grouping in the table above states the name per module.
+
+### A second closure, from clever-crane-830's char_at fixture (cc2-charat)
+
+Head `8f601cb914a9` (PR #15656), gen-1 harness `a5981454`, `emit.json` sha256 `ae7cf447`, out at
+`srv2:~/runs/cc2/cc2-charat/out/`. A TWO-module fixture (an entry plus one member that calls
+`std.host_text char_at`) closes to **28 modules**, and the refusal histogram is:
+
+| refusal | modules |
+|---|---|
+| `resolve_reason_unbound_symbol` | 11 |
+| `target_value_expr_reason_transform_shape_invalid` | 4 |
+| `target_diagnostic_reason_payload_shape_invalid` | 4 |
+| `emit_module_member_generic_not_realized` | 3 |
+| `infer_grounding_not_derived` | 2 |
+| `infer_grounding_witness_not_derived` | 2 |
+| `infer_present_arm_unbound` | 2 |
+| `infer_grounding_transform_operand_unbound` | 2 |
+| one each | `resolve_module_not_found`, `infer_reason_pattern_payload_formal_uninstantiated`, `emit_module_member_opaque_not_realized`, `resolve_reason_reference_category_mismatch`, `infer_transform_operand_type_mismatch` |
+
+The 11 unbound rows are `std.compiler_entry`, `std.decl_ref`, `std.types`, `std.algebra`,
+`std.content_hash`, `std.host_text`, `std.roster_frontier`, `extdeps.uri`, `std.decimal`,
+`std.render_repeat_string_bootstrap`, `std.checked_arithmetic`. So the A2 class is not specific to
+`compile_cli`'s closure: a two-module fixture hits the same wall, and `std.host_text` itself is one of
+the refusing modules.
+
+### FINDING: the unbound refusal does not always carry the name it refused on
+
+In cc2-charat **every one of the 11 `resolve_reason_unbound_symbol` rows has `unbound_ref: null`**, while
+in cc2-15637t2 the same reason carries the name (`Value`, `Filesystem.Write`, ...). So a census or an
+admission check keyed on the unbound NAME silently drops rows depending on the site, and "N modules show
+cause X" is not comparable between two runs unless each states which field it read. Whoever routes the
+wave lane should treat a null `unbound_ref` as "the refusal is real, the reference is not reported" --
+not as "no unbound reference".
+
+### Status of the one-root repair for A2's constructor class
+
+Draft PR gunb-ai/gunbc#15671, head `49553c1c7e8b`: the expected-type constructor-set arm is coded in
+`v2.compiler.resolve` (door order and refusals exactly as ruled), the new cause is enrolled in the
+closed `ResolveRefusalReason` vocabulary and in `known_frontier_causes` in the same branch, the REDs and
+controls are in `src/v2/test/claim/name_resolve/construct_tag_expected_type.dag`, and the bounded
+identity diff for it is the 30-module set above run through the emitted driver's `census-scoped` verb
+with `--against`. A local AST pass over that set found **zero** sites where a spelling bound today by
+the name door is not the expected type's arm -- with the instrument's coverage limit stated in the PR
+(422 of 7,754 construct sites have an expectation a syntactic pass can read; `resolve` carries no
+expectation into a call argument at all).
+
