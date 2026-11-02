@@ -584,6 +584,8 @@ data ce_tsi_scheme_source: String = "module v2.test.ce_tsi_scheme\n\ntype CeTsiS
 
 data ce_tsi_imported_source: String = "module v2.test.ce_tsi_imported\n\nimport v2.test.ce_tsi_scheme { CeTsiScheme, Https }\n\ntype CeTsiUri { scheme: CeTsiScheme }\n\ndata ce_tsi_imported_uri: CeTsiUri = CeTsiUri { scheme: Https }\n"
 
+data ce_tsi_fn_source: String = "module v2.test.ce_tsi_fn\n\ntype CeTsiScheme = Https | Http\n\nfn ce_tsi_fn() -> CeTsiScheme { Https }\n"
+
 fn ce_tsi_one(label: String, ingest: SourceRootIngest, entry: String) -> String {
   let located = ce_emit(ingest: ingest, entry: entry)
   match located.outcome {
@@ -602,13 +604,22 @@ fn ce_probe_tsi_text() -> String {
       entry: "v2.test.ce_tsi_local"
     ),
     concat("\n",
-      ce_tsi_one(
-        label: "IMPORTED",
-        ingest: [
-          ce_read(source: ce_tsi_scheme_source, id: ^ce_tsi_scheme_read, path: "src/v2/test/ce_tsi_scheme.dag"),
-          ce_read(source: ce_tsi_imported_source, id: ^ce_tsi_imported_read, path: "src/v2/test/ce_tsi_imported.dag")
-        ],
-        entry: "v2.test.ce_tsi_imported"
+      concat(
+        ce_tsi_one(
+          label: "IMPORTED",
+          ingest: [
+            ce_read(source: ce_tsi_scheme_source, id: ^ce_tsi_scheme_read, path: "src/v2/test/ce_tsi_scheme.dag"),
+            ce_read(source: ce_tsi_imported_source, id: ^ce_tsi_imported_read, path: "src/v2/test/ce_tsi_imported.dag")
+          ],
+          entry: "v2.test.ce_tsi_imported"
+        ),
+        concat("\n",
+          ce_tsi_one(
+            label: "FN_BODY",
+            ingest: [ce_read(source: ce_tsi_fn_source, id: ^ce_tsi_fn_read, path: "src/v2/test/ce_tsi_fn.dag")],
+            entry: "v2.test.ce_tsi_fn"
+          )
+        )
       )
     )
   )
