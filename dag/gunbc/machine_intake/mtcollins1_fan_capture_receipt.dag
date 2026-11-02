@@ -1,0 +1,157 @@
+module gunbc.machine_intake.mtcollins1_fan_capture_receipt
+
+// THE TYPING OF srv1's BLANK-READING STATUS ROWS, READ ONCE FROM THE BMC AND COMMITTED AS BYTES.
+//
+// The gate in gunbc.machine_intake.chassis_fan_establishment refuses a row whose reading cell is empty.
+// Four rows on srv1 are printed that way while healthy, and ipmitool's own SDR repository says why:
+// they are not threshold sensors, so a reading is not expected. That fact is not modelled here and not
+// hand-written - it is the raw verbose output of ONE read of the repository, committed beside the
+// digest recorded for it, and parsed by the same extdeps.bmc.ipmi_sdr parser the live read uses.
+//
+// THE SEAM, NAMED (extdeps/external_authority.dag:32-36). The bytes below are a BOUNDARY TRANSCRIPTION:
+// they were committed beside the run's recorded digest, and nothing in the substrate re-checks them
+// against the run that produced them. The digest here is therefore a claim about the artifact, not a
+// verified property of it; the artifact path and run id are what an operator re-fetches to check.
+// TRIGGER: re-capture by re-running fleet-converge.yml mode=mtcollins1_fan_observe host=srv1 and
+// replacing these lines with the new run's output; a row whose record is absent stays refused, so a
+// stale capture can only ever refuse, never admit.
+//
+// WHY THESE FIVE AND NOT THE WHOLE REPOSITORY: the file at the path below holds 197 records; the
+// records quoted here are the four the boot-5 gate refused plus one threshold control, kept verbatim. Nothing in the rule reads a
+// record that is not in a capture, and nothing reads a sensor NUMBER: the committed capture types
+// EndOfPost as 'Sensor Type (Discrete): Unknown (0xd0)', an OEM code, which a name- or number-keyed
+// rule would have refused.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.decl_ref { decl_ref }
+import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, TranscribedUncited, observed_receipt }
+import extdeps.bmc.ipmi_sdr { SdrVerboseReadout, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrVerboseUnreadable, sdr_verbose_readout }
+
+data mtcollins1_fan_capture_run_id: String = "41406891344"
+data mtcollins1_fan_capture_dispatch: String = "fleet-converge.yml --ref main -f mode=mtcollins1_fan_observe -f host=srv1"
+data mtcollins1_fan_capture_artifact_name: String = "mtcollins1-fan-observation"
+data mtcollins1_fan_capture_artifact_path: String = "artifacts/bmc/mtcollins1-fan-observe-run-41406891344-host-off/mtcollins1-fan-observation.txt"
+data mtcollins1_fan_capture_artifact_sha256: String = "4f418a57e1a249a5f0178e36b862106ba83039881cde7be7fa25f26bb2855337"
+data mtcollins1_fan_capture_artifact_bytes: Int = 144775
+// The receipt's own run-scope marker line was `run=0 verbose_exit=0`; the parse below is allowed only
+// because the read itself succeeded, so the exit status is carried rather than assumed.
+data mtcollins1_fan_capture_exit_code: Int = 0
+// The four records the boot-5 gate refused, as the tool printed them, in repository order.
+// The four rows the boot-5 gate refused, PLUS one threshold record taken from the same read. The
+// threshold record is here so the REFUSAL direction of the classifier is grounded in real bytes too:
+// a rule that refused only invented rows and admitted invented ones would pass either way.
+data mtcollins1_fan_capture_expected_records: Int = 5
+data mtcollins1_fan_capture_repository_lines: List<String> = [
+  // PSU2_Status -- verbatim from the committed artifact
+  "Sensor ID              : PSU2_Status (0xeb)",
+  " Entity ID             : 0.0 (Unspecified)",
+  " Sensor Type (Discrete): Power Supply (0x08)",
+  " Sensor Reading        : 0h",
+  " Event Message Control : Entire Sensor Only",
+  " Assertions Enabled    : Power Supply",
+  "                         [Presence detected]",
+  "                         [Failure detected]",
+  "                         [Predictive failure]",
+  "                         [Power Supply AC lost]",
+  "                         [AC lost or out-of-range]",
+  "                         [AC out-of-range, but present]",
+  "                         [Config Error]",
+  "                         [Power Supply Inactive]",
+  " Deassertions Enabled  : Power Supply",
+  "                         [Presence detected]",
+  "                         [Failure detected]",
+  "                         [Predictive failure]",
+  "                         [Power Supply AC lost]",
+  "                         [AC lost or out-of-range]",
+  "                         [AC out-of-range, but present]",
+  "                         [Config Error]",
+  "                         [Power Supply Inactive]",
+  " OEM                   : 0",
+  // Watchdog2 -- verbatim from the committed artifact
+  "Sensor ID              : Watchdog2 (0xd7)",
+  " Entity ID             : 33.0 (System Management Software)",
+  " Sensor Type (Discrete): Watchdog2 (0x23)",
+  " Sensor Reading        : 0h",
+  " Event Message Control : Per-threshold",
+  " Assertions Enabled    : Watchdog2",
+  "                         [Timer expired]",
+  "                         [Hard reset]",
+  "                         [Power down]",
+  "                         [Power cycle]",
+  "                         [reserved]",
+  "                         [reserved]",
+  "                         [reserved]",
+  "                         [reserved]",
+  "                         [Timer interrupt]",
+  " OEM                   : 0",
+  // EndOfPost -- verbatim from the committed artifact
+  "Sensor ID              : EndOfPost (0xe2)",
+  " Entity ID             : 6.2 (System Management Module)",
+  " Sensor Type (Discrete): Unknown (0xd0)",
+  " Sensor Reading        : 0h",
+  " Event Message Control : Per-threshold",
+  " OEM                   : 0",
+  // Event_log -- verbatim from the committed artifact
+  "Sensor ID              : Event_log (0xd6)",
+  " Entity ID             : 6.2 (System Management Module)",
+  " Sensor Type (Discrete): Event Logging Disabled (0x10)",
+  " Sensor Reading        : 0h",
+  " Event Message Control : Per-threshold",
+  " Assertions Enabled    : Event Logging Disabled",
+  "                         [Log area reset/cleared]",
+  "                         [Log full]",
+  "                         [Log almost full]",
+  " OEM                   : 0",
+  // CPU0_SOC_Temp -- the THRESHOLD control, verbatim: the same parser must call this one threshold
+  "Sensor ID              : CPU0_SOC_Temp (0x3d)",
+  " Entity ID             : 30.15 (Cooling Unit)",
+  " Sensor Type (Threshold)  : Temperature (0x01)",
+  " Sensor Reading        : No Reading",
+  " Status                : Not Available",
+  " Nominal Reading       : 30.000",
+  " Normal Minimum        : 25.000",
+  " Normal Maximum        : 35.000",
+  " Upper critical        : 105.000",
+  " Upper non-critical    : 100.000",
+  " Positive Hysteresis   : Unspecified",
+  " Negative Hysteresis   : Unspecified",
+  " Minimum sensor range  : Unspecified",
+  " Maximum sensor range  : 127.000",
+  " Event Message Control : Per-threshold",
+  " Readable Thresholds   : unc ucr ",
+  " Settable Thresholds   : unc ucr ",
+  " Threshold Read Mask   : lnr lcr lnc unc ucr unr ",
+  " Event Status          : Unavailable",
+  " Assertions Enabled    : lnc- lcr- lnr+ unc+ ucr- unr+ ",
+  " Deassertions Enabled  : lnc- lcr- lnr+ unc+ ucr- unr+ ",]
+
+data mtcollins1_fan_capture_read_obligation: NonEmptyStr = "re-run fleet-converge.yml mode=mtcollins1_fan_observe host=srv1 and commit the verbose SDR repository read; until then nothing is typed and the four rows stay refused"
+
+// The readout the live path would produce from these bytes: the SAME parser, so a capture that does not
+// parse is refused here exactly as it would be refused on the machine.
+fn mtcollins1_fan_capture_readout() -> SdrVerboseReadout {
+  sdr_verbose_readout(success: (mtcollins1_fan_capture_exit_code == 0), stdout: join(mtcollins1_fan_capture_repository_lines, "\n"))
+}
+
+fn mtcollins1_fan_capture_records() -> List<SdrVerboseRecord> {
+  match mtcollins1_fan_capture_readout() {
+    SdrVerboseRead { records: recs } => recs
+    SdrVerboseEmptyRepository => []
+    SdrVerboseUnreadable => []
+  }
+}
+
+// THE FOLD. Established only when the committed bytes parse to EXACTLY the four records they are said to
+// carry: a capture that lost a record, or gained one, is not this receipt and does not stand. The
+// fallback is TranscribedUncited with its obligation named, never a quiet default - a refusal to stand
+// must be readable as one.
+fn mtcollins1_fan_discrete_typing_standing() -> CitedFigureStanding {
+  if mtcollins1_fan_capture_records().length() == mtcollins1_fan_capture_expected_records {
+    ObservedByReceipt {
+      observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_capture_receipt", decl_name: "mtcollins1_fan_capture_records")),
+    }
+  } else {
+    TranscribedUncited { read_obligation: mtcollins1_fan_capture_read_obligation }
+  }
+}

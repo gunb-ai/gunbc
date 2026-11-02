@@ -4,7 +4,11 @@ import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { rpm_count }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
-import extdeps.bmc.ipmi_sdr { SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrEmptyReadingRow, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
+import extdeps.bmc.ipmi_sdr {
+  SdrVerboseReadout,
+  SdrVerboseRecord,
+  sdr_blank_ok_row_admits,
+  SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrEmptyReadingRow, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
 import gunbc.machine_intake.bmc_fan_observation { ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorObservation, FanSensorsRead, FanSensorsUnreadable, fan_failure_sensor_name }
 
@@ -171,17 +175,45 @@ fn first_failure_sensor_refusal(lines: List<SdrTypeLine>, failure_rows: List<Sdr
   }
 }
 
+// THE TYPING THE GATE MAY READ, OR NOTHING. Absent (the round never read the repository), a read that
+// FAILED, and a repository that parsed to ZERO records all yield no records: an empty repository is not
+// a typed one, and treating it as one is exactly how a row would be admitted on bytes nobody received.
+fn thermal_row_typing_records(typing: SdrVerboseReadout?) -> List<SdrVerboseRecord> {
+  match typing {
+    Absent => []
+    Present { value: t } => match t {
+      SdrVerboseRead { records: recs } => recs
+      SdrVerboseEmptyRepository => []
+      SdrVerboseUnreadable => []
+    }
+  }
+}
+
 // THE THERMAL STANDING IS CONSUMED, NOT DISCARDED (side-chat hold 2026-10-19). Thermal is established only by a read that
 // published at least one decoded temperature AND left no undecoded row. A silent pre-POST sensor list
 // (TemperatureSensorsSilent), an undecodable or empty one, an unreadable read, and any undecoded row refuse: none acquires a
 // healthy reading by omission, and a published temperature does not excuse an undecoded row beside it (ThermalRead folds both).
-fn thermal_refusal(thermal: ThermalObservation) -> PostPowerFanRefusal? {
+//
+// ONE EXCLUSION, GROUNDED ON THE COMMITTED CAPTURE (PR-B). A row the tool prints with 'ok' and an EMPTY
+// reading cell is refused by that rule even though the tool printed it happily: PSU2_Status, Watchdog2,
+// EndOfPost and Event_log did exactly that in the committed boot-5 observation and stopped the gate. The
+// blank is what ipmitool prints for a discrete sensor with nothing asserted, so those four are healthy
+// sensors refused for the shape of their print. A row is excused ONLY when a record in the SDR repository
+// carries its name AND ipmitool's own threshold label says it is not a threshold sensor - typed by the
+// capture, never by the sensor number, never by the type name (the capture types EndOfPost
+// 'Sensor Type (Discrete): Unknown (0xd0)'), never by position. No typing, no exclusion: the four stay
+// refused on a boot that never read the repository, which is the whole point of threading the readout
+// through this signature instead of reading a global.
+fn thermal_refusal(thermal: ThermalObservation, typing: SdrVerboseReadout?) -> PostPowerFanRefusal? {
   match thermal {
     ThermalUnreadable => Present { value: PostPowerThermalUnreadable }
     ThermalRead { publication: p, undecoded_texts: u, unrecognised_readings: r } => match p {
-      TemperaturePublished => if u.length() > 0 {
-        Present { value: PostPowerThermalRowsUndecoded { texts: u } }
-      } else if r.length() > 0 {
+      TemperaturePublished => {
+        let records = thermal_row_typing_records(typing: typing)
+        let still_undecoded = flat_map(u, t => if sdr_blank_ok_row_admits(text: t, blocks: records) { [] } else { [t] })
+        if still_undecoded.length() > 0 {
+          Present { value: PostPowerThermalRowsUndecoded { texts: still_undecoded } }
+        } else if r.length() > 0 {
         Present { value: PostPowerThermalReadingUnrecognised { texts: r } }
       } else { Absent }
       TemperatureSensorsSilent => Present { value: PostPowerThermalNotPublished { publication: p } }
@@ -206,12 +238,12 @@ fn fan_read_refusal(fans: FanSensorObservation, fitted: FittedFanSet) -> PostPow
   }
 }
 
-fn post_power_fan_verdict(fitted: FittedFanSet, chassis: ChassisPowerObservation, thermal: ThermalObservation, fans: FanSensorObservation) -> PostPowerFanVerdict {
+fn post_power_fan_verdict(fitted: FittedFanSet, chassis: ChassisPowerObservation, thermal: ThermalObservation, fans: FanSensorObservation, typing: SdrVerboseReadout?) -> PostPowerFanVerdict {
   match fitted_set_refusal(fitted: fitted) {
     Present { value: r } => PostPowerFanVerdictRefused { cause: r }
     Absent => match chassis_refusal(chassis: chassis) {
       Present { value: r } => PostPowerFanVerdictRefused { cause: r }
-      Absent => match thermal_refusal(thermal: thermal) {
+      Absent => match thermal_refusal(thermal: thermal, typing: typing) {
         Present { value: r } => PostPowerFanVerdictRefused { cause: r }
         Absent => match fan_read_refusal(fans: fans, fitted: fitted) {
           Present { value: r } => PostPowerFanVerdictRefused { cause: r }
