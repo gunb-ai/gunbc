@@ -903,7 +903,7 @@ fn match_arm_pattern_nodes(arrow: Node) -> List<Node> {
             init: acc,
             f: fn(inner, slot) {
               match find_core_child(root: child_slot_target(slot: slot), marker: MatchArmPatternEdge) {
-                Accepted { value: pattern, diagnostics: _ } => list_snoc_item(xs: inner, item: pattern)
+                Accepted { value: arm_pattern, diagnostics: _ } => list_snoc_item(xs: inner, item: arm_pattern)
                 Rejected { diagnostics: _ } => inner
               }
             }
@@ -916,7 +916,7 @@ fn match_arm_pattern_nodes(arrow: Node) -> List<Node> {
 }
 
 fn node_is_match_arm_pattern(patterns: List<Node>, node: Node) -> Bool {
-  match list_find_first(xs: patterns, predicate: fn(pattern) { node_same_occurrence(a: pattern, b: node) }) {
+  match list_find_first(xs: patterns, predicate: fn(arm_pattern) { node_same_occurrence(a: arm_pattern, b: node) }) {
     Present { value: _ } => true
     Absent => false
   }

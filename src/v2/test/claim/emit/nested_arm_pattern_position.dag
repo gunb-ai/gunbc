@@ -42,7 +42,7 @@ fn nap_find_match(n: Node) -> Optional<Node> {
 }
 
 // The first arm's pattern and its body are both the spelling `Https`; only their position differs.
-fn nap_first_arm_child(root: Node, pattern: Bool) -> Optional<Node> {
+fn nap_first_arm_child(root: Node, want_pattern: Bool) -> Optional<Node> {
   match nap_find_match(n: root) {
     Absent => Absent
     Present { value: m } =>
@@ -52,7 +52,7 @@ fn nap_first_arm_child(root: Node, pattern: Bool) -> Optional<Node> {
       ) {
         Absent => Absent
         Present { value: arm } =>
-          if pattern {
+          if want_pattern {
             match find_core_child(root: arm, marker: MatchArmPatternEdge) {
               Accepted { value: c, diagnostics: _ } => Present { value: c }
               Rejected { diagnostics: _ } => Absent
@@ -83,7 +83,7 @@ fn nap_verdict(pattern_expected: Bool, probe_pattern: Bool) -> Bool {
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
-      match nap_first_arm_child(root: tree.root, pattern: probe_pattern) {
+      match nap_first_arm_child(root: tree.root, want_pattern: probe_pattern) {
         Absent => false
         Present { value: node } =>
           node_is_match_arm_pattern(patterns: match_arm_pattern_nodes(arrow: tree.root), node: node) == pattern_expected
