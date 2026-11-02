@@ -325,8 +325,9 @@ fn snapshot_census_prior_of_content(namespace: String, read: SnapshotCensusRecei
 
 // THE CENSUS RECEIPT IS A PLAIN-FILE STORE, SEALED IN PLACE (ruling stern-ram-763 2026-10-24): the
 // bytes on the host are the bytes the census wrote before the seal, one JSON document, written with the
-// same Filesystem.Write. Moving the format onto SlotStore is this store's FormatConsolidation
-// follow-up, not this change.
+// same Filesystem.Write. The deferred move of this store's format onto the slot store is carried as a
+// frontier row, not as prose: gunbc.census_closure_frontier c_roadmap2_format_consolidation_frontier_rows,
+// keyed by snapshot_census_receipt_slots and asserted present by test.claim.c_roadmap2_frontier_witness.
 //
 // THE DECLARATION. The receipt lives in the instance's receipts directory (gunbc.host.host_layout
 // instance_receipts_dir), a directory the apply legs already create and enroll and which already holds

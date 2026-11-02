@@ -3,7 +3,9 @@ module gunbc.census_closure_frontier
 import gunbc.fleet.fleet_known_hosts_anchor { remote_word_quoting_frontier_rows }
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import gunbc.host.host_assimilation_program { host_assimilation_program_frontier_rows }
-import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
+import std.roster_frontier { FrontierRow, concat_frontier_row_groups, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
 import gunbc.resolver_cost_frontier { resolver_cost_frontier_rows }
 import gunbc.serving.router_dev_scaffold { router_dev_frontier_rows }
 import gunbc.sort_by_migration_frontier { sort_by_migration_frontier_rows }
@@ -208,8 +210,52 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     printer_state_move_frontier_rows,
     attempt_directory_wire_frontier_rows,
     gcp_iam_bootstrap_journal_frontier_rows,
+    c_roadmap2_format_consolidation_frontier_rows,
   ]
 }
+
+// THE DEFERRED FORMAT MOVES ARE FRONTIER ROWS, NOT COMMENTS (ruling stern-ram-763, 2026-11-01). The C-roadmap-2
+// seal cohort sealed these stores IN PLACE: the sealed ops write exactly the bytes the pre-seal code wrote, and
+// the ruling that kept them that way also deferred moving their RECORD FORMAT onto the slot store
+// (gunbc.durable_cas_file_store) to a later PR. A deferral carried in a // comment is invisible to the closure
+// census -- nothing in the tree has to answer for it, and it can be edited away without a reader noticing. Each
+// row below names the declaration that carries the format today, so the row is keyed by a real subject and
+// disappears when the subject does; the dissolution is unbound because the slot-store record-format route these
+// stores would move onto has no declaration to name yet. test.claim.c_roadmap2_frontier_witness asserts each
+// subject is present in census_closure_frontier_rows() keyed by its declaration, so dropping a row fails a claim
+// rather than quietly shrinking a list.
+data c_roadmap2_format_consolidation_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_schema"),
+    reason: "the metering RECORD format is spelled by this schema string and written by attempt_metering_create_once through Filesystem.Write; the C-roadmap-2 seal cohort sealed the store in place (the sealed ops write the same bytes the pre-seal code wrote) and deliberately did NOT move the record format onto the slot store, because moving it is a byte-format decision the seal ruling kept out of scope.",
+    dissolution: unbound_dissolution(description: "a slot-store-backed record format exists in gunbc.durable_cas_file_store that this store can write with the bytes on disk unchanged; the move happens in its own PR, the old-bytes readback witness keeps proving the bytes are identical, and this row is deleted then" as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_attempt_index_prefix"),
+    reason: "the metering LAUNCH/ATTEMPT index format is spelled by this prefix and the length-prefixed name built from it, written create-once; the seal cohort left the index format exactly as the pre-seal code wrote it, and the move onto the slot store is deferred with the record format.",
+    dissolution: unbound_dissolution(description: "the attempt/launch index moves onto the slot store's index format with the entry names and bytes on disk unchanged; then this row is deleted" as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_roster_schema"),
+    reason: "the metering ROSTER format (the sealed roster the closing hold publishes) is spelled by this schema string and written create-once under the closing hold; the seal cohort sealed the publish in place and deferred the roster's format move onto the slot store.",
+    dissolution: unbound_dissolution(description: "the sealed roster moves onto the slot store's record format, the closing hold still excluding one writer per attempt, with the published bytes unchanged; then this row is deleted" as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.roadmap.roadmap_event_snapshot_census", decl_name: "snapshot_census_receipt_slots"),
+    reason: "the snapshot CENSUS RECEIPT file format (stem, suffix, and the record written into it) is spelled by this declaration row and written through the sealed put; the seal cohort kept the bytes identical and deferred the format move onto the slot store.",
+    dissolution: unbound_dissolution(description: "the census receipt moves onto the slot store's record format with the receipt file's name and bytes unchanged; then this row is deleted" as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_schema"),
+    reason: "the served-observation BODY record format is spelled by this schema string and written through the sealed writer; the seal cohort kept the bytes identical and deferred the format move onto the slot store.",
+    dissolution: unbound_dissolution(description: "the served-observation bodies move onto the slot store's record format with the body bytes unchanged; then this row is deleted" as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_slots"),
+    reason: "the served-observation INDEX file format (the index member name and the entry spelling) is spelled by this declaration row and written through the sealed index put; the seal cohort kept the index bytes identical and deferred the format move onto the slot store.",
+    dissolution: unbound_dissolution(description: "the served-observation index moves onto the slot store's index format with the index file's name and entries unchanged; then this row is deleted" as NonEmptyStr),
+  ),
+]
 
 fn census_closure_frontier_rows() -> List<FrontierRow> {
   concat_frontier_row_groups(groups: census_closure_frontier_row_groups())

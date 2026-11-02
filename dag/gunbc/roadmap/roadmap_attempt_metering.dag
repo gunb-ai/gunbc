@@ -13,9 +13,9 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
   FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
 }
-import std.durable_compare_and_set { CasUnreadableSlot, CasUnreadableReadRefused }
+import std.durable_compare_and_set { CasGeneration, CasUnreadableSlot, CasUnreadableReadRefused }
 import std.durable_exclusive_hold {
-  DurableHoldObservation, DurableHoldOwnerRef,
+  DurableHoldObservation, DurableHoldOwnerRef, durable_hold_owner_equal,
   HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
 }
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs , FilePath}
@@ -1303,17 +1303,58 @@ fn attempt_metering_closing_observe(store: AttemptMeteringStore) -> DurableHoldO
   observe_file_hold(root: store.directory, key: metering_closing_hold_key)
 }
 
-// THE EXCLUSION, taken through the hold library. Absent means "closed, by this writer or by the one that
-// already holds it" (both answer closed, which is what the caller's admission needs); Present carries the
-// refusal. The acquire runs its own effects and is matched here.
-fn attempt_metering_closing_acquire(store: AttemptMeteringStore, owner: NonEmptyStr) -> String? {
+// WHO OWNS THE CLOSING HOLD. The ref names the attempt AND the writer closing it, so a re-entry by this same
+// writer (a retry after a partial failure) is recognizable from the holder read back off the slot, and any
+// OTHER writer that finds the slot occupied refuses instead of joining the close. The writer half is this
+// module's declared ref: the belt's metering pass is the production writer, and any other writer on the same
+// attempt -- another unit, a recovery tool, a witness -- differs here. That difference is what the refusal
+// keys on, so the exclusion is per writer-attempt and not merely per attempt.
+data metering_closing_writer_ref: NonEmptyStr = "roadmap-metering-pass"
+
+fn metering_closing_owner_ref(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> NonEmptyStr {
+  join([
+    "roadmap-metering-closing:",
+    instance.host_identity as String,
+    ":",
+    instance.instance_id as String,
+    ":",
+    node_id as String,
+    ":",
+    attempt_key,
+    ":",
+    metering_closing_writer_ref as String,
+  ], "") as NonEmptyStr
+}
+
+// THE OUTCOME OF TAKING THE EXCLUSION. Four arms, and the distinction that matters is between the two
+// OCCUPIED answers: the slot being held by THIS writer is a re-entry (the caller may proceed; the publish is
+// create-once, so a retry cannot double-write), while the slot being held by ANYONE ELSE is a refusal that
+// names the holder. Mapping Occupied to the same answer as Acquired -- which is what this function used to do
+// -- lets two sealers both pass the exclusion, list one attempt, and race the create-once publish; the loser
+// then reads back the winner's seal as if it had produced it (ruling stern-ram-763, 2026-11-01).
+type AttemptMeteringClosingAcquisition
+  = ClosingHoldAcquired { generation: CasGeneration }
+  | ClosingHoldHeldByThisWriter { holder: DurableHoldOwnerRef, generation: CasGeneration }
+  | ClosingHoldHeldByAnotherWriter { holder: DurableHoldOwnerRef, generation: CasGeneration }
+  | ClosingAcquireRefused { cause: String }
+
+// THE EXCLUSION, taken through the hold library. An occupied slot is NOT a grant: the holder is read back off
+// the slot and compared through the ONE holder equality the hold protocol owns
+// (std.durable_exclusive_hold durable_hold_owner_equal), so a looser or stricter notion of "the same holder"
+// cannot be substituted here.
+fn attempt_metering_closing_acquire(store: AttemptMeteringStore, owner: NonEmptyStr) -> AttemptMeteringClosingAcquisition {
   match file_hold_acquire(root: store.directory, slot_key: metering_closing_hold_key, requested_owner: owner as DurableHoldOwnerRef) {
-    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => none
-    FileHoldOccupied { slot_key: _, holder: _, generation: _ } => none
-    FileHoldAcquireLost { slot_key: k } => Present { value: join(["the roster closing hold was lost before it landed: ", k as String], "") }
-    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => Present { value: "the roster closing hold's slot store is unavailable" }
-    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => Present { value: join(["the roster closing hold's slot is not a hold this module can interpret: ", d as String], "") }
-    FileHoldKeyNotSlotAddressable { slot_key: k } => Present { value: join(["the roster closing hold's key is not slot-addressable: ", k as String], "") }
+    FileHoldAcquired { slot_key: _, owner: _, generation: g } => ClosingHoldAcquired { generation: g }
+    FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
+      if durable_hold_owner_equal(left: h, right: owner as DurableHoldOwnerRef) {
+        ClosingHoldHeldByThisWriter { holder: h, generation: g }
+      } else {
+        ClosingHoldHeldByAnotherWriter { holder: h, generation: g }
+      }
+    FileHoldAcquireLost { slot_key: k } => ClosingAcquireRefused { cause: join(["the roster closing hold was lost before it landed: ", k as String], "") }
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => ClosingAcquireRefused { cause: "the roster closing hold's slot store is unavailable" }
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => ClosingAcquireRefused { cause: join(["the roster closing hold's slot is not a hold this module can interpret: ", d as String], "") }
+    FileHoldKeyNotSlotAddressable { slot_key: k } => ClosingAcquireRefused { cause: join(["the roster closing hold's key is not slot-addressable: ", k as String], "") }
   }
 }
 
@@ -1324,9 +1365,9 @@ fn metering_attempt_closing_observe_at_key(instance: HostDashboardInstance, node
   }
 }
 
-fn metering_attempt_closing_acquire_at_key(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, owner: NonEmptyStr) -> String? {
+fn metering_attempt_closing_acquire_at_key(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, owner: NonEmptyStr) -> AttemptMeteringClosingAcquisition {
   match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-    AttemptMeteringStoreUnready { detail } => Present { value: detail }
+    AttemptMeteringStoreUnready { detail } => ClosingAcquireRefused { cause: detail }
     AttemptMeteringStoreReady { store } => attempt_metering_closing_acquire(store: store, owner: owner)
   }
 }
@@ -1480,18 +1521,29 @@ fn metering_roster_admit(instance: HostDashboardInstance, node_id: RoadmapNodeId
   }
 }
 
+// THE SEAL, taken under the exclusion. The owner ref is this module's writer-attempt identity, so the seal
+// proceeds when the hold is ours (freshly acquired, or ours from a retry of the same writer -- the publish
+// below is create-once, so a retry cannot double-write it) and REFUSES, naming the holder, when another writer
+// holds it. Recovery of a stale hold belongs to the holder's release-on-evidence or the hold library's recovery
+// assess, never to a second sealer joining the close.
 fn metering_roster_seal(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
-  match metering_attempt_closing_acquire_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, owner: "closed: the attempt left the workflow ledger" as NonEmptyStr) {
-    Present { value: e } => RosterRefused { cause: join(["the roster closing marker could not be written: ", e], "") }
-    Absent =>
-      match metering_open_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-        RosterRefused { cause: c } => RosterRefused { cause: c }
-        RosterSealed { launches: _, digest: _ } => RosterRefused { cause: "unreachable: an open listing returned a seal" }
-        RosterOpen { launches: ls } =>
-          match metering_attempt_create_once_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, entry: attempt_state_member_name(member: AttemptMeteringRosterSealed) as NonEmptyStr, content: metering_roster_seal_json(node_id: node_id as String, attempt_key: attempt_key, launches: ls)) {
-            Present { value: e } => RosterRefused { cause: join(["the roster seal could not be written: ", e], "") }
-            Absent => metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
-          }
+  match metering_attempt_closing_acquire_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, owner: metering_closing_owner_ref(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
+    ClosingHoldAcquired { generation: _ } => metering_roster_seal_under_hold(instance: instance, node_id: node_id, attempt_key: attempt_key)
+    ClosingHoldHeldByThisWriter { holder: _, generation: _ } => metering_roster_seal_under_hold(instance: instance, node_id: node_id, attempt_key: attempt_key)
+    ClosingHoldHeldByAnotherWriter { holder: h, generation: _ } => RosterRefused { cause: join(["the roster closing hold is held by another writer (", h as String, "); this sealer refuses rather than listing one attempt a second time", ], "") }
+    ClosingAcquireRefused { cause: c } => RosterRefused { cause: join(["the roster closing hold's acquire was refused: ", c], "") }
+  }
+}
+
+// The listing-and-publish half, reachable only while THIS writer holds the exclusion.
+fn metering_roster_seal_under_hold(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
+  match metering_open_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    RosterRefused { cause: c } => RosterRefused { cause: c }
+    RosterSealed { launches: _, digest: _ } => RosterRefused { cause: "unreachable: an open listing returned a seal" }
+    RosterOpen { launches: ls } =>
+      match metering_attempt_create_once_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, entry: attempt_state_member_name(member: AttemptMeteringRosterSealed) as NonEmptyStr, content: metering_roster_seal_json(node_id: node_id as String, attempt_key: attempt_key, launches: ls)) {
+        Present { value: e } => RosterRefused { cause: join(["the roster seal could not be written: ", e], "") }
+        Absent => metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
       }
   }
 }

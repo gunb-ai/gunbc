@@ -139,8 +139,11 @@ data served_observation_schema: String = "roadmap-served-observation/v2"
 
 // THE SERVED OBSERVATION IS A RECORD DIRECTORY STORE, SEALED IN PLACE (ruling stern-ram-763
 // 2026-10-24): one index entry plus one body entry per surface, the same names and the same bytes the
-// pre-seal code wrote, written by this module through Filesystem.Write. Moving the format onto SlotStore
-// is this store's FormatConsolidation follow-up, not this change.
+// pre-seal code wrote, written by this module through Filesystem.Write. The deferred move of this store's
+// format onto the slot store is carried as a frontier row, not as prose:
+// gunbc.census_closure_frontier c_roadmap2_format_consolidation_frontier_rows, keyed by
+// served_observation_schema (bodies) and served_observation_slots (index), and asserted present by
+// test.claim.c_roadmap2_frontier_witness.
 //
 // THE DECLARATION: the entry names this store owns inside the instance's receipts directory
 // (gunbc.host.host_layout instance_receipts_dir), which is already created and enrolled for the belt's
