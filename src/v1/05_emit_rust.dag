@@ -246,7 +246,7 @@ import v1.compiler.infer {
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, TypeSummaryQuestion, QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf,
   lookup_emit_type_summary, empty_emit_graph_info,
-  TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf,
+  DataVariantSpellingRefused, TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf,
   TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared, resolve_type_decl_reference,
   emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
   is_enum_in_summaries, find_variant_parent, is_known_variant,

@@ -1114,8 +1114,11 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
 // the homonym arm). The import arm is the author's own binding: a callee whose signature the import
 // closure cannot carry (a generic fold_list, optional_absent) still has its identity established by
 // the import, never by corpus coincidence. env.parents is built from the resolved imports, one
-// interface env per import. Unconditional: the floor does not depend on the resolution policy, so
-// no legacy any-module arm survives beside it.
+// interface env per import. This gate covers the UNIQUE arm and is unconditional. The HOMONYM arm
+// under the default ImportScoped policy (global_bare_nearest_ancestor, longest shared prefix, exact ties refuse) is NOT
+// filtered here: it can still bind an off-chain, un-imported homonym. Flipping it to chain-only is the
+// NamespaceOnlyY policy, gated on namespace-resolution-design.md 13 step 4; that residue is recorded on the
+// recurring_failure_mode row bare_name_resolved_by_proximity_standing_in_for_resolution.
 fn global_bare_declarer_in_scope(env: TypeEnv, name: String, declarer: String) -> Bool {
   let declarer_segs = module_path_segments(path: declarer)
   segment_lcp_len(a: declarer_segs, b: module_path_segments(path: env.module_path)) == (declarer_segs |> count)
