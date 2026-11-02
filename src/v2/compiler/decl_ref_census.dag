@@ -21,7 +21,7 @@ import v2.std.integer { Int }
 import v2.extdeps.languages.dag { dag_string_literal_value_symbol_optional }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.type_binder { edge_is_type_alias, type_alias_wrapper_is, type_decl_wrapper_target }
-import v2.std.node { Authored, Node, NodeFold, Positional, StructuralLabel, fold_node, symbol_lexeme }
+import v2.std.node { Authored, Bind, Edge, Branch, ComputationNode, Loop, Match, Node, NodeFold, Positional, StructuralLabel, Transform, TypeNode, Value, fold_node, symbol_lexeme }
 import v2.std.node_query { construct_field_edges, construct_tag_path_optional }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
 import v2.compiler.decl_ref_disposition_roster { CitedDeclaration, CitedSpan, ComputedDeclName, DeclRefDisposition, DeclRefSubject, decl_ref_disposition_roster }
@@ -301,7 +301,122 @@ fn node_literal_scan_children(file: Symbol, n: Node, scan: LiteralScan, lc: Lite
   fold(n.children, init: scan, f: fn(acc, e) { node_literal_scan(file: file, n: e.target, scan: acc, lc: lc) })
 }
 
+// A DeclarationRef BUILT BY std.decl_ref's OWN CONSTRUCTORS is the same citation as the literal, and the
+// literal-only reader left every one of them unjudged. The call is identified the way a literal's tag
+// is: its head's spelling, expanded through the module's own import rows, is one of the constructors
+// below. Its arguments are the named edges of the call, read as string literals exactly as a literal's
+// fields are; a constructor whose module_path or decl_name is not a literal is a computed construction,
+// the same ComputedDeclName/unreadable arm a literal takes.
+type DeclRefConstructor
+  = ConstructsWholeDeclaration
+  | ConstructsNamedField
+  | ConstructsTypeParameter
+
+fn decl_ref_constructor_of(path: String) -> Optional<DeclRefConstructor> {
+  if path == concat(decl_ref_module, ".decl_ref") {
+    optional_present(value: ConstructsWholeDeclaration)
+  } else if path == concat(decl_ref_module, ".decl_field_ref") {
+    optional_present(value: ConstructsNamedField)
+  } else if path == concat(decl_ref_module, ".decl_type_parameter_ref") {
+    optional_present(value: ConstructsTypeParameter)
+  } else {
+    optional_absent()
+  }
+}
+
+// The callee is the application's first edge; its atom identity is the spelling the author wrote.
+fn callee_identity(children: List<Edge>) -> Optional<Symbol> {
+  match list_head(xs: children) {
+    Absent => optional_absent()
+    Present { value: e } => edge_atom_identity(e: e)
+  }
+}
+
+fn edge_atom_identity(e: Edge) -> Optional<Symbol> {
+  node_atom_identity_optional(node: e.target)
+}
+
+fn call_constructor(n: Node, lc: LiteralCtx) -> Optional<DeclRefConstructor> {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match callee_identity(children: n.children) {
+        Absent => optional_absent()
+        Present { value: id } =>
+          match expand_spelling(spelling: symbol_lexeme(sym: id), lc: lc) {
+            Absent => optional_absent()
+            Present { value: path } => decl_ref_constructor_of(path: path)
+          }
+      }
+    ComputationNode { behavior: Value } => optional_absent()
+    ComputationNode { behavior: Branch } => optional_absent()
+    ComputationNode { behavior: Loop } => optional_absent()
+    ComputationNode { behavior: Bind } => optional_absent()
+    ComputationNode { behavior: Match } => optional_absent()
+    TypeNode { connective: _ } => optional_absent()
+  }
+}
+
+fn call_argument(n: Node, name: String) -> Optional<Node> {
+  fold(
+    n.children,
+    init: optional_absent(),
+    f: fn(acc, e) {
+      match e.label {
+        Authored { name: label } => if symbol_lexeme(sym: label) == name { optional_present(value: e.target) } else { acc }
+        StructuralLabel { label: _ } => acc
+        Positional => acc
+      }
+    }
+  )
+}
+
+fn constructor_field(n: Node, ctor: DeclRefConstructor) -> Optional<DeclField> {
+  match ctor {
+    ConstructsWholeDeclaration => optional_present(value: WholeDeclaration)
+    ConstructsNamedField =>
+      match string_value(n: call_argument(n: n, name: "field_name")) {
+        Present { value: s } => optional_present(value: NamedField { field_name: s as NonEmptyStr })
+        Absent => optional_absent()
+      }
+    ConstructsTypeParameter =>
+      match string_value(n: call_argument(n: n, name: "parameter")) {
+        Present { value: s } => optional_present(value: TypeParameter { name: s as NonEmptyStr })
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn constructor_call_add(scan: LiteralScan, file: Symbol, n: Node, ctor: DeclRefConstructor) -> LiteralScan {
+  match string_value(n: call_argument(n: n, name: "module_path")) {
+    Absent =>
+      match string_value(n: call_argument(n: n, name: "decl_name")) {
+        Absent => literal_unreadable(scan: scan, file: file)
+        Present { value: _ } => literal_unreadable(scan: scan, file: file)
+      }
+    Present { value: m } =>
+      match string_value(n: call_argument(n: n, name: "decl_name")) {
+        Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: subject_key(s: ComputedDeclName { file: symbol_lexeme(sym: file), module_path: m })) }
+        Present { value: d } =>
+          match constructor_field(n: n, ctor: ctor) {
+            Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: concat(symbol_lexeme(sym: file), " constructor-field ", m, " ", d)) }
+            Present { value: fld } =>
+              LiteralScan {
+                cited: list_snoc_item(xs: scan.cited, item: CitedRef { file: file, ref: DeclarationRef { module_path: m as NonEmptyStr, decl_name: d as NonEmptyStr, field: fld } }),
+                unreadable: scan.unreadable
+              }
+          }
+      }
+  }
+}
+
 fn node_literal_scan(file: Symbol, n: Node, scan: LiteralScan, lc: LiteralCtx) -> LiteralScan {
+  match call_constructor(n: n, lc: lc) {
+    Present { value: ctor } => constructor_call_add(scan: scan, file: file, n: n, ctor: ctor)
+    Absent => node_literal_scan_construct(file: file, n: n, scan: scan, lc: lc)
+  }
+}
+
+fn node_literal_scan_construct(file: Symbol, n: Node, scan: LiteralScan, lc: LiteralCtx) -> LiteralScan {
   match tag_path_text(n: n) {
     Present { value: p } =>
       if last_segment(spelling: p) == cited_declaration_spelling {
