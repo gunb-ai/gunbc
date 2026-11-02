@@ -10,8 +10,8 @@ use crate::std_algebra::AlgebraProfile::{
     OrderedRingProfile, PartialFunctionProfile,
 };
 use crate::std_algebra::AlgebraTypeTemplate::{
-    AlgebraTypeVariable, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey,
-    ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
+    AlgebraTypeVariable, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement,
+    ReceiverElementOrSelf, ReceiverKey, ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
@@ -37,8 +37,9 @@ use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitSym
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::{
-    container_expected_arity, container_param_name, container_template_algebra,
-    container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
+    container_expected_arity, container_param_name, container_spelling_is_algebra,
+    container_template_algebra, container_template_alias_algebra, container_template_alias_rows,
+    is_container_type, SourceSpan,
 };
 pub use crate::v1_compiler_infer_env::{
     alias_names_settled_agree, alias_settled_agree, settled_type, text_crossing_by_identity,
@@ -142,16 +143,30 @@ pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
     }
 }
 
+pub fn node_is_finite_power_set_algebra_spelling(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((n.connective.clone() == Connective::NoConnective)
+        && crate::std_types::container_spelling_is_algebra(
+            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                source_indices,
+                n.clone(),
+            )),
+            "FinitePowerSet".to_string(),
+        ))
+}
+
 pub fn node_is_collection(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
-        && is_declared_container_alias_spelling(crate::v1_std_core::authored_name_at(
-            source_indices,
+        && (is_declared_container_alias_spelling(crate::v1_std_core::authored_name_at(
+            source_indices.clone(),
             n.clone(),
-        )))
+        )) || node_is_finite_power_set_algebra_spelling(n.clone(), source_indices.clone())))
 }
 
 pub fn node_is_keyed_collection(
@@ -168,15 +183,13 @@ pub fn node_is_keyed_algebra_spelling(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((n.connective.clone() == Connective::NoConnective)
-        && match crate::std_types::container_template_algebra(
+        && crate::std_types::container_spelling_is_algebra(
             crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
                 source_indices,
                 n.clone(),
             )),
-        ) {
-            Some(algebra) => (algebra.clone() == "FinitelySupportedFunction".to_string()),
-            std::option::Option::None => false,
-        })
+            "FinitelySupportedFunction".to_string(),
+        ))
 }
 
 pub fn collection_carrier_node(n: Rc<Node>) -> Rc<Node> {
@@ -205,10 +218,26 @@ pub fn node_is_set_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
-        && (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-            source_indices.clone(),
-            n.clone(),
-        )) == "Set".to_string()))
+        && node_is_finite_power_set_algebra_spelling(n.clone(), source_indices.clone()))
+}
+
+pub fn type_is_ordered_element_run(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (((t.return_cardinality.clone() != Cardinality::CardOptional)
+        && node_is_element_collection(t.clone(), source_indices.clone()))
+        && !node_is_set_collection(t.clone(), source_indices.clone()))
+}
+
+pub fn type_is_kernel_string(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+        source_indices,
+        t,
+    )) == "String".to_string())
 }
 
 pub fn canonical_template_name(
@@ -1263,6 +1292,9 @@ pub fn instantiate_algebra_type(
             AlgebraTypeTemplate::ReceiverElement => {
                 algebra_child_or_placeholder(base.clone(), 0, "T".to_string())
             }
+            AlgebraTypeTemplate::ReceiverElementOrSelf => {
+                algebra_child_or_placeholder(base.clone(), 0, "T".to_string())
+            }
             AlgebraTypeTemplate::ReceiverKey => {
                 algebra_child_or_placeholder(base.clone(), 0, "K".to_string())
             }
@@ -1548,6 +1580,33 @@ pub fn unify_template(
                     subst.clone()
                 } else {
                     v1_rt::rc_map_insert(subst.clone(), "__value__".to_string(), concrete.clone())
+                }
+            }
+            AlgebraTypeTemplate::ReceiverElementOrSelf => {
+                if (type_is_ordered_element_run(concrete.clone(), source_indices.clone())
+                    && !type_is_kernel_string(concrete.clone(), source_indices.clone()))
+                {
+                    {
+                        let carrier = collection_carrier_node(concrete.clone());
+                        match carrier.children.clone().first().cloned() {
+                            Some(child) => unify_template(
+                                Rc::new(AlgebraTypeTemplate::ReceiverElement),
+                                child_type_node(child.clone()),
+                                receiver.clone(),
+                                subst.clone(),
+                                source_indices.clone(),
+                            ),
+                            std::option::Option::None => subst.clone(),
+                        }
+                    }
+                } else {
+                    unify_template(
+                        Rc::new(AlgebraTypeTemplate::ReceiverElement),
+                        concrete.clone(),
+                        receiver.clone(),
+                        subst.clone(),
+                        source_indices.clone(),
+                    )
                 }
             }
             AlgebraTypeTemplate::ReceiverElement => {
@@ -1843,6 +1902,12 @@ pub fn apply_type_substitution(
                     })
                 }
             }
+            AlgebraTypeTemplate::ReceiverElementOrSelf => apply_type_substitution(
+                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+                subst.clone(),
+                receiver.clone(),
+                source_indices.clone(),
+            ),
             AlgebraTypeTemplate::ReceiverElement => {
                 match receiver.children.clone().first().cloned() {
                     Some(child) => Rc::new(KernelTypeBuild {

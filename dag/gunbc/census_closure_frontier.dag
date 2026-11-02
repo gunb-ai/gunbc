@@ -9,7 +9,7 @@ import gunbc.serving.router_dev_scaffold { router_dev_frontier_rows }
 import gunbc.sort_by_migration_frontier { sort_by_migration_frontier_rows }
 import gunbc.serving.router_proxy_scaffold { router_proxy_frontier_rows }
 import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
-import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_consumer_frontier_rows }
+import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_frontier_rows }
 import gunbc.site_segment_anchor_frontier { site_segment_anchor_consumer_frontier_rows }
 import gunbc.machine_intake.bmc_recovery_route_frontier {
   bmc_recovery_route_consumer_frontier_rows,
@@ -17,7 +17,6 @@ import gunbc.machine_intake.bmc_recovery_route_frontier {
   bmc_recovery_route_pairing_frontier_rows,
 }
 import gunbc.machine_intake.h11ssl_x86_bringup_frontier { h11ssl_x86_bringup_frontier_rows }
-import gunbc.machine_intake.bmc_secure_redfish_frontier { bmc_secure_redfish_consumer_frontier_rows }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_oauth_frontier_rows }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.docker.container_inspect {
@@ -94,12 +93,15 @@ import gunbc.arm_ci_seller_census { arm_ci_seller_census_later_consumer_frontier
 import std.machine_word { machine_word_consumer_frontier_rows }
 import product.data_class { data_class_frontier_rows }
 import product.data_category { data_category_frontier_rows }
+import gunbc.ci.repository_mirror_frontier { repository_mirror_frontier_rows }
 
 import product.fabric.job_admission { job_admission_frontier_rows }
 import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
 import gunbc.realization_census_sheet { realization_census_sheet_frontier_rows }
 import product.printed_chassis.prepared_bundle_store { prepared_bundle_retirement_frontier_rows }
 import gunbc.fleet.printer_state_layout { printer_state_move_frontier_rows }
+import gunbc.roadmap.roadmap_attempt_state_store { attempt_directory_wire_frontier_rows }
+import gunbc.auth.gcp_iam_bootstrap { gcp_iam_bootstrap_journal_frontier_rows }
 import gunbc.network_boot_manifest_broker { network_boot_manifest_broker_frontier_rows }
 import gunbc.github_app_acquisition {
   github_app_human_step_frontier_rows,
@@ -124,6 +126,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     actions_allowance_consumer_frontier_rows,
     data_class_frontier_rows,
     data_category_frontier_rows,
+    repository_mirror_frontier_rows,
     buyer_review_ensure_projection_frontier_rows,
     hetzner_money_rate_frontier_rows,
     container_state_detail_redundant_bools_frontier_rows,
@@ -200,10 +203,11 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     bmc_recovery_route_pairing_frontier_rows(),
     h11ssl_x86_bringup_frontier_rows,
     site_segment_anchor_consumer_frontier_rows(),
-    bmc_secure_redfish_consumer_frontier_rows(),
-    dashboard_target_write_consumer_frontier_rows,
+    attempt_state_move_frontier_rows,
     prepared_bundle_retirement_frontier_rows,
     printer_state_move_frontier_rows,
+    attempt_directory_wire_frontier_rows,
+    gcp_iam_bootstrap_journal_frontier_rows,
   ]
 }
 

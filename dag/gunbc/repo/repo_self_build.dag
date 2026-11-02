@@ -127,6 +127,32 @@ fn repo_self_test_command() -> String {
   )
 }
 
+// THE SAME UNIT TESTS, COMPILED AND NOT RUN. `--no-run` links the harness and executes no test body, so
+// the command buys the COMPILE half of the unit lane and none of its execution: it establishes that every
+// `#[test]` in the library target -- its types, its signatures, the fixtures it spells -- builds on the
+// revision that lands. `cargo build` never compiles `#[cfg(test)]` code, so while no step runs this
+// command a `#[test]` module in the seed's own sources can stop compiling and the revision still lands
+// with every required check green; the recorded instance is #9886, two red tests on `main` with the
+// required context green. WHY THAT WAS THE STATE, AND WHERE IT IS RECORDED: the 2026-09-04
+// runner-capacity ruling deleted the job that ran the whole command, in gunbc.rung_drop
+// rust_unit_tests_off_the_merge_path, superseded by gunbc.rung_drop.v1_required_lanes_withdrawn. Which
+// jobs exist at any moment is read from those rows and from gunbc.witness.witness_floor_workflow
+// witness_floor_lane_jobs, NOT restated here -- the paragraph in
+// gunbc.emitted_closure_compile_seed_growth that described the CI shape has turned over twice for
+// writing it down, and this comment is written as a pointer for the same reason.
+//
+// It is written as the whole-package command plus one flag rather than as a second argv: the package, the
+// profile and `--lib` are `repo_self_test_command`'s to say, and a second spelling could drift from the
+// thing it is meant to be a cheaper version of. `--no-run` is a new argv word added under this module's own
+// authority note, on the measurement that note records (extdeps.rust.cargo exposes no vocabulary outside a
+// transport shell block, so there is nothing modelled to consume), and it dissolves with the rest of the
+// adapter on that note's trigger.
+data repo_self_test_no_run_flag: String = "--no-run"
+
+fn repo_self_test_compile_command() -> String {
+  join([repo_self_test_command(), repo_self_test_no_run_flag], " ")
+}
+
 // A NAMED SUBSET OF ONE PACKAGE'S UNIT TESTS, for a control in a package the whole-package run above
 // does not cover: the blocking rust-unit-tests lane runs repo_self_test_command, which is
 // v1-compiler only.

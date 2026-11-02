@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import std.algebra { list_snoc_item }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit }
 import extdeps.bmc.types { RedfishAccountRole }
-import extdeps.bmc.redfish { redfish_password_change_required_body }
+import extdeps.bmc.redfish { redfish_password_change_required_body, redfish_manager_account_collection_body, redfish_manager_account_member_body }
 import extdeps.bmc.redfish_telemetry { RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
@@ -604,9 +604,9 @@ type BmcRedfishAccount {
 // Which accounts the Redfish surface serves. This builder installs a MODELED census (Present): calling it with
 // [] means "the surface is modeled and serves zero accounts." The UNMODELED state (the field default `none`) is
 // reached by NOT calling this builder, and there bmc_redfish_authorize / bmc_redfish_change_password refuse with
-// a typed unmodeled answer -- NOT "serves no account", and not a fabricated 401. The declared consumer is item
-// 3's dry Redfish account read in gunbc.machine_intake.bmc_secure (the frontier rows in
-// gunbc.machine_intake.bmc_secure_redfish_frontier bind that realization -- it does not exist until PR 1b-i lands).
+// a typed unmodeled answer -- NOT "serves no account", and not a fabricated 401. Its consumer is the dry Redfish
+// account read, gunbc.machine_intake.bmc_secure dry_read_bmc_redfish_account_census, reached from every
+// dry_read_bmc_account_state.
 fn bmc_with_redfish_accounts(world: BmcWorld, accounts: List<BmcRedfishAccount>) -> BmcWorld {
   BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
@@ -640,11 +640,38 @@ fn bmc_redfish_census(world: BmcWorld) -> List<BmcRedfishAccount> {
 
 // THE TYPED SURFACE READ. `Absent` = the Redfish surface was never modeled (report the reading as absence, not as an
 // empty census); `Present { [] }` = the surface is modeled and genuinely serves zero accounts. Never collapse the two.
-// Its declared consumer is item 3's dry Redfish account read (frontier: gunbc.machine_intake.bmc_secure_redfish_frontier),
-// which is also what keeps this distinction from being decoration -- the witness reads it on both a none world and a
-// Present { [] } world until that realization lands.
+// Its consumers are gunbc.machine_intake.bmc_secure dry_read_bmc_redfish_account_census and
+// bmc_redfish_surface_served, which is what keeps this distinction from being decoration: an Absent surface makes
+// the census Unmodeled and the observation IPMI-only, a Present one subjects the conjunction to the census gate.
 fn bmc_redfish_surface(world: BmcWorld) -> List<BmcRedfishAccount>? {
   world.redfish_accounts
+}
+
+// WHAT THE SIMULATED CONTROLLER SERVES for the AccountService/Accounts collection: the JSON body the real
+// controller would put on the wire, built from the accounts the world carries -- the writer that grounds the
+// reader `redfish_manager_account_collection_from_json`. The dry census read parses THESE bytes (not a list
+// handed to it), so the census it reports is earned by parsing served bytes. Only the names are carried to the
+// wire builder (as `@odata.id`s); the member resources come from `bmc_redfish_account_member_body`.
+// referenced-by: gunbc.machine_intake.bmc_secure.dry_read_bmc_redfish_account_census
+fn bmc_redfish_account_collection_body(world: BmcWorld) -> String {
+  redfish_manager_account_collection_body(member_odata_ids: map(bmc_redfish_census(world: world), a => bmc_redfish_account_odata_id(name: a.name)))
+}
+
+// WHAT THE SIMULATED CONTROLLER SERVES for one ManagerAccount member resource, as the bytes it would put on
+// the wire for a GET of that account: UserName, Enabled, Locked, RoleId. `Absent` is the honest answer when the
+// collection listed an id the census does not hold -- the read treats that as a census it cannot vouch for and
+// refuses, rather than a member to invent. The world's account fields are the only values rendered.
+// referenced-by: gunbc.machine_intake.bmc_secure.dry_read_bmc_redfish_account_census
+fn bmc_redfish_account_member_body(world: BmcWorld, name: String) -> String? {
+  match bmc_redfish_account(world: world, name: name) {
+    Absent => none
+    Present { value: account } => Present { value: redfish_manager_account_member_body(
+      odata_id: bmc_redfish_account_odata_id(name: account.name),
+      user_name: account.name,
+      enabled: account.enabled,
+      locked: account.locked,
+      role: account.role) }
+  }
 }
 
 fn bmc_redfish_account(world: BmcWorld, name: String) -> BmcRedfishAccount? {
@@ -823,10 +850,9 @@ fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: Stri
 // The failed-login COUNTER and its lock transition are the world's. The threshold is a TYPED
 // BmcRedfishLockoutThreshold, never a magic number: `Never` models a build that serves no lockout without
 // inventing a count, and `After { count }` locks when the counter reaches it -- no `0` sentinel, no
-// `!= 0` test. Where the served value comes from -- the lockout lane's extdeps.bmc.redfish
-// RedfishAccountServiceLockoutServed -- is a DECLARED frontier (see gunbc.machine_intake.bmc_secure_redfish_frontier,
-// subject gunbc.bmc_model::bmc_redfish_note_failed_login); the 0-means-Never conversion belongs at that extdeps wire
-// boundary, not here.
+// `!= 0` test. The served value comes from the lockout lane's extdeps.bmc.redfish RedfishAccountServiceLockoutServed,
+// converted at that extdeps wire boundary (redfish_account_lockout_threshold_locks_after, 0 means never) and placed
+// in this vocabulary by gunbc.machine_intake.bmc_secure bmc_redfish_lockout_threshold_served.
 type BmcRedfishLockoutThreshold
   = BmcRedfishLockoutNever
   | BmcRedfishLockoutAfter { count: Int }

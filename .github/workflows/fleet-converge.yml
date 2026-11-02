@@ -3365,6 +3365,8 @@ jobs:
           compression-level: 0
         if: always()
         timeout-minutes: 10
+    env:
+      GUNBC_SRV1_ROOT_MUTATION_MODE: ${{ github.event.inputs.mode }}
   approval-broker-dark-install:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
@@ -3511,6 +3513,8 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_wet
         timeout-minutes: 47
+    env:
+      GUNBC_SRV1_ROOT_MUTATION_MODE: ${{ github.event.inputs.mode }}
   approval-ntfy-retire:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
@@ -3693,6 +3697,8 @@ jobs:
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
+    env:
+      GUNBC_SRV1_ROOT_MUTATION_MODE: ${{ github.event.inputs.mode }}
   microvm-controller-install:
     runs-on: ${{ github.event.inputs.host == 'srv1' && fromJSON('["self-hosted","linux","arm64","srv1","gunbc-deploy"]') || fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
@@ -3937,6 +3943,8 @@ jobs:
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
+    env:
+      GUNBC_SRV1_ROOT_MUTATION_MODE: ${{ github.event.inputs.mode }}
   rlm-launch-deployment-receipt:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]

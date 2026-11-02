@@ -577,6 +577,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("exit-return-ownership"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/exit_return_ownership_native.dag",
+            },
+        ),
+        (
             instrument_label("cons-tail-recursion"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag",
@@ -586,6 +592,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("member-home-cost"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/member_home_cost_native.dag",
+            },
+        ),
+        (
+            instrument_label("roster-rehome-controls"),
+            TargetProducer::CliWireProgram {
+                entry: "src/v2/workflow/roster_rehome.dag",
+                function: "rehome_controls_wire",
             },
         ),
         (

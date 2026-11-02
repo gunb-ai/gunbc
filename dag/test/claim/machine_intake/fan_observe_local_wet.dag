@@ -12,7 +12,7 @@ import gunbc.ci.ci_spec {
 import std.process { ExitSuccess, ExitFailure }
 import std.measure { observation_round_count, second }
 import extdeps.shell
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRefused, FanObservationTaken, FanObservationSeries, FanObservationRound, ThermalUnreadable, FanSensorsUnreadable }
+import gunbc.machine_intake.bmc_fan_observation { SdrVerboseNotRequired, FanObservationRefused, FanObservationTaken, FanObservationSeries, FanObservationRound, ThermalUnreadable, FanSensorsUnreadable }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.managed_host { managed_host_binding_for, managed_hosts }
@@ -198,7 +198,7 @@ test fn a_host_off_unestablished_receipt_leaves_the_boot_eligible_by_execution()
 }
 
 fn host_off_round(index: Int, power_on: Bool) -> FanObservationRound {
-  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: index, chassis: ChassisPowerRead { power_on: power_on }, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable }
+  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: index, chassis: ChassisPowerRead { power_on: power_on }, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable, verbose: SdrVerboseNotRequired }
 }
 
 // The REAL writer (its receipt rides on the outcome's summary): a series whose chassis read off in every round writes the unestablished line; one round on

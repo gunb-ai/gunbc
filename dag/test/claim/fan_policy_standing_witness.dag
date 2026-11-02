@@ -108,6 +108,7 @@ import extdeps.bmc.ipmi_chassis_control {
   chassis_power_line,
 }
 import gunbc.machine_intake.bmc_fan_observation {
+  SdrVerboseNotRequired,
   FanObservationRound,
   FanSensorObservation,
   FanSensorsRead,
@@ -391,6 +392,7 @@ fn witness_round_thermal(publication: SdrTemperaturePublication) -> FanObservati
     chassis_raw: "",
     thermal: ThermalRead { publication: publication, undecoded_texts: [], unrecognised_readings: [] },
     fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] },
+    verbose: SdrVerboseNotRequired,
   }
 }
 
@@ -406,6 +408,7 @@ fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readabl
       undecoded_lines: [],
       failure_rows: [],
     },
+    verbose: SdrVerboseNotRequired,
   }
 }
 
@@ -451,6 +454,7 @@ fn witness_unreadable_chassis_round() -> FanObservationRound {
     chassis_raw: "",
     thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_texts: [], unrecognised_readings: [] },
     fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] },
+    verbose: SdrVerboseNotRequired,
   }
 }
 
@@ -967,5 +971,6 @@ fn witness_round_fans(fans: FanSensorObservation) -> FanObservationRound {
     chassis_raw: "",
     thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: [], unrecognised_readings: [] },
     fans: fans,
+    verbose: SdrVerboseNotRequired,
   }
 }

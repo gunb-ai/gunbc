@@ -88,8 +88,13 @@ type NodeVoltageObservation {
   evidence: List<EvidenceRef>
 }
 
+// AutoRanging is a meter choosing its own range per reading (the Fluke's default mode): the display
+// carries the unit it chose, so a figure read on it is a value, but no shorted-probe baseline joins
+// across it, because the baseline's range and the reading's need not be the same one, and it adds no
+// range to the judgment of whether a pair's reading moves with the range.
 type MeterRange
   = RangeFullScale { ohms: Nat }
+  | AutoRanging
   | RangeUnrecorded
 
 // full_scale_ohms is the range the baseline was read on; shown is what the display gave with the probes
@@ -155,6 +160,7 @@ fn is_at_baseline(o: ResistanceObservation) -> Bool {
   match o.display {
     DisplayAtProbeBaseline { shown: _, baseline } => match o.range {
       RangeFullScale { ohms } => ohms == baseline.full_scale_ohms
+      AutoRanging => false
       RangeUnrecorded => false
     }
     DisplayZeroWithoutBaseline { reported: _ } => false
@@ -188,13 +194,20 @@ type ThermalInterface
   | ThermalPaste
   | InterfaceUnstated
 
+// What an alteration did: a thermal interface changed under a part, or a part lifted off the board. A
+// lifted part's footprint is bare until a refit is reported, and readings at that footprint are of a
+// different physical state from readings at the part's leads, so the alteration carries whether the
+// refit has happened rather than assuming it.
+type AlterationChange
+  = ThermalInterfaceChanged { removed: ThermalInterface, applied: ThermalInterface? }
+  | PartRemoved { refitted: Bool }
+
 type AssetAlteration {
   key: NonEmptyStr
   asset: PhysicalAssetIdentity
   part: ComponentInstanceIdentity
   performed_on: NonEmptyStr
-  removed: ThermalInterface
-  applied: ThermalInterface?
+  change: AlterationChange
   evidence: EvidenceRef
 }
 
@@ -309,6 +322,7 @@ fn resistance_display_text(d: ResistanceDisplay) -> String {
 fn range_text(r: MeterRange) -> String {
   match r {
     RangeFullScale { ohms } => join([" on the ", to_string(ohms), " ohm range"], "")
+    AutoRanging => ", meter auto-ranging"
     RangeUnrecorded => ", range unrecorded"
   }
 }
@@ -350,6 +364,7 @@ fn valued_ohms(o: ResistanceObservation) -> Nat? {
   match o.display {
     DisplayValue { ohms, approximate: _ } => match o.range {
       RangeFullScale { ohms: _ } => Present { value: ohms }
+      AutoRanging => Present { value: ohms }
       RangeUnrecorded => Absent
     }
     DisplayAtProbeBaseline { shown: _, baseline: _ } => Absent
@@ -359,31 +374,40 @@ fn valued_ohms(o: ResistanceObservation) -> Nat? {
   }
 }
 
-fn recorded_full_scale(o: ResistanceObservation) -> Nat {
+// An auto-ranging reading sits on a range the meter chose and did not record, so it carries a value but
+// contributes no range to the range-dependence judgment.
+fn recorded_full_scale(o: ResistanceObservation) -> Nat? {
   match o.range {
-    RangeFullScale { ohms } => ohms
-    RangeUnrecorded => 0
+    RangeFullScale { ohms } => Present { value: ohms }
+    AutoRanging => Absent
+    RangeUnrecorded => Absent
   }
 }
 
 fn distinct_full_scales(os: List<ResistanceObservation>) -> List<Nat> {
-  match os.first() {
+  let scales = flat_map(os, o => match recorded_full_scale(o: o) { Present { value: n } => [n], Absent => [] })
+  match scales.first() {
     Absent => []
-    Present { value: f } => fold(os, init: [recorded_full_scale(o: f)], f: (acc, o) => if any(acc, n => n == recorded_full_scale(o: o)) { acc } else { concat(acc, [recorded_full_scale(o: o)]) })
+    Present { value: f } => fold(scales, init: [f], f: (acc, n) => if any(acc, m => m == n) { acc } else { concat(acc, [n]) })
   }
 }
 
+// The judgment is over readings whose range is recorded: an auto-ranging value is a value for the
+// netlist, but it carries no range, so it neither counts as a range nor enters the extrema here; a
+// pair valued only while auto-ranging has no reading on a recorded range.
 fn pair_range_standing(os: List<ResistanceObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> PairRangeStanding {
-  let valued = filter(os, o => observation_reads_pair(o: o, a: a, b: b) && match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
-  let ohms = flat_map(valued, o => match valued_ohms(o: o) { Present { value: n } => [n], Absent => [] })
+  let ranged = filter(os, o => observation_reads_pair(o: o, a: a, b: b)
+    && match valued_ohms(o: o) { Present { value: _ } => true, Absent => false }
+    && match recorded_full_scale(o: o) { Present { value: _ } => true, Absent => false })
+  let ohms = flat_map(ranged, o => match valued_ohms(o: o) { Present { value: n } => [n], Absent => [] })
   match ohms.first() {
     Absent => PairRangeUnread
     Present { value: f } => {
       let lo = fold(ohms, init: f, f: (acc, n) => nat_min(a: acc, b: n))
       let hi = fold(ohms, init: f, f: (acc, n) => nat_max(a: acc, b: n))
-      if count(distinct_full_scales(os: valued)) < 2 { PairValuedOnOneRange { readings: valued } }
-      else if hi > lo * range_agreement_factor { ReadingMovesWithRange { readings: valued, lowest_ohms: lo, highest_ohms: hi } }
-      else { ReadingHoldsAcrossRanges { readings: valued, lowest_ohms: lo, highest_ohms: hi } }
+      if count(distinct_full_scales(os: ranged)) < 2 { PairValuedOnOneRange { readings: ranged } }
+      else if hi > lo * range_agreement_factor { ReadingMovesWithRange { readings: ranged, lowest_ohms: lo, highest_ohms: hi } }
+      else { ReadingHoldsAcrossRanges { readings: ranged, lowest_ohms: lo, highest_ohms: hi } }
     }
   }
 }

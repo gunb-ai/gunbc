@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.measure { watt, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
-import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PcieAddInBoard, RatedBoardPower }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PcieAddInBoard, RatedBoardPower, SingleGpu }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.pci.identity { PciDeviceId }
 import extdeps.vendor.nvidia { nvidia }
@@ -73,7 +73,7 @@ data nvidia_cmp_30hx_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "CMP 30HX reference design",
   gpu: nvidia_cmp_30hx_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 125) } },
   zero_power: none,
@@ -111,7 +111,7 @@ data nvidia_cmp_40hx_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "CMP 40HX reference design",
   gpu: nvidia_cmp_40hx_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 185) } },
   zero_power: none,
@@ -149,7 +149,7 @@ data nvidia_cmp_50hx_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "CMP 50HX reference design",
   gpu: nvidia_cmp_50hx_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 250) } },
   zero_power: none,
@@ -187,7 +187,7 @@ data nvidia_cmp_90hx_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "CMP 90HX reference design",
   gpu: nvidia_cmp_90hx_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 320) } },
   zero_power: none,

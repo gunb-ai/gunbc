@@ -390,3 +390,11 @@ fn sha256_digest_wire_form(digest: Sha256Digest) -> NonEmptyStr {
 fn sha512_digest_wire_form(digest: Sha512Digest) -> NonEmptyStr {
   join(["sha512:", digest.hex as String], "") as NonEmptyStr
 }
+
+// THE ONE IDENTITY FRAMING: a labelled, length-prefixed field ("label:len:value"), concatenated to build an
+// injective preimage for a structural identity key. It lived in product.fabric.work, so every consumer of a
+// one-line framing imported the whole fabric work model (and its transitive network/placement closure); it
+// belongs beside the hashes whose preimages it builds.
+fn identity_frame(label: NonEmptyStr, value: String) -> NonEmptyStr {
+  concat(label, ":", to_string(value.length()), ":", value)
+}

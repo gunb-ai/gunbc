@@ -1,6 +1,7 @@
 module gunbc.machine_intake.mtcollins1_boot_fan_gate
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
 
@@ -169,7 +170,7 @@ fn mtcollins1_boot_fan_gate(powered: BootHandoffPoweredOn, password_file: NonEmp
   ]
 {
   let username = powered.account
-  let round = observe_fan_round(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file, round_index: 0, cipher_suite: mtcollins1_boot_row_value.ipmi_cipher_suite)
+  let round = observe_fan_round(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file, round_index: 0, cipher_suite: mtcollins1_boot_row_value.ipmi_cipher_suite, observed_at: clock_now_probed_at_or_unknown())
   let fitted = mtcollins1_fitted_fan_set
   match post_power_fan_verdict(fitted: fitted, chassis: round.chassis, thermal: round.thermal, fans: round.fans) {
     PostPowerFanVerdictEstablished => PostPowerFanGateReached { fitted: fitted, outcome: PostPowerFanEstablished { observation: round } }

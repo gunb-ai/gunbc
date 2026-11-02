@@ -6,7 +6,8 @@ import std.nat { Nat, NatQuotientRemainder, NatDivisionByZero, nat_div_rem }
 import std.optional { Present, Absent }
 import std.measure { MoneyRate, money_amount_micro, money_amount_micro_count, byte_size, byte_size_count, hardware_thread_count, hardware_thread_count_value }
 import product.fabric.identity { FabricIdentity, OfferKey }
-import product.fabric.work { Shape, identity_frame }
+import product.fabric.work { Shape }
+import std.content_hash { identity_frame }
 import product.fabric.envelope { ResourceEnvelope, GpuRequirement, CpuRequirement, MemoryRequirement, StorageRequirement }
 import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour }
 import product.fabric.candidate_field { FieldRequest }

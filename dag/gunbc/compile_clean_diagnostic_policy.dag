@@ -355,6 +355,17 @@ data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
     }
   },
   AdvisoryClassCeilingRow {
+    class_name: "DeclaredTypeInhabitanceUnmodeled" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "an arm of v1.compiler.infer declared_type_inhabitance that judges each pair reaching its terminal arm (InhabitanceUnmodeled). Measured specimens are DECIDABLE wrong code: a record value or a rigid type parameter at a grounded Int parameter, List<Char> at List<Int>. Each class surfaced is dispositioned by a RED, then the terminal arm refuses and this class leaves. It is NOT InhabitanceUndecidable: undecidable is a property of the facts, and this is a gap in the relation's wiring."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
     class_name: "DeclaredTypeInhabitanceUndecided" as NonEmptyStr,
     ceiling: WallAfterGrounding {
       missing_capability: "inhabitance evidence through generic instantiation: 77% of sampled instances are 'generic formal' (membership undecidable from the declaration alone because payload types can be type variables), with 'produced identity erased', 'refinement introduction' and 'optional carrier' behind; the decider's reasons are a closed sum (v1.compiler.infer inhabitance_undecidable_reason_label) and each names the evidence it lacks. Promoting now would refuse ordinary generic code that is right but unproven -- the fabricated-refusal arm DESIGN 4b forbids. The class's ceiling is per-reason: a reason whose evidence becomes modeled leaves the class, and 'formal unresolved' in particular names a masked real defect (an unresolvable declared type) that should red as UnresolvedType rather than rest here."

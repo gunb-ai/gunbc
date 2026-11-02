@@ -21,6 +21,7 @@ import v2.std.cross_tree.import_model { CrossTreeDenialReason, CrossTreeFromTree
 import v2.std.diagnostic { Accepted, ByteRange, NonEmptyDiagnostics, Outcome, Rejected, SourcePortLocus, Textual, bind_outcome, diagnostics_fatal, diagnostics_fatal_reason, outcome_accepted }
 import v2.workflow.source_locus { line_starts, locus_at }
 import v2.std.artifact { Artifact, SourceFile }
+import v2.compiler.generated_head_demand { generated_head_demand }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -131,6 +132,7 @@ type DerivedRosterRefusal
 type AcquisitionRefusal
   = AcquisitionGrammarUnprepared { diagnostics: NonEmptyDiagnostics }
   | AcquisitionEntryUnderivable { entry: String, cause: String }
+  | AcquisitionEntryNamespaceUndeclared { entry: String, namespace: String }
   | AcquisitionTreeUnbound { tree: String, request: AcquisitionRequest }
   | AcquisitionUnknownModule { request: AcquisitionRequest }
   | AcquisitionLookupRefused { request: AcquisitionRequest, lookup: ReferenceLookup }
@@ -845,12 +847,20 @@ fn acquisition_sugar_member_texts(references: List<String>) -> List<String> {
   }
 }
 
+// A list literal, a string-keyed map literal and a string template each lower to a reference to a declaration
+// the source never spells, so they OWE it the way `T?` does: every path the tree's generated heads name is an
+// imported member, whose unknown module refuses, and not a reference site, which requests nothing
+// (v2.compiler.generated_head_demand). Never an authored import and never an ambient built-in.
+fn acquisition_generated_head_member_texts(root: Node) -> List<String> {
+  list_map(xs: generated_head_demand(root: root), f: fn(path) { qualified_name_to_dotted_string(qn: path) })
+}
+
 fn acquisition_requests_ok(front: AcquisitionFrontEnd, sites: ScopedReferenceSiteCollection, imported: List<String>) -> AcquisitionMemberRead {
   let references = acquisition_reference_texts(collection: sites)
   AcquisitionMemberReadOk {
     requests: MemberRequests {
       imports: imported,
-      members: concat(acquisition_uncovered_binding_texts(tree: front.tree, imported: imported), acquisition_sugar_member_texts(references: references)),
+      members: concat(acquisition_uncovered_binding_texts(tree: front.tree, imported: imported), acquisition_sugar_member_texts(references: references), acquisition_generated_head_member_texts(root: front.parse_root)),
       references: references
     },
     test_markers: list_map(xs: front.tree.test_markers.marked, f: fn(marked) { symbol_lexeme(sym: marked.name) })
@@ -1196,7 +1206,21 @@ fn acquisition_loop(env: AcquisitionEnv, state: AcquisitionState, entries: List<
 }
 
 // The initial requests, one entry request per entry in the order given. An entry the layout cannot
-// derive a file for refuses the whole acquisition before any read.
+// derive a file for refuses the whole acquisition before any read, and so does an entry whose namespace
+// has no row in the declared layout (gunbc.source_layout_namespaces): the acquirer route used to ask
+// derivability alone, which let a compile ENTER a namespace the storage policy does not declare - the
+// finding named beside ruling gunbc.design_ruling cross_tree_admission_is_namespace_membership.
+//
+// WHY THE MEMBERSHIP ASK SITS HERE AND NOT IN THE IMPORT MODEL. An entry spelling names a module, so its
+// namespace is a namespace and the ask is decidable before any read. The import edge is charged inside
+// v2.std.cross_tree.import_model cross_tree_import_admitted, which this route reaches per PROBE: longest
+// first over the dotted prefixes of a reference (v2.compiler.source_authority reference_next_read_derived),
+// so the first probe of `product.y.projection_same_named_value` has namespace `product.y`, which is a
+// module, not a row. That path therefore SKIPS a rowless candidate rather than refusing it (stated at
+// v2.compiler.source_authority above storage_candidate_unstorable); charging a same-tree DENIAL there would
+// refuse ordinary qualified references, which is what a first attempt at this finding did and what the
+// v2-native-cli leg caught. The module-level fact for a same-tree import is enforced where the module is
+// known: bound_modules_admitted below refuses a module whose namespace has no row, naming the namespace.
 type AcquisitionEntries
   = AcquisitionEntriesDerived { requests: List<AcquisitionRequest> }
   | AcquisitionEntriesRefused { refusal: AcquisitionRefusal }
@@ -1213,11 +1237,17 @@ fn acquisition_entry_requests(
         ModuleNameUnderivable { name: name, cause: cause } =>
           AcquisitionEntriesRefused { refusal: AcquisitionEntryUnderivable { entry: name, cause: cause } }
         ModuleFileDerived { file: file } =>
-          acquisition_entry_requests(
-            layout: layout,
-            pending: skip(xs: pending, n: 1),
-            acc: list_snoc_item(xs: acc, item: AcquisitionRequest { from_module: "", from_tree: file.tree, spelling: entry, kind: AcquireEntry })
-          )
+          if !namespace_declared(rows: layout.namespace_rows, namespace: module_namespace(name: entry)) {
+            AcquisitionEntriesRefused {
+              refusal: AcquisitionEntryNamespaceUndeclared { entry: entry, namespace: module_namespace(name: entry) }
+            }
+          } else {
+            acquisition_entry_requests(
+              layout: layout,
+              pending: skip(xs: pending, n: 1),
+              acc: list_snoc_item(xs: acc, item: AcquisitionRequest { from_module: "", from_tree: file.tree, spelling: entry, kind: AcquireEntry })
+            )
+          }
       }
   }
 }
@@ -1380,6 +1410,7 @@ fn census_block_locality(refusal: AcquisitionRefusal) -> CensusBlockLocality {
     AcquisitionTreeUnbound { tree: t, request: q } => CensusBlockedEdge { refusal: CensusEdgeTreeUnbound { tree: t, request: q } }
     AcquisitionGrammarUnprepared { diagnostics: _ } => CensusBlockNotLocal
     AcquisitionEntryUnderivable { entry: _, cause: _ } => CensusBlockNotLocal
+    AcquisitionEntryNamespaceUndeclared { entry: _, namespace: _ } => CensusBlockNotLocal
     AcquisitionDerivedRosterRefused { module: _, refusal: _ } => CensusBlockNotLocal
   }
 }
@@ -1859,6 +1890,8 @@ fn acquisition_refusal_text(refusal: AcquisitionRefusal) -> String {
     AcquisitionGrammarUnprepared { diagnostics: _ } => "the dag grammar did not prepare"
     AcquisitionEntryUnderivable { entry: entry, cause: cause } =>
       concat("entry ", entry, " names no storable module: ", cause)
+    AcquisitionEntryNamespaceUndeclared { entry: entry, namespace: namespace } =>
+      concat("entry ", entry, " lies in namespace ", namespace, ", which has no row in the declared layout, so no module of it is a compilable entry")
     AcquisitionTreeUnbound { tree: tree, request: request } =>
       concat("no source root is bound to the ", tree, " tree, which holds ", acquisition_request_text(request: request))
     AcquisitionUnknownModule { request: request } =>
@@ -1871,8 +1904,8 @@ fn acquisition_refusal_text(refusal: AcquisitionRefusal) -> String {
       concat("module ", name, " at ", module_file_key(file: file), " lowered but its reference sites are not all readable")
     AcquisitionMemberIdentityDisagrees { module: name, file: file, declared: declared } =>
       concat("module ", name, " at ", module_file_key(file: file), " parses as module ", declared)
-    AcquisitionDerivedRosterRefused { module: name, refusal: refusal } =>
-      concat("derived roster ", name, ": ", derived_roster_refusal_text(refusal: refusal))
+    AcquisitionDerivedRosterRefused { module: name, refusal: carried_refusal } =>
+      concat("derived roster ", name, ": ", derived_roster_refusal_text(refusal: carried_refusal))
   }
 }
 
