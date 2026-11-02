@@ -77,7 +77,7 @@ data ce_importer_source: String = "module v2.test.ce_importer\n\nimport v2.test.
 
 data ce_absent_importer_source: String = "module v2.test.ce_absent_importer\n\nimport v2.test.ce_absent { CeAbsent }\n\nfn ce_absent_importer_fn(p: CeAbsent) -> CeAbsent { p }\n"
 
-data ce_unbound_name_source: String = "module v2.test.ce_unbound_name\n\nimport std.types { Bool }\n\nfn ce_unbound_name_fn(p: Bool) -> Bool { ce_no_such_fn(p: p) }\n"
+data ce_unbound_name_source: String = "module v2.test.ce_unbound_name\n\nimport v2.test.ce_base { CeBase }\n\nfn ce_unbound_name_fn(p: CeBase) -> CeBase { ce_no_such_fn(p: p) }\n"
 
 data ce_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False\n"
 
@@ -204,6 +204,7 @@ fn ce_emission_unbound_symbol() -> ClosureEmissionLocated {
   ce_emit(
     ingest: [
       ce_logic_read(),
+      ce_read(source: ce_base_source, id: ^ce_base_read, path: "src/v2/test/ce_base.dag"),
       ce_read(source: ce_unbound_name_source, id: ^ce_unbound_name_read, path: "src/v2/test/ce_unbound_name.dag")
     ],
     entry: "v2.test.ce_unbound_name"
