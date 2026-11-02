@@ -3952,12 +3952,16 @@ fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName
             // it -- and an arm's alias row lives only in its declaring module's scope, so no importer's
             // name door could reach it either.
             Absent =>
-              match coproduct_arm_payload(body: member, arm: qualified_name_last_segment(qn: record)) {
+              match qualified_name_last_segment(qn: record) {
                 Absent => optional_absent()
-                Present { value: payload } =>
-                  match declared_field_named(payload: payload, name: field) {
-                    Present { value: binder } => optional_present(value: binder.type_node)
+                Present { value: arm } =>
+                  match coproduct_arm_payload(body: member, arm: arm) {
                     Absent => optional_absent()
+                    Present { value: payload } =>
+                      match declared_field_named(payload: payload, name: field) {
+                        Present { value: binder } => optional_present(value: binder.type_node)
+                        Absent => optional_absent()
+                      }
                   }
               }
           }
