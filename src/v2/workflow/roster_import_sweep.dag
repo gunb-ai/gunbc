@@ -3053,7 +3053,12 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own",
     "occurrences-unknown-row-key-refuses",
     "occurrences-key-on-a-bound-site-refuses",
-    "occurrences-key-outside-the-paths-refuses"
+    "occurrences-key-outside-the-paths-refuses",
+    "respell-service-operation-head",
+    "respell-bare-head-untouched",
+    "respell-parameter-bound-untouched",
+    "respell-value-method-untouched",
+    "respell-mutation-keephead-does-not-respell"
   ]
 }
 
@@ -3076,8 +3081,55 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
   ]
 }
 
+// THE RESPELL CONTROLS (docs/plans/2026-11-01-xl3-respell-row-kind-design.md). The fixture row respells the service prefix
+// `Filesystem` to its declaring identity extdeps.filesystem.filesystem_io.Filesystem. Positive: a service-operation head
+// `Filesystem.Write(..)` has its atom qualified, the brace import and every argument byte unchanged. Untouched: a bare
+// one-segment head, a head bound by a parameter, and a method on a value. Mutation: the same site under a KeepHead row is
+// NOT respelled, so dropping the arm leaves the text as authored and the positive control fails.
+fn roster_respell_row(head: RosterHeadRewrite) -> RosterHeadRow {
+  RosterHeadRow { call: "Filesystem", key: "Filesystem", import_name: "Filesystem", home: qualified_name_from_dotted_string(dotted: "extdeps.filesystem.filesystem_io"), labels: [], head: head }
+}
+
+fn roster_respell_closures() -> List<RosterHomeClosure> {
+  [RosterClosureRead { home: "extdeps.filesystem.filesystem_io", modules: ["extdeps.filesystem.filesystem_io"] }]
+}
+
+fn roster_respell_outcome(row: RosterHeadRow, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  roster_sweep_text_rows(sides: roster_home_sides(rows: [row]), companions: [], path: "control/respell.dag", text: text, prepared: prepared, lex: lex, candidates: [row], closures: roster_respell_closures())
+}
+
+// The text after one pass; a refusal or a clean outcome reads back as the input text with the cause named in `fail`.
+fn roster_respell_expect(name: String, row: RosterHeadRow, before: String, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_respell_outcome(row: row, text: before, prepared: prepared, lex: lex) {
+    RosterClean => if before == after { "" } else { "CONTROL-FAIL " + name + ": clean, wanted a respell\n" }
+    RosterRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n"
+    outcome =>
+      match roster_applied(before: before, outcome: outcome) {
+        RosterApplyRefused { reason: r } => "CONTROL-FAIL " + name + ": splice " + roster_refusal_text(reason: r) + "\n"
+        RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL " + name + ": wrote unexpected text: " + c + "\n" }
+      }
+  }
+}
+
+fn roster_respell_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
+  let respell = roster_respell_row(head: RespellToDeclaringIdentity)
+  let imp = "module c.respell\n\nimport extdeps.filesystem.filesystem_io { Filesystem }\n\n"
+  let site = "fn f(p: String, c: String) -> Bool {\n  let w = Filesystem.Write(path: p, content: c)\n  true\n}\n"
+  let site_after = "fn f(p: String, c: String) -> Bool {\n  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: p, content: c)\n  true\n}\n"
+  let bare = "fn f(p: String) -> Bool {\n  let w = Filesystem(path: p)\n  true\n}\n"
+  let bound = "fn f(Filesystem: String, c: String) -> Bool {\n  let w = Filesystem.Write(path: c, content: c)\n  true\n}\n"
+  let method = "fn f(p: String, c: String) -> Bool {\n  let w = p.Write(path: p, content: c)\n  true\n}\n"
+  [
+    roster_control_verdict(name: "respell-service-operation-head", fail: roster_respell_expect(name: "respell-service-operation-head", row: respell, before: imp + site, after: imp + site_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-bare-head-untouched", fail: roster_respell_expect(name: "respell-bare-head-untouched", row: respell, before: imp + bare, after: imp + bare, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-parameter-bound-untouched", fail: roster_respell_expect(name: "respell-parameter-bound-untouched", row: respell, before: imp + bound, after: imp + bound, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-value-method-untouched", fail: roster_respell_expect(name: "respell-value-method-untouched", row: respell, before: imp + method, after: imp + method, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "respell-mutation-keephead-does-not-respell", fail: roster_respell_expect(name: "respell-mutation-keephead-does-not-respell", row: roster_respell_row(head: KeepHead), before: imp + site, after: imp + site, prepared: prepared, lex: lex))
+  ]
+}
+
 fn roster_rename_controls_verdicts_all(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
-  list_append(left: roster_rename_control_verdicts(prepared: prepared, lex: lex), right: list_append(left: roster_control_edits_disjoint_verdicts(), right: list_append(left: roster_occ_controls(prepared: prepared, lex: lex), right: roster_head_controls(prepared: prepared, lex: lex))))
+  list_append(left: roster_respell_controls(prepared: prepared, lex: lex), right: list_append(left: roster_rename_control_verdicts(prepared: prepared, lex: lex), right: list_append(left: roster_control_edits_disjoint_verdicts(), right: list_append(left: roster_occ_controls(prepared: prepared, lex: lex), right: roster_head_controls(prepared: prepared, lex: lex)))))
 }
 
 // The rename controls' failures and the count check, as the gated report reads them.
