@@ -131,15 +131,18 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.p4261.carrier {
-  AwayFromLatch,
   CarrierLayoutObservation,
   ConnectorHousing,
   InputConnector,
-  LatchSide,
   MeasuredBoard,
+  RowRead,
   RowSide,
   SideUnrecorded,
+  away_side,
+  latch_side,
+  row_side_key,
 }
+import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
 import product.p4261.e1_b {
   e1_ground_ref,
   e1_j68,
@@ -168,24 +171,15 @@ type InputPolarity
   | PolarityContradicted { readings: List<ContinuityObservation> }
   | PolarityUnestablished { gaps: List<PolarityGap> }
 
-fn row_side_code(s: RowSide) -> Nat {
-  match s {
-    SideUnrecorded => 0
-    LatchSide => 1
-    AwayFromLatch => 2
-  }
-}
-
 fn other_side(s: RowSide) -> RowSide {
   match s {
-    LatchSide => AwayFromLatch
-    AwayFromLatch => LatchSide
     SideUnrecorded => SideUnrecorded
+    RowRead { row } => match row { LatchRow => away_side(), AwayFromLatchRow => latch_side() }
   }
 }
 
 fn side_terminals(h: ConnectorHousing, side: RowSide) -> List<ElectricalTerminalRef> {
-  map(filter(h.positions, p => row_side_code(s: p.side) == row_side_code(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
+  map(filter(h.positions, p => row_side_key(s: p.side) == row_side_key(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
 }
 
 // ONE BOARD IN ONE PHYSICAL STATE AND MODULE CONFIGURATION. Every fold over a board's readings reads
@@ -330,13 +324,13 @@ fn polarity_with(g: ReachabilityGraph, input: InputConnector, fused: RowSide) ->
 }
 
 fn measured_polarity(g: ReachabilityGraph, input: InputConnector) -> InputPolarity {
-  if any(input.housing.positions, p => row_side_code(s: p.side) == 0) {
+  if any(input.housing.positions, p => row_side_key(s: p.side) == 0) {
     PolarityUnestablished { gaps: [SidesUnrecorded] }
   } else {
-    if side_reaches_fuse(g: g, input: input, side: LatchSide) && !side_reaches_fuse(g: g, input: input, side: AwayFromLatch) {
-      polarity_with(g: g, input: input, fused: LatchSide)
+    if side_reaches_fuse(g: g, input: input, side: latch_side()) && !side_reaches_fuse(g: g, input: input, side: away_side()) {
+      polarity_with(g: g, input: input, fused: latch_side())
     } else {
-      polarity_with(g: g, input: input, fused: AwayFromLatch)
+      polarity_with(g: g, input: input, fused: away_side())
     }
   }
 }
