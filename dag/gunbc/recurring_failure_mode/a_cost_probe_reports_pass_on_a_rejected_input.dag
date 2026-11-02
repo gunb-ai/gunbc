@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.a_cost_probe_reports_pass_on_a_rejected_input
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_cost_probe_reports_pass_on_a_rejected_input: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_cost_probe_reports_pass_on_a_rejected_input" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of a cost probe returning a typed sum whose only cost-bearing arm is the accepted path, so a rejected input has no cost to read and its stage and diagnostic are carried instead" } },
+
+  receipts: [
+    "INVALID STATE: a probe whose witness asserts only that the run completed (`shp(path, stage) != 0 - 99`) over an input that may be Rejected, with the verdict collapsed to an Int code (1 accepted, -1 grammar, -2 tokenize, -3 parse, -4 normalize) and every diagnostics field discarded. The witness passes on every code, so a PASS line certifies that the probe ran, not that the input took the path whose cost is being measured. A rejected input's eval-step count is the cost UP TO WHEREVER IT STOPPED, which is a different quantity from the accepted path's cost and can be lower or, when siblings keep being evaluated under a Rejected accumulator, equal.",
+
+    "HARM: np1-np5 (the N7 normalize-cost series on src/v1/04_types.dag, pinned to main 799697f5c76b) reported incremental-normalize ratios (04_types 3.74x parse, chunk K2 5.72x, np5 half H2 3.22x and 3.0x super-additive against the sum of its functions, F12 0.34x) as accepted-path costs with 26/26, 36/36 and 44/44 PASS lines beside them. None of those runs could show whether any piece was Accepted; np5's log carries no rejection stage and no diagnostic text for any piece. The ratios drove which hypotheses were raised and refuted (nested-match search, 21-field record literals, the large mixed function) and which source reading was requested, so a possibly-rejected population steered a performance diagnosis. DESIGN section 4b: green by construction, and a PASS that cannot go red on the input being rejected is not a rung.",
+
+    "WHY IT SURVIVED: every individual number was a true count of work done, and the witness was well-formed Bool; the defect is in what the PASS is read as. The tell is the one DESIGN section 4b names for a top-rung check: ask whether its RED is authorable. Here the RED (a rejected piece) was authorable in a line and was never authored; the control a reader needs is `the same probe returns 1 on an accepted fixture and a non-1 on a rejected one`, and it was absent. Found by the reader of the receipt (calm-crab-645, read-only, 2026-11-02), not by the author.",
+
+    "RUNG FOUND AT: below the ladder (silent: a rejected input and an accepted one produced the same PASS and the same kind of number). CEILING: structurally guaranteed. The probe's result is a modeled fact; a typed sum with one cost-bearing arm (accepted, steps) and one verdict-bearing arm (rejected, stage, diagnostic) makes `a cost for a rejected input` unconstructible at the probe boundary, while the unmodeled residue (that the accepted fixture is representative) stays an outside-the-guarantee boundary.",
+
+    "NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: a probe that returns the stage reached and the located diagnostic of a rejection, and a cost report that refuses to print a step count for any piece whose verdict is not the accepted path. NOT satisfied by an author asserting `== 1` once in a single run, which closes this instance and not the class. Interim mitigation, scoped: any cost probe states per piece the verdict, the rejection stage and its diagnostic; a rejected piece is reported NO VERDICT, never a cost.",
+
+    "NOT CLAIMED HERE: how many np1-np4 pieces were Accepted. Only a re-run that returns the verdict can say, and any ratio or interaction hypothesis from np1-np5 is provisional until its piece's status is known. Whether other cost probes in the corpus share the shape (a witness over a code that includes refusals) is not enumerated; the one instance is this series.",
+  ],
+
+  evidence: [],
+}
