@@ -302,7 +302,6 @@ import product.p4261.e1_b {
   e1_w4_end,
   e1_y50,
   p4261_e1_layout,
-  p4261_near_4r7_converter_hypothesis,
 }
 import product.p4261.k1_a {
   k1_label_photo,
@@ -450,6 +449,7 @@ import product.p4261.report {
   u4_configuration_text,
   u5_2_root_of_trust_text,
 }
+import product.p4261.investigation { p4261_near_4r7_converter_hypothesis }
 import product.p4261.findings {
   CarrierFinding,
   CarrierPhaseObserved,
