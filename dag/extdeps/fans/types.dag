@@ -6,7 +6,7 @@ import extdeps.units.iec_61672 { AWeightedSoundPressureLevel, dba_tenths }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -129,6 +129,16 @@ type FanMaximumSpeed
   = FanMaximumSpeedKnown { speed: RevolutionsPerMinute }
   | FanMaximumSpeedUnpublished
 
+// THE FREE-AIR FLOW A VENDOR PUBLISHES: the flow at zero back-pressure, which is the most a fan delivers
+// and never what it delivers through a duct and a fin stack. A row that has not read it says what to read,
+// rather than carrying no field and letting a consumer assume one. Free air is the figure every vendor
+// prints; an installed flow needs the fan's pressure curve against the system's impedance, and the
+// consumer that has neither states the fraction it assumes (product.printed_chassis.exhaust_thermal
+// free_air_fraction) instead of reading this figure as delivered.
+type FanFreeAirFlow
+  = FreeAirFlowPublished { flow: MillilitrePerSecond, standing: CitedFigureStanding }
+  | FreeAirFlowUnread { read_obligation: NonEmptyStr }
+
 type FanCatalogRow {
   model: NonEmptyStr
   manufacturer: Vendor<Hardware>
@@ -138,6 +148,7 @@ type FanCatalogRow {
   published_points: List<FanPublishedOperatingPoint>
   published_speed_range: FanPublishedSpeedRange
   published_stop_behavior: FanPublishedStopBehavior
+  free_air_flow: FanFreeAirFlow
 }
 
 fn fan_point_has_level(point: FanPublishedOperatingPoint) -> Bool {

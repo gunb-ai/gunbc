@@ -1,6 +1,9 @@
 module product.printed_chassis.gpu_duct
 
 import product.printed_chassis.duct_fit_policy { DuctFitPolicy, plug_and_flange_print_policy }
+import product.printed_chassis.card_end_interface {
+  CardEndInterface, EndCapInserts, FaceConnector, feature_value, missing_feature, a16_card_end, a16_end_cap_inserts, a16_face_connector,
+}
 import std.optional { Optional, Present, Absent }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Micrometer, micrometer, micrometer_count, rpm, milliampere_count, millilitre_per_second_count, pascal_count }
@@ -90,21 +93,44 @@ type EndFaceMeasurement {
   connector_from_top: Micrometer
 }
 
-data a16_end_face: EndFaceMeasurement = EndFaceMeasurement {
-  source: "Operator caliper readings on a held A16 PG171, 2026-10-23",
-  face_length: micrometer(count: 97840),
-  face_thickness: micrometer(count: 38600),
-  window_length: micrometer(count: 88030),
-  window_depth: micrometer(count: 23940),
-  window_from_top: micrometer(count: 5540),
-  window_from_back: micrometer(count: 13090),
-  fin_setback: micrometer(count: 6000),
-  insert_spacing: micrometer(count: 27620),
-  insert_near_edge_from_back: micrometer(count: 8860),
-  upper_insert_near_edge_from_top: micrometer(count: 59720),
-  lower_insert_near_edge_from_bottom: micrometer(count: 7540),
-  connector_from_top: micrometer(count: 2560),
+// THIS IS A VIEW, NOT A SECOND READING. The reading is product.printed_chassis.card_end_interface
+// CardEndInterface, which every card's end face inhabits; this record is what the ducts in this module
+// fasten to -- the shared interface PLUS two end-cap inserts and an end-face header -- and it is built only
+// from a reading that has both. A card without them (the A2) is not given placeholder inserts to fit this
+// shape; screwed_end_cap_of refuses it and names what is missing.
+fn screwed_end_cap(i: CardEndInterface, inserts: EndCapInserts, connector: FaceConnector) -> EndFaceMeasurement {
+  EndFaceMeasurement {
+    source: i.source,
+    face_length: i.face_length,
+    face_thickness: i.face_thickness,
+    window_length: i.window_length,
+    window_depth: i.window_depth,
+    window_from_top: i.window_from_top,
+    window_from_back: i.window_from_back,
+    fin_setback: i.fin_setback,
+    insert_spacing: inserts.spacing,
+    insert_near_edge_from_back: inserts.near_edge_from_back,
+    upper_insert_near_edge_from_top: inserts.upper_near_edge_from_top,
+    lower_insert_near_edge_from_bottom: inserts.lower_near_edge_from_bottom,
+    connector_from_top: connector.from_top,
+  }
 }
+
+type ScrewedEndCapView
+  = ScrewedEndCap { face: EndFaceMeasurement }
+  | ScrewedEndCapMissing { features: List<String> }
+
+fn screwed_end_cap_of(i: CardEndInterface) -> ScrewedEndCapView {
+  match feature_value(f: i.inserts) {
+    Present { value: ins } => match feature_value(f: i.connector) {
+      Present { value: c } => ScrewedEndCap { face: screwed_end_cap(i: i, inserts: ins, connector: c) }
+      Absent => ScrewedEndCapMissing { features: missing_feature(name: "end-face power header", f: i.connector) }
+    }
+    Absent => ScrewedEndCapMissing { features: concat(missing_feature(name: "end-cap inserts", f: i.inserts), missing_feature(name: "end-face power header", f: i.connector)) }
+  }
+}
+
+data a16_end_face: EndFaceMeasurement = screwed_end_cap(i: a16_card_end, inserts: a16_end_cap_inserts, connector: a16_face_connector)
 
 // The inserts take an M3 x 4 screw (operator, 2026-10-23). Every insert reading is to the hole's
 // NEAR edge from the named face: top edge of the upper hole from the top end, bottom edge of the
