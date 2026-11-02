@@ -584,10 +584,15 @@ fn compute_user_sccache_server_uds(user_runtime_dir: FilePath) -> NonEmptyStr {
   join([user_runtime_dir as String, "/sccache.sock"], "") as NonEmptyStr
 }
 
-// THE UID THIS PROCESS RUNS AS, from /proc/self/status (proc(5)), read ONCE. The per-user runtime
-// directory below and the seat's exit-spool directory are both derived from this one reading: two separate
-// readings of the same fact could disagree about whose directory holds a seat's record, and a door reading
-// the wrong uid's spool would be reading somebody else's exit (DESIGN 3, one fact in one place).
+// THE UID THIS PROCESS RUNS AS, from /proc/self/status (proc(5)) -- THE ONE SPELLING of that read.
+// The per-user runtime directory below and the seat's exit-spool directory are both derived from THIS
+// function, so they cannot disagree about how the uid is obtained (DESIGN 3, one fact in one place).
+// Stated precisely, because an earlier draft of this comment overclaimed: this is one spelling, not one
+// READ -- each caller parses /proc/self/status for itself, and nothing memoizes it. The two directories
+// still agree because a process's effective uid does not change under it, so two reads inside one launch
+// return the same number; and if a read fails, its caller refuses TYPED (UidUnreadable, and the door
+// answers SeatStopRecordNoUid) rather than falling back, so a seat is never charged against a directory
+// whose owner is guessed.
 fn compute_launching_uid() -> Int? {
   let status = Filesystem.Read(path: "/proc/self/status")
   if !status.success {
