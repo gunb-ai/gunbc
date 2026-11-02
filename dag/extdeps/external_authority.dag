@@ -52,7 +52,6 @@ fn observed_receipt(receipt: DeclarationRef) -> ObservedReceipt
     decl_ref(module_path: "gunbc.host.srv1_serving_startup_receipt", decl_name: "srv1_serving_startup_ground"),
     decl_ref(module_path: "product.p4261.evidence", decl_name: "p4261_e1_revision_standing"),
     decl_ref(module_path: "product.p4261.evidence", decl_name: "p4261_k1_revision_standing"),
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_capture_receipt", decl_name: "mtcollins1_fan_discrete_typing_standing"),
   ]
   = ObservedReceipt { receipt: receipt }
 
