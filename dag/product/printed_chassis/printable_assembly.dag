@@ -28,7 +28,9 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 // residential print assembly -- reached implicitly through review_realization main. Naming it keeps
 // the two from being confused for one another.
 // The duct roots are one SHAPE on one CATALOGUED CARD. The six shapes are these: the two card mounts (plug,
-// sleeve), each as a full duct and as a fit ring; the radial-blower duct; and the flat-on-end blower duct.
+// sleeve), each as a full duct and as a fit ring; the radial-blower duct; and the flat-on-end blower duct. A seventh, the side-mounted blower duct
+// (product.printed_chassis.side_mount_duct: the blower's broad face against one face of the card, a short
+// chamber behind the end turning its air into the window), has one root per CardFaceSide.
 // Flat-on-end is its own kind and not a mode of the blower duct, because its geometry differs in kind: that
 // one is a socket the blower drops into beside the plug end, this one carries the housing on an open shoulder
 // behind the end with a channel turned back into the window. Two shapes, two attempts, two names to point at
@@ -41,9 +43,23 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 // CardRow id says a printed part for a card is named by. So a card added to
 // product.printed_chassis.duct_card_catalog duct_cards brings its own six roots with it, and no new arm,
 // spelling or selection site is written anywhere.
-type DuctRootKind = PlugDuct | SleeveDuct | PlugFitRing | SleeveFitRing | BlowerDuct | BlowerFlatOnEndDuct
+// WHICH FACE OF THE CARD a side-mounted part sits against. The end face is read from the BACK face (the
+// power-cap side) and the FRONT face is the other one (product.printed_chassis.gpu_duct EndFaceMeasurement).
+// A side-mounted root carries the side, so both orientations are roots of one kind rather than two kinds.
+type CardFaceSide = BackFaceSide | FrontFaceSide
 
-data duct_root_kinds: List<DuctRootKind> = [PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing, BlowerDuct, BlowerFlatOnEndDuct]
+data card_face_sides: List<CardFaceSide> = [BackFaceSide, FrontFaceSide]
+
+fn card_face_side_wire(side: CardFaceSide) -> String {
+  match side {
+    BackFaceSide => "back"
+    FrontFaceSide => "front"
+  }
+}
+
+type DuctRootKind = PlugDuct | SleeveDuct | PlugFitRing | SleeveFitRing | BlowerDuct | BlowerFlatOnEndDuct | BlowerSideMountDuct { side: CardFaceSide }
+
+data duct_root_kinds: List<DuctRootKind> = concat([PlugDuct, SleeveDuct, PlugFitRing, SleeveFitRing, BlowerDuct, BlowerFlatOnEndDuct], map(card_face_sides, s => BlowerSideMountDuct { side: s }))
 
 fn duct_root_kind_suffix(kind: DuctRootKind) -> String {
   match kind {
@@ -53,6 +69,7 @@ fn duct_root_kind_suffix(kind: DuctRootKind) -> String {
     SleeveFitRing => "sleeve-fit-ring"
     BlowerDuct => "blower-duct"
     BlowerFlatOnEndDuct => "blower-flat-on-end-duct"
+    BlowerSideMountDuct { side: s } => join(["blower-side-mount-", card_face_side_wire(side: s), "-duct"], "")
   }
 }
 
