@@ -283,59 +283,6 @@ pub fn rust_btree_set_supplemental_generic_bound_rows(
     CACHED.with(|c: &Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>>| c.clone())
 }
 
-pub fn std_rc_clone_impl_authority() -> Rc<ExternalAuthority> {
-    thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
-        scheme: UriScheme::Https,
-        locator: "doc.rust-lang.org/std/rc/struct.Rc.html#impl-Clone-for-Rc%3CT%3E".to_string(),
-    }),
-    })
-            };
-        }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
-}
-
-pub fn std_arc_clone_impl_authority() -> Rc<ExternalAuthority> {
-    thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
-        scheme: UriScheme::Https,
-        locator: "doc.rust-lang.org/std/sync/struct.Arc.html#impl-Clone-for-Arc%3CT%3E".to_string(),
-    }),
-    })
-            };
-        }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RustHeapReferenceUnconditionalBoundRow {
-    pub carrier_leaf: String,
-    pub capability: RustCapability,
-    pub authority: Rc<ExternalAuthority>,
-}
-
-pub fn rust_heap_reference_unconditional_bound_rows(
-) -> Rc<Vec<Rc<RustHeapReferenceUnconditionalBoundRow>>> {
-    thread_local! {
-            static CACHED: Rc<Vec<Rc<RustHeapReferenceUnconditionalBoundRow>>> = {
-                Rc::new(vec![Rc::new(RustHeapReferenceUnconditionalBoundRow {
-        carrier_leaf: "Rc".to_string(),
-        capability: RustCapability::RustClone,
-        authority: std_rc_clone_impl_authority(),
-    }), Rc::new(RustHeapReferenceUnconditionalBoundRow {
-        carrier_leaf: "Arc".to_string(),
-        capability: RustCapability::RustClone,
-        authority: std_arc_clone_impl_authority(),
-    })])
-            };
-        }
-    CACHED.with(|c: &Rc<Vec<Rc<RustHeapReferenceUnconditionalBoundRow>>>| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustSupplementalGenericBoundContractCoverageDisposition {
     pub owner: Rc<DeclarationRef>,
