@@ -462,6 +462,10 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     RosterHeadRow { call: "reverse", key: "reverse", import_name: "list_reverse", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_reverse", positional: ["xs"], appended: [] } },
     RosterHeadRow { call: "take", key: "take", import_name: "take_prefix", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "take_prefix", positional: ["xs", "n"], appended: [] } },
     RosterHeadRow { call: "flat_map", key: "flat_map", import_name: "list_flat_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_flat_map", positional: ["xs", "f"], appended: [] } },
+    // List binds to the EXISTING std.types List declaration, spelling kept (KeepHead): ruled by keen-otter-392 via
+    // sleek-owl-397 (T4 group A1). This rules the name and its home only; the alias List<e> = FreeMonoid<e> itself stays
+    // an explicit interim exception, gunbc.recurring_failure_mode list_is_a_bare_alias_of_free_monoid.
+    RosterHeadRow { call: "List", key: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [], head: KeepHead },
   ]
 }
 
