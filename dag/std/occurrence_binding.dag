@@ -2,7 +2,7 @@ module std.occurrence_binding
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { FreeMonoid, Empty, Cons }
+import std.algebra { FreeMonoid, Empty, Cons, list_reverse }
 import std.types { String }
 
 // STAGED ADOPTION: v1 and v2 execute over distinct Node algebras, so their shared
@@ -122,7 +122,7 @@ fn occurrence_binding_from_candidates<N>(
         candidates: AmbiguousBindingCandidates {
           first: first,
           second: second,
-          rest: reverse(rest_reversed),
+          rest: list_reverse(xs: rest_reversed),
         },
       }
   }
