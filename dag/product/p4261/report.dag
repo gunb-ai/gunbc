@@ -172,8 +172,7 @@ import product.p4261.evidence {
   ConnectorNotMappedWhole,
   RowContactNotReached,
   InputClassesNotEstablished,
-  NotTwoTerminals,
-  TerminalsNotPlaced,
+  PartNotPlaced,
   NetStateOutcome,
   NetSupported,
   NetCounterevidence,
@@ -309,6 +308,7 @@ import product.p4261.readings {
   across_input,
   AcrossInput,
   AcrossInputContradicted,
+  AcrossGap,
   AcrossInputStanding,
   AcrossInputUnestablished,
   attachment_of,
@@ -847,12 +847,7 @@ fn across_text(s: AcrossInputStanding) -> String {
       component_text(c: component), " across the input ('", terminal_text(t: on_fused), "' on the fused side, '", terminal_text(t: on_return), "' on the return side)",
     ], "")
     AcrossInputContradicted { component, readings } => join([component_text(c: component), " placement CONTRADICTED (", join(map(readings, o => continuity_text(o: o)), "; "), ")"], "")
-    AcrossInputUnestablished { component, gap } => join([component_text(c: component), " not placed across the input (",
-      match gap {
-        InputPolarityNotEstablished => "the input polarity is not established"
-        NotTwoTerminals => "not a two-terminal part"
-        TerminalsNotPlaced => "its terminals are not read to the two sides"
-      }, ")"], "")
+    AcrossInputUnestablished { component, gap } => join([component_text(c: component), " not placed across the input (", across_gap_text(g: gap), ")"], "")
   }
 }
 
@@ -1423,14 +1418,21 @@ fn j68_shape_from(all: List<ResistanceObservation>) -> String {
 
 // ── WIRING PROPOSITIONS ON THIS BOARD (product.p4261.evidence assess_net_proposition), RENDERED ─────
 
+fn across_gap_text(g: AcrossGap) -> String {
+  match g {
+    InputPolarityNotEstablished => "the input polarity is not established"
+    NotTwoTerminals => "not a two-terminal part"
+    TerminalsNotPlaced => "its terminals are not read to the two sides"
+  }
+}
+
 fn net_gap_text(g: NetGap) -> String {
   match g {
     OccupantNotPresentInState => "no part present at the position in that state"
     ConnectorNotMappedWhole => "the connector is not mapped whole"
     RowContactNotReached => "no terminal of the part is reached by every position of the row"
     InputClassesNotEstablished => "the input's two row classes are not established"
-    NotTwoTerminals => "the part is not a two-terminal part"
-    TerminalsNotPlaced => "its terminals are not placed in the classes"
+    PartNotPlaced { gap } => across_gap_text(g: gap)
   }
 }
 

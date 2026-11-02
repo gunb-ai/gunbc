@@ -82,7 +82,10 @@ import product.p4261.carrier {
 import extdeps.nvidia.p4261.connectors { HousingRow, P4261ContactInventory, inventory_total, p4261_contact_inventories }
 import extdeps.nvidia.p4261.netlist { NetRelation, P4261NetProposition, RowReachesPosition, SpansInput, p4261_net_propositions }
 import product.p4261.readings {
+  AcrossGap,
   AcrossInput,
+  NotTwoTerminals,
+  TerminalsNotPlaced,
   AcrossInputContradicted,
   AcrossInputUnestablished,
   BoardState,
@@ -786,8 +789,7 @@ type NetGap
   | ConnectorNotMappedWhole
   | RowContactNotReached
   | InputClassesNotEstablished
-  | NotTwoTerminals
-  | TerminalsNotPlaced
+  | PartNotPlaced { gap: AcrossGap }
 
 type NetStateOutcome
   = NetSupported { terminals: List<ElectricalTerminalRef>, readings: List<ContinuityObservation> }
@@ -946,7 +948,7 @@ fn spans_in(g: ReachabilityGraph, input: InputConnector, o: InstalledComponent) 
       Present { value: f0 } => match side_terminals(h: input.housing, side: return_side).first() {
         Absent => NetUnresolved { gap: InputClassesNotEstablished }
         Present { value: r0 } => match pairs_of(ts: component_terminal_refs(c: o)).first() {
-          Absent => NetUnresolved { gap: NotTwoTerminals }
+          Absent => NetUnresolved { gap: PartNotPlaced { gap: NotTwoTerminals } }
           Present { value: p } => match placed_pair(g: g, comp: o.component, p: p, f0: f0, r0: r0) {
             AcrossInput { component: _, on_fused, on_return, fused_path, return_path } => NetSupported { terminals: [on_fused, on_return], readings: concat(fused_path, return_path) }
             AcrossInputContradicted { component: _, readings } => NetEvidenceConflict { readings: readings, occupants: no_component_ids() }
@@ -967,7 +969,7 @@ fn same_class(g: ReachabilityGraph, p: TerminalPair, f0: ElectricalTerminalRef, 
   let br = reach(g: g, a: p.b, b: r0)
   if is_reachable(s: af) && is_reachable(s: bf) { NetCounterevidence { terminals: [p.a, p.b], readings: concat(supporting_readings(s: af), supporting_readings(s: bf)) } }
   else if is_reachable(s: ar) && is_reachable(s: br) { NetCounterevidence { terminals: [p.a, p.b], readings: concat(supporting_readings(s: ar), supporting_readings(s: br)) } }
-  else { NetUnresolved { gap: TerminalsNotPlaced } }
+  else { NetUnresolved { gap: PartNotPlaced { gap: TerminalsNotPlaced } } }
 }
 
 fn relation_positions(r: NetRelation) -> List<P4261Position> {
