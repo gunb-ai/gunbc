@@ -1,0 +1,42 @@
+module extdeps.pci.express_link_control
+
+import std.types { Bool, Int, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE PCI EXPRESS LINK CONTROL REGISTER'S LINK DISABLE BIT, from the PCI Express Base Specification
+// (revision 5.0, section 7.5.3.7, Link Control Register). The register is at offset 10h in the PCI Express
+// Capability structure (capability ID 10h, section 7.5.3). Bit 4 is Link Disable: when Set it "disables the
+// Link by directing the LTSSM to the Disabled state"; it is applicable to Downstream Ports, which include a
+// Root Port, and reserved on Upstream Ports. Writes to it take effect on the link the port leads; the
+// function behind that link is not reachable while it is Set. A system reset clears it (it is RW with a
+// default of 0b), which is why a consumer that needs the link off holds an obligation on every boot.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pcisig.com/specifications/pciexpress"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.pci.express_link_control",
+      decl_name: "pcie_link_control_link_disable_mask",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data pcie_capability_id: Int = 16
+data pcie_link_control_offset: Int = 16
+data pcie_link_control_link_disable_mask: Int = 16
+
+// Whether a 16-bit Link Control value has Link Disable Set. The mask is one bit, so the test is that bit
+// of the value; the value is the register as read, never a value the reader composed.
+fn pcie_link_control_link_disabled(value: Int) -> Bool {
+  (value / pcie_link_control_link_disable_mask) % 2 == 1
+}
