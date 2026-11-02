@@ -880,6 +880,36 @@ fn project_nullary_arm_binding(node: Node) -> Outcome<TargetValueExpression> {
   }
 }
 
+// A NESTED VALUE REUSES THE FACTS-AWARE RULE. A marked declaration reference reached through a record
+// field or a match arm is projected by project_value_node_from_inferred_facts, the one place that
+// knows a reference is a nullary coproduct arm; every other node stays the transform projection.
+fn project_nested_node_with_facts(
+  arrow: Node,
+  node: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex
+) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      project_value_node_from_inferred_facts(
+        arrow: arrow,
+        node: node,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: fn(a, b, t) {
+          project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations)
+        }
+      )
+    ComputationNode { behavior: _ } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+    TypeNode { connective: Atom { identity: _ } } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+    TypeNode { connective: Disj } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+    TypeNode { connective: Arrow } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+    TypeNode { connective: Instantiation } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+  }
+}
+
 fn project_value_node_from_inferred_facts(
   arrow: Node,
   node: Node,
@@ -1172,7 +1202,7 @@ fn target_serialize_bodied_arrow_with_scaffolded_header(
                   tree: tree,
                   declarations: declarations,
                   handle_transform: fn(a, b, t) {
-                    translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+                    project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations)
                   }
                 ),
                 f: fn(expr) {
