@@ -6,18 +6,8 @@
       "ry": 0,
       "rz": 0,
       "x_um": 40300,
-      "y_um": 8000
-    },
-    {
-      "id": "LID",
-      "rx": 0,
-      "ry": 0,
-      "rz": 0,
-      "x_um": 40300,
-      "y_um": 100100
+      "y_um": 40000
     }
   ],
-  "support_free": [
-    "LID"
-  ]
+  "support_free": []
 }
