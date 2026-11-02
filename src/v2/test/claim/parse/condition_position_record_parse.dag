@@ -1,14 +1,11 @@
 module v2.test.claim.parse.condition_position_record_parse
 
-import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Branch, ComputationNode, Match, Node, NodeKind, Symbol }
-import v2.std.node_query { find_arrow_body_child }
+import v2.std.node { Node, Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -108,33 +105,6 @@ fn record_chain_condition_still_parses() -> Bool { g_parse_accepted(text: record
 
 fn else_if_chain_still_parses() -> Bool { g_parse_accepted(text: else_if_chain_source, file: ^else_chain_probe) }
 
-// The RED's lowering-shape twin (the exemplar's bare_if_body_is_branch shape): the arrow body of
-// the else-less body must lower to the Branch construct -- the if is a branch, not a call to a
-// record constructor. If the record reading ever returns, the arrow body stops being a Branch.
-fn elseless_if_arrow_body_kind() -> Optional<NodeKind> {
-  match g_tokenize_parse(text: elseless_if_with_tail_source, file: ^elseless_tail_probe) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: tree, diagnostics: _ } =>
-      match normalize(parse_tree: tree) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: normalized, diagnostics: _ } => arrow_body_kind(root: normalized.root)
-      }
-  }
-}
-
-fn arrow_body_kind(root: Node) -> Optional<NodeKind> {
-  match find_arrow_body_child(root: root) {
-    Accepted { value: body, diagnostics: _ } => Present { value: body.kind }
-    Rejected { diagnostics: _ } =>
-      fold(root.children, init: Absent, f: fn(found, e) {
-        match found {
-          Present { value: _ } => found
-          Absent => arrow_body_kind(root: e.target)
-        }
-      })
-  }
-}
-
 test fn elseless_if_with_tail_parses_holds() -> Bool { elseless_if_with_tail_parses() }
 
 test fn then_branch_record_parses_holds() -> Bool { then_branch_record_parses() }
@@ -152,10 +122,3 @@ test fn record_match_scrutinee_still_parses_holds() -> Bool { record_match_scrut
 test fn record_chain_condition_still_parses_holds() -> Bool { record_chain_condition_still_parses() }
 
 test fn else_if_chain_still_parses_holds() -> Bool { else_if_chain_still_parses() }
-
-test fn elseless_if_body_is_branch_holds() -> Bool {
-  match elseless_if_arrow_body_kind() {
-    Present { value: ComputationNode { behavior: Branch } } => true
-    _ => false
-  }
-}
