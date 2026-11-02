@@ -539,7 +539,7 @@ test fn a_refused_row_carries_the_unbound_spelling_and_its_authored_position_hol
           FieldRead { value: d } =>
             ce_field_string_is(obj: d, key: "reason", expected: "resolve_reason_unbound_symbol")
               && ce_field_string_is(obj: d, key: "unbound_ref", expected: "ce_no_such_fn")
-              && ce_field_string_is(obj: d, key: "file", expected: "src/v2/test/ce_unbound_name.dag")
+              && ce_field_string_is(obj: d, key: "file", expected: "ce_unbound_name_read")
               && ce_field_int_present(obj: d, key: "start")
               && ce_field_int_present(obj: d, key: "end")
           _ => false
