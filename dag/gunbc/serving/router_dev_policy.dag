@@ -902,14 +902,12 @@ type RouterDevCapacity
 // HOW MANY CONVERSATIONS A ROW RETAINS. The first-party Strata rows' count is DERIVED from the serving layout
 // (gunbc.serving.serving_layout, ServingReplicaConfig.admitted_conversations) and never typed here.
 // RetentionFrontier is a declared gap: the row's count cannot yet be derived (srv3's and srv1-vllm's layouts
-// are not modeled), so it renders no retain, as the live file does. RetentionUnderivable is the failure arm
-// -- the layout refused or has no replica for the named group -- and the write refuses it rather than
-// rendering a row that silently admits without bound.
+// are not modeled), so it renders no retain, as the live file does. A layout that is refused or names no
+// replica for a group never reaches a row: the h11 projection refuses (RouterDevH11Refused) and every writer stops.
 type RouterDevRetention
   = NoRetention
   | RetentionAdmitted { conversations: Nat }
   | RetentionFrontier
-  | RetentionUnderivable { group: String }
 
 // HOW ONE CLIENT REASONING-EFFORT NAME IS ANSWERED BY ONE UPSTREAM MODEL'S SERVER. The pool alias and
 // each engine accept a DIFFERENT set of effort names, and an engine answers 400 on a name it does not
@@ -994,7 +992,6 @@ fn router_dev_retention_members(r: RouterDevRetention) -> List<JsonKeyValue> {
     RetentionAdmitted { conversations: n } => [json_kv(key: "retain", value: json_int(n: n as Int))]
     NoRetention => no_members()
     RetentionFrontier => no_members()
-    RetentionUnderivable { group: _ } => no_members()
   }
 }
 
@@ -1075,14 +1072,8 @@ fn router_dev_first_party() -> RouterDevFirstParty {
 // deploy and are in no row). The h11 engines follow the layout grant (four since A-prime),
 // srv1's vLLM, srv3's Strata and the ctrl rented pool. A single 16 GB engine serves ~10-13 warm tok/s at 200k,
 // so cap 2. Retiring names count old-worker turns during a graceful rename.
-// Every writer matches router_dev_first_party() and refuses before it reads these rows; a refused projection
-// reads as no rows here, never as a smaller fleet that is written.
-fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
-  match router_dev_first_party() {
-    RouterDevFirstPartyRows { rows: r } => r
-    RouterDevFirstPartyRefused { reason: _ } => []
-  }
-}
+// router_dev_first_party() is the one reader: a refused projection is a refusal and never reads as no rows or
+// a smaller fleet.
 
 fn router_dev_first_party_head() -> List<RouterDevUpstream> {
   [
@@ -1100,8 +1091,11 @@ fn router_dev_first_party_tail() -> List<RouterDevUpstream> {
   ]
 }
 
-fn router_dev_first_party_json() -> String {
-  serialize_json(v: json_array(elements: map(router_dev_first_party_upstreams(), u => router_dev_upstream_value(u: u))))
+fn router_dev_first_party_json(fp: RouterDevFirstParty) -> String? {
+  match fp {
+    RouterDevFirstPartyRows { rows: rs } => Present { value: serialize_json(v: json_array(elements: map(rs, u => router_dev_upstream_value(u: u)))) }
+    RouterDevFirstPartyRefused { reason: _ } => Absent
+  }
 }
 
 // The deploy's second render step: the first-party rows, without keys, for the deploy to join keys into
@@ -1140,26 +1134,10 @@ fn router_dev_retiring_name_conflict(rows: List<RouterDevUpstream>) -> String? {
     })
 }
 
-fn router_dev_underivable_retention(rows: List<RouterDevUpstream>) -> String? {
-  fold(rows, init: Absent, f: (acc, u) =>
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => match u.retention {
-        RetentionUnderivable { group: g } => Present { value: concat("a row's retention is not derivable from the serving layout: ", concat(u.name, concat(" (group ", concat(g, ")"))))  }
-        NoRetention => Absent
-        RetentionAdmitted { conversations: _ } => Absent
-        RetentionFrontier => Absent
-      }
-    })
-}
-
 fn router_dev_row_refusal(rows: List<RouterDevUpstream>) -> ProcessExit? {
   match router_dev_retiring_name_conflict(rows: rows) {
     Present { value: why } => Present { value: ExitFailure { code: 1, reason: concat("refused upstream rows: ", why) } }
-    Absent => match router_dev_underivable_retention(rows: rows) {
-      Present { value: why } => Present { value: ExitFailure { code: 1, reason: concat("refused upstream rows: ", why) } }
-      Absent => Absent
-    }
+    Absent => Absent
   }
 }
 
@@ -1173,9 +1151,12 @@ fn router_dev_first_party_refusal(fp: RouterDevFirstParty) -> ProcessExit? {
 fn router_dev_srv1_write_first_party_upstreams() -> ProcessExit {
   match router_dev_first_party_refusal(fp: router_dev_first_party()) {
     Present { value: refused } => refused
-    Absent => {
-      let w = Filesystem.Write(path: "/home/briansrls/router/upstreams.first_party.json", content: router_dev_first_party_json())
-      if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
+    Absent => match router_dev_first_party_json(fp: router_dev_first_party()) {
+      Absent => ExitFailure { code: 1, reason: "refused upstream rows: no first-party projection" }
+      Present { value: j } => {
+        let w = Filesystem.Write(path: "/home/briansrls/router/upstreams.first_party.json", content: j)
+        if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
+      }
     }
   }
 }

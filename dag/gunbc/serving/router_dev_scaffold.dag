@@ -78,7 +78,7 @@ data router_dev_upstream_rows_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.serving.router_dev_policy",
-    decl_name: "router_dev_first_party_upstreams",
+    decl_name: "router_dev_first_party",
     field: WholeDeclaration
   }
 }
@@ -124,7 +124,7 @@ data router_dev_frontier_rows: List<FrontierRow> = [
     dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party_upstreams"),
+    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party"),
     reason: "Hand-maintained upstream list (row 3): literal first-party rows and the ctrl rented-pool overflow gateway.",
     dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment", decl_name: "rented_cohort_enrollments_from_allocations"))
   ),
