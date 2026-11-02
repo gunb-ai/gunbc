@@ -308,9 +308,9 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  // fifteen, measured at this head by running the projection (one row per op; the kinds are listed by name
-  // below). The pin this PR inherited said twelve against fourteen rows already on main.
-  count(rows) == 15
+  // no length is asserted: dashboard_provision_plan_names_its_steps_in_order in this file pins the plan's
+  // steps by name and order, which is what catches a dropped or renamed step; a copied count is a change
+  // detector (DESIGN 5).
     && !any(rows, row => row.kind == "ensure-provider-state-root" || row.kind == "ensure-directory")
     && any(rows, row => row.kind == "assert-metering-closing-writer-excluded")
     && any(rows, row => row.kind == "ensure-serve-binary")

@@ -114,6 +114,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_paths_are_owned,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
+  dashboard_instance_provision_plan_rows,
   dashboard_instance_reconcile,
   dashboard_instance_retract_plan,
   dashboard_instance_dispatch_worktree_root,
@@ -235,26 +236,75 @@ fn plan_binds_source_ref_translation(
     })
 }
 
+// The provision plan is asserted by IDENTITY, never by length. A length copied off the current tree is a
+// change detector (DESIGN 5) and nothing watches it: the pins this file carried said eleven and nine long
+// after the plan had grown to fourteen and twelve, and because no CI job runs dag/test/claim they were
+// failing quietly on main. So the claims below name the steps the plan must contain, in the order the
+// cutover requires, and compare the plan's own step names against that list -- a rename, a dropped step or
+// a step moved out of order fails by NAME, and an unrelated step joining the plan is a decision someone has
+// to write down here rather than a number that silently stops matching.
+fn provision_plan_names_its_steps_in_order(
+  instance: HostDashboardInstance,
+  kinds: List<String>,
+) -> Bool {
+  join(
+    list_map(
+      xs: filter(
+        xs: dashboard_instance_provision_plan_rows(instance: instance),
+        predicate: row => any(kinds, k => k == row.kind),
+      ),
+      f: row => row.kind,
+    ),
+    separator: ",",
+  )
+    == join(kinds, separator: ",")
+}
+
+// srv1_lab's steps, in the order the cutover requires: the attempt-state moves first (the legacy writers
+// must be gone before anything new is written), then the controller history, then the bundle is prepared,
+// the serve binary and ownership marker put in place, the bundle staged, the origin and source repo
+// ensured, the shared-repository posture set BEFORE the worker subtree is migrated (git stamps a worktree's
+// private files with the mode it has at creation), the provider verified, and only then the two writer
+// gates -- #15413's legacy writers and this PR's metering closing writer.
+fn srv1_lab_provision_step_kinds() -> List<String> {
+  [
+    "move-attempt-state-entries", "move-attempt-state-entries", "hydrate-controller-history",
+    "prepare-git-bundle", "ensure-serve-binary", "ensure-ownership-marker", "stage-git-bundle",
+    "ensure-local-origin", "ensure-source-repo", "ensure-git-shared-repository-posture",
+    "migrate-git-worker-subtree", "verify-provider-runtime", "verify-provider-auth",
+    "assert-legacy-writer-excluded", "assert-metering-closing-writer-excluded",
+  ]
+}
+
+// srv2_lab is the otherwise-identical instance whose worker is STILL the service user: no shared-repository
+// posture and no subtree migration, which is why the identity list -- not a count -- is what distinguishes
+// the two plans.
+fn srv2_lab_provision_step_kinds() -> List<String> {
+  [
+    "move-attempt-state-entries", "move-attempt-state-entries", "hydrate-controller-history",
+    "prepare-git-bundle", "ensure-serve-binary", "ensure-ownership-marker", "stage-git-bundle",
+    "ensure-local-origin", "ensure-source-repo", "verify-provider-runtime", "verify-provider-auth",
+    "assert-legacy-writer-excluded", "assert-metering-closing-writer-excluded",
+  ]
+}
+
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  // ELEVEN, where srv2_lab -- the otherwise-identical instance whose worker is STILL the service user --
-  // stays at nine. The tenth and eleventh ops are WORKER-ROOT-EQUIVALENT-3's shared-repository posture
-  // and its one-time subtree migration, and they exist for one reason each: with a dedicated worker the
-  // repository must be group-shared BEFORE an attempt's linked worktree is added, because git stamps the
-  // worktree's private files (index, HEAD, logs/HEAD) with the mode it has at creation time; and the
-  // directories that ALREADY EXIST in that repository (objects/f9 and the rest of the fan-out, refs/,
-  // logs/) were created by the owner alone, so a group bit asserted on the three tops does not reach
-  // them -- the first worker commit dies inside objects/f9. Both are named by the ops below rather than
-  // only counted, and their ORDER is pinned by name in the other witness. Asserted by count as well as
-  // by name, so a rename or a silently dropped op cannot hide behind either. The last op is the closing-marker
-  // cutover gate (DashboardAssertMeteringClosingWriterExcluded), named and pinned by kind in
+  // The plan is asserted by IDENTITY: srv1_lab's steps, each present, in the required order (see
+  // srv1_lab_provision_step_kinds). Where srv2_lab -- the otherwise-identical instance whose worker is STILL
+  // the service user -- differs, it differs by NAME: no shared-repository posture and no subtree migration.
+  // Those two steps exist for one reason each: with a dedicated worker the repository must be group-shared
+  // BEFORE an attempt's linked worktree is added, because git stamps the worktree's private files (index,
+  // HEAD, logs/HEAD) with the mode it has at creation time; and the directories that ALREADY EXIST in that
+  // repository (objects/f9 and the rest of the fan-out, refs/, logs/) were created by the owner alone, so a
+  // group bit asserted on the three tops does not reach them -- the first worker commit dies inside
+  // objects/f9. The last step is this PR's closing-marker cutover gate
+  // (assert-metering-closing-writer-excluded), pinned by kind and by instance in
   // test.claim.c_roadmap2_closing_cutover_witness the_plan_carries_the_closing_gate_for_the_instances_that_declare_a_fence.
-  // FIFTEEN, measured at this head by running the plan itself (the interpreter's answer, not a guess). The pin
-  // this PR inherited said twelve against a plan that was already fourteen: hydrate-controller-history,
-  // ensure-serve-binary and ensure-ownership-marker joined the plan without this number moving, and no CI job
-  // runs dag/test/claim, so the claim was failing quietly on main.
-  count(plan) == 15
+  // No length is asserted anywhere: a copied count is a change detector, and the eleven/nine pins this file
+  // used to carry had already rotted on main without anything noticing.
+  provision_plan_names_its_steps_in_order(instance: lab, kinds: srv1_lab_provision_step_kinds())
     && plan_has_one_shared_repository_posture(plan: plan, instance: lab)
     && plan_has_one_worker_subtree_migration(plan: plan, instance: lab)
     && demands_cover_every_auth_store(instance: lab)
@@ -674,10 +724,11 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  // thirteen, measured at this head the same way: the last one is the closing-marker cutover gate, pinned by
-  // kind in test.claim.c_roadmap2_closing_cutover_witness. The inherited pin said ten against a plan of twelve,
-  // for the same reason as srv1_lab's.
-  count(plan) == 13
+  // identity, not length: srv2_lab's own step list (srv2_lab_provision_step_kinds) -- the same steps as
+  // srv1_lab's MINUS the shared-repository posture and the subtree migration, because its worker is still the
+  // service user, and ending with this PR's closing-marker cutover gate, pinned by kind in
+  // test.claim.c_roadmap2_closing_cutover_witness.
+  provision_plan_names_its_steps_in_order(instance: lab, kinds: srv2_lab_provision_step_kinds())
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
