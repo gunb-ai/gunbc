@@ -233,6 +233,7 @@ test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool {
              InstallTargetContextMismatch { requested: _ } => false
              InstallBootControlUnestablished { cause: _ } => false
              InstallNoBootSourceOverride { firmware: _ } => false
+             InstallNoEligibleNetworkTransport { considered: _ } => false
              InstallNoEligibleTransport { firmware: _, considered: _ } => false
              InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
            }
