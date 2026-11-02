@@ -579,9 +579,9 @@ test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
 // declared v2.std.node Symbol do at fn-return and record-field positions through the closure emitter.
 data ce_ss_node_source: String = "module v2.std.node\n\ntype Symbol\n"
 
-data ce_ss_string_fn_source: String = "module v2.test.ce_ss_string_fn\n\nimport std.types { String }\n\nfn ce_ss_string_fn(p: String) -> String { p }\n"
+data ce_ss_string_fn_source: String = "module v2.test.ce_ss_string_fn\n\nfn ce_ss_string_fn(p: String) -> String { p }\n"
 
-data ce_ss_string_field_source: String = "module v2.test.ce_ss_string_field\n\nimport std.types { String }\n\ntype CeSsRec { name: String }\n"
+data ce_ss_string_field_source: String = "module v2.test.ce_ss_string_field\n\ntype CeSsRec { name: String }\n"
 
 data ce_ss_symbol_fn_source: String = "module v2.test.ce_ss_symbol_fn\n\nimport v2.std.node { Symbol }\n\nfn ce_ss_symbol_fn(p: Symbol) -> Symbol { p }\n"
 
