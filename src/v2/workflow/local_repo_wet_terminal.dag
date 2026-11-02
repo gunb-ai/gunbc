@@ -420,6 +420,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_replay_wet_witness", function: "a_recording_replays_its_tree_byte_for_byte_and_refuses_inexactly_in_a_real_repository" },
+      entry: "dag/test/claim/roadmap/dispatch_replay_wet_witness.dag",
+      function: "a_recording_replays_its_tree_byte_for_byte_and_refuses_inexactly_in_a_real_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
       function: "a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_real_execution",

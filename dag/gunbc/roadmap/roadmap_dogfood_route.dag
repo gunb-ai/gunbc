@@ -64,7 +64,11 @@ import gunbc.roadmap.roadmap_attempt_metering {
   metering_token_total, metering_seat_time_total, ComputeUsage, ComputeNotAttributable,
   MeteringTokensObserved, MeteringTokensIncomplete, MeteringSeatTimeObserved, MeteringSeatTimeIncomplete,
 }
+import gunbc.dispatch_attempt_launch { DispatchExecutorOrigin, RealExecutorOrigin, ReplayExecutorOrigin }
+import gunbc.dispatch_replay_recording { recording_id_text }
+import gunbc.roadmap.roadmap_dispatch_destination { DispatchExecutorOriginRead, DispatchExecutorOriginObserved, DispatchExecutorOriginUnreadable }
 import gunbc.roadmap.roadmap_belt_actuate {
+  belt_spawn_executor_origin_observe,
   BeltWorkflowAttemptEvidences, WorkflowAttemptEvidencesObserved, WorkflowAttemptEvidencesRefused,
   belt_workflow_attempt_history_evidences_observe_for_instance,
 }
@@ -172,6 +176,7 @@ type MeteringEvidence sole_constructor {
   output_tokens: TokenCount
   seat_time: Second
   compute: ComputeUsage
+  executor: DispatchExecutorOrigin
 }
 
 fn dogfood_compute_word(c: ComputeUsage) -> String {
@@ -512,6 +517,7 @@ fn dogfood_unproduced_stages(u: DogfoodUnproduced) -> List<DogfoodStage> {
 type DogfoodAttemptRecords {
   request: AttemptRequestBindingRead
   service: ServiceEvidenceObservation
+  executor: DispatchExecutorOriginRead
 }
 
 type DogfoodAttemptView {
@@ -523,6 +529,7 @@ fn dogfood_attempt_records_for(instance: HostDashboardInstance, e: WorkflowAttem
   DogfoodAttemptRecords {
     request: attempt_request_binding_read_for_instance(instance: instance, node_id: e.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: e.attempt_key),
     service: service_evidence_observe_for_attempt(instance: instance, node_id: e.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: e.attempt_key),
+    executor: belt_spawn_executor_origin_observe(instance: instance, node_id: e.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: e.attempt_key),
   }
 }
 
@@ -544,11 +551,11 @@ fn dogfood_result_returned_reading_of(service: ServiceEvidenceObservation) -> Re
   }
 }
 
-fn dogfood_metering_reading_of(service: ServiceEvidenceObservation) -> MeteringReading {
+fn dogfood_metering_reading_of(service: ServiceEvidenceObservation, executor: DispatchExecutorOriginRead) -> MeteringReading {
   match service {
     ServiceEvidenceJoined { receipt } =>
       match receipt.inputs.metering {
-        MeteringRead { observation } => dogfood_metering_reading(m: observation)
+        MeteringRead { observation } => dogfood_metering_reading(m: observation, executor: executor)
       }
     ServiceEvidenceAttemptUnlaunched => MeteringGap { gap: StageRefused { reason: "the attempt has no launch record, so no metering can be bound to it" } }
     ServiceEvidenceRefused { reason } => MeteringGap { gap: StageRefused { reason: reason } }
@@ -581,7 +588,25 @@ fn dogfood_result_returned_reading(r: ResultReturnedObservation) -> ResultReturn
   }
 }
 
-fn dogfood_metering_reading(m: AttemptMeteringObservation) -> MeteringReading {
+// A REPLAYED ATTEMPT HAS NO METERING THAT COUNTS, and the mint is where that is made unwritable rather than
+// checked afterwards: MeteringEvidence carries the executor origin as a required field and this is its only
+// constructor, which builds one only from a record read for a REAL executor. A replay origin, and an origin the
+// spawn record does not state or states unreadably, are a refused stage, so the route can never complete over a
+// replayed attempt (DogfoodRouteComplete holds a MeteringEvidence).
+fn dogfood_metering_reading(m: AttemptMeteringObservation, executor: DispatchExecutorOriginRead) -> MeteringReading {
+  match executor {
+    DispatchExecutorOriginUnreadable { reason } =>
+      MeteringGap { gap: StageRefused { reason: join(["the attempt's executor origin is unreadable, so its metering cannot be attributed to a real attempt: ", reason], "") } }
+    DispatchExecutorOriginObserved { origin } =>
+      match origin {
+        ReplayExecutorOrigin { recording_id } =>
+          MeteringGap { gap: StageRefused { reason: join(["the attempt replayed recording ", recording_id_text(id: recording_id), " and ran no model, so it is not a real attempt and its metering does not count"], "") } }
+        RealExecutorOrigin => dogfood_real_metering_reading(m: m)
+      }
+  }
+}
+
+fn dogfood_real_metering_reading(m: AttemptMeteringObservation) -> MeteringReading {
   match m {
     MeteringObserved { record } =>
       match metering_token_total(record: record, output: false) {
@@ -593,7 +618,7 @@ fn dogfood_metering_reading(m: AttemptMeteringObservation) -> MeteringReading {
             MeteringTokensObserved { value } =>
               match metering_seat_time_total(record: record) {
                 MeteringSeatTimeIncomplete { cause } => MeteringGap { gap: StageRefused { reason: cause } }
-                MeteringSeatTimeObserved { held } => MeteringEstablished { evidence: MeteringEvidence { input_tokens: input, output_tokens: value, seat_time: held, compute: record.compute } }
+                MeteringSeatTimeObserved { held } => MeteringEstablished { evidence: MeteringEvidence { input_tokens: input, output_tokens: value, seat_time: held, compute: record.compute, executor: RealExecutorOrigin } }
               }
           }
         }
@@ -617,7 +642,7 @@ fn dogfood_route_readings(e: WorkflowAttemptEvidence, records: DogfoodAttemptRec
     placement_grant: dogfood_placement_grant_reading(p: e.session_placement),
     isolated_execution: dogfood_unproduced.isolated_execution,
     durable_result: submission,
-    metering: dogfood_metering_reading_of(service: records.service),
+    metering: dogfood_metering_reading_of(service: records.service, executor: records.executor),
     independent_review: if head == "" { ReviewGap { gap: StageOwed { owed_by: "no captured submission, so no head to review" } } } else { dogfood_review_reading(node_id: e.node_id, head_sha: head, report: e.review) },
     candidate_published: if head == "" { PublicationGap { gap: StageOwed { owed_by: "no captured submission, so no head to publish" } } } else { dogfood_publication_reading(head_sha: head, subject: e.publication_subject, evidence_source: e.publication_source) },
     cleanup: dogfood_cleanup_reading(p: e.session_placement),
@@ -941,7 +966,7 @@ fn dogfood_receipt_binding_defect_here(instance: HostDashboardInstance, receipt:
     Absent =>
       match dogfood_request_record_defect(receipt: receipt, record: attempt_request_binding_read_for_instance(instance: instance, node_id: receipt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key)) {
         Present { value: why } => Present { value: why }
-        Absent => dogfood_durable_g3_g4_defect(receipt: receipt, service: service_evidence_observe_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key))
+        Absent => dogfood_durable_g3_g4_defect(receipt: receipt, service: service_evidence_observe_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key), executor: belt_spawn_executor_origin_observe(instance: instance, node_id: receipt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key))
       }
   }
 }
@@ -950,7 +975,7 @@ fn dogfood_receipt_binding_defect_here(instance: HostDashboardInstance, receipt:
 // evidence gather: the result reader must observe exactly the pinned event and claim, published at the
 // pinned PR and head, through a cleanly closed snapshot; the metering reader must observe a Final
 // record whose totals are the pinned ones and whose compute standing is the pinned one.
-fn dogfood_durable_g3_g4_defect(receipt: DogfoodStartReceipt, service: ServiceEvidenceObservation) -> String? {
+fn dogfood_durable_g3_g4_defect(receipt: DogfoodStartReceipt, service: ServiceEvidenceObservation, executor: DispatchExecutorOriginRead) -> String? {
   match service {
     ServiceEvidenceAttemptUnlaunched => Present { value: "the attempt has no launch record to read its G3 and G4 records under" }
     ServiceEvidenceRefused { reason } => Present { value: join(["the attempt's G3 and G4 records are unreadable: ", reason], "") }
@@ -964,7 +989,7 @@ fn dogfood_durable_g3_g4_defect(receipt: DogfoodStartReceipt, service: ServiceEv
           }
       }
       let metering_defect = match live.inputs.metering {
-        MeteringRead { observation } => dogfood_durable_metering_defect(receipt: receipt, observation: observation)
+        MeteringRead { observation } => dogfood_durable_metering_defect(receipt: receipt, observation: observation, executor: executor)
       }
       match result_defect {
         Present { value: why } => Present { value: why }
@@ -993,10 +1018,10 @@ fn dogfood_durable_result_defect(receipt: DogfoodStartReceipt, observation: Resu
   }
 }
 
-fn dogfood_durable_metering_defect(receipt: DogfoodStartReceipt, observation: AttemptMeteringObservation) -> String? {
+fn dogfood_durable_metering_defect(receipt: DogfoodStartReceipt, observation: AttemptMeteringObservation, executor: DispatchExecutorOriginRead) -> String? {
   match observation {
     MeteringObserved { record } =>
-      match dogfood_metering_reading(m: MeteringObserved { record: record }) {
+      match dogfood_metering_reading(m: MeteringObserved { record: record }, executor: executor) {
         MeteringGap { gap: _ } => Present { value: "the attempt's Final metering record has incomplete totals" }
         MeteringEstablished { evidence: m } =>
           match service_evidence_snapshot_final_metering(snapshot: receipt.service_evidence) {

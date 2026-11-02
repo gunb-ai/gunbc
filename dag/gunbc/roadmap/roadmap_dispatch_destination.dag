@@ -3,6 +3,9 @@ module gunbc.roadmap.roadmap_dispatch_destination
 import std.types { String, NonEmptyStr, Bool, List }
 import std.algebra { trim }
 import extdeps.github.github { Repository }
+import gunbc.dispatch_attempt_launch { DispatchExecutorOrigin, RealExecutorOrigin, ReplayExecutorOrigin }
+import gunbc.dispatch_replay_recording { recording_id_text, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed }
+import extdeps.languages.json.parse { json_field_string, FieldRead, FieldAbsent, FieldMalformed }
 import extdeps.languages.json.emit {
   JsonValue,
   JsonKeyValue,
@@ -223,10 +226,72 @@ fn destination_not_this_spawn_tree_reason(identity: DestinationIdentity) -> NonE
 // is the fact. Privacy and default branch are recorded as standings, not as GitHub
 // Repository fields, so an unobserved destination cannot mint private:true in this file.
 
+// WHAT EXECUTED THE ATTEMPT, as a fact of the attempt rather than a property of its provider: a real
+// worker, or the replay of a RECORDED end state (gunbc.dispatch_replay_recording). It is a REQUIRED field
+// of the spawn origin, which the belt writes once at spawn for every attempt, so no attempt record can
+// exist without answering it; a replayed attempt cannot be recorded as a real one because the same value
+// that selected the replay executor is the one written here. The recording is named by its id text, the
+// preimage that fixes one recording to one fact.
 type DispatchSpawnOrigin {
   identity: DestinationIdentity
   base_ref: NonEmptyStr
   base_sha: NonEmptyStr
+  executor: DispatchExecutorOrigin
+}
+
+data dispatch_executor_origin_key: String = "executor"
+
+data dispatch_executor_origin_recording_key: String = "recording_id"
+
+data dispatch_executor_origin_real_word: String = "real"
+
+data dispatch_executor_origin_replay_word: String = "replay"
+
+fn dispatch_executor_origin_json_members(origin: DispatchExecutorOrigin) -> List<JsonKeyValue> {
+  match origin {
+    RealExecutorOrigin =>
+      [json_kv(key: dispatch_executor_origin_key, value: json_string(s: dispatch_executor_origin_real_word))]
+    ReplayExecutorOrigin { recording_id } =>
+      [
+        json_kv(key: dispatch_executor_origin_key, value: json_string(s: dispatch_executor_origin_replay_word)),
+        json_kv(key: dispatch_executor_origin_recording_key, value: json_string(s: recording_id_text(id: recording_id))),
+      ]
+  }
+}
+
+// A spawn origin that does not say what executed the attempt is REFUSED, never read as a real worker: an
+// absent member is exactly the record a pre-replay belt wrote, and reading it as real would let any
+// attempt the reader cannot place count as one.
+type DispatchExecutorOriginRead
+  = DispatchExecutorOriginObserved { origin: DispatchExecutorOrigin }
+  | DispatchExecutorOriginUnreadable { reason: String }
+
+fn dispatch_executor_origin_of_document(doc: JsonValue) -> DispatchExecutorOriginRead {
+  match json_field_string(obj: doc, key: dispatch_executor_origin_key) {
+    FieldAbsent =>
+      DispatchExecutorOriginUnreadable { reason: "the spawn origin has no executor member, so what executed the attempt is not established" }
+    FieldMalformed { cause } =>
+      DispatchExecutorOriginUnreadable { reason: cause }
+    FieldRead { value: word } =>
+      if word == dispatch_executor_origin_real_word {
+        DispatchExecutorOriginObserved { origin: RealExecutorOrigin }
+      } else if word == dispatch_executor_origin_replay_word {
+        match json_field_string(obj: doc, key: dispatch_executor_origin_recording_key) {
+          FieldRead { value: text } =>
+            match recording_id_decode(text: text) {
+              RecordingIdDecoded { id } => DispatchExecutorOriginObserved { origin: ReplayExecutorOrigin { recording_id: id } }
+              RecordingIdMalformed { text: _, reason } =>
+                DispatchExecutorOriginUnreadable { reason: join(["the spawn origin names a replay whose recording id does not decode: ", reason], "") }
+            }
+          FieldAbsent =>
+            DispatchExecutorOriginUnreadable { reason: "the spawn origin names a replay without its recording id" }
+          FieldMalformed { cause } =>
+            DispatchExecutorOriginUnreadable { reason: cause }
+        }
+      } else {
+        DispatchExecutorOriginUnreadable { reason: join(["the spawn origin names an executor this reader does not know: ", word], "") }
+      }
+  }
 }
 
 fn spawn_origin_is_public_gunbc(origin: DispatchSpawnOrigin) -> Bool {
@@ -267,6 +332,8 @@ fn dispatch_spawn_origin_json_value(origin: DispatchSpawnOrigin) -> JsonValue {
         destination_privacy_json_members(privacy: origin.identity.privacy),
         concat(
           destination_default_branch_json_members(standing: origin.identity.default_branch),
+          concat(
+            dispatch_executor_origin_json_members(origin: origin.executor),
           [
             json_kv(
               key: "known_public_gunbc",
@@ -275,6 +342,7 @@ fn dispatch_spawn_origin_json_value(origin: DispatchSpawnOrigin) -> JsonValue {
             json_kv(key: "base_ref", value: json_string(s: origin.base_ref as String)),
             json_kv(key: "base_sha", value: json_string(s: origin.base_sha as String)),
           ],
+          ),
         ),
       ),
     ),

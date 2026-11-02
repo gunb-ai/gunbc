@@ -1,0 +1,452 @@
+module gunbc.dispatch_replay_recording
+
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
+import std.algebra { trim }
+import extdeps.git
+import extdeps.git.plumbing
+import extdeps.git.plumbing {
+  GitRepositoryAddress,
+  GitWorktreeAt,
+  GitCreateRefIfAbsent,
+  GitRefMutationOutcome,
+  GitRefMutationApplied,
+  GitRefMutationPreconditionNotHeld,
+  GitRefMutationExecutionRefused,
+  GitRefMutationObservationRefused,
+  GitRefMutationReadBackMismatch,
+  git_ref_mutation_outcome,
+  git_ref_mutation_applied,
+}
+import extdeps.git.object_store { GitRefName, GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.systemd.service_exec { ServiceResult, ServiceResultSuccess, ServiceResultExitCode, service_result_of_wire }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import gunbc.devboot.transport { devboot_repo_address, devboot_observe_ref }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptExitRecord,
+  AttemptProcessExitedWith,
+  AttemptProcessSignaled,
+}
+
+// A RECORDING IS AN ATTEMPT'S END STATE -- its base, the tree it left, and how its unit ended -- and the PROVENANCE
+// field on the id says how that end state came to be known (RecordingProvenance, the fifth id part; no default word):
+//   - `captured`, written by recording_capture over ONE COMPLETED ATTEMPT'S OWN DURABLE RECORDS. This recording IS
+//     the receipt that a real worker emitted the shape: a hand-authored fixture would owe a separate claim that a
+//     real worker emits it, and a capture owes none. That is why the replay executor takes recordings and nothing
+//     else, and why recording_capture has no argument that could introduce a value a worker did not produce.
+//   - `prepared`, written by recording_prepare over a base, a result commit and an exit status an OPERATOR supplies,
+//     to exercise the post-model path (replay worker -> belt commit -> acceptance/store) without waiting hours for a
+//     model (the lab question of 2026-10-27). It is NOT a receipt of anything a worker did, and nothing can turn it
+//     into one: the manager result is DERIVED from the status rather than accepted, the tree is read from the object
+//     store over a commit that must exist, the arm is fixed inside the function rather than taken from its caller,
+//     and the two arms never share a namespace.
+//
+// DECLARED FRONTIERS: neither producer has a consumer on the production path in this change. capture has no belt
+// step calling it yet, so the 'owes none' claim above is NOT YET ESTABLISHED in production; prepare is invoked only
+// by an operator entry, which is its intended consumer for as long as the post-model path needs qualifying. Both
+// gaps are stated as rows below (dispatch_replay_recording_frontier_rows), each with its dissolution trigger.
+// NOTHING EXECUTES THOSE ROWS: the repository-wide closure census was retired (#15428) and no replacement instrument
+// is owed, so they are the declared statement of what is unconsumed rather than a tracked gap. Until they dissolve,
+// the lab operator mints a recording with the entries in gunbc.dispatch_replay_capture
+// (srv1_lab_recording_capture_cli, or srv1_lab_recording_prepare_cli) -- declared operations over durable state,
+// which is what keeps requirement 2 standing when a recording was not captured from an attempt.
+//
+// WHERE THEY LIVE: refs/gunbc/recordings/<RecordingId> for captured and refs/gunbc/recordings-prepared/<RecordingId>
+// for prepared, in the controller's repository, each ONE REF WHOSE OBJECT IS THE RECORDED TREE (recording_capture_write
+// says why there is no minted commit behind it) and whose NAME is the whole recording: base, tree, status, result and
+// provenance are all in the ref name, so the id a reader holds and the ref it reads cannot disagree.
+// The namespace is DERIVED from the id's provenance (recording_ref_of), so no id can name a ref in the
+// other arm's namespace, and listing the captured prefix lists exactly the recordings that are receipts of real
+// attempts -- a query a downstream reader or an operator runs never has to know to filter on a word. The existing
+// refs/gunbc/ consumers are named single refs (the admitted-revision pointers of
+// gunbc.roadmap.roadmap_dashboard_instance) and the devboot request and produced namespaces; both prefixes are
+// disjoint from each of them, so no existing consumer reads or races a recording.
+//
+// WHO WRITES THEM: recording_capture and recording_prepare, run by the controller as the controller's own account.
+// A worker unit's ReadWritePaths never include the controller's repository ref store, and the ref is written
+// create-only, so a recording can be neither forged nor moved by the process it later constrains.
+//
+// THE ID IS ITS PREIMAGE, NOT A HASH OF IT: <base>.<result tree>.<exit status>.<manager result>. The same facts are
+// the same recording and any differing fact is a different ref, so one recording is one fact by construction and
+// replay reads the facts back out of the id it was given without a second record that could disagree. The two
+// objects are git's own GitObjectId (extdeps.git.object_store), so an id whose base or tree is not an object id
+// has no value; they become hex only in the id text and in git argv.
+type RecordingId {
+  base: GitObjectId
+  result_tree: GitObjectId
+  end: RecordedEnd
+  provenance: RecordingProvenance
+}
+
+// HOW THE RECORDING CAME TO EXIST, as a required field rather than a place it is filed. Two arms, no default:
+//   - CapturedFromAttempt: written by recording_capture over one completed attempt's own durable records. This is the
+//     only arm that carries requirement 2's premise -- it IS the receipt that a real worker emitted the shape.
+//   - PreparedByOperator: written by recording_prepare over base, result commit and exit status that an operator
+//     supplies, to exercise the post-model path (replay worker -> belt commit -> acceptance/store) without waiting
+//     for a model. It is NOT a receipt of anything a worker did, and the type says so: nothing in this module can
+//     turn one into the other, and capture's only constructor fills `captured` while prepare's fills `prepared`.
+// The field is REQUIRED with no default word, so a recording that does not say how it came to exist has no value
+// (DESIGN 5: impossible to drop, not checked after the fact). The provenance also picks the namespace
+// (recording_ref_of), so an id can never name a ref in the other arm's namespace: a prepared recording is
+// unreachable through a captured id and the reverse, with no separate request word that could disagree with the
+// ref it names.
+type RecordingProvenance
+  = CapturedFromAttempt
+  | PreparedByOperator
+
+data recording_provenance_captured_word: String = "captured"
+
+data recording_provenance_prepared_word: String = "prepared"
+
+fn recording_provenance_word(provenance: RecordingProvenance) -> String {
+  match provenance {
+    CapturedFromAttempt => recording_provenance_captured_word
+    PreparedByOperator => recording_provenance_prepared_word
+  }
+}
+
+// The provenance is admitted only by its own word, so a fifth part that is neither is a malformed id -- never a
+// silent 'captured', which would let a forged prepared recording read as one a worker produced.
+type RecordingProvenanceDecode
+  = RecordingProvenanceDecoded { provenance: RecordingProvenance }
+  | RecordingProvenanceUnknown { word: String }
+
+fn recording_provenance_of_word(word: String) -> RecordingProvenanceDecode {
+  if word == recording_provenance_captured_word {
+    RecordingProvenanceDecoded { provenance: CapturedFromAttempt }
+  } else if word == recording_provenance_prepared_word {
+    RecordingProvenanceDecoded { provenance: PreparedByOperator }
+  } else {
+    RecordingProvenanceUnknown { word: word }
+  }
+}
+
+// HOW THE RECORDED UNIT ENDED, as the only two shapes a replay can reproduce by exiting: exit 0 with the manager's
+// 'success', or a nonzero status with 'exit-code'. Every other ServiceResult (signal, timeout, oom-kill, ...)
+// was not an end by exiting and has no arm here, so the manager result is derived from the arm, never stored
+// beside a status it could contradict. The status of RecordedExitCode is admitted only by recorded_end_of
+// (1..255 and not the replay refusal code); the type does not yet bound an Int to that interval.
+type RecordedEnd
+  = RecordedSuccess
+  | RecordedExitCode { status: Int }
+
+fn recorded_end_status(end: RecordedEnd) -> Int {
+  match end {
+    RecordedSuccess => 0
+    RecordedExitCode { status } => status
+  }
+}
+
+fn recorded_end_manager_result(end: RecordedEnd) -> ServiceResult {
+  match end {
+    RecordedSuccess => ServiceResultSuccess
+    RecordedExitCode { status: _ } => ServiceResultExitCode
+  }
+}
+
+data recording_ref_prefix: String = "refs/gunbc/recordings/"
+
+// Assembled from parts because the braces of git's peel syntax are interpolation in a string literal.
+data recording_peel_to_tree_suffix: String = join(["^", "{", "tree", "}"], "")
+
+data recording_id_separator: String = "."
+
+data recorded_success_word: String = "success"
+
+data recorded_exit_code_word: String = "exit-code"
+
+// The namespace a PREPARED recording lives in. It is a different namespace, not a decorated name in the captured
+// one, so `git for-each-ref refs/gunbc/recordings/` keeps listing exactly the recordings that are receipts of real
+// attempts -- a query an operator or a downstream reader runs must never have to know to filter on a word.
+data recording_prepared_ref_prefix: String = "refs/gunbc/recordings-prepared/"
+
+// The two producers' declaration names, ONE SOURCE each: the frontier rows name them and the witness asserts on
+// them, so a rename cannot silently untrack a frontier.
+data recording_producer_capture_name: String = "recording_capture"
+
+data recording_producer_prepare_name: String = "recording_prepare"
+
+fn recorded_end_word(end: RecordedEnd) -> String {
+  match end {
+    RecordedSuccess => recorded_success_word
+    RecordedExitCode { status: _ } => recorded_exit_code_word
+  }
+}
+
+fn recording_object_hex(oid: GitObjectId) -> String {
+  git_object_id_wire_hex(oid: oid) as String
+}
+
+// Five dot-separated parts: base, tree, status, manager result, provenance. The provenance is the fifth rather
+// than a prefix so the git object ids keep their position, and it has no default word: an id that does not say
+// how it came to exist is malformed.
+fn recording_id_text(id: RecordingId) -> String {
+  join(
+    [
+      recording_object_hex(oid: id.base),
+      recording_id_separator,
+      recording_object_hex(oid: id.result_tree),
+      recording_id_separator,
+      to_string(value: recorded_end_status(end: id.end)),
+      recording_id_separator,
+      recorded_end_word(end: id.end),
+      recording_id_separator,
+      recording_provenance_word(provenance: id.provenance),
+    ],
+    "",
+  )
+}
+
+// The ref is DERIVED from the id, provenance included -- there is no way to name a ref whose provenance disagrees
+// with the id it encodes.
+fn recording_ref_of(id: RecordingId) -> String {
+  match id.provenance {
+    CapturedFromAttempt => concat(recording_ref_prefix, recording_id_text(id: id))
+    PreparedByOperator => concat(recording_prepared_ref_prefix, recording_id_text(id: id))
+  }
+}
+
+// The exit code a replay REFUSAL exits with. The exit record keeps only the status, so a recording that carried this
+// status would read the same downstream as a refused replay; the end constructor refuses it, typed.
+data replay_refusal_exit_code: Int = 78
+
+// THE ONE ADMISSION of a recorded end, shared by the id decode and by capture: a status and a manager result
+// become a RecordedEnd only when replaying by exiting reproduces both.
+type RecordedEndUnreplayable
+  = RecordedEndOutOfRange { status: Int }
+  | RecordedEndCollidesWithReplayRefusal { status: Int }
+  | RecordedEndPairNotReproducible { status: Int, manager_result: ServiceResult }
+
+type RecordedEndAdmission
+  = RecordedEndAdmitted { end: RecordedEnd }
+  | RecordedEndRefused { cause: RecordedEndUnreplayable }
+
+fn recorded_end_of(status: Int, result: ServiceResult) -> RecordedEndAdmission {
+  if status < 0 || status > 255 {
+    RecordedEndRefused { cause: RecordedEndOutOfRange { status: status } }
+  } else if status == replay_refusal_exit_code {
+    RecordedEndRefused { cause: RecordedEndCollidesWithReplayRefusal { status: status } }
+  } else if status == 0 && result == ServiceResultSuccess {
+    RecordedEndAdmitted { end: RecordedSuccess }
+  } else if status != 0 && result == ServiceResultExitCode {
+    RecordedEndAdmitted { end: RecordedExitCode { status: status } }
+  } else {
+    RecordedEndRefused { cause: RecordedEndPairNotReproducible { status: status, manager_result: result } }
+  }
+}
+
+fn recorded_end_unreplayable_reason(cause: RecordedEndUnreplayable) -> String {
+  match cause {
+    RecordedEndOutOfRange { status: _ } => "the exit status is outside 0..255, which no process exit can carry"
+    RecordedEndCollidesWithReplayRefusal { status: _ } =>
+      "the exit status is the replay refusal code, which an exit record could not tell from a refused replay"
+    RecordedEndPairNotReproducible { status: _, manager_result: _ } =>
+      "the manager result does not follow from the exit status, so replaying by exiting could not reproduce it"
+  }
+}
+
+type RecordingIdDecode
+  = RecordingIdDecoded { id: RecordingId }
+  | RecordingIdMalformed { text: String, reason: String }
+
+fn recording_id_part(parts: List<String>, index: Int) -> String {
+  match parts.get(index) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn recording_id_decode(text: String) -> RecordingIdDecode {
+  let parts = text.split(delimiter: recording_id_separator)
+  if count(parts) != 5 {
+    RecordingIdMalformed { text: text, reason: join(["a recording id has five '.'-separated parts (base, result tree, exit status, manager result, provenance); this has ", to_string(value: count(parts))], "") }
+  } else {
+    match git_object_id_from_untagged_hex(hex: recording_id_part(parts: parts, index: 0)) {
+      Absent => RecordingIdMalformed { text: text, reason: "the base part is not a git object id" }
+      Present { value: base } =>
+        match git_object_id_from_untagged_hex(hex: recording_id_part(parts: parts, index: 1)) {
+          Absent => RecordingIdMalformed { text: text, reason: "the result tree part is not a git object id" }
+          Present { value: tree } =>
+            match parse_int(text: recording_id_part(parts: parts, index: 2)) {
+              Absent => RecordingIdMalformed { text: text, reason: "the exit status part is not a number" }
+              Present { value: status } =>
+                match recorded_end_of(status: status, result: service_result_of_wire(word: recording_id_part(parts: parts, index: 3))) {
+                  RecordedEndRefused { cause } => RecordingIdMalformed { text: text, reason: recorded_end_unreplayable_reason(cause: cause) }
+                  RecordedEndAdmitted { end } =>
+                    match recording_provenance_of_word(word: recording_id_part(parts: parts, index: 4)) {
+                      // The fifth part is admitted only by its own word: an id that does not say how it came to
+                      // exist, or says something else, is malformed rather than assumed captured.
+                      RecordingProvenanceUnknown { word } => RecordingIdMalformed { text: text, reason: join(["the provenance part '", word, "' is neither ", recording_provenance_captured_word, " nor ", recording_provenance_prepared_word], "") }
+                      RecordingProvenanceDecoded { provenance } => RecordingIdDecoded { id: RecordingId { base: base, result_tree: tree, end: end, provenance: provenance } }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+type RecordingCaptureRefusal
+  = RecordingCaptureExitSignaled
+  | RecordingCaptureExitUnreplayable { cause: RecordedEndUnreplayable }
+  | RecordingCaptureObjectUnusable { object: String, detail: String }
+  | RecordingCaptureAlreadyRecorded { ref_name: String }
+  | RecordingCaptureWriteRefused { ref_name: String, detail: String }
+
+type RecordingCapture
+  = RecordingCaptured { id: RecordingId, ref_name: String }
+  | RecordingCaptureRefused { cause: RecordingCaptureRefusal }
+
+// WRITE THE RECORDING: one create-only ref whose object IS the recorded tree, named by the whole recording. There is
+// no minted commit object behind it, and that is deliberate (lab run of 2026-10-27, on the head whose mint called
+// git.Plumbing.CommitTree): the replay reads the recording through `rev-parse --verify <ref>^{tree}` and nothing else
+// -- not in this change, not in Rust, no CLI, no reader anywhere -- and a ref aimed at a tree object answers that peel
+// identically to a ref aimed at a commit whose tree it is (measured: `cat-file -t` reads tree, `<ref>^{tree}` returns
+// the same hex, and `update-ref` peels nothing and hashes nothing). So the commit was a step NO CONSUMER ASKED FOR,
+// and `git commit-tree` takes its author and committer from ambient config, which made whether a recording could be
+// written depend on which account ran it and what that account's ~/.gitconfig holds -- an undeclared input, the
+// DESIGN 5 class. Under the dedicated account, which holds no identity, the mint died with `empty ident name not
+// allowed`. The base and the id's text were already carried by the ref NAME, so the commit held no fact anyone reads;
+// deleting it removes the undeclared input rather than supplying a value for one. THE CLAIMS THIS MAKES RED are the
+// wet witness's `cat-file -t` assertions in the captured and prepared claims, and the mutation is to mint the commit
+// back with git.Plumbing.CommitTree -- green again only by reintroducing the ambient-identity dependency (measured:
+// both claims FAIL that mutation, PASS without it).
+//
+// WHAT IS STILL CHECKED AFTER THE WRITE is unchanged in kind: the ref is re-read and must hold exactly the recorded
+// tree, so a create that reported success without landing is refused rather than believed.
+fn recording_capture_write(repo_root: String, id: RecordingId) -> RecordingCapture {
+  let recorded_tree = recording_object_hex(oid: id.result_tree)
+  let mutation = GitCreateRefIfAbsent { name: recording_ref_of(id: id) as GitRefName, new: id.result_tree }
+  let attempted = git.Plumbing.CreateRefIfAbsent(
+    address: devboot_repo_address(repo_root: repo_root),
+    ref_name: recording_ref_of(id: id),
+    new: recorded_tree,
+  )
+  let outcome = git_ref_mutation_outcome(
+    mutation: mutation,
+    exit_code: attempted.exit_code,
+    stderr: trim(s: attempted.stderr),
+    observed_after: devboot_observe_ref(repo_root: repo_root, ref_name: recording_ref_of(id: id)),
+  )
+  if git_ref_mutation_applied(outcome: outcome) {
+    RecordingCaptured { id: id, ref_name: recording_ref_of(id: id) }
+  } else {
+    match outcome {
+      GitRefMutationPreconditionNotHeld { mutation: _, observed: _ } =>
+        RecordingCaptureRefused { cause: RecordingCaptureAlreadyRecorded { ref_name: recording_ref_of(id: id) } }
+      GitRefMutationApplied { mutation: _ } =>
+        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "applied outcome read as not applied" } }
+      GitRefMutationExecutionRefused { mutation: _, exit_code: _, stderr } =>
+        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: stderr } }
+      GitRefMutationObservationRefused { mutation: _, exit_code: _, stderr } =>
+        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: stderr } }
+      GitRefMutationReadBackMismatch { mutation: _, observed: _ } =>
+        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "the ref does not hold the recorded tree after the write" } }
+    }
+  }
+}
+
+// THE CAPTURE OPERATION over a completed attempt's durable records: the base the belt recorded
+// (spawn-destination.json), the result commit the belt committed, and the unit's exit record. It reads the result
+// commit's tree from the object store rather than accepting a tree from the caller, so the recorded tree is the
+// tree of a commit that exists.
+fn recording_capture(repo_root: String, base_sha: String, result_commit: String, exit: AttemptExitRecord) -> RecordingCapture {
+  match exit.end {
+    AttemptProcessSignaled { signal: _ } => RecordingCaptureRefused { cause: RecordingCaptureExitSignaled }
+    AttemptProcessExitedWith { status } =>
+      match recorded_end_of(status: status, result: exit.result) {
+        RecordedEndRefused { cause } => RecordingCaptureRefused { cause: RecordingCaptureExitUnreplayable { cause: cause } }
+        RecordedEndAdmitted { end } =>
+          match git_object_id_from_untagged_hex(hex: base_sha) {
+            Absent =>
+              RecordingCaptureRefused { cause: RecordingCaptureObjectUnusable { object: base_sha, detail: "the base is not a git object id" } }
+            Present { value: base } =>
+              recording_record_tree(repo_root: repo_root, base: base, result_commit: result_commit, end: end, provenance: CapturedFromAttempt)
+          }
+      }
+  }
+}
+
+// THE PREPARE OPERATION, the sibling of recording_capture for a recording that was NOT captured from an attempt:
+// an operator supplies the base, the result commit and the exit status, and the end state is written under
+// refs/gunbc/recordings-prepared/ so the post-model path (replay worker -> belt commit -> acceptance/store) can be
+// exercised without waiting hours for a model. It is deliberately NOT a receipt of anything a worker did:
+//   - the manager result is DERIVED from the status by recorded_end_of_status rather than supplied, so a caller
+//     cannot hand over a status/result pair that a process could not have ended with;
+//   - the tree is read from the object store over a commit that must exist, exactly as capture reads it;
+//   - it is create-only, and it is admitted only where replay is (the caller's gate, dispatch_replay_instance_admission).
+// The provenance arm it writes is typed `prepared`, so the attempt's spawn origin carries that word and the
+// recording can never be read as one a real worker produced.
+type RecordingPreparedEndAdmission
+  = RecordingPreparedEndAdmitted { end: RecordedEnd }
+  | RecordingPreparedEndRefused { cause: RecordedEndUnreplayable }
+
+// 0 ends 'success' and any other admitted status ends 'exit-code' -- the only pairs recorded_end_of admits, asked
+// of the status alone. A signaled or otherwise unreplayable end is not expressible here, which is intended: prepare
+// replays what it can reproduce by exiting, and nothing more.
+fn recorded_end_of_status(status: Int) -> RecordingPreparedEndAdmission {
+  match recorded_end_of(status: status, result: if status == 0 { ServiceResultSuccess } else { ServiceResultExitCode }) {
+    RecordedEndRefused { cause } => RecordingPreparedEndRefused { cause: cause }
+    RecordedEndAdmitted { end } => RecordingPreparedEndAdmitted { end: end }
+  }
+}
+
+fn recording_prepare(repo_root: String, base_sha: String, result_commit: String, exit_status: Int) -> RecordingCapture {
+  match recorded_end_of_status(status: exit_status) {
+    RecordingPreparedEndRefused { cause } => RecordingCaptureRefused { cause: RecordingCaptureExitUnreplayable { cause: cause } }
+    RecordingPreparedEndAdmitted { end } =>
+      match git_object_id_from_untagged_hex(hex: base_sha) {
+        Absent =>
+          RecordingCaptureRefused { cause: RecordingCaptureObjectUnusable { object: base_sha, detail: "the base is not a git object id" } }
+        Present { value: base } =>
+          recording_record_tree(repo_root: repo_root, base: base, result_commit: result_commit, end: end, provenance: PreparedByOperator)
+      }
+  }
+}
+
+// The result tree is read only after the base is admitted as an object id, so a recording never mints an id the
+// decode would reject. This is the ONE read-and-write path, shared by capture and prepare: it is the only thing
+// that constructs a RecordingId outside the decode, and its provenance is a parameter only two callers can supply,
+// each hardcoding its own arm. Neither recording_capture nor recording_prepare accepts a provenance from its own
+// caller, so capture can never emit a prepared recording and prepare can never emit a captured one.
+fn recording_record_tree(repo_root: String, base: GitObjectId, result_commit: String, end: RecordedEnd, provenance: RecordingProvenance) -> RecordingCapture {
+  let tree_read = git.Plumbing.ObserveRef(
+    address: devboot_repo_address(repo_root: repo_root),
+    ref_name: concat(result_commit, recording_peel_to_tree_suffix),
+  )
+  match git_object_id_from_untagged_hex(hex: trim(s: tree_read.revision)) {
+    Absent =>
+      RecordingCaptureRefused { cause: RecordingCaptureObjectUnusable { object: result_commit, detail: trim(s: tree_read.stderr) } }
+    Present { value: tree } =>
+      recording_capture_write(repo_root: repo_root, id: RecordingId { base: base, result_tree: tree, end: end, provenance: provenance })
+  }
+}
+
+// REPLAY IS EXACT OR REFUSES. The attempt's base must equal the recording's base byte for byte: no rebase, no
+// merge, no 'close enough'. The comparison is the whole admission, so a mismatch is the typed cause below and
+// nothing downstream of it runs.
+type RecordingReplayAdmission
+  = RecordingReplayAdmitted { id: RecordingId }
+  | RecordingReplayBaseMismatch { recorded_base: String, attempt_base: String }
+
+fn recording_replay_admission(id: RecordingId, attempt_base: String) -> RecordingReplayAdmission {
+  if recording_object_hex(oid: id.base) == attempt_base {
+    RecordingReplayAdmitted { id: id }
+  } else {
+    RecordingReplayBaseMismatch { recorded_base: recording_object_hex(oid: id.base), attempt_base: attempt_base }
+  }
+}
+
+data dispatch_replay_recording_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.dispatch_replay_recording", decl_name: recording_producer_capture_name),
+    reason: "recording_capture is not yet bound to a completed attempt's belt step; until it is, its executing consumer is the operator-run entry gunbc.dispatch_replay_capture srv1_lab_recording_capture_cli over one completed attempt's records",
+    dissolution: unbound_dissolution(description: "No production path captures a recording: recording_capture's only caller in this tree is the operator-run entry srv1_lab_recording_capture_cli, and no belt step calls it. UNBOUND ON PURPOSE -- dissolution_status decides a bound condition by asking whether a named declaration is present, and a new CALLER appearing is not a declaration the model can test, so retires_dissolution would read Fired today (the reference it names is absent). TRIGGER: a belt step of a completed lab attempt invokes recording_capture over that attempt's own durable records. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.dispatch_replay_recording", decl_name: recording_producer_prepare_name),
+    reason: "recording_prepare is a QUALIFICATION TOOL, not a producer on the production path: its executing consumer is the operator-run entry gunbc.dispatch_replay_capture srv1_lab_recording_prepare_cli, which mints a prepared recording so the post-model path can be exercised without waiting for a model. A prepared recording is typed non-receipt (provenance PreparedByOperator, namespace refs/gunbc/recordings-prepared/), so nothing downstream can read it as a real attempt's",
+    dissolution: unbound_dissolution(description: "recording_prepare should never gain a production caller -- an end state that no worker produced must keep coming from an operator who says so. UNBOUND ON PURPOSE, for the same reason as the row above. TRIGGER: this row is deleted when the replay executor no longer needs prepared recordings, i.e. every capability it qualifies is covered by a captured recording (provenance CapturedFromAttempt), and any remaining call site is a lab qualification the operator runs by hand. SUFFICIENT FOR deleting this row."),
+  ),
+]
