@@ -770,3 +770,15 @@ fn ce_probe_dotcond_text() -> String { ce_probe_verdict(member_source: ce_refusi
 data ce_refusing_paren_record_cond_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if (p { x: 1 }) { i }\n  i\n}\n"
 
 fn ce_probe_paren_record_cond_text() -> String { ce_probe_verdict(member_source: ce_refusing_paren_record_cond_member_source) }
+// T11 (keen-heron-809): punned record in an ORDINARY expression position (let head) + tail.
+// Control for any condition-position restriction: the record production itself must stay green.
+// Expected PARSE (refusal, if any, at lowering/type level, which evidences PARSED).
+data ce_refusing_let_record_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  let p = R { x }\n  i\n}\n"
+
+// T12 (keen-heron-809): punned record as a call argument + tail. Same control, call-argument
+// position (inside parens no if-block adjacency exists).
+data ce_refusing_arg_record_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  f(R { x })\n  i\n}\n"
+
+fn ce_probe_let_record_text() -> String { ce_probe_verdict(member_source: ce_refusing_let_record_member_source) }
+
+fn ce_probe_arg_record_text() -> String { ce_probe_verdict(member_source: ce_refusing_arg_record_member_source) }
