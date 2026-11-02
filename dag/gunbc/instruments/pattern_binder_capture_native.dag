@@ -120,7 +120,7 @@ fn fixture_cases() -> List<FixtureCase> {
   [
     FixtureCase { name: "renamed_bind_capture", observed: observed_capture(table: outer_table(), result: accepted), expected: 77135 },
     FixtureCase { name: "shorthand_bind", observed: observed_shorthand(result: accepted), expected: 135 },
-    FixtureCase { name: "nested_variant_rename", observed: observed_nested(captured: DeepProbe { stamp: 5, marks: [] }, result: accepted_c), expected: 521 }
+    FixtureCase { name: "nested_variant_rename", observed: observed_nested(DeepProbe { stamp: 5, marks: [] }, result: accepted_c), expected: 521 }
   ]
 }
 
