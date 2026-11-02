@@ -56,8 +56,10 @@ import gunbc.boot_artifact_delivery {
   BootDeliveryPlan,
   BootDeliveryPlanned,
   BootDeliverySolution,
+  BootControlTarget,
   BootFromNetworkPxe,
   BootFromRemovableMedia,
+  BootFromUefiHttp,
   PxeChainBoot,
   RedfishVirtualMediaPull,
   SelectedFromNetworkBootEstablishment,
@@ -238,4 +240,23 @@ data refused_solution: BootDeliverySolution = BootDeliveryRefused {
   cause: DeliveryAccessUnbound {
     standing: AccessContextProfileLookupNotRun { endpoint: BmcControllerEndpoint { host: "192.168.1.60" } },
   },
+}
+
+// A solution whose plan selected `control`, for consumers parameterised over the control target. The
+// delivery and eligibility are the PXE plan's or the removable-media plan's; only boot_control varies for
+// the HTTP-boot arm, which no real-solver witness plans here.
+fn solution_selecting_control(control: BootControlTarget) -> BootDeliverySolution {
+  match control {
+    BootFromRemovableMedia => removable_media_solution
+    BootFromNetworkPxe => pxe_solution
+    BootFromUefiHttp =>
+      BootDeliveryPlanned { plan: BootDeliveryPlan {
+        target: pxe_plan.target,
+        artifact: pxe_plan.artifact,
+        delivery: pxe_plan.delivery,
+        boot_control: BootFromUefiHttp,
+        boot_control_route: pxe_plan.boot_control_route,
+        eligibility: pxe_plan.eligibility,
+      } }
+  }
 }
