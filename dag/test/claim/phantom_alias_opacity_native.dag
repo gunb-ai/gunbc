@@ -121,3 +121,43 @@ fn native_claim_report() -> NativeClaimReport {
     terminal: if count(failed) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: "Phantom alias reading disagrees with the preserved-application contract" } }
   }
 }
+
+// Interpreted evidence uses dag + src/v2 + src/v1. Native seed-adapter agreement
+// remains a frontier until src/v1 enters a governed native population by a
+// source_layout ruling. No native instrument label claims these cases execute.
+
+test fn phantom_alias_opacity_seed_parameterized_marker_retains_application() -> Bool {
+  opacity_seed_holds(generic: true, through_alias: false, canonical_phantom: true)
+}
+
+test fn phantom_alias_opacity_seed_plain_marker_retains_identity() -> Bool {
+  opacity_seed_holds(generic: false, through_alias: false, canonical_phantom: true)
+}
+
+test fn phantom_alias_opacity_seed_alias_to_marker_retains_application() -> Bool {
+  opacity_seed_holds(generic: true, through_alias: true, canonical_phantom: true)
+}
+
+test fn phantom_alias_opacity_seed_foreign_phantom_remains_transparent() -> Bool {
+  opacity_seed_holds(generic: true, through_alias: true, canonical_phantom: false)
+}
+
+test fn phantom_alias_opacity_v2_same_marker_accepts() -> Bool {
+  wla_marker_fixture_alone_is_accepted_holds()
+}
+
+test fn phantom_alias_opacity_v2_cross_width_refuses() -> Bool {
+  wla_marker_keeps_its_arguments_so_another_width_does_not_inhabit_holds()
+}
+
+test fn phantom_alias_opacity_v2_alias_accepts() -> Bool {
+  wla_ordinary_alias_to_the_marker_still_unfolds_holds()
+}
+
+test fn phantom_alias_opacity_v2_alias_cross_width_refuses() -> Bool {
+  wla_ordinary_alias_to_the_marker_keeps_the_marker_arguments_holds()
+}
+
+test fn phantom_alias_opacity_v2_foreign_phantom_remains_transparent() -> Bool {
+  wla_an_unrelated_local_phantom_is_not_the_marker_holds()
+}

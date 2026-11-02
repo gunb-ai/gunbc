@@ -499,14 +499,6 @@ fn native_xl2_rehearsal_entry() -> String {
 // that a rule's emission is a compilable program with the right answers -- the half a textual
 // witness over the emitted header cannot establish. Run by name, not a merge gate.
 // `gunbc test //gunbc/instruments:native-emission-controls`.
-fn phantom_alias_opacity_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "phantom-alias-opacity" } }
-}
-
-fn phantom_alias_opacity_binding() -> TargetBinding {
-  TargetBinding { target: phantom_alias_opacity_label() producer: NativeClaimProgramProducer { entry: "dag/test/claim/phantom_alias_opacity_native.dag" deadline: native_claim_policy_child_deadline() } }
-}
-
 fn native_emission_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-emission-controls" } }
 }
@@ -1402,7 +1394,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    phantom_alias_opacity_binding(), native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 
