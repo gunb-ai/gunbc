@@ -31,8 +31,11 @@
 //
 // CWD AND ENV, DECLARED RATHER THAN INHERITED BY ACCIDENT. The operation declares NO environment of its
 // own: the process sees exactly what the seed-build preamble put there and nothing this module adds --
-// contrast the `CARGO_TARGET_DIR=` assignment extdeps.rust.cargo_build used to push through `env` at its
-// build call sites, now replaced there by cargo's own --target-dir flag.
+// contrast the `CARGO_TARGET_DIR=` assignment extdeps.rust.cargo_build STILL pushes through `env` at its
+// three build call sites (cargo.Build `BuildManifest`, `BuildManifestMessages`, `CheckManifestMessages`):
+// this operation names its output directory in the argv, the workflow route does not yet, and that
+// leftover is filed, not fixed here -- gunbc.recurring_failure_mode
+// build_target_directory_declared_only_through_injected_env.
 //
 // THE WORKING ROOT IS NOT A CARGO FLAG, MEASURED, AND THAT IS WHY IT SITS IN THE BINDING. On the pinned
 // toolchain (rust-toolchain.toml channel 1.93.0) `cargo build --workdir p` answers "unexpected argument
