@@ -2141,9 +2141,15 @@ type SeedAndBinding {
 }
 
 fn built_seed_and_binding() -> Optional<SeedAndBinding> {
+  built_seed_and_binding_for(unit: unit_a_key, attempt: attempt_one)
+}
+
+// The same built seed bound to a caller-named unit and intake attempt, so a consumer's fixture can bind the
+// seed to the subject of the plan it is armed with.
+fn built_seed_and_binding_for(unit: UnitKey, attempt: IntakeAttemptId) -> Optional<SeedAndBinding> {
   match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
     Present { value: seed } =>
-      match bind_ubuntu_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      match bind_ubuntu_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit, attempt: attempt, selection: select_target_disk(selector: serial_selector, observed: bay_population),
         ) {
         Bound { binding: binding } => Present { value: SeedAndBinding { seed: seed, binding: binding } }
         BindRefused { blocker: _ } => Absent
