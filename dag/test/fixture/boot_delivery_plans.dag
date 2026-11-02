@@ -4,7 +4,7 @@ import std.algebra { FreeSemigroup }
 import std.types { List }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
+import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, UefiArm64 }
 import extdeps.provisioning.network_boot { NativeDhcpBootOptions, UefiPxe }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.uri { Uri, Https, Tftp }
@@ -59,8 +59,10 @@ import gunbc.boot_artifact_delivery {
   BootDeliveryPlan,
   BootDeliveryPlanned,
   BootDeliverySolution,
+  BootControlTarget,
   BootFromNetworkPxe,
   BootFromRemovableMedia,
+  BootFromUefiHttp,
   PxeChainBoot,
   RedfishVirtualMediaPull,
   SelectedFromNetworkBootEstablishment,
@@ -110,6 +112,10 @@ data network_target: BootDeliveryTarget = NetworkAddressedTarget {
 }
 
 fn network_boot_establishment_for(t: BootDeliveryTarget, digest: ContentHash) -> NetworkBootDeliveryEstablishment {
+  network_boot_establishment_observing(t: t, digest: digest, arch: UefiArm64)
+}
+
+fn network_boot_establishment_observing(t: BootDeliveryTarget, digest: ContentHash, arch: DhcpProcessorArchitecture) -> NetworkBootDeliveryEstablishment {
   let obs = DeclarationRef {
     module_path: "test.fixture.boot_delivery_plans",
     decl_name: "network_boot_establishment_for",
@@ -150,7 +156,7 @@ fn network_boot_establishment_for(t: BootDeliveryTarget, digest: ContentHash) ->
       site: site,
       client: ObservedDhcpPxeClient {
         vendor_class: "PXEClient:Arch:00011:UNDI:003016",
-        arch: UefiArm64,
+        arch: arch,
       },
       observation: obs,
       observed_at: 1788000000000,
@@ -254,4 +260,49 @@ data refused_solution: BootDeliverySolution = BootDeliveryRefused {
   cause: DeliveryAccessUnbound {
     standing: AccessContextProfileLookupNotRun { endpoint: BmcControllerEndpoint { host: "192.168.1.60" } },
   },
+}
+
+// A solution whose plan selected `control`, for consumers parameterised over the control target. The PXE
+// plan's evidence observes `client_arch` (removable media ignores it). A network-addressed control with no
+// observed architecture answers the refused solution: no value is substituted for the unobserved client. Delivery and eligibility are
+// the PXE plan's or the removable-media plan's; only boot_control varies for the HTTP-boot arm, which no
+// real-solver witness plans here.
+fn solution_selecting_control(control: BootControlTarget, client_arch: DhcpProcessorArchitecture?) -> BootDeliverySolution {
+  match control {
+    BootFromRemovableMedia => removable_media_solution
+    _ => match client_arch {
+      Present { value: a } => network_solution_selecting_control(control: control, arch: a)
+      Absent => refused_solution
+    }
+  }
+}
+
+fn network_solution_selecting_control(control: BootControlTarget, arch: DhcpProcessorArchitecture) -> BootDeliverySolution {
+  let establishment = network_boot_establishment_observing(t: network_target, digest: intake_artifact.digest, arch: arch)
+  let observing_pxe = BootDeliveryPlan {
+    target: network_target,
+    artifact: intake_artifact,
+    delivery: PxeChainBoot { evidence: establishment },
+    boot_control: BootFromNetworkPxe,
+    boot_control_route: BootControlByFirmwareBootOrder,
+    eligibility: BootDeliveryEligibilityProvenance {
+      profile_provenance: none,
+      evidence_manifest: [],
+      selected: SelectedFromNetworkBootEstablishment { establishment: establishment },
+      considered: [],
+    },
+  }
+  match control {
+    BootFromRemovableMedia => removable_media_solution
+    BootFromNetworkPxe => BootDeliveryPlanned { plan: observing_pxe }
+    BootFromUefiHttp =>
+      BootDeliveryPlanned { plan: BootDeliveryPlan {
+        target: observing_pxe.target,
+        artifact: observing_pxe.artifact,
+        delivery: observing_pxe.delivery,
+        boot_control: BootFromUefiHttp,
+        boot_control_route: observing_pxe.boot_control_route,
+        eligibility: observing_pxe.eligibility,
+      } }
+  }
 }
