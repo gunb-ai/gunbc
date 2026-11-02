@@ -36,6 +36,6 @@ data heal_converge_overruns_the_90_minute_cap_on_a_contended_runner_when_the_reb
   evidence: [
     DeclarationRef { module_path: "gunbc.host.memory_envelope", decl_name: "memory_envelope_enforcement", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.recurring_failure_mode.the_live_runner_unit_memory_shape_drifts_from_the_declared_slot", decl_name: "the_live_runner_unit_memory_shape_drifts_from_the_declared_slot", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.heal_workflow", decl_name: "heal_workflow_required_bins", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.regen_round_cost", decl_name: "RegenRoundCostReceipt", field: WholeDeclaration },
   ],
 }
