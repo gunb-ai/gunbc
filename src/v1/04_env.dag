@@ -1,5 +1,9 @@
 module v1.compiler.infer_env
 
+// Purpose under gunbc.v1.v1_maintenance_standing: the v2 width carrier needs
+// the seed adapter to read the same declaration-to-kernel fact as v2.
+import std.kernel_declaration_binding { kernel_binding_for_declaration }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import v1.std.core { preserve_outer_optional_cardinality, resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
@@ -2533,12 +2537,15 @@ fn kernel_settled_name(n: Node, source_indices: Map<String, NewlineIndex>, env: 
   match reading {
     TypeReferenceIsKernelType { name: kernel } => Present { value: kernel }
     TypeReferenceNamesDeclaration { declaration: d } =>
-      if fuel <= 0 { none }
-      else {
-        match alias_rhs_of_declaration(item_ref: d, env: env) {
-          Absent => none
-          Present { value: rhs } =>
-            kernel_settled_name(n: rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
+      match kernel_binding_for_declaration(declaration: d) {
+        Present { value: row } => Present { value: row.spelling }
+        Absent => if fuel <= 0 { none }
+        else {
+          match alias_rhs_of_declaration(item_ref: d, env: env) {
+            Absent => none
+            Present { value: rhs } =>
+              kernel_settled_name(n: rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
+          }
         }
       }
     _ => none

@@ -1,0 +1,45 @@
+module std.kernel_declaration_binding
+
+import std.types { List, String }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// Declaration-to-kernel facts extracted from v2.extdeps.languages.dag.
+// Existing kernel spellings and their declaration identities live here once.
+// Node denotations and symbol binding identities remain in the v2 consumer.
+type KernelDeclarationBinding {
+  spelling: String
+  declarations: List<DeclarationRef>
+}
+
+data kernel_declaration_bindings: List<KernelDeclarationBinding> = [
+  KernelDeclarationBinding {
+    spelling: "Int",
+    declarations: [decl_ref(module_path: "v2.std.integer", decl_name: "Int"), decl_ref(module_path: "std.integer", decl_name: "Int")]
+  },
+  KernelDeclarationBinding {
+    spelling: "Bool",
+    declarations: [decl_ref(module_path: "std.types", decl_name: "Bool")]
+  },
+  KernelDeclarationBinding {
+    spelling: "Symbol",
+    declarations: [decl_ref(module_path: "v2.std.node", decl_name: "Symbol")]
+  },
+  KernelDeclarationBinding {
+    spelling: "String",
+    declarations: [decl_ref(module_path: "v2.std.node", decl_name: "String"), decl_ref(module_path: "std.host_text", decl_name: "HostText")]
+  }
+]
+
+// The same first-row projection the former v2 roster used. Full DeclarationRef
+// equality retains WholeDeclaration versus a field/binder; a name is never an identity.
+fn kernel_binding_for_declaration(declaration: DeclarationRef) -> Optional<KernelDeclarationBinding> {
+  first(filter(kernel_declaration_bindings, row => any(row.declarations, d => d == declaration)))
+}
+
+fn kernel_binding_spelling(declaration: DeclarationRef) -> Optional<String> {
+  match kernel_binding_for_declaration(declaration: declaration) {
+    Present { value: row } => Present { value: row.spelling }
+    Absent => Absent
+  }
+}

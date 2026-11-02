@@ -1,4 +1,6 @@
 module v2.extdeps.languages.dag
+
+import std.kernel_declaration_binding { kernel_binding_for_declaration, kernel_binding_spelling }
 import std.coercion { unicode_scalar_unfold }
 import std.types { Char, List, Map }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
@@ -227,7 +229,7 @@ import extdeps.languages.dag.syntax { dag_keyword_literals }
 import extdeps.numeric.base16 { base16_digit_rows }
 import std.unicode.scalar { from_code_point }
 import std.error_primitives { Ok, Err }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
+import v2.std.qualified_name { qualified_name_last_segment, qualified_name_init, qualified_name_to_dotted_string, QualifiedName, declaration_reference_node, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
@@ -4895,7 +4897,6 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 type KernelValueType {
   value_type: Node
   spelling: Optional<String>
-  declarations: List<QualifiedName>
   converges_on: Optional<QualifiedName>
   foreign_declaration: KernelSpellingForeignDeclaration
 }
@@ -4903,51 +4904,42 @@ type KernelValueType {
 data dag_kernel_value_type_roster: List<KernelValueType> = [
   KernelValueType {
     value_type: integer_int_type_node(),
-    spelling: optional_present(value: "Int"),
-    declarations: [
-      qualified_name_from_dotted_string(dotted: "v2.std.integer.Int"),
-      qualified_name_from_dotted_string(dotted: "std.integer.Int")
-    ],
+    spelling: kernel_binding_spelling(declaration: decl_ref(module_path: "v2.std.integer", decl_name: "Int")),
     converges_on: optional_absent()
     foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: bool_node(),
-    spelling: optional_present(value: "Bool"),
-    declarations: [qualified_name_from_dotted_string(dotted: "std.types.Bool")],
+    spelling: kernel_binding_spelling(declaration: decl_ref(module_path: "std.types", decl_name: "Bool")),
     converges_on: optional_absent()
     foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: symbol_type_node(),
-    spelling: optional_present(value: "Symbol"),
-    declarations: [qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol")],
+    spelling: kernel_binding_spelling(declaration: decl_ref(module_path: "v2.std.node", decl_name: "Symbol")),
     converges_on: optional_absent()
     foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: host_text_type_node(),
-    spelling: optional_present(value: "String"),
+    spelling: kernel_binding_spelling(declaration: decl_ref(module_path: "v2.std.node", decl_name: "String")),
     // std.host_text HostText is the carrier's declaration (operator ruling H2, 2026-10-17); the
     // v2.std.node String row is its migration-time projection, kept until the String-to-HostText
     // wave respells every authored String and deletes it. Both name ONE kernel value type, so a
     // literal and a HostText formal agree without an alias between them. The projection stays
     // first: what the bare spelling binds to is that wave's change, not this one.
-    declarations: [qualified_name_from_dotted_string(dotted: "v2.std.node.String"), qualified_name_from_dotted_string(dotted: "std.host_text.HostText")],
     converges_on: optional_absent(),
     foreign_declaration: ForeignDeclarationBinds
   },
   KernelValueType {
     value_type: symbol_kernel_type_node(),
     spelling: optional_absent(),
-    declarations: [],
     converges_on: optional_present(value: qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol"))
     foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: char_kernel_type_node(),
     spelling: optional_absent(),
-    declarations: [],
     converges_on: optional_present(value: qualified_name_from_dotted_string(dotted: "std.types.Char"))
     foreign_declaration: ForeignDeclarationRefuses
   }
@@ -5143,11 +5135,16 @@ fn dag_kernel_string_type_spelling(sym: Symbol) -> Bool {
 // Resolving to any other declaration is refused rather than captured
 // (v2.compiler.resolve resolve_kernel_type_reading).
 fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional<Symbol> {
-  dag_kernel_value_type_row_binding(
-    found: dag_kernel_value_type_first(select: fn(row, _binding) {
-      row.declarations |> any(fn(declared) { declared == path })
-    })
-  )
+  match qualified_name_last_segment(qn: path) {
+    Absent => optional_absent()
+    Present { value: leaf } => match kernel_binding_for_declaration(declaration: decl_ref(
+      module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: path)),
+      decl_name: symbol_lexeme(sym: leaf)
+    )) {
+      Absent => optional_absent()
+      Present { value: row } => dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: row.spelling))
+    }
+  }
 }
 
 // THE BINDING->DENOTATION JOIN. What a kernel binding DENOTES is its row's value-type node, the
