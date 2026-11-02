@@ -191,14 +191,27 @@ test fn w_aliases_join_canonical_identity_before_classification() -> Bool {
     fact(surface: InterpreterDispatch, spelling: "length", form: MethodForm),
     fact(surface: InterpreterDispatch, spelling: "count", form: MethodForm),
     fact(surface: InterpreterDispatch, spelling: "size", form: MethodForm),
-    fact(surface: BuiltinRegistry, spelling: "string_length", form: FreeForm),
   ]
   let c = census_of(facts: facts, edges: [edge(module: "v2.m", decl: "f", callee: AlgebraMethodCallee { template_name: "count" })], rows: [row(name: "length")])
   count(c.standings) == 1
     && has(xs: standing_names(ss: aliased_identities(c: c)), x: "length")
     && has(xs: standing_names(ss: exactly_one_disposition(c: c)), x: "length")
     && count(zero_disposition(c: c)) == 0
-    && match c.standings |> first { Present { value: s } => s.consumers.v2_sites == 1 && count(s.spellings) == 4  Absent => false }
+    && match c.standings |> first { Present { value: s } => s.consumers.v2_sites == 1 && count(s.spellings) == 3  Absent => false }
+}
+
+// 7b. string_length is NOT a spelling of length (G2 ruling A, condition 3): its subject is host text, not a
+// FreeMonoid, so it stays its own identity with its own disposition row. Restoring the alias row joins
+// it into length's standing and reds this.
+test fn w_string_length_is_its_own_identity_not_a_spelling_of_length() -> Bool {
+  let facts = [
+    fact(surface: InterpreterDispatch, spelling: "length", form: MethodForm),
+    fact(surface: BuiltinRegistry, spelling: "string_length", form: FreeForm),
+  ]
+  let c = census_of(facts: facts, edges: [], rows: [row(name: "length"), row(name: "string_length")])
+  count(c.standings) == 2
+    && has(xs: standing_names(ss: exactly_one_disposition(c: c)), x: "string_length")
+    && has(xs: standing_names(ss: exactly_one_disposition(c: c)), x: "length")
 }
 
 test fn w_alias_table_is_acyclic_and_agrees_with_d0() -> Bool {

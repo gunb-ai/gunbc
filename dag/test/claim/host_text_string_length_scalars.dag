@@ -1,0 +1,37 @@
+module test.claim.host_text_string_length_scalars
+
+import std.host_text { string_length }
+import std.nat { Nat }
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// std.host_text string_length COUNTS UNICODE SCALARS (G2 ruling A, condition 3), through the imported
+// declaration. Each non-ASCII case separates the scalar count from a near miss: a byte count reads 2 for
+// U+00E9 and 4 for U+1F600, a UTF-16 count reads 2 for the astral scalar, a grapheme count reads 1 for
+// "e" + U+0301.
+
+test fn empty_host_text_has_no_scalars_holds() -> Bool {
+  string_length(text: "") == 0
+}
+
+test fn ascii_counts_one_per_character_holds() -> Bool {
+  string_length(text: "abc") == 3
+}
+
+test fn a_two_byte_scalar_counts_once_holds() -> Bool {
+  string_length(text: "é") == 1
+}
+
+test fn an_astral_scalar_counts_once_holds() -> Bool {
+  string_length(text: "😀") == 1
+}
+
+test fn a_decomposed_accent_counts_two_scalars_holds() -> Bool {
+  string_length(text: "é") == 2
+}
+
+test fn mixed_widths_count_scalars_holds() -> Bool {
+  string_length(text: "a😀éé") == 5
+}

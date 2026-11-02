@@ -48,8 +48,8 @@ import gunbc.roadmap.roadmap_session_attempt_slots_root {
 //
 // WHY PER INSTANCE AND NEVER PER PARENT. The pre-move PARENT, ~/.local/share/gunbc-dashboard-instances,
 // is still the LIVE root for other instances on that host: roadmap_dashboard_instance.dag declares
-// srv2_dashboard_preview_root and srv2_dashboard_lab_root under it (dag/gunbc/roadmap/
-// roadmap_dashboard_instance.dag:1327). A sweep of the parent would migrate stores that are not
+// srv2_dashboard_preview_root and srv2_dashboard_lab_root under it, in the module
+// gunbc.roadmap.roadmap_dashboard_instance. A sweep of the parent would migrate stores that are not
 // orphaned at all. So the unit of this step is "the instance whose root moved", one row each.
 //
 // WHY THE OLD ROOT IS DECLARED DATA AND NOT A PARAMETER. A path parameter would let any caller point
@@ -166,10 +166,10 @@ fn attempt_slots_carry_for_instance(instance_id: NonEmptyStr, target: SessionAtt
 //   brief holds it behind its own explicit operator authorization, which quick-newt-573 requests once the
 //   PRs land. The route it lands on is the one that already runs host-mutating steps for this instance --
 //   the belt actuator, which is also the production consumer of the settle pass
-//   (roadmap_belt_actuate:1543) -- so the frontier's trigger is that pass appearing there. Until it does
-//   the frontier reads Pending: the row is not dangling, it is ahead of its cut, and a mechanism can tell
-//   those apart, which is exactly what the fleet module's cut rows do for the same shape
-//   (fleet/runtime_identity_match.dag:985, fleet/agent_access_key_rotation.dag:105).
+//   (belt_session_settlement_pass in gunbc.roadmap.roadmap_belt_actuate) -- so the
+//   frontier's trigger is that pass appearing there. Until it does the frontier reads Pending: the row is not dangling, it is ahead of its cut, and a mechanism can tell
+//   those apart, which is exactly what the cut row runtime_identity_match_consumer_frontier
+//   does for the same shape, in gunbc.fleet.runtime_identity_match.
 fn attempt_slots_cutover_run_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "attempt_slots_cutover_pass")
 }
@@ -218,7 +218,7 @@ fn attempt_slots_cutover_frontier_expiry(present_decls: List<DeclarationRef>) ->
 // named sum already exists (DESIGN 2: a String leaf hiding named parts is anemic modeling). The spelling
 // belongs at a presentation edge; there is none here, so the sum is carried as itself.
 type AttemptSlotsSlotReading
-  = SlotRead { generation: Int, state: AttemptState, payload_bytes: String }
+  = SlotRead { generation: Int, state: AttemptState, payload: String }
   | SlotAbsent
   | SlotUnreadable { detail: String }
 
@@ -277,14 +277,14 @@ fn attempt_slots_census_class(entry: AttemptSlotsCensusEntry) -> AttemptSlotsCen
     SlotAbsent =>
       match entry.target {
         SlotUnreadable { detail: _ } => ClassEitherSideUnreadable
-        SlotRead { generation: _, state: _, payload_bytes: _ } => ClassOnlyInTarget
+        SlotRead { generation: _, state: _, payload: _ } => ClassOnlyInTarget
         SlotAbsent => ClassNeitherSideHoldsIt
       }
-    SlotRead { generation: _, state: _, payload_bytes: _ } =>
+    SlotRead { generation: _, state: _, payload: _ } =>
       match entry.target {
         SlotUnreadable { detail: _ } => ClassEitherSideUnreadable
         SlotAbsent => ClassOnlyInOld
-        SlotRead { generation: _, state: _, payload_bytes: _ } =>
+        SlotRead { generation: _, state: _, payload: _ } =>
           match entry.payload_relation {
             PayloadsIdentical => ClassBothIdentical
             PayloadsDifferent => ClassBothDifferent
@@ -418,7 +418,7 @@ fn attempt_slot_reading(store: SlotStore, reference: NonEmptyStr) -> AttemptSlot
     AttemptSlotUnreadable { detail: d } => SlotUnreadable { detail: d }
     AttemptSlotHeld { record: rec, generation: g } =>
       match attempt_slot_payload_bytes(store: store, reference: reference) {
-        SlotPayloadHeld { bytes: b } => SlotRead { generation: cas_generation_count(g: g), state: attempt_record_state(r: rec), payload_bytes: b }
+        SlotPayloadHeld { bytes: b } => SlotRead { generation: cas_generation_count(g: g), state: attempt_record_state(r: rec), payload: b }
         SlotPayloadAbsent => SlotUnreadable { detail: "the slot decoded as an attempt record but its bytes could not be read back" }
         SlotPayloadUnreadable { detail: d } => SlotUnreadable { detail: d }
       }
@@ -427,9 +427,9 @@ fn attempt_slot_reading(store: SlotStore, reference: NonEmptyStr) -> AttemptSlot
 
 fn attempt_slots_payload_relation(source: AttemptSlotsSlotReading, target: AttemptSlotsSlotReading) -> AttemptSlotsPayloadRelation {
   match source {
-    SlotRead { generation: _, state: _, payload_bytes: old_bytes } =>
+    SlotRead { generation: _, state: _, payload: old_bytes } =>
       match target {
-        SlotRead { generation: _, state: _, payload_bytes: new_bytes } =>
+        SlotRead { generation: _, state: _, payload: new_bytes } =>
           if old_bytes == new_bytes {
             PayloadsIdentical
           } else {
