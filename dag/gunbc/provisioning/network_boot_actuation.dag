@@ -1,6 +1,6 @@
 module gunbc.provisioning.network_boot_actuation
 
-import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliverySolution }
+import gunbc.boot_artifact_delivery { BootDeliverySolution }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget }
