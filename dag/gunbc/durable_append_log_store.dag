@@ -3,7 +3,7 @@ module gunbc.durable_append_log_store
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import std.optional { Present, Absent }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, bound_dissolution, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.durable_cas_file_store { cas_key_generation_of_name }
 import std.durable_append_log {

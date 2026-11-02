@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, FilePath, Int, List, Bool }
 import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
 import std.materialization_ladder { string_list_contains }
 import std.decl_ref { decl_ref }
-import std.dissolution { retires_dissolution }
+import std.dissolution { retires_dissolution, unbound_dissolution }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome,
