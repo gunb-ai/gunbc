@@ -1,0 +1,36 @@
+module gunbc.runner.runner_revision_request_service
+
+import std.types { String, NonEmptyStr, List }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.http.server { ServeWireResponse }
+import extdeps.languages.json.emit { JsonNull }
+import gunbc.auth.request_api_key { RequestApiKeyUser }
+import gunbc.runner.runner_revision_request_context { RevisionRequestContext }
+import gunbc.runner.runner_revision_job_spec { decode_revision_job_spec, RevisionJobSpecDecoded, RevisionJobSpecRefused }
+import gunbc.durable_handoff_rest { host_request_rest, host_request_response }
+import gunbc.fabric.fabric_writer_admission { fabric_door_principal_from_api_key, fabric_door_writer_admission_over, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
+
+// Shared request policy has no compiler entry. Both native entries consume it,
+// so the fixture closure contains only its own NativeServeDriver declaration.
+fn revision_job_request_payload(text: String) -> Result<NonEmptyStr, String> {
+  match decode_revision_job_spec(text: text) {
+    RevisionJobSpecDecoded { spec: _ } => Ok { value: text as NonEmptyStr }
+    RevisionJobSpecRefused { refusal: _ } => Err { value: "revision-job specification was not admitted" }
+  }
+}
+
+// Shared by production and the real-HTTP fixture. The verified user, not a body
+// field or key digest, is the only principal entering durable acceptance.
+fn revision_job_request_respond(context: RevisionRequestContext, permitted_users: List<NonEmptyStr>,
+  verified: RequestApiKeyUser, method: String, path: String, body: String) -> ServeWireResponse {
+  if (verified.store != context.keys) {
+    return host_request_response(status: 401, request_id: "", standing: "rejected", detail: "API key belongs to another request store", result: JsonNull)
+  }
+  let principal = fabric_door_principal_from_api_key(verified: verified)
+  match fabric_door_writer_admission_over(logins: permitted_users, locals: [], principal: principal) {
+    FabricDoorWriterRefused { refusal: _ } => host_request_response(status: 403, request_id: "", standing: "rejected", detail: "request principal is not admitted", result: JsonNull)
+    FabricDoorWriterAdmitted { principal: p } => host_request_rest(
+      root: context.request_root, principal: p, method: method, path: path, body: body, admit_payload: revision_job_request_payload,
+    )
+  }
+}

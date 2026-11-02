@@ -340,6 +340,17 @@ fn native_serve_entry() -> String {
   "dag/gunbc/instruments/native_serve_fixture.dag"
 }
 
+fn revision_request_native_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "revision-request-native" } }
+}
+
+fn revision_request_native_binding() -> TargetBinding {
+  TargetBinding { target: revision_request_native_label() producer: NativeServeProgramProducer {
+    entry: "dag/gunbc/instruments/revision_request_fixture.dag"
+    probe: NativeServeProbe { reader: "dag/gunbc/instruments/revision_request_probe.dag" phases: [] }
+  } }
+}
+
 fn native_serve_binding() -> TargetBinding {
   TargetBinding { target: native_serve_label() producer: NativeServeProgramProducer { entry: native_serve_entry() probe: native_serve_fixture_probe() } }
 }
@@ -1383,7 +1394,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), roster_import_sweep_native_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label(), router_proxy_falsifier_label(), serving_benchmark_run_label()
+    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), roster_import_sweep_native_label(), revision_request_native_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label(), router_proxy_falsifier_label(), serving_benchmark_run_label()
   ]
 }
 
@@ -1406,7 +1417,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 

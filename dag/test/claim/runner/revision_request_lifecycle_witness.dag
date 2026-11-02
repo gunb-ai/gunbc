@@ -1,0 +1,81 @@
+module test.claim.runner.revision_request_lifecycle_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.error_primitives { Ok, Err }
+import std.durable_compare_and_set { cas_generation_first, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import product.fabric.identity { FabricIdentity, DemandKey }
+import gunbc.runner.runner_revision_request_lifecycle {
+  RevisionRequestResponsibility, RevisionRequestQueued, RevisionRequestRunning,
+  RevisionRequestCleanupPending, RevisionRequestSettled,
+  RevisionRequestTerminalStoppedAndCleaned, RevisionRequestTerminalStillRunning,
+  RevisionRequestTerminalCleanupUnproven, RevisionRequestTerminalReceiptUnproven,
+  revision_request_claim_transition, revision_request_cleanup_transition,
+  revision_request_settle_transition, revision_request_holds_user_slot,
+}
+
+fn queued_request() -> RevisionRequestResponsibility {
+  RevisionRequestResponsibility { identity: FabricIdentity { principal: "alice", key: "request-a" as NonEmptyStr as DemandKey },
+    payload: "exact-request-payload", phase: RevisionRequestQueued }
+}
+
+test fn claiming_retains_payload_and_fences_even_the_same_worker() -> Bool {
+  let current = queued_request()
+  let generation = cas_generation_first()
+  let worker = "worker-a" as NonEmptyStr as DurableHoldOwnerRef
+  match revision_request_claim_transition(current: current, generation: generation, worker: worker) {
+    Err { value: _ } => false
+    Ok { value: proposal } => proposal.next.identity == current.identity && proposal.next.payload == current.payload
+      && revision_request_holds_user_slot(phase: proposal.next.phase)
+      && (match revision_request_claim_transition(current: proposal.next, generation: generation, worker: worker) {
+        Err { value: _ } => true Ok { value: _ } => false
+      })
+  }
+}
+
+test fn running_and_cleanup_hold_the_slot_until_complete_settlement() -> Bool {
+  let current = queued_request()
+  let worker = "worker-a" as NonEmptyStr as DurableHoldOwnerRef
+  let generation = cas_generation_first()
+  let running = RevisionRequestResponsibility { identity: current.identity, payload: current.payload,
+    phase: RevisionRequestRunning { worker: worker, claimed_generation: generation } }
+  let cleanup = match revision_request_cleanup_transition(current: running, generation: generation,
+    worker: worker, claimed_generation: generation) {
+    Err { value: _ } => { return false } Ok { value: proposal } => proposal.next
+  }
+  let incomplete = [RevisionRequestTerminalStillRunning, RevisionRequestTerminalCleanupUnproven, RevisionRequestTerminalReceiptUnproven]
+  let refused = incomplete.all(standing =>
+    match revision_request_settle_transition(current: cleanup, generation: generation, worker: worker,
+      claimed_generation: generation, standing: standing) {
+      Err { value: _ } => true Ok { value: _ } => false
+    })
+  let settled = match revision_request_settle_transition(current: cleanup, generation: generation, worker: worker,
+    claimed_generation: generation, standing: RevisionRequestTerminalStoppedAndCleaned { receipt: "terminal-receipt" }) {
+    Err { value: _ } => { return false } Ok { value: proposal } => proposal.next
+  }
+  refused && revision_request_holds_user_slot(phase: running.phase)
+    && revision_request_holds_user_slot(phase: cleanup.phase)
+    && !revision_request_holds_user_slot(phase: settled.phase)
+    && (match revision_request_claim_transition(current: settled, generation: generation, worker: worker) {
+      Err { value: _ } => true Ok { value: _ } => false
+    })
+}
+
+test fn foreign_worker_and_stale_claim_generation_cannot_free_a_slot() -> Bool {
+  let current = queued_request()
+  let worker = "worker-a" as NonEmptyStr as DurableHoldOwnerRef
+  let generation = cas_generation_first()
+  let later = match cas_generation_successor(g: generation) {
+    CasSuccessorExhausted { head: _ } => { return false } CasSuccessorGeneration { generation: value } => value
+  }
+  let cleanup = RevisionRequestResponsibility { identity: current.identity, payload: current.payload,
+    phase: RevisionRequestCleanupPending { worker: worker, claimed_generation: later } }
+  let receipt = RevisionRequestTerminalStoppedAndCleaned { receipt: "terminal-receipt" }
+  (match revision_request_settle_transition(current: cleanup, generation: later,
+    worker: "worker-b" as NonEmptyStr as DurableHoldOwnerRef, claimed_generation: later, standing: receipt) {
+    Err { value: _ } => true Ok { value: _ } => false
+  }) && (match revision_request_settle_transition(current: cleanup, generation: later,
+    worker: worker, claimed_generation: generation, standing: receipt) {
+    Err { value: _ } => true Ok { value: _ } => false
+  })
+}

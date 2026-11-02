@@ -1,0 +1,50 @@
+module gunbc.instruments.revision_request_fixture
+
+import std.types { String, NonEmptyStr, CommitSha, List }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.optional { Present, Absent }
+import std.error_primitives { Ok, Err }
+import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
+import extdeps.shell
+import extdeps.http.server { ServeWireResponse }
+import extdeps.languages.json.emit { JsonNull }
+import gunbc.auth.request_api_key { request_api_key_read }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.runner.runner_revision_request_context { revision_request_context }
+import gunbc.durable_handoff_rest { host_request_response }
+import gunbc.runner.runner_revision_request_service { revision_job_request_respond }
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver
+
+// The seed registry still repeats the modeled label-to-producer binding.
+// This is a bounded host-adapter deferral, not a second request implementation.
+data revision_request_native_registry_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instrument_targets", decl_name: "revision_request_native_binding"),
+    reason: "target_invocation_host.rs instrument_registry contains one hand-written revision-request-native NativeServeProgram row so the seed can dispatch this modeled native fixture. The request handler and probe remain declared in the corpus; no scaffold path was deleted by adding the row.",
+    dissolution: unbound_dissolution(description: "TRIGGER: the host target registry is derived from gunbc.instrument_targets TargetBinding values, including NativeServeProgramProducer. Delete the hand-written revision-request-native row in that cutover. CONTROL: changing/removing revision_request_native_binding changes/refuses dispatch without editing Rust; the native HTTP fixture still emits, builds and executes through the declared producer." as NonEmptyStr)
+  ),
+]
+
+// A separate fixture entry, never the production service. The harness supplies
+// one isolated host-state tree to the process; the same declarations derive both
+// stores. Credentials arrive only in Authorization. Restart preserves the tree.
+fn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String,
+  authorization: String, release_revision: CommitSha) -> ServeWireResponse {
+  let root = match shell.Env.Get(name: "GUNBC_HANDOFF_TEST_TREE").value {
+    Present { value: value } => value Absent => ""
+  }
+  if root == "" { return host_request_response(status: 503, request_id: "", standing: "unknown", detail: "fixture tree missing", result: JsonNull) }
+  let context = match revision_request_context(tree: isolated_host_state_tree(dir: root as NonEmptyStr)) {
+    Err { value: _ } => { return host_request_response(status: 503, request_id: "", standing: "unknown", detail: "fixture stores unavailable", result: JsonNull) }
+    Ok { value: context } => context
+  }
+  let verified = match request_api_key_read(store: context.keys, authorization: authorization) {
+    Err { value: _ } => { return host_request_response(status: 401, request_id: "", standing: "rejected", detail: "API key not admitted", result: JsonNull) }
+    Ok { value: value } => value
+  }
+  revision_job_request_respond(context: context, permitted_users: ["alice", "bob"],
+    verified: verified, method: method, path: path, body: body)
+}

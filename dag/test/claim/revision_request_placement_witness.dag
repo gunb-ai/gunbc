@@ -1,0 +1,46 @@
+module test.claim.revision_request_placement_witness
+
+import std.types { String, Bool }
+import gunbc.auth.tailnet_serve_readback { TailnetServeReadbackTaken }
+import gunbc.runner.runner_revision_request_placement {
+  revision_request_listener_admit, RevisionRequestListenerAvailable,
+  RevisionRequestListenerCollision, RevisionRequestListenerReadbackUnavailable,
+  RevisionRequestListenerReadbackStale,
+}
+
+fn fresh(status: String) -> gunbc.runner.runner_revision_request_placement.RevisionRequestListenerAdmission {
+  revision_request_listener_admit(readback: TailnetServeReadbackTaken {
+    status_json: status, observed_at: "2026-10-30T12:00:00Z",
+  }, decided_at: "2026-10-30T12:00:01Z")
+}
+
+test fn dedicated_listener_refuses_tcp_or_nonroot_web_collision() -> Bool {
+  (match fresh(status: "{\"TCP\":{\"10001\":{\"HTTPS\":true}}}") { RevisionRequestListenerCollision => true _ => false })
+    && (match fresh(status: "{\"Web\":{\"srv1.example:10001\":{\"Handlers\":{\"/another\":{\"Proxy\":\"http://127.0.0.1:9\"}}}}}") { RevisionRequestListenerCollision => true _ => false })
+    && (match fresh(status: "{\"TCP\":{\"10000\":{\"HTTPS\":true}}}") { RevisionRequestListenerAvailable => true _ => false })
+}
+
+test fn malformed_or_unprojected_status_cannot_prove_listener_free() -> Bool {
+  (match fresh(status: "not JSON") { RevisionRequestListenerReadbackUnavailable => true _ => false })
+    && (match fresh(status: "{\"Web\":{},\"Web\":{}}") { RevisionRequestListenerReadbackUnavailable => true _ => false })
+    && (match fresh(status: "{\"TCP\":[]}") { RevisionRequestListenerReadbackUnavailable => true _ => false })
+    && (match fresh(status: "{\"Foreground\":{\"session\":{}}}") { RevisionRequestListenerReadbackUnavailable => true _ => false })
+    && (match fresh(status: "{\"Services\":{\"svc:one\":{}}}") { RevisionRequestListenerReadbackUnavailable => true _ => false })
+    && (match fresh(status: "{}") { RevisionRequestListenerAvailable => true _ => false })
+}
+
+test fn an_old_empty_readback_cannot_authorize_listener_install() -> Bool {
+  (match revision_request_listener_admit(readback: TailnetServeReadbackTaken {
+    status_json: "{}", observed_at: "2026-10-30T12:00:00Z",
+  }, decided_at: "2026-10-30T12:00:16Z") { RevisionRequestListenerReadbackStale => true _ => false })
+    && (match fresh(status: "{}") { RevisionRequestListenerAvailable => true _ => false })
+}
+
+// Occupancy must never conceal an unreadable sibling configuration.
+test fn unreadable_listener_side_takes_precedence_over_occupancy() -> Bool {
+  (match fresh(status: "{\"TCP\":[],\"Web\":{\"srv1.example:10001\":{}}}") {
+    RevisionRequestListenerReadbackUnavailable => true _ => false
+  }) && (match fresh(status: "{\"TCP\":{\"10001\":{}},\"Web\":[]}") {
+    RevisionRequestListenerReadbackUnavailable => true _ => false
+  })
+}

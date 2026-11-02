@@ -1,0 +1,111 @@
+module gunbc.instruments.revision_request_http_receipt
+
+import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, JsonArray, json_object, json_kv, json_string, json_int, json_bool, json_array }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field, json_field_string, json_field_int, json_field_bool, FieldRead }
+
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+
+data revision_request_http_driver_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.revision_request_http_receipt", decl_name: "revision_request_http_judge"),
+    reason: "The native serve probe accepts only serial requests and fixed peer/refused/stuck-exit phases. The two-process concurrent submission, discarded response, result publication and restart sequence is currently a local Python I/O observer, published verbatim in PR 15310; this reader judges its observations. The native fixture test label is authentication smoke only, not full acceptance qualification.",
+    dissolution: unbound_dissolution(description: "TRIGGER: a committed gunbc test instrument drives concurrent exchanges, discarded response, fixture result publication and stop/restart against the native request entry, with private shared roots and modeled sequencing, and reproduces this receipt and every red control. SUFFICIENT FOR: removing the interim observer and this row. NOT satisfied by serial auth smoke, a passing receipt without its producer, or documentation alone." as NonEmptyStr)
+  )
+]
+
+// The Python host performs process/HTTP I/O and records observations only. This
+// reader owns the five acceptance verdicts and their planted falsifiers. Two
+// native processes share the same private roots; a process-local cap cannot pass.
+fn request_http_rows(document: JsonValue) -> List<JsonValue> {
+  match json_field(obj: document, key: "rows") {
+    FieldRead { value: JsonArray { elements: rows } } => rows
+    _ => []
+  }
+}
+fn request_http_case(row: JsonValue) -> String {
+  match json_field_string(obj: row, key: "case") { FieldRead { value: value } => value _ => "" }
+}
+fn request_http_status(rows: List<JsonValue>, name: String) -> Int {
+  let found = filter(rows, row => request_http_case(row: row) == name)
+  if count(found) != 1 { return -1 }
+  match first(found) {
+    Absent => -1
+    Present { value: row } => match json_field_int(obj: row, key: "status") { FieldRead { value: value } => value _ => -1 }
+  }
+}
+fn request_http_busy(rows: List<JsonValue>, name: String, existing: String) -> Bool {
+  if request_http_status(rows: rows, name: name) != 409 { return false }
+  match first(filter(rows, row => request_http_case(row: row) == name)) {
+    Absent => false
+    Present { value: row } => match json_field_string(obj: row, key: "body") {
+      FieldRead { value: raw } => match parse_json_document(s: raw) {
+        JsonDocumentParsed { value: body } => json_field_string(obj: body, key: "status") == FieldRead { value: "UserBusy" }
+          && json_field_string(obj: body, key: "detail") == FieldRead { value: existing }
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+fn request_http_result_visible(rows: List<JsonValue>) -> Bool {
+  match first(filter(rows, row => request_http_case(row: row) == "own-read")) {
+    Absent => false
+    Present { value: row } => match json_field_string(obj: row, key: "body") {
+      FieldRead { value: raw } => match parse_json_document(s: raw) {
+        JsonDocumentParsed { value: body } => json_field_string(obj: body, key: "result") == FieldRead { value: "fixture-result" }
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+fn request_http_holds(document: JsonValue) -> Bool {
+  let rows = request_http_rows(document: document)
+  if (count(rows) != 17 || json_field_bool(obj: document, key: "credential_exposed") != FieldRead { value: false }) { return false }
+  let a = request_http_status(rows: rows, name: "race-a")
+  let b = request_http_status(rows: rows, name: "race-b")
+  if !((a == 202 && b == 409) || (a == 409 && b == 202)) { return false }
+  let winner = if a == 202 { "race-a" } else { "race-b" }
+  let loser = if winner == "race-a" { "race-b" } else { "race-a" }
+  request_http_result_visible(rows: rows)
+    && request_http_busy(rows: rows, name: "result-still-busy", existing: "lost")
+    && request_http_busy(rows: rows, name: loser, existing: winner)
+    && all(["second-key-busy", "proxy-cannot-override-key", "restart-busy"], name => request_http_busy(rows: rows, name: name, existing: winner))
+    && all(["same-id-retry", "lost-response-retry", "restart-retry"], name => request_http_status(rows: rows, name: name) == 202)
+    && all(["own-read", "restart-read", "other-key-still-valid", "lost-response-before-retry"], name => request_http_status(rows: rows, name: name) == 200)
+    && all(["other-user-read", "cross-read"], name => request_http_status(rows: rows, name: name) == 404)
+    && request_http_status(rows: rows, name: "payload-conflict") == 409
+    && request_http_status(rows: rows, name: "revoked-key") == 401
+}
+fn request_http_mutate_status(document: JsonValue, name: String, status: Int) -> JsonValue {
+  json_object(members: [json_kv(key: "credential_exposed", value: json_bool(b: false)),
+    json_kv(key: "rows", value: json_array(elements: map(request_http_rows(document: document), row =>
+      if request_http_case(row: row) == name { json_object(members: [
+        json_kv(key: "case", value: json_string(s: name)), json_kv(key: "status", value: json_int(n: status)),
+        json_kv(key: "body", value: json_string(s: "planted contradictory observation"))]) } else { row })))])
+}
+fn request_http_controls(document: JsonValue) -> Bool {
+  !request_http_holds(document: request_http_mutate_status(document: request_http_mutate_status(document: document, name: "race-a", status: 202), name: "race-b", status: 202))
+    && !request_http_holds(document: request_http_mutate_status(document: document, name: "lost-response-before-retry", status: 404))
+    && !request_http_holds(document: request_http_mutate_status(document: document, name: "lost-response-retry", status: 409))
+    && !request_http_holds(document: request_http_mutate_status(document: document, name: "second-key-busy", status: 202))
+    && !request_http_holds(document: request_http_mutate_status(document: document, name: "result-still-busy", status: 202))
+    && !request_http_holds(document: request_http_mutate_status(document: document, name: "cross-read", status: 200))
+    && !request_http_holds(document: request_http_mutate_status(document: document, name: "restart-read", status: 404))
+    && !request_http_holds(document: request_http_mutate_status(document: document, name: "restart-busy", status: 202))
+}
+fn revision_request_http_judge(receipt_path: String) -> ProcessExit {
+  let read = Filesystem.Read(path: receipt_path)
+  if !read.success { return ExitFailure { code: 2, reason: "HTTP request receipt unreadable" } }
+  match parse_json_document(s: read.content) {
+    JsonDocumentParsed { value: document } => if request_http_holds(document: document) && request_http_controls(document: document) { ExitSuccess }
+      else { ExitFailure { code: 1, reason: "HTTP acceptance matrix or a planted control did not hold" } }
+    _ => ExitFailure { code: 2, reason: "HTTP request receipt malformed" }
+  }
+}

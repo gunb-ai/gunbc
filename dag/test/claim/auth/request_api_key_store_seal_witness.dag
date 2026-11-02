@@ -1,0 +1,32 @@
+module test.claim.auth.request_api_key_store_seal_witness
+
+import std.types { String }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit }
+
+// The same cohort compiler-path probe. Run again with sole_constructor stripped:
+// the literal becomes constructible and this witness must go red. The qualification
+// driver restores the source before any further work.
+test fn a_foreign_literal_cannot_construct_an_api_key_store() -> ProcessExit {
+  let source = "module probe_request_api_key_store_literal\nimport gunbc.auth.request_api_key_store { RequestApiKeyStore }\nfn f(s: RequestApiKeyStore) -> RequestApiKeyStore { RequestApiKeyStore { slots: s.slots, publication: s.publication } }\n"
+  census_exit(census_verdict(census: blocking_subject_census(source: source,
+    wanted_class: "SoleConstructorViolation", wanted_subject: "RequestApiKeyStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_foreign_literal_cannot_pair_other_keys_with_a_request_context() -> ProcessExit {
+  let source = "module probe_revision_request_context_literal\nimport gunbc.runner.runner_revision_request_context { RevisionRequestContext }\nfn f(a: RevisionRequestContext, b: RevisionRequestContext) -> RevisionRequestContext { RevisionRequestContext { keys: a.keys, request_root: b.request_root } }\n"
+  census_exit(census_verdict(census: blocking_subject_census(source: source,
+    wanted_class: "SoleConstructorViolation", wanted_subject: "RevisionRequestContext"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_foreign_literal_cannot_select_a_staging_path() -> ProcessExit {
+  let source = "module probe_request_stage_literal\nimport gunbc.durable_handoff_host { HostRequestStaged }\nfn f(s: HostRequestStaged) -> HostRequestStaged { HostRequestStaged { root: s.root, identity: s.identity, payload: s.payload, directory: s.directory, path: s.path } }\n"
+  census_exit(census_verdict(census: blocking_subject_census(source: source,
+    wanted_class: "SoleConstructorViolation", wanted_subject: "HostRequestStaged"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_foreign_literal_cannot_mint_request_acceptance() -> ProcessExit {
+  let source = "module probe_request_acceptance_literal\nimport gunbc.durable_handoff_host { HostAcceptedRequest }\nfn f(s: HostAcceptedRequest) -> HostAcceptedRequest { HostAcceptedRequest { root: s.root, identity: s.identity, payload: s.payload } }\n"
+  census_exit(census_verdict(census: blocking_subject_census(source: source,
+    wanted_class: "SoleConstructorViolation", wanted_subject: "HostAcceptedRequest"), holds: fn(n) { n == 1 }))
+}
