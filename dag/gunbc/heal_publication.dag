@@ -281,20 +281,25 @@ fn observe_candidate_world_wet(subject: HealPublicationSubject, directory: Strin
   if fetched.exit_code != 0 {
     return PublisherRunRefused { cause: refusal_line(refusal: ExpectedHeadUnreadable { expected: sealed_head, detail: concat("the candidate head could not be fetched into the isolated store: ", fetched.stderr) }) }
   }
-  // The tree the policy checks committed entries against is the candidate head's tree object. It is
-  // read through the object store, by the LIVE sha the three-way agreement pins.
-  let head_tree = match git_object_id_from_untagged_hex(hex: trim(s: git.Core.RevParseInRepo(repo: store, target: concat(git_object_id_wire_hex(oid: live_oid) as String, "^{tree}") as GitRef).revision)) {
-    Present { value: oid } => oid
-    Absent => return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: sealed_head, detail: "the candidate head tree is not a decodable object id" }) }
-  }
-  let head_tree_hex = git_object_id_wire_hex(oid: head_tree) as String
-  // Read the tree's full file set into a per-run index file under the isolated store, then `ls-files
-  // --stage`. A fetched tree is never truncated, so base_tree_truncated stays false; the boundary's
-  // truncation refusal is retained as strictness kept from the old REST read, not widened by it.
-  let index_file = concat(store as String, "/heal-candidate-index") as FilePath
-  let read_tree = git.Plumbing.ReadTreeIntoIndex(address: GitDirectoryAt { path: store, run_in: store }, index: index_file, treeish: head_tree_hex)
+  // Read the fetched head's full file set into a per-run index file under the isolated store. `git
+  // read-tree` accepts the commit directly and stages its root tree; `git write-tree` then answers that
+  // root tree's OWN object id, which is the base_tree_sha the policy names (the tree, not the commit).
+  // A fetched tree is never truncated, so base_tree_truncated stays false; the boundary's truncation
+  // refusal is retained as strictness kept from the old REST read, not widened by it.
+  let live_hex = git_object_id_wire_hex(oid: live_oid) as String
+  // The index is the bare store's OWN default index (git resolves $GIT_DIR/index == <store>/index for a
+  // bare repo addressed with `-C <store>`); LsFilesStageZInRepo below reads that same default with no
+  // GIT_INDEX_FILE, so read-tree, write-tree and ls-files must all name it or they see three different
+  // indexes and the staged listing comes back empty.
+  let index_file = concat(store as String, "/index") as FilePath
+  let read_tree = git.Plumbing.ReadTreeIntoIndex(address: GitDirectoryAt { path: store, run_in: store }, index: index_file, treeish: live_hex)
   if read_tree.exit_code != 0 {
-    return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: head_tree_hex, detail: concat("the candidate head tree could not be read into the index: ", read_tree.stderr) }) }
+    return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: live_hex, detail: concat("the candidate head tree could not be read into the index: ", read_tree.stderr) }) }
+  }
+  let written = git.Plumbing.WriteTreeFromIndex(address: GitDirectoryAt { path: store, run_in: store }, index: index_file)
+  let head_tree_hex = match git_object_id_from_untagged_hex(hex: trim(s: written.tree)) {
+    Present { value: oid } => git_object_id_wire_hex(oid: oid) as String
+    Absent => return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: live_hex, detail: "the candidate head tree is not a decodable object id" }) }
   }
   let staged = git.Core.LsFilesStageZInRepo(repo: store)
   if !staged.success {

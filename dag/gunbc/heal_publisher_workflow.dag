@@ -80,9 +80,14 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 // condition pins runner_environment to github-hosted for the same reason, so a later edit that moved
 // this job onto the fleet would fail to federate rather than quietly widen.
 //
-// ADMISSION HAPPENS BEFORE FEDERATION. The admit step runs with the job's own read-only token; only
-// if a candidate admits does the auth step run and a token get minted at all, so a malformed or stale
-// candidate never causes a credential to exist.
+// ADMISSION HAPPENS BEFORE FEDERATION, AND WITHOUT ANY CREDENTIAL AT ALL. The admit step is emitted with
+// no GITHUB_TOKEN and no publication credential: observe_candidate_world_wet answers head liveness with
+// a credential-free ls-remote of refs/pull/<n>/head and the base tree with a credential-free fetch into an
+// isolated store, so it reaches no auth-declaring operation. Only if a candidate admits does the auth step
+// run and a token get minted, so a malformed, stale or closed-PR candidate never causes a credential to
+// exist. (The step once carried `GITHUB_TOKEN: ${{ github.token }}`; that line was dead decoration -- the
+// credential-free admit reads no environment token -- so it is deleted rather than left cited as a safeguard
+// it does not provide, per DESIGN 5.)
 
 // THE PUBLISHER'S NAME, JOB ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW. Two of these
 // literals used to sit beside the step list while the profile also described the job; the row is now the
@@ -272,8 +277,7 @@ fn heal_publisher_admit_step(profile: RepositoryCiProfile, job: HealPublisherPol
           run: script,
           env: Present {
             value: [
-              heal_publisher_candidate_directory_env_row(composed: heal_publisher_candidate_is_composed(source: source)),
-              kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))
+              heal_publisher_candidate_directory_env_row(composed: heal_publisher_candidate_is_composed(source: source))
             ]
           },
           id: none,

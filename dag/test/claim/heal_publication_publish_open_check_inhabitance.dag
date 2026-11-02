@@ -1,0 +1,65 @@
+module test.claim.heal_publication_publish_open_check_inhabitance
+
+// INHABITANCE for the publish "PR still open" check (DESIGN 3 pairing obligation). gunbc.heal_publication
+// .ensure_pull_request_open_wet reads the pull request's state at PUBLISH through the EXISTING
+// authenticated github.Pulls interface, using the job's own GITHUB_TOKEN as auth_token, and refuses with
+// a typed PullRequestNotOpen before mint/write when the pull request is Closed. This claim drives that
+// exact route -- github.Pulls.Get with a job token, the same state match -- against the real PUBLIC
+// gunb-ai/gunbc, once, so the route is witnessed as inhabitated: a CLOSED pull request yields the Closed
+// state (which publish refuses) and an OPEN one yields Open. If github.Pulls.Get were re-declared, or the
+// state shape changed, or the credential stopped resolving, this claim fails.
+//
+// Run WITH the job token in the environment (the same GITHUB_TOKEN the emitter gives the publish step).
+// closed_pr_publish_control asserts the CLOSED pull request is detected as Closed -> publish refuses.
+// open_pr_publish_control asserts an OPEN pull request is detected as Open -> publish proceeds.
+// Both require the credential; neither runs credential-less (that path is the admit fix, covered elsewhere).
+
+import extdeps.github.pulls { Open, Closed }
+import extdeps.shell
+import std.types { Secret }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+data publish_inhabitant_owner: String = "gunb-ai"
+data publish_inhabitant_repo: String = "gunbc"
+data publish_inhabitant_closed_pr: Int = 15665
+data publish_inhabitant_open_pr: Int = 15669
+
+fn job_token() -> String? {
+  match shell.Env.Get(name: "GITHUB_TOKEN").value {
+    Absent => none
+    Present { value: raw } => if trim(s: raw) == "" { none } else { Present { value: trim(s: raw) } }
+  }
+}
+
+
+fn closed_pr_publish_control() -> ProcessExit {
+  match job_token() {
+    Absent => exit_failure(reason: "publish inhabitance: GITHUB_TOKEN absent; run the publish open-check inhabitance WITH the job token")
+    Present { value: tok } =>
+      match github.Pulls.Get(auth_token: tok as Secret, owner: publish_inhabitant_owner, repo: publish_inhabitant_repo, pull_number: publish_inhabitant_closed_pr) {
+        RestRefused { refusal } => exit_failure(reason: "publish inhabitance: the closed pull request's state could not be read (rate limit / unreachable) -- publish must fail CLOSED on this")
+        RestAnswered { answer: pr } =>
+          match pr.pr.state {
+            Closed => ExitSuccess
+            Open => exit_failure(reason: "publish inhabitance: expected a CLOSED pull request but the read reported Open")
+          }
+      }
+  }
+}
+
+fn open_pr_publish_control() -> ProcessExit {
+  match job_token() {
+    Absent => exit_failure(reason: "publish inhabitance: GITHUB_TOKEN absent; run WITH the job token")
+    Present { value: tok } =>
+      match github.Pulls.Get(auth_token: tok as Secret, owner: publish_inhabitant_owner, repo: publish_inhabitant_repo, pull_number: publish_inhabitant_open_pr) {
+        RestRefused { refusal } => exit_failure(reason: "publish inhabitance: the open pull request's state could not be read")
+        RestAnswered { answer: pr } =>
+          match pr.pr.state {
+            Open => ExitSuccess
+            Closed => exit_failure(reason: "publish inhabitance: expected an OPEN pull request but the read reported Closed")
+          }
+      }
+  }
+}
