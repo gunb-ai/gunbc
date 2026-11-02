@@ -66,3 +66,47 @@ fn native_claim_report() -> NativeClaimReport {
     terminal: if all(cases, c => c.held) { NativeClaimHeld } else { NativeClaimNotHeld { reason: "seed/v2 kernel declaration readings disagree" } }
   }
 }
+
+// Interpreted evidence uses dag + src/v2 + src/v1. Native seed-adapter agreement
+// remains a frontier until src/v1 enters a governed native population by a
+// source_layout ruling. No native instrument label claims these cases execute.
+
+test fn kernel_declaration_binding_std_integer_Int_same_kernel() -> Bool {
+  kernel_readers_agree(module_path: "std.integer", name: "Int", spelling: "Int")
+}
+
+test fn kernel_declaration_binding_v2_std_integer_Int_same_kernel() -> Bool {
+  kernel_readers_agree(module_path: "v2.std.integer", name: "Int", spelling: "Int")
+}
+
+test fn kernel_declaration_binding_std_types_Bool_same_kernel() -> Bool {
+  kernel_readers_agree(module_path: "std.types", name: "Bool", spelling: "Bool")
+}
+
+test fn kernel_declaration_binding_v2_node_Symbol_same_kernel() -> Bool {
+  kernel_readers_agree(module_path: "v2.std.node", name: "Symbol", spelling: "Symbol")
+}
+
+test fn kernel_declaration_binding_legacy_String_same_kernel() -> Bool {
+  kernel_readers_agree(module_path: "v2.std.node", name: "String", spelling: "String")
+}
+
+test fn kernel_declaration_binding_HostText_same_kernel() -> Bool {
+  kernel_readers_agree(module_path: "std.host_text", name: "HostText", spelling: "String")
+}
+
+test fn kernel_declaration_binding_foreign_Int_not_kernel() -> Bool {
+  kernel_foreign_is_not_int()
+}
+
+test fn kernel_declaration_binding_v2_binding_denotations_unchanged() -> Bool {
+  kvr_every_kernel_value_type_is_denoted_by_its_own_identity_holds_predicate()
+}
+
+test fn kernel_declaration_binding_v2_declaration_join_unchanged() -> Bool {
+  kvr_a_spelling_and_its_declarations_bind_what_the_join_denotes_holds_predicate()
+}
+
+test fn kernel_declaration_binding_v2_unspelled_forks_unchanged() -> Bool {
+  kvr_symbol_and_char_are_a_recorded_fork_that_binds_no_spelling_holds_predicate()
+}
