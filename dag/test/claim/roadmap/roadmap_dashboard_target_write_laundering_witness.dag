@@ -3,9 +3,10 @@ module test.claim.roadmap.roadmap_dashboard_target_write_laundering_witness
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ProcessExit }
-import std.roster_frontier { frontier_rows_well_formed }
+import std.roster_frontier { frontier_rows_well_formed, frontier_subject_key }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
-import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_consumer_frontier_rows }
+import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_frontier_rows }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -45,8 +46,12 @@ test fn the_surviving_function_resolves_where_the_deleted_fold_does_not() -> Pro
   ))
 }
 
-// THE ENROLLED FRONTIER ROW (DESIGN 3c) is well formed: one row, a bound trigger that names a declaration.
-test fn the_consumer_frontier_row_is_enrolled_and_well_formed() -> Bool {
-  frontier_rows_well_formed(rows: dashboard_target_write_consumer_frontier_rows)
-    && length(xs: dashboard_target_write_consumer_frontier_rows) == 1
+// THE DECLARED FRONTIER ROW IS DISCHARGED, not merely absent: dashboard_target_write_create_new has a production
+// consumer (DashboardMoveAttemptStateEntries), and the one frontier row left on the move rows (session placement
+// records, Sb4581047) is well formed and enrolled in the census closure by subject key.
+test fn the_move_frontier_row_is_enrolled_and_well_formed() -> Bool {
+  let census_keys = census_closure_frontier_rows() |> map(row => frontier_subject_key(subject: row.subject))
+  frontier_rows_well_formed(rows: attempt_state_move_frontier_rows)
+    && length(xs: attempt_state_move_frontier_rows) == 1
+    && attempt_state_move_frontier_rows |> all(row => census_keys |> any(k => k == frontier_subject_key(subject: row.subject)))
 }

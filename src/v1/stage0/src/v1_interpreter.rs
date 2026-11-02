@@ -903,6 +903,16 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
+/// A record field the checker declares `T?` (CardOptional) holds the declared Optional<T>:
+/// Null (the host's "no value") becomes Absent and a bare value Present, through the one
+/// constructors. An already-built Optional variant is kept. A non-optional field is untouched.
+fn declared_optional_field(child: &Rc<Node>, value: Value, ctx: &InterpContext) -> Value {
+    if child.return_cardinality != Cardinality::CardOptional {
+        return value;
+    }
+    declared_optional_field_value(value, ctx)
+}
+
 /// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract (a
 /// `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction) or is a bare
 /// storage read still needing the wrap (native `Value::Map`/field storage, miss = `Value::Null`).
@@ -922,9 +932,10 @@ fn map_lookup_as_optional(raw: RawMapLookup, ctx: &InterpContext) -> Value {
 }
 
 impl RawMapLookup {
-    /// Bare-value callers (field access, `[]` indexing, the raw `lookup`/`get`
-    /// builtins) don't observe the `Optional` contract at all — they want
-    /// exactly what was found, miss-as-`Null` included.
+    /// Exactly two callers, both where the checker's declared type is the map's
+    /// value type and NOT `Optional<V>`: `extract_field` on a `Value::Map`
+    /// (field access) and the `[]` index arm. Every `.get`/`lookup` arm the
+    /// checker types `Optional<V>` goes through `map_lookup_as_optional`.
     fn into_raw(self) -> Value {
         match self {
             RawMapLookup::AlreadyOptional(v) | RawMapLookup::NeedsWrap(v) => v,
@@ -4445,6 +4456,51 @@ mod cross_claim_memo_tests {
             super::run_in_context(&ctx, name, false).expect(name)
         };
         assert_eq!(eval("left_none"), eval("right_none"));
+    }
+
+    // INTERPRETER-LAYER fail-closed control for the claim-run route defect (DESIGN §5). A claim run is
+    // executed in Hermetic mode — the mode is chosen by the ONE shared authority
+    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb and `claim_batch` both
+    // call; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
+    // mock), while `main.rs::claim_run_mode_tests` pins the route half (the claim route selects Hermetic
+    // AND discriminates Wet). This is the INTERPRETER layer, so it drives `InterpContext::new(.., Hermetic)`
+    // directly; the route-driven test in main.rs is what exercises the mode the route actually selects.
+    // This fixture declares a shell effect
+    // with NO `mock_response` (no mock bound on the entry route). Under Hermetic it must refuse typed
+    // (`no mock_response ... refusing`) via `eval_mock_response`, and NEVER reach `dispatch_shell` --
+    // so nothing is spawned against the host. Before the fix, `gunbc run --claim-run` ran this entry
+    // in WET mode and dispatched the real effect (the mocked journalctl ran live against srv1's
+    // journal). Host-free by construction: the refusal short-circuits before any transport.
+    #[test]
+    fn hermetic_claim_route_refuses_an_unbound_mocked_effect_without_dispatching() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/claim_run_route.dag".to_string(),
+                content: "module fixture.claim_run_route\n\nservice fixture.ClaimRoute {\n  operation UnboundEffect {\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.ClaimRoute.UnboundEffect()\n  r.success\n}\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(e) => {
+                let msg = format!("{e}");
+                assert!(
+                    msg.contains("no mock_response"),
+                    "claim route must refuse the unbound mocked effect with the typed NoMockResponse \
+                     refusal; got instead: {msg}"
+                );
+            }
+            Ok(v) => panic!(
+                "the hermetic claim route must REFUSE an unbound mocked effect, never dispatch it; \
+                 it returned: {v:?}"
+            ),
+        }
     }
 
     // The mirror-image defect is silent wrongness rather than a false negative: before symbols
@@ -8585,7 +8641,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let si = ctx.si();
     match (*node.expr_data).clone() {
-        ExprData::ExprLiteral { value } => eval_literal(&value),
+        ExprData::ExprLiteral { value } => eval_literal(&value, ctx),
 
         // An elaborated literal (std.literal_elaboration) carries its image under the declared
         // homomorphism as its one child. A Peano unfolding's destination is STRUCTURAL on every
@@ -8604,7 +8660,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     crate::std_literal_elaboration::LiteralUnfolding::PeanoUnfold { .. },
                     Some(image),
                 ) => eval_expr(image, env, ctx),
-                _ => eval_literal(&value),
+                _ => eval_literal(&value, ctx),
             }
         }
 
@@ -8641,10 +8697,11 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     // value's truth and the right operand is never asked for.
                     Ok(Value::Bool(left.is_truthy()))
                 }
-                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent
-                    if !matches!(left, Value::Null) =>
-                {
-                    Ok(left)
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent => {
+                    match coalesce_present(&left, ctx)? {
+                        Some(present) => Ok(present),
+                        None => eval_expr(&binop_right(node.clone()), env, ctx),
+                    }
                 }
                 _ => {
                     let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
@@ -8738,7 +8795,9 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     }
 }
 
-fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
+// `none` and `null` lower to one LitNull (extdeps.languages.dag syntax table); the value it
+// denotes is the optional's Absent, built by the one constructor, not a host Null.
+fn eval_literal(lit: &LiteralValue, ctx: &InterpContext) -> InterpResult<Value> {
     match lit {
         LiteralValue::LitBool { value } => Ok(Value::Bool(*value)),
         LiteralValue::LitInt { value } => Ok(Value::Int(*value)),
@@ -8750,7 +8809,7 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
         }
         LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
         LiteralValue::LitSymbol { value } => Ok(str_value(value.clone())),
-        LiteralValue::LitNull => Ok(Value::Null),
+        LiteralValue::LitNull => Ok(optional_absent(ctx)),
     }
 }
 
@@ -8810,12 +8869,13 @@ fn eval_var(
         });
     }
 
-    // Only the untyped null/optional shorthand collapses to the host Null carrier. A resolved
-    // coproduct arm named `None` was handled above and retains its declaration identity
-    // (`parent_enum`, terminal arm), so `Diagnostics.None`, an imported `None`, and a re-export
-    // construct the same value while an unrelated coproduct's `None` remains distinct.
+    // The untyped `none` shorthand denotes the optional's Absent, built by the one constructor
+    // (`optional_absent`), not a host Null second representation. A resolved coproduct arm named
+    // `None` was handled above and retains its declaration identity (`parent_enum`, terminal
+    // arm), so `Diagnostics.None`, an imported `None`, and a re-export construct the same value
+    // while an unrelated coproduct's `None` remains distinct.
     if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
-        return Ok(Value::Null);
+        return Ok(optional_absent(ctx));
     }
 
     if let Some(val) = env.lookup(sym) {
@@ -8926,11 +8986,7 @@ fn eval_var(
 
 fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> InterpResult<Value> {
     if matches!(op, BinOp::NullCoalesce) {
-        return Ok(if matches!(left, Value::Null) {
-            right
-        } else {
-            left
-        });
+        return Ok(coalesce_present(&left, ctx)?.unwrap_or(right));
     }
 
     if matches!(op, BinOp::Add) {
@@ -9573,9 +9629,8 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     // `v1.compiler.infer` `optional_match_arm_sees_present_value` (a bare binding after an
     // unguarded Absent arm; a non-null literal arm), and every Rust match rendering reads the same
     // predicate. The interpreter reads it too and decides nothing of its own. What is interpreter
-    // specific is only HOW the payload is reached: an optional's value has two runtime
-    // representations -- a bare value (host builtins) or an `Optional.Present` variant (an authored
-    // `Present { value }`) -- and `optional_present_payload` peels either.
+    // specific is only HOW the payload is reached: an optional's value has ONE runtime
+    // representation, the `Optional` variant, and `optional_present_payload` peels it.
     // An untyped scrutinee cannot be asked the predicate. That is harmless while its value is a
     // bare value (every arm then sees the same value either way) and a silent wrong answer when it
     // is an `Optional.Present` variant (the literal arm would miss, the binding would hold the
@@ -9675,16 +9730,23 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     })
 }
 
+/// `left ?? right`: the present payload of an `Optional` left, `None` (take the right operand) when
+/// it is `Absent`. One rule for the lazy arm and `eval_binop`; a left that is not an `Optional`
+/// refuses rather than passing through.
+fn coalesce_present(left: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
+    optional_present_payload(left, ctx)
+}
+
 fn is_optional_variant(value: &Value, ctx: &InterpContext) -> bool {
     matches!(value, Value::Variant { type_name, .. } if *type_name == ctx.sym("Optional"))
 }
 
-/// The present payload of an optional value in either runtime representation, `None` when it
-/// is absent (`Null` or `Optional.Absent`). An `Optional.Present` without its `value` field is
-/// malformed and refuses rather than reading as absent.
+/// The present payload of an optional value, `None` when it is `Optional.Absent`. A value that is
+/// not an `Optional` variant (host null or a bare element) refuses: there is one representation.
+/// An `Optional.Present` without its `value` field is malformed and refuses rather than reading
+/// as absent.
 fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
     match value {
-        Value::Null => Ok(None),
         Value::Variant {
             variant_name,
             fields,
@@ -9700,7 +9762,9 @@ fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<
                 }),
             }
         }
-        other => Ok(Some(other.clone())),
+        other => Err(InterpError::TypeError {
+            msg: format!("matched an Optional but the value is not an Optional variant: {other}"),
+        }),
     }
 }
 
@@ -10787,7 +10851,7 @@ fn match_pattern(
             }
 
             MatchPattern::LitPattern { value: lit } => {
-                let lit_val = eval_literal(lit).ok()?;
+                let lit_val = eval_literal(lit, ctx).ok()?;
                 if *value == lit_val {
                     Some(HashMap::new())
                 } else {
@@ -13347,6 +13411,66 @@ fn eval_field_access(
 
     let access_style = summary.map(|s| &s.access_style);
 
+    // The checker DECLARES the read: `04_lookup` `field_summary_for_type` styles `.value` on an
+    // optional `OptionalUnwrap` (typed required: peel Present, refuse Absent with a typed error)
+    // and every other field read off an optional with value shape `OptionalValue` (typed
+    // OPTIONAL: peel Present and re-wrap the field, propagate Absent). The interpreter never
+    // reads a field off the variant itself, and never refuses what the checker types as optional.
+    // `OptionalValue` carries two meanings in the checker's summary: the BASE is optional
+    // (`field_summary_for_type`), or the FIELD's own value is optional (a struct field declared
+    // `T?`, `field_value_shape_from_type_node`). Only the first peels; a record base is never an
+    // Optional variant, so a field declared `T?` on a record is returned as the stored Optional.
+    let unwrap_style = matches!(access_style, Some(FieldAccessStyle::OptionalUnwrap));
+    let optional_base_read = !unwrap_style
+        && matches!(
+            summary.map(|s| &s.value_shape),
+            Some(FieldValueShape::OptionalValue)
+        )
+        && is_optional_variant(&base_val, ctx);
+    let base_val = if unwrap_style || optional_base_read {
+        match optional_present_payload(&base_val, ctx)? {
+            Some(payload) => payload,
+            None if optional_base_read => return Ok(optional_absent(ctx)),
+            None => {
+                return Err(locate_field_access_error(
+                    InterpError::TypeError {
+                        msg: format!("field '{}' read off an Absent optional", field_name),
+                    },
+                    node,
+                ))
+            }
+        }
+    } else {
+        base_val
+    };
+    if optional_base_read {
+        let read = eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)?;
+        return Ok(declared_optional_field_value(read, ctx));
+    }
+
+    eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)
+}
+
+// A field read off an optional is typed optional (one layer): an already-Optional field value is
+// returned as is, a bare one is Present, Null is Absent.
+fn declared_optional_field_value(value: Value, ctx: &InterpContext) -> Value {
+    match value {
+        Value::Null => optional_absent(ctx),
+        Value::Variant { ref type_name, .. } if ctx.sym_eq(*type_name, "Optional") => value,
+        other => optional_present(other, ctx),
+    }
+}
+
+fn eval_field_access_on(
+    base_val: &Value,
+    access_style: Option<&FieldAccessStyle>,
+    field_name: &str,
+    node: &Rc<Node>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let base_val = base_val.clone();
+    let field_name = field_name.to_string();
     match access_style {
         Some(FieldAccessStyle::TupleFirst) => match expect_list(&base_val, "tuple.first") {
             Ok(items) => Ok(items.front().cloned().unwrap_or(Value::Null)),
@@ -13356,10 +13480,7 @@ fn eval_field_access(
             Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
             Err(_) => extract_field(&base_val, &field_name, env, ctx),
         },
-        Some(FieldAccessStyle::OptionalUnwrap) => match &base_val {
-            Value::Null => Ok(Value::Null),
-            _ => Ok(base_val),
-        },
+        Some(FieldAccessStyle::OptionalUnwrap) => Ok(base_val), // already peeled above
         Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx)
             .map_err(|e| locate_field_access_error(e, node)),
         _ => extract_field(&base_val, &field_name, env, ctx)
@@ -14170,7 +14291,7 @@ macro_rules! v1_algebra_method_arms {
                 let key = $args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "lookup requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
             },
 
             arm "method_call.map" { "map" } => list_method_with_closure("map", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
@@ -14397,12 +14518,12 @@ macro_rules! v1_algebra_method_arms {
 
             arm "method_call.first" { "first" } => {
                 let items = expect_list(&$receiver, "first")?;
-                Ok(items.front().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.front().cloned(), &$ctx))
             },
 
             arm "method_call.last" { "last" } => {
                 let items = expect_list(&$receiver, "last")?;
-                Ok(items.last().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.last().cloned(), &$ctx))
             },
 
             arm "method_call.reverse" { "reverse" } => {
@@ -14494,15 +14615,15 @@ macro_rules! v1_algebra_method_arms {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 } else if let Ok(items) = expect_list(&$receiver, "get") {
                     let idx = expect_int($args.first(), "get")?;
-                    Ok(list_get_at_or_null(&items, idx))
+                    Ok(list_get_at_optional(&items, idx, &$ctx))
                 } else {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 }
             },
 
@@ -15287,8 +15408,8 @@ fn dispatch_env_get_native(
         }
     };
     let value = match wet_env_var(&name) {
-        Some(s) => str_value(s),
-        None => Value::Null,
+        Some(s) => optional_present(str_value(s), ctx),
+        None => optional_absent(ctx),
     };
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -18363,7 +18484,10 @@ fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult
         if short == "spawn" {
             continue;
         }
-        fields.push((ctx.sym(&field_name), Value::Null));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, Value::Null, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
@@ -18743,7 +18867,10 @@ fn map_shell_outputs(
             && result.exit_code != 0
             && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
         {
-            fields.push((ctx.sym(&field_name), Value::Null));
+            fields.push((
+                ctx.sym(&field_name),
+                declared_optional_field(child, Value::Null, ctx),
+            ));
             continue;
         }
         let value = match from_key.as_deref() {
@@ -18772,11 +18899,14 @@ fn map_shell_outputs(
                 "exists" => Some(Value::Bool(result.exit_code == 0)),
                 _ => None,
             } {
-                fields.push((ctx.sym(&field_name), v));
+                fields.push((ctx.sym(&field_name), declared_optional_field(child, v, ctx)));
                 continue;
             }
         }
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -20024,7 +20154,10 @@ fn map_file_outputs(
             "content" | "entries" => str_value(result.content.clone()),
             _ => Value::Null,
         };
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -20646,7 +20779,7 @@ fn attach_transport_outcome(
                     .map(|field| {
                         (
                             ctx.sym(&authored_name_at(ctx.si(), field.clone())),
-                            Value::Null,
+                            declared_optional_field(field, Value::Null, ctx),
                         )
                     })
                     .collect()
@@ -21233,11 +21366,11 @@ fn map_response_to_value_json(
 ) -> Result<Value, RestResponseDecodeRefusal> {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
-        _ => return Ok(json_to_value(json)),
+        _ => return Ok(json_to_value(json, ctx)),
     };
     let children = &return_type.children;
     if children.is_empty() {
-        return Ok(json_to_value(json));
+        return Ok(json_to_value(json, ctx));
     }
 
     let payload_count = children.len();
@@ -21261,7 +21394,10 @@ fn map_response_to_value_json(
                 None => Value::Null,
             },
         };
-        fields.push((ctx.sym(&field_name), val));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, val, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -21566,7 +21702,7 @@ fn decode_json_by_declared_field_at(
         Some(InferredNode::Resolved { node }) => {
             decode_json_by_declared_type(json, node, path, ctx)
         }
-        _ => Ok(json_to_value(json)),
+        _ => Ok(json_to_value(json, ctx)),
     }
 }
 
@@ -21590,7 +21726,7 @@ fn decode_json_by_declared_type(
                 }
                 Ok(list_value(out))
             }
-            _ => Ok(json_to_value(json)),
+            _ => Ok(json_to_value(json, ctx)),
         };
     }
     // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
@@ -21641,12 +21777,12 @@ fn decode_json_by_declared_type(
             !ty.children.is_empty() && ty.children.iter().all(|arm| arm.children.is_empty());
         if !nullary {
             // A payload-carrying coproduct is not a JSON string and is outside this decode.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         if json.is_boolean() && name.rsplit('.').next() == Some("Bool") {
             // `Bool = True | False` is carried natively (`Value::Bool`), and a JSON boolean is
             // its wire form; every other nullary coproduct is spelled as a string.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         return decode_nullary_coproduct(json, ty, &name, path, ctx);
     }
@@ -21704,7 +21840,7 @@ fn decode_json_by_declared_type(
                             ctx,
                         )?,
                     ),
-                    None => (key.clone(), json_to_value(value)),
+                    None => (key.clone(), json_to_value(value, ctx)),
                 };
                 if let Some(ck) = CanonKey::new(str_value(stored)) {
                     fields.insert(ck, decoded);
@@ -21713,7 +21849,7 @@ fn decode_json_by_declared_type(
             return Ok(map_value(fields));
         }
     }
-    Ok(json_to_value(json))
+    Ok(json_to_value(json, ctx))
 }
 
 fn decode_nullary_coproduct(
@@ -21942,9 +22078,10 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     ))
 }
 
-fn json_to_value(json: &serde_json::Value) -> Value {
+/// JSON null is absence: it builds the one `Optional.Absent` constructor, like `none`.
+fn json_to_value(json: &serde_json::Value, ctx: &InterpContext) -> Value {
     value_depth_guarded(|| match json {
-        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Null => optional_absent(ctx),
         serde_json::Value::Bool(b) => Value::Bool(*b),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
@@ -21954,14 +22091,16 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             }
         }
         serde_json::Value::String(s) => str_value(s.clone()),
-        serde_json::Value::Array(arr) => {
-            list_value(arr.iter().map(json_to_value).collect::<Vec<_>>())
-        }
+        serde_json::Value::Array(arr) => list_value(
+            arr.iter()
+                .map(|v| json_to_value(v, ctx))
+                .collect::<Vec<_>>(),
+        ),
         serde_json::Value::Object(obj) => {
             let fields: HamtMap<CanonKey, Value> = obj
                 .iter()
                 .filter_map(|(k, v)| {
-                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v)))
+                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v, ctx)))
                 })
                 .collect();
             map_value(fields)
@@ -23679,12 +23818,12 @@ macro_rules! v1_builtin_arms {
             arm "free_call.get" { "get" } => match $positional.as_slice() {
                 [Value::List(items), idx_val] => {
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(items, idx)))
+                    Ok(Some(list_get_at_optional(items, idx, &$ctx)))
                 }
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(&items, idx)))
+                    Ok(Some(list_get_at_optional(&items, idx, &$ctx)))
                 }
                 _ => Ok(None),
             },
@@ -23692,8 +23831,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.parse_int" { "parse_int" } => {
                 let s = expect_str($positional.first().copied(), "parse_int")?;
                 match s.parse::<i64>() {
-                    Ok(n) => Ok(Some(Value::Int(n))),
-                    Err(_) => Ok(Some(Value::Null)),
+                    Ok(n) => Ok(Some(optional_present(Value::Int(n), $ctx))),
+                    Err(_) => Ok(Some(optional_absent($ctx))),
                 }
             },
 
@@ -23847,8 +23986,8 @@ macro_rules! v1_builtin_arms {
                     expect_value_str($positional.first().copied(), "hmac_sha256_hex key")?.as_str(),
                     expect_value_str($positional.get(1).copied(), "hmac_sha256_hex message")?.as_str(),
                 ) {
-                    Some(tag) => str_value(tag),
-                    None => Value::Null,
+                    Some(tag) => optional_present(str_value(tag), $ctx),
+                    None => optional_absent($ctx),
                 }))
             },
 
@@ -23873,8 +24012,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
                 let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
                 match v1_rt::json_unescape_checked(&s) {
-                    Some(out) => Ok(Some(str_value(out))),
-                    None => Ok(Some(Value::Null)),
+                    Some(out) => Ok(Some(optional_present(str_value(out), $ctx))),
+                    None => Ok(Some(optional_absent($ctx))),
                 }
             },
 
@@ -26641,8 +26780,20 @@ mod slice_cost_tests {
     }
 }
 
-fn list_get_at_or_null(items: &RrbVector<Value>, idx: i64) -> Value {
-    items.get(idx as usize).cloned().unwrap_or(Value::Null)
+/// A list element read is the declared `Optional<T>` (v2 `list_at_optional` is the referent):
+/// `Present { value }` in range, `Absent` otherwise, never a bare element or host null.
+fn list_element_as_optional(element: Option<Value>, ctx: &InterpContext) -> Value {
+    match element {
+        Some(value) => optional_present(value, ctx),
+        None => optional_absent(ctx),
+    }
+}
+
+fn list_get_at_optional(items: &RrbVector<Value>, idx: i64, ctx: &InterpContext) -> Value {
+    let element = usize::try_from(idx)
+        .ok()
+        .and_then(|i| items.get(i).cloned());
+    list_element_as_optional(element, ctx)
 }
 
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
@@ -30000,7 +30151,7 @@ mod value_depth_walker_tests {
     use super::{
         account_value, cross_representation_numeric_straddle,
         free_monoid_symbol_value_to_dotted_string, json_to_value, list_value, map_value,
-        portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
+        optional_absent, portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
         portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash, CanonKey,
         ExecutionMode, InterpContext, MemoryAccounting, Value,
     };
@@ -30224,7 +30375,9 @@ mod value_depth_walker_tests {
         assert_eq!(super::json_container_depth(&wire), limit);
         let text = serde_json::to_string(&wire).expect("serializes");
         assert!(serde_json::from_str::<serde_json::Value>(&text).is_ok());
-        assert!(json_to_value(&wire) == value);
+        assert!(json_to_value(&wire, &ctx) == value);
+        // JSON null is absence: the one `Optional.Absent` constructor, not host Null.
+        assert!(json_to_value(&serde_json::Value::Null, &ctx) == optional_absent(&ctx));
         // The fixture encoding spends two containers per List level (its tag object and its items
         // array), the empty leaf included, so limit / 2 Lists -- limit / 2 - 1 wrapping levels --
         // fit inside the limit.

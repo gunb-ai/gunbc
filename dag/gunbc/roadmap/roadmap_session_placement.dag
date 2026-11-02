@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_session_placement
 
-import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Seconds }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, millicore }
@@ -35,14 +35,26 @@ import gunbc.compute.work_class_grant {
 import gunbc.compute.unit_bounds { UnitProcessBounds }
 import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import extdeps.linux.kernel_random { kernel_boot_id_path }
+import extdeps.linux.proc_stat { proc_stat_path }
+import gunbc.systemd_unit_invocation_liveness {
+  UnitInvocationObservation, UnitInvocationAbsent, UnitInvocationPresent, UnitInvocationUnreadable,
+  UnitBootObservation, BootObserved, BootUnreadable, unit_boot_observation,
+  unit_invocation_observation, unit_reboot_holder_liveness, SystemManager,
+}
+import std.durable_exclusive_hold { HolderObservedDead, HolderObservedLive, HolderLivenessUnobservable }
+import gunbc.compute.host_capacity {
+  compute_seat_acquisition_at, SeatAcquisitionRead, SeatAcquisitionNotHeld, SeatAcquisitionRefused,
+}
 import extdeps.systemd {
-  systemd_unit_name_wire, systemd_unit_name_refusal_detail,
+  systemd_unit_name_wire, systemd_unit_name_refusal_detail, InvocationIDProperty,
   SystemdUnitNameAdmission, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty,
   SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_unit_name,
-  AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation,
+  AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation, attempt_unit_property,
+  attempt_unit_manager_is_system,
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of, attempt_unit_from_exit_record,
 }
@@ -52,7 +64,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptWorkerRole, attempt_unit_role_token,
 }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, FilesystemFileObservation,
+  Filesystem, FilesystemFileObservation, FilesystemReadOutcome,
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
   filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -212,6 +224,9 @@ fn session_attempt_name_of(identity: String) -> SessionAttemptName? {
 // generation-checked slots (the realization census row storage_hand_exclusion for
 // session_placement_record_write), so sealing it would be a second store type over a mechanism that
 // should itself move onto the slot store; that move changes the records' durable form and is its own change.
+// THE STORES THE PASS READS, and the appropriation the ledger was minted with. The appropriation travels
+// because reading the ledger's acquisition instant for a reference needs the same pool root the ledger was
+// folded with; it is the subject's real appropriation, not a number minted at the read.
 type SessionPlacementStores {
   slots: SessionAttemptSlotsStore
   records_dir: String
@@ -376,7 +391,7 @@ type SessionAbandonment {
 }
 
 fn session_abandon_release(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr, closed: String) -> SessionAbandonment {
-  let freed = compute_release_on(store: grant.store, partition: grant.partition, appropriation: kibibyte(count: 0), reference: grant.lease.reference, reason: reason)
+  let freed = compute_release_on(store: grant.store, partition: grant.partition, appropriation: session_ledger_fold_ceiling, reference: grant.lease.reference, reason: reason)
   let write = session_placement_release_write(
     records_dir: stores.records_dir, node_id: grant.node_id, attempt_key: grant.attempt_key,
     grant_binding: Present { value: SessionGrantBinding { grant_identity: grant.lease.fence.grant as String, fence_generation: grant.lease.fence.generation } },
@@ -433,7 +448,7 @@ fn session_placement_abandon_at(stores: SessionPlacementStores, grant: SessionPl
 }
 
 fn session_placement_abandon(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr) -> String {
-  (session_placement_abandon_at(stores: stores, grant: grant, reason: reason, lifecycle_of: session_observe_unit_lifecycle)).detail
+  (session_placement_abandon_at(stores: stores, grant: grant, reason: reason, lifecycle_of: u => session_observe_unit_lifecycle(stores: stores, unit: u))).detail
 }
 
 // ── THE DURABLE PLACEMENT RECORD ───────────────────────────────────────────────────────────────
@@ -945,9 +960,111 @@ fn session_placement_observe_for_attempt(instance: HostDashboardInstance, node_i
 // belt already makes for liveness). A unit the manager does not have is ended with cause unknown --
 // the one arm safe to free on without a verdict; an exited unit is ended with its status; an
 // unreadable manager is UNKNOWN and frees nothing.
+// ── THE HOLDER'S IDENTITY, FOR THE ARMS THAT FREE A SEAT ON A UNIT THE MANAGER NO LONGER HAS ───
+//
+// A transient unit is COLLECTED when its process ends, so "the manager has no unit by that name" is the
+// ordinary state of a unit that ran and finished -- and equally the state of one whose manager
+// restarted. Neither reading is proof of death on its own. The recurring-failure-mode row
+// gunbc.recurring_failure_mode hold_recovered_by_age_not_observed_holder_death names this shape: a hold
+// recovered because the evidence was old, not because the holder was observed dead. What binds a
+// not-found reading to the holder is the identity the manager keeps -- the InvocationID of the run --
+// together with the boot the manager and the unit lived in, ordered against the instant the LEDGER
+// acquired the seat. The acquisition instant comes from the ledger, not from the slot's opened_at: a
+// slot that has already been advanced carries the instant of its own last write, not the instant the
+// seat was taken.
+//
+// THE SKEW IS A DECLARED VALUE AT THE READER, not a number a caller may pass. btime and the ledger's
+// acquired_at are both whole seconds of the host clock read at different moments, and a clock set from
+// the RTC before synchronization can put them apart by more than a second. This reader answers within
+// 120 seconds; anything closer is a typed refusal, never a rounding.
+data session_holder_boot_skew_bound_seconds: Seconds = 120
+
+// THE POOL THE SETTLEMENT FOLDS THE LEDGER UNDER, spelled once. The release route and the acquisition
+// read must address the SAME pool, so both take it from here rather than each naming a number. The
+// value is the one the release route has always used; what it should mean -- whether a release folds
+// the history under the appropriation or under zero -- is a question this change does not touch, and
+// changing it would move the very route the leaked leases come back through.
+data session_ledger_fold_ceiling: Kibibyte = kibibyte(count: 0)
+
+type SessionHolderEvidence {
+  standing: UnitInvocationObservation
+  boot: UnitBootObservation
+  acquired_at: EpochSecs
+}
+
+type SessionHolderEvidenceReading
+  = SessionHolderEvidenceRead { evidence: SessionHolderEvidence }
+  | SessionHolderEvidenceRefused { detail: String }
+
+fn session_read_host_text(path: NonEmptyStr) -> FilesystemReadOutcome {
+  let read = Filesystem.Read(path: path)
+  filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+}
+
+// THE EVIDENCE A NOT-FOUND READING CAN BE BOUND TO, read from the three places that hold it: the
+// manager that ran the unit (its InvocationID standing), the host's current boot, and the ledger's
+// acquisition instant for this lease reference. Every failure arm REFUSES with its reason; none answers
+// with a default, because a default here manufactures death evidence -- an InvocationID that failed to
+// read is not an absent one, and an acquisition instant that failed to read is not an old one.
+fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) -> SessionHolderEvidenceReading {
+  if !attempt_unit_manager_is_system(unit: unit) {
+    SessionHolderEvidenceRefused { detail: join(["the unit ", unit as String, " is not read from the system manager, so which manager ran it is not established"], "") }
+  } else {
+    match compute_seat_acquisition_at(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: unit) {
+      SeatAcquisitionNotHeld { reference: r } =>
+        SessionHolderEvidenceRefused { detail: join(["the ledger holds no acquisition for ", r as String, ": its acquisition instant cannot be read, and a missing instant is not an old one"], "") }
+      SeatAcquisitionRefused { detail: d } => SessionHolderEvidenceRefused { detail: d }
+      SeatAcquisitionRead { reference: _, acquired_at: at, generation: _ } =>
+        match attempt_unit_property(unit: unit, property: InvocationIDProperty) {
+          AttemptUnitUnreadable { reason } => SessionHolderEvidenceRefused { detail: join(["the unit's InvocationID standing could not be read: ", reason], "") }
+          AttemptUnitAbsent => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is absent, so the standing is not established" }
+          AttemptUnitActive => SessionHolderEvidenceRefused { detail: "a property read does not answer whether a unit is active, so the standing is not established" }
+          AttemptUnitFinished { exit_status: invocation } =>
+            match session_read_host_text(path: kernel_boot_id_path) {
+              FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot id could not be read: ", error], "") }
+              FilesystemReadSucceeded { content: boot_text } =>
+                match session_read_host_text(path: proc_stat_path) {
+                  FilesystemReadRefused { error } => SessionHolderEvidenceRefused { detail: join(["the host boot instant could not be read: ", error], "") }
+                  FilesystemReadSucceeded { content: stat_text } => SessionHolderEvidenceRead { evidence: SessionHolderEvidence {
+                    standing: unit_invocation_observation(manager: SystemManager, unit: unit, boot_id_text: boot_text, proc_stat_text: stat_text, invocation_text: invocation),
+                    boot: unit_boot_observation(boot_id_text: boot_text, proc_stat_text: stat_text),
+                    acquired_at: at,
+                  } }
+                }
+            }
+        }
+    }
+  }
+}
+
+// WHAT A UNIT THE MANAGER NO LONGER HAS PROVES, once the reading is bound to the holder's identity.
+// The exit artifact enters only as a NOTE on the answer: an artifact is a fact about its writer, and it
+// never decides this. The proof itself is the conjunction in gunbc.systemd_unit_invocation_liveness
+// unit_reboot_holder_liveness -- no unit in the manager that ran it, AND a boot that began after the
+// ledger acquired this hold.
+fn session_absent_unit_lifecycle(evidence: SessionHolderEvidenceReading, holder_unit: NonEmptyStr, artifact_note: String) -> UnitLifecycle {
+  match evidence {
+    SessionHolderEvidenceRefused { detail } => UnitLifecycleUnknown { detail: join(["the unit is not in the manager, and its holder identity is not established: ", detail], "") }
+    SessionHolderEvidenceRead { evidence: e } =>
+      // The manager named for this holder is the system manager: session_holder_evidence refuses any unit
+      // the declared prefix rule (roadmap_dispatch_actuator attempt_unit_manager_is_system) does not put in
+      // that manager, and it reads the standing from that same manager. The liveness arm re-checks the
+      // binding, so a standing read from another manager, or about another unit, cannot free this seat.
+      match unit_reboot_holder_liveness(standing: e.standing, holder_unit: holder_unit, holder_manager: SystemManager, boot: e.boot, acquired_at: e.acquired_at, skew_bound_seconds: session_holder_boot_skew_bound_seconds) {
+        HolderObservedDead { evidence: proof } => UnitTerminatedCauseUnknown { detail: join([proof, artifact_note], "") }
+        HolderObservedLive { evidence: proof } => UnitStillRunning { detail: join([proof, artifact_note], "") }
+        HolderLivenessUnobservable { cause } => UnitLifecycleUnknown { detail: join(["the holder's death is not observable: ", cause, artifact_note], "") }
+      }
+  }
+}
+
 fn session_unit_lifecycle(o: AttemptUnitObservation) -> UnitLifecycle {
   match o {
-    AttemptUnitAbsent => UnitTerminatedCauseUnknown { detail: "the user manager has no such unit" }
+    // A BARE NOT-FOUND IS NOT A VERDICT. A transient unit is collected when its process ends, so the
+    // manager not having it is equally the state of a unit whose manager restarted. What may free a seat
+    // is session_absent_unit_lifecycle, which binds the reading to the holder's identity; this reader
+    // carries no such binding, so it refuses rather than inferring.
+    AttemptUnitAbsent => UnitLifecycleUnknown { detail: "the manager has no unit by this name; that standing is bound to the holder's identity by session_absent_unit_lifecycle, never here" }
     AttemptUnitActive => UnitStillRunning { detail: "the unit is active" }
     AttemptUnitFinished { exit_status } =>
       if exit_status == "0" { UnitTerminatedSuccess { detail: "ExecMainStatus=0" } } else { UnitTerminatedFailure { detail: join(["ExecMainStatus=", exit_status], "") } }
@@ -955,24 +1072,53 @@ fn session_unit_lifecycle(o: AttemptUnitObservation) -> UnitLifecycle {
   }
 }
 
-fn session_observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
-  session_unit_lifecycle(o: attempt_unit_observation(unit: unit))
+// THE ABANDONMENT ROUTE'S READ. It consults no exit spool of its own, but the seat it frees is the same
+// seat, so a not-found unit is bound to the holder's identity here exactly as the settlement binds it.
+fn session_observe_unit_lifecycle(stores: SessionPlacementStores, unit: NonEmptyStr) -> UnitLifecycle {
+  let observed = attempt_unit_observation(unit: unit)
+  match observed {
+    AttemptUnitAbsent => session_absent_unit_lifecycle(
+      evidence: session_holder_evidence(stores: stores, unit: unit),
+      holder_unit: unit,
+      artifact_note: " (read on the abandonment route, which consults no exit spool)",
+    )
+    AttemptUnitActive => session_unit_lifecycle(o: observed)
+    AttemptUnitFinished { exit_status: _ } => session_unit_lifecycle(o: observed)
+    AttemptUnitUnreadable { reason: _ } => session_unit_lifecycle(o: observed)
+  }
 }
 
 // THE SETTLEMENT'S READ OF A WORKER UNIT, now that the unit is collected when its process ends
 // (gunbc.roadmap.roadmap_dispatch_actuator dispatch_worker_unit_properties). A loaded unit is read as before;
 // a collected one is read from its exit record, so a worker that exited 0 settles as SUCCESS rather
-// than as cause-unknown. A collected unit with NO record keeps the arm it had: the manager has no such
-// unit, its lifetime is over, the cause is unknown -- the one arm safe to free on without a verdict,
-// and still only after the launch deadline (session_settle_decide). The settlement asks whether the
-// unit's lifetime is over, not whether a worker ran, so it needs no start receipt: the slot it is
-// settling IS one.
-fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservation, record: AttemptExitRecordObservation) -> UnitLifecycle {
+// than as cause-unknown. A collected unit with NO record, or with only a defective record, is read
+// through the holder's identity: the seat is freed only when the manager that ran the unit has no such
+// unit AND the host's boot began after the ledger acquired this hold (session_absent_unit_lifecycle).
+// The settlement asks whether the holder is gone, not whether the evidence is old, and still frees only
+// after the launch deadline (session_settle_decide). The settlement asks whether the unit's lifetime is
+// over, not whether a worker ran, so it needs no start receipt: the slot it is settling IS one.
+fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservation, record: AttemptExitRecordObservation, evidence: SessionHolderEvidenceReading) -> UnitLifecycle {
   match loaded {
     AttemptUnitAbsent =>
       match record {
-        AttemptExitRecordNone => UnitTerminatedCauseUnknown { detail: "the user manager has no such unit and it left no exit record" }
+        // NO ARTIFACT AT ALL: the only evidence is the unit's standing, bound to the holder's identity.
+        AttemptExitRecordNone =>
+          session_absent_unit_lifecycle(evidence: evidence, holder_unit: unit, artifact_note: " (the spool holds no exit record for this unit)")
         AttemptExitRecordFound { record: _ } => session_unit_lifecycle(o: attempt_unit_from_exit_record(unit: unit, record: record, start: AttemptUnitStartRecorded))
+        // THE ARTIFACT IS ABOUT ITS WRITER, NOT ABOUT THE HOLDER. An entry whose name still spells the
+        // stop variables was created without the manager's substitution: the hook's writer is broken, and
+        // that says nothing about whether the process ended. So this arm neither keeps the seat on the
+        // artifact's authority nor frees it on the artifact's authority: it names the defect -- variables
+        // and entries, so it is countable -- and hands the decision to the unit's standing in the manager
+        // that ran it, exactly as if the spool held nothing. A malformed artifact is never death proof, and
+        // naming it is not licence to release; it enters only as a note on the answer the holder's identity
+        // gives (the arms in gunbc.systemd_unit_invocation_liveness).
+        AttemptExitRecordWriterUnsubstituted { entries, variables } =>
+          session_absent_unit_lifecycle(
+            evidence: evidence,
+            holder_unit: unit,
+            artifact_note: join([" (its only exit artifact names the stop variables unexpanded (", join(variables, ", "), "): a defective writer, which is not evidence either way: ", join(entries, ", ")], ""),
+          )
         AttemptExitRecordUnreadable { reason } => UnitLifecycleUnknown { detail: reason }
       }
     AttemptUnitActive => session_unit_lifecycle(o: loaded)
@@ -981,13 +1127,19 @@ fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservati
   }
 }
 
-fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, unit: NonEmptyStr) -> UnitLifecycle {
-  let loaded = attempt_unit_observation(unit: unit)
+// THE SAME READ WITH THE MANAGER'S STANDING AND THE HOLDER'S EVIDENCE SUPPLIED. Production reaches it
+// through session_worker_unit_lifecycle_for_instance, which passes attempt_unit_observation's real read
+// and session_holder_evidence's real readings; a witness seeds them, because a unit and the host's boot
+// are facts of the manager and the kernel and no file a witness writes can be one. Everything else --
+// the spool listing, the matching, the settlement -- stays the production path over the real fixture
+// root. One authority, one matcher, one seeded seam.
+fn session_worker_unit_lifecycle_with_standing(instance: HostDashboardInstance, unit: NonEmptyStr, loaded: AttemptUnitObservation, evidence: SessionHolderEvidenceReading) -> UnitLifecycle {
   match loaded {
     AttemptUnitAbsent =>
       session_worker_unit_lifecycle(
         unit: unit,
         loaded: loaded,
+        evidence: evidence,
         record: attempt_exit_record_matching(
           matches: (n, a, r) => r == attempt_unit_role_token(role: AttemptWorkerRole) && (match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
             SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
@@ -1001,6 +1153,25 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
     AttemptUnitActive => session_unit_lifecycle(o: loaded)
     AttemptUnitFinished { exit_status: _ } => session_unit_lifecycle(o: loaded)
     AttemptUnitUnreadable { reason: _ } => session_unit_lifecycle(o: loaded)
+  }
+}
+
+fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, unit: NonEmptyStr) -> UnitLifecycle {
+  match session_placement_stores(instance: instance) {
+    SessionStoresUnresolved { detail } =>
+      session_worker_unit_lifecycle_with_standing(
+        instance: instance,
+        unit: unit,
+        loaded: attempt_unit_observation(unit: unit),
+        evidence: SessionHolderEvidenceRefused { detail: join(["the session ledger is not resolvable, so the instant this hold was acquired cannot be read: ", detail], "") },
+      )
+    SessionStoresResolved { stores } =>
+      session_worker_unit_lifecycle_with_standing(
+        instance: instance,
+        unit: unit,
+        loaded: attempt_unit_observation(unit: unit),
+        evidence: session_holder_evidence(stores: stores, unit: unit),
+      )
   }
 }
 
@@ -1040,6 +1211,10 @@ fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, nod
           attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))
         AttemptExitRecordFound { record: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
         AttemptExitRecordUnreadable { reason: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+        // Not even proof of the start: an entry that still spells the stop variables was written by
+        // something that never substituted them, and it is not known to be this unit's hook. The start
+        // standing is READ, as in the no-record arm. The observation stays indeterminate either way.
+        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))
       }
     }
     AttemptUnitActive => loaded
@@ -1181,7 +1356,7 @@ fn session_settle_release(stores: SessionPlacementStores, host: String, unit: No
     SessionPlacementUnnameable { detail: _ } => none
   }
   let why = join(["settled: ", reason], "") as NonEmptyStr
-  let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: kibibyte(count: 0), reference: unit, reason: why)
+  let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: session_ledger_fold_ceiling, reference: unit, reason: why)
   let write = session_placement_release_write(records_dir: stores.records_dir, node_id: attempt.node_id, attempt_key: attempt.attempt_key, grant_binding: binding, reason: why, freed: freed)
   SessionSettlementReleaseAttempted { unit: unit as String, freed: freed, detail: join([reason, session_write_note(w: write)], "") }
 }

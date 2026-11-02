@@ -958,7 +958,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }), Rc::new(BuiltinParam {
         name: "fma_contraction_policy".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "Int".to_string(),
+        name: "std.numerical_contract.FmaContractionPolicy".to_string(),
     }),
     }), Rc::new(BuiltinParam {
         name: "a".to_string(),
@@ -967,7 +967,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "List".to_string(),
     }),
         element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "Int".to_string(),
+        name: "Float".to_string(),
     }),
     }),
     }), Rc::new(BuiltinParam {
@@ -977,7 +977,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "List".to_string(),
     }),
         element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "Int".to_string(),
+        name: "Float".to_string(),
     }),
     }),
     }), Rc::new(BuiltinParam {
@@ -987,7 +987,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "List".to_string(),
     }),
         element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "Int".to_string(),
+        name: "Float".to_string(),
     }),
     }),
     })]),
@@ -1059,7 +1059,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "module".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
+        name: "v2.std.qualified_name.QualifiedName".to_string(),
     }),
     })]),
         returns: crate::v1_compiler_infer_types::nominal_type_ref("v2.lens.extdeps_shape_transport_policy.ExtdepsModuleFacts".to_string()),
@@ -1068,7 +1068,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "module".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
+        name: "v2.std.qualified_name.QualifiedName".to_string(),
     }),
     })]),
         returns: bool_type(),
@@ -1077,7 +1077,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "module".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
+        name: "v2.std.qualified_name.QualifiedName".to_string(),
     }),
     })]),
         returns: crate::v1_compiler_infer_types::nominal_type_ref("v2.lens.mandatory_tag.corpus_scan.ExtdepsExternalAuthorityModuleFacts".to_string()),
@@ -1142,19 +1142,29 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     }), Rc::new(BuiltinParam {
-        name: "entry".to_string(),
+        name: "file_path".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
         name: "String".to_string(),
     }),
     }), Rc::new(BuiltinParam {
-        name: "expected".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "includes".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
         name: "String".to_string(),
     }),
+    }),
     }), Rc::new(BuiltinParam {
-        name: "mode".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "excludes".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
         name: "String".to_string(),
+    }),
     }),
     })]),
         returns: bool_type(),
@@ -1170,7 +1180,17 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("compile_dag_multi_module_fixture".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "sources".to_string(),
+        name: "paths".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "contents".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
         source: Rc::new(ContainerSource::Named {
         name: "List".to_string(),
@@ -1181,11 +1201,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     }), Rc::new(BuiltinParam {
         name: "entry".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "function".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
         name: "String".to_string(),
     }),
@@ -1338,6 +1353,10 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.evaluation_store_address_census.ResolvedCallEdgeCensus".to_string()),
     }));
+                __m.insert("builtin_function_registry_keys".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![]),
+        returns: list_of_element(string_type()),
+    }));
                 __m.insert("compile_dag_operation_requires".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "source".to_string(),
@@ -1356,6 +1375,40 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }),
     })]),
         returns: list_of_element(string_type()),
+    }));
+                __m.insert("compile_dag_primitive_call_edges".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "exclude_substrings".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "pool_roots".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "entry_prefixes".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    })]),
+        returns: crate::v1_compiler_infer_types::nominal_type_ref("gunbc.primitive_egress.census.PrimitiveCallEdgeCensus".to_string()),
     }));
                 __m.insert("source_root_ingest_module_identities".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
