@@ -1,0 +1,66 @@
+module product.p4261.evidence
+
+import std.types { Bool }
+import std.decl_ref { decl_ref }
+import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, observed_receipt }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1 }
+import product.p4261.carrier { CarrierLayoutObservation }
+import product.p4261.findings { assembly_revision_standing, RevisionReadOnBoard }
+import product.p4261.e1_b { p4261_e1_layout }
+import product.p4261.k1_a { p4261_k1_layout }
+
+// WHAT OUR RECORDS SUPPORT OF NVIDIA'S P4261 FACTS. A fact about the board -- which assembly part
+// number, revision code and PCB code a revision carries -- is NVIDIA's, and lives upstream
+// (extdeps.nvidia.p4261). What this repository did -- photograph a board's label and PCB print -- is
+// ours, and lives with the specimen that was read (product.p4261.e1_b, product.p4261.k1_a). This
+// module joins the two: for one upstream proposition and the specimen records bound to it, does the
+// evidence support it? Placing the assessment here does not move the fact downstream; it answers a
+// different question, what currently supports the fact, from which specimen.
+//
+// THE STANDING IS MINTED BY A FOLD, NEVER AUTHORED ONTO THE FACT. extdeps.external_authority
+// ObservedByReceipt is sealed: each nullary fold below is admitted by name to observed_receipt, reads
+// committed specimen records, and mints only when its own check passes; otherwise the upstream row's
+// authored standing (TranscribedUncited, with what would ground it) stands.
+//
+// A RECEIPT IS BOUND TO ITS PROPOSITION. The check asks that the specimen be recorded against this
+// very revision AND that its own label and PCB print both read it (product.p4261.findings
+// assembly_revision_standing): a board of the other revision, or one whose label alone was read,
+// supports nothing here, however authentic its photographs.
+//
+// WHAT THE SUPPORT DOES NOT SAY. One received board whose markings agree supports the revision row's
+// identifiers as read on that unit; it is not a claim that every board of the revision is built
+// alike, and no NVIDIA source names the P4261 (extdeps.nvidia.p4261).
+//
+// RUNG OF THE BINDING, STATED: the markings are transcribed from photographs into the corpus, so the
+// fold executes on authored data -- a boundary transcription (DESIGN 4b, outside the modeled
+// guarantee). NEXT-RUNG TRIGGER, as the capability: a photograph store whose content identity the
+// specimen records cite, so a marking row is checkable against the image it was read from.
+
+fn same_revision(a: P4261AssemblyRevision, b: P4261AssemblyRevision) -> Bool {
+  a.model == b.model && a.assembly_part_number == b.assembly_part_number && a.revision_code == b.revision_code && a.pcb_code == b.pcb_code
+}
+
+// Whether a specimen's own records support a revision row: recorded against it, and its label and PCB
+// print both read and agree with it.
+fn revision_supported(revision: P4261AssemblyRevision, specimen: CarrierLayoutObservation) -> Bool {
+  same_revision(a: specimen.revision, b: revision) && match assembly_revision_standing(layout: specimen) {
+    RevisionReadOnBoard { revision: _ } => true
+    _ => false
+  }
+}
+
+fn p4261_e1_revision_standing() -> CitedFigureStanding {
+  if revision_supported(revision: p4261_e1, specimen: p4261_e1_layout) {
+    ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "product.p4261.e1_b", decl_name: "p4261_e1_layout")) }
+  } else {
+    p4261_e1.standing
+  }
+}
+
+fn p4261_k1_revision_standing() -> CitedFigureStanding {
+  if revision_supported(revision: p4261_k1, specimen: p4261_k1_layout) {
+    ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "product.p4261.k1_a", decl_name: "p4261_k1_layout")) }
+  } else {
+    p4261_k1.standing
+  }
+}

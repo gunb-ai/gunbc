@@ -2,12 +2,14 @@ module v2.compiler.self_host.closure_emission
 
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, list_map, list_reverse, empty_map, map_insert, map_lookup }
+import std.algebra { list_append, Cons, Empty, FreeMonoid, contains, fold_list, list_map, list_reverse, empty_map, map_insert, map_lookup }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
 import extdeps.languages.json.emit {
   JsonKeyValue,
   JsonValue,
   json_array,
+  json_int,
+  json_null,
   json_kv,
   json_object,
   json_string,
@@ -42,6 +44,9 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution { source_root_index_empty, source_root_index_insert }
 import v2.std.diagnostic {
+  ByteRange,
+  WholeFile,
+  diagnostics_fatal,
   Accepted,
   Diagnostic,
   Diagnostics,
@@ -58,6 +63,8 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+import v2.compiler.dependency_demand_census { DemandCensusUnboundLocus, UnboundNamed, UnboundShaped, demand_census_unbound_locus_from_diagnostics }
+import v2.std.lens_verdict { DiagnosticPosition, lens_verdict_diagnostic_position_in_spans }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Node, Symbol, content_hash, symbol_lexeme }
 import v2.std.program_segment { partition_boundary_fail_closed, program_segment_whole_program }
@@ -445,10 +452,107 @@ fn closure_emission_refused_count(emission: ClosureEmission) -> Int {
   })
 }
 
+// THE FIRST FATAL OF A REFUSED CHAIN, AS VALUES, derived once for every consumer of a refusal: the
+// reason, the unbound mention (when the fatal is an unbound symbol), and the authored position the
+// span index places it at. v2.cli.compile_cli `v2_cli_refusal_detail` renders its sentence from this
+// and `closure_member_emission_json` renders its row from this, so the two cannot disagree about which
+// diagnostic is the cause (DESIGN section 3). It adds no analysis: each field is read from the
+// diagnostic the member already produced.
+type ClosureRefusalSite {
+  fatal: Diagnostic
+  unbound: Optional<DemandCensusUnboundLocus>
+  position: Optional<DiagnosticPosition>
+}
+
+fn closure_refusal_site(d: NonEmptyDiagnostics, spans: SpanIndex) -> ClosureRefusalSite {
+  let fatal = diagnostics_fatal(d: d)
+  ClosureRefusalSite {
+    fatal: fatal,
+    unbound: demand_census_unbound_locus_from_diagnostics(d: d),
+    position: lens_verdict_diagnostic_position_in_spans(d: fatal, index: spans)
+  }
+}
+
+// The spelling the author wrote at an unbound site, when the site has one: a bare name, or the
+// qualified reference of a composite mention. A site that is only a node kind has no spelling.
+fn closure_refusal_unbound_spelling(u: Optional<DemandCensusUnboundLocus>) -> Optional<String> {
+  match u {
+    Absent => Absent
+    Present { value: loc } =>
+      match loc {
+        UnboundNamed { name: n } => Present { value: symbol_lexeme(sym: n) }
+        UnboundShaped { kind: _, reference: r } =>
+          match r {
+            Absent => Absent
+            Present { value: qn } => Present { value: qualified_name_to_dotted_string(qn: qn) }
+          }
+      }
+  }
+}
+
+fn closure_json_optional_string(o: Optional<String>) -> JsonValue {
+  match o {
+    Absent => json_null()
+    Present { value: v } => json_string(s: v)
+  }
+}
+
+fn closure_json_optional_int(o: Optional<Int>) -> JsonValue {
+  match o {
+    Absent => json_null()
+    Present { value: v } => json_int(n: v)
+  }
+}
+
+fn closure_refusal_position_json(p: Optional<DiagnosticPosition>) -> List<JsonKeyValue> {
+  let file = match p {
+    Absent => Absent
+    Present { value: pos } => Present { value: symbol_lexeme(sym: pos.file) }
+  }
+  let start = match p {
+    Absent => Absent
+    Present { value: pos } =>
+      match pos.extent {
+        WholeFile => Absent
+        ByteRange { start: st, end: _ } => Present { value: st }
+      }
+  }
+  let end = match p {
+    Absent => Absent
+    Present { value: pos } =>
+      match pos.extent {
+        WholeFile => Absent
+        ByteRange { start: _, end: en } => Present { value: en }
+      }
+  }
+  [
+    json_kv(key: "file", value: closure_json_optional_string(o: file)),
+    json_kv(key: "start", value: closure_json_optional_int(o: start)),
+    json_kv(key: "end", value: closure_json_optional_int(o: end))
+  ]
+}
+
+fn closure_refused_row_json(module_qn: QualifiedName, d: NonEmptyDiagnostics, spans: SpanIndex) -> JsonValue {
+  let site = closure_refusal_site(d: d, spans: spans)
+  json_object(members: [
+        json_kv(key: "module", value: json_string(s: qualified_name_to_dotted_string(qn: module_qn))),
+        json_kv(key: "refused", value: json_string(s: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))),
+        json_kv(key: "diagnostic", value: json_object(members: list_append(
+          left: [
+            json_kv(key: "reason", value: json_string(s: symbol_lexeme(sym: site.fatal.reason))),
+            json_kv(key: "unbound_ref", value: closure_json_optional_string(o: closure_refusal_unbound_spelling(u: site.unbound)))
+          ],
+          right: closure_refusal_position_json(p: site.position)
+        )))
+      ])
+}
+
 // THE ONE CODEC. The carrier renders through extdeps.languages.json, whose parse direction reads it
-// back (v2.test.claim.self_host.closure_emission_codec holds the round trip at identity grain). A
-// refused member renders its FATAL reason; the full located chain is the carrier's, not the text's.
-fn closure_member_emission_json(m: ClosureMemberEmission) -> JsonValue {
+// back (v2.test.claim.self_host.closure_emission `the_emission_renders_through_its_codec_and_reads_back_the_same_identities_holds`
+// holds the round trip at identity grain). A refused member renders its FATAL reason under `refused`
+// and, beside it, `diagnostic`: {reason, unbound_ref, file, start, end} for that fatal, each absent
+// part an explicit null (a whole-file extent has no start or end). The full chain stays the carrier's.
+fn closure_member_emission_json(m: ClosureMemberEmission, spans: SpanIndex) -> JsonValue {
   match m {
     ClosureMemberEmitted { module: module_qn, text: text } =>
       json_object(members: [
@@ -456,21 +560,18 @@ fn closure_member_emission_json(m: ClosureMemberEmission) -> JsonValue {
         json_kv(key: "emitted", value: json_string(s: text))
       ])
     ClosureMemberRefused { module: module_qn, diagnostics: d } =>
-      json_object(members: [
-        json_kv(key: "module", value: json_string(s: qualified_name_to_dotted_string(qn: module_qn))),
-        json_kv(key: "refused", value: json_string(s: symbol_lexeme(sym: diagnostics_fatal_reason(d: d))))
-      ])
+      closure_refused_row_json(module_qn: module_qn, d: d, spans: spans)
   }
 }
 
-fn closure_emission_json(emission: ClosureEmission) -> String {
+fn closure_emission_json(emission: ClosureEmission, spans: SpanIndex) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "entry", value: json_string(s: qualified_name_to_dotted_string(qn: emission.entry))),
     json_kv(key: "members", value: json_array(elements: list_map(xs: emission.members, f: fn(m) {
       json_string(s: qualified_name_to_dotted_string(qn: m))
     }))),
     json_kv(key: "modules", value: json_array(elements: list_map(xs: emission.modules, f: fn(m) {
-      closure_member_emission_json(m: m)
+      closure_member_emission_json(m: m, spans: spans)
     })))
   ]))
 }
