@@ -10935,10 +10935,14 @@ fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
 // Conj { Name: payload } shape, so the kind is read HERE, on the parse, and carried on
 // v2.compiler.normalized_tree NormalizedTree type_declaration_kinds. One value per declaration: a record
 // and a refinement are authored alternatives, so the carrier has no state naming one declaration as
-// both. A record is what body_lower_type_decl_record_name_optional says; otherwise a where clause --
-// the same host body_lower_type_decl_by_body finds (body_lower_find_where_host_conj), not a second
-// walk that only recognises a production shell -- makes a refinement; anything else carries no kind, and
-// a plain Conj member without one is undecided downstream, never inferred.
+// both. A record is what body_lower_type_decl_record_name_optional says; otherwise a where clause makes
+// a refinement; anything else carries no kind, and a plain Conj member without one is undecided
+// downstream, never inferred. THE CLAUSE IS FOUND AS A PRODUCTION SHELL, because this runs on the PARSE
+// tree (normalize type_declaration_kind_capture), where the clause is a node whose production identity is
+// where_refinement_clause. The labelled where_refinement_clause EDGE that body_lower_find_where_host_conj
+// looks for is minted by lowering (body_lower_type_variant_suffix_pair_optional rehome), so it exists only
+// on the folded tree body_lower_type_decl_by_body reads; asked of the parse tree it answered Absent and
+// every refinement went kindless (probe ce_probe_pin_text: where_host=ABSENT, name=Pos).
 type DeclaredTypeKind
   = DeclaredRecord { name: Symbol }
   | DeclaredRefinement { name: Symbol }
@@ -10951,7 +10955,7 @@ fn body_lower_type_decl_declared_kind_optional(shell: Node) -> Optional<Declared
       match parse_production_captured_child_optional(node: shell) {
         Absent => Absent
         Present { value: captured } =>
-          match body_lower_find_where_host_conj(root: captured) {
+          match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_where_refinement_clause) {
             Absent => Absent
             Present { value: _ } =>
               match dag_surface_kw_then_ident_from_captured(captured: captured) {
