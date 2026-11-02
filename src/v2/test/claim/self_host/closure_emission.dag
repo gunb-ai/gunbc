@@ -573,3 +573,16 @@ test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
           _ => false })
   }
 }
+
+// PROBE (not a claim, not for landing): the observed result of the unbound-name fixture as text.
+// A rejected ingest (the fixture did not parse or the door refused before any row) shows its located
+// chain; an accepted one shows the whole emission JSON, rows and diagnostic fields included.
+fn ce_probe_unbound_text() -> String {
+  let located = ce_emission_unbound_symbol()
+  match located.outcome {
+    Rejected { diagnostics: d } =>
+      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
+    Accepted { value: e, diagnostics: _ } =>
+      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+  }
+}
