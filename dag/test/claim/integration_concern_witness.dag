@@ -13,7 +13,7 @@ import gunbc.integration_concern {
   ExistingHome, HomeUnresolved, HistoricalDeclaration, RetainedExecutionResult, IntegrationEvidence,
   RequirementUnestablished, ConcernSighting, CitesDeclaration, PreservedObligation,
   distinct_authorities, concerns_for, concerns_in_subtree, concern_is_open, kind_declarations,
-  concern_text, integration_concerns,
+  concern_text, integration_concerns, fork_rows_have_distinct_authorities,
 }
 
 // SUPPLIED ROWS (DESIGN section 3, a witness discriminates at one interface): the relevance and
@@ -151,4 +151,13 @@ test fn evidence_is_cited_not_implicated_and_an_obligation_holder_is_implicated(
   )
   count(concerns_for(s: scope(changed: ["test.fixture.cited_only"], referenced: []), rows: [triaged])) == 0
     && count(concerns_for(s: scope(changed: ["product.holder"], referenced: []), rows: [triaged])) == 1
+}
+
+test fn committed_fork_rows_name_distinct_authorities() -> Bool {
+  fork_rows_have_distinct_authorities()
+}
+
+test fn the_real_register_answers_a_fork_from_either_authority() -> Bool {
+  count(concerns_for(s: scope(changed: ["product.printed_chassis.printable_assembly"], referenced: []), rows: integration_concerns)) == 1
+    && count(concerns_for(s: scope(changed: [], referenced: ["product.printed_chassis.card_cooling_route"]), rows: integration_concerns)) == 1
 }

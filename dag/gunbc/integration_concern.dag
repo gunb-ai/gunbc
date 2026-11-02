@@ -30,8 +30,10 @@ import extdeps.shell
 // trigger to move to row files is that contention actually occurring.
 
 // A SUSPECTED FORK NEEDS TWO DISTINCT AUTHORITIES. FreeSemigroup only proves one or more, and two
-// entries need not be two sites, so the carrier is built only through `distinct_authorities`, which
-// refuses any repeated declaration. A repeated identity is the module path and declaration name:
+// entries need not be two sites, so the checked constructor is `distinct_authorities`, which refuses
+// any repeated declaration. A row literal cannot call it (a data row has no way to unwrap the
+// refusal), so `fork_rows_have_distinct_authorities` re-checks every committed fork row through it
+// and the witness holds that reading -- validation over the rows, not construction, stated as such. A repeated identity is the module path and declaration name:
 // two fields of one declaration are one authority for this purpose.
 type DistinctAuthorities sole_constructor {
   first: DeclarationRef
@@ -53,6 +55,13 @@ fn distinct_authorities(first: DeclarationRef, second: DeclarationRef, rest: Lis
 
 fn authorities_list(d: DistinctAuthorities) -> List<DeclarationRef> {
   concat([d.first, d.second], d.rest)
+}
+
+fn fork_authorities_distinct(c: IntegrationConcern) -> Bool {
+  match c.kind {
+    SuspectedFork { authorities: d } => match distinct_authorities(first: d.first, second: d.second, rest: d.rest) { Present { value: _ } => true Absent => false }
+    SuspectedCapabilityGap { model: _, requirement: _, standing: _ } => true
+  }
 }
 
 // BOTH KINDS ARE SUSPICIONS UNTIL TRIAGE. A fork is two or more authorities that seem to answer one
@@ -303,7 +312,42 @@ data started_operation_ownership: IntegrationConcern = IntegrationConcern {
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership]
+data duct_placement_chosen_by_hand: IntegrationConcern = IntegrationConcern {
+  identity: "duct_placement_chosen_by_hand",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "product.printed_chassis.card_cooling_route", decl_name: "BlowerHome"),
+      second: decl_ref(module_path: "product.printed_chassis.printable_assembly", decl_name: "DuctRootKind"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "product.printed_chassis.card_cooling_route", decl_name: "a16_route_report"),
+    tail: [
+      decl_ref(module_path: "product.printed_chassis.printable_assembly_selection", decl_name: "duct_root_selection"),
+      decl_ref(module_path: "product.printed_chassis.chassis_clearances", decl_name: "ChassisGap"),
+    ],
+  },
+  question: "Given a chassis's free space behind and beside a card and the operator's preference between them (rear depth against side lanes kept for more cards), which fan placement does a card get -- selected from the candidates rather than authored as a new duct root per layout?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f441733b7ac73f9e9114fcf1b09bef6e782b66f0",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.card_cooling_route", decl_name: "admit_home") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.chassis_clearances", decl_name: "side_lane_width") }],
+      },
+      account: "The operator expected a beside-the-card blower shroud (fan against the card's side, a short turn into the end) and got the flat-on-end duct. Candidate placements and their admission against chassis gaps exist (BlowerHome, admit_home), but the choice among admitted placements is made by hand, the operator's preference between rear depth and side space has no carrier, and each built placement is its own DuctRootKind arm with its own geometry; BesideTheRow is admitted but has none. Operator, 2026-11-02: 'if we had more space going backwards, I might ask you not to sacrifice space on the sides of the card so I can fit more cards'; in this chassis nothing sits beside the A16.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand]
+
+fn fork_rows_have_distinct_authorities() -> Bool {
+  all(integration_concerns, c => fork_authorities_distinct(c: c))
+}
 
 // ---------------------------------------------------------------------------------------------
 // THE READING PATH.
