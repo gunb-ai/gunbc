@@ -7,6 +7,7 @@ import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, c
 import v2.compiler.self_host.closure_emission {
   closure_emission_first_refusal,
   closure_emission_json,
+  closure_refusal_site,
   closure_emission_refused_count,
   emit_closure_from_ingest_located
 }
@@ -51,11 +52,8 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.compilers.target_model { TargetModel }
 
-import v2.compiler.dependency_demand_census {
-  demand_census_unbound_locus_from_diagnostics,
-  demand_census_unbound_site_text
-}
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.compiler.dependency_demand_census { demand_census_unbound_site_text }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.std.lens_verdict {
   lens_verdict_diagnostic_locus_text_in_spans,
   lens_verdict_diagnostics_located_chain_text_in_spans
@@ -833,7 +831,7 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
             match emitted.outcome {
               Accepted { value: emission, diagnostics: _ } =>
                 CliEmitted {
-                  text: closure_emission_json(emission: emission),
+                  text: closure_emission_json(emission: emission, spans: emitted.spans),
                   closure_size: length(xs: emission.members),
                   refused_count: closure_emission_refused_count(emission: emission),
                   refusal_detail: match closure_emission_first_refusal(emission: emission) {
@@ -894,15 +892,16 @@ fn cli_if_arm_reader_differential_outcome(census: IardCensus) -> CliRunOutcome {
 // then the fatal's file and extent. `FATAL AT` stays last so suffix controls still hold. The
 // projection is demand_census_unbound_locus_from_diagnostics; this renderer does not re-walk the node.
 fn v2_cli_refusal_detail(d: NonEmptyDiagnostics, spans: SpanIndex) -> String {
+  let site = closure_refusal_site(d: d, spans: spans)
   let chain = concat(
     "the closure did not emit; diagnostic chain: ",
     lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: spans)
   )
   let fatal = concat(
     " | FATAL AT ",
-    lens_verdict_diagnostic_locus_text_in_spans(d: diagnostics_fatal(d: d), index: spans)
+    lens_verdict_diagnostic_locus_text_in_spans(d: site.fatal, index: spans)
   )
-  match demand_census_unbound_locus_from_diagnostics(d: d) {
+  match site.unbound {
     Absent => concat(chain, fatal)
     Present { value: loc } =>
       concat(

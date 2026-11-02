@@ -146,6 +146,7 @@ import v2.std.provenance {
   node_authored_span_optional,
   span_index_empty,
   span_index_textual_locus_optional,
+  span_index_in_scope,
 }
 import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
 import v2.std.source_position {
@@ -216,6 +217,7 @@ import v2.compiler.module_acquisition {
   acquisition_first_duplicate,
   acquisition_ingest,
   acquisition_module_path,
+  acquisition_compilation_unit,
   acquisition_refusal_text,
   census_acquisition_ingest,
   enumerate_bound_modules,
@@ -322,6 +324,7 @@ import v2.compiler.resolve {
   resolve,
   resolved_tree_of,
   ResolvedTree,
+  declaration_available,
 }
 import v2.compiler.tokenize {
   PreparedLexRules,
@@ -1493,7 +1496,7 @@ type NativeLaneSourceFacts {
 fn native_lane_member_facts(member: AcquiredModule) -> NativeLaneSourceFacts {
   NativeLaneSourceFacts {
     module: member.name,
-    path: symbol_intern_lexeme(lexeme: acquisition_module_path(module: member)),
+    path: acquisition_compilation_unit(file: member.file),
     discovery: discover_floor_rows_for_source(
       repo_path: acquisition_module_path(module: member),
       marked: member.test_markers,
@@ -2761,23 +2764,23 @@ fn native_module_resolve_verdict(
           }
         ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: bindings } =>
           match step.context.resolution {
-            Accepted { value: shared, diagnostics: d } =>
-              let closure = closure_declarations_demand(shared: shared)
+            Accepted { value: inner_shared, diagnostics: inner_d } =>
+              let inner_closure = closure_declarations_demand(shared: inner_shared)
               NativeModuleResolveStep {
                 verdict: NativeModuleResolveAccepted {
                   resolved: resolved_tree_of(
                     root: resolved,
-                    symbol_index: shared.symbol_index,
-                    closure_declarations: closure.declarations,
-                    module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index,
+                    symbol_index: inner_shared.symbol_index,
+                    closure_declarations: inner_closure.declarations,
+                    module_outcomes: inner_closure.module_outcomes, outcome_index: inner_closure.outcome_index,
                     member_kinds: no_member_declaration_kinds(),
-                    type_declaration_modifiers: shared.type_declaration_modifiers,
+                    type_declaration_modifiers: inner_shared.type_declaration_modifiers,
                     bindings: bindings
                   )
                 },
                 context: native_test_context_with_resolution(
                   context: step.context,
-                  resolution: Accepted { value: closure.context, diagnostics: d }
+                  resolution: Accepted { value: inner_closure.context, diagnostics: inner_d }
                 ),
                 import_attribution: NativeImportTargetNotAsked,
                 partial: []
@@ -4793,7 +4796,7 @@ fn native_census_subject_closure(
                     Accepted { value: reached, diagnostics: _ } =>
                       NativeCensusSubjectClosureRead {
                         subject: subject.module,
-                        members: fold_list(xs: reached, empty: empty_map(), cons: fn(m, r) { map_insert(m, r, true) })
+                        members: fold_list(xs: reached, empty: empty_map(), cons: fn(reached_set, name) { map_insert(reached_set, name, true) })
                       }
                   }
               }

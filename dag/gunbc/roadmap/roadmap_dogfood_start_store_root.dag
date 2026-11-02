@@ -1,0 +1,48 @@
+module gunbc.roadmap.roadmap_dogfood_start_store_root
+
+import std.types { String, NonEmptyStr, FilePath }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation,
+}
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { move_row_legacy_names }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+
+// THE SLOT LIVES IN ITS OWN MEMBER of the root the deployment already converges (the identity store's precedent,
+// gunbc.roadmap.roadmap_attempt_identity_store_root), in a leaf the instance directory list can import without
+// reaching the route.
+fn dogfood_start_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", dogfood_start_slots.move.member as String], "") as NonEmptyStr
+}
+
+// THE STORE STAYS UNREADY WHILE A LEGACY FLAT RECEIPT REMAINS in the shared parent root (the layout move, row
+// Sa7192064, has not run): "" when none remains, else the refusal. Never a dual read of both layouts. An
+// unlistable parent is a refusal too, not an absent receipt.
+fn dogfood_start_store_unready(instance: HostDashboardInstance) -> String {
+  let parent = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+  let listed = Filesystem.List(path: parent)
+  match filesystem_listing_observation(directory: parent, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => join(["the dispatch attempt-state root is not admissible: ", c], "")
+    FilesystemDirectoryListingRefused { directory: _, error: e } => join(["the dispatch attempt-state root could not be listed: ", e], "")
+    FilesystemDirectoryListed(l) =>
+      if length(xs: move_row_legacy_names(row: dogfood_start_slots.move, parent_listing: l.entries)) > 0 {
+        join(["the dispatch attempt-state root ", parent, " still holds a legacy flat dogfood start receipt; the layout move must run first"], "")
+      } else {
+        ""
+      }
+  }
+}
+
+fn dogfood_start_receipt_owned_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: dogfood_start_slots.move.member,
+    path: dogfood_start_store_root(instance: instance) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: dogfood_start_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+

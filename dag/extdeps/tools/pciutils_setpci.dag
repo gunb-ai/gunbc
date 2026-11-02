@@ -1,0 +1,61 @@
+module extdeps.tools.pciutils_setpci
+
+import std.types { Int, String }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.numeric.base16 { base16_word_value, int_to_lower_hex }
+import extdeps.pci.identity { PciAddress }
+import extdeps.pci.express_link_control { pcie_link_control_offset, pcie_link_control_link_disable_mask }
+
+// setpci(8), pciutils: reads and writes PCI configuration registers. `-s` selects one function by
+// [[[[domain]:]bus]:][slot][.[func]], the spelling sysfs uses for its directory names. A register is named
+// as `CAP_EXP+<offset>.<width>`, where CAP_EXP is setpci's name for the PCI Express Capability (capability
+// ID 10h) and `.w` is a 16-bit word. Given a register alone setpci prints its value as hex digits; given
+// `REG=VALUE:MASK` it changes only the bits Set in MASK. Reading or writing beyond the first 64 bytes of
+// configuration space needs CAP_SYS_ADMIN, so these run as root.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/setpci.8.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.pciutils_setpci",
+      decl_name: "setpci_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+fn setpci_program() -> ProgramIdentity = uncataloged_program(invocation: "setpci")
+
+fn setpci_link_control_register() -> String {
+  concat("CAP_EXP+0x", concat(int_to_lower_hex(n: pcie_link_control_offset), ".w"))
+}
+
+fn setpci_link_control_read_command(address: PciAddress) -> ArgvCommand {
+  argv_command(program: setpci_program(), arguments: ["-s", address as String, setpci_link_control_register()])
+}
+
+// Sets Link Disable and nothing else: the value and the mask are both the one bit.
+fn setpci_link_disable_set_command(address: PciAddress) -> ArgvCommand {
+  let bit = int_to_lower_hex(n: pcie_link_control_link_disable_mask)
+  argv_command(program: setpci_program(), arguments: [
+    "-s", address as String,
+    concat(setpci_link_control_register(), concat("=", concat(bit, concat(":", bit)))),
+  ])
+}
+
+// A 16-bit register read prints four hex digits and a newline; any other output is refused.
+fn setpci_word_reading(stdout: String) -> Int? {
+  base16_word_value(word: trim(s: stdout), max_digits: 4)
+}

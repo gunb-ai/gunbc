@@ -114,6 +114,7 @@ fn lookup_summary(table: CostInternTable, func_name: String) -> ComplexitySummar
 
 fn evict_summary(table: CostInternTable, func_name: String) -> CostInternTable {
   cache_summary(table: table, func_name: func_name, summary: ComplexitySummary {
+    peak_space: Absent,
     work: CostConst { value: 0 },
     span: CostConst { value: 0 },
     output_size: empty_map(),
@@ -3643,6 +3644,7 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
     Absent =>
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
@@ -3667,6 +3669,7 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
       }
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: cost_seq(a: recv_r.summary.work, b: loop_work),
           span: cost_seq(a: recv_r.summary.span, b: loop_work),
           output_size: os,
@@ -3682,6 +3685,7 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
         Absent =>
           SummaryResult {
             summary: ComplexitySummary {
+              peak_space: Absent,
               work: CostConst { value: 1 },
               span: CostConst { value: 1 },
               output_size: empty_map(),
@@ -3699,6 +3703,7 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
       let sort_os = seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: cost_seq(a: recv_r.summary.work, b: sort_work),
           span: cost_seq(a: recv_r.summary.span, b: sort_work),
           output_size: sort_os,
@@ -3715,6 +3720,7 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
       }
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: cost_seq(a: recv_r.summary.work, b: loop_work),
           span: cost_seq(a: recv_r.summary.span, b: loop_work),
           output_size: scan_os,
@@ -3725,6 +3731,7 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
     ShapeConstant =>
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
           span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
           output_size: empty_map(),
@@ -4139,6 +4146,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprLiteral { value: _ } =>
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
@@ -4150,6 +4158,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprElaboratedLiteral { value: _, elaboration: _ } =>
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
@@ -4161,6 +4170,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprError { kind: _, message: _ } =>
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
           output_size: empty_map(),
@@ -4172,6 +4182,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprVar =>
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
@@ -4187,6 +4198,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       let rr = cost_of_expr(texpr: r, func_index: func_index, scc_index: scc_index, table: lr.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: cost_seq(a: lr.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: rr.summary.work)),
           span: cost_seq(a: lr.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: rr.summary.span)),
           output_size: empty_map(),
@@ -4203,6 +4215,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         Absent =>
           SummaryResult {
             summary: ComplexitySummary {
+              peak_space: Absent,
               work: CostConst { value: 1 },
               span: CostConst { value: 1 },
               output_size: empty_map(),
@@ -4213,6 +4226,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       }
       let args_result = texpr.children |> fold(init: SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
           output_size: empty_map(),
@@ -4223,6 +4237,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         let ar = cost_of_expr(texpr: arg_value(n: a), func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
         SummaryResult {
           summary: ComplexitySummary {
+            peak_space: Absent,
             work: cost_seq(a: acc.summary.work, b: ar.summary.work),
             span: cost_seq(a: acc.summary.span, b: ar.summary.span),
             output_size: empty_map(),
@@ -4233,6 +4248,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       })
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: cost_seq(a: args_result.summary.work, b: callee_result.summary.work),
           span: cost_seq(a: args_result.summary.span, b: callee_result.summary.span),
           output_size: callee_result.summary.output_size,
@@ -4257,6 +4273,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
               Absent =>
                 Present { value: SummaryResult {
                   summary: ComplexitySummary {
+                    peak_space: Absent,
                     work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
                     span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
                     output_size: empty_map(),
@@ -4274,6 +4291,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         _ =>
         let args_result = mc_args |> fold(init: SummaryResult {
           summary: ComplexitySummary {
+            peak_space: Absent,
             work: CostConst { value: 0 },
             span: CostConst { value: 0 },
             output_size: empty_map(),
@@ -4284,6 +4302,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
           let ar = cost_of_expr(texpr: arg_value(n: a), func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
           SummaryResult {
             summary: ComplexitySummary {
+              peak_space: Absent,
               work: cost_seq(a: acc.summary.work, b: ar.summary.work),
               span: cost_seq(a: acc.summary.span, b: ar.summary.span),
               output_size: empty_map(),
@@ -4294,6 +4313,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         })
         SummaryResult {
           summary: ComplexitySummary {
+            peak_space: Absent,
             work: cost_seq(a: recv_r.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.work)),
             span: cost_seq(a: recv_r.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.span)),
             output_size: empty_map(),
@@ -4310,6 +4330,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       let arms_accum = arm_nodes |> fold(init: MatchCostAccum {
         result: SummaryResult {
           summary: ComplexitySummary {
+            peak_space: Absent,
             work: CostConst { value: 0 },
             span: CostConst { value: 0 },
             output_size: empty_map(),
@@ -4323,6 +4344,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         MatchCostAccum {
           result: SummaryResult {
             summary: ComplexitySummary {
+              peak_space: Absent,
               work: cost_par(a: acc.result.summary.work, b: ar.summary.work),
               span: cost_par(a: acc.result.summary.span, b: ar.summary.span),
               output_size: ar.summary.output_size,
@@ -4335,6 +4357,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       })
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: cost_conditional(condition: s_r.summary.work, branches: arms_accum.branch_costs),
           span: cost_conditional(condition: s_r.summary.span, branches: [arms_accum.result.summary.span]),
           output_size: arms_accum.result.summary.output_size,
@@ -4358,6 +4381,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         Absent =>
           SummaryResult {
             summary: ComplexitySummary {
+              peak_space: Absent,
               work: CostConst { value: 0 },
               span: CostConst { value: 0 },
               output_size: empty_map(),
@@ -4368,6 +4392,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       }
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: cost_conditional(condition: c_r.summary.work, branches: [t_r.summary.work, e_result.summary.work]),
           span: cost_conditional(condition: c_r.summary.span, branches: [t_r.summary.span, e_result.summary.span]),
           output_size: t_r.summary.output_size,
@@ -4384,6 +4409,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
           let b_r = cost_of_expr(texpr: b, func_index: func_index, scc_index: scc_index, table: v_r.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
           SummaryResult {
             summary: ComplexitySummary {
+              peak_space: Absent,
               work: cost_seq(a: v_r.summary.work, b: b_r.summary.work),
               span: cost_seq(a: v_r.summary.span, b: b_r.summary.span),
               output_size: b_r.summary.output_size,
@@ -4397,6 +4423,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprBlock =>
       texpr.children |> fold(init: SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
           output_size: empty_map(),
@@ -4407,6 +4434,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         let sr = cost_of_expr(texpr: s, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
         SummaryResult {
           summary: ComplexitySummary {
+            peak_space: Absent,
             work: cost_seq(a: acc.summary.work, b: sr.summary.work),
             span: cost_seq(a: acc.summary.span, b: sr.summary.span),
             output_size: sr.summary.output_size,
@@ -4426,6 +4454,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       let loop_work = cost_loop(binder: binder, iterations: size, body: bd_r.summary.work)
       SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: cost_seq(a: c_r.summary.work, b: loop_work),
           span: cost_seq(a: c_r.summary.span, b: loop_work),
           output_size: empty_map(),
@@ -4437,6 +4466,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     NoExprData =>
       texpr.children |> fold(init: SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
           output_size: empty_map(),
@@ -4447,6 +4477,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         let cr = cost_of_expr(texpr: child, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
         SummaryResult {
           summary: ComplexitySummary {
+            peak_space: Absent,
             work: cost_seq(a: acc.summary.work, b: cr.summary.work),
             span: cost_seq(a: acc.summary.span, b: cr.summary.span),
             output_size: cr.summary.output_size,
@@ -4458,6 +4489,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     _ =>
       texpr.children |> fold(init: SummaryResult {
         summary: ComplexitySummary {
+          peak_space: Absent,
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
@@ -4468,6 +4500,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         let cr = cost_of_expr(texpr: child, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
         SummaryResult {
           summary: ComplexitySummary {
+            peak_space: Absent,
             work: cost_seq(a: acc.summary.work, b: cr.summary.work),
             span: cost_seq(a: acc.summary.span, b: cr.summary.span),
             output_size: cr.summary.output_size,
@@ -4501,6 +4534,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           }
           let is_recursive = target != none
           let zero_placeholder = ComplexitySummary {
+            peak_space: Absent,
             work: CostConst { value: 0 },
             span: CostConst { value: 0 },
             output_size: empty_map(),
@@ -4519,6 +4553,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
             Present { value: t } =>
               if is_scc {
                 ComplexitySummary {
+                  peak_space: Absent,
                   work: bounded_scc_cost(target: t, per_iter: result.summary.work, members: scc_members),
                   span: bounded_scc_cost(target: t, per_iter: result.summary.span, members: scc_members),
                   output_size: result.summary.output_size,
@@ -4526,6 +4561,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
                 }
               } else {
                 ComplexitySummary {
+                  peak_space: Absent,
                   work: bounded_recursive_cost(target: t, per_iter: result.summary.work, func_name: func_name),
                   span: bounded_recursive_cost(target: t, per_iter: result.summary.span, func_name: func_name),
                   output_size: result.summary.output_size,
@@ -4550,6 +4586,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           if is_unexpected_miss {
 
             let miss_summary = ComplexitySummary {
+              peak_space: Absent,
               work: CostUnknown { reason: concat("internal function missing from index: ", func_name) },
               span: CostUnknown { reason: concat("internal function missing from index: ", func_name) },
               output_size: empty_map(),
@@ -4558,6 +4595,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
             SummaryResult { summary: miss_summary, table: table }
           } else {
             let external_summary = ComplexitySummary {
+              peak_space: Absent,
               work: CostExtern { name: func_name },
               span: CostExtern { name: func_name },
               output_size: empty_map(),

@@ -1,6 +1,6 @@
 module extdeps.nvidia.cuda_toolkit_release
 
-import std.types { NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
@@ -28,7 +28,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [cuda_12_0_release_notes_authority]
 }
 
 type CudaToolkitDriverRequirement {
@@ -41,4 +41,56 @@ data cuda_13_0_driver_requirement: CudaToolkitDriverRequirement = CudaToolkitDri
   toolkit_major: 13,
   min_driver_major: 580,
   standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+// ── WHICH GPU ARCHITECTURES A TOOLKIT MAJOR STILL BUILDS FOR ──────────────────────────────────────
+//
+// A toolkit release removes whole architectures, and it states the removal by compute capability: the CUDA
+// 12.0 release notes (archived) say "Support for the following compute capabilities is removed for all
+// libraries: sm_35 (Kepler) sm_37 (Kepler)"; the CUDA 13 release notes say "Removed support for Maxwell,
+// Pascal, and Volta GPUs, corresponding to compute capabilities earlier than Turing" (Turing is 7.5). Read
+// 2026-10-29. So each row is the LOWEST compute capability a toolkit major supports, and a device whose
+// compute capability is below it cannot run that toolkit's binaries, whatever the driver says: the driver
+// appendix (extdeps.nvidia.linux_driver_supported_chips) still lists Maxwell under the 580 unified driver
+// while CUDA 13 no longer targets it. The two are different facts of different upstream documents and a
+// consumer reads both (gunbc.gpu_market.software_support).
+data cuda_12_0_release_notes_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/archive/12.0.0/cuda-toolkit-release-notes/index.html"
+  }
+}
+
+type CudaToolkitArchitectureFloor {
+  toolkit_major: Nat
+  minimum_compute_capability_major: Nat
+  minimum_compute_capability_minor: Nat
+  removed_as_stated: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data cuda_12_architecture_floor: CudaToolkitArchitectureFloor = CudaToolkitArchitectureFloor {
+  toolkit_major: 12,
+  minimum_compute_capability_major: 5,
+  minimum_compute_capability_minor: 0,
+  removed_as_stated: "Kepler architecture support is removed from CUDA 12.0. Support for the following compute capabilities is removed for all libraries: sm_35 (Kepler) sm_37 (Kepler)",
+  standing: CitedToAuthority { authority: cuda_12_0_release_notes_authority },
+}
+
+data cuda_13_architecture_floor: CudaToolkitArchitectureFloor = CudaToolkitArchitectureFloor {
+  toolkit_major: 13,
+  minimum_compute_capability_major: 7,
+  minimum_compute_capability_minor: 5,
+  removed_as_stated: "Removed support for Maxwell, Pascal, and Volta GPUs, corresponding to compute capabilities earlier than Turing.",
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+// Every floor this module states, newest first: a consumer asking "which toolkit majors run this device"
+// folds over it.
+data cuda_architecture_floors: List<CudaToolkitArchitectureFloor> = [cuda_13_architecture_floor, cuda_12_architecture_floor]
+
+// Whether a device of the given compute capability is at or above a toolkit's floor.
+fn cuda_toolkit_targets_capability(floor: CudaToolkitArchitectureFloor, major: Nat, minor: Nat) -> Bool {
+  major > floor.minimum_compute_capability_major
+    || (major == floor.minimum_compute_capability_major && minor >= floor.minimum_compute_capability_minor)
 }

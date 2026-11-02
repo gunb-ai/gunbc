@@ -25,7 +25,9 @@ pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
-pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
+pub use crate::v1_compiler_coercion::{
+    coerce_container_template, declaration_realization, realized_checkpoint,
+};
 use crate::v1_compiler_infer_env::BareOccurrenceBinding::{
     BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName,
     BareOccurrenceUnbound, BareOccurrenceUndecided,
@@ -1949,7 +1951,11 @@ pub fn build_type_summary(
             for child in item.children.clone().iter().cloned() {
                 if match child.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
-                        (rt.connective.clone() == Connective::Arrow)
+                        ((rt.connective.clone() == Connective::Arrow)
+                            && !field_type_node_is_realized_container(
+                                rt.clone(),
+                                source_indices.clone(),
+                            ))
                     }
                     _ => false,
                 } {
@@ -2096,6 +2102,23 @@ pub fn fn_reach_target_keys(index: Rc<TypeSummaryIndex>, target: String) -> Rc<V
     }
 }
 
+pub fn field_type_is_realized_container(name: String) -> bool {
+    {
+        let leaf = crate::v1_std_core::qualified_last_segment(name);
+        match crate::v1_compiler_coercion::coerce_container_template(RenderTarget::Rust, leaf) {
+            Some(_) => true,
+            std::option::Option::None => false,
+        }
+    }
+}
+
+pub fn field_type_node_is_realized_container(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    field_type_is_realized_container(crate::v1_std_core::authored_name_at(source_indices, n))
+}
+
 pub fn fn_reach_holds_directly(
     name: String,
     summaries: Rc<TypeSummaryIndex>,
@@ -2127,12 +2150,20 @@ pub fn fn_reach_targets(
                 }
             }
         };
-        spelled
-            .iter()
-            .cloned()
-            .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, t: String| {
-                v1_rt::concat(acc, fn_reach_target_keys(summaries.clone(), t.clone()))
-            })
+        Rc::new({
+            let mut __result = Vec::new();
+            for t in spelled.iter().cloned() {
+                if !field_type_is_realized_container(t.clone()) {
+                    __result.push(t);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, t: String| {
+            v1_rt::concat(acc, fn_reach_target_keys(summaries.clone(), t.clone()))
+        })
     }
 }
 

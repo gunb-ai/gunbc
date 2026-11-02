@@ -11,8 +11,8 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, fleet_converge_gcp_iam_bootstrap_job_id, fleet_converge_gcp_iam_bootstrap_request_job_id,
   fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job, fleet_converge_srv1_root_mutation_environment, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
-  ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
-  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, DashboardDeploy, HostResetReturn,
+  Srv1RootMutation, fleet_converge_approval_broker_dark_install_step_if,
+  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, HostResetReturn,
   fleet_converge_workspace_commissioning_plan_step, fleet_converge_any_plan_step_if,
   RunnerPasswordSessionToolConverge,
   RunnerBrowserToolchainConverge,
@@ -23,7 +23,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_branch_run_grant_await_job_id, FleetKeypairMint, QualificationFloor,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  FleetApply, WorkspaceImageBuild, RevisionJobImageBuild, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
+  FleetApply, WorkspaceImageBuild, RevisionJobImageBuild, ApprovalKeyringConverge, fleet_converge_mutation_group_for,
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
@@ -471,7 +471,7 @@ test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
 // above, because those join options to wires and never reach a job. This joins the job's own
 // condition to the same derivation, so the two cannot drift apart silently.
 test fn the_dark_install_job_guards_on_its_own_dispatch_mode() -> Bool {
-  string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall))
+  string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: fleet_converge_mode_step_if(mode: Srv1RootMutation(ApprovalBrokerDarkInstall)))
     && string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: "github.event.inputs.mode == 'approval_broker_dark_install'")
     && string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: "github.event.inputs.host == 'srv1'")
 }
@@ -683,8 +683,8 @@ test fn empty_spark_roster_does_not_emit_an_empty_choice_or_spark_dispatch_modes
 // second conjunct: a projection that returned a constant, or ignored its argument, would satisfy the
 // first and fail this.
 test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
-  fleet_converge_mode_step_if(mode: DashboardDeploy) == "github.event.inputs.mode == 'dashboard_deploy'"
-    && fleet_converge_mode_step_if(mode: FullHostPlan) != fleet_converge_mode_step_if(mode: DashboardDeploy)
+  fleet_converge_mode_step_if(mode: Srv1RootMutation(DashboardDeploy)) == "github.event.inputs.mode == 'dashboard_deploy'"
+    && fleet_converge_mode_step_if(mode: FullHostPlan) != fleet_converge_mode_step_if(mode: Srv1RootMutation(DashboardDeploy))
 }
 
 test fn srv1_root_mutation_jobs_name_the_protected_environment() -> Bool {
@@ -702,7 +702,7 @@ test fn srv1_root_mutation_jobs_name_the_protected_environment() -> Bool {
 // to FleetConvergeScope. The three modes that DO name a scope are asserted beside it, so a projection
 // that answered `none` for everything cannot pass.
 test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> Bool {
-  let deploy_live = match fleet_converge_mode_scope(mode: DashboardDeploy) {
+  let deploy_live = match fleet_converge_mode_scope(mode: Srv1RootMutation(DashboardDeploy)) {
     Absent => false
     Present { value: s } => match s {
       LiveDeploy => true

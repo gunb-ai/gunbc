@@ -12,7 +12,7 @@ import gunbc.runner.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAcce
 import gunbc.runner.runner_microvm_lifecycle {
   AttemptIdentity, GuestBringUpReading, GuestConsoleRead, GuestConsoleUnreadable, GuestConsoleUnbound, GuestConsoleNotStarted,
   guest_bring_up_from_console, bring_up_phase_label,
-  UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
+  UnitAttemptBindingReading, UnitAttemptBindingRead, UnitAttemptBindingUnread,
 }
 import gunbc.runner.runner_microvm_lifecycle_realize { attempt_console_binding_of, AttemptConsoleBound, AttemptConsoleUnbound, AttemptConsoleNotStarted }
 import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted, RunnerStarted, RunnerExited }
@@ -97,7 +97,7 @@ test fn a_repeated_report_of_the_current_phase_is_not_a_refusal() -> Bool {
 // own invocation_id and the unit's systemd invocation must have been read; an environment naming a
 // different attempt invocation -- the red: a unit reused, or a reading taken from the wrong one -- is
 // unbound, and so is an unread environment or an unread systemd invocation.
-fn binding_label(env: UnitInvocationReading, systemd_invocation: String) -> String {
+fn binding_label(env: UnitAttemptBindingReading, systemd_invocation: String) -> String {
   match witness_identity() {
     Absent => "fixture-refused"
     Present { value: id } =>
@@ -110,8 +110,8 @@ fn binding_label(env: UnitInvocationReading, systemd_invocation: String) -> Stri
 }
 
 test fn the_console_binds_only_to_this_attempts_invocation() -> Bool {
-  binding_label(env: UnitInvocationRead { invocation_id: "inv-1" as NonEmptyStr }, systemd_invocation: "abc123") == "bound abc123"
-    && binding_label(env: UnitInvocationRead { invocation_id: "inv-2" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
-    && binding_label(env: UnitInvocationUnread { reason: "x" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
-    && binding_label(env: UnitInvocationRead { invocation_id: "inv-1" as NonEmptyStr }, systemd_invocation: "") == "unbound"
+  binding_label(env: UnitAttemptBindingRead { attempt_token: "inv-1" as NonEmptyStr }, systemd_invocation: "abc123") == "bound abc123"
+    && binding_label(env: UnitAttemptBindingRead { attempt_token: "inv-2" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
+    && binding_label(env: UnitAttemptBindingUnread { reason: "x" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
+    && binding_label(env: UnitAttemptBindingRead { attempt_token: "inv-1" as NonEmptyStr }, systemd_invocation: "") == "unbound"
 }
