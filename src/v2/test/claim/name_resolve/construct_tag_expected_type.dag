@@ -99,6 +99,9 @@ data ctee_optional_position_source: String = "module v2.test.ctee.optional_posit
 // type's set holds an ARM of that name. The set is the authority, so the record does not bind here.
 data ctee_coinciding_source: String = "module v2.test.ctee.coinciding\n\nimport v2.test.ctee.types { Tree }\nimport v2.test.ctee.node_record { Node }\nfn make() -> Tree { Node { child: 1 } }\n"
 
+// The pair's other half: nothing named Node is visible, so the expected type's own arm answers.
+data ctee_coinciding_unimported_source: String = "module v2.test.ctee.coinciding_unimported\n\nimport v2.test.ctee.types { Tree }\nfn make() -> Tree { Node { child: 1 } }\n"
+
 // THE TYPE PARAMETER CONTROL: the expected head has binders, so there is no constructor set and the
 // name door answers exactly as it does today.
 data ctee_type_param_source: String = "module v2.test.ctee.type_param\n\nimport v2.test.ctee.types { Box }\nfn pass_through<T>(v: T) -> T { Box { behavior: Value } }\n"
@@ -128,6 +131,7 @@ fn ctee_context() -> Outcome<NativeTestContext> {
     ctee_read(text: ctee_alias_source, id: ^ctee_alias_user, path: "src/v2/test/fixture/ctee/alias_user.dag"),
     ctee_read(text: ctee_optional_position_source, id: ^ctee_optional_position, path: "src/v2/test/fixture/ctee/optional_position.dag"),
     ctee_read(text: ctee_coinciding_source, id: ^ctee_coinciding, path: "src/v2/test/fixture/ctee/coinciding.dag"),
+    ctee_read(text: ctee_coinciding_unimported_source, id: ^ctee_coinciding_unimported, path: "src/v2/test/fixture/ctee/coinciding_unimported.dag"),
     ctee_read(text: ctee_type_param_source, id: ^ctee_type_param, path: "src/v2/test/fixture/ctee/type_param.dag")
   ])
 }
@@ -145,6 +149,7 @@ type CteeVerdicts {
   alias_user: NativeModuleResolveVerdict
   optional_position: NativeModuleResolveVerdict
   coinciding: NativeModuleResolveVerdict
+  coinciding_unimported: NativeModuleResolveVerdict
   type_param: NativeModuleResolveVerdict
 }
 
@@ -166,6 +171,7 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
         let alias_user = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.alias_user", path: ^ctee_alias_user)
         let optional_position = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.optional_position", path: ^ctee_optional_position)
         let coinciding = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.coinciding", path: ^ctee_coinciding)
+        let coinciding_unimported = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.coinciding_unimported", path: ^ctee_coinciding_unimported)
         let type_param = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.type_param", path: ^ctee_type_param)
         optional_present(value: CteeVerdicts {
           declared_types: declared_types.verdict,
@@ -180,6 +186,7 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
           alias_user: alias_user.verdict,
           optional_position: optional_position.verdict,
           coinciding: coinciding.verdict,
+          coinciding_unimported: coinciding_unimported.verdict,
           type_param: type_param.verdict,
         })
       }
@@ -311,11 +318,32 @@ test fn an_authored_record_under_an_optional_expectation_refuses_with_the_new_ca
   }
 }
 
-// THE COINCIDING LABEL: `Node` names a record type imported from another module, while the expected
-// type declares an ARM of that name. Exactly one arm carries the spelling, so the arm is what binds --
-// the name door's record does not. Resolve accepts either reading, so WHICH declaration won is not
-// visible in a verdict: it is the resolved-path column of the bounded identity diff, which is exactly
-// the comparison the ruling asks for (no site may go from bound to bound with a different identity).
+// THE COINCIDING LABEL, IMPORTED. `Node` is visible: the user imports the record type of that name from
+// another module, and the expected type declares an ARM of that name. So this is NOT the unbound branch
+// -- the name door answers -- and that hit is not a member of the expected type's constructor set. The
+// set is the authority and does not declare the path, so the site REFUSES with the constructor-set cause
+// and never keeps the name door's binding. This is the shape where today's accepted identity (the record)
+// differs from the expected type's arm: the rule refuses it rather than silently retargeting it, and the
+// bounded diff must report every such row.
+test fn an_imported_label_that_coincides_with_an_arm_refuses_with_the_new_cause() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      ctee_refuses_with(v: vs.coinciding, reason: ^resolve_construct_tag_not_in_expected_type)
+  }
+}
+
+// THE SAME LABEL, NOT IMPORTED: the spelling has no name-door answer, exactly one arm of the expected
+// type carries it, so that ARM binds, recorded as bound by expected type. Beside the claim above this is
+// the pair keen-heron-809 asked for: visibility of a different declaration refuses, absence of one binds
+// the arm.
+test fn an_unimported_label_that_matches_one_arm_binds_that_arm() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.coinciding_unimported)
+  }
+}
+
 test fn an_arm_label_that_coincides_with_a_record_type_still_resolves() -> Bool {
   match ctee_verdicts() {
     Absent => false
