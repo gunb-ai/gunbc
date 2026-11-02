@@ -34,6 +34,7 @@ import gunbc.heal_publication_boundary {
   heal_repair_candidate_manifest_file_name, candidate_blob_file_name, candidate_file_path,
   heal_publication_refusal_token, heal_publication_refusal_detail, HealPublicationRefusal,
   HeadRefNotAddressable, BranchRefUnreadable, ExpectedHeadUnreadable, BaseTreeUnreadable, head_ref_is_addressable,
+  PullRequestNotOpen,
   publisher_path_policy, TriggeringRunFacts, PullRequestFacts,
   ProposedBlobObservation, ProposedBlobComputed, ProposedBlobReadRefused,
   PublisherObservations, AdmittedHealPublication, AdmittedEntry,
@@ -601,21 +602,52 @@ fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
     PublisherRunRefused { cause } => exit_failure(reason: cause)
     PublisherRunNothingToPublish => ExitSuccess
     PublisherRunAdmitted { admitted, blobs, pull_number } =>
-      match env_value(name: heal_publisher_wif_access_token_env_name) {
-        Absent => exit_failure(reason: "HealPublisherFederationMissing: the workflow federation step supplied no access token")
-        Present { value: wif } =>
-          match env_value(name: runner_temp_env_name) {
-            Absent => exit_failure(reason: "HealPublisherKeyStageMissing: RUNNER_TEMP is unset, so the App key has nowhere owner-only to stage")
-            Present { value: temp } =>
-              match mint_publisher_installation_token(
-                wif_access_token: wif as Secret,
-                key_path: join([temp, "/", heal_publisher_app_key_file_name], "") as NonEmptyStr,
-                repository_name: subject.repository.name
-              ) {
-                PublisherTokenNotMinted { cause } => exit_failure(reason: cause)
-                PublisherTokenMinted { token } =>
-                  publish_admitted_wet(subject: subject, publisher_token: token, pull_number: pull_number, admitted: admitted, blobs: blobs)
+      match ensure_pull_request_open_wet(subject: subject, pull_number: pull_number) {
+        PullRequestOpenCheckRefused { reason } => exit_failure(reason: reason)
+        PullRequestOpenCheckPassed =>
+          match env_value(name: heal_publisher_wif_access_token_env_name) {
+            Absent => exit_failure(reason: "HealPublisherFederationMissing: the workflow federation step supplied no access token")
+            Present { value: wif } =>
+              match env_value(name: runner_temp_env_name) {
+                Absent => exit_failure(reason: "HealPublisherKeyStageMissing: RUNNER_TEMP is unset, so the App key has nowhere owner-only to stage")
+                Present { value: temp } =>
+                  match mint_publisher_installation_token(
+                    wif_access_token: wif as Secret,
+                    key_path: join([temp, "/", heal_publisher_app_key_file_name], "") as NonEmptyStr,
+                    repository_name: subject.repository.name
+                  ) {
+                    PublisherTokenNotMinted { cause } => exit_failure(reason: cause)
+                    PublisherTokenMinted { token } =>
+                      publish_admitted_wet(subject: subject, publisher_token: token, pull_number: pull_number, admitted: admitted, blobs: blobs)
+                  }
               }
+          }
+      }
+  }
+}
+
+// "The pull request is still OPEN" is checked here, at publish, NOT at admit: openness is not a ref, so
+// no git transport can answer it credential-free, and admit must hold no credential. Publish already
+// holds the job's own token (the same GITHUB_TOKEN post_receipt_wet comments with, whose pull-requests
+// permission the emitter grants) and sits immediately before the write, so the time-of-check gap is
+// smaller than it would be at admit. The read is the EXISTING github.Pulls interface with the job token
+// passed explicitly as auth_token (no second, no-auth GitHub service -- DESIGN 3 forbids the meaning
+// fork). A closed pull request, or a state that cannot be read at all, refuses with a typed cause
+// BEFORE the App installation token is minted and before any blob, tree, commit or ref write. A
+// candidate for a closed PR never reaches mint_publisher_installation_token.
+type PullRequestOpenCheck = PullRequestOpenCheckPassed | PullRequestOpenCheckRefused { reason: String }
+
+fn ensure_pull_request_open_wet(subject: HealPublicationSubject, pull_number: Int) -> PullRequestOpenCheck {
+  match env_value(name: github_token_env_name) {
+    Absent => PullRequestOpenCheckRefused { reason: "HealPublishPreconditionUnmet: the publish step's own token is absent, so the pull request's openness cannot be verified; refusing to publish" }
+    Present { value: job_token } =>
+      match github.Pulls.Get(auth_token: job_token as Secret, owner: subject.repository.owner, repo: subject.repository.name, pull_number: pull_number) {
+        RestRefused { refusal } =>
+          PullRequestOpenCheckRefused { reason: join(["HealPublishPreconditionUnmet: the pull request's state could not be read; refusing to publish: ", rest_refusal_text(o: refusal)], "") }
+        RestAnswered { answer: pr } =>
+          match pr.pr.state {
+            Open => PullRequestOpenCheckPassed
+            Closed => PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNotOpen { pull_number: pull_number }) }
           }
       }
   }
