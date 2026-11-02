@@ -1,0 +1,70 @@
+module gunbc.host.running_os_receipt_observed
+
+import std.types { String, Secret, Timestamp }
+import std.optional { Present, Absent }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import extdeps.tools.gh { gh_run_download_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.exec.command { LocalExec }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import gunbc.repository { gunbc_repository }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.fleet.fleet_converge_producer_run { ProducerRunObserved, ProducerRunAbsent, ProducerRunUnreadable, fleet_converge_producer_run_observed }
+import gunbc.host.running_os { RunningOsReading, RunningOsUnobserved }
+import gunbc.host.running_os_receipt {
+  RunningOsReceiptProducer, RunningOsReceiptSource, running_os_receipt_producer_of_run, RunningOsReceiptAdmitted, RunningOsReceiptRefused, running_os_receipt_reading, running_os_receipt_refusal_text,
+}
+
+data running_os_receipt_download_root: String = "target/running-os-receipt-read"
+
+fn running_os_receipt_unobserved(step: String, cause: String) -> RunningOsReading {
+  RunningOsUnobserved { cause: join(["running-OS receipt read, ", step, ": ", cause], "") }
+}
+
+// THE LIVE READ, and the only route by which another job obtains a host's running-OS reading: SELECT the newest
+// successful run of the source's mode for the host (gunbc.fleet.fleet_converge_producer_run), DOWNLOAD the
+// source's artifact FROM THAT RUN, read the file, and read it with the receipt's own reader GIVEN THAT RUN, so a
+// document naming another run or not digesting to its stated digest refuses (gunbc.host.running_os_receipt). No
+// value is accepted from a dispatch input or a working-tree path. Every failure is RunningOsUnobserved with the
+// step located, so the host is not initialized.
+fn running_os_receipt_observed(source: RunningOsReceiptSource, token: Secret) -> RunningOsReading {
+  match fleet_converge_producer_run_observed(mode: source.mode, host: source.host as String, token: token) {
+    ProducerRunAbsent { cause: c } => running_os_receipt_unobserved(step: "producer run", cause: c)
+    ProducerRunUnreadable { cause: c } => running_os_receipt_unobserved(step: "producer run", cause: c)
+    ProducerRunObserved { run: run, attempt: attempt } =>
+      match clock_now_probed_at() {
+        Absent => running_os_receipt_unobserved(step: "clock", cause: "the observer clock gave no instant, so the download directory cannot be named")
+        Present { value: now } => running_os_receipt_of_run(source: source, run: run, producer: running_os_receipt_producer_of_run(run: run, attempt: attempt), read_at: now as String)
+      }
+  }
+}
+
+// A DOWNLOAD DIRECTORY PER READ (run id plus the read instant), because gh run download refuses to overwrite a file
+// an earlier read left; two reads in one second collide and the second refuses, never reads the first's file as its own.
+fn running_os_receipt_download_dir(run: GitHubWorkflowRunId, read_at: Timestamp) -> String {
+  join([running_os_receipt_download_root, github_workflow_run_id_wire_text(id: run), read_at], "/")
+}
+
+fn running_os_receipt_of_run(source: RunningOsReceiptSource, run: GitHubWorkflowRunId, producer: RunningOsReceiptProducer, read_at: Timestamp) -> RunningOsReading {
+  let dir = running_os_receipt_download_dir(run: run, read_at: read_at)
+  let download = gh_run_download_command(run_id: github_workflow_run_id_wire_text(id: run), repo: gunbc_repository.full_name, artifact: source.artifact, dir: dir)
+  match run_shell_command_capture(command: download, transport: LocalExec) {
+    ProcessRefused { exit_code, stderr } => running_os_receipt_unobserved(step: "artifact download", cause: join(["gh run download exited ", to_string(exit_code), ": ", stderr], ""))
+    ProcessOutputPresent { text: _ } => running_os_receipt_of_downloaded(source: source, producer: producer, dir: dir)
+    ProcessOutputAbsent => running_os_receipt_of_downloaded(source: source, producer: producer, dir: dir)
+  }
+}
+
+fn running_os_receipt_of_downloaded(source: RunningOsReceiptSource, producer: RunningOsReceiptProducer, dir: String) -> RunningOsReading {
+  let path = join([dir, source.file_name], "/")
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } => running_os_receipt_unobserved(step: "receipt file", cause: join([path, ": ", error], ""))
+    FilesystemReadSucceeded { content } =>
+      match running_os_receipt_reading(text: content, fetched_from: producer) {
+        RunningOsReceiptAdmitted { reading: r } => r
+        RunningOsReceiptRefused { refusal: f } => running_os_receipt_unobserved(step: "receipt", cause: running_os_receipt_refusal_text(refusal: f))
+      }
+  }
+}
