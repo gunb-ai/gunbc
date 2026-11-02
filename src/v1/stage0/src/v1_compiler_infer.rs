@@ -15145,17 +15145,19 @@ pub fn expected_type_is_keyed_collection(exp: Rc<Node>, scope: Rc<InferScope>) -
         } else {
             {
                 let si = scope.type_env.source_indices.clone();
-                let last = crate::v1_std_core::qualified_last_segment(expected_type_spelling(
-                    core.clone(),
-                    scope.clone(),
-                ));
+                let resolved_core = crate::v1_std_core::qualified_last_segment(core.name.clone());
+                let core_arity_ok =
+                    match crate::std_types::container_expected_arity(resolved_core.clone()) {
+                        Some(ar) => ((core.children.clone().len() as i64) == ar.clone()),
+                        std::option::Option::None => false,
+                    };
                 if crate::v1_compiler_infer_types::node_is_keyed_collection(core.clone(), si) {
                     true
                 } else {
-                    crate::std_types::container_spelling_is_algebra(
-                        last,
+                    (crate::std_types::container_spelling_is_algebra(
+                        resolved_core.clone(),
                         "FinitelySupportedFunction".to_string(),
-                    )
+                    ) && core_arity_ok.clone())
                 }
             }
         }
@@ -15170,17 +15172,19 @@ pub fn expected_type_is_set_collection(exp: Rc<Node>, scope: Rc<InferScope>) -> 
         } else {
             {
                 let si = scope.type_env.source_indices.clone();
-                let last = crate::v1_std_core::qualified_last_segment(expected_type_spelling(
-                    core.clone(),
-                    scope.clone(),
-                ));
+                let resolved_core = crate::v1_std_core::qualified_last_segment(core.name.clone());
+                let core_arity_ok =
+                    match crate::std_types::container_expected_arity(resolved_core.clone()) {
+                        Some(ar) => ((core.children.clone().len() as i64) == ar.clone()),
+                        std::option::Option::None => false,
+                    };
                 if crate::v1_compiler_infer_types::node_is_set_collection(core.clone(), si) {
                     true
                 } else {
-                    crate::std_types::container_spelling_is_algebra(
-                        last,
+                    (crate::std_types::container_spelling_is_algebra(
+                        resolved_core.clone(),
                         "FinitePowerSet".to_string(),
-                    )
+                    ) && core_arity_ok.clone())
                 }
             }
         }

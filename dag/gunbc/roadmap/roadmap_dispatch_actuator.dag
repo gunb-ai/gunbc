@@ -1193,13 +1193,16 @@ fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
 // it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are
 // untouched.
 //
-// THE ORDINAL IS MINTED BY AN EXCLUSIVE DURABLE CREATE, NOT READ FROM THE CLOCK. The key used to be
+// THE ORDINAL IS MINTED BY AN EXCLUSIVE DURABLE FILE HOLD, NOT READ FROM THE CLOCK. The key used to be
 // content_hash(node_id x the second-granular probed_at), so two spawns of one node inside one second
 // derived ONE identity and the collision surfaced only at the git step. Now the identity is the
-// outcome of dispatch_attempt_identity_mint: a create-only file under the attempt-state root named
-// by (node, ordinal), whose creation is the claim on that ordinal. Two same-second spawns create two
-// different ordinals, so a same-second duplicate has no spelling; the clock observation is recorded
-// as the file's CONTENT (when it was minted) and is no longer an input to the identity. A clock
+// outcome of dispatch_attempt_identity_mint: an exclusive file hold in the SEALED attempt identity
+// store (gunbc.roadmap.roadmap_attempt_identity_store_root attempt_identity_claim), keyed by
+// attempt_identity_slot_key(node_id, ordinal), whose acquisition IS the claim on that ordinal -- an
+// occupied slot or a lost race moves to the next ordinal, and any other outcome refuses the claim. Two
+// same-second spawns create two different ordinals, so a same-second duplicate has no spelling; the
+// clock observation is carried in the hold's owner text (when it was minted) and is no longer an input
+// to the identity. A clock
 // refusal still refuses the spawn (step attempt-clock), never an unknown-stamped attempt, and a
 // mint the host refuses refuses the spawn (step attempt-identity).
 
