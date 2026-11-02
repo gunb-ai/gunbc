@@ -704,6 +704,16 @@ fn compute_stop_observation_properties(observations: List<ComputeUnitStopObserva
 // cannot name its own uid has no directory a record could be written to and read back from, so its seats
 // launch with no hook and their end rests on their own completed wait alone -- which is all it rests on
 // today; the door keeps the seat on the unreadable spool rather than inventing an absence.
+//
+// WHY THIS ARM LAUNCHES AND AN UNRENDERABLE HOOK DOES NOT. Both end with a unit that has no exit hook, so
+// the difference has to be stated. An observation we ASKED FOR and cannot render is a defect in our own
+// path: the caller declared that this seat's end must be observable, and quietly starting it without the
+// hook would replace a bug we can see with a seat we can never settle -- the exact condition srv1 holds two
+// 22 GiB seats over. Refusing the launch surfaces it. A missing uid is not our defect: it is a process that
+// is not the deployment's service user, so there is no per-uid spool for this provider anywhere -- the hook
+// has nowhere to be written even if it rendered. No claim of observability is made for such a seat, the door
+// answers SeatStopRecordNoUid and keeps it charged, and its end still comes from the provider's own wait on
+// the seat it started. That is a deployment the operator has to fix, not a seat we may settle on a guess.
 fn compute_seat_stop_observations(instance: HostDashboardInstance, identity: String) -> List<ComputeUnitStopObservation> {
   match compute_seat_exit_spool_dir(instance: instance) {
     ComputeSeatExitSpoolDirResolved { dir } => [AttemptExitRecordAtStop { done_dir: dir, identity: identity, record_owner: instance.directory_owner }]
