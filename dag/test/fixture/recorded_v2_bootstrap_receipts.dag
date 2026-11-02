@@ -1,0 +1,26 @@
+module test.fixture.recorded_v2_bootstrap_receipts
+
+import std.types { List, String }
+import std.optional { Present }
+import extdeps.github.workflow_runs { WorkflowJobStep, Completed, Success }
+
+// RECORDED, NOT DESIGNED: the two `gunbc test: MEMORY RECEIPT` lines and the two subject steps' times of a real
+// required run (gunb-ai/gunbc actions run 40509253563, job 122206492701 "v2-bootstrap", on srv3, slot
+// actions-runner@srv3-15.service, 2026-10-27), copied verbatim from `gh run view --log` and the Jobs API. The real
+// producer of both is today's floor (the seed's memory_envelope_receipt printer; GitHub's step record); a claim over
+// this text is the pairing claim that the decoder reads what the producer emits (DESIGN section 3).
+data recorded_v2_bootstrap_run: String = "40509253563"
+
+// The run's head_sha as the Runs API reports it. The run was a pull_request event, so the tree it built was that
+// head merged onto its base, not this commit alone; a baseline the qualification consumes from a live run reads the
+// revision its checkout observed, which this recorded text does not carry.
+data recorded_v2_bootstrap_head_sha: String = "3070bb834e30ad72193bd68fcd2a7db727fe22c7"
+
+data recorded_v2_bootstrap_slot_unit: String = "actions-runner@srv3-15.service"
+
+data recorded_v2_bootstrap_receipt_log: String = "2026-10-27T13:25:12.2484511Z gunbc test: MEMORY RECEIPT grain=slot cgroup=/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-15.service limit_max=23622320128 limit_high=22548578304 swap_max=0 peak_bytes=14481920000 (peak: rose from 5626249216 during this step) high_events_delta=0 max_events_delta=0 oom_kills_delta=0 swap_current_bytes=0 swap_peak_delta=0\n2026-10-27T13:39:41.9437539Z gunbc test: MEMORY RECEIPT grain=slot cgroup=/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-15.service limit_max=23622320128 limit_high=22548578304 swap_max=0 peak_bytes=14481920000 (peak: prior history of the cgroup: memory.peak stood at 14481920000 before the producer and did not rise) high_events_delta=0 max_events_delta=0 oom_kills_delta=0 swap_current_bytes=0 swap_peak_delta=0\n"
+
+data recorded_v2_bootstrap_subject_steps: List<WorkflowJobStep> = [
+  WorkflowJobStep { name: "emit and build //gunbc/instruments:self-host", status: Completed, conclusion: Present { value: Success }, number: 11, started_at: Present { value: "2026-10-27T13:11:40Z" }, completed_at: Present { value: "2026-10-27T13:25:13Z" } },
+  WorkflowJobStep { name: "emit and build //gunbc/instruments:v2-native-cli", status: Completed, conclusion: Present { value: Success }, number: 12, started_at: Present { value: "2026-10-27T13:25:13Z" }, completed_at: Present { value: "2026-10-27T13:39:43Z" } },
+]

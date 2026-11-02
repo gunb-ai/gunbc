@@ -1,0 +1,312 @@
+module gunbc.host.memory_envelope_receipt_reading
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.algebra { trim }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, parse_cgroup_memory_limit,
+}
+import gunbc.host.memory_envelope { MemoryEnvelopeVerdict, EnvelopeHeld, EnvelopeViolated, memory_envelope_verdict }
+
+// THE MEMORY RECEIPT A `gunbc test` SUBJECT STEP PRINTS, READ BACK (gunbc.plans.mtcollins1_ci_service_legs G3a). The
+// envelope's requirement, grain and verdict are gunbc.host.memory_envelope's; the seed prints the line at step exit
+// (v1_compiler.target_invocation_host memory_envelope_receipt):
+//
+//   gunbc test: MEMORY RECEIPT grain=<g> cgroup=<dir> limit_max=<m> limit_high=<h> swap_max=<s> peak_bytes=<n> (peak:
+//   <prose>) high_events_delta=<n> max_events_delta=<n> oom_kills_delta=<n> swap_current_bytes=<n> swap_peak_delta=<n
+//   or prose>
+//
+// and, when the envelope was violated, the same receipt AFTER a `gunbc test: MEMORY ENVELOPE VIOLATED` sentence on the
+// same line. THE KEY SET IS DECLARED HERE, ONCE, IN THE PRINTER'S ORDER, and the reading refuses a key that is missing
+// or that appears twice; it never skips a garbled line. Each value is the first word after its key, except the last
+// key, whose value is the rest of the line (the printer may write prose there). Two values carry spaces in the
+// printer's own text (the peak's parenthetical scope and an unobservable swap peak) and are therefore NOT read as
+// words: the scope is not decoded at all, and an unobservable swap peak reads as an absent delta.
+
+data memory_receipt_marker: String = "gunbc test: MEMORY RECEIPT "
+data memory_envelope_violated_marker: String = "gunbc test: MEMORY ENVELOPE VIOLATED"
+
+// EACH KEY IS ONE ROW, its spelling beside how its value is read (review 86993: one fact, one place). The presence check
+// walks the rows and every field is decoded from its own row, so a key added, renamed or re-kinded is one edit here, and
+// a field cannot be decoded from a key the presence check did not refuse when missing or repeated.
+type ReceiptValueKind
+  = ReceiptWord
+  | ReceiptLimit
+  | ReceiptCount
+  | ReceiptCountOrUnobservable
+
+type ReceiptKey {
+  key: String
+  kind: ReceiptValueKind
+}
+
+data receipt_key_grain: ReceiptKey = ReceiptKey { key: "grain", kind: ReceiptWord }
+data receipt_key_cgroup: ReceiptKey = ReceiptKey { key: "cgroup", kind: ReceiptWord }
+data receipt_key_limit_max: ReceiptKey = ReceiptKey { key: "limit_max", kind: ReceiptLimit }
+data receipt_key_limit_high: ReceiptKey = ReceiptKey { key: "limit_high", kind: ReceiptLimit }
+data receipt_key_swap_max: ReceiptKey = ReceiptKey { key: "swap_max", kind: ReceiptLimit }
+data receipt_key_peak_bytes: ReceiptKey = ReceiptKey { key: "peak_bytes", kind: ReceiptCount }
+data receipt_key_high_events_delta: ReceiptKey = ReceiptKey { key: "high_events_delta", kind: ReceiptCount }
+data receipt_key_max_events_delta: ReceiptKey = ReceiptKey { key: "max_events_delta", kind: ReceiptCount }
+data receipt_key_oom_kills_delta: ReceiptKey = ReceiptKey { key: "oom_kills_delta", kind: ReceiptCount }
+data receipt_key_swap_current_bytes: ReceiptKey = ReceiptKey { key: "swap_current_bytes", kind: ReceiptCount }
+// THE SWAP PEAK'S RISE IS A BYTE COUNT (the printer's saturating after - before), OR THE PRINTER'S OWN SENTENCE THAT THIS
+// KERNEL CANNOT SHOW IT, read to the end of the line because that sentence has spaces. Nothing else: a value that is
+// neither is garbled, never read as unobservable.
+data receipt_swap_peak_unobservable_prefix: String = "unobservable"
+data receipt_key_swap_peak_delta: ReceiptKey = ReceiptKey { key: "swap_peak_delta", kind: ReceiptCountOrUnobservable }
+
+// THE PRINTER'S ORDER.
+data memory_receipt_keys: List<ReceiptKey> = [
+  receipt_key_grain, receipt_key_cgroup, receipt_key_limit_max, receipt_key_limit_high, receipt_key_swap_max,
+  receipt_key_peak_bytes, receipt_key_high_events_delta, receipt_key_max_events_delta, receipt_key_oom_kills_delta,
+  receipt_key_swap_current_bytes, receipt_key_swap_peak_delta,
+]
+
+type MemoryReceiptReading {
+  violated: Bool
+  grain: NonEmptyStr
+  cgroup: NonEmptyStr
+  limit_max: CgroupMemoryLimitValue
+  limit_high: CgroupMemoryLimitValue
+  swap_max: CgroupMemoryLimitValue
+  peak: ByteSize
+  high_events_delta: Int
+  max_events_delta: Int
+  oom_kills_delta: Int
+  swap_current: ByteSize
+  swap_peak_delta: ByteSize?
+}
+
+type MemoryReceiptLine
+  = NotAMemoryReceipt
+  | MemoryReceiptRead { reading: MemoryReceiptReading }
+  | MemoryReceiptGarbled { line: String, cause: NonEmptyStr }
+
+fn receipt_garbled(line: String, cause: String) -> MemoryReceiptLine {
+  MemoryReceiptGarbled { line: line, cause: cause as NonEmptyStr }
+}
+
+// THE PAYLOAD AFTER THE MARKER, prefixed with a space so every key, the first included, is found as " key=".
+fn receipt_payload(line: String) -> String? {
+  let halves = split(s: line, delimiter: memory_receipt_marker)
+  if count(halves) == 2 {
+    match halves.skip(n: 1).first() {
+      Present { value: p } => Present { value: concat(" ", p) }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+type ReceiptField
+  = ReceiptFieldRead { value: String }
+  | ReceiptFieldMissing
+  | ReceiptFieldRepeated
+
+fn receipt_reads_rest_of_line(k: ReceiptKey) -> Bool {
+  match k.kind {
+    ReceiptCountOrUnobservable => true
+    ReceiptWord => false
+    ReceiptLimit => false
+    ReceiptCount => false
+  }
+}
+
+fn receipt_field(payload: String, k: ReceiptKey) -> ReceiptField {
+  let parts = split(s: payload, delimiter: concat(concat(" ", k.key), "="))
+  if count(parts) == 1 {
+    ReceiptFieldMissing
+  } else if count(parts) > 2 {
+    ReceiptFieldRepeated
+  } else {
+    match parts.skip(n: 1).first() {
+      Absent => ReceiptFieldMissing
+      Present { value: after } =>
+        if receipt_reads_rest_of_line(k: k) {
+          ReceiptFieldRead { value: trim(s: after) }
+        } else {
+          match split(s: after, delimiter: " ").first() {
+            Absent => ReceiptFieldMissing
+            Present { value: word } => ReceiptFieldRead { value: word }
+          }
+        }
+    }
+  }
+}
+
+fn receipt_text(payload: String, k: ReceiptKey) -> String? {
+  match receipt_field(payload: payload, k: k) {
+    ReceiptFieldRead { value: v } => if v == "" { none } else { Present { value: v } }
+    ReceiptFieldMissing => none
+    ReceiptFieldRepeated => none
+  }
+}
+
+// A LIMIT IS THE KERNEL'S, decoded by the kernel interface's own authority (extdeps.linux.cgroup_v2_memory
+// parse_cgroup_memory_limit): a byte count or `max`, never text compared as text. A body that is neither is no limit.
+fn receipt_limit(payload: String, k: ReceiptKey) -> CgroupMemoryLimitValue? {
+  match receipt_text(payload: payload, k: k) {
+    Absent => none
+    Present { value: w } =>
+      match parse_cgroup_memory_limit(body: w) {
+        CgroupMemoryLimitUnparseable { body: _ } => none
+        v => Present { value: v }
+      }
+  }
+}
+
+fn receipt_count(payload: String, k: ReceiptKey) -> Int? {
+  match receipt_text(payload: payload, k: k) {
+    Absent => none
+    Present { value: w } =>
+      match parse_int(s: w) {
+        Present { value: n } => if n >= 0 { Present { value: n } } else { none }
+        Absent => none
+      }
+  }
+}
+
+// A COUNT, OR ABSENT WHERE THE PRINTER SAID THE KERNEL CANNOT SHOW IT; any other text is not a reading.
+type ReceiptCountOrUnobservableValue
+  = ReceiptCountObserved { bytes: ByteSize }
+  | ReceiptCountUnobservable
+  | ReceiptCountUnreadable
+
+fn receipt_count_or_unobservable(payload: String, k: ReceiptKey) -> ReceiptCountOrUnobservableValue {
+  match receipt_text(payload: payload, k: k) {
+    Absent => ReceiptCountUnreadable
+    Present { value: v } =>
+      if starts_with(s: v, prefix: receipt_swap_peak_unobservable_prefix) {
+        ReceiptCountUnobservable
+      } else {
+        match parse_int(s: v) {
+          Present { value: n } => if n >= 0 { ReceiptCountObserved { bytes: byte_size(n) } } else { ReceiptCountUnreadable }
+          Absent => ReceiptCountUnreadable
+        }
+      }
+  }
+}
+
+// WHAT A ROW'S VALUE MUST BE, by its kind: present and non-empty for every kind, and decodable for a limit, a count, or
+// a count-or-unobservable.
+fn receipt_key_fault_of(payload: String, k: ReceiptKey) -> String? {
+  match receipt_text(payload: payload, k: k) {
+    Absent => Present { value: concat("the receipt's key is missing, repeated or empty: ", k.key) }
+    Present { value: _ } =>
+      match k.kind {
+        ReceiptWord => none
+        ReceiptCountOrUnobservable => match receipt_count_or_unobservable(payload: payload, k: k) {
+          ReceiptCountUnreadable => Present { value: concat("the receipt's value is neither a byte count nor the printer's unobservable sentence: ", k.key) }
+          ReceiptCountObserved { bytes: _ } => none
+          ReceiptCountUnobservable => none
+        }
+        ReceiptLimit => match receipt_limit(payload: payload, k: k) {
+          Absent => Present { value: concat("the receipt's value is neither a byte count nor max: ", k.key) }
+          Present { value: _ } => none
+        }
+        ReceiptCount => match receipt_count(payload: payload, k: k) {
+          Absent => Present { value: concat("the receipt's value is not a non-negative integer: ", k.key) }
+          Present { value: _ } => none
+        }
+      }
+  }
+}
+
+// THE FIRST FAULTY ROW, IN THE PRINTER'S ORDER, named.
+fn receipt_key_fault(payload: String) -> String? {
+  fold(memory_receipt_keys, init: none, f: (acc, k) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => receipt_key_fault_of(payload: payload, k: k)
+    })
+}
+
+fn memory_receipt_line(line: String) -> MemoryReceiptLine {
+  match receipt_payload(line: line) {
+    Absent =>
+      if string_contains(s: line, pattern: memory_receipt_marker) { receipt_garbled(line: line, cause: "the receipt marker appears more than once on one line") } else { NotAMemoryReceipt }
+    Present { value: payload } =>
+      match receipt_key_fault(payload: payload) {
+        Present { value: why } => receipt_garbled(line: line, cause: why)
+        Absent => receipt_of_words(line: line, payload: payload)
+      }
+  }
+}
+
+fn row_garbled(line: String, k: ReceiptKey) -> MemoryReceiptLine {
+  receipt_garbled(line: line, cause: concat("the receipt's value did not decode: ", k.key))
+}
+
+// EVERY FIELD IS DECODED FROM ITS OWN ROW; NO FIELD HAS A FALLBACK. receipt_key_fault has already refused the first
+// faulty row, so each Absent arm below names its row rather than inventing a value.
+fn receipt_of_words(line: String, payload: String) -> MemoryReceiptLine {
+  match receipt_text(payload: payload, k: receipt_key_grain) { Absent => row_garbled(line: line, k: receipt_key_grain) Present { value: grain } =>
+  match receipt_text(payload: payload, k: receipt_key_cgroup) { Absent => row_garbled(line: line, k: receipt_key_cgroup) Present { value: cgroup } =>
+  match receipt_limit(payload: payload, k: receipt_key_limit_max) { Absent => row_garbled(line: line, k: receipt_key_limit_max) Present { value: limit_max } =>
+  match receipt_limit(payload: payload, k: receipt_key_limit_high) { Absent => row_garbled(line: line, k: receipt_key_limit_high) Present { value: limit_high } =>
+  match receipt_limit(payload: payload, k: receipt_key_swap_max) { Absent => row_garbled(line: line, k: receipt_key_swap_max) Present { value: swap_max } =>
+  match receipt_count(payload: payload, k: receipt_key_peak_bytes) { Absent => row_garbled(line: line, k: receipt_key_peak_bytes) Present { value: peak } =>
+  match receipt_count(payload: payload, k: receipt_key_high_events_delta) { Absent => row_garbled(line: line, k: receipt_key_high_events_delta) Present { value: high_events } =>
+  match receipt_count(payload: payload, k: receipt_key_max_events_delta) { Absent => row_garbled(line: line, k: receipt_key_max_events_delta) Present { value: max_events } =>
+  match receipt_count(payload: payload, k: receipt_key_oom_kills_delta) { Absent => row_garbled(line: line, k: receipt_key_oom_kills_delta) Present { value: oom_kills } =>
+  match receipt_count(payload: payload, k: receipt_key_swap_current_bytes) { Absent => row_garbled(line: line, k: receipt_key_swap_current_bytes) Present { value: swap_current } =>
+    MemoryReceiptRead { reading: MemoryReceiptReading {
+      violated: string_contains(s: line, pattern: memory_envelope_violated_marker),
+      grain: grain as NonEmptyStr,
+      cgroup: cgroup as NonEmptyStr,
+      limit_max: limit_max,
+      limit_high: limit_high,
+      swap_max: swap_max,
+      peak: byte_size(peak),
+      high_events_delta: high_events,
+      max_events_delta: max_events,
+      oom_kills_delta: oom_kills,
+      swap_current: byte_size(swap_current),
+      swap_peak_delta: match receipt_count_or_unobservable(payload: payload, k: receipt_key_swap_peak_delta) {
+        ReceiptCountObserved { bytes: b } => Present { value: b }
+        ReceiptCountUnobservable => none
+        ReceiptCountUnreadable => none
+      },
+    } }
+  } } } } } } } } } }
+}
+
+// THE ENVELOPE VERDICT IS gunbc.host.memory_envelope's, NOT THIS READER'S (review 86991, DESIGN section 3): the receipt's
+// decoded fields are the verdict's four inputs exactly as the printer supplies them (v1_compiler.target_invocation_host
+// memory_envelope_receipt) -- the OOM kills this step added, the swap resident at exit, whether the swap peak rose
+// (absent where this kernel cannot show it), and whether swap is forbidden (swap_max is exactly 0).
+fn memory_receipt_verdict(r: MemoryReceiptReading) -> MemoryEnvelopeVerdict {
+  memory_envelope_verdict(
+    oom_kills_delta: r.oom_kills_delta,
+    swap_current: Present { value: byte_size_count(b: r.swap_current) as Int },
+    swap_peak_rose: match r.swap_peak_delta {
+      Present { value: d } => Present { value: byte_size_count(b: d) > 0 }
+      Absent => none
+    },
+    swap_max_zero: match r.swap_max {
+      CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 0
+      CgroupMemoryUnlimited => false
+      CgroupMemoryLimitUnparseable { body: _ } => false
+    },
+  )
+}
+
+// THE PRINTED SENTENCE AND THE VERDICT MUST AGREE. The printer writes MEMORY ENVELOPE VIOLATED exactly when its verdict
+// violates, so a receipt whose sentence and recomputed verdict disagree was not written by that printer over these
+// numbers: it is its own standing, and it is not held.
+type MemoryReceiptStanding
+  = MemoryReceiptHeld
+  | MemoryReceiptViolated { verdict: MemoryEnvelopeVerdict }
+  | MemoryReceiptSentenceDisagrees { printed_violated: Bool, verdict: MemoryEnvelopeVerdict }
+
+fn memory_receipt_standing(r: MemoryReceiptReading) -> MemoryReceiptStanding {
+  let verdict = memory_receipt_verdict(r: r)
+  match verdict {
+    EnvelopeHeld => if r.violated { MemoryReceiptSentenceDisagrees { printed_violated: true, verdict: verdict } } else { MemoryReceiptHeld }
+    EnvelopeViolated { oom_kills_delta: _, swap_current: _, swap_peak_rose: _, swap_max_zero: _ } =>
+      if r.violated { MemoryReceiptViolated { verdict: verdict } } else { MemoryReceiptSentenceDisagrees { printed_violated: false, verdict: verdict } }
+  }
+}

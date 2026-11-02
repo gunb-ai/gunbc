@@ -2,12 +2,14 @@ module test.claim.runner.runner_throughput_qualification_witness
 
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, String }
-import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import std.optional { Absent, Present }
+import extdeps.github.workflow_runs {
+  GitHubWorkflowRunId, github_workflow_run_id_wire_text, WorkflowJobRun, Completed, Success,
+}
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure {
-  ByteSize, byte_size, byte_size_count, EvalStepCount, eval_step_count, eval_step_count_value,
-  eval_steps_per_millisecond_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
-  Millisecond, millisecond, second, MoneyPerSecond, money_amount_micro,
+  ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
+  second, second_count, MoneyPerSecond, money_amount_micro,
   ObservationInstant, SharedMonotonic, WallClock, nanosecond,
 }
 import std.decl_ref { decl_ref }
@@ -27,8 +29,7 @@ import product.fabric.node_qualification {
   ClaimedDeliveryHolds, ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
   RunnerThroughputDidNotHold,
 }
-import gunbc.host.host_budget_source { HostBudgetResolved, HostBudgetObserved, BudgetSourceCgroupMemoryHigh }
-import gunbc.required_ci_phase_roster { RequiredCiPhase, ParsePhase, FloorPhase, required_ci_phases, required_ci_phase_is }
+import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_cores_per_slot }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fabric.fabric_executor_class {
@@ -41,30 +42,32 @@ import gunbc.fleet.fleet_host_budget {
 }
 import gunbc.fleet.fleet_container { gha_runner_container }
 import gunbc.ci.ci_floor_measurement { OomdEnforced }
-import v2.workflow.floor_eval_step_calibration {
-  floor_eval_step_calibration, calibration_rate, calibration_specimen_eval_steps, calibration_specimen_identity,
+import gunbc.runner.runner_qualification_subject_readings {
+  SubjectStepReading, subject_readings_of, SubjectReadingsRead, SubjectReadingsRefused, SubjectReceiptMissing,
+}
+import test.fixture.recorded_v2_bootstrap_receipts {
+  recorded_v2_bootstrap_run, recorded_v2_bootstrap_head_sha, recorded_v2_bootstrap_slot_unit,
+  recorded_v2_bootstrap_receipt_log, recorded_v2_bootstrap_subject_steps,
 }
 import gunbc.runner.runner_throughput_qualification {
   FloorWorkloadPin, SelectedRunnerRuntime, PeerScratchExport, WorkspaceBytesLocus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
-  workspace_bytes_locus,
-  PhaseWall, RateSpecimenRead, CgroupMemoryReading, CgroupMemoryRead, CgroupMemoryUnreadable, EffectiveSlotProperties,
-  ObservedRunnerQualificationRun, observed_run,
-  SamplingPolicy, ExactlyOneReconciledRun, ConservativePerAxis,
-  PhaseCeilings, NoPhaseCeilings, PhaseCeilingsDeclared, SelectedRunnerQualification,
+  workspace_bytes_locus, EffectiveSlotProperties,
+  ObservedRunnerQualificationRun, observed_run, FleetBaselineRun, observed_baseline,
+  SamplingPolicy, ExactlyOneReconciledRun, ConservativePerAxis, SelectedRunnerQualification,
   HostAllocationAdmitted, HostAllocationRefused,
   subject_join_axis_wire, SubjectJoined, SubjectJoinRefused,
-  ThroughputMeetsPin, ThroughputBelowPin, ThroughputUnread,
-  PeakWithinSlotHigh, PeakExceedsSlotHigh, MemoryUnread,
-  PhaseRosterComplete, PhaseMissing, PhaseDuplicated, PhaseRosterNotAssessed,
-  PhaseWallsNotAssessed, PhaseWallsWithinCeilings, PhaseWallExceedsCeiling,
+  PeakWithinSlotHigh, PeakExceedsSlotHigh, MemoryEnvelopeViolatedAt, MemoryReceiptDisagreesAt, MemoryUnread,
+  SubjectRosterComplete, SubjectMissing, SubjectDuplicated,
+  SubjectWallsWithinBaseline, SubjectWallExceedsBaseline, BaselineOnTheSubjectHost, BaselineAtAnotherRevision, BaselineMissingSubject,
   SlotWidthDerived, SlotWidthUnderivable,
   ThroughputRefusal, SubjectJoinDidNotHold, SamplingDidNotHold,
   RunnerThroughputAssessment, assess_runner_throughput, assessment_holds, assessment_wire,
-  qualification_run_producer_frontier, leg_is_wired, RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority,
-  AssessedFact, InterpreterRateAgainstPin, SlotMemoryEnvelope, PhaseWallsAgainstSuppliedCeilings, ConcurrentCohortAtWidth,
+  qualification_run_producer_frontier, leg_is_wired, leg_authority, RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority,
+  AssessedFact, SlotMemoryEnvelope, SubjectWallsAgainstFleetBaseline, ConcurrentCohortAtWidth,
   RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
 }
 import std.nat { Nat, nat_range_inclusive, nat_to_decimal_string }
+import std.rational { NonzeroNatFraction }
 import std.observation { AttemptOccurrenceId }
 import product.capacity.cohort_observation {
   CohortReading, CohortSeatReading, SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, seal_cohort,
@@ -81,7 +84,7 @@ import gunbc.runner.runner_throughput_qualification_route {
   route_effectful_stage_count, route_is_executable,
   route_registers_one_slot, route_deregisters_what_it_registered, route_dispatch_selector_names_the_attempt,
   mtcollins1_qualification_workspace_backing, mtcollins1_route_legs,
-  CalibrationSpecimenWitnessLine, FloorCgroupRows, ConcurrentCohortSeatWindows, qualification_instrument_wire, qualification_instrument_producer,
+  SubjectMemoryReceipts, SubjectStepWalls, ConcurrentCohortSeatWindows, qualification_instrument_wire, qualification_instrument_producer,
 }
 import gunbc.runner.runner_microvm_network { HostChainDefaultDrop, TapScopedFinalDrop }
 import std.integer { int_to_decimal_string }
@@ -89,36 +92,25 @@ import std.integer { int_to_decimal_string }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE INPUTS ARE SUPPLIED AT THE INTERFACE (DESIGN section 3, a witness discriminates at one
-// interface). The selection is a fixture the fleet would have made; the observed runs are minted
-// through `observed_run` -- the one door the sealed record has -- from readings in the shape the
-// route's collect stage will produce. No run executes here. The pairing obligation is the producer
-// frontier, asserted unbound below rather than faked with a fixture run. A DIRECTLY AUTHORED
-// ADMITTED DISPOSITION IS NOT WRITABLE: `RunnerThroughputAssessment` is sole_constructor, so a
-// literal in this module is a compile refusal (v1_compiler sole_constructor_violation_outside_module),
-// and every assessment below reaches the fabric through `assess_runner_throughput` and nothing else.
+// interface). The selection is a fixture the fleet would have made; the observed runs and the
+// fleet baseline are minted through `observed_run` and `observed_baseline` -- the one door each
+// sealed record has -- from SUBJECT READINGS DECODED FROM A RECORDED REQUIRED RUN
+// (test.fixture.recorded_v2_bootstrap_receipts: run 40509253563 on srv3). The baseline is that run as
+// recorded; the subject run is the same receipts re-bounded to the attempt's unit, so its walls and
+// peak are a real floor's, and every claim below varies one fact of it. No run executes here. The
+// pairing obligation is the producer frontier, asserted unbound below rather than faked with a fixture
+// run. A DIRECTLY AUTHORED ADMITTED DISPOSITION IS NOT WRITABLE: `RunnerThroughputAssessment` is
+// sole_constructor, so every assessment below reaches the fabric through `assess_runner_throughput`.
 
-data pin_revision: String = "43643bad4f0000000000000000000000000000ab"
+data pin_revision: String = recorded_v2_bootstrap_head_sha
 data attempt: NonEmptyStr = "mtcollins1-qual-1" as NonEmptyStr
 data run_a: GitHubWorkflowRunId = GitHubWorkflowRunId { value: 35447067113 }
 data run_b: GitHubWorkflowRunId = GitHubWorkflowRunId { value: 35447067114 }
 
-fn pinned_rate() -> Int {
-  calibration_rate(calibration: floor_eval_step_calibration)
-}
-
-fn specimen_steps() -> EvalStepCount {
-  calibration_specimen_eval_steps(calibration: floor_eval_step_calibration)
-}
-
-fn specimen_identity() -> NonEmptyStr {
-  calibration_specimen_identity(calibration: floor_eval_step_calibration)
-}
-
 fn pin() -> FloorWorkloadPin {
   FloorWorkloadPin {
-    program: "gunbc.claim_executor --required-ci" as NonEmptyStr,
+    program: "gunbc.witness.compiler_gate_workflow v2-bootstrap" as NonEmptyStr,
     revision: pin_revision,
-    specimen: specimen_identity(),
   }
 }
 
@@ -208,6 +200,7 @@ fn control_plane_sanction() -> ExecutorSanction {
   ExecutorSanctioned { executor: "mtcollins1" as NonEmptyStr, sanctioned: ControlPlaneCapacity }
 }
 
+
 // THE SELECTION IS MADE BY THE FLEET'S SELECTION FOLD from the fleet's own authorities -- the live
 // slot shape, the plan fold, the conservation verdict -- never assembled by hand here.
 // THE SELECTED RUNTIME, and the observed run below reads the same row, so a join failure on either
@@ -217,11 +210,15 @@ data fixture_runtime: SelectedRunnerRuntime = SelectedRunnerRuntime {
   runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt" as NonEmptyStr,
 }
 
-fn inputs_with(sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
-  inputs_offered(offer: selected_offer(key: "offer-mtcollins1-qual-1"), sampling: sampling, ceilings: ceilings, plan: plan, allocation: allocation)
+// THE WALL ALLOWANCE IS A POLICY INPUT THE SELECTION SUPPLIES, a ratio and never a wall: a subject step may take at
+// most 5/4 of the same step's wall on the baseline host.
+data fixture_wall_allowance: NonzeroNatFraction = NonzeroNatFraction { num: 5, denom_predecessor: 3 }
+
+fn inputs_with(sampling: SamplingPolicy, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
+  inputs_offered(offer: selected_offer(key: "offer-mtcollins1-qual-1"), sampling: sampling, plan: plan, allocation: allocation)
 }
 
-fn inputs_offered(offer: SupplierOffer<HostIdentity>, sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
+fn inputs_offered(offer: SupplierOffer<HostIdentity>, sampling: SamplingPolicy, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
   select_runner_qualification(
     offer: offer,
     host: "mtcollins1",
@@ -234,52 +231,86 @@ fn inputs_offered(offer: SupplierOffer<HostIdentity>, sampling: SamplingPolicy, 
     slot: gunbc_runner_slot_desired(),
     unit: slot_unit(),
     workspace: mtcollins1_qualification_workspace_backing,
-    calibration: floor_eval_step_calibration,
     sampling: sampling,
-    phase_ceilings: ceilings,
+    wall_allowance: fixture_wall_allowance,
   )
 }
 
-fn selection_with(sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> SelectedRunnerQualification<HostIdentity> {
-  inputs_with(sampling: sampling, ceilings: ceilings, plan: plan, allocation: allocation).selection
+fn selection_with(sampling: SamplingPolicy, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> SelectedRunnerQualification<HostIdentity> {
+  inputs_with(sampling: sampling, plan: plan, allocation: allocation).selection
 }
 
 fn selection() -> SelectedRunnerQualification<HostIdentity> {
-  selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
+  selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, plan: sound_plan(), allocation: HostAllocationConserves)
+}
+
+// ── subject readings, decoded from the recorded run ───────────────────────────────────────────
+
+fn recorded_job() -> WorkflowJobRun {
+  WorkflowJobRun {
+    id: 122206492701, run_id: 40509253563, run_attempt: 1, name: "v2-bootstrap", status: Completed,
+    conclusion: Present { value: Success }, labels: [], runner_id: none, runner_name: none,
+    created_at: none, started_at: none, completed_at: none, steps: Present { value: recorded_v2_bootstrap_subject_steps },
+  }
+}
+
+// A LOG THAT DOES NOT DECODE READS AS NO SUBJECT STEP, which the bound axis refuses by name, so a fixture that stopped
+// decoding turns the positive control red rather than passing vacuously.
+fn readings_of(log: String, unit: NonEmptyStr) -> List<SubjectStepReading> {
+  match subject_readings_of(job: recorded_job(), log: log, slot_unit: unit, rows: emitted_subject_build_rows()) {
+    SubjectReadingsRead { readings: rs } => rs
+    SubjectReadingsRefused { refusal: _ } => []
+  }
+}
+
+// THE RECORDED RECEIPTS, RE-BOUNDED TO THE ATTEMPT'S UNIT: the only edit is the unit at the tail of each cgroup path.
+fn attempt_log() -> String {
+  replace(s: recorded_v2_bootstrap_receipt_log, from: concat("/", recorded_v2_bootstrap_slot_unit), to: concat("/", slot_unit() as String))
+}
+
+fn attempt_log_with(from: String, to: String) -> String {
+  replace(s: attempt_log(), from: from, to: to)
+}
+
+fn subject_readings() -> List<SubjectStepReading> {
+  readings_of(log: attempt_log(), unit: slot_unit())
+}
+
+fn with_wall(r: SubjectStepReading, seconds: Int) -> SubjectStepReading {
+  SubjectStepReading { row: r.row, wall: second(count: seconds), receipt: r.receipt }
+}
+
+fn label_of(r: SubjectStepReading) -> String {
+  emitted_subject_build_label_text(row: r.row)
+}
+
+fn first_label() -> String {
+  match subject_readings().first() {
+    Present { value: r } => label_of(r: r)
+    Absent => ""
+  }
+}
+
+// THE BASELINE: the recorded run itself, on srv3 at its own slot, at the pinned revision.
+fn baseline_at(host: HostIdentity, revision: String, subjects: List<SubjectStepReading>) -> FleetBaselineRun {
+  observed_baseline(
+    run: GitHubWorkflowRunId { value: 40509253563 }, host: host, revision: revision,
+    slot_unit: recorded_v2_bootstrap_slot_unit as NonEmptyStr, subjects: subjects,
+  )
+}
+
+fn baseline_readings() -> List<SubjectStepReading> {
+  readings_of(log: recorded_v2_bootstrap_receipt_log, unit: recorded_v2_bootstrap_slot_unit as NonEmptyStr)
+}
+
+fn baseline() -> FleetBaselineRun {
+  baseline_at(host: "srv3", revision: pin_revision, subjects: baseline_readings())
 }
 
 // ── observed runs, minted through the sealed record's one door ────────────────────────────────
 
 fn slot_high() -> ByteSize {
   gunbc_runner_slot_desired().memory_high
-}
-
-fn cgroup_level() -> NonEmptyStr {
-  concat("/sys/fs/cgroup/system.slice/", slot_unit() as String) as NonEmptyStr
-}
-
-fn resolved_bound_with_peak(bytes: ByteSize, peak: ByteSize) -> CgroupMemoryReading {
-  CgroupMemoryRead {
-    level: cgroup_level(),
-    bound: HostBudgetResolved {
-      effective_bytes: bytes,
-      requested_bytes: none,
-      observation: HostBudgetObserved { source: BudgetSourceCgroupMemoryHigh { cgroup_dir: cgroup_level() }, bytes: bytes },
-    },
-    peak: peak,
-  }
-}
-
-fn clean_peak() -> ByteSize {
-  byte_size(count: byte_size_count(b: slot_high()) - 5368709120)
-}
-
-fn resolved_bound(bytes: ByteSize) -> CgroupMemoryReading {
-  resolved_bound_with_peak(bytes: bytes, peak: clean_peak())
-}
-
-fn complete_roster(wall: Millisecond) -> List<PhaseWall> {
-  map(required_ci_phases, p => PhaseWall { phase: p, wall: wall })
 }
 
 fn effective_as_selected() -> EffectiveSlotProperties {
@@ -293,26 +324,22 @@ fn effective_with_high(high: ByteSize) -> EffectiveSlotProperties {
 }
 
 // THE PARAMETERS ARE THE AXES THE CLAIMS VARY, one at a time, from a run that joins on every axis
-// and meets every standing: the pinned specimen in 50 ms, a peak 5 GiB under the high, the
-// complete phase roster, the selected unit's effective properties, tmpfs on the subject.
+// and meets every standing: the recorded floor's subject steps at the attempt's unit, the selected
+// unit's effective properties, tmpfs on the subject.
 fn run_with(
   id: GitHubWorkflowRunId,
   host: HostIdentity,
-  specimen: NonEmptyStr,
   effective: EffectiveSlotProperties,
   workspace: WorkspaceBytesLocus,
-  cpu: Millisecond,
-  memory: CgroupMemoryReading,
-  phases: List<PhaseWall>,
+  subjects: List<SubjectStepReading>,
 ) -> ObservedRunnerQualificationRun {
   observed_run(
     run: id,
     attempt_label: attempt,
-    observed_at: "2026-09-19T12:00:00Z",
+    observed_at: "2026-10-27T13:39:43Z",
     host: host,
-    program: "gunbc.claim_executor --required-ci" as NonEmptyStr,
+    program: pin().program,
     revision: pin_revision,
-    specimen: specimen,
     image_digest: fixture_runtime.image_digest,
     runtime_closure: fixture_runtime.runtime_closure,
     slot_unit: slot_unit(),
@@ -321,26 +348,16 @@ fn run_with(
     host_threads: hardware_thread_count(count: 160),
     host_architecture: Aarch64,
     workspace: workspace,
-    phase_wall: phases,
-    floor_eval_steps: eval_step_count(count: 900000000),
-    rate_specimen: RateSpecimenRead { eval_steps: specimen_steps(), cpu: cpu },
-    memory: memory,
+    subjects: subjects,
   )
 }
 
 fn good_run(id: GitHubWorkflowRunId) -> ObservedRunnerQualificationRun {
-  run_with(
-    id: id, host: "mtcollins1", specimen: specimen_identity(), effective: effective_as_selected(),
-    workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
-    memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
-  )
+  varied_run(id: id, subjects: subject_readings())
 }
 
-fn varied_run(id: GitHubWorkflowRunId, cpu: Millisecond, memory: CgroupMemoryReading, phases: List<PhaseWall>) -> ObservedRunnerQualificationRun {
-  run_with(
-    id: id, host: "mtcollins1", specimen: specimen_identity(), effective: effective_as_selected(),
-    workspace: OnSubjectChargedToSlot, cpu: cpu, memory: memory, phases: phases,
-  )
+fn varied_run(id: GitHubWorkflowRunId, subjects: List<SubjectStepReading>) -> ObservedRunnerQualificationRun {
+  run_with(id: id, host: "mtcollins1", effective: effective_as_selected(), workspace: OnSubjectChargedToSlot, subjects: subjects)
 }
 
 fn first_join_axis(refusals: List<ThroughputRefusal>) -> String {
@@ -362,9 +379,8 @@ fn first_join_axis(refusals: List<ThroughputRefusal>) -> String {
 // must be exactly the named arms, each once.
 fn fact_is(a: AssessedFact, b: AssessedFact) -> Bool {
   match a {
-    InterpreterRateAgainstPin => match b { InterpreterRateAgainstPin => true _ => false }
     SlotMemoryEnvelope => match b { SlotMemoryEnvelope => true _ => false }
-    PhaseWallsAgainstSuppliedCeilings => match b { PhaseWallsAgainstSuppliedCeilings => true _ => false }
+    SubjectWallsAgainstFleetBaseline => match b { SubjectWallsAgainstFleetBaseline => true _ => false }
     ConcurrentCohortAtWidth => match b { ConcurrentCohortAtWidth => true _ => false }
   }
 }
@@ -373,15 +389,9 @@ fn has_fact_once(facts: List<AssessedFact>, want: AssessedFact) -> Bool {
   (facts |> filter(f => fact_is(a: f, b: want))).length() == 1
 }
 
-fn covers_rate_memory_and_cohort(facts: List<AssessedFact>) -> Bool {
-  facts.length() == 3 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin) && has_fact_once(facts: facts, want: SlotMemoryEnvelope)
-    && has_fact_once(facts: facts, want: ConcurrentCohortAtWidth)
-}
-
-fn covers_rate_memory_walls_and_cohort(facts: List<AssessedFact>) -> Bool {
-  facts.length() == 4 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin)
-    && has_fact_once(facts: facts, want: SlotMemoryEnvelope) && has_fact_once(facts: facts, want: PhaseWallsAgainstSuppliedCeilings)
-    && has_fact_once(facts: facts, want: ConcurrentCohortAtWidth)
+fn covers_memory_walls_and_cohort(facts: List<AssessedFact>) -> Bool {
+  facts.length() == 3 && has_fact_once(facts: facts, want: SlotMemoryEnvelope)
+    && has_fact_once(facts: facts, want: SubjectWallsAgainstFleetBaseline) && has_fact_once(facts: facts, want: ConcurrentCohortAtWidth)
 }
 
 // ── the concurrent cohort ─────────────────────────────────────────────────────────────────────
@@ -389,7 +399,7 @@ fn covers_rate_memory_walls_and_cohort(facts: List<AssessedFact>) -> Bool {
 // A DELIVERING ASSESSMENT NEEDS A SEALED COHORT AT THE DERIVED WIDTH, so the delivering claims below
 // run through assess_at_width: the claim's own runs PLUS one good run per seat, and a cohort of exactly
 // expected_width() seats, all active over [20, 40], each seat one of those assessed runs. The seats are
-// good runs, so the throughput and memory aggregates the claims read are the good run's either way.
+// good runs, so the memory and wall aggregates the claims read are the good run's either way.
 // Claims about a refusal on some other axis run through assess_unobserved, where the missing cohort is
 // one more refusal beside the one the claim reads.
 fn t(n: Nat) -> ObservationInstant { ObservationInstant { domain: SharedMonotonic { origin: "mtcollins1-boot" as NonEmptyStr }, basis: WallClock, since_origin: nanosecond(count: n) } }
@@ -421,13 +431,18 @@ fn cohort_runs(ids: List<GitHubWorkflowRunId>) -> List<ObservedRunnerQualificati
   map(ids, id => good_run(id: id))
 }
 
+
 fn assess_at_width(selection: SelectedRunnerQualification<HostIdentity>, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
   let ids = seat_ids(n: expected_width())
-  assess_runner_throughput(selection: selection, runs: concat(runs, cohort_runs(ids: ids)), cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }))))
+  assess_runner_throughput(selection: selection, runs: concat(runs, cohort_runs(ids: ids)), baseline: baseline(), cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }))))
 }
 
 fn assess_unobserved(selection: SelectedRunnerQualification<HostIdentity>, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
-  assess_runner_throughput(selection: selection, runs: runs, cohort: NoCohortObserved)
+  assess_runner_throughput(selection: selection, runs: runs, baseline: baseline(), cohort: NoCohortObserved)
+}
+
+fn assess_against(baseline: FleetBaselineRun, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
+  assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline, cohort: NoCohortObserved)
 }
 
 fn concurrency_is(a: RunnerThroughputAssessment<HostIdentity>, want: String) -> Bool {
@@ -438,35 +453,43 @@ fn sampling_refused(a: RunnerThroughputAssessment<HostIdentity>) -> Bool {
   a.refusals |> any(r => match r { SamplingDidNotHold { policy: _, observed_runs: _ } => true _ => false })
 }
 
+// ── the fixtures are the recorded floor's ─────────────────────────────────────────────────────
+
+// THE FIXTURES ARE NOT VACUOUS: the subject run and the baseline each decode one reading per subject row of today's
+// gate, and the subject's are the baseline's at the attempt's unit -- the same walls (813 s, 870 s) and the same peak.
+test fn the_subject_and_baseline_readings_decode_from_the_recorded_run() -> Bool {
+  let s = subject_readings()
+  let b = baseline_readings()
+  count(s) == count(emitted_subject_build_rows()) && count(b) == count(s) && count(s) >= 1
+    && join(map(s, r => nat_to_decimal_string(value: second_count(r.wall))), ",") == join(map(b, r => nat_to_decimal_string(value: second_count(r.wall))), ",")
+    && (s |> all(r => string_contains(s: r.receipt.cgroup as String, pattern: slot_unit() as String)))
+}
+
 // ── the positive control ──────────────────────────────────────────────────────────────────────
 
 test fn a_joining_run_meeting_every_axis_makes_the_offer_deliver() -> Bool {
   let a = assess_at_width(selection: selection(), runs: [good_run(id: run_a)])
   assessment_holds(a: a)
-    && (match a.throughput {
-      ThroughputMeetsPin { measured: m, pinned: p } =>
-        eval_steps_per_millisecond_count(r: m) == eval_step_count_value(s: specimen_steps()) / 50
-          && eval_steps_per_millisecond_count(r: p) == pinned_rate()
+    && (match a.memory {
+      PeakWithinSlotHigh { peak: p, high: h } => byte_size_count(b: p) == 14481920000 && byte_size_count(b: h) == byte_size_count(b: slot_high())
       _ => false
     })
+    && (match a.subject_walls { SubjectWallsWithinBaseline => true _ => false })
+    && (match a.subject_roster { SubjectRosterComplete => true _ => false })
     && (match a.slot_width {
       SlotWidthDerived { by_memory: _, by_cpu: _, slots: n } => n == expected_width() && n >= 1
       SlotWidthUnderivable { cause: _ } => false
     })
-    && covers_rate_memory_and_cohort(facts: a.assessed_facts)
+    && covers_memory_walls_and_cohort(facts: a.assessed_facts)
 }
 
 // ── the subject join REDs (operator hold, item 2) ─────────────────────────────────────────────
 
 test fn a_run_from_another_host_is_refused_on_the_host_axis() -> Bool {
-  let r = run_with(
-    id: run_a, host: "srv3", specimen: specimen_identity(), effective: effective_as_selected(),
-    workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
-    memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
-  )
+  let r = run_with(id: run_a, host: "srv3", effective: effective_as_selected(), workspace: OnSubjectChargedToSlot, subjects: subject_readings())
   let a = assess_unobserved(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "host"
-    && (match a.phase_roster { PhaseRosterNotAssessed { because: _ } => true _ => false })
+    && (match a.memory { MemoryUnread { reason: _ } => true _ => false })
     && a.assessed_facts.length() == 0
 }
 
@@ -475,12 +498,11 @@ fn good_run_in(image_digest: NonEmptyStr, runtime_closure: NonEmptyStr, host_thr
   let g = good_run(id: run_a)
   observed_run(
     run: g.run, attempt_label: g.attempt_label, observed_at: g.observed_at, host: g.host,
-    program: g.program, revision: g.revision, specimen: g.specimen,
+    program: g.program, revision: g.revision,
     image_digest: image_digest, runtime_closure: runtime_closure,
     slot_unit: g.slot_unit, incarnation: g.incarnation, effective: g.effective,
     host_threads: host_threads, host_architecture: host_architecture, workspace: g.workspace,
-    phase_wall: g.phase_wall, floor_eval_steps: g.floor_eval_steps,
-    rate_specimen: g.rate_specimen, memory: g.memory,
+    subjects: g.subjects,
   )
 }
 
@@ -489,9 +511,8 @@ fn refused_on(selection: SelectedRunnerQualification<HostIdentity>, run: Observe
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == axis && a.assessed_facts.length() == 0
 }
 
-// THE RUNTIME AND HOST FACTS WERE OBSERVED AND NEVER JOINED; NOW EACH ONE REFUSES ALONE. Every run
-// below is the good run with one fact changed, and the good run itself still joins, so a claim that
-// passes here is about that axis and nothing else.
+// THE RUNTIME AND HOST FACTS EACH REFUSE ALONE. Every run below is the good run with one fact changed, and the good
+// run itself still joins, so a claim that passes here is about that axis and nothing else.
 test fn a_run_in_another_image_or_toolchain_is_refused_on_its_runtime_axis() -> Bool {
   let t = hardware_thread_count(count: 160)
   assessment_holds(a: assess_at_width(selection: selection(), runs: [good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64)]))
@@ -508,123 +529,148 @@ test fn a_run_on_another_host_shape_is_refused_on_its_host_axis() -> Bool {
 test fn an_offer_stating_no_architecture_refuses_the_architecture_join() -> Bool {
   let s = inputs_offered(
     offer: selected_offer_stating(key: "offer-mtcollins1-qual-1", architecture: Absent),
-    sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves,
+    sampling: ConservativePerAxis { minimum_runs: 1 }, plan: sound_plan(), allocation: HostAllocationConserves,
   ).selection
   refused_on(selection: s, run: good_run(id: run_a), axis: "host architecture")
 }
 
-// THE SAME STEP COUNT ON A DIFFERENT SPECIMEN IS A DIFFERENT PROGRAM: the identity is joined, not
-// only the count.
-test fn a_run_of_another_specimen_with_the_same_step_count_is_refused_on_the_specimen_axis() -> Bool {
-  let r = run_with(
-    id: run_a, host: "mtcollins1", specimen: "test.claim.some_other_specimen" as NonEmptyStr, effective: effective_as_selected(),
-    workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
-    memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
-  )
-  let a = assess_unobserved(selection: selection(), runs: [r])
-  !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "specimen"
-}
-
 test fn a_unit_whose_effective_high_is_not_the_selected_high_is_refused() -> Bool {
   let other = byte_size(count: byte_size_count(b: slot_high()) + 1073741824)
-  let r = run_with(
-    id: run_a, host: "mtcollins1", specimen: specimen_identity(), effective: effective_with_high(high: other),
-    workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
-    memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
-  )
-  let a = assess_unobserved(selection: selection(), runs: [r])
-  !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "effective MemoryHigh"
+  let r = run_with(id: run_a, host: "mtcollins1", effective: effective_with_high(high: other), workspace: OnSubjectChargedToSlot, subjects: subject_readings())
+  refused_on(selection: selection(), run: r, axis: "effective MemoryHigh")
 }
 
-// A READABLE PEAK UNDER A BOUND THAT DID NOT RESOLVE TO THE SUBJECT'S IS NOT THE SUBJECT'S PEAK.
-test fn a_cgroup_bound_that_is_unreadable_or_another_number_is_refused_on_the_bound_axis() -> Bool {
-  let unreadable = varied_run(
-    id: run_a, cpu: millisecond(count: 50),
-    memory: CgroupMemoryUnreadable { reason: "no cgroup memory.high or memory.max binds this process" as NonEmptyStr },
-    phases: complete_roster(wall: millisecond(count: 1000)),
-  )
-  let other = varied_run(
-    id: run_b, cpu: millisecond(count: 50),
-    memory: resolved_bound(bytes: byte_size(count: byte_size_count(b: slot_high()) - 1)),
-    phases: complete_roster(wall: millisecond(count: 1000)),
-  )
-  let a1 = assess_unobserved(selection: selection(), runs: [unreadable])
-  let a2 = assess_unobserved(selection: selection(), runs: [other])
-  first_join_axis(refusals: a1.refusals) == "cgroup bound" && first_join_axis(refusals: a2.refusals) == "cgroup bound"
+// A RECEIPT BOUNDED BY ANOTHER HIGH MEASURED ANOTHER ENVELOPE, and a run with no subject step read carries no receipt
+// at all: both refuse on the bound axis, never as a run with no memory.
+test fn a_receipt_under_another_high_or_no_receipt_is_refused_on_the_bound_axis() -> Bool {
+  let want = nat_to_decimal_string(value: byte_size_count(b: slot_high()))
+  let other = readings_of(log: attempt_log_with(from: concat("limit_high=", want), to: "limit_high=21474836480"), unit: slot_unit())
+  let unlimited = readings_of(log: attempt_log_with(from: concat("limit_high=", want), to: "limit_high=max"), unit: slot_unit())
+  count(other) == count(subject_readings()) && count(unlimited) == count(subject_readings())
+    && refused_on(selection: selection(), run: varied_run(id: run_a, subjects: other), axis: "cgroup bound")
+    && refused_on(selection: selection(), run: varied_run(id: run_a, subjects: unlimited), axis: "cgroup bound")
+    && refused_on(selection: selection(), run: varied_run(id: run_a, subjects: []), axis: "cgroup bound")
 }
 
 test fn a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() -> Bool {
-  let r = run_with(
-    id: run_a, host: "mtcollins1", specimen: specimen_identity(), effective: effective_as_selected(),
-    workspace: OnSubjectUncharged, cpu: millisecond(count: 50),
-    memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
-  )
-  let a = assess_unobserved(selection: selection(), runs: [r])
-  !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "workspace locus"
+  let r = run_with(id: run_a, host: "mtcollins1", effective: effective_as_selected(), workspace: OnSubjectUncharged, subjects: subject_readings())
+  refused_on(selection: selection(), run: r, axis: "workspace locus")
     && (match workspace_bytes_locus(backing: PeerScratchExport { peer: "srv2" }) { OffSubject { peer: p } => (p as String) == "srv2" _ => false })
+}
+
+// ── the memory envelope (operator decision A, condition 2) ────────────────────────────────────
+
+// RED: AN OOM KILL OR RESIDENT SWAP, PRINTED WITH ITS SENTENCE, REFUSES THE QUALIFICATION as a violated envelope naming
+// the subject and carrying the envelope verdict; the unmutated receipts (the positive control) hold.
+data violated_sentence: String = "gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated -- see the receipt. gunbc test: MEMORY RECEIPT"
+
+fn assessed_with(log: String) -> RunnerThroughputAssessment<HostIdentity> {
+  assess_at_width(selection: selection(), runs: [varied_run(id: run_a, subjects: readings_of(log: log, unit: slot_unit()))])
+}
+
+fn printed_violation(from: String, to: String) -> String {
+  replace(s: attempt_log_with(from: from, to: to), from: "gunbc test: MEMORY RECEIPT", to: violated_sentence)
+}
+
+fn violated_by(from: String, to: String) -> Bool {
+  let a = assessed_with(log: printed_violation(from: from, to: to))
+  !assessment_holds(a: a)
+    && (match a.memory { MemoryEnvelopeViolatedAt { subject: s, verdict: _ } => (s as String) == first_label() _ => false })
+}
+
+test fn an_oom_kill_or_resident_swap_refuses_the_qualification() -> Bool {
+  violated_by(from: "oom_kills_delta=0", to: "oom_kills_delta=1")
+    && violated_by(from: "swap_current_bytes=0", to: "swap_current_bytes=4096")
+}
+
+// A RECEIPT THAT DISAGREES WITH ITS OWN NUMBERS IS ITS OWN FINDING (review 86993), never folded into a violation: numbers
+// that violate with no sentence, and a sentence over clean numbers, each refuse as MemoryReceiptDisagreesAt with the
+// side that was printed.
+test fn a_receipt_disagreeing_with_its_numbers_refuses_as_its_own_finding() -> Bool {
+  let unprinted = assessed_with(log: attempt_log_with(from: "oom_kills_delta=0", to: "oom_kills_delta=1"))
+  let unfounded = assessed_with(log: replace(s: attempt_log(), from: "gunbc test: MEMORY RECEIPT", to: violated_sentence))
+  !assessment_holds(a: unprinted) && !assessment_holds(a: unfounded)
+    && (match unprinted.memory { MemoryReceiptDisagreesAt { subject: s, printed_violated: p, verdict: _ } => (s as String) == first_label() && !p _ => false })
+    && (match unfounded.memory { MemoryReceiptDisagreesAt { subject: _, printed_violated: p, verdict: _ } => p _ => false })
+}
+
+// RED: A SUBJECT WHOSE RECEIPT IS MISSING IS NEVER A RUN. The decoder refuses the job (the second step's window holds no receipt),
+// so no observed run is minted from it; a run carrying only one subject's reading refuses on the roster.
+test fn a_missing_receipt_refuses_the_qualification() -> Bool {
+  let first_line = match split(s: attempt_log(), delimiter: "\n").first() { Present { value: l } => l Absent => "" }
+  let decoded = subject_readings_of(job: recorded_job(), log: first_line, slot_unit: slot_unit(), rows: emitted_subject_build_rows())
+  let one = subject_readings() |> filter(r => label_of(r: r) == first_label())
+  let a = assess_at_width(selection: selection(), runs: [varied_run(id: run_a, subjects: one)])
+  (match decoded { SubjectReadingsRefused { refusal: SubjectReceiptMissing { step: _ } } => true _ => false })
+    && count(one) == 1 && count(subject_readings()) >= 2
+    && !assessment_holds(a: a)
+    && (match a.subject_roster { SubjectMissing { subject: _ } => true _ => false })
+}
+
+test fn a_subject_read_twice_refuses_the_roster() -> Bool {
+  let twice = concat(subject_readings(), subject_readings() |> filter(r => label_of(r: r) == first_label()))
+  let a = assess_at_width(selection: selection(), runs: [varied_run(id: run_a, subjects: twice)])
+  !assessment_holds(a: a) && (match a.subject_roster { SubjectDuplicated { subject: s } => (s as String) == first_label() _ => false })
 }
 
 // ── aggregation REDs (operator hold, item 3) ──────────────────────────────────────────────────
 
-// RUN A IS THE SLOWEST AND PASSES MEMORY; RUN B IS FASTER BUT REACHES memory.high. The host must
-// not deliver: throughput takes the minimum (A), memory takes the maximum peak (B).
-test fn a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_run() -> Bool {
-  let slow_clean = varied_run(id: run_a, cpu: millisecond(count: 70), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
-  let fast_pinned = varied_run(id: run_b, cpu: millisecond(count: 40), memory: resolved_bound_with_peak(bytes: slot_high(), peak: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
-  let a = assess_unobserved(selection: selection(), runs: [slow_clean, fast_pinned])
-  !assessment_holds(a: a)
+// RUN B'S PEAK REACHES memory.high; RUN A IS THE RECORDED CLEAN RUN. The host must not deliver: memory takes the
+// maximum peak over every subject step of every run, so the clean run cannot hide the pinned one.
+test fn a_run_that_pinned_the_high_line_is_not_hidden_by_a_clean_run() -> Bool {
+  let high = nat_to_decimal_string(value: byte_size_count(b: slot_high()))
+  let pinned = readings_of(log: attempt_log_with(from: "peak_bytes=14481920000", to: concat("peak_bytes=", high)), unit: slot_unit())
+  let a = assess_unobserved(selection: selection(), runs: [good_run(id: run_a), varied_run(id: run_b, subjects: pinned)])
+  count(pinned) == count(subject_readings()) && !assessment_holds(a: a)
     && (match a.memory { PeakExceedsSlotHigh { peak: p, high: h } => byte_size_count(b: p) == byte_size_count(b: h) _ => false })
-    && (match a.throughput {
-      ThroughputMeetsPin { measured: m, pinned: _ } => eval_steps_per_millisecond_count(r: m) == eval_step_count_value(s: specimen_steps()) / 70
-      _ => false
-    })
 }
 
 test fn the_sampling_policy_refuses_a_sample_of_the_wrong_size() -> Bool {
-  let one = selection_with(sampling: ExactlyOneReconciledRun, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
+  let one = selection_with(sampling: ExactlyOneReconciledRun, plan: sound_plan(), allocation: HostAllocationConserves)
   let two = assess_unobserved(selection: one, runs: [good_run(id: run_a), good_run(id: run_b)])
   let zero = assess_unobserved(selection: selection(), runs: [])
   sampling_refused(a: two) && sampling_refused(a: zero) && !assessment_holds(a: zero)
 }
 
-// ── the phase roster and ceilings (operator hold, item 5) ─────────────────────────────────────
+// ── subject walls against the fleet baseline (operator decision A, condition 1) ──────────────
 
-fn roster_without(phase: RequiredCiPhase) -> List<PhaseWall> {
-  complete_roster(wall: millisecond(count: 1000)) |> filter(w => !required_ci_phase_is(a: w.phase, b: phase))
+// THE ALLOWANCE IS A RATIO OVER TWO OBSERVED WALLS: the first subject's baseline wall is the recorded one, so the
+// subject may take at most 5/4 of it. At the bound it holds; one second over, it refuses and carries both walls.
+fn first_scaled(n: Int) -> List<SubjectStepReading> {
+  subject_readings() |> map(r => if label_of(r: r) == first_label() { with_wall(r: r, seconds: n) } else { r })
 }
 
-test fn a_missing_or_duplicated_required_phase_refuses() -> Bool {
-  let missing = varied_run(id: run_a, cpu: millisecond(count: 50), memory: resolved_bound(bytes: slot_high()), phases: roster_without(phase: FloorPhase))
-  let duplicated = varied_run(
-    id: run_b, cpu: millisecond(count: 50), memory: resolved_bound(bytes: slot_high()),
-    phases: concat(complete_roster(wall: millisecond(count: 1000)), [PhaseWall { phase: ParsePhase, wall: millisecond(count: 5) }]),
-  )
-  let am = assess_unobserved(selection: selection(), runs: [missing])
-  let ad = assess_unobserved(selection: selection(), runs: [duplicated])
-  (match am.phase_roster { PhaseMissing { phase: p } => required_ci_phase_is(a: p, b: FloorPhase) _ => false })
-    && (match ad.phase_roster { PhaseDuplicated { phase: p } => required_ci_phase_is(a: p, b: ParsePhase) _ => false })
-    && !assessment_holds(a: am) && !assessment_holds(a: ad)
+fn first_baseline_wall() -> Int {
+  match baseline_readings() |> filter(r => label_of(r: r) == first_label()) |> first() {
+    Present { value: r } => second_count(r.wall) as Int
+    Absent => 0
+  }
 }
 
-// WITHOUT CEILINGS THE WALLS ARE OBSERVATION AND THE CLAIM SAYS SO; WITH THEM THEY ARE ASSESSED.
-test fn phase_walls_are_assessed_only_against_supplied_ceilings() -> Bool {
-  let loose = selection_with(
-    sampling: ConservativePerAxis { minimum_runs: 1 },
-    ceilings: PhaseCeilingsDeclared { ceilings: [PhaseWall { phase: FloorPhase, wall: millisecond(count: 2000) }] },
-    plan: sound_plan(), allocation: HostAllocationConserves,
-  )
-  let tight = selection_with(
-    sampling: ConservativePerAxis { minimum_runs: 1 },
-    ceilings: PhaseCeilingsDeclared { ceilings: [PhaseWall { phase: FloorPhase, wall: millisecond(count: 500) }] },
-    plan: sound_plan(), allocation: HostAllocationConserves,
-  )
-  let al = assess_at_width(selection: loose, runs: [good_run(id: run_a)])
-  let at = assess_at_width(selection: tight, runs: [good_run(id: run_a)])
-  let an = assess_at_width(selection: selection(), runs: [good_run(id: run_a)])
-  assessment_holds(a: al) && covers_rate_memory_walls_and_cohort(facts: al.assessed_facts)
-    && !assessment_holds(a: at)
-    && (match at.phase_walls { PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => true _ => false })
-    && (match an.phase_walls { PhaseWallsNotAssessed => true _ => false })
+test fn a_subject_wall_over_the_baseline_allowance_refuses_and_at_the_bound_holds() -> Bool {
+  let b = first_baseline_wall()
+  let bound = b * 5 / 4
+  let at = assess_at_width(selection: selection(), runs: [varied_run(id: run_a, subjects: first_scaled(n: bound))])
+  let over = assess_at_width(selection: selection(), runs: [varied_run(id: run_a, subjects: first_scaled(n: bound + 1))])
+  b == 813 && assessment_holds(a: at)
+    && !assessment_holds(a: over)
+    && (match over.subject_walls {
+      SubjectWallExceedsBaseline { subject: s, wall: w, baseline: bw, allowance: _ } =>
+        (s as String) == first_label() && (second_count(w) as Int) == bound + 1 && (second_count(bw) as Int) == b
+      _ => false
+    })
+}
+
+// A BASELINE THAT IS NOT ABOUT THE SAME WORK ON ANOTHER HOST IS NOT A BASELINE: one taken on the subject host itself,
+// at another revision, or missing a subject each refuses by name, though the subject run is the good run.
+test fn a_baseline_on_the_subject_host_at_another_revision_or_missing_a_subject_refuses() -> Bool {
+  let on_subject = assess_against(baseline: baseline_at(host: "mtcollins1", revision: pin_revision, subjects: baseline_readings()), runs: [good_run(id: run_a)])
+  let other_rev = assess_against(baseline: baseline_at(host: "srv3", revision: "43643bad4f0000000000000000000000000000ab", subjects: baseline_readings()), runs: [good_run(id: run_a)])
+  let partial = assess_against(baseline: baseline_at(host: "srv3", revision: pin_revision, subjects: baseline_readings() |> filter(r => label_of(r: r) != first_label())), runs: [good_run(id: run_a)])
+  (match on_subject.subject_walls { BaselineOnTheSubjectHost { host: h } => (h as String) == "mtcollins1" _ => false })
+    && (match other_rev.subject_walls { BaselineAtAnotherRevision { selected: _, baseline: _ } => true _ => false })
+    && (match partial.subject_walls { BaselineMissingSubject { subject: s } => (s as String) == first_label() _ => false })
+    && !assessment_holds(a: on_subject) && !assessment_holds(a: other_rev) && !assessment_holds(a: partial)
 }
 
 // THE WIDTH IS OBSERVED, NOT ONLY DIVIDED. Every run below is the good run; what varies is the cohort.
@@ -641,32 +687,18 @@ test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool
   let apart = map(ids, id => if id.value == 35447067201 { CohortSeatReading { seat: id, source: AttemptOccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: github_workflow_run_id_wire_text(id: id) as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledAs { settled: SeatSucceeded } } } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
   w >= 2
     && concurrency_is(a: assess_unobserved(selection: selection(), runs: runs), want: "no concurrent cohort was observed")
-    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))), want: join(["the cohort ran ", int_to_decimal_string(value: w - 1), " seats but the derived width is ", int_to_decimal_string(value: w)], ""))
-    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: failed)), want: "cohort seat 35447067201 failed: floor phase refused")
-    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: 35447099999")
-    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: apart)), want: "the seats were never all active at once")
-    && assessment_holds(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))))
-}
-
-// ── throughput and width REDs ─────────────────────────────────────────────────────────────────
-
-test fn throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number() -> Bool {
-  let slow = varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
-  let a = assess_unobserved(selection: selection(), runs: [slow])
-  let expected = eval_step_count_value(s: specimen_steps()) / 110
-  !assessment_holds(a: a)
-    && expected < pinned_rate()
-    && string_contains(
-      s: assessment_wire(a: a) as String,
-      pattern: join(["throughput ", nat_to_decimal_string(value: expected), " steps/ms is below the pin ", int_to_decimal_string(value: pinned_rate())], ""),
-    )
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))), want: join(["the cohort ran ", int_to_decimal_string(value: w - 1), " seats but the derived width is ", int_to_decimal_string(value: w)], ""))
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: failed)), want: "cohort seat 35447067201 failed: floor phase refused")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: 35447099999")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: apart)), want: "the seats were never all active at once")
+    && assessment_holds(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))))
 }
 
 // THE WIDTH IS READ OFF THE SELECTED PLAN AND ALLOCATION (operator hold, item 4): an oversubscribed
 // allocation or a plan the fleet refused derives no width and no delivery.
 test fn a_refused_or_oversubscribed_selected_allocation_derives_no_width() -> Bool {
-  let oversubscribed = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationOversubscribed)
-  let unsound = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: FleetHostPlanUnsound { reason: "oomd enforcement unverified" }, allocation: HostAllocationConserves)
+  let oversubscribed = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, plan: sound_plan(), allocation: HostAllocationOversubscribed)
+  let unsound = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, plan: FleetHostPlanUnsound { reason: "oomd enforcement unverified" }, allocation: HostAllocationConserves)
   ([oversubscribed, unsound] |> all(sel => {
     let a = assess_unobserved(selection: sel, runs: [good_run(id: run_a)])
     !assessment_holds(a: a) && (match a.slot_width { SlotWidthUnderivable { cause: _ } => true _ => false })
@@ -683,7 +715,7 @@ test fn a_refused_or_oversubscribed_selected_allocation_derives_no_width() -> Bo
 // delivering assessment beside a customer sanction is refused by admit_executor_capacity for
 // the floor, and nothing in the qualification module can mint a sanction from an assessment.
 test fn the_selected_sanction_not_the_assessment_decides_the_class() -> Bool {
-  let inputs = inputs_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
+  let inputs = inputs_with(sampling: ConservativePerAxis { minimum_runs: 1 }, plan: sound_plan(), allocation: HostAllocationConserves)
   let s = inputs.selection
   let control = admit_executor_capacity(requirements: s.requirements, roster: [inputs.executor_sanction], executor: "mtcollins1" as NonEmptyStr)
   let customer = admit_executor_capacity(
@@ -703,7 +735,7 @@ test fn the_selected_sanction_not_the_assessment_decides_the_class() -> Bool {
 test fn the_fabric_delivery_claim_holds_refuses_and_catches_another_offer() -> Bool {
   let s = selection()
   let good = assess_at_width(selection: s, runs: [good_run(id: run_a)])
-  let slow = assess_unobserved(selection: s, runs: [varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))])
+  let slow = assess_unobserved(selection: s, runs: [varied_run(id: run_a, subjects: first_scaled(n: first_baseline_wall() * 2))])
   let holds = match claimed_delivery_check(claim: OfferClaimsRunnerDelivery { offer: s.offer.id, assessment: good }) {
     ClaimedDeliveryHolds => true
     _ => false
@@ -841,24 +873,27 @@ test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
     ))
 }
 
-test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
+// THE COLLECT STAGE OWES TODAY'S FLOOR'S OWN READINGS: each subject step's memory receipt, read by the receipt
+// decoder, and each subject step's wall, denominated by the Jobs API step record -- and every instrument's wire names
+// its producer.
+test fn the_collect_stage_owes_the_subject_receipts_and_walls() -> Bool {
   route() |> any(s =>
     match s {
       CollectInstruments { instruments: ins, collection: _ } =>
         (ins |> any(i =>
           match i {
-            CalibrationSpecimenWitnessLine => {
+            SubjectMemoryReceipts => {
               let p = qualification_instrument_producer(i: i)
-              (p.module_path as String) == "v2.workflow.floor_eval_step_calibration" && (p.decl_name as String) == "floor_eval_step_calibration"
+              (p.module_path as String) == "gunbc.host.memory_envelope_receipt_reading" && (p.decl_name as String) == "memory_receipt_line"
             }
             _ => false
           }
         ))
           && (ins |> any(i =>
             match i {
-              FloorCgroupRows => {
+              SubjectStepWalls => {
                 let p = qualification_instrument_producer(i: i)
-                (p.module_path as String) == "gunbc.host.host_budget_source" && (p.decl_name as String) == "HostBudgetResolution"
+                (p.module_path as String) == "extdeps.github.workflow_runs" && (p.decl_name as String) == "WorkflowJobStep"
               }
               _ => false
             }

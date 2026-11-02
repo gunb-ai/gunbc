@@ -8,7 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.types { Int, NonEmptyStr, String, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -120,6 +120,16 @@ fn parse_cgroup_memory_limit(body: String) -> CgroupMemoryLimitValue {
       Present { value: b } => CgroupMemoryLimited { bytes: b }
       Absent => CgroupMemoryLimitUnparseable { body: body }
     }
+  }
+}
+
+// THE KERNEL'S OWN SPELLING OF A DECODED LIMIT, for a refusal that must show what was read: the byte count, the literal
+// `max`, or the body that did not parse, verbatim.
+fn cgroup_memory_limit_kernel_text(v: CgroupMemoryLimitValue) -> String {
+  match v {
+    CgroupMemoryLimited { bytes: b } => nat_to_decimal_string(value: byte_size_count(b: b))
+    CgroupMemoryUnlimited => "max"
+    CgroupMemoryLimitUnparseable { body: x } => x
   }
 }
 

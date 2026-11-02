@@ -1,9 +1,9 @@
 module test.claim.runner.runner_qualification_dispatch_witness
 
+import std.nat { nat_to_decimal_string }
 import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
-import std.types { Bool, Bytes, CommitSha, Int, List, NonEmptyStr, String }
-import std.bytes { utf8_encode_bytes }
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import std.algebra { Cons, Empty }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
@@ -25,7 +25,7 @@ import gunbc.runner.runner_host_unit_slot { host_unit_slot_for, AttemptSlot, Hos
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
-import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_labels, ephemeral_slot_unit, qualification_instruments, FloorPhaseRows, FloorCgroupRows }
+import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_labels, ephemeral_slot_unit, qualification_instruments, SubjectMemoryReceipts, SubjectStepWalls }
 import test.claim.github_app_registry {
   app_credential, other_app_credential, other_installation_credential, a_pull_request_job_credential,
   bot_installation_id, other_installation_id, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome,
@@ -64,22 +64,14 @@ import gunbc.runner.runner_qualification_dispatch {
   AttemptJobLog, AttemptJobLogRead, AttemptJobLogUnreadable,
   DesignatedJobLog, DesignatedJobLogText, DesignatedJobLogRefused, designated_job_log,
   JobLogReadRefusal, JobLogOfAnotherJob, JobLogUnreadable, JobLogEmpty,
-  JobLogInstrumentDecode, JobLogInstrumentsDecoded, JobLogInstrumentsUndecodable, decode_job_log_instruments,
-  QualificationLogReadings, InstrumentReadRefusal, FloorPhaseRowGarbledInLog, FloorCgroupRowGarbledInLog,
-  FloorPhaseRowsAbsent, SlotCgroupLevelAbsent,
+  decode_job_instruments,
   qualification_instrument_read_from_job_log, qualification_instrument_extraction_frontier_rows,
-  ClaimCostArtifactRead, ClaimCostArtifactAbsent, ClaimCostArtifactExpired, ClaimCostArtifactListTruncated,
-  ClaimCostArchiveUnreadable, ClaimCostArchiveNotInflatable,
-  conclude_claim_cost_listing, conclude_claim_cost_download, conclude_claim_cost_attempt,
   collect_read_plan, collect_read_plan_reads, CollectReadsRefused, CollectReadsPlanned,
-  ClaimCostArtifactAmbiguous, ClaimCostRunAdvancedPastAttempt, ClaimCostRunUnreadable,
 }
-import gunbc.required_ci_phase_roster { FloorPhaseTimed, FloorPhaseUntimed }
-import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimited }
-import std.measure { byte_size_count, millisecond_count }
-import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
-import test.fixture.recorded_required_floor_log_excerpt {
-  recorded_required_floor_log_excerpt, recorded_floor_log_slot_unit,
+import std.measure { second_count }
+import gunbc.runner.runner_qualification_subject_readings { SubjectReadingsRead, SubjectReadingsRefused, SubjectReceiptOutsideSlot }
+import test.fixture.recorded_v2_bootstrap_receipts {
+  recorded_v2_bootstrap_receipt_log, recorded_v2_bootstrap_subject_steps, recorded_v2_bootstrap_slot_unit,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -203,14 +195,14 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
                 && token_names_registration(token_app: s.registration.app, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: gunbai_ci_declared, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: s.registration.app, token_installation: other_installation_id, subject: s)
-                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }))) == 0
-                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: s.registration.app, token_installation: other_installation_id, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }))) == 0
-                && (match collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }) {
+                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501))) == 0
+                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: s.registration.app, token_installation: other_installation_id, floor_job_id: 501))) == 0
+                && (match collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501) {
                   CollectReadsRefused { token_app: _, token_installation: _ } => true
-                  CollectReadsPlanned { job_id: _, run_id: _ } => false
+                  CollectReadsPlanned { job_id: _ } => false
                 })
-                && (match collect_read_plan(subject: s, token_app: s.registration.app, token_installation: s.registration.installation, floor_job_id: 501, run_id: GitHubWorkflowRunId { value: 77 }) {
-                  CollectReadsPlanned { job_id: 501, run_id: GitHubWorkflowRunId { value: 77 } } => true
+                && (match collect_read_plan(subject: s, token_app: s.registration.app, token_installation: s.registration.installation, floor_job_id: 501) {
+                  CollectReadsPlanned { job_id: 501 } => true
                   _ => false
                 })
                 && count(planned_collection_reads(plan: plan_qualification_collection(subject: s, run_id: GitHubWorkflowRunId { value: 77 }, token_app: gunbai_ci_declared, token_installation: s.registration.installation))) == 0
@@ -546,6 +538,7 @@ fn job(id: Int, name: String, runner_id: Int, runner: String, started: Bool, att
     created_at: Present { value: "2026-10-04T00:00:10Z" },
     started_at: if started { Present { value: "2026-10-04T00:01:00Z" } } else { none },
     completed_at: Present { value: "2026-10-04T00:50:00Z" },
+    steps: none,
   }
 }
 
@@ -716,7 +709,7 @@ test fn the_floor_checks_out_the_pinned_revision_first_and_nothing_runs_past_a_r
 
 // RED: a log read for any job other than the designated one is refused, whatever it says.
 test fn a_log_of_another_job_is_not_the_floor_jobs_log() -> Bool {
-  (match designated_job_log(designated_job_id: 502, log: AttemptJobLogRead { job_id: 501, log: "[floor-phase] phase=x wall_ms=1" }) {
+  (match designated_job_log(designated_job_id: 502, log: AttemptJobLogRead { job_id: 501, log: "gunbc test: MEMORY RECEIPT grain=slot" }) {
     DesignatedJobLogRefused { refusal: JobLogOfAnotherJob { designated_job_id: 502, read_job_id: 501 } } => true
     _ => false
   })
@@ -730,184 +723,36 @@ test fn a_log_of_another_job_is_not_the_floor_jobs_log() -> Bool {
     })
 }
 
-// ── THE PURE DECODER, OVER SUPPLIED TEXT ──────────────────────────────────────────────────────
+// ── THE DECODER, OVER THE RECORDED REQUIRED RUN ──────────────────────────────────────────────
 
-data slot: NonEmptyStr = "gunbc-qualification-mtcollins1-q-20261004-1.service"
-
-data phase_line: String = "2026-10-04T00:10:00.0000000Z [floor-phase] phase=gate-closure state=completed wall_ms=22194 prefixes=0"
-data started_line: String = "2026-10-04T00:09:00.0000000Z [floor-phase] phase=strict-preparation state=started"
-data slot_level_line: String = "2026-10-04T00:09:00.0000000Z [floor-cgroup] when=floor-entry level=/sys/fs/cgroup/system.slice/gunbc-qualification-mtcollins1-q-20261004-1.service max=17179869184 high=16106127360 current=8949473280 peak=10444185600 events=[low,0]"
-data slice_level_line: String = "2026-10-04T00:09:00.0000000Z [floor-cgroup] when=floor-entry level=/sys/fs/cgroup/system.slice max=max high=max current=1 peak=364675248128"
-
-fn decode(lines: List<String>) -> JobLogInstrumentDecode {
-  decode_job_log_instruments(log: join(lines, "\n"), slot_unit: slot)
-}
-
-fn undecodable_with(d: JobLogInstrumentDecode, check: fn(InstrumentReadRefusal) -> Bool) -> Bool {
-  match d {
-    JobLogInstrumentsUndecodable { refusal: r } => check(r)
-    JobLogInstrumentsDecoded { readings: _ } => false
-  }
-}
-
-test fn the_job_log_instruments_are_the_two_the_extraction_reads() -> Bool {
-  qualification_instrument_read_from_job_log(i: FloorPhaseRows)
-    && qualification_instrument_read_from_job_log(i: FloorCgroupRows)
+// THE INSTRUMENTS THIS STAGE READS are the two today's floor prints on the designated job: each subject step's memory
+// receipt (its log) and its wall (its record). The other two are frontier rows, one each.
+test fn the_job_instruments_are_the_two_the_extraction_reads() -> Bool {
+  qualification_instrument_read_from_job_log(i: SubjectMemoryReceipts)
+    && qualification_instrument_read_from_job_log(i: SubjectStepWalls)
     && count(qualification_instruments |> filter(i => qualification_instrument_read_from_job_log(i: i))) == 2
-    && count(qualification_instrument_extraction_frontier_rows) == 4
+    && count(qualification_instrument_extraction_frontier_rows) == 3
 }
 
-// THE POSITIVE CONTROL: timed and untimed phase rows are both carried, and only the slot's own
-// level is taken -- the slice above it has a larger peak and must not be read as the slot's.
-test fn a_log_with_phase_rows_and_the_slot_level_is_decoded() -> Bool {
-  match decode(lines: ["noise before the floor", started_line, slot_level_line, slice_level_line, phase_line]) {
-    JobLogInstrumentsDecoded { readings: rd } =>
-      count(rd.floor_phase_rows) == 2
-        && count(rd.slot_cgroup_rows) == 1
-        && (rd.slot_cgroup_rows |> all(l => byte_size_count(b: l.peak) == 10444185600))
-        && (rd.floor_phase_rows |> any(p => match p { FloorPhaseTimed { phase: _, wall: w } => millisecond_count(m: w) == 22194 _ => false }))
-    JobLogInstrumentsUndecodable { refusal: _ } => false
+fn recorded_floor_job() -> WorkflowJobRun {
+  WorkflowJobRun {
+    id: 122206492701, run_id: 40509253563, run_attempt: 1, name: "v2-bootstrap", status: Completed,
+    conclusion: Present { value: Success }, labels: [], runner_id: none, runner_name: none,
+    created_at: none, started_at: none, completed_at: none, steps: Present { value: recorded_v2_bootstrap_subject_steps },
   }
 }
 
-test fn a_garbled_row_refuses_rather_than_being_skipped() -> Bool {
-  undecodable_with(d: decode(lines: [slot_level_line, phase_line, "[floor-phase] phase=gate-closure wall_ms=twelve"]), check: r => match r {
-    FloorPhaseRowGarbledInLog { line: _, cause: _ } => true
-    _ => false
+// INHABITANCE: THE REAL PRODUCERS' BYTES. The collect stage's decoder reads the recorded required run -- the seed's
+// receipt printer's lines and GitHub's step record (test.fixture.recorded_v2_bootstrap_receipts) -- under that run's
+// own slot unit, one reading per subject row with the walls the step record carries; under any other unit the same
+// bytes refuse, because a receipt bounded by another cgroup measured another subject.
+test fn the_collect_decoder_reads_a_recorded_required_run() -> Bool {
+  (match decode_job_instruments(job: recorded_floor_job(), log: recorded_v2_bootstrap_receipt_log, slot_unit: recorded_v2_bootstrap_slot_unit as NonEmptyStr) {
+    SubjectReadingsRead { readings: rs } => count(rs) == 2 && join(map(rs, r => nat_to_decimal_string(value: second_count(r.wall))), ",") == "813,870"
+    SubjectReadingsRefused { refusal: _ } => false
   })
-    && undecodable_with(d: decode(lines: [phase_line, "[floor-cgroup] when=beat-10 level=/sys/fs/cgroup/x.service high=lots peak=1"]), check: r => match r {
-      FloorCgroupRowGarbledInLog { line: _, cause: _ } => true
-      _ => false
-    })
-}
-
-// RED, THE SPLIT-ACROSS-JOBS CASE: the phase rows of one job and the slot row of another never meet,
-// because only the designated job's log is decoded -- read alone, the job carrying only phase rows
-// refuses for want of the slot level, and the one carrying only the slot level refuses for want of a
-// timed phase row.
-test fn rows_split_across_two_jobs_are_not_one_measurement() -> Bool {
-  undecodable_with(d: decode(lines: [started_line, phase_line]), check: r => match r {
-    SlotCgroupLevelAbsent { slot_unit: u, levels_seen: seen } => u == slot && count(seen) == 0
-    _ => false
-  })
-    && undecodable_with(d: decode(lines: [slot_level_line, slice_level_line]), check: r => match r {
-      FloorPhaseRowsAbsent => true
-      _ => false
-    })
-}
-
-test fn a_log_without_the_slot_level_names_the_levels_it_saw() -> Bool {
-  undecodable_with(d: decode(lines: [phase_line, slice_level_line]), check: r => match r {
-    SlotCgroupLevelAbsent { slot_unit: u, levels_seen: seen } => u == slot && count(seen) == 1
-    _ => false
-  })
-}
-
-// ── INHABITANCE: THE REAL PRODUCER'S BYTES ─────────────────────────────────────────────────────
-//
-// The supplied lines above are designed against the row shapes; this claim is what keeps them
-// readings. It hands decode_job_log_instruments the verbatim [floor-phase] and [floor-cgroup] lines
-// claim_executor printed on a recorded required-floor run (test.fixture
-// recorded_required_floor_log_excerpt), under that run's real slot unit, and asserts the ROUTE as well
-// as the answer: every one of the 79 phase rows is read (none garbled, none dropped), the timed rows
-// carry the gate-closure wall the log printed, and of the 12 level rows only the 4 at the slot's own
-// level -- floor entry and three heartbeats -- are taken, with the slot's memory.high read as a byte
-// bound and floor entry's memory.peak as printed. If the host's row encoding moves, this goes red
-// while the designed fixtures above stay green.
-test fn the_decoder_reads_a_recorded_required_floor_log() -> Bool {
-  match decode_job_log_instruments(log: recorded_required_floor_log_excerpt, slot_unit: recorded_floor_log_slot_unit as NonEmptyStr) {
-    JobLogInstrumentsDecoded { readings: rd } =>
-      count(rd.floor_phase_rows) == 79
-        && (rd.floor_phase_rows |> any(p => match p { FloorPhaseTimed { phase: ph, wall: w } => (ph as String) == "gate-closure" && millisecond_count(m: w) == 22194 _ => false }))
-        && (rd.floor_phase_rows |> any(p => match p { FloorPhaseUntimed { phase: ph } => (ph as String) == "strict-preparation" _ => false }))
-        && count(rd.slot_cgroup_rows) == 4
-        && (rd.slot_cgroup_rows |> all(l => match l.high { CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 16106127360 _ => false }))
-        && (rd.slot_cgroup_rows |> any(l => (l.when as String) == "floor-entry" && byte_size_count(b: l.peak) == 10444185600))
-    JobLogInstrumentsUndecodable { refusal: _ } => false
-  }
-}
-
-// SUPPLIED RestResult VALUES FOR THE CLAIM-COST DECISIONS, built once so the claims below stay readable.
-fn answered_listing(l: ActionsArtifactList) -> RestResult<ActionsArtifactList> {
-  RestAnswered { answer: l }
-}
-
-fn answered_run(r: WorkflowRun) -> RestResult<WorkflowRun> {
-  RestAnswered { answer: r }
-}
-
-data unreached_run: RestResult<WorkflowRun> = RestRefused { refusal: RestTransportRefused { cause: "unreached" } }
-
-fn archive_refused(r: RestRefusal) -> RestResult<Bytes> {
-  RestRefused { refusal: r }
-}
-
-data archive_arrived: RestResult<Bytes> = RestAnswered { answer: utf8_encode_bytes(s: "PK") }
-
-// ── THE CLAIM-COST READ'S REFUSALS ─────────────────────────────────────────────────────────────
-//
-// Every way the artifact read can end today is a typed arm, and none of them is a reading: the
-// listing truncated, the artifact absent (with the names that were there), expired, the archive
-// unreadable (the RestBodyUndecodable a zip body produces), or an archive that arrived with no
-// inflate reader to open it.
-fn artifact(name: String, expired: Bool) -> ActionsArtifact {
-  ActionsArtifact { id: 9001, name: name, expired: expired }
-}
-
-test fn every_claim_cost_read_ends_in_a_typed_refusal() -> Bool {
-  let present = ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-floor-claim-cost", expired: false)] }
-  let gone = archive_refused(r: RestStatusRefused { status: 410, body: "Gone" })
-  let undecodable = archive_refused(r: RestBodyUndecodable { status: 200, cause: "stream did not contain valid UTF-8" })
-  (match conclude_claim_cost_listing(listed: answered_listing(l: ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-ci-measurement-receipt", expired: false)] })) {
-    Present { value: ClaimCostArtifactAbsent { names_seen: ns } } => count(ns) == 1
-    _ => false
-  })
-    && (match conclude_claim_cost_listing(listed: answered_listing(l: ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-floor-claim-cost", expired: true)] })) {
-      Present { value: ClaimCostArtifactExpired { artifact_id: 9001 } } => true
-      _ => false
-    })
-    && (match conclude_claim_cost_listing(listed: answered_listing(l: ActionsArtifactList { total_count: 3, artifacts: [] })) {
-      Present { value: ClaimCostArtifactListTruncated { returned: 0, total: 3 } } => true
-      _ => false
-    })
-    && (match conclude_claim_cost_listing(listed: answered_listing(l: present)) { Absent => true _ => false })
-    && (match conclude_claim_cost_download(artifact_id: 9001, archive: undecodable) {
-      ClaimCostArchiveUnreadable { artifact_id: 9001, refusal: _ } => true
-      _ => false
-    })
-    && (match conclude_claim_cost_download(artifact_id: 9001, archive: gone) {
-      ClaimCostArtifactExpired { artifact_id: 9001 } => true
-      _ => false
-    })
-    && (match conclude_claim_cost_download(artifact_id: 9001, archive: archive_arrived) {
-      ClaimCostArchiveNotInflatable { artifact_id: 9001 } => true
-      _ => false
-    })
-}
-
-// TWO SAME-NAME ARTIFACTS ARE A REFUSAL, NEVER FIRST-ONE-WINS.
-fn claim_cost_artifact_with(id: Int) -> ActionsArtifact {
-  ActionsArtifact { id: id, name: "required-floor-claim-cost", expired: false }
-}
-
-test fn two_same_name_claim_cost_artifacts_refuse_as_ambiguous() -> Bool {
-  match conclude_claim_cost_listing(listed: answered_listing(l: ActionsArtifactList { total_count: 2, artifacts: [claim_cost_artifact_with(id: 1), claim_cost_artifact_with(id: 2)] })) {
-    Present { value: ClaimCostArtifactAmbiguous { artifact_ids: ids } } => count(ids) == 2
-    _ => false
-  }
-}
-
-// THE LISTING IS BOUND TO THE COLLECTED ATTEMPT: a run re-read after the listing at attempt 2 means the
-// listing may hold attempt 2's artifact, so no claim-cost read proceeds for attempt 1; at attempt 1 it
-// proceeds; an unreadable re-read refuses rather than assuming attempt 1.
-test fn a_rerun_seen_after_the_listing_refuses_the_claim_cost_read() -> Bool {
-  (match conclude_claim_cost_attempt(run: answered_run(r: dispatched_run(attempt_n: 2))) {
-    Present { value: ClaimCostRunAdvancedPastAttempt { observed_attempt: 2 } } => true
-    _ => false
-  })
-    && (match conclude_claim_cost_attempt(run: answered_run(r: dispatched_run(attempt_n: 1))) { Absent => true _ => false })
-    && (match conclude_claim_cost_attempt(run: unreached_run) {
-      Present { value: ClaimCostRunUnreadable { refusal: _ } } => true
+    && (match decode_job_instruments(job: recorded_floor_job(), log: recorded_v2_bootstrap_receipt_log, slot_unit: "gunbc-qualification-mtcollins1-q-20261004-1.service" as NonEmptyStr) {
+      SubjectReadingsRefused { refusal: SubjectReceiptOutsideSlot { cgroup: _, slot_unit: _ } } => true
       _ => false
     })
 }
