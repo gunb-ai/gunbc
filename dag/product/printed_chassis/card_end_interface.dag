@@ -39,8 +39,13 @@ type EndCapInserts {
 type FaceConnector { from_top: Micrometer }
 
 // The fin-free tapered bands at the two ends of the opening: the opening's measured length includes them,
-// and no fins sit behind them.
-type FinFreeBands { top: Micrometer, bottom: Micrometer }
+// and no fins sit behind them. Each band's section, cut along the face length, is a lip straight in from the
+// face, then a slope that runs `slope_depth` into the card while closing the band's whole length toward the
+// opening's middle, ending on a flat parallel to the card's top and bottom; the first fin sits `fin_gap`
+// beyond that flat. Read as one shape for both bands.
+type BandTaper { lip_depth: Micrometer, slope_depth: Micrometer, fin_gap: Micrometer }
+
+type FinFreeBands { top: Micrometer, bottom: Micrometer, taper: EndFaceFeature<BandTaper> }
 
 type CardEndInterface {
   source: NonEmptyStr
@@ -100,6 +105,11 @@ data a16_card_end: CardEndInterface = CardEndInterface {
 // short of the face because the opening's sides are pitched and it was read at its tightest, as on the A16.
 // The bottom border (55.6 - 52.37 - 2.2 = 1.03 mm) was not read on its own. The fins sit about 1 mm behind
 // the face ("very close, like 1 mm"), and the top and bottom 4.9 mm of the opening are tapered and fin-free.
+// The taper was read after the first fit plate (operator, 2026-11-02): "a tiny lip, say about 1 mm, and then a
+// sharp right angle inward; the horizontal distance until the triangle terminates into a flat plane parallel
+// to the top and bottom of the card is 4 mm", and "between where that flat parallel plane sits and the first
+// fin is another 1 mm". So the band's section is a right triangle with legs 4.9 mm (along the face) and 4 mm
+// (into the card) behind a 1 mm lip.
 // The intake end has no threaded holes and no power header: the only holes are on the bracket end, and the
 // card is powered from the slot (extdeps.gpu.nvidia_a2 a2_card_row auxiliary_power is the cited empty list).
 data a2_card_end: CardEndInterface = CardEndInterface {
@@ -111,7 +121,7 @@ data a2_card_end: CardEndInterface = CardEndInterface {
   window_from_top: micrometer(count: 2200),
   window_from_back: micrometer(count: 2000),
   fin_setback: micrometer(count: 1000),
-  fin_free_bands: FeaturePresent { value: FinFreeBands { top: micrometer(count: 4900), bottom: micrometer(count: 4900) } },
+  fin_free_bands: FeaturePresent { value: FinFreeBands { top: micrometer(count: 4900), bottom: micrometer(count: 4900), taper: FeaturePresent { value: BandTaper { lip_depth: micrometer(count: 1000), slope_depth: micrometer(count: 4000), fin_gap: micrometer(count: 1000) } } } },
   inserts: FeatureAbsentObserved,
   connector: FeatureAbsentObserved,
 }

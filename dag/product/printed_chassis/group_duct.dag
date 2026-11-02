@@ -3,12 +3,14 @@ module product.printed_chassis.group_duct
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.measure { Micrometer, micrometer, micrometer_count }
+import std.euclidean_geometry { Axis3Y }
 import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, FixedFrame, LayOnXY, FrictionFitSleeve, Proposed,
-  block, part, mechanical_interface,
+  ProfileVertex, block, part, mechanical_interface, prism,
 }
+import product.printed_chassis.fit_observations { a2_row_fit_plate_fit_display }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy }
-import product.printed_chassis.card_end_interface { CardEndInterface, FinFreeBands, feature_value, missing_feature }
+import product.printed_chassis.card_end_interface { CardEndInterface, FinFreeBands, BandTaper, feature_value, missing_feature }
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFaceNeedsReading }
 import product.printed_chassis.gpu_duct { card_envelope_of }
 import product.printed_chassis.card_installation {
@@ -39,10 +41,12 @@ import product.printed_chassis.card_installation {
 
 // ═══ PLANS: AN INSTALLATION, THE OPERATOR'S GROUPING, AND WHICH GROUP ═══
 
-type GroupDuctPlan { id: NonEmptyStr, installation: CardInstallation, sizes: List<Int>, group: Int }
+// fit_record is what earlier prints of this plan's parts showed (product.printed_chassis.fit_observations),
+// carried into the readme so the next print says what it answers.
+type GroupDuctPlan { id: NonEmptyStr, installation: CardInstallation, sizes: List<Int>, group: Int, fit_record: String }
 
 // The four A2s as one group (operator, 2026-11-02: one piece over all four, served by two fans, one per pair).
-data a2_altra_row_plan: GroupDuctPlan = GroupDuctPlan { id: "a2-altra-row", installation: a2_altra_installation, sizes: [4], group: 0 }
+data a2_altra_row_plan: GroupDuctPlan = GroupDuctPlan { id: "a2-altra-row", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: a2_row_fit_plate_fit_display() }
 
 data group_duct_plans: List<GroupDuctPlan> = [a2_altra_row_plan]
 
@@ -64,7 +68,7 @@ fn plan_group(p: GroupDuctPlan) -> CardGroup? {
 
 // ═══ ADMISSION ═══
 
-type GroupMemberFace { member: InstalledCard, face: CardEndInterface, bands: FinFreeBands, offset: Micrometer, length: Micrometer }
+type GroupMemberFace { member: InstalledCard, face: CardEndInterface, bands: FinFreeBands, taper: BandTaper, offset: Micrometer, length: Micrometer }
 
 type GroupFitPlateAdmission
   = GroupFitPlateAdmitted { parts: List<AssemblyPart>, interfaces: List<MechanicalInterface> }
@@ -78,11 +82,14 @@ fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
     EndFaceNeedsReading { read_obligation: _ } => Absent
     EndFaceRead { face: f } => match feature_value(f: f.fin_free_bands) {
       Absent => Absent
-      Present { value: b } => match card_separation(from: first, to: m) {
+      Present { value: b } => match feature_value(f: b.taper) {
         Absent => Absent
-        Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
+        Present { value: tp } => match card_separation(from: first, to: m) {
           Absent => Absent
-          Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, bands: b, offset: s.across, length: c.length } }
+          Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
+            Absent => Absent
+            Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, bands: b, taper: tp, offset: s.across, length: c.length } }
+          }
         }
       }
     }
@@ -94,9 +101,12 @@ fn member_unfit_reason(first: InstalledCard, m: InstalledCard) -> String {
     EndFaceNeedsReading { read_obligation: o } => join(["end face not read: ", o as String], "")
     EndFaceRead { face: f } => match feature_value(f: f.fin_free_bands) {
       Absent => join(missing_feature(name: "fin-free bands (the tabs grip there)", f: f.fin_free_bands), "; ")
-      Present { value: _ } => match card_envelope_of(row: m.instance.card.row) {
-        Absent => "the card row states no length to draw its envelope from"
-        Present { value: _ } => "no separation from the group's first card: its slot is not recorded"
+      Present { value: b } => match feature_value(f: b.taper) {
+        Absent => join(missing_feature(name: "the fin-free bands' taper (the tabs follow it)", f: b.taper), "; ")
+        Present { value: _ } => match card_envelope_of(row: m.instance.card.row) {
+          Absent => "the card row states no length to draw its envelope from"
+          Present { value: _ } => "no separation from the group's first card: its slot is not recorded"
+        }
       }
     }
   }
@@ -133,39 +143,59 @@ fn admit_group_fit_plate(p: GroupDuctPlan) -> GroupFitPlateAdmission {
 
 fn um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
 
-data tab_thickness: Micrometer = micrometer(count: 1600)
-data tab_depth: Micrometer = micrometer(count: 4000)
-data tab_band_margin: Micrometer = micrometer(count: 400)
-data tab_width_inset: Micrometer = micrometer(count: 2100)
+// THE TAB IS THE BAND'S OWN SHAPE (second fit plate, after product.printed_chassis.fit_observations
+// a2_row_fit_plate_fit: the first plate's thin tabs struck the slope). Each tab is the band's section offset
+// clear of it: straight in past the lip, along the slope to the flat, and across the flat into the gap before
+// the first fin, stopping short of the fin. The slope is where it grips.
+data tab_slope_clearance: Micrometer = micrometer(count: 200)
+data tab_fin_clearance: Micrometer = micrometer(count: 300)
+data tab_width_inset: Micrometer = micrometer(count: 1000)
+
+// THE LIP CLEARANCE, per side, around the outside of the row. 0.3 mm (the unqualified sleeve allowance) was
+// loose on the first plate (fit_observations a2_row_fit_plate_fit); this is the next trial, not a qualified
+// figure.
+data group_lip_clearance: Micrometer = micrometer(count: 100)
 
 fn opening_top_x(f: CardEndInterface) -> Int { um(m: f.face_length) / 2 - um(m: f.window_from_top) }
 fn opening_bottom_x(f: CardEndInterface) -> Int { opening_top_x(f: f) - um(m: f.window_length) }
 fn opening_low_y(mf: GroupMemberFace) -> Int { um(m: mf.offset) + um(m: mf.face.window_from_back) }
 
-// The finned part of the opening only: the bands are fin-free, so covering them with plate costs no fin
-// area, and the plate under them is what the tabs stand on.
+// The finned part of the opening, less the strip each tab reaches into past its band: the bands are fin-free,
+// so covering them with plate costs no fin area, and the plate under them is what the tabs stand on.
+fn tab_reach_past_band(mf: GroupMemberFace) -> Int { um(m: mf.taper.fin_gap) - um(m: tab_fin_clearance) }
+
 fn fin_window_cut(mf: GroupMemberFace, plate: Micrometer) -> Primitive {
   let t = um(m: plate)
-  let top = opening_top_x(f: mf.face) - um(m: mf.bands.top)
-  let bottom = opening_bottom_x(f: mf.face) + um(m: mf.bands.bottom)
+  let top = opening_top_x(f: mf.face) - um(m: mf.bands.top) - tab_reach_past_band(mf: mf)
+  let bottom = opening_bottom_x(f: mf.face) + um(m: mf.bands.bottom) + tab_reach_past_band(mf: mf)
   let wd = um(m: mf.face.window_depth)
   block(w: top - bottom, h: wd, d: t + 2000, x: (top + bottom) / 2, y: opening_low_y(mf: mf) + wd / 2, z: 0 - t / 2)
 }
 
-// One tab in each band, against the band's inner end (next to the fins, not touching them), narrower than
-// the opening so it clears the pitched sides. Its outer face meets the band's slope as it goes in, and that
-// contact is the grip; the slope itself was not measured, so how hard it grips is what the fit print shows.
-fn band_tabs(mf: GroupMemberFace, plate: Micrometer) -> List<Primitive> {
-  let t = um(m: plate)
-  let tt = um(m: tab_thickness)
-  let td = um(m: tab_depth)
+// One wedge in each band, its section in (X, Z) extruded across the opening's width, narrower than the
+// opening so it clears the pitched sides. `sign` is +1 for the top band (the edge at the top, the band running
+// toward -X) and -1 for the bottom band. It stands on the plate from Z = -t.
+fn band_wedge(mf: GroupMemberFace, edge: Int, band: Int, sign: Int, t: Int) -> Primitive {
+  let c = um(m: tab_slope_clearance)
+  let lip = um(m: mf.taper.lip_depth)
+  let deep = lip + um(m: mf.taper.slope_depth)
+  let inner = edge - sign * (band + tab_reach_past_band(mf: mf))
   let w = um(m: mf.face.window_depth) - 2 * um(m: tab_width_inset)
   let y = opening_low_y(mf: mf) + um(m: mf.face.window_depth) / 2
-  let top_x = opening_top_x(f: mf.face) - um(m: mf.bands.top) + um(m: tab_band_margin) + tt / 2
-  let bottom_x = opening_bottom_x(f: mf.face) + um(m: mf.bands.bottom) - um(m: tab_band_margin) - tt / 2
+  prism(outline: [
+    ProfileVertex { u: edge - sign * c, v: 0 - t },
+    ProfileVertex { u: edge - sign * c, v: lip },
+    ProfileVertex { u: edge - sign * (band + c), v: deep },
+    ProfileVertex { u: inner, v: deep },
+    ProfileVertex { u: inner, v: 0 - t },
+  ], axis: Axis3Y, length: w, x: 0, y: y, z: 0)
+}
+
+fn band_tabs(mf: GroupMemberFace, plate: Micrometer) -> List<Primitive> {
+  let t = um(m: plate)
   [
-    block(w: tt, h: w, d: td + t, x: top_x, y: y, z: (td - t) / 2),
-    block(w: tt, h: w, d: td + t, x: bottom_x, y: y, z: (td - t) / 2),
+    band_wedge(mf: mf, edge: opening_top_x(f: mf.face), band: um(m: mf.bands.top), sign: 1, t: t),
+    band_wedge(mf: mf, edge: opening_bottom_x(f: mf.face), band: um(m: mf.bands.bottom), sign: 0 - 1, t: t),
   ]
 }
 
@@ -186,7 +216,7 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>) -> List<AssemblyPart> {
   let policy = plug_and_flange_print_policy
   let t = um(m: policy.ring_exercised.flange_thickness)
   let wall = um(m: policy.ring_exercised.wall)
-  let c = um(m: policy.allowances.sleeve_clearance)
+  let c = um(m: group_lip_clearance)
   let sd = um(m: policy.allowances.sleeve_depth)
   let half = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.face.face_length) / 2 > acc { um(m: mf.face.face_length) / 2 } else { acc })
   let y_hi = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.offset) + um(m: mf.face.face_thickness) > acc { um(m: mf.offset) + um(m: mf.face.face_thickness) } else { acc })
@@ -221,5 +251,5 @@ fn group_fit_plate_joints(cards: List<String>) -> List<MechanicalInterface> {
 }
 
 fn group_fit_plate_readme(p: GroupDuctPlan) -> String {
-  join(["Group fit plate for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nThe card interface of the group duct alone: one plate over every member's end face, an outer lip around the row, and two tabs per card in its fin-free bands.\nPrint plate-down without support. It should seat without force; check that every tab enters its band and that the lip clears the row.\n"], "")
+  join(["Group fit plate for ", p.id as String, ". Generated from product.printed_chassis.group_duct.\nThe card interface of the group duct alone: one plate over every member's end face, an outer lip around the row, and two tabs per card in its fin-free bands.\nPrint plate-down without support. It should seat without force; check that every tab enters its band and that the lip clears the row.\n", p.fit_record, "\n"], "")
 }

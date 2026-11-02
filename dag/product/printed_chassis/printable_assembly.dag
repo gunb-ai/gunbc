@@ -5,7 +5,7 @@ import std.measure { micrometer_count, millimeter_count }
 import std.affine_space { Point3, signed_frame_component_count }
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
 import product.printed_chassis.assembly_geometry {
-  Primitive, Block, RoundPrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance, Cassette, FixedFrame,
+  Primitive, Block, RoundPrism, ProfilePrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance, Cassette, FixedFrame,
   LayOnXZ, LayOnXY, LayOnYZ, InterfaceStatus, Proposed, OriginalPlateFitOnly, Unresolved, FastenerKind, M3PanelClamp,
   PrintedRetainingPin, M4FanThroughBolt, M4SocketThroughBolt, BoardSupportPending, ProtectedDcBranch, BondingHardwarePending,
   FanSelfTappingScrew, FrictionFitPlug, FrictionFitSleeve, LocatingSleeveNoRetention, M3IntoCardInsert,
@@ -111,6 +111,7 @@ fn text(s: String) -> JsonValue { json_string(s: s) }
 fn primitive_json(p: Primitive) -> JsonValue {
  match p {
   Block {size:s,center:c} => json_object(members:[json_kv(key:"op",value:text(s:"box")),json_kv(key:"size_um",value:json_array(elements:[json_int(n:micrometer_count(m:s.size_x)),json_int(n:micrometer_count(m:s.size_y)),json_int(n:micrometer_count(m:s.size_z))])),json_kv(key:"center_um",value:xyz(p:c))]),
+  ProfilePrism {outline:o,axis:a,length:l,center:c} => json_object(members:[json_kv(key:"op",value:text(s:"prism")),json_kv(key:"outline_um",value:json_array(elements:map(o,v=>json_array(elements:[json_int(n:v.u),json_int(n:v.v)])))),json_kv(key:"length_um",value:json_int(n:micrometer_count(m:l))),json_kv(key:"axis",value:text(s:match a {Axis3X=>"x",Axis3Y=>"y",Axis3Z=>"z"})),json_kv(key:"center_um",value:xyz(p:c))]),
   RoundPrism {diameter:d,length:l,axis:a,center:c} => json_object(members:[json_kv(key:"op",value:text(s:"cylinder")),json_kv(key:"diameter_um",value:json_int(n:micrometer_count(m:d))),json_kv(key:"length_um",value:json_int(n:micrometer_count(m:l))),json_kv(key:"axis",value:text(s:match a {Axis3X=>"x",Axis3Y=>"y",Axis3Z=>"z"})),json_kv(key:"center_um",value:xyz(p:c))]),
  }
 }
