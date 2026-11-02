@@ -1,0 +1,41 @@
+module gunbc.recurring_failure_mode.set_membership_declared_by_equality_realized_by_ord
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Set membership is DECLARED as an equality question and REALIZED as an ordering question. The two
+// are not the same function, so there is a population of element types for which the emitted program
+// and the declared semantics answer differently, and nothing on either side says so.
+data set_membership_declared_by_equality_realized_by_ord: RecurringFailureMode = RecurringFailureMode {
+  identity: "set_membership_declared_by_equality_realized_by_ord" as NonEmptyStr,
+
+  // The class is read in source, not inferred from prose; it sits below the ladder because no
+  // guarantee holds today, and its ceiling is structural: either the declared equality becomes the
+  // realized one, or the template declares Ord and says it dedupes by Ord.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "finite_power_set_templates declares membership and insertion under the same ordering requirement the native kernel imposes, or the kernel answers membership by equality; either way the declared and realized relations are one relation, so no element type can exist where they disagree",
+    },
+  },
+
+  receipts: [
+    "set membership realized by Ord while declared by equality. THE DECLARED SIDE, read: dag/std/algebra.dag:1075 `fn finite_power_set_templates()` is the template authority selected for FinitePowerSetT by the profile at dag/std/algebra.dag:1197 (`FinitePowerSetProfile => finite_power_set_templates()`), and it gives `member` and `contains` the shape `[ReceiverSelf, ReceiverElement] -> Bool` with no ordering requirement on the element. THE REALIZED SIDE, read: src/v1/stage0/src/v1_rt.rs:1037 `pub fn set_contains<T: Ord, S: AsRef<BTreeSet<T>>>(...)` answers through BTreeSet::contains, and src/v1/stage0/src/v1_rt.rs:1024 `pub fn rc_set_insert<T: Ord + Clone>(...)` inserts into a BTreeSet, which DEDUPES by that same Ord; src/v1/stage0/src/v1_rt.rs:1020 `pub fn rc_empty_set<T: Ord>()` carries the bound from the start. THE GAP: for any element type where Ord and equality disagree -- any Ord whose equivalence classes are coarser than identity -- the emitted program drops at insertion an element the declared template says the set holds, and answers membership by a comparison the declaration never promised. INVALID STATE: a FinitePowerSet whose contents are not the equality-classes the template declares. HARM: silent. There is no diagnostic on either path; the emitted run and the declared semantics simply disagree about which elements exist, and every consumer today is Set<String>, where Ord and equality happen to coincide, so no existing witness can observe the difference. This is the same shape as gunbc.recurring_failure_mode.bounded_natural_arithmetic_evaluated_as_unbounded_int -- the interpreter/kernel answers a question the declared types do not state -- with the difference that here it is the EMITTED side that is permissive.",
+
+    "THE DISPOSITION WAS ASSERTING THE DECLARED SIDE. Until this row, gunbc.primitive_egress.dispositions_collection stated `semantics: \"Bool by T equality\"` for the `set_contains` egress row, i.e. the authoritative egress record described membership as equality while the kernel it names (\"v1_rt::set_contains over the persistent set\") implements Ord membership. The same commit that files this row corrects that string to state the realized relation and to point at both rows in this pair. A reader of the old text would have concluded the two sides agreed.",
+
+    "NOT YET CLAIMED: no element type in the corpus is known to me where Ord and equality actually disagree over a set element, so no observed wrong ANSWER is claimed here -- the claim is that the requirement is strictly stronger than declared and unrecorded, which is what makes the class reachable rather than hypothetical. A control that would settle it must insert two elements that are Ord-equivalent but not equal and assert the declared cardinality; no such control exists today, and every consumer at src/v2/workflow/claim_coverage_census_s1.dag:150,208,214,278 and src/v2/test/manual/ownership_movable.dag:27 is String-kinded, where the two relations coincide.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.algebra", decl_name: "finite_power_set_templates", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.primitives", decl_name: "builtin_registry_surface_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.primitive_egress.dispositions_collection", decl_name: "set_contains", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,42 @@
+module gunbc.recurring_failure_mode.set_element_kind_interpreted_native_divergence
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// The interpreted and native routes do not agree about WHICH ELEMENT KINDS a set has. The failure is a
+// refusal, so it is not silent -- but the refusal names the wrong cause, and its sibling cluster
+// (maps) already has a refusal that names the right one.
+data set_element_kind_interpreted_native_divergence: RecurringFailureMode = RecurringFailureMode {
+  identity: "set_element_kind_interpreted_native_divergence" as NonEmptyStr,
+
+  // Read in source. Below the ladder: a non-String element today reaches a refusal, but the wrong one.
+  // Ceiling judgement is MINE, stated as a judgement: the misattribution is preventable by one
+  // generalized grounding path, not by anything structural, hence MechanicallyPreventable.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the existing collection-primitive grounding is generalized to cover map AND set shapes, with a refusal message that names the seam and the element kind, so a non-String set element is refused as an unrealized element kind rather than reported as a missing function",
+    },
+  },
+
+  receipts: [
+    "element kinds differ per route. NATIVE: src/v1/stage0/src/v1_rt.rs:1037 `set_contains<T: Ord, S: AsRef<BTreeSet<T>>>` answers membership for ANY element type that is Ord, so Set<Int>, Set<UInt32> and Set<String> are all realized emitted. INTERPRETED: src/v1/stage0/src/v1_interpreter.rs:24301 `arm \"free_call.set_contains\"` is a single match arm, `[Value::Set(s), Value::Str(k)] => Ok(Some(Value::Bool(s.contains(k.as_ref()))))`, with `_ => Ok(None)` -- String elements only; every other element kind reports \"not handled\" rather than answering or refusing. So `set_contains(Set<Int>, Int)` is a valid program that builds and runs emitted and is unimplemented interpreted, which is a parity gap on the project's central claim, invisible to every existing test because all consumers are Set<String>.",
+
+    "WHERE THE Ok(None) GOES, AND WHY THE REFUSAL MISATTRIBUTES THE CAUSE. The general call site at src/v1/stage0/src/v1_interpreter.rs:11571 is `if let Some(result) = eval_builtin(&func_name, &args, ctx)? { return Ok(result); }`, so Ok(None) does not return: evaluation FALLS THROUGH the builtin tier, past the bridge dispatch (:11552) and the native intercept (:11558), to the module free-function table at :11576 `ctx.lookup_fn_from(&func_name, file)`. Because the set cluster has no .dag body at all (verified: no `fn empty_set`, `fn set_insert` or `fn set_contains` anywhere under src/v2/std/ or dag/std/; the names are enumerated as builtins in std.primitives builtin_registry_surface_names), that lookup misses and :11589 raises `Err(InterpError::NoSuchFunction { name })`. RUNG: a refusal, not silent wrongness -- a typed error is raised, so nothing wrong is returned. THE DEFECT IS THE DIAGNOSTIC: the interpreter says \"no such function: set_contains\" for a call that is valid emitted for any Ord element and valid interpreted for String keys. Nothing in that message mentions element kind, so the natural (and wrong) theory is a missing import or a missing roster row. The cause is the element kind; the message reports existence.",
+
+    "THE SIBLING CLUSTER GOT A LOUD WRAPPER AND SET DID NOT. Map primitives pass through `try_v2_std_collection_map_primitive_grounding` at src/v1/stage0/src/v1_interpreter.rs:11458, which turns the SAME Ok(None) into a purpose-built `Err(InterpError::TypeError { msg: \"<fn> is a v2 std collection map primitive grounded to the Rust HostRealizedSeam; the bridge dispatch and builtin tier declined it, so this is native map primitive refused this argument shape (host misconfiguration, or a non-native map carrier reached a HostRealizedSeam)\" })` at :11473 -- a message that names the seam and the shape. That path is gated on `is_v2_std_collection_map_grounded_fn` and its arm list (v1_map_grounding_arms!, :11345) contains map names only (empty_map, map_insert, ...); there is no set analogue anywhere in the file. So map_insert with an unrepresentable key is refused AS A SHAPE PROBLEM AT A SEAM, while set_contains with an unrepresentable element is reported AS A MISSING FUNCTION. Same failure class, two qualities of refusal, and the weaker one is on the cluster being rostered. This asymmetry is the evidence that the missing wrapper is an omission rather than a considered design.",
+
+    "NEXT-RUNG TRIGGER, AT CAPABILITY GRAIN, AND WHAT IT IS NOT. The fix is to GENERALIZE the existing map grounding into one collection-primitive grounding covering map AND set shapes, per the root-generalization rule -- NOT to add a copied set twin beside it, which would leave one rule with two leaves and guarantee they drift. A copied twin is a mitigation, not a climb, and must not be recorded as moving this row. That change is v1-seed interpreter work and needs the v1 purpose test; it is not part of the draft that files this row. OWN CONTROL OBLIGATION: the companion control in the roster sweep asserts the error KIND (NoSuchFunction) for a Set<Int> membership and carries the message text as evidence only. When the generalized grounding lands, the kind changes and the control goes red on purpose, forcing a conscious update rather than a silent pass -- a control that asserted only today's message text would keep passing for the wrong reason.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.primitives", decl_name: "builtin_registry_surface_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "finite_power_set_templates", field: WholeDeclaration },
+  ],
+}
