@@ -598,10 +598,8 @@ fn profile_publisher_build_route_is_coherent(profile: RepositoryCiProfile) -> Bo
     Absent => true
     Present { value: p } =>
       match p.build_route {
-        // An own checkout builds its compiler in the job's own checkout, which is not under the composed
-        // root; a row that also composes an overlay has its phases cd into that root and run the compiler
-        // THERE, so the compiler the phases would run was never built inside the composition the candidate
-        // was sealed from. Refused, not rendered: this is the same drift, arriving from the other side.
+        // Which tree that compiler has to be found in is not this predicate's question; it is the one
+        // `profile_publisher_build_route_composes_with_the_overlay` below refuses on.
         Own_checkout_under_witness_floor { required_bins: _ } => true
         Declared_seed =>
           match profile.public_seed {
