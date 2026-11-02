@@ -1,0 +1,120 @@
+module v2.test.claim.name_resolve.imported_service_operation_binding
+
+import v2.compiler.source_root_eval {
+  NativeModuleResolveAccepted,
+  NativeModuleResolveRefused,
+  native_test_context_from_ingest,
+  native_module_resolve_verdict,
+  native_lane_file_refusal_index,
+  NativeTestContext,
+  NativeModuleResolveVerdict
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+// HOW A SERVICE OPERATION REFERENCE BINDS ACROSS AN IMPORT, ON THE REAL NATIVE PREPARE ROUTE (T4 frontier: gen-0
+// emit of v2.cli.compile_cli refuses unbound_ref=Filesystem.Write). v2.test.claim.resolve.service_operation_call
+// records that a fully QUALIFIED path resolves from anywhere and that a bare prefix reaches nothing from a sibling,
+// but over a SYNTHETIC index. This claim asks the import door itself, through supplied reads run through
+// native_test_context_from_ingest and native_module_resolve_verdict, three shapes of one call:
+//   brace import of the service      (compile_cli's shape)
+//   whole-module import              (the shape v2.compiler.name_resolve ExportAdmissionScope's comment says binds)
+//   the declaring-identity spelling  (the XL3 respell target; the control)
+// The two comments disagree (this module's neighbour says imports never bind a service bare); the verdicts below are
+// the executed answer, and whichever comment is wrong is corrected in the same change.
+
+data service_source: String = "module v2.test.isob.svc\n\nservice Fs {\n  operation Put {\n    input { path: String }\n    output { ok: Bool = true }\n    readonly\n    transport shell {}\n  }\n}\n"
+
+data brace_user_source: String = "module v2.test.isob.brace_user\n\nimport v2.test.isob.svc { Fs }\n\nfn go() -> Bool { let w = Fs.Put(path: \"p\")\n  w.ok }\n"
+
+data whole_user_source: String = "module v2.test.isob.whole_user\n\nimport v2.test.isob.svc\n\nfn go() -> Bool { let w = Fs.Put(path: \"p\")\n  w.ok }\n"
+
+data qualified_user_source: String = "module v2.test.isob.qualified_user\n\nfn go() -> Bool { let w = v2.test.isob.svc.Fs.Put(path: \"p\")\n  w.ok }\n"
+
+fn isob_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+fn isob_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(ingest: [
+    isob_read(text: service_source, id: ^isob_svc, path: "src/v2/test/fixture/isob/svc.dag"),
+    isob_read(text: brace_user_source, id: ^isob_brace_user, path: "src/v2/test/fixture/isob/brace_user.dag"),
+    isob_read(text: whole_user_source, id: ^isob_whole_user, path: "src/v2/test/fixture/isob/whole_user.dag"),
+    isob_read(text: qualified_user_source, id: ^isob_qualified_user, path: "src/v2/test/fixture/isob/qualified_user.dag")
+  ])
+}
+
+type IsobVerdicts {
+  brace: NativeModuleResolveVerdict
+  whole: NativeModuleResolveVerdict
+  qualified: NativeModuleResolveVerdict
+}
+
+// One context, three verdicts, built once (see explicit_fn_import_binds efib_verdicts). A context the fixtures cannot
+// build answers Absent and every claim reads Absent as false: a fixture failing is never a pass.
+fn isob_verdicts() -> Optional<IsobVerdicts> {
+  match isob_context() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        optional_present(value: IsobVerdicts {
+          brace: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.isob.brace_user", path: ^isob_brace_user).verdict,
+          whole: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.isob.whole_user", path: ^isob_whole_user).verdict,
+          qualified: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.isob.qualified_user", path: ^isob_qualified_user).verdict
+        })
+      }
+  }
+}
+
+fn isob_accepted(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveAccepted { resolved: _ } => true
+    _ => false
+  }
+}
+
+fn isob_plain_refusal(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveRefused { first: _, rest: _, observation: _ } => true
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL. The declaring-identity spelling binds, so a refusal below is the import door's and not the
+// fixture's service declaration.
+test fn the_declaring_identity_spelling_of_a_service_operation_binds() -> Bool {
+  match isob_verdicts() {
+    Absent => false
+    Present { value: vs } => isob_accepted(v: vs.qualified)
+  }
+}
+
+// THE RED. compile_cli's shape: a brace import of the service, then Service.Op.
+test fn a_brace_imported_service_operation_reference_refuses_unbound_RED() -> Bool {
+  match isob_verdicts() {
+    Absent => false
+    Present { value: vs } => isob_plain_refusal(v: vs.brace)
+  }
+}
+
+// THE SETTLING CLAIM. This is asserted as REFUSES because that is the contract the sibling claim records
+// (imports never bind a service bare); if the executed verdict is Accepted, this test fails and the
+// ExportAdmissionScope comment is the true one and this claim is rewritten to bind.
+test fn a_whole_module_imported_service_operation_reference_refuses_unbound_RED() -> Bool {
+  match isob_verdicts() {
+    Absent => false
+    Present { value: vs } => isob_plain_refusal(v: vs.whole)
+  }
+}
