@@ -29,7 +29,7 @@ import std.coercion { ArithmeticCarrierSelection, ArithmeticCarrierSelected, Ari
 import gunbc.structural_realization_bindings { conversion_plan_rows, kernel_grounding_rows }
 import std.literal_elaboration { UnboundedIntegers }
 
-import v1.std.core { Unmarked,
+import v1.std.core { Unmarked, UnaryOpKind, Not, Neg,
   Node, make_param_node, param_node_type_expr,
   find_child_named, NewlineIndex,
   Connective, Conj, Disj, NoConnective,
@@ -1862,6 +1862,15 @@ fn arithmetic_requirement(op: BinOp) -> ArithmeticRequirement? {
     Mul => Present { value: ArithmeticRequirement { field: "mul", preserved: ["mul"] } }
     Sub => Present { value: ArithmeticRequirement { field: "negate", preserved: ["add"] } }
     _ => none
+  }
+}
+
+// THE UNARY HALF OF THE SAME ROSTER: one home for every operator requirement carrier selection reads, so
+// `negate` is stated once (review 90087 found it inline at the v1.compiler.infer call site).
+fn unary_arithmetic_requirement(op: UnaryOpKind) -> ArithmeticRequirement? {
+  match op {
+    Neg => Present { value: ArithmeticRequirement { field: "negate", preserved: [] } }
+    Not => none
   }
 }
 

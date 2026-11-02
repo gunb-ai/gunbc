@@ -120,7 +120,7 @@ import v1.compiler.infer_types {
   is_product_type,
   node_type_deps,
   method_receiver_element_node,
-  infer_literal_node, infer_binop_type_node, infer_arithmetic_binop_type_node, infer_neg_type_node, arithmetic_requirement, operand_carrier_ref, arithmetic_carrier_selection, ArithmeticRequirement,
+  infer_literal_node, infer_binop_type_node, infer_arithmetic_binop_type_node, infer_neg_type_node, arithmetic_requirement, unary_arithmetic_requirement, operand_carrier_ref, arithmetic_carrier_selection, ArithmeticRequirement,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node, is_type_expr_annotation,
   emit_map_has,
@@ -11256,10 +11256,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let neg_diags = match op {
         Not => []
         Neg =>
-          match arithmetic_carrier_selection(requirement: ArithmeticRequirement { field: "negate", preserved: [] }, left_type: resolved_type(n: operand_typed), right_type: none, source_indices: scope.type_env.source_indices, env: scope.type_env) {
-            Present { value: ArithmeticNoCarrier } => [make_error_node(diagnostic: ArithmeticWithoutCarrier { operation: "negate", operands: [arithmetic_operand_label(n: operand_typed, scope: scope)], span: span }, module_name: scope.module_name)]
-            Present { value: ArithmeticCarrierAmbiguous { candidates: cs } } => [make_error_node(diagnostic: ArithmeticAmbiguousCarrier { operation: "negate", candidates: cs |> map(c => c.decl_name), span: span }, module_name: scope.module_name)]
-            _ => []
+          match unary_arithmetic_requirement(op: op) {
+            Absent => []
+            Present { value: requirement } =>
+              match arithmetic_carrier_selection(requirement: requirement, left_type: resolved_type(n: operand_typed), right_type: none, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+                Present { value: ArithmeticNoCarrier } => [make_error_node(diagnostic: ArithmeticWithoutCarrier { operation: requirement.field, operands: [arithmetic_operand_label(n: operand_typed, scope: scope)], span: span }, module_name: scope.module_name)]
+                Present { value: ArithmeticCarrierAmbiguous { candidates: cs } } => [make_error_node(diagnostic: ArithmeticAmbiguousCarrier { operation: requirement.field, candidates: cs |> map(c => c.decl_name), span: span }, module_name: scope.module_name)]
+                _ => []
+              }
           }
       }
       let uo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprUnaryOp { op: op }, children: [operand_typed], inferred: Present { value: Resolved { node: result_type } }, span: span)
