@@ -40,6 +40,7 @@ import product.electrical.source_draw {
 }
 import product.electrical.bench_session {
   AssetAlteration,
+  BenchIncident,
   NoDamageSeen,
   StateReadings,
   BenchRecord,
@@ -109,6 +110,7 @@ import product.electrical.continuity {
   ContinuityObservation,
   BenchConditions,
   Unpowered,
+  Energized,
   ModuleRemoved,
   ContinuityResult,
   DiodeModeObservation,
@@ -3167,6 +3169,80 @@ test fn the_after_lift_readings_are_kept_in_their_own_state() -> Bool {
     && count(e1_after_lift_rail_resistances) > 0 && all(e1_after_lift_rail_resistances, o => any(in_lift, x => after_key(o: x, key: e1_u10p2_lift.key) && terminal_ref_equal(a: x.first, b: o.first) && terminal_ref_equal(a: x.second, b: o.second)))
     && count(in_short) > 0 && !any(in_short, o => after_key(o: o, key: e1_u10p2_lift.key)) && !any(in_mid, o => after_key(o: o, key: e1_u10p2_lift.key))
     && k1_lifted > 0 && count(k1_in_lift) == k1_lifted && !any(k1_in_intact, o => after_key(o: o, key: k1_u10p2_lift.key))
+}
+
+fn energized(o: ContinuityObservation) -> ContinuityObservation {
+  ContinuityObservation { asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: BenchConditions { power: Energized, module: o.conditions.module }, result: o.result, order: o.order, evidence: o.evidence }
+}
+
+fn same_pair(a: ContinuityObservation, b: ContinuityObservation) -> Bool {
+  terminal_ref_equal(a: a.first, b: b.first) && terminal_ref_equal(a: a.second, b: b.second)
+}
+
+fn polarity_holds(l: CarrierLayoutObservation) -> Bool {
+  match input_polarity(layout: l) {
+    PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => true
+    PolarityContradicted { readings: _ } => false
+    PolarityUnestablished { gaps: _ } => false
+  }
+}
+
+fn fused_readings(l: CarrierLayoutObservation) -> List<ContinuityObservation> {
+  match input_polarity(layout: l) {
+    PolarityEstablished { fused_side: _, return_side: _, fused, returns: _, isolation: _ } => fused
+    PolarityContradicted { readings: _ } => []
+    PolarityUnestablished { gaps: _ } => []
+  }
+}
+
+// CONNECTIVITY IS READ UNPOWERED, ON EVERY PATH. The E1's beeps establish J20's polarity and place D2
+// across the input. The same beeps recorded as read on an energized board are kept in the selection
+// but establish neither, on the graph path as on the netlist; and re-recording only the fused-side
+// beeps as energized leaves the unpowered remainder unable to complete the fused path.
+test fn connectivity_is_read_unpowered_on_every_path() -> Bool {
+  let fused = fused_readings(l: p4261_e1_layout)
+  let all_energized = e1_with_continuity(cs: map(e1_measured.continuity, o => energized(o: o)))
+  let fused_energized = e1_with_continuity(cs: map(e1_measured.continuity, o => if any(fused, f => same_pair(a: f, b: o)) { energized(o: o) } else { o }))
+  let kept = match all_energized.measured {
+    Absent => false
+    Present { value: b } => match beeps_state(b: b) {
+      Absent => false
+      Present { value: s } => count(board_readings(s: s).continuity) == count(e1_measured.continuity) && count(board_graph(s: s).observations) == 0 && count(board_netlist(s: s).nodes) == 0
+    }
+  }
+  polarity_holds(l: p4261_e1_layout) && any(placement_of(layout: p4261_e1_layout, c: e1_d2), s => placed_d2(s: s))
+    && count(fused) > 0 && count(fused) < count(e1_measured.continuity)
+    && kept
+    && !polarity_holds(l: all_energized) && all(placement_of(layout: all_energized, c: e1_d2), s => !placed_d2(s: s))
+    && !polarity_holds(l: fused_energized) && all(placement_of(layout: fused_energized, c: e1_d2), s => !placed_d2(s: s))
+}
+
+// The E1 with its probe bridge recorded under the K1's asset, its key unchanged.
+fn e1_bridge_owned_by_k1() -> MeasuredBoard {
+  let b = e1_measured
+  MeasuredBoard {
+    asset: b.asset, analysis: b.analysis, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
+    bench: BenchRecord {
+      alterations: b.bench.alterations, attachments: b.bench.attachments, voltages: b.bench.voltages, resistances: b.bench.resistances,
+      incidents: map(b.bench.incidents, i => if (i.key as String) == (e1_bridge_incident.key as String) { BenchIncident { key: i.key, asset: p4261_k1_a, bridged: i.bridged, record: i.record, conditions: i.conditions, observed: i.observed, inspection: i.inspection, evidence: i.evidence } } else { i }),
+    },
+    phases: b.phases, transitions: b.transitions, pole_closures: b.pole_closures,
+  }
+}
+
+// AN EVENT OF ANOTHER BOARD DOES NOT DIVIDE THIS ONE. With the E1's bridge recorded as the K1's, its key
+// unchanged, no E1 selection may name it, and every E1 reading ordered against it -- every beep, every
+// after-bridge resistance -- is counted unresolved and joins no state, the intact one included.
+test fn an_event_of_another_board_does_not_divide_this_one() -> Bool {
+  let moved = e1_bridge_owned_by_k1()
+  let after_bridge = resistances_in(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved)
+  !refused(b: e1_measured, keys: bridged_keys(), module: ModuleRemoved) && after_bridge > 0
+    && refused(b: moved, keys: bridged_keys(), module: ModuleRemoved)
+    && refused(b: moved, keys: [e1_bridge_incident.key, e1_inductor_short_incident.key, e1_u10p2_lift.key], module: ModuleRemoved)
+    && n_continuity(b: moved, keys: intact_keys(), module: ModuleRemoved) == 0
+    && resistances_in(b: moved, keys: intact_keys(), module: ModuleRemoved) == 0
+    && n_unresolved(b: moved, keys: intact_keys(), module: ModuleRemoved) >= count(e1_measured.continuity) + after_bridge
+    && match beeps_state(b: moved) { Absent => true, Present { value: _ } => false }
 }
 
 fn receipt_named(s: CitedFigureStanding, module_path: String, decl_name: String) -> Bool {

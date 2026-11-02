@@ -263,6 +263,10 @@ fn is_before_incidents(o: ReadingOrder) -> Bool {
 // - a thermal interface changed does not divide: no electrical terminal was touched. It is still a
 //   recorded event, so a reading may name it.
 //
+// AN EVENT DIVIDES ONLY ITS OWN ASSET'S STATES. The catalogue a selection resolves keys against is the
+// record's events whose own asset is the selected one: an event recorded for another board, under any
+// key, is not an event of this one, so naming it neither mints a state nor places a reading.
+//
 // A READING IS PLACED ONLY WHERE ITS ORDER IS STATED. Each key a reading's order names must resolve to
 // an event recorded for the asset, or the reading is unresolved; and its order against EVERY dividing
 // event must be stated (product.electrical.continuity ReadingOrder), or it is uncovered. Unresolved
@@ -289,12 +293,20 @@ fn alteration_refitted(a: AssetAlteration) -> Bool {
   }
 }
 
-fn recorded_events(r: BenchRecord) -> List<NonEmptyStr> {
-  concat(map(r.incidents, i => i.key), map(r.alterations, a => a.key))
+fn incidents_of(r: BenchRecord, asset: PhysicalAssetIdentity) -> List<BenchIncident> {
+  filter(r.incidents, i => physical_asset_identity_eq(a: i.asset, b: asset))
 }
 
-fn state_boundaries(r: BenchRecord) -> List<NonEmptyStr> {
-  concat(map(r.incidents, i => i.key), map(filter(r.alterations, a => alteration_divides_state(a: a)), a => a.key))
+fn alterations_of(r: BenchRecord, asset: PhysicalAssetIdentity) -> List<AssetAlteration> {
+  filter(r.alterations, a => physical_asset_identity_eq(a: a.asset, b: asset))
+}
+
+fn recorded_events(r: BenchRecord, asset: PhysicalAssetIdentity) -> List<NonEmptyStr> {
+  concat(map(incidents_of(r: r, asset: asset), i => i.key), map(alterations_of(r: r, asset: asset), a => a.key))
+}
+
+fn state_boundaries(r: BenchRecord, asset: PhysicalAssetIdentity) -> List<NonEmptyStr> {
+  concat(map(incidents_of(r: r, asset: asset), i => i.key), map(filter(alterations_of(r: r, asset: asset), a => alteration_divides_state(a: a)), a => a.key))
 }
 
 fn key_listed(keys: List<NonEmptyStr>, k: NonEmptyStr) -> Bool {
@@ -319,12 +331,12 @@ fn intact_state(asset: PhysicalAssetIdentity, module: ModuleState) -> SpecimenSt
 }
 
 // The state after exactly the named dividing events and before every other one. Refused (Absent) when a
-// key is not a dividing event of this record -- naming one would select nothing, an empty result
+// key is not a dividing event of this asset's record -- naming one would select nothing, an empty result
 // indistinguishable from a board with nothing read -- or names a removal later refitted, whose states
 // one event cannot tell apart.
 fn state_after(r: BenchRecord, asset: PhysicalAssetIdentity, keys: List<NonEmptyStr>, module: ModuleState) -> SpecimenState? {
-  let boundaries = state_boundaries(r: r)
-  let refitted = map(filter(r.alterations, a => alteration_refitted(a: a)), a => a.key)
+  let boundaries = state_boundaries(r: r, asset: asset)
+  let refitted = map(filter(alterations_of(r: r, asset: asset), a => alteration_refitted(a: a)), a => a.key)
   if all(keys, k => key_listed(keys: boundaries, k: k) && !key_listed(keys: refitted, k: k)) { Present { value: SpecimenState { asset: asset, after: keys, module: module } } } else { Absent }
 }
 
@@ -348,9 +360,9 @@ fn placed_before_all() -> ReadingPlacement {
   PlacedAfter { after: [] }
 }
 
-fn reading_placement(r: BenchRecord, o: ReadingOrder) -> ReadingPlacement {
-  let events = recorded_events(r: r)
-  let boundaries = state_boundaries(r: r)
+fn reading_placement(r: BenchRecord, asset: PhysicalAssetIdentity, o: ReadingOrder) -> ReadingPlacement {
+  let events = recorded_events(r: r, asset: asset)
+  let boundaries = state_boundaries(r: r, asset: asset)
   let unresolved = filter(order_keys(o: o), k => !key_listed(keys: events, k: k))
   if count(unresolved) > 0 { EventUnresolved { keys: unresolved } } else {
     match o {
@@ -374,7 +386,7 @@ type ReadingDisposition
   | Unresolved
 
 fn reading_disposition(r: BenchRecord, s: SpecimenState, o: ReadingOrder, c: BenchConditions) -> ReadingDisposition {
-  match reading_placement(r: r, o: o) {
+  match reading_placement(r: r, asset: s.asset, o: o) {
     EventUnresolved { keys: _ } => Unresolved
     OrderUncovered => Uncovered
     PlacedAfter { after } => if !same_keys(a: after, b: s.after) { OfAnotherState } else { if module_matches(a: c.module, b: s.module) { InSelection } else { OfAnotherConfiguration } }
