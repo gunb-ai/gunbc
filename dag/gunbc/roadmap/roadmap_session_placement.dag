@@ -1260,7 +1260,7 @@ fn session_worker_unit_lifecycle_with_standing(instance: HostDashboardInstance, 
             SystemdUnitNameStemEmpty => false
             SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
             SystemdUnitNameOverlong { length: _ } => false
-          },
+          }),
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
       )
