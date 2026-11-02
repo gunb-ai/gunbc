@@ -1,0 +1,21 @@
+module gunbc.host.host_memory_carrier
+
+import std.types { NonEmptyStr }
+import std.measure { ByteSize }
+
+// THE HOST MEMORY CARRIERS, apart from the observation that produces them. gunbc.host.host_memory_observation
+// reads hosts (filesystem captures, machine_intake.host_resource_observation, and through it the fabric
+// envelope and network topology); a consumer that only states or receives a reading -- the serving layout,
+// runner placement, budgets -- needs the shape, not the producer. Holding both in one module made every such
+// consumer's closure carry the whole host-intake model (DESIGN 3: interface, realization and policy are three
+// facts). The arms' meaning is unchanged and still documented beside the rows in host_memory_observation.
+
+type HostFixedOverhead
+  = HostFixedOverheadMeasured { bytes: ByteSize, provenance: NonEmptyStr }
+  | HostFixedOverheadAllowance { bytes: ByteSize, reason: NonEmptyStr }
+  | HostFixedOverheadUnmeasured { reason: NonEmptyStr }
+
+type HostUsableRam
+  = HostUsableRamMeasured { bytes: ByteSize, provenance: NonEmptyStr }
+  | HostUsableRamConservativeLowerBound { bytes: ByteSize, basis: NonEmptyStr }
+  | HostUsableRamUnmeasured { reason: NonEmptyStr }

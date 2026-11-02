@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.measure { hardware_thread_count, bandwidth, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
-import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, SolderedBga }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, SingleGpu, SolderedBga }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
@@ -59,7 +59,7 @@ data nvidia_geforce_rtx_5090_laptop_board_facts: GpuBoardCatalogFacts = GpuBoard
   vendor: nvidia,
   model: "GeForce RTX 5090 Laptop GPU",
   gpu: nvidia_geforce_rtx_5090_laptop_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: SolderedBga,
   board_power: none,
   zero_power: none,
@@ -97,7 +97,7 @@ data nvidia_geforce_rtx_5080_laptop_board_facts: GpuBoardCatalogFacts = GpuBoard
   vendor: nvidia,
   model: "GeForce RTX 5080 Laptop GPU",
   gpu: nvidia_geforce_rtx_5080_laptop_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: SolderedBga,
   board_power: none,
   zero_power: none,

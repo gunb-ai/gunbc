@@ -1,0 +1,116 @@
+module gunbc.gpu_market.software_support
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.gpu.types { GpuBoardCatalogFacts, GpuComputeCapability }
+import extdeps.nvidia.linux_driver_supported_chips {
+  NvidiaDriverBranch, NvidiaSupportedChipsAppendix, CurrentUnifiedDriver, LegacyDriverBranch,
+  nvidia_linux_driver_580_95_05_supported_chips, nvidia_supported_chip_rows_named,
+}
+import extdeps.nvidia.cuda_toolkit_release { CudaToolkitArchitectureFloor, cuda_architecture_floors, cuda_toolkit_targets_capability }
+
+// WHETHER CURRENT SOFTWARE STILL RUNS A BOARD, read from two upstream facts that are easy to conflate: the
+// DRIVER lists the board (or lists it only under a legacy branch, or not at all), and the CUDA TOOLKIT
+// still targets the device's compute capability (or dropped it at a stated release). A K80 is listed by
+// the driver's 470.xx legacy branch and dropped by CUDA 12.0; an M60 is listed by the current 580 driver
+// and dropped by CUDA 13.0; a T4 is both listed and targeted. A leaderboard that ranks by bandwidth per
+// dollar needs this beside the price, or Kepler and Maxwell boards win it.
+//
+// Both halves are read from the pinned sources through the board's own identities: its driver_listed_name
+// against the driver appendix, its device's compute capability against the toolkit's architecture floors.
+// A board with no driver-listed name, or a device with no compute capability read, gets an unread arm,
+// never a guess.
+type GpuDriverSupportReading
+  = DriverListedUnified
+  | DriverListedLegacyOnly { branches: List<NonEmptyStr> }
+  | DriverNotListed
+  | DriverNameUnread
+
+// CudaTargetedBy: the newest toolkit major this repository knows a floor for still targets the device.
+// CudaDroppedAt: the oldest floor that does not target it (the release that removed the architecture),
+// with the newest major that still did, where the floors read go back that far (CUDA 11 is not read, so a
+// Kepler part's last targeting major is Absent, not 11).
+type GpuCudaSupportReading
+  = CudaTargetedBy { toolkit_major: Nat }
+  | CudaDroppedAt { dropped_at: CudaToolkitArchitectureFloor, last_targeted_by: Nat? }
+  | CudaCapabilityUnread
+
+type GpuSoftwareSupport {
+  driver: GpuDriverSupportReading
+  cuda: GpuCudaSupportReading
+}
+
+fn driver_branch_is_unified(b: NvidiaDriverBranch) -> Bool {
+  match b { CurrentUnifiedDriver => true  LegacyDriverBranch { branch: _ } => false }
+}
+
+fn driver_branch_names(branches: List<NvidiaDriverBranch>) -> List<NonEmptyStr> {
+  branches |> flat_map(b => match b { CurrentUnifiedDriver => []  LegacyDriverBranch { branch: n } => [n] })
+}
+
+// The branches of every table that lists the name. A name in the unified table is supported by the
+// release whatever else lists it; a name only in legacy tables is supported only by those branches.
+fn gpu_driver_support(appendix: NvidiaSupportedChipsAppendix, facts: GpuBoardCatalogFacts) -> GpuDriverSupportReading {
+  match facts.driver_listed_name {
+    Absent => DriverNameUnread
+    Present { value: name } => {
+      let named = nvidia_supported_chip_rows_named(appendix: appendix, name: name)
+      let branches = appendix.tables |> flat_map(t => if t.rows |> any(r => (r.name as String) == (name as String)) { [t.branch] } else { [] })
+      if count(named) == 0 { DriverNotListed }
+      else if branches |> any(b => driver_branch_is_unified(b: b)) { DriverListedUnified }
+      else { DriverListedLegacyOnly { branches: driver_branch_names(branches: branches) } }
+    }
+  }
+}
+
+// The floors are newest first: the first that targets the capability is the newest that does, and the
+// LAST that does not is the release that dropped it.
+fn gpu_cuda_support(floors: List<CudaToolkitArchitectureFloor>, cc: GpuComputeCapability?) -> GpuCudaSupportReading {
+  match cc {
+    Absent => CudaCapabilityUnread
+    Present { value: c } => match checked_int_to_nat(n: c.major) {
+      Absent => CudaCapabilityUnread
+      Present { value: major } => match checked_int_to_nat(n: c.minor) {
+        Absent => CudaCapabilityUnread
+        Present { value: minor } => {
+          let targeting = floors |> filter(f => cuda_toolkit_targets_capability(floor: f, major: major, minor: minor))
+          let not_targeting = floors |> filter(f => !cuda_toolkit_targets_capability(floor: f, major: major, minor: minor))
+          match first(floors) {
+            Absent => CudaCapabilityUnread
+            Present { value: newest } => if cuda_toolkit_targets_capability(floor: newest, major: major, minor: minor) {
+              CudaTargetedBy { toolkit_major: newest.toolkit_major }
+            } else {
+              match fold(not_targeting, init: Absent, f: (_acc, f) => Present { value: f }) {
+                Present { value: dropped } => CudaDroppedAt {
+                  dropped_at: dropped,
+                  last_targeted_by: match first(targeting) { Present { value: t } => Present { value: t.toolkit_major }  Absent => none },
+                }
+                Absent => CudaCapabilityUnread
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn gpu_board_software_support(facts: GpuBoardCatalogFacts) -> GpuSoftwareSupport {
+  GpuSoftwareSupport {
+    driver: gpu_driver_support(appendix: nvidia_linux_driver_580_95_05_supported_chips, facts: facts),
+    cuda: gpu_cuda_support(floors: cuda_architecture_floors, cc: facts.gpu.compute_capability),
+  }
+}
+
+// Supported by both: listed by the unified driver and targeted by the newest toolkit floor. What a ranking
+// of purchasable boards for current serving software filters on.
+fn gpu_board_runs_current_software(facts: GpuBoardCatalogFacts) -> Bool {
+  let s = gpu_board_software_support(facts: facts)
+  (match s.driver { DriverListedUnified => true  _ => false })
+    && (match s.cuda {
+      CudaTargetedBy { toolkit_major: m } => match first(cuda_architecture_floors) { Present { value: f } => f.toolkit_major == m  Absent => false }
+      _ => false
+    })
+}

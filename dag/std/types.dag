@@ -86,8 +86,41 @@ fn container_template_algebra(name: String) -> String? {
   map_get(container_template_algebra_rows, name)
 }
 
+// Whether one authored spelling resolves to the named carrier algebra through the roster, so a
+// consumer asks the algebra ("FreeMonoid", "FinitePowerSet") and never a spelling ("List", "Set").
+// Relation to `is_container_algebra_carrier`: ONE roster map read in two directions. This asks
+// spelling -> algebra (which carrier does an authored name denote); that one asks declaration ->
+// carrier (is a resolved name itself an algebra carrier). The first is for authored spellings, the
+// second for resolved declaration names; neither re-derives the other's rows.
+fn container_spelling_is_algebra(name: String, algebra: String) -> Bool {
+  container_template_algebra(name: name) == Present { value: algebra }
+}
+
 fn container_template_alias_algebra(name: String) -> String? {
   map_get(container_template_alias_rows, name)
+}
+
+// THE SAME ROSTER, ASKED OF A CARRIER DECLARATION. `container_template_algebra` is keyed by the
+// AUTHORED SPELLING, so it answers for `List`, `Set` and `Map` and for nothing else. A module-local
+// alias of a carrier (`type KcAlias<T> = FreeMonoid<T>`, `type KcSetAlias<T> = Set<T>`) is not a
+// roster row -- it is a declaration in the author's own module -- so a check that must know whether
+// the formal DENOTES a kernel container cannot ask it of a spelling: it resolves the authored name to
+// the declaration it aliases and asks THIS. Derived by folding the very map the spelling read keys, so
+// a carrier joins this face exactly when a spelling declares `container_algebra_row` for it; no second
+// list of carrier names stands here to drift from the first.
+data container_algebra_carrier_rows: Map<String, Bool> = container_algebra_carrier_rows_value()
+
+fn container_algebra_carrier_rows_value() -> Map<String, Bool> {
+  let carrier_seed: Map<String, Bool> = empty_map()
+  sorted_map_keys(container_template_algebra_rows) |> fold(init: carrier_seed, f: (acc, spelling) =>
+    match container_template_algebra(name: spelling) {
+      Present { value: carrier } => map_insert(acc, carrier, true)
+      Absent => acc
+    })
+}
+
+fn is_container_algebra_carrier(name: String) -> Bool {
+  map_contains_key(container_algebra_carrier_rows, name)
 }
 
 // THE COMPLETE ROSTER, DERIVED. This list feeds `v1.compiler.coercion` `inhabitant_test_names`,
