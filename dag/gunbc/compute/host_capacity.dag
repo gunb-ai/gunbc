@@ -22,7 +22,8 @@ import gunbc.fabric.fabric_event_log {
   SeatAcquisitionUnobserved, SeatAcquisitionStoreRefused, fabric_seat_acquisition_of, event_log_refusal_wire,
 }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
-import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_shared_directory,
   DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
@@ -132,6 +133,48 @@ data compute_capacity_slots: ComputeCapacityLedgerDeclaration = ComputeCapacityL
 
 fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
   join([compute_root(instance: host_instance) as String, "/", compute_capacity_slots.member as String], "") as NonEmptyStr
+}
+
+// THE ONE DECLARATION OF WHERE A SEAT'S EXIT RECORD LANDS: the member under the host's compute root, and
+// under it ONE DIRECTORY PER UID. The record is created by the seat's own stop hook, which runs as the uid
+// the unit was started under; a SHARED root would let any other uid plant a record for somebody else's
+// seat. This fleet already has that defect beside the roadmap spool, where srv1's 2026-10-28 unexpanded
+// artifact is owned by briansrls in a directory no worker owns (gunbc.recurring_failure_mode
+// hold_recovered_by_age_not_observed_holder_death). Partitioning by uid turns "plant a record for this
+// seat" into "be that uid", and a door reads ONLY its own uid's directory: a neighbour's is not an
+// alternative source of records, so it is never enumerated.
+type ComputeAttemptExitSpoolDeclaration { member: NonEmptyStr }
+
+data compute_attempt_exit_spool: ComputeAttemptExitSpoolDeclaration = ComputeAttemptExitSpoolDeclaration { member: "attempt-exit-spool" as NonEmptyStr }
+
+// THE ROOT DERIVES FROM THE COMPUTE ROOT AND NOTHING ELSE SPELS THE PATH: compute_root is the one
+// spelling of where compute lives on this host, and the member row the one spelling of this member under
+// it, so the hook, the door and the deploy cannot each carry their own idea of the location.
+fn compute_attempt_exit_spool_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([compute_root(instance: instance) as String, "/", compute_attempt_exit_spool.member as String], "") as NonEmptyStr
+}
+
+fn compute_attempt_exit_spool_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "compute-attempt-exit-spool" as NonEmptyStr,
+    path: compute_attempt_exit_spool_root(instance: instance) as String,
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// THE ONE UID DIRECTORY A SEAT'S HOOK WRITES AND ITS DOOR READS. It takes the uid as an argument instead
+// of reading it here because the deployment route stands the root up for the SERVICE user's uid, which is
+// not the uid of the process building the leg; the runtime route passes the uid it read for its own
+// per-user runtime directory (gunbc.compute.work_provider_local compute_launching_uid), so writer, door
+// and deploy agree by construction about whose directory a seat's record lives in.
+fn compute_attempt_exit_spool_uid_dir(instance: HostDashboardInstance, uid: Int) -> String {
+  join([compute_attempt_exit_spool_root(instance: instance) as String, "/", to_string(value: uid)], "")
+}
+
+fn compute_attempt_exit_spool_done_dir(instance: HostDashboardInstance, uid: Int) -> String {
+  join([compute_attempt_exit_spool_uid_dir(instance: instance, uid: uid), "/done"], "")
 }
 
 fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {

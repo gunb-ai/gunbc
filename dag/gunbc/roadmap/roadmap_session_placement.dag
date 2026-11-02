@@ -52,9 +52,8 @@ import extdeps.systemd {
   SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_unit_name,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation, attempt_unit_property,
-  attempt_unit_manager_is_system,
+  attempt_unit_manager, attempt_unit_manager_is_system,
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of, attempt_unit_from_exit_record,
 }
@@ -62,6 +61,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   attempt_exit_record_observe, attempt_exit_record_matching, attempt_exit_stage_listings,
   AttemptWorkerRole, attempt_unit_role_token,
+  AttemptExitEntrySubject, RoadmapEntrySubject, ComputeEntrySubject, OtherEntrySubject,
 }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, FilesystemReadOutcome,
@@ -73,6 +73,8 @@ import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_nat, json_field_int, json_field_string_list,
 }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_name }
+
 
 // G5 OF THE DOGFOOD ROUTE: THE AGENT SESSION HOLDS A PLACEMENT GRANT AND RUNS INSIDE ITS BOUNDS.
 //
@@ -1007,7 +1009,10 @@ fn session_read_host_text(path: NonEmptyStr) -> FilesystemReadOutcome {
 // with a default, because a default here manufactures death evidence -- an InvocationID that failed to
 // read is not an absent one, and an acquisition instant that failed to read is not an old one.
 fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) -> SessionHolderEvidenceReading {
-  if !attempt_unit_manager_is_system(unit: unit) {
+  match attempt_unit_manager(unit: unit) {
+    UnitManagerUnclaimed { unit: name } =>
+      SessionHolderEvidenceRefused { detail: join(["no launcher in the corpus claims a unit named ", name, ", so no manager is declared for it; guessing one would manufacture a death reading taken from the wrong manager"], "") }
+    _ => if !attempt_unit_manager_is_system(unit: unit) {
     SessionHolderEvidenceRefused { detail: join(["the unit ", unit as String, " is not read from the system manager, so which manager ran it is not established"], "") }
   } else {
     match compute_seat_acquisition_at(store: stores.store, partition: stores.partition, ceiling: session_ledger_fold_ceiling, reference: unit) {
@@ -1034,6 +1039,7 @@ fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr) ->
             }
         }
     }
+  }
   }
 }
 
@@ -1141,12 +1147,21 @@ fn session_worker_unit_lifecycle_with_standing(instance: HostDashboardInstance, 
         loaded: loaded,
         evidence: evidence,
         record: attempt_exit_record_matching(
-          matches: (n, a, r) => r == attempt_unit_role_token(role: AttemptWorkerRole) && (match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
-            SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
-            SystemdUnitNameStemEmpty => false
-            SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
-            SystemdUnitNameOverlong { length: _ } => false
-          }),
+          matches: s => match s {
+            RoadmapEntrySubject { node_id: n, attempt_key: a, role: r, invocation_id: _ } =>
+              r == attempt_unit_role_token(role: AttemptWorkerRole) && (match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
+                SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
+                SystemdUnitNameStemEmpty => false
+                SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+                SystemdUnitNameOverlong { length: _ } => false
+              })
+            // A COMPUTE SEAT'S RECORD IS NOT THIS ATTEMPT'S WORKER, and an entry too broken to say which
+            // route wrote it cannot be attributed to this unit. Both answer "not mine", so neither can
+            // make a seat's exit stand in for a worker's -- the confusion this split exists to make
+            // unrepresentable.
+            ComputeEntrySubject { identity: _, invocation_id: _ } => false
+            OtherEntrySubject { parts: _ } => false
+          },
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
       )

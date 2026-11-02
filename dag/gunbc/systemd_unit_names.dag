@@ -1,0 +1,69 @@
+module gunbc.systemd_unit_names
+
+import std.types { String, Int, NonEmptyStr }
+import extdeps.systemd { SystemdUnitNameAdmission, systemd_service_unit_name }
+
+// ONE HOME FOR THE NAMES GUNBC GIVES ITS OWN TRANSIENT UNITS. Every route that launches work mints a unit
+// name from the identity it holds, and every route that later reads that unit's fate -- the exit spool, the
+// placement settlement, the compute door -- has to arrive at the SAME name, so the naming rule may not be
+// spelled where only one route can see it. It sat in three places (the worker stem under the worker
+// CONFINEMENT module, the reviewer/auditor/supervisor names under the dispatch actuator, the obligation name
+// under the belt obligation module, the compute name under the compute provider), and that placement was the
+// cycle: the actuator and the belt modules import the exit spool, so the spool could not import them back to
+// name the unit an exit record is about. A name is not confinement and it is not a launch plan, so it now
+// lives below all of them, importing only std.types and the systemd unit-name admission.
+//
+// Each builder is a pure function of the parts the CALLER already holds, which is what lets a decoder
+// reconstruct a unit name from an exit entry that carries only those parts. A name that no builder here
+// produces is not a gunbc unit, and the caller says so with a carrier rather than guessing.
+//
+// belt_instance_obligation_unit_name stays in gunbc.roadmap.roadmap_belt_obligation on purpose: it is named
+// from an INSTANCE and an obligation KIND, not from an attempt subject, and it never writes an attempt exit
+// record. Moving it here would put a name in this module that no exit record can resolve.
+
+fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
+  join(["gunbc-attempt-", node_id, "-", attempt_key], "")
+}
+
+fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> SystemdUnitNameAdmission {
+  // The empty node id is refused HERE, before any stem is built: a unit name with an empty field
+  // would collide across attempts and reach a manager call.
+  if node_id == "" {
+    SystemdUnitNameStemEmpty
+  } else {
+    systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: node_id, attempt_key: attempt_key))
+  }
+}
+
+fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key: String) -> NonEmptyStr {
+  join(["gunbc-review-", node_id, "-", attempt_key, "-", criterion_key, ".service"], "") as NonEmptyStr
+}
+
+fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["gunbc-audit-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+}
+
+fn dispatch_supervisor_unit_name(node_id: String, attempt_key: String, turn: Int) -> NonEmptyStr {
+  join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", to_string(value: turn), ".service"], "") as NonEmptyStr
+}
+
+fn belt_attempt_obligation_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["gunbc-obligation-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+}
+
+// THE COMPUTE SEAT'S UNIT. The launcher passes the STEM (no suffix) to systemd-run, which is the name
+// the door later asks the manager about, so the stem is spelled ONCE here and the exit-record decoder
+// derives the very same string rather than reconstructing it. compute_unit_name_admission is the
+// admissibility test over that same stem: an identity an entry carries that cannot name a unit is
+// refused typed, never repaired into a name.
+fn compute_unit_stem(identity_hex: String) -> String {
+  join(["gunbc-compute-", identity_hex], "")
+}
+
+fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
+  compute_unit_stem(identity_hex: identity_hex) as NonEmptyStr
+}
+
+fn compute_unit_name_admission(identity_hex: String) -> SystemdUnitNameAdmission {
+  systemd_service_unit_name(stem: compute_unit_stem(identity_hex: identity_hex))
+}

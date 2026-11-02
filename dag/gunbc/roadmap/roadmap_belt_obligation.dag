@@ -209,9 +209,6 @@ fn belt_attempt_next_after(ran: BeltAttemptObligationKind, outstanding: List<Bel
 // two processes never act on one attempt at once. systemd unit names admit [A-Za-z0-9:_.-]; node ids
 // are kebab-case and attempt keys hex, so the name needs no escaping, and an id outside that alphabet
 // is refused by the manager rather than reinterpreted.
-fn belt_attempt_obligation_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
-  join(["gunbc-obligation-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
-}
 
 fn belt_instance_obligation_unit_name(instance_id: String, kind: BeltInstanceObligationKind) -> NonEmptyStr {
   join(["gunbc-obligation-", instance_id, "-", belt_instance_obligation_kind_key(kind: kind), ".service"], "") as NonEmptyStr

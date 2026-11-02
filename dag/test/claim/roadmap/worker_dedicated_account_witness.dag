@@ -1,7 +1,7 @@
 module test.claim.roadmap.worker_dedicated_account_witness
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_unit_stem, dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list, dispatch_attempt_private_git_dir, session_process_bounds }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list, dispatch_attempt_private_git_dir, session_process_bounds }
 import std.types { Bool, NonEmptyStr, List, String, Int, FilePath }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
 // THE WALK'S OWN PROGRAM IDENTITY, for the pairing claim's leg that requires every grant argv to BE a
@@ -68,6 +68,7 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_worker_supplementary_groups,
 }
 import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_stem }
 
 // WORKER-ROOT-EQUIVALENT-1, DECLARATION-LEVEL ONLY (rung stays Mitigatable; see
 // gunbc.rung_drop.worker_root_equivalent_socket_denylist). The worker unit's User= is a dedicated account that holds

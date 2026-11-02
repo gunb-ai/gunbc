@@ -86,6 +86,7 @@ import gunbc.compute.host_capacity {
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
+  compute_attempt_exit_spool_done_dir,
 }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
 import gunbc.compute.compute_producer_lease {
@@ -134,10 +135,12 @@ import gunbc.compute.work_request {
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused, SeatStopObservationUnrenderable,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
+import gunbc.systemd_unit_names { compute_unit_name }
+
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
 // realization and knows nothing the contract does not: it resolves the subject, observes the
@@ -215,6 +218,10 @@ type ComputeExec
 type ComputeUnitRunReading
   = ComputeUnitRunExecuted { run: ComputeUnitRun }
   | ComputeUnitRunRefused { cause: SystemdRunOptionWordsRefusedCause }
+  // A SEAT IS NOT STARTED WITH AN UNOBSERVABLE END. The stop-hook arm of the unit's properties could not
+  // be rendered, and starting the seat anyway would leave a seat whose end no reading can ever show --
+  // the condition this route exists to close, so it refuses the launch instead of degrading into it.
+  | ComputeUnitStopObservationRefused { cause: String }
 
 fn compute_exec(program: String, workdir: String, args: List<String>) -> ComputeExec {
   let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
@@ -464,9 +471,6 @@ fn compute_dependency_program(dependency: ComputeDependency, bin: GunbcBinary) -
   }
 }
 
-fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
-  join(["gunbc-compute-", identity_hex], "") as NonEmptyStr
-}
 
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
@@ -580,21 +584,49 @@ fn compute_user_sccache_server_uds(user_runtime_dir: FilePath) -> NonEmptyStr {
   join([user_runtime_dir as String, "/sccache.sock"], "") as NonEmptyStr
 }
 
-fn compute_launching_user_runtime_dir() -> FilePath? {
+// THE UID THIS PROCESS RUNS AS, from /proc/self/status (proc(5)) -- THE ONE SPELLING of that read.
+// The per-user runtime directory below and the seat's exit-spool directory are both derived from THIS
+// function, so they cannot disagree about how the uid is obtained (DESIGN 3, one fact in one place).
+// Stated precisely, because an earlier draft of this comment overclaimed: this is one spelling, not one
+// READ -- each caller parses /proc/self/status for itself, and nothing memoizes it. The two directories
+// still agree because a process's effective uid does not change under it, so two reads inside one launch
+// return the same number; and if a read fails, its caller refuses TYPED (UidUnreadable, and the door
+// answers SeatStopRecordNoUid) rather than falling back, so a seat is never charged against a directory
+// whose owner is guessed.
+fn compute_launching_uid() -> Int? {
   let status = Filesystem.Read(path: "/proc/self/status")
   if !status.success {
     none
   } else {
-    match procfs_status_effective_uid(content: status.content) {
-      Absent => none
-      Present { value: uid } => {
-        let runtime_dir = join(["/run/user/", to_string(value: uid)], "") as FilePath
-        let listed = Filesystem.List(path: runtime_dir)
-        if listed.success {
-          Present { value: runtime_dir }
-        } else {
-          none
-        }
+    procfs_status_effective_uid(content: status.content)
+  }
+}
+
+// THE DIRECTORY THIS PROVIDER'S SEATS WRITE THEIR EXIT RECORDS INTO, and may read them back from. A
+// process that cannot name its own uid reads NO records: it is not permitted to fall back to the spool
+// root, to another uid's directory, or to "there is no record" -- each of those would let an absence this
+// provider never observed stand for a seat's end. The caller keeps the seat and says why.
+type ComputeSeatExitSpoolDir
+  = ComputeSeatExitSpoolDirResolved { dir: String }
+  | ComputeSeatExitSpoolDirUidUnreadable { cause: String }
+
+fn compute_seat_exit_spool_dir(instance: HostDashboardInstance) -> ComputeSeatExitSpoolDir {
+  match compute_launching_uid() {
+    Absent => ComputeSeatExitSpoolDirUidUnreadable { cause: "/proc/self/status names no effective uid for this provider process" }
+    Present { value: uid } => ComputeSeatExitSpoolDirResolved { dir: compute_attempt_exit_spool_done_dir(instance: instance, uid: uid) }
+  }
+}
+
+fn compute_launching_user_runtime_dir() -> FilePath? {
+  match compute_launching_uid() {
+    Absent => none
+    Present { value: uid } => {
+      let runtime_dir = join(["/run/user/", to_string(value: uid)], "") as FilePath
+      let listed = Filesystem.List(path: runtime_dir)
+      if listed.success {
+        Present { value: runtime_dir }
+      } else {
+        none
       }
     }
   }
@@ -609,23 +641,80 @@ fn compute_unit_sccache_setenv(user_runtime_dir: FilePath) -> List<SystemdSetenv
   ]
 }
 
-// THE ONLY EXTENSION OF THE UNIT'S PROPERTIES, CLOSED. compute_unit_properties is the one authority
-// tying the memory grant to the unit, so a caller cannot append properties: it picks an arm here, and
-// compute_run_unit alone maps the arm to a property. SccacheStatsAtStop is ExecStop= (systemd.service(5)),
+// THE ONLY EXTENSION OF THE UNIT'S PROPERTIES, CLOSED AND COMPOSABLE. compute_unit_properties is the one
+// authority tying the memory grant to the unit, so a caller cannot append properties: it picks ARMS here,
+// and compute_run_unit alone maps each arm to a property. SccacheStatsAtStop is ExecStop= (systemd.service(5)),
 // which runs after the main process and before KillMode reaps the unit's sccache server.
-type ComputeUnitStopObservation = NoStopObservation | SccacheStatsAtStop
+// AttemptExitRecordAtStop is ExecStopPost= (the same section): the seat's own record of how its main
+// process ended, written by the manager that ran it, with the four stop variables left as the manager's
+// words. It COMPOSES with the stats arm rather than replacing it -- a seat that reports its sccache hit
+// rate and a seat whose end is observable are two facts, not a choice.
+type ComputeUnitStopObservation
+  = NoStopObservation
+  | SccacheStatsAtStop
+  | AttemptExitRecordAtStop { done_dir: String, identity: String, record_owner: PosixOwnerNames }
 
-fn compute_stop_observation_properties(observation: ComputeUnitStopObservation) -> List<SystemdRunProperty> {
+// NONE WHEN AN ARM CANNOT BE RENDERED, and compute_run_unit then refuses the LAUNCH. A seat started with a
+// silently dropped stop hook is a seat whose end can never be observed -- the exact condition srv1 holds
+// two 22 GiB seats over -- so a hook that cannot be written is a reason not to start the seat, not a
+// reason to start it quietly without one.
+type StopObservationRendering
+  = StopObservationProperty { property: SystemdUnitProperty, value: NonEmptyStr }
+  | StopObservationContributesNothing
+  | StopObservationRefused { cause: String }
+
+fn compute_stop_observation_rendering(observation: ComputeUnitStopObservation) -> StopObservationRendering {
   match observation {
-    NoStopObservation => []
-    SccacheStatsAtStop => [NamedUnitSetting { property: ExecStopProperty, value: join([sccache_installed_binary_path, " --show-stats"], "") as NonEmptyStr }]
+    // NO OBSERVATION CONTRIBUTES NOTHING: it is not an empty ExecStop= line on the unit.
+    NoStopObservation => StopObservationContributesNothing
+    // The stats arm stays on ExecStop (systemd.service(5)): it runs after the main process and BEFORE
+    // KillMode reaps the unit's sccache server. Moving it to ExecStopPost would change WHEN it is taken,
+    // and those stats are read to explain a cache, not to witness an end.
+    SccacheStatsAtStop =>
+      StopObservationProperty { property: ExecStopProperty, value: join([sccache_installed_binary_path, " --show-stats"], "") as NonEmptyStr }
+    // The record arm is ExecStopPost, the manager's LAST act for the unit: the record reports the unit's
+    // end, including the exit status the manager must finish collecting before it can substitute the
+    // variables this line carries.
+    AttemptExitRecordAtStop { done_dir, identity, record_owner } => match compute_attempt_exit_hook(done_dir: done_dir, identity: identity, record_owner: record_owner) {
+      AttemptExitHookRefused { reason } => StopObservationRefused { cause: reason }
+      AttemptExitHookRendered { exec_line } => StopObservationProperty { property: ExecStopPostProperty, value: exec_line }
+    }
+  }
+}
+
+fn compute_stop_observation_properties(observations: List<ComputeUnitStopObservation>) -> List<SystemdRunProperty>? {
+  let rendered = map(observations, o => compute_stop_observation_rendering(observation: o))
+  if any(rendered, r => match r {
+    StopObservationRefused { cause: _ } => true
+    StopObservationProperty { property: _, value: _ } => false
+    StopObservationContributesNothing => false
+  }) {
+    none
+  } else {
+    Present { value: flat_map(rendered, r => match r {
+      StopObservationProperty { property, value } => [NamedUnitSetting { property: property, value: value }]
+      StopObservationContributesNothing => [] as List<SystemdRunProperty>
+      StopObservationRefused { cause: _ } => [] as List<SystemdRunProperty>
+    }) }
+  }
+}
+
+// THE SEAT'S OWN STOP OBSERVATIONS. The exit record is always asked for, so a seat's end can be OBSERVED
+// rather than inferred from a manager's bookkeeping about a unit it no longer lists. A provider that
+// cannot name its own uid has no directory a record could be written to and read back from, so its seats
+// launch with no hook and their end rests on their own completed wait alone -- which is all it rests on
+// today; the door keeps the seat on the unreadable spool rather than inventing an absence.
+fn compute_seat_stop_observations(instance: HostDashboardInstance, identity: String) -> List<ComputeUnitStopObservation> {
+  match compute_seat_exit_spool_dir(instance: instance) {
+    ComputeSeatExitSpoolDirResolved { dir } => [AttemptExitRecordAtStop { done_dir: dir, identity: identity, record_owner: instance.directory_owner }]
+    ComputeSeatExitSpoolDirUidUnreadable { cause: _ } => []
   }
 }
 
 // launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
 // inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
 // has none. One fold: production and the instrument both call this.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observation: ComputeUnitStopObservation, path_virtualization: ComputeUnitPathVirtualization) -> ComputeUnitRunReading {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observations: List<ComputeUnitStopObservation>, path_virtualization: ComputeUnitPathVirtualization) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -637,9 +726,12 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       ComputeExecOk { stdout: v, stderr: _ } => v
       ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
     })
+  match compute_stop_observation_properties(observations: stop_observations) {
+    Absent => ComputeUnitStopObservationRefused { cause: "a stop observation of this seat could not be rendered, and a seat started without an observable end is the defect this route exists to close" }
+    Present { value: stop_properties } =>
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
-      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization), compute_stop_observation_properties(observation: stop_observation)),
+      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization), stop_properties),
       setenv_bindings: concat(
         concat(
           [
@@ -672,6 +764,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       }
     }
   }
+}
 }
 
 // ── WHETHER THE ATTEMPT HAS ENDED AND ITS UNIT IS GONE ────────────────────────────────────────
@@ -737,8 +830,77 @@ type UnitPropertyReading {
 // drive the OBSERVATION-TO-DECISION boundary -- a failed query whose text looks like an answer, a
 // property that came back empty, a pending start -- instead of only the variant-to-release mapping,
 // which cannot see any of those (side-chat review at 5ee0cce).
+// WHAT THE SEAT'S OWN STOP HOOK LEFT BEHIND, read from the directory its uid owns. Five answers, because
+// the difference between them is exactly what the door is entitled to conclude:
+//   Found                 -- the hook ran and wrote THIS seat's record; its end is the observed fact.
+//   None                  -- the directory was read and holds no record for this seat: the hook did not
+//                            run, or had not yet. The unit's absence from the manager is then NOT an
+//                            observation of an end.
+//   Unreadable            -- the listing failed. No conclusion, and never reported as "no record".
+//   WriterUnsubstituted   -- an entry for this seat still spells the stop variables in its name, which
+//                            names its WRITER as broken (srv1 2026-10-28). It is not an answer about the
+//                            holder: a broken artifact cannot show a process alive, and cannot show one dead.
+//   NoUid                 -- this process cannot name its own uid, so it has no directory to read at all.
+type SeatStopRecord
+  = SeatStopRecordFound { invocation_id: String, end: String }
+  | SeatStopRecordNone
+  | SeatStopRecordUnreadable { cause: String }
+  | SeatStopRecordWriterUnsubstituted { entries: List<String>, variables: List<String> }
+  | SeatStopRecordNoUid { cause: String }
+
+fn seat_stop_record_wire(r: SeatStopRecord) -> String {
+  match r {
+    SeatStopRecordFound { invocation_id, end } => join(["recorded end ", end, " under invocation ", invocation_id], "")
+    SeatStopRecordNone => "no record for this seat"
+    SeatStopRecordUnreadable { cause } => join(["the spool could not be read: ", cause], "")
+    SeatStopRecordWriterUnsubstituted { entries, variables } =>
+      join(["an entry still spells the stop variables ", join(variables, ","), " -- its writer did not go through the manager's substitution: ", join(entries, ",")], "")
+    SeatStopRecordNoUid { cause } => join(["no uid for this provider process: ", cause], "")
+  }
+}
+
+// THE SEAT'S RECORD, READ ONCE PER DECISION, from its own uid's directory only. The subject test is the
+// seat's identity: an entry for another seat, or a roadmap attempt's record, or an entry too broken to say
+// who wrote it, is not this seat's end.
+fn compute_seat_stop_record(instance: HostDashboardInstance, identity_hex: String) -> SeatStopRecord {
+  match compute_seat_exit_spool_dir(instance: instance) {
+    ComputeSeatExitSpoolDirUidUnreadable { cause } => SeatStopRecordNoUid { cause: cause }
+    ComputeSeatExitSpoolDirResolved { dir } =>
+      match attempt_exit_record_matching(
+        // The match is on WHOSE seat the entry names. The entry subject's invocation is a positional part
+        // of the raw name (its purpose is to say "a record exists with these parts" before decoding, and to
+        // name an unusable one in the residue); the invocation that ends up in the freeing detail is the
+        // record's own single copy -- AttemptExitSubject carries no second one.
+        matches: s => match s {
+          ComputeEntrySubject { identity, invocation_id: _ } => identity == identity_hex
+          RoadmapEntrySubject { node_id: _, attempt_key: _, role: _, invocation_id: _ } => false
+          OtherEntrySubject { parts: _ } => false
+        },
+        listings: [compute_attempt_exit_record_listing(done_dir: dir)],
+      ) {
+        AttemptExitRecordFound { record } =>
+          SeatStopRecordFound { invocation_id: record.invocation_id, end: seat_stop_record_end_wire(end: record.end) }
+        AttemptExitRecordNone => SeatStopRecordNone
+        AttemptExitRecordUnreadable { reason } => SeatStopRecordUnreadable { cause: reason }
+        AttemptExitRecordWriterUnsubstituted { entries, variables } =>
+          SeatStopRecordWriterUnsubstituted { entries: entries, variables: variables }
+      }
+  }
+}
+
+fn seat_stop_record_end_wire(end: AttemptProcessEnd) -> String {
+  match end {
+    AttemptProcessExitedWith { status } => join(["exit(", to_string(value: status), ")"], "")
+    AttemptProcessSignaled { signal } => join(["signal(", linux_standard_signal_wire_name(signal: signal), ")"], "")
+  }
+}
+
 type UnitObservations {
   attempt_completed: Bool
+  // THE SEAT'S OWN RECORD, read before the fold decides. It is a field rather than something the fold
+  // reads itself because the fold is pure and is called by tests with the readings it is deciding on:
+  // what the door saw has to travel with the decision it informs.
+  stop_record: SeatStopRecord
   load_state: UnitPropertyReading
   control_group: UnitPropertyReading
   events: UnitPropertyReading
@@ -808,8 +970,25 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
 // The cgroup is not confirmed-occupied: the termination is decided from the manager's record and
 // the attempt's completion, with the population's own reading as the located detail.
 fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
+      // THE MANAGER'S ABSENCE IS ADMISSIBLE ONLY BESIDE THE HOOK'S RECORD OF THE END IT WAS ASKED TO
+      // REPORT. "not-found" from the user manager says only that THIS manager does not currently list a
+      // unit of that name: it does not say the process ended, and it is exactly the reading srv1 held two
+      // 22 GiB seats on while its ledger kept charging them. Where the stop hook -- run by that same
+      // manager, as the unit's own last act -- wrote the end, absence and record together are the
+      // observation, and the detail names both. Where they do not agree, nothing is freed.
       if o.load_state.queried && trim(s: o.load_state.value) == unit_load_state_absent_wire {
-        UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit"], "") }
+        match o.stop_record {
+          SeatStopRecordFound { invocation_id, end } =>
+            UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id], "") }
+          SeatStopRecordNone =>
+            UnitTerminationUnavailable { detail: join(["the user manager lists no unit of this name and the seat's stop hook left no record -- an absence this provider did not observe an end through (", seat_stop_record_wire(r: o.stop_record), ")"], "") }
+          SeatStopRecordUnreadable { cause } =>
+            UnitTerminationUnavailable { detail: join(["the user manager lists no unit of this name and the seat's exit spool could not be read, so no end is observed: ", cause], "") }
+          SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
+            UnitTerminationUnavailable { detail: join(["the user manager lists no unit of this name and the only entry for this seat names its own writer as broken, which is evidence about the writer and not about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], "") }
+          SeatStopRecordNoUid { cause } =>
+            UnitTerminationUnavailable { detail: join(["the user manager lists no unit of this name and this provider cannot name the uid whose exit spool it would read, so no end is observed: ", cause], "") }
+        }
       } else if !o.attempt_completed {
         UnitTerminationUnavailable {
           detail: join([
@@ -857,6 +1036,10 @@ fn unit_termination_completed_unread(population: UnitPopulation) -> UnitTerminat
 // unit_population is called by both, so the kernel-outranks-systemd rule has ONE authority.
 type UnitLifecycleObservations {
   load_state: UnitPropertyReading
+  // THE SEAT'S OWN RECORD, for the same reason the termination fold carries it: the two folds must agree
+  // about what a manager's absence is worth, and they can only agree if they are deciding on the same
+  // reading. test.claim.compute.manager_unaskable_wet_witness asserts that agreement as a relation.
+  stop_record: SeatStopRecord
   active_state: UnitPropertyReading
   result: UnitPropertyReading
   population: UnitPopulation
@@ -894,7 +1077,23 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
       if !o.load_state.queried {
         UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
       } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
-        UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit: a transient --collect unit that ran has been removed, and its cause went with it"], "") }
+        // THE SAME RULE AS THE TERMINATION FOLD, DECIDED ON THE SAME READING. A transient --collect unit
+        // that ran really is removed, so not-found CAN be an ending -- but it is also the state of a unit
+        // whose manager restarted, whose unit was masked, or whose name was never this unit's. Only the
+        // stop hook the manager itself ran as the unit's last act separates those, so the ended arm is
+        // issued only beside that record; without it the fold answers Unknown and the seat stays charged.
+        match o.stop_record {
+          SeatStopRecordFound { invocation_id, end } =>
+            UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id, " -- a transient --collect unit that ran has been removed, and its cause went with it"], "") }
+          SeatStopRecordNone =>
+            UnitLifecycleUnknown { detail: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], "") }
+          SeatStopRecordUnreadable { cause } =>
+            UnitLifecycleUnknown { detail: join(["the manager has no unit by this name and its exit spool could not be read: ", cause], "") }
+          SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
+            UnitLifecycleUnknown { detail: join(["the manager has no unit by this name and the only entry for this seat names its own writer as broken, which says nothing about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], "") }
+          SeatStopRecordNoUid { cause } =>
+            UnitLifecycleUnknown { detail: join(["the manager has no unit by this name and this provider cannot name the uid whose exit spool it would read: ", cause], "") }
+        }
       } else if !o.active_state.queried {
         UnitLifecycleUnknown { detail: "the unit is known to the manager but its active state could not be read" }
       } else if trim(s: o.active_state.value) == unit_active_state_failed_wire {
@@ -916,9 +1115,10 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
 // and never rebuilds it from an identity, a path spelling or a listing: a recovery acting on a name
 // it invented can stop a unit belonging to a different attempt, and the record is the only
 // authority for that binding.
-fn observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
+fn observe_unit_lifecycle(unit: NonEmptyStr, stop_record: SeatStopRecord) -> UnitLifecycle {
   let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_lifecycle_decide(o: UnitLifecycleObservations {
+    stop_record: stop_record,
     load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
     active_state: read_user_unit_property(unit: unit, property: unit_active_state_property),
     result: read_user_unit_property(unit: unit, property: unit_result_property),
@@ -980,11 +1180,12 @@ fn read_cgroup_events(control_group: UnitPropertyReading) -> UnitPropertyReading
 // THE READS ARE TAKEN UNCONDITIONALLY AND THE FOLD DECIDES. Short-circuiting them here would put
 // half the decision in this function and half in the fold, which is the split that let an empty
 // property become a conclusion in the first place.
-fn observe_unit_termination(identity_hex: String, attempt_completed: Bool) -> UnitTermination {
+fn observe_unit_termination(identity_hex: String, attempt_completed: Bool, stop_record: SeatStopRecord) -> UnitTermination {
   let unit = compute_unit_name(identity_hex: identity_hex)
   let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_termination_decide(o: UnitObservations {
     attempt_completed: attempt_completed,
+    stop_record: stop_record,
     load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
     control_group: cg,
     events: read_cgroup_events(control_group: cg),
@@ -1481,7 +1682,9 @@ fn compute_run_opened(
       CreateOnceAlreadyRecorded { path: _ } => true
       CreateOnceRefused { path: _, cause: _ } => false
     }
-    let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: attempt.outcome))
+    let termination = observe_unit_termination(
+      identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: attempt.outcome),
+      stop_record: compute_seat_stop_record(instance: instance, identity_hex: identity))
     let returned = if counted && unit_termination_frees_capacity(t: termination) {
       compute_release(reservation: reservation, reason: join(["grant of ", to_string(value: kibibyte_count(k: granted)), " KiB exceeded (oom-kill); retrying this attempt at the ceiling"], "") as NonEmptyStr)
     } else {
@@ -1675,7 +1878,7 @@ fn compute_run_and_settle(
   let outcome = attempt.outcome
   let launched = attempt.gate
   let standing = compute_capacity_standing(instance: instance)
-  let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: outcome))
+  let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: outcome), stop_record: compute_seat_stop_record(instance: instance, identity_hex: identity))
   let returned = if unit_termination_frees_capacity(t: termination) {
     compute_release(reservation: reservation, reason: join(["work ", work_outcome_ending(o: outcome), ", unit ", unit_termination_wire(t: termination)], "") as NonEmptyStr)
   } else {
@@ -2836,10 +3039,18 @@ fn compute_spawn_and_collect(
         gate: launched,
       }
     Present { value: user_runtime_dir } =>
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observation: NoStopObservation, path_virtualization: NoPathVirtualization) {
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
+        summary: compute_unspawned_summary(),
+        gate: launched,
+      }
+    // THE SEAT IS NOT STARTED, AND THE REFUSAL SAYS WHY: no attempt reaches the pool, so no charge is
+    // opened for a run that could never have its end observed.
+    ComputeUnitStopObservationRefused { cause: cause } =>
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure { identity: identity, cause: SeatStopObservationUnrenderable { detail: cause } },
         summary: compute_unspawned_summary(),
         gate: launched,
       }
@@ -3050,7 +3261,7 @@ type UnitLifecycleSource
 
 fn unit_lifecycle_from_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitLifecycle {
   match source {
-    ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit)
+    ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit, stop_record: SeatStopRecordNoUid { cause: "this instrument observes the manager only; it reads no seat's exit spool" })
     SuppliedUnitLifecycle { lifecycle: l } => l
     SuppliedStoppableUnit { before: b, after_stop: _ } => b
   }

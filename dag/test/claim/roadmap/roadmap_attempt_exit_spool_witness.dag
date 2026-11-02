@@ -10,6 +10,14 @@ import extdeps.posix.signal {
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.posix.identity { PosixOwnerNames }
 import std.optional { Present, Absent }
+import gunbc.systemd_unit_names {
+  dispatch_attempt_unit_name, dispatch_review_unit_name, dispatch_audit_unit_name,
+  dispatch_supervisor_unit_name, belt_attempt_obligation_unit_name,
+}
+import extdeps.systemd {
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong, systemd_unit_name_wire,
+}
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole, AttemptReviewerRole,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
@@ -20,7 +28,11 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordWriterUnsubstituted, attempt_exit_entry_unexpanded_variables,
   attempt_exit_vendor_pane_entry_name, attempt_exit_vendor_pane_result_word,
   attempt_exit_vendor_pane_entry_name_of_death, VendorPaneSignaled,
+  attempt_exit_record_is_role, attempt_exit_record_names_attempt,
+  attempt_exit_subject_of_record,
+  AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit, ComputeEntrySubject,
 }
+import gunbc.systemd_unit_names { compute_unit_name }
 import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal, ServiceResultExitCode }
 
 // The hook is one typed mkdir argv whose single operand is the record's name, with the four stop
@@ -47,7 +59,7 @@ test fn exit_hook_refuses_an_instance_root_systemd_would_reinterpret() -> Bool {
 test fn an_exit_record_decodes_to_its_status_and_a_kill_to_its_signal() -> Bool {
   let exited = match attempt_exit_entry_decode(entry_name: "n-1+k1+worker+0123456789abcdef0123456789abcdef+success+exited+0") {
     AttemptExitEntryDecoded { record } =>
-      record.node_id == "n-1" && record.attempt_key == "k1"
+      attempt_exit_record_names_attempt(record: record, node_id: "n-1", attempt_key: "k1")
         && (match record.result { ServiceResultSuccess => true _ => false })
         && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
@@ -163,7 +175,7 @@ test fn a_records_role_is_part_of_its_subject() -> Bool {
     AttemptExitRecordUnreadable { reason: _ } => false
   }
   let reviewer_found = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptReviewerRole { criterion_key: "conformance-leasing", head_sha: "abc123" }, listings: [AttemptExitStageNames { names: ["n-1+k1+worker+inv+success+exited+0", "n-1+k1+review.conformance-leasing.abc123+inv+success+exited+0"] }]) {
-    AttemptExitRecordFound { record } => record.role == "review.conformance-leasing.abc123"
+    AttemptExitRecordFound { record } => attempt_exit_record_is_role(record: record, token: "review.conformance-leasing.abc123")
     AttemptExitRecordNone => false
     AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => false
     AttemptExitRecordUnreadable { reason: _ } => false
@@ -248,4 +260,140 @@ test fn linux_standard_signal_lookups_invert_the_one_name_and_number_tables() ->
       Absent => true
       Present { value: _ } => false
     }
+}
+
+// THE UNIT IS DERIVED, PER ROUTE. Each row decodes a real entry name through the production decoder and
+// compares the record's unit against what THAT ROUTE'S launcher builder returns. One row per route, not a
+// roster-wide all(): delete one builder's use in the decoder and exactly that route's row goes red.
+fn witness_worker_unit(node_id: String, attempt_key: String) -> String {
+  match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+    SystemdUnitNameAdmitted { name } => systemd_unit_name_wire(name: name)
+    SystemdUnitNameStemEmpty => ""
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => ""
+    SystemdUnitNameOverlong { length: _ } => ""
+  }
+}
+
+test fn the_worker_record_derives_the_unit_the_worker_launcher_names() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "node-a+key-1+worker+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      record.unit == witness_worker_unit(node_id: "node-a", attempt_key: "key-1")
+        && string_contains(s: record.unit, pattern: "gunbc-attempt-node-a-key-1.service")
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+test fn the_reviewer_record_derives_the_review_unit_for_its_criterion() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "node-a+key-1+review.conformance-leasing.2f3a9c1d+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      record.unit == dispatch_review_unit_name(node_id: "node-a", attempt_key: "key-1", criterion_key: "conformance-leasing")
+        && attempt_exit_record_is_role(record: record, token: "review.conformance-leasing.2f3a9c1d")
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+test fn the_auditor_record_derives_the_audit_unit() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "node-a+key-1+audit.2f3a9c1d+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      record.unit == dispatch_audit_unit_name(node_id: "node-a", attempt_key: "key-1")
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+test fn the_supervisor_record_derives_the_supervisor_unit_for_its_turn() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "node-a+key-1+supervise.t3+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      record.unit == dispatch_supervisor_unit_name(node_id: "node-a", attempt_key: "key-1", turn: 3)
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+test fn the_obligation_record_derives_the_obligation_unit() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "node-a+key-1+obligation+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      record.unit == belt_attempt_obligation_unit_name(node_id: "node-a", attempt_key: "key-1")
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// A role no launcher declares is refused BY NAME: the decoder never invents a unit name, and a name no
+// launcher can produce is not evidence about any holder.
+test fn a_role_no_launcher_declares_refuses_the_record_naming_that_role() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "node-a+key-1+gatekeeper+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => false
+    AttemptExitEntryMalformed { entry_name: _, reason } =>
+      string_contains(s: reason, pattern: "gatekeeper") && string_contains(s: reason, pattern: "no launcher this build declares")
+  }
+}
+
+// A role that LOOKS like a declared one but has the wrong shape is refused too, rather than guessed at:
+// a reviewer role with no head segment would otherwise be read as a criterion that does not exist.
+test fn a_reviewer_role_with_the_wrong_shape_refuses_naming_that_role() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "node-a+key-1+review.conformance-leasing+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => false
+    AttemptExitEntryMalformed { entry_name: _, reason } =>
+      string_contains(s: reason, pattern: "review.conformance-leasing") && string_contains(s: reason, pattern: "review.<criterion>.<head>")
+  }
+}
+
+// THE COMPUTE ROUTE SHARES THE DECODER AND THE END RULES, and derives its unit from the identity by
+// calling the SAME builder the launcher used (gunbc.systemd_unit_names compute_unit_name). The literal is
+// the pairing: a launcher that renames its units, or a decoder that starts spelling them itself, turns
+// this row red. A seat runs one unit, so its entry has five parts and no role.
+test fn a_compute_seats_entry_derives_the_units_name_from_its_identity() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "0a1b2c3d4e5f6789.occurrence.1793000000+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      (record.unit as String) == "gunbc-compute-0a1b2c3d4e5f6789.occurrence.1793000000"
+        && (record.unit as String) == (compute_unit_name(identity_hex: "0a1b2c3d4e5f6789.occurrence.1793000000") as String)
+        && (match record.subject {
+             ComputeAttemptExit { identity } => identity == "0a1b2c3d4e5f6789.occurrence.1793000000"
+             RoadmapAttemptExit { node_id: _, attempt_key: _, role: _ } => false
+           })
+        // ONE COPY OF THE INVOCATION. It belongs to the record alone -- the arm says whose seat this is and
+        // carries no second copy -- so the view a consumer matches on can only be reading the record's. Had
+        // the arm kept its own copy, a record whose copies disagree would be constructible, and the door
+        // would match on one while the freeing detail named the other.
+        && record.invocation_id == "0123456789abcdef0123456789abcdef"
+        && (match attempt_exit_subject_of_record(record: record) {
+             ComputeEntrySubject { identity: i, invocation_id: v } =>
+               i == "0a1b2c3d4e5f6789.occurrence.1793000000" && v == record.invocation_id
+             _ => false
+           })
+        && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// CONTROL, THE OTHER ROUTE CANNOT BE READ AS THIS ONE: the identity and the invocation are put where an
+// attempt's node and key would sit, so a decoder that filled the roadmap fields positionally -- or a
+// consumer allowed to read a record's subject without answering both arms -- would call this seat's record
+// a worker's exit and settle a seat it does not own.
+test fn a_compute_seats_record_is_never_read_as_an_attempts_worker() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "0a1b2c3d4e5f6789.occurrence.1793000000+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      !attempt_exit_record_is_role(record: record, token: "worker")
+        && !attempt_exit_record_names_attempt(record: record, node_id: "0a1b2c3d4e5f6789.occurrence.1793000000", attempt_key: "0123456789abcdef0123456789abcdef")
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// AN IDENTITY THAT CANNOT NAME A UNIT IS REFUSED BY NAME. The decoder never invents a name to carry on
+// with: a name no launcher of this build can produce is not evidence about any holder, so the entry is
+// refused with the identity spelled out for whoever has to read it.
+test fn a_compute_identity_no_launcher_can_name_is_refused_by_name() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "seat;identity+0123456789abcdef0123456789abcdef+completed+exited+0") {
+    AttemptExitEntryDecoded { record: _ } => false
+    AttemptExitEntryMalformed { entry_name: _, reason } =>
+      string_contains(s: reason, pattern: "seat;identity") && string_contains(s: reason, pattern: "cannot name a unit")
+  }
+}
+
+// NEITHER ROUTE, REFUSED WITH THE COUNT IT CARRIED: the part count is what says who wrote an entry, so an
+// entry that is neither route's is not guessed into one of them.
+test fn an_entry_that_is_neither_route_refuses_with_the_count_it_carried() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "node-a+key-1+worker+0123456789abcdef0123456789abcdef+completed+exited") {
+    AttemptExitEntryDecoded { record: _ } => false
+    AttemptExitEntryMalformed { entry_name: _, reason } =>
+      string_contains(s: reason, pattern: "seven") && string_contains(s: reason, pattern: "five") && string_contains(s: reason, pattern: "6")
+  }
 }

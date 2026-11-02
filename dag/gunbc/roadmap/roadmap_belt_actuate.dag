@@ -71,7 +71,7 @@ import gunbc.dispatch_attempt_launch {
   prepared_attempt_launch_alternative,
   prepared_attempt_process_fingerprint,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command, dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_command, dispatch_audit_unit_command, dispatch_supervisor_unit_command, dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv }
 import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
   SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
@@ -150,7 +150,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
 import extdeps.tmux {
   classify_tmux_session_list,
   TmuxSessionsListed,
@@ -578,7 +578,7 @@ import gunbc.roadmap.roadmap_belt_obligation {
   belt_attempt_obligation_order, belt_attempt_obligation_outstanding, belt_attempt_obligation_kind_key, belt_attempt_outstanding,
   BeltInstanceObligationKind, belt_instance_obligation_kinds, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key, LaunchObligation,
   BeltOperatorAction, belt_operator_follow_up_kinds,
-  belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, belt_discovery_attempt_bound,
+  belt_instance_obligation_unit_name, belt_discovery_attempt_bound, 
   BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
@@ -586,6 +586,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, AttemptSupervisorRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, attempt_unit_role_token,
+  attempt_exit_record_is_role, attempt_exit_record_names_attempt,
+  AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit,
   attempt_exit_record_put_worker_exited, attempt_exit_record_put_vendor_pane_death,
   AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
   VendorPaneDeath, VendorPaneExited, VendorPaneSignaled,
@@ -704,6 +706,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.systemd_unit_names { belt_attempt_obligation_unit_name, dispatch_attempt_unit_name, dispatch_audit_unit_name, dispatch_review_unit_name, dispatch_supervisor_unit_name }
 
 // Slice 2b actuation: the belt DECISION (gunbc.roadmap.roadmap_belt.belt_reconcile) is CLOSED against the
 // host by three single-authorities — the actuator's HostExecArgv argv model
@@ -15214,7 +15217,7 @@ fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String
 
 fn belt_exit_entry_is_worker(entry: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
-    AttemptExitEntryDecoded { record } => record.role == attempt_unit_role_token(role: AttemptWorkerRole)
+    AttemptExitEntryDecoded { record } => attempt_exit_record_is_role(record: record, token: attempt_unit_role_token(role: AttemptWorkerRole))
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
 }
@@ -15230,13 +15233,20 @@ fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> A
     AttemptExitStageNames { names } =>
       names |> flat_map(n => match attempt_exit_entry_decode(entry_name: n) {
         AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: n, reason: join(["running entry is not an exit record: ", reason], "") }]
-        AttemptExitEntryDecoded { record } =>
-          match observe(record.node_id, record.attempt_key) {
-            AttemptUnitActive => [] as List<BeltExitDrainEntry>
-            AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: n, reason: join(["the user manager could not say whether the claiming unit is live: ", reason], "") }]
-            AttemptUnitAbsent => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
-            AttemptUnitFinished { exit_status: _ } => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
-          }
+        AttemptExitEntryDecoded { record } => match record.subject {
+          RoadmapAttemptExit { node_id, attempt_key, role: _ } =>
+            match observe(node_id, attempt_key) {
+              AttemptUnitActive => [] as List<BeltExitDrainEntry>
+              AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: n, reason: join(["the user manager could not say whether the claiming unit is live: ", reason], "") }]
+              AttemptUnitAbsent => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
+              AttemptUnitFinished { exit_status: _ } => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
+            }
+          // A COMPUTE SEAT'S RECORD IS NOT THIS BELT'S TO DRAIN. It sits in the roadmap spool, where no
+          // route writes it, and its identity is not an attempt coordinate: refused by name and left in
+          // place for an operator to see, never moved and never read as an attempt.
+          ComputeAttemptExit { identity } =>
+            [BeltExitEntryRefused { entry: n, reason: join(["the exit record names compute seat identity ", identity, ", which the roadmap belt does not own and cannot resolve to an attempt"], "") }]
+        }
       })
   }
 }
@@ -15250,7 +15260,7 @@ fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, Str
 
 fn belt_exit_entry_is_obligation(entry: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
-    AttemptExitEntryDecoded { record } => record.role == attempt_unit_role_token(role: AttemptObligationRole)
+    AttemptExitEntryDecoded { record } => attempt_exit_record_is_role(record: record, token: attempt_unit_role_token(role: AttemptObligationRole))
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
 }
@@ -15261,13 +15271,20 @@ fn belt_exit_entry_is_obligation(entry: String) -> Bool {
 fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: entry, reason: reason }]
-    AttemptExitEntryDecoded { record } =>
-      match observe(record.node_id, record.attempt_key) {
-        AttemptUnitActive => [] as List<BeltExitDrainEntry>
-        AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: entry, reason: join(["the user manager could not say whether the unit is live: ", reason], "") }]
-        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
-        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
-      }
+    AttemptExitEntryDecoded { record } => match record.subject {
+      RoadmapAttemptExit { node_id, attempt_key, role: _ } =>
+        match observe(node_id, attempt_key) {
+          AttemptUnitActive => [] as List<BeltExitDrainEntry>
+          AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: entry, reason: join(["the user manager could not say whether the unit is live: ", reason], "") }]
+          AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
+          AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
+        }
+          // A COMPUTE SEAT'S RECORD IS NOT THIS BELT'S TO DRAIN. It sits in the roadmap spool, where no
+          // route writes it, and its identity is not an attempt coordinate: refused by name and left in
+          // place for an operator to see, never moved and never read as an attempt.
+          ComputeAttemptExit { identity } =>
+            [BeltExitEntryRefused { entry: entry, reason: join(["the exit record names compute seat identity ", identity, ", which the roadmap belt does not own and cannot resolve to an attempt"], "") }]
+    }
   }
 }
 
@@ -15715,7 +15732,7 @@ type BeltExitClaim
 
 fn belt_exit_entry_is_for(entry: String, node_id: String, attempt_key: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
-    AttemptExitEntryDecoded { record } => record.node_id == node_id && record.attempt_key == attempt_key
+    AttemptExitEntryDecoded { record } => attempt_exit_record_names_attempt(record: record, node_id: node_id, attempt_key: attempt_key)
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
 }
@@ -15777,18 +15794,24 @@ fn belt_exit_queued_sweep_at(root: String, enqueue: fn(String, String) -> BeltOb
     AttemptExitStageNames { names } =>
       fold(names, init: [] as List<BeltExitDrainEntry>, f: (acc, n) => match attempt_exit_entry_decode(entry_name: n) {
         AttemptExitEntryMalformed { entry_name: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: join(["queued entry is not an exit record: ", reason], "") }])
-        AttemptExitEntryDecoded { record } => {
-          let key = join([record.node_id, "/", record.attempt_key], "")
-          if any(acc, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => belt_exit_entry_is_for(entry: entry, node_id: record.node_id, attempt_key: record.attempt_key) _ => false }) {
-            acc
-          } else {
-            let handed = enqueue(record.node_id, record.attempt_key)
-            match handed {
-              BeltObligationEnqueueRefused { unit: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: reason }])
-              BeltObligationStarted { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
-              BeltObligationHeld { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+        AttemptExitEntryDecoded { record } => match record.subject {
+          RoadmapAttemptExit { node_id, attempt_key, role: _ } => {
+            let key = join([node_id, "/", attempt_key], "")
+            if any(acc, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => belt_exit_entry_is_for(entry: entry, node_id: node_id, attempt_key: attempt_key) _ => false }) {
+              acc
+            } else {
+              let handed = enqueue(node_id, attempt_key)
+              match handed {
+                BeltObligationEnqueueRefused { unit: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: reason }])
+                BeltObligationStarted { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+                BeltObligationHeld { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+              }
             }
           }
+          // A QUEUED RECORD FOR A COMPUTE SEAT IS NOT AN OBLIGATION HAND-OFF. There is no attempt to
+          // start, so nothing is enqueued; the entry is refused by name and stays where it is.
+          ComputeAttemptExit { identity } =>
+            concat(acc, [BeltExitEntryRefused { entry: n, reason: join(["the queued record names compute seat identity ", identity, ", which the roadmap belt does not own and cannot resolve to an attempt"], "") }])
         }
       })
   }

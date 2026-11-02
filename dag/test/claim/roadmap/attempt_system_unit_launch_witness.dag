@@ -1,7 +1,7 @@
 module test.claim.roadmap.attempt_system_unit_launch_witness
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_pane_working_directory, dispatch_worktree_path_for_instance }
+import gunbc.roadmap.dispatch_worker_unit_confinement { GunbcHarnessProvider, dispatch_pane_working_directory, dispatch_worktree_path_for_instance }
 import std.types { Bool, NonEmptyStr, List, String, FilePath, Int }
 import std.optional { Present, Absent }
 import std.algebra { skip }
@@ -102,6 +102,8 @@ import gunbc.auth.authorization_pattern_selection {
 import gunbc.auth.privileged_effect_census {
   privileged_effect_census, site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
 }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_stem }
+
 
 fn claim_start_facts(
   instance: HostDashboardInstance,

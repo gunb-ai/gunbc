@@ -250,6 +250,11 @@ type WorkInfrastructureRefusal
   | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
   | UnitEndingUnclassifiable { exit_code: Int, cause: String }
   | UnitLaunchRefused { cause: SystemdRunOptionWordsRefusedCause }
+  // THE SEAT WAS NOT STARTED BECAUSE ITS OWN END COULD NOT BE MADE OBSERVABLE. The stop-hook arm of the
+  // unit's properties could not be rendered, and a seat started without one is a seat whose end no reading
+  // can ever show -- so the refusal is reported as itself, not folded into a systemd-run argument refusal
+  // that did not happen.
+  | SeatStopObservationUnrenderable { detail: String }
 
 fn work_outcome_identity(o: WorkOutcome) -> String {
   match o {
@@ -321,6 +326,8 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
       join(["the unit exited ", to_string(value: exit_code), " and its ending could not be classified, so it is neither reported as failed nor as grant-exceeded: ", cause], "")
     UnitLaunchRefused { cause } =>
       join(["the unit was never launched: the systemd-run builder refused the invocation, so there is no exit to report: ", systemd_run_option_words_refused_cause_detail(cause: cause)], "")
+    SeatStopObservationUnrenderable { detail } =>
+      join(["the unit was never launched: its stop hook could not be rendered, and a seat that starts without an observable end is the defect this route exists to close, not a seat to start anyway: ", detail], "")
     UnitMemoryGrantExceeded { class, granted, peak_upper, grant_was_ceiling } =>
       join(["the unit was OOM-killed at its memory grant: class ", class, " was granted ", to_string(value: kibibyte_count(k: granted)),
         " KiB and its manager reported a peak of ", match peak_upper { Present { value: k } => join(["at most ", to_string(value: kibibyte_count(k: k)), " KiB"], "")  Absent => "NOTHING (no Memory peak line was reported)" },
