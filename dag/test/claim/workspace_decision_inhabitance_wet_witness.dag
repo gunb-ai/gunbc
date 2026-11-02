@@ -1,0 +1,78 @@
+module test.claim.workspace_decision_inhabitance_wet_witness
+
+// WET INHABITANCE CLAIMS for the hermetic decision witnesses that feed SUPPLIED values to
+// workspace_create_decision (a WorkspaceOwnerSnapshot) and workspace_consumer_select (a WorkspaceStoreRead).
+// Here the value is produced by the REAL route: a request recorded through the sealed allocation store and read
+// back by workspace_read_owner over a provisioned wet fabric store, and the same decisions are asked of it.
+// If the store stopped emitting the shape the hermetic fixtures assume, these fail while the hermetic ones stay green.
+// The journal boundary is the_cutover_journal_survives_its_writer_and_fences_a_stale_write
+// (tailnet_door_cutover_journal_wet_witness) plus the live-bytes witness.
+
+import std.types { Bool, NonEmptyStr, String }
+import std.durable_compare_and_set { ExpectSlotAbsent }
+import extdeps.shell
+import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import gunbc.workspace_allocation { WorkspaceRequest, LargeWorkspace }
+import gunbc.workspace_allocation_store {
+  WorkspaceAllocationStore,
+  workspace_allocation_store, workspace_record_request, workspace_read_owner, workspace_create_decision,
+  WorkspaceStoreWritten, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceCreateReplay, WorkspaceCreateRefused, WorkspaceCreateNew,
+}
+import gunbc.workspace_request_consumer { workspace_consumer_select, WorkspaceConsumerIdle, WorkspaceConsumerPrepare }
+import test.claim.workspace_allocation_lifecycle_witness { allocation_test_request }
+import test.claim.fabric.fabric_storage_fixture {
+  FabricWetStoreReady, fabric_wet_store, fabric_fixture_instance,
+}
+
+fn inhabit_with_store(body: fn(WorkspaceAllocationStore) -> Bool) -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let observed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
+    FabricWetStoreReady { store: ops } => body(workspace_allocation_store(binding: FabricStorageLocalFiles { operations: ops }))
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  observed && cleaned.success
+}
+
+// OWNER-SNAPSHOT boundary: an unrecorded owner reads as an absent-slot snapshot with no rows (create decision: New);
+// after a recording the read is a generation-fenced snapshot holding that row (Replay for the same request,
+// Refused for changed parameters).
+test fn the_real_owner_snapshot_read_inhabits_the_shape_the_create_decision_witness_supplies() -> Bool {
+  inhabit_with_store(store => {
+    let request = allocation_test_request(key: "inhabit-1" as NonEmptyStr)
+    let changed = WorkspaceRequest { owner: request.owner, idempotency_key: request.idempotency_key, profile: LargeWorkspace,
+      image: request.image, public_key_ref: request.public_key_ref, expires_at: request.expires_at, policy: request.policy }
+    let before = match workspace_read_owner(store: store, owner: request.owner) {
+      WorkspaceStoreUnreadable { reason: _ } => false
+      WorkspaceStoreReadOk { snapshot: empty } => count(empty.allocations) == 0 && empty.expected == ExpectSlotAbsent
+        && match workspace_create_decision(snapshot: empty, request: request) { WorkspaceCreateNew { allocation: _ } => true  other => false }
+    }
+    let recorded = match workspace_record_request(store: store, request: request) { WorkspaceStoreWritten { allocation: _ } => true  other => false }
+    let after = match workspace_read_owner(store: store, owner: request.owner) {
+      WorkspaceStoreUnreadable { reason: _ } => false
+      WorkspaceStoreReadOk { snapshot: held } => count(held.allocations) == 1 && held.expected != ExpectSlotAbsent
+        && match workspace_create_decision(snapshot: held, request: request) { WorkspaceCreateReplay { allocation: _ } => true  other => false }
+        && match workspace_create_decision(snapshot: held, request: changed) { WorkspaceCreateRefused { reason: _ } => true  other => false }
+    }
+    before && recorded && after
+  })
+}
+
+// ALLOCATION-STORE READING boundary: the consumer's selection over the real read is Idle for an absent owner and
+// Prepare for a recorded, unplanned, unexpired request.
+test fn the_real_allocation_store_read_inhabits_the_reading_the_consumer_witness_supplies() -> Bool {
+  inhabit_with_store(store => {
+    let request = allocation_test_request(key: "inhabit-2" as NonEmptyStr)
+    let idle = match workspace_consumer_select(read: workspace_read_owner(store: store, owner: request.owner), observed_at: "2026-09-27T12:00:00Z") {
+      WorkspaceConsumerIdle => true
+      other => false
+    }
+    let recorded = match workspace_record_request(store: store, request: request) { WorkspaceStoreWritten { allocation: _ } => true  other => false }
+    let prepare = match workspace_consumer_select(read: workspace_read_owner(store: store, owner: request.owner), observed_at: "2026-09-27T12:00:00Z") {
+      WorkspaceConsumerPrepare { allocation: held } => held.request.idempotency_key == request.idempotency_key
+      other => false
+    }
+    idle && recorded && prepare
+  })
+}

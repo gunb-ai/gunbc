@@ -61,6 +61,7 @@ import gunbc.auth.secret_rotation {
   rotation_loss_remedy_text,
 }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import std.algebra { fold_list }
 
 // THE FIRST REAL SUBJECT OF gunbc.auth.secret_rotation: the gunbai-ci GitHub App private key
 // (gunbc.auth.github_apps gunbai_ci_app_pem_secret). It is the root of trust for every org-admin

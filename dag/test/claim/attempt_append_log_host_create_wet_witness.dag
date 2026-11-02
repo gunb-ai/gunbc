@@ -122,6 +122,10 @@ fn dedicated_create_mode_cell(instance: HostDashboardInstance) -> Bool {
 
 // WET RED (a typed outcome, not a crash): creating over an existing member reports AlreadyExists -- an existing
 // member is an outcome, never an overwrite.
+// WET (executed claim): pre-plants the events file via a first create, then a second create reports
+// AlreadyExists with a non-empty path. The belt_actuate match is exhaustive over all 5 result variants;
+// the AlreadyExists arm produces AttemptStateInitializationFailed (no wildcard to silently continue),
+// so a stale events file from a prior attempt refuses the launch rather than projecting it.
 test fn a_host_create_on_an_existing_member_reports_already_exists() -> Bool {
   let root = fresh_root()
   let inst = instance_service_at(root: root)
@@ -135,7 +139,7 @@ fn already_exists_cell(instance: HostDashboardInstance) -> Bool {
   match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
     AttemptAppendLogCreated { path: _, created_mode: _ } =>
       match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
-        AttemptAppendLogAlreadyExists { path: _ } => ensured
+        AttemptAppendLogAlreadyExists { path: p } => ensured && !(p == "")
         _ => false
       }
     _ => false
