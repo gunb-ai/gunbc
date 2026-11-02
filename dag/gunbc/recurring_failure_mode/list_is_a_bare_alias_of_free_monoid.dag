@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.list_is_a_bare_alias_of_free_monoid
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data list_is_a_bare_alias_of_free_monoid: RecurringFailureMode = RecurringFailureMode {
+  identity: "list_is_a_bare_alias_of_free_monoid" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyImpossible,
+      blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+      trigger_capability: "a reviewed representation decision for std.types List, sufficient for exactly one of: (a) a semantics-preserving migration that retires the alias, every List occurrence moving to std.algebra FreeMonoid with the corpus re-bound and its controls holding; or (b) a distinct List declaration with a justified meaning that FreeMonoid does not carry, and consumer evidence that some consumer depends on that difference"
+    }
+  },
+
+  receipts: [
+    "INTERIM EXCEPTION, RULED, NOT A FINDING THAT THE ALIAS IS SOUND (keen-otter-392 via sleek-owl-397, relayed by tidy-ant-251, 2026-11-02, T4 group A1). The compile_cli roster wave binds every ambient List to the EXISTING std.types List declaration with its spelling kept (v2.workflow.roster_import_sweep roster_head_rows, the List row, KeepHead). That ruling settles the name and its home only. It does not find that the bare alias type List<element> = FreeMonoid<element> satisfies DESIGN section 6 (invent or reuse on proven coincidence, never bare-alias), and no Map or other precedent is taken as settling it. OWNER: tidy-ant-251.",
+    "INVALID STATE: one concept under two names. std.types List is declared as a bare alias of std.algebra FreeMonoid, with no meaning of its own, so List and FreeMonoid are a nickname pair (DESIGN section 3). Every module that writes List and every module that writes FreeMonoid speaks of one carrier through two spellings, and a reader cannot tell from either spelling whether a difference was intended.",
+    "HARM: the fork is at the meaning layer, and the cost lands on consumers. A question about the list carrier (its laws, its cost shape, its emptiness) has two places to be asked. A later meaning added to List alone would silently become a meaning fork against every FreeMonoid site.",
+    "RUNG FOUND AT: mitigatable. The alias is transparent to the type checker, so no wrong program is accepted because of it today. The harm is to the single-authority invariant, not to any executed result.",
+    "DISSOLUTION CONDITION (the trigger above): a reviewed representation decision that EITHER retires the alias through a semantics-preserving migration, OR establishes a distinct List with a justified meaning and consumer evidence. Either outcome leaves one declaration per concept, which is this row's ceiling. Until then no new consumer may treat List and FreeMonoid as different.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.types", decl_name: "List", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "FreeMonoid", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_head_rows", field: WholeDeclaration },
+  ],
+}
