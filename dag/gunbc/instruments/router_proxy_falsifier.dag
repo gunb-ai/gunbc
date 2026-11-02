@@ -661,6 +661,9 @@ fn member_is(v: JsonValue, key: String, literal: String) -> Bool {
 // holding fixture prints once it is inside the upstream (after the router admitted the turn). If the signal never
 // arrives the script prints NOT-ENTERED and reads nothing, so the case is red rather than lucky. Stats are read
 // while the turn is outstanding (the fixture holds six seconds); then the turn is waited out and its output printed.
+// TRANSIENT SHELL, declared as row 6 of gunbc.serving.router_dev_scaffold router_dev_frontier_rows (like self_signed, row 5):
+// the ordering is the fact under test and DockerCli has no logs or exec operation to model it as steps, so this sh -c
+// program is the authority until bash emission (extdeps.languages.bash.grammar) replaces it.
 fn uncapped_inflight_script() -> String {
   "curl -k -sS -i -N --max-time 30 -H 'Authorization: Bearer ck-falsifier' -H 'x-session-id: un-1' --data-binary '\{\"model\":\"m-u\"}' -w '\n%\{http_code}\n' 'https://127.0.0.1:18445/v1/chat/completions?hold=1&enter=1' > /tmp/held.out 2>&1 & i=0; while ! grep -q '^entered' /tmp/held.out && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); done; if ! grep -q '^entered' /tmp/held.out; then echo NOT-ENTERED; wait; exit 1; fi; curl -k -sS -i --max-time 10 -H 'Authorization: Bearer ck-falsifier' 'https://127.0.0.1:18445/router/stats'; echo; wait; cat /tmp/held.out"
 }

@@ -107,7 +107,7 @@ data router_dev_falsifier_shell_scaffold: Disposition = Scaffold {
   }
 }
 
-// THE FIVE DEBTS AS FRONTIER ROWS, each subject the declaration that carries it and each trigger bound to a
+// THE SIX DEBTS AS FRONTIER ROWS, each subject the declaration that carries it and each trigger bound to a
 // declaration that does not exist yet, so gunbc.census_closure_frontier (where these rows are enrolled)
 // reports each as pending until its replacement lands. The S3 trigger names the plan's callout module
 // (plan gunbc.plans.fabric_serving_router S3, gunbc.serving.serving_router) and a declaration only that
@@ -136,6 +136,11 @@ data router_dev_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "self_signed"),
     reason: "Hand-written shell in the falsifier's container commands (row 5): mkdir, openssl and exec openresty joined as an sh -c and-list.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.languages.bash.grammar", decl_name: "bash_and_list_production"))
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "uncapped_inflight_script"),
+    reason: "Hand-written shell in the falsifier (row 6): the uncapped in-flight case runs a held turn in the background, waits for the fixture's 'entered' line, reads stats, then collects the turn, as one sh -c program. Transient: the order is the fact under test, and DockerCli has no logs or exec operation to model it as steps yet, so the shell text is the authority until bash emission replaces it.",
     dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.languages.bash.grammar", decl_name: "bash_and_list_production"))
   ),
 ]
