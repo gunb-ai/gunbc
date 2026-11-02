@@ -473,6 +473,13 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     // length: the list length, std.algebra length (FreeMonoid). Host-text length is string_length (G2); runs over length are
     // occurrence-scoped to list sites. std.types list_length is a second name for this concept, a follow-up (tidy-ant-251).
     RosterHeadRow { call: "length", key: "length", import_name: "length", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    // T4 group A1, import-only (valiant-deer-27's A2/A4 attribution, tidy-ant-251): the declaring module is in the
+    // compile_cli closure and each declaration exists there; the import rows omitted the name.
+    RosterHeadRow { call: "sequence_outcome", key: "sequence_outcome", import_name: "sequence_outcome", home: qualified_name_from_dotted_string(dotted: "v2.std.diagnostic"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "outcome_accepted", key: "outcome_accepted", import_name: "outcome_accepted", home: qualified_name_from_dotted_string(dotted: "v2.std.diagnostic"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "interpretation_algebra_slot_identities_equal", key: "interpretation_algebra_slot_identities_equal", import_name: "interpretation_algebra_slot_identities_equal", home: qualified_name_from_dotted_string(dotted: "v2.std.runtime"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "runtime_value_equality", key: "runtime_value_equality", import_name: "runtime_value_equality", home: qualified_name_from_dotted_string(dotted: "v2.std.runtime"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "optional_present", key: "optional_present", import_name: "optional_present", home: qualified_name_from_dotted_string(dotted: "std.optional"), labels: [], head: KeepHead },
   ]
 }
 
