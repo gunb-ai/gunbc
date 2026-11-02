@@ -1,8 +1,10 @@
 module test.claim.product.p4261_finding_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.measure { ohm }
-import product.p4261.carrier { CarrierLayoutObservation }
+import product.p4261.carrier { CarrierLayoutObservation, MeasuredBoard }
+import product.electrical.bench_session { BenchRecord, DisplayAtProbeBaseline, DisplayZeroWithoutBaseline, ResistanceDisplay, ResistanceObservation, ShortedProbeBaseline }
+import product.electrical.connectivity { terminal_ref_equal }
+import product.electrical.continuity { OperatorStatement }
 import product.p4261.findings {
   CarrierFinding,
   CarrierPhaseObserved,
@@ -27,9 +29,9 @@ import product.p4261.findings {
   finding_established,
   judge_finding,
 }
-import product.p4261.readings { least_of, J24Reading, PolarityEstablished, PolarityGap, PolarityUnestablished, installed }
-import product.p4261.report { FindingEstablished, FindingNotEstablished, FindingStanding, carrier_finding, j24_text, j24_text_of, render_finding }
-import product.p4261.e1_b { p4261_e1_layout, e1_d2, e1_d5, e1_c10, e1_f300, e1_u1_p5, e1_converter_near, e1_third_can, e1_q21, e1_q22 }
+import product.p4261.readings { least_of, PolarityEstablished, PolarityGap, PolarityUnestablished, installed }
+import product.p4261.report { FindingEstablished, FindingNotEstablished, FindingStanding, carrier_finding, j24_text, render_finding }
+import product.p4261.e1_b { e1_j24_pin, e1_j24_read, e1_j24_resistances, p4261_e1_layout, e1_d2, e1_d5, e1_c10, e1_f300, e1_u1_p5, e1_converter_near, e1_third_can, e1_q21, e1_q22 }
 import product.p4261.k1_a { p4261_k1_layout, k1_u1_p5, k1_converter_near }
 
 // THE OUTCOMES BEFORE THE CUT. Each case is a board, a finding, and whether it was established at public
@@ -131,16 +133,42 @@ test fn the_real_path_produces_the_typed_result() -> Bool {
     && match judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: k1_u1_p5 }) { NotAComponent { component: _ } => true, _ => false }
 }
 
-// THE J24 CORRECTION (Stage B4). The report used to say "none near zero" whatever was read; the
-// reading now counts the reported zeros and the words follow the count. The E1, with none, reads as
-// before; a supplied reading with two reported zeros says so instead. With no positive value at all,
-// the least value is absent and said to be absent -- never "0 ohm the least".
-test fn j24_words_follow_the_count_of_reported_zeros() -> Bool {
-  j24_text(layout: p4261_e1_layout).contains("none near zero, so no position is read as the return")
-    && j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 8, least_positive: Present { value: ohm(count: 400) }, reported_zero: 2 }).contains("2 reporting zero without a baseline")
-    && !j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 8, least_positive: Present { value: ohm(count: 400) }, reported_zero: 2 }).contains("none near zero")
-    && j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 0, least_positive: Absent, reported_zero: 10 }).contains("(none above zero)")
-    && !j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 0, least_positive: Absent, reported_zero: 10 }).contains("0 ohm the least")
+// THE J24 CORRECTION (Stage B4). The report used to say "none near zero, so no position is read as the
+// return" whatever was read. Now the readings count each kind and derive what they say of the return,
+// and the report words that: through j24_reading, on the E1's own readings with one swapped -- an
+// unbaselined zero is counted and the words do not deny it; a reading at the probe baseline joins the
+// return; no reading at all leaves the question open instead of answering it.
+fn e1_with_j24(rs: List<ResistanceObservation>) -> CarrierLayoutObservation {
+  let b = p4261_e1_layout
+  let m = match b.measured { Present { value: x } => Present { value: MeasuredBoard {
+    analysis: x.analysis, asset: x.asset, continuity: x.continuity, diode_readings: x.diode_readings, source_draws: x.source_draws,
+    bench: BenchRecord { incidents: x.bench.incidents, attachments: x.bench.attachments, alterations: x.bench.alterations, voltages: x.bench.voltages,
+      resistances: concat(filter(x.bench.resistances, o => !any(e1_j24_resistances, j => terminal_ref_equal(a: j.first, b: o.first) && terminal_ref_equal(a: j.second, b: o.second))), rs) },
+    phases: x.phases, transitions: x.transitions, pole_closures: x.pole_closures,
+  } }, Absent => Absent }
+  CarrierLayoutObservation {
+    asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors,
+    j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey,
+    management_io: b.management_io, components: b.components, measured: m, input: b.input, unresolved: b.unresolved, designator_readings: b.designator_readings,
+  }
+}
+
+fn swapped_a1(display: ResistanceDisplay) -> List<ResistanceObservation> {
+  concat(filter(e1_j24_resistances, o => !terminal_ref_equal(a: o.first, b: e1_j24_pin(n: "A1"))), [e1_j24_read(n: "A1", display: display)])
+}
+
+fn no_j24_readings() -> List<ResistanceObservation> {
+  []
+}
+
+test fn j24_words_follow_what_its_readings_establish() -> Bool {
+  let zero = j24_text(layout: e1_with_j24(rs: swapped_a1(display: DisplayZeroWithoutBaseline { reported: "supplied 0.0" })))
+  let baseline = j24_text(layout: e1_with_j24(rs: swapped_a1(display: DisplayAtProbeBaseline { shown: "supplied 0.3", baseline: ShortedProbeBaseline { full_scale_ohms: 2000, shown: "supplied 0.3", evidence: OperatorStatement { stated_on: "supplied", verbatim: "supplied" } } })))
+  let unread = j24_text(layout: e1_with_j24(rs: no_j24_readings()))
+  j24_text(layout: p4261_e1_layout).contains("0 reporting zero without a baseline and 0 at the probe baseline: every position read and none at the baseline, so no position is read as the return")
+    && zero.contains("1 reporting zero without a baseline") && !zero.contains("none near zero")
+    && baseline.contains("1 at the probe baseline: 1 joined to the return") && !baseline.contains("no position is read as the return")
+    && unread.contains("10 positions unread, so whether any is joined to the return is open") && !unread.contains("no position is read as the return")
 }
 
 // THE LEAST OF NOTHING IS NOTHING. An empty list has no least value -- not 0 -- and a list's least is its

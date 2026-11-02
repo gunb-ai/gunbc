@@ -276,6 +276,9 @@ import product.p4261.readings {
   J24Unmeasured,
   J24Read,
   J24Reading,
+  J24JoinedAtBaseline,
+  J24PositionsUnread,
+  J24NoneJoinedAmongRead,
   J68Shape,
   j68_reading,
   J68Unmeasured,
@@ -482,8 +485,8 @@ fn u4_configuration_text(layout: CarrierLayoutObservation) -> String {
   }
 }
 
-// J24 AS THE RECORD HAS IT: its positions, the photographic pitch, and how many positions read a value
-// to the return, none near zero.
+// J24 AS THE RECORD HAS IT: its positions, the photographic pitch, its readings to the return by kind,
+// and what they say of the return (product.p4261.readings j24_reading).
 
 // J68 BY ITS UNPOWERED SHAPE: which positions read as the return, which are open, and whether two
 // positions of the other row read alike, the facts a JTAG header's layout predicts.
@@ -1266,7 +1269,12 @@ fn j24_text_of(r: J24Reading) -> String {
   join([
       "J24 has ", to_string(r.positions), " positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about ", to_string(e1_j24_pitch.along_row_tenths_mm), "/10 mm along a row and ", to_string(e1_j24_pitch.between_rows_tenths_mm), "/10 mm between rows, within ", to_string(e1_j24_pitch.tolerance_tenths_mm), "/10 mm, by a photograph against a tape aligned to neither axis; ",
       to_string(r.read_to_return), " read to J20's black lead, ", to_string(r.valued), " with a value (", match r.least_positive { Absent => "none above zero", Present { value: o } => join([to_string(ohm_count(r: o)), " ohm the least"], "") }, "), ",
-      if r.reported_zero == 0 { "none near zero, so no position is read as the return" } else { join([to_string(r.reported_zero), " reporting zero without a baseline, which joins no position to the return"], "") },
+      to_string(r.reported_zero), " reporting zero without a baseline and ", to_string(r.at_baseline), " at the probe baseline: ",
+      match r.return_evidence {
+        J24JoinedAtBaseline { positions } => join([to_string(positions), " joined to the return"], "")
+        J24PositionsUnread { unread } => join([to_string(unread), " positions unread, so whether any is joined to the return is open"], "")
+        J24NoneJoinedAmongRead => "every position read and none at the baseline, so no position is read as the return"
+      },
     ], "")
 }
 

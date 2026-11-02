@@ -1393,22 +1393,38 @@ fn no_pitch_fits() -> List<PitchFit> {
 }
 
 // J24 READ TO THE RETURN. Its positions' unpowered readings to J20's black lead: how many were read, how
-// many gave a value, the least positive value (none when no reading gave one), and how many reported
-// zero without a baseline. A
-// position joins the return only through a baselined zero, which none has. (Correction in B4: the
-// report stated "none near zero" unconditionally; the count of reported zeros now decides it.)
+// many gave a value, the least positive value (none when no reading gave one), how many reported zero
+// without a baseline, and how many read at the shorted-probe baseline on their own range. A position
+// joins the return only through a reading at the baseline (product.electrical.bench_session
+// is_at_baseline), so what the readings say of the return is derived here, with missing readings kept
+// apart: positions left unread leave the question open; a reading at the baseline joins; every position
+// read and none at the baseline joins none. (Correction in B4: the report stated "none near zero, so no
+// position is read as the return" whatever was read.)
+type J24ReturnEvidence
+  = J24PositionsUnread { unread: Nat }
+  | J24JoinedAtBaseline { positions: Nat }
+  | J24NoneJoinedAmongRead
+
 type J24Reading {
   positions: Nat
   read_to_return: Nat
   valued: Nat
   least_positive: Ohm?
   reported_zero: Nat
+  at_baseline: Nat
+  return_evidence: J24ReturnEvidence
 }
 
 type J24Standing
   = J24NotObserved
   | J24Unmeasured { positions: Nat }
   | J24Read { reading: J24Reading }
+
+fn j24_return_evidence(positions: Nat, read: Nat, at_baseline: Nat) -> J24ReturnEvidence {
+  if at_baseline > 0 { J24JoinedAtBaseline { positions: at_baseline } }
+  else if read < positions { J24PositionsUnread { unread: positions - read } }
+  else { J24NoneJoinedAmongRead }
+}
 
 fn j24_reading(layout: CarrierLayoutObservation) -> J24Standing {
   match installed(layout: layout, c: e1_j24) {
@@ -1424,6 +1440,8 @@ fn j24_reading(layout: CarrierLayoutObservation) -> J24Standing {
           valued: count(valued),
           least_positive: match least_of(vs: filter(flat_map(valued, o => match valued_ohms(o: o) { Present { value: v } => [v], Absent => no_ohm_values() }), v => v > 0)) { Absent => Absent, Present { value: n } => Present { value: ohm(count: n) } },
           reported_zero: count(filter(rs, o => is_reported_zero(o: o))),
+          at_baseline: count(filter(rs, o => is_at_baseline(o: o))),
+          return_evidence: j24_return_evidence(positions: count(x.terminals), read: count(rs), at_baseline: count(filter(rs, o => is_at_baseline(o: o)))),
         } }
       }
     }

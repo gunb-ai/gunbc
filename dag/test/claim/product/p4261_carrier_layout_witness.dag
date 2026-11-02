@@ -2582,7 +2582,7 @@ test fn j24_is_named_measured_and_reads_no_return() -> Bool {
     && all(valued, o => match valued_ohms(o: o) { Present { value: v } => v >= 405 && v <= 485, Absent => false })
     && !any(e1_j24_positions, n => one_node(net: live, a: e1_j24_pin(n: n), b: e1_ground_ref))
     && e1_j24_pitch.along_row_tenths_mm == 13 && e1_j24_pitch.between_rows_tenths_mm == 25
-    && j24_text(layout: p4261_e1_layout).contains("J24 has 10 positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about 13/10 mm along a row and 25/10 mm between rows, within 3/10 mm, by a photograph against a tape aligned to neither axis; 10 read to J20's black lead, 8 with a value (405 ohm the least), none near zero, so no position is read as the return")
+    && j24_text(layout: p4261_e1_layout).contains("J24 has 10 positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about 13/10 mm along a row and 25/10 mm between rows, within 3/10 mm, by a photograph against a tape aligned to neither axis; 10 read to J20's black lead, 8 with a value (405 ohm the least), 0 reporting zero without a baseline and 0 at the probe baseline: every position read and none at the baseline, so no position is read as the return")
     && e1_j24_pitch.tolerance_tenths_mm == 3
     && all(component_of(layout: p4261_e1_layout, c: e1_u104), c => count(c.terminals) == 6)
     && j24_text(layout: without).contains("J24 is not a component of this carrier's observation")
