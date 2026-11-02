@@ -1583,9 +1583,9 @@ fn acquire_census_closure_of(layout: SourceStorageLayout, bindings: List<SourceR
 
 // ---- the acquired set as the compiler's source ingest ----------------------------------------------
 
-// The host path an acquired member was read from. It is the artifact id, the artifact path and the
-// compilation unit of the member's witness, so a consumer that names the member's file (a discovery
-// row's entry, a diagnostic locus) names this path and no second spelling of it.
+// The host path an acquired member was read from. It is the artifact id and the artifact path of the
+// member's witness; the witness's compilation unit (what a diagnostic locus names) is the
+// root-relative module_file_key, so a located diagnostic does not depend on where the root is mounted.
 fn acquisition_module_path(module: AcquiredModule) -> String {
   source_root_child_path(directory: module.host_directory, name: module.file.relative_path)
 }
