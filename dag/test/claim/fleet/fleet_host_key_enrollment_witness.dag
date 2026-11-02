@@ -1,4 +1,3 @@
-import extdeps.network.mac { mac_address }
 module test.claim.fleet.fleet_host_key_enrollment_witness
 
 import std.types { Bool, String, List, NonEmptyStr }

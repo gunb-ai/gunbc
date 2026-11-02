@@ -220,13 +220,16 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
 // paste included, the most likely copy-paste mistake. This rule did not exist before T2: the
 // Spark rows' key-distinctness cross-check was manual prose. It compares the public half
 // itself, so provenance arms cannot dodge it.
-// RUNG, stated honestly: this rule runs at CHECK time, every CI run, against the catalog
-// itself, through the claim dag/test/claim/fleet/fleet_host_key_enrollment_witness. It is
-// NOT yet a write-time gate: a contradicting row added to the catalog is caught at the check,
-// not refused at construction. The write-time gate is the enrolment admission fold named in
-// gunbc.plans.host_trust_provisioned_key (step ENROL: the fold admits a ProvisionedInstall
-// row under its duplicate and staleness rules), a later slice of that plan; until it lands,
-// do not read this name as a construction-time enforcement.
+// RUNG, stated honestly (DESIGN 4b): this rule is evaluated when the claim
+// dag/test/claim/fleet/fleet_host_key_enrollment_witness is RUN, against the catalog itself.
+// That run is NOT on the required path - DESIGN's Building & checks keeps witnesses off it, and
+// the claim lane was withdrawn from it (gunbc.rung_drop v1_required_lanes_withdrawn). So a
+// contradicting row enters the catalog unnoticed by the required gate and is caught when the
+// witness runs. Two closures exist for that gap and neither is built yet: the write-time gate,
+// the enrolment admission fold named in gunbc.plans.host_trust_provisioned_key (step ENROL: the
+// fold admits a ProvisionedInstall row under its duplicate and staleness rules), and any later
+// row putting this check onto a required gate. Until one lands, do not read this name as
+// construction-time or required-path enforcement.
 // Both scans are single passes (DESIGN 6 cost-shape rule): std.list's fold-with-see-map over
 // the (half, host, address) slot, and a fold over the halves in std.algebra's string order
 // carrying each half-group's state -- its first host and its first recorded install attempt.
