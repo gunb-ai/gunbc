@@ -4,6 +4,8 @@ import extdeps.boards.types { HeldManualRevision,
   BaseboardCatalogRow, DimmPopulation,
   BaseboardPhysicalProfile,
   PowerInputPopulationStanding, PowerInputMinimumOneStated,
+  BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling,
+  BoardFunctionSwitch, JumperSwitch, FirmwareSetupSwitch, SwitchNotStated,
 }
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
@@ -1088,6 +1090,27 @@ type RearIoPort
   | RearIpmiLan
   | RearUidSwitch
 data asrock_altrad8ud_rear_io_ports: List<RearIoPort> = [RearVga, RearLan2TenGbe, RearLan1TenGbeSharedNic, RearUsb3Pair12, RearLan3OneGbe, RearUsb3Pair34, RearIpmiLan, RearUidSwitch]
+
+// ---- Switching a board function off (manual v1.20). Section 2.6 states one jumper, the 3-pin
+// BMC_DIS (layout item 22), "BMC Enabled (Default)" / "BMC Disabled": it removes the whole AST2500,
+// so for the controller's graphics function it is a COARSER switch, not this function's switch. No
+// section states a graphics-only disable, and section 3.3.3's PCIE Link Width/Speed items name the
+// slots, Slimline, OCuLink and M.2 ports, not the controller's link. Section 3.3.2 (RAS Configuration)
+// states: "PCIe AER Firmware First: Use this item to enable firmware to detect PCIe AER first.
+// Otherwise OS detects AER." The setting's value labels are not printed, so the off arm is carried
+// as the manual's own words rather than a guessed label.
+fn asrock_altrad8ud_function_switch(f: BoardFunction) -> BoardFunctionSwitch {
+  match f {
+    BmcManagementFunction => JumperSwitch { designator: "BMC_DIS", off_position: "BMC Disabled (BMC Enabled is the default)", citation: "manual v1.20 section 2.6, layout item 22" }
+    BmcGraphicsController => SwitchNotStated { coarser: Present { value: "BMC_DIS (section 2.6, layout item 22) disables the whole BMC" } }
+    PcieErrorFirmwareFirstHandling => FirmwareSetupSwitch {
+      menu: "Advanced > RAS Configuration",
+      item: "PCIe AER Firmware First",
+      off_meaning: "Otherwise OS detects AER",
+      citation: "manual v1.20 section 3.3.2",
+    }
+  }
+}
 
 // Which rear ports carry an Ethernet cable in service. The 1L2T has two 10GbE (LAN1 shared with
 // the BMC NC-SI path), one 1GbE and one dedicated IPMI port; how many a deployment plugs is a
