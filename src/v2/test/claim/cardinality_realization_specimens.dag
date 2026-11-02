@@ -57,10 +57,13 @@ fn specimen_present_absent_entries() -> Optional<FreeMonoid<Optional<Int>>> { Pr
 // (10) ABSENCE FROM AN OPERATION, not from a literal: the one-code-point text at a position, where a
 // read at or past the end is Absent. std.host_text declares `char_at` with the Optional already in its
 // signature, so the absence is a card of the answer rather than a second text value standing for one.
-// AT STEP 1 OF THE char_at EGRESS the value here comes from the declaration's interim .dag body (chars,
-// std.algebra skip and list_head, text_of_chars), NOT from a seed seam; the seam binding arrives with
-// the self-call, and v2.test.claim.cardinality_realization_coverage records which is declared per
-// compiled target.
+// AT STEP 1 OF THE char_at EGRESS nothing on the evaluator path runs the declaration's body: the checker
+// binds this call to std.host_text's declaration while the interpreter picks the VALUE of a free call by
+// SPELLING, so the ambient builtin answers it (the runtime half of
+// gunbc.recurring_failure_mode.host_seam_realization_is_keyed_by_primitive_spelling). The specimen is in
+// range, so its tag is the same under either dispatch; the pair that is not is asserted as an executed
+// probe below. v2.test.claim.cardinality_realization_coverage records what is declared per compiled
+// target.
 fn specimen_char_at_position() -> Optional<HostText> {
   char_at(text: "ab", pos: 1)
 }
@@ -217,12 +220,24 @@ test fn foreign_missing_null_and_invalid_stay_three_answers() -> Bool {
   specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92, 103]
 }
 
-// THE POSITION READ KEEPS ITS OWN ABSENCE: a realization that answers absence with the empty text, or
-// that indexes bytes instead of code points, still answers Present for a position past the end, so this
-// pair is what the tenth specimen exists to hold apart. Index 1 of "ab" reads; index 5 does not.
-test fn a_position_read_keeps_its_own_absence() -> Bool {
-  tag_position_read(x: char_at(text: "ab", pos: 5)) == 101
-    && tag_position_read(x: char_at(text: "ab", pos: 1)) == 103
+// THE POSITION READ INSIDE THE TEXT IS PRESENT, under either dispatch, so this half holds at step 1 and
+// after the fix. Index 1 of "ab" is the code point b.
+test fn a_position_read_inside_the_text_is_present() -> Bool {
+  tag_position_read(x: char_at(text: "ab", pos: 1)) == 103
+}
+
+// THE POSITION READ AT THE END, RECORDED AS AN EXECUTED PROBE AND NOT AS THE CONTRACT. MEASURED AT THIS
+// head: the read past the end answers PRESENT (tag 103), not Absent (tag 101) — the checker binds this
+// call to std.host_text's declaration, while the interpreter still picks the VALUE of a free call by
+// SPELLING, so the ambient builtin's empty text answers (the runtime half of
+// gunbc.recurring_failure_mode.host_seam_realization_is_keyed_by_primitive_spelling). The probe asserts
+// THAT answer, so it is green on main and cannot survive the fix: once a free call evaluates by the call
+// target the checker resolved, this arm becomes == 101, and that flip is the discriminating pair this
+// specimen exists to record — a realization that answers absence with the empty text, or that indexes
+// bytes instead of code points, still answers Present past the end. It is not landed as a red: a failing
+// claim on main is a main red, not a stamp.
+test fn the_end_of_a_text_reads_as_a_present_until_resolved_target_dispatch_lands() -> Bool {
+  tag_position_read(x: char_at(text: "ab", pos: 5)) == 103
 }
 
 // THE DISCRIMINATING CONTROL: a realization that flattened Present(Absent) to Absent, or read an
