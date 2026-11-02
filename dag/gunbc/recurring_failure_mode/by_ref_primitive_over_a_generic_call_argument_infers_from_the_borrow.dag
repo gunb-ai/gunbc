@@ -1,0 +1,42 @@
+module gunbc.recurring_failure_mode.by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+// A RUNTIME PRIMITIVE THAT BORROWS ITS ARGUMENT IS ALSO A TYPE-INFERENCE SITE, and the two fail apart.
+// `v1_rt::sorted_map_keys` takes `&HashMap<K, V>`; over a generic call whose type arguments nothing else
+// in the expression states, rustc invents them and they never resolve. The emitter has always had to
+// know this, which is why the by-ref bridge roster exists -- but the roster answers WHO borrows, never
+// WHAT the borrowed value's type arguments are, and a repair that stops at the roster leaves the call
+// exactly as rustc found it.
+data by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow: RecurringFailureMode = RecurringFailureMode {
+  identity: "by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow" as NonEmptyStr,
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the emitter names the type arguments at every by-ref primitive call, so no call site is left for rustc to invent: the arm that keeps the plain borrow disappears because there is nothing left to decline, and a site whose type arguments cannot be named refuses to emit rather than passing the question to the compiler",
+    },
+  },
+  receipts: [
+    "summary: a by-ref runtime primitive is emitted over a call argument whose type arguments nothing states, and rustc is left to invent them: the primitive's parameter is the only evidence, so the call is refused or, worse, resolved to arguments the program never wrote.",
+    "invalid_state: the emitter writes `v1_rt::sorted_map_keys(&<generic call>)` -- the borrow, and nothing else, is what should say what `K` and `V` are; the checker has accepted the program, so no diagnostic stands between it and a rustc refusal.",
+    "harm: the seed does not build. This is not a warning that can be deferred: the generated mirror is the seed, so the failure is on the self-hosting path, in the mirror's own text, with no source line of a person's to point at.",
+    "distinguishing_facts: the checker accepts the program and rustc refuses it, so the defect is visible only at the emission target; the argument is a CALL, not a name (a name already states its carrier, which is why the plain borrow stays correct there); and the roster predicate the emitter does consult -- name membership in the by-ref bridge registry -- cannot distinguish the two cases, because both are the same primitive.",
+    "**a by-ref primitive over a call argument with nothing to infer from** (a runtime primitive whose parameter is a reference is emitted over a call whose type arguments no other part of the expression states, so the borrow is the only evidence rustc has and the call resolves to arguments the program never wrote, or is refused.",
+    "OCCURRENCE 2026-11-01, PR #15509, heal run 41299024017: the second `rebuild_from_installed` of the seed refused the regenerated `std.types` mirror -- `error[E0308]: mismatched types --> src/v1/stage0/src/std_types.rs:168:9 __by_ref_arg … expected im::HashMap<_, _>, found Rc<im::HashMap<_, bool>>`. Two things in that one message are the class. `im::HashMap<_, _>` is an annotation whose type arguments were never resolved: the rule that writes it had consulted the checker and the checker had not finished. `Rc<im::HashMap<_, bool>>` is the carrier the emitted expression actually has, which is not the spelling the checker's renderer writes for a modelled `Map<String, Bool>`. The first repair attempt bound the VALUE at the modelled spelling and destroyed the deref coercion the plain borrow had been relying on; the binding is now made as a REFERENCE (`let x: &T = &v`), a coercion site, so the coercion the pre-change emission used is preserved and the annotation still names `T`.",
+    "THE ANNOTATION IS DECIDED ON THE TREE, NOT ON THE RENDERING, and the first revision got this wrong in a way review 89681 caught: it tested the rendered string for the substrings `<_,`, `<_>` and `, _>`. That is a second, weaker reading of a fact the checker already states structurally, it misses `(_, i64)`, `Fn(_) -> i64` and `Vec<(i64, _)>`, and it drifts silently whenever the renderer changes its spelling. `v1.compiler.emit_rust` `rust_type_node_is_fully_resolved` now walks the inferred node -- an outer `Resolved` can still have a `TypeVariable` type argument below it -- and `rust_node_carrier_decl` writes no annotation at all when the answer is no. §4: \"in a closed system a heuristic is never necessary: the richer source always exists or can be written.\"",
+    "WHAT IS EXECUTED, AND WHAT IS NOT. Executed: `test.claim.by_ref_bridge_argument_declared_carrier_witness` `by_ref_bridge_over_a_call_argument_is_bound_at_its_declared_carrier` is red without the rule and green with it, and `by_ref_bridge_over_a_name_keeps_the_plain_borrow` goes red if the rule is widened to arguments that never needed it -- those two arms are the discriminator for the annotation. NOT executed from this lane, and said plainly rather than dressed up: the guard against writing an annotation with a hole has no fixture, because a program that reaches it is one the checker must accept with an unresolved type argument, and hand-writing that means the checker is made to accept what it exists to refuse. Its red input is the seed rebuild above and its rerun. The first revision of this work also shipped a third claim presented as the guard's control; the program it compiled was fully resolved, so it could not have gone red with or without the guard, and review 89688 deleted it. A control that cannot fail controls nothing (§5).",
+    "CEILING, NOT REACHED. The rule binds and annotates where the carrier is nameable and keeps today's plain borrow where it is not, so the wrong case still reaches rustc -- loudly, as an E0308 in a generated mirror, which is why this is `Mitigatable` and not more. The rung above names what would close it: naming the type arguments at the call itself, at which point the decline path has no work left and cannot quietly become the common case. Self-recursive nodes are refused rather than walked, so the check terminates; their carrier is spelled by the alias, which this rule does not need.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_by_ref_bridge_argument", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_type_node_is_fully_resolved", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_node_carrier_decl", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.by_ref_bridge_argument_declared_carrier_witness", decl_name: "by_ref_bridge_over_a_call_argument_is_bound_at_its_declared_carrier", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.by_ref_bridge_argument_declared_carrier_witness", decl_name: "by_ref_bridge_over_a_name_keeps_the_plain_borrow", field: WholeDeclaration },
+  ],
+}

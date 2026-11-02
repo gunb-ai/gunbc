@@ -12326,6 +12326,109 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>, source_indices: 
   }
 }
 
+// THE BORROW SITE DECLARES ITS ARGUMENT.
+//
+// A by-ref bridge takes its carrier by reference, and the emitter used to spell that borrow straight
+// onto the argument expression: `v1_rt::map_keys(&fold_list(..))`. When that argument is a call to a
+// GENERIC declaration, the borrow is the only evidence rustc gets for the call's own type arguments,
+// and rustc takes it: `fold_list`'s accumulator is pinned by the borrowed parameter instead of by its
+// own seed, so `seed: rc_empty_map()` settles at its default `HashMap<_, _>` while `map_insert`
+// answers `Rc<HashMap<_, _>>` -- E0308 at three sites in v2.compiler.source_authority at one commit
+// (recurring_failure_mode by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow;
+// test.claim.by_ref_bridge_argument_declared_carrier_witness
+// by_ref_bridge_over_a_call_argument_is_bound_at_its_declared_carrier is that program, compiled through
+// the emitter, and it is red without this rule).
+// v1's checker had ALREADY typed that argument; the emission threw the type away and let rustc guess
+// a different one.
+//
+// So the borrow carries the type v1 derived: bind the value at its own inferred carrier and borrow the
+// binding. That is the form a human writes -- `let m: Rc<HashMap<String, Bool>> = fold_list(..);
+// map_keys(m: m)`. The control for that comparison is a program in the tree, not a note: the same witness
+// module's by_ref_bridge_over_a_name_keeps_the_plain_borrow compiles a by-ref bridge over a plain name and
+// requires the bare `&s`, so what this rule changes is the BORROW SITE -- over a call whose type arguments
+// nothing states, and only there -- and not `fold_list` or `rc_empty_map`. A name already carries its own
+// type, which is why it needs no binding and why widening the wrapper to every borrow site reddens that arm.
+//
+// The annotation is not a new guess. It is the SAME node v1's walk resolved for that argument
+// (`Node.inferred`, `Resolved`), rendered by `render_node_type` -- the one authority for a Rust
+// carrier spelling, the same call every other type position in the emitted program goes through. It
+// is applied at the BORROW SITE, so one rule covers both spellings of the same primitive (the
+// `filled_args` receiver of a `v1_rt` primitive call, and the receiver position of
+// `rust_runtime_bridge_passes_receiver_by_ref`) and every member of the by-ref roster: map_keys,
+// map_values, sorted_map_keys, map_lookup, map_insert, the string family. The defect belongs to the
+// borrow, not to a name, so no name list grows.
+//
+// WHERE NO CARRIER EXISTS, NOTHING IS INVENTED. An argument whose inference is a TypeVariable, a
+// CompilerError or Divergent has no type to name, and a rendering that still contains an inference hole
+// (`im::HashMap<String, _>`) names nothing either -- rustc would unify the hole with the initializer and
+// the annotation meant to pin inference would become a constraint it cannot satisfy, which is the failure
+// measured on run 41299024017 in the `std.types` mirror. Both cases keep today's `&<expr>`: declining
+// reproduces the previous emission exactly, it does not fabricate an annotation.
+fn rust_by_ref_bridge_argument(value: Node, base: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  // Only a CALL has type arguments for rustc to invent. A name, a field or an index is already a
+  // place of a known carrier, so wrapping it in a block would be work that changes nothing (DESIGN
+  // section 2) and would bury the site where the rule actually matters.
+  let declared = match value.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } => rust_node_carrier_decl(value: value, shared_types: shared_types, source_indices: source_indices)
+    ExprMethodCall { method_semantics: _ } => rust_node_carrier_decl(value: value, shared_types: shared_types, source_indices: source_indices)
+    _ => ""
+  }
+  if declared == "" {
+    concat("&", base)
+  } else {
+    // A block, so the binding cannot escape the borrow it was made for: it shadows nothing outside,
+    // and the value it names dies at the end of the call that borrows it. It is bound as a REFERENCE
+    // to the carrier (`let x: &T = &v`), not as the carrier itself, because `render_node_type` names
+    // the MODELLED type while the emitted expression may carry it behind a pointer -- `Rc<im::HashMap<..>>`
+    // where the model says `Map<String, Bool>`. A typed `let` is a coercion site, so `&v` reaches `&T`
+    // by deref coercion exactly as the plain `&<expr>` did at the call, and the annotation still names
+    // T, which is the whole point of the binding.
+    concat("{ let __by_ref_arg: &", declared, " = &", base, "; __by_ref_arg }")
+  }
+}
+
+// IS THIS TYPE FULLY RESOLVED? Read off the NODE, not off the rendering -- DESIGN.md §4: "in a closed
+// system a heuristic is never necessary: the richer source always exists or can be written". Whether an
+// inferred type still has an unresolved variable is a structural fact about the tree the checker built:
+// the outer node can be `Resolved` while a type argument below it is still a `TypeVariable`, and that is
+// exactly what the seed rebuild of run 41299024017 showed, where the emitted annotation came out
+// `im::HashMap<_, _>` against an initializer of `Rc<im::HashMap<_, bool>>` in the `std.types` mirror. An
+// annotation with a hole pins nothing -- rustc unifies the hole with the initializer instead, so the
+// statement meant to hand over the type arguments becomes a constraint it cannot satisfy.
+//
+// Testing the rendered text instead would have been a second, weaker reading of one fact, and a false
+// one: it misses `(_, i64)`, `Fn(_) -> i64` and `Vec<(i64, _)>`, and it silently tracks whatever spacing
+// or path style `render_node_type` happens to use. A self-recursive node is refused rather than walked,
+// so the check terminates: its carrier is spelled by the alias, which is a case this rule does not need.
+fn rust_type_node_is_fully_resolved(node: Node) -> Bool {
+  if node.is_self_recursive {
+    false
+  } else {
+    match node.inferred {
+      Present { value: Resolved { node: inner } } => rust_type_node_is_fully_resolved(node: inner) && all(node.children, child => rust_type_node_is_fully_resolved(node: child)),
+      _ => false
+    }
+  }
+}
+
+// THE ONE AUTHORITY FOR "declare a local at this value's carrier": the same `Node.inferred` the
+// checker resolved, rendered by `render_node_type`, the same call every other type position in the
+// emitted program goes through. An argument whose inference is a TypeVariable, a CompilerError or
+// Divergent has no carrier to name, and neither has one whose resolution still contains a hole below a
+// resolved outer node (`rust_type_node_is_fully_resolved`); in every such case this returns the empty
+// string so the caller keeps today's `&<expr>` instead of inventing a type.
+fn rust_node_carrier_decl(value: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  match value.inferred {
+    Present { value: Resolved { node: type_node } } =>
+      if rust_type_node_is_fully_resolved(node: type_node) {
+        render_node_type(n: type_node, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      } else {
+        ""
+      }
+    _ => ""
+  }
+}
+
 fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), function_name)
 }
@@ -13814,7 +13917,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     let arg_scope = lambda_argument_scope(arg: arg_value(n: a), scope: scope)
     if is_rt_ref_map && idx == 0 {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
-      concat("&", base)
+      rust_by_ref_bridge_argument(value: arg_value(n: a), base: base, shared_types: shared_types, source_indices: scope.type_env.source_indices)
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
       let unwrapped = rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func, source_indices: scope.type_env.source_indices)
@@ -14710,7 +14813,10 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
     apply_type_template1(template: spec.error_type_template, arg0: concat("method ", function_name, " is neither a resolved callable receiver field nor a registered v1_rt bridge function"))
   } else {
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
-    concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+    // The same borrow spelled as a method: `fold_list(..).map_keys()` drops the argument's type at
+    // the borrow exactly as `map_keys(m: fold_list(..))` does, so the rule sits where the borrow is
+    // made rather than being repeated per spelling.
+    rust_by_ref_bridge_argument(value: receiver, base: emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info), shared_types: shared_types, source_indices: scope.type_env.source_indices)
   } else {
     emit_cloned_arg(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }

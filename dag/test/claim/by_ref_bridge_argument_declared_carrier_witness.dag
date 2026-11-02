@@ -1,0 +1,97 @@
+module test.claim.by_ref_bridge_argument_declared_carrier_witness
+
+// THE BORROW SITE DECLARES A CALL ARGUMENT'S CARRIER.
+//
+// A by-ref runtime bridge (`extdeps.languages.rust.emit rt_function_registry` rows with
+// `passes_by_ref: true` — sorted_map_keys, map_keys, map_values, lookup, the string family) took its
+// argument as `&<expr>`. When `<expr>` is a call to a GENERIC declaration, rustc receives that borrow
+// as the only evidence for the call's own type arguments and uses it: `fold_list`'s accumulator is
+// pinned by the borrowed parameter instead of by its own `empty:` argument, so the emitted crate
+// refuses a program the .dag checker had accepted. That is
+// gunbc.recurring_failure_mode by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow,
+// first measured on #15164 at 47612d0cb20d (v2-bootstrap run 40968160998, in
+// v2.compiler.occurrence_resolution_census).
+//
+// THE FORM, EXACTLY. `rust_by_ref_bridge_argument` emits
+// `v1_rt::sorted_map_keys({ let __by_ref_arg: &<carrier> = &<expr>; __by_ref_arg })`. The binding is a
+// REFERENCE to the carrier, not the carrier itself, because `render_node_type` spells the modelled type
+// while the emitted expression may carry it behind a pointer (`Rc<im::HashMap<..>>` for a model
+// `Map<String, Bool>`): a typed `let` is a coercion site, so `&<expr>` reaches `&<carrier>` by deref
+// coercion exactly as the plain borrow did at the call, and the annotation still names the carrier,
+// which is the only reason the binding exists. An earlier revision bound the value itself and the seed
+// rebuild of run 41299024017 said so: `expected im::HashMap<_, _>, found Rc<im::HashMap<_, bool>>` in
+// the `std.types` mirror. The same failure made a second rule necessary: an annotation whose type still
+// has an unresolved variable below a resolved outer node pins nothing -- rustc unifies the hole with the
+// initializer -- so `rust_type_node_is_fully_resolved` walks the inferred NODE and `rust_node_carrier_decl`
+// writes no annotation in that case, leaving the plain borrow. It reads the tree the checker built rather
+// than the renderer's text, because `(_, i64)`, `Fn(_) -> i64` and `Vec<(i64, _)>` are all holes that no
+// substring set would catch, and a text test would silently follow whatever spacing the renderer uses
+// (DESIGN.md §4: the richer source exists, so a heuristic is not permitted).
+//
+// WHAT THIS FILE DOES NOT CLAIM ABOUT THE GUARD. `rust_type_node_is_fully_resolved` has no red input
+// reachable from these arms: the programs below are fully resolved, so they emit the same annotation with
+// or without the guard, and a claim over them could only ever be green -- a control that cannot fail
+// controls nothing (§5: "a real consumer green by execution plus a discriminating input that goes red
+// when the behavior is wrong"). The guard's red input is the seed itself, which is where a hole reached a
+// by-ref argument: the rebuild of run 41299024017 (`expected im::HashMap<_, _>, found
+// Rc<im::HashMap<_, bool>>`), and its rerun on this head is the executing evidence. Stating that here is
+// the honest form of the claim; a fixture invented to look like it would have the checker accept
+// something it should refuse.
+//
+// THE REPAIR IS AT THE BORROW, NOT AT THE NAME, AND THESE CLAIMS PIN THAT. In
+// `src/v1/05_emit_rust.dag`, `rust_by_ref_bridge_argument` now binds a CALL argument at the carrier
+// `Node.inferred` already resolved for it — the type v1 derived, rendered by `render_node_type`, the
+// same authority every other type position in the emitted program goes through — and borrows the
+// binding:
+// `v1_rt::sorted_map_keys({ let __by_ref_arg: &Rc<HashMap<i64, bool>> = &fold_list(..); __by_ref_arg })`.
+// Claim one asserts that form and forbids the old one, so deleting the rule reddens it twice over:
+// the required text disappears and the forbidden text returns.
+//
+// WHY THE SECOND CLAIM EXISTS. A name, a field or an index is already a place of a known carrier;
+// rustc has no type arguments to invent there, so wrapping it in a block would be redundant work
+// (DESIGN section 2) at each of the ~360 plain by-ref sites already in the committed mirrors. The
+// second claim asserts the plain borrow survives for a name, so widening the rule into a wrapper at
+// every borrow site reddens the floor too.
+//
+// WHAT THESE CLAIMS ARE, EXACTLY. Two arms over two programs, each one seed compile: the call arm pins the
+// emitted form, and the name arm pins that the plain borrow survives where no binding is needed, so widening
+// the rule into a wrapper at every borrow site reddens the floor. There is no third, rustc-level artifact
+// behind them: an earlier revision pointed at `fixtures/fixture_closure_rustc/
+// by_ref_primitive_generic_call_argument_probe.dag` and `by_ref_primitive_bound_argument_probe.dag` as the
+// differential, and neither file exists in this repository -- citations to a home that does not resolve are
+// §3 defects, so they are gone rather than left as decoration. The rustc-level fact is the seed rebuild
+// itself (recurring_failure_mode
+// by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow, run 41299024017).
+//
+// The programs below are kept in the exact spelling that was measured to emit the defect form, so a
+// reader can run either one through `gunbc compile` and diff it against the assertion.
+
+// A by-ref bridge over an unbound call to the generic `fold_list`: the shape that was measured emitting the
+// defect form, kept in the spelling it was measured in so a reader can run it through `gunbc compile` and
+// diff the result against the assertion below.
+fn by_ref_generic_call_argument_source() -> String {
+  "module byrefgenericarg\n\nimport std.algebra { fold_list, empty_map, map_insert }\nimport std.types { Bool, Int, List, Map }\n\nfn keyed_ids(ids: List<Int>) -> List<Int> {\n  sorted_map_keys(fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))\n}\n"
+}
+
+// The same bridge over a NAME: the shape that has always compiled and must keep its plain borrow.
+fn by_ref_plain_name_source() -> String {
+  "module byrefplainname\n\nimport std.types { Int, String }\n\nfn use_len(s: String) -> Int {\n  string_length(s: s)\n}\n"
+}
+
+test fn by_ref_bridge_over_a_call_argument_is_bound_at_its_declared_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    by_ref_generic_call_argument_source(),
+    "src/byrefgenericarg.rs",
+    ["v1_rt::sorted_map_keys({ let __by_ref_arg: &", "; __by_ref_arg }"],
+    ["v1_rt::sorted_map_keys(&crate::std_algebra::fold_list("]
+  )
+}
+
+test fn by_ref_bridge_over_a_name_keeps_the_plain_borrow() -> Bool {
+  compile_dag_rust_emit_check(
+    by_ref_plain_name_source(),
+    "src/byrefplainname.rs",
+    ["v1_rt::string_length(&s"],
+    ["v1_rt::string_length(&{"]
+  )
+}
