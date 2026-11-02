@@ -2,6 +2,7 @@ module gunbc.roadmap.roadmap_attempt_state_store
 
 import std.types { String, NonEmptyStr, FilePath, Int, List, Bool }
 import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
+import std.materialization_ladder { string_list_contains }
 import std.decl_ref { decl_ref }
 import std.dissolution { retires_dissolution }
 import extdeps.filesystem.filesystem_io {
@@ -580,20 +581,6 @@ type AttemptAppendLogReading
 
 // The census log members that are AttemptStateMember values. AttemptDirectoryWire is an in-place record in the
 // wire directory written by the worker lane (roadmap_attempt_directory_wire), NOT an AttemptStateMember, so it is
-// minted through that lane's own directory read, not here; every other census member is not a log member.
-fn attempt_append_log_member_name(member: AttemptLogMember) -> String {
-  match member {
-    AttemptWorkerEvents => "AttemptWorkerEvents"
-    AttemptWorkerLog => "AttemptWorkerLog"
-    AttemptReviewEvents { criterion_key: _, head_sha: _ } => "AttemptReviewEvents"
-    AttemptReviewLog { criterion_key: _ } => "AttemptReviewLog"
-    AttemptAuditEvents { head_sha: _ } => "AttemptAuditEvents"
-    AttemptAuditLog => "AttemptAuditLog"
-    AttemptSupervisorEvents { turn: _ } => "AttemptSupervisorEvents"
-    AttemptSupervisorLog => "AttemptSupervisorLog"
-  }
-}
-
 // The AttemptDirectoryWire census member (row Seeadecb2) is NOT yet sealed: it is still written by the harness
 // through harness_turn.harness_wire_log_path (its two writers) and read by harness_conversation_fork,
 // roadmap_dispatch_actuator and roadmap_authority. It is an in-place record in the wire directory and NOT an
@@ -680,17 +667,20 @@ fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
   attempt_append_log_census_row_from(rows: append_log_member_census, name: name)
 }
 
-fn attempt_log_names_contain(names: List<String>, target: String) -> Bool {
-  match names {
-    Empty {} => false
-    Cons { head: h, tail: rest } => if h == target { true } else { attempt_log_names_contain(names: rest, target: target) }
-  }
-}
-
 // Mints the sealed store over a listing that was OBTAINED (never fabricated). An empty list here means the
 // directory was positively listed as having no relevant entries -- the caller never projects a refused listing
 // into an empty list (no-refusal-projected-to-empty is upheld by the caller's use of FilesystemDirectoryListed).
-fn attempt_append_log_mint_listing(store: AttemptState, node: String, attempt_key: String, name: String, member_dir: String, names: List<String>) -> AttemptAppendLogReading {
+fn attempt_append_log_mint_listing(store: AttemptState, node: String, attempt_key: String, member: AttemptLogMember, member_dir: String, names: List<String>) -> AttemptAppendLogReading {
+  let name = match member {
+    AttemptWorkerEvents => "AttemptWorkerEvents"
+    AttemptWorkerLog => "AttemptWorkerLog"
+    AttemptReviewEvents { criterion_key: _, head_sha: _ } => "AttemptReviewEvents"
+    AttemptReviewLog { criterion_key: _ } => "AttemptReviewLog"
+    AttemptAuditEvents { head_sha: _ } => "AttemptAuditEvents"
+    AttemptAuditLog => "AttemptAuditLog"
+    AttemptSupervisorEvents { turn: _ } => "AttemptSupervisorEvents"
+    AttemptSupervisorLog => "AttemptSupervisorLog"
+  }
   match attempt_append_log_census_row(name: name) {
     Absent => AttemptAppendLogUnready { detail: join(["no census row for ", name], "") }
     Present { value: row } => match append_log_census_slot(row: row) {
@@ -716,7 +706,6 @@ fn attempt_append_log_mint_listing(store: AttemptState, node: String, attempt_ke
 // in the member directory never makes the store Unready: append_log_listed_verdict judges only the member's own
 // namespace (a <member>.<digits> generation file, or the member name), ignoring all other entries.
 fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptLogMember) -> AttemptAppendLogReading {
-  let name = attempt_append_log_member_name(member: member)
   match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
       AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
       AttemptStateReady { store } => {
@@ -730,15 +719,15 @@ fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, 
           FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptAppendLogUnready { detail: join(["the attempt root could not be listed; a member directory is never treated as absent from a failed read -- ", e], "") }
           FilesystemDirectoryListed(root_lic) => {
             let root_names = filesystem_listing_entry_names(listing: root_lic)
-            if attempt_log_names_contain(names: root_names, target: dir_segment) {
+            if string_list_contains(xs: root_names, wanted: dir_segment) {
               let listed = Filesystem.List(path: member_dir)
               match filesystem_listing_observation(directory: member_dir, success: listed.success, entries: listed.entries, error: listed.error) {
                 FilesystemDirectorySubjectRefused { directory: _, cause: _ } => AttemptAppendLogUnready { detail: "the member directory subject was refused; the listing is never treated as empty" }
                 FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptAppendLogUnready { detail: join(["the member directory could not be listed; a member is never treated as absent from a failed read -- ", e], "") }
-                FilesystemDirectoryListed(lic) => attempt_append_log_mint_listing(store: store, node: node, attempt_key: attempt_key, name: name, member_dir: member_dir, names: filesystem_listing_entry_names(listing: lic))
+                FilesystemDirectoryListed(lic) => attempt_append_log_mint_listing(store: store, node: node, attempt_key: attempt_key, member: member, member_dir: member_dir, names: filesystem_listing_entry_names(listing: lic))
               }
             } else {
-              attempt_append_log_mint_listing(store: store, node: node, attempt_key: attempt_key, name: name, member_dir: member_dir, names: [])
+              attempt_append_log_mint_listing(store: store, node: node, attempt_key: attempt_key, member: member, member_dir: member_dir, names: [])
             }
           }
         }
