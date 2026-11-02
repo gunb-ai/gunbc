@@ -67,6 +67,7 @@ test fn the_workloads_require_the_converge_and_the_management_surface_does_not()
   contains(d, "[Unit]")
     && contains(d, "Requires=gunbc-board-function-converge.service")
     && contains(d, "After=gunbc-board-function-converge.service")
+    && contains(d, "AssertPathExists=/run/gunbc-board-function-converged")
     && units == ["docker.service", "containerd.service", "actions-runner@.service"]
     && all(board_function_converge_gated_workloads(), w => starts_with(s: w.drop_in_path as String, prefix: concat(concat("/etc/systemd/system/", w.unit as String), ".d/")))
     && all(["ssh.service", "tailscaled.service", "gunbc-roadmap.service", "gunbc-approval-broker.service"], u => !any(units, g => g == u))

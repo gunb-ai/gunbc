@@ -5,7 +5,7 @@ import std.measure { ByteSize, byte_size, second, second_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdDropIn, DropInUnitSection,
-  Description, After, Requires,
+  Description, After, Requires, Assert, ConditionPathExists,
   ServiceType, OneshotMode, RemainAfterExit, ExecStart, ExecReload, WorkingDirectory, TimeoutStartSec,
   ServiceResourceControl, service_memory_max, service_memory_swap_max,
   Installable, WantedBy,
@@ -18,6 +18,7 @@ import gunbc.live_deploy.release_locus {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner.runner_unit { runner_unit_template_name, runner_unit_dropin_path }
+import gunbc.fleet.board_function_admission_marker { board_function_converge_admission_marker }
 
 // HOW THE BOARD-FUNCTION CONVERGE ROUTE REACHES A HOST (operator decision 2026-11-02, escalation
 // msg_a7082369: join live_deploy's unit set and run from its per-revision release). The route
@@ -99,8 +100,10 @@ type BoardFunctionConvergeUnitFile
 // THE UNIT. ExecReload runs the same converge as ExecStart, and that is what a deploy uses to re-run it
 // (systemctl reload-or-restart, extdeps.systemd.systemctl): the gated workloads Require= this unit, and
 // systemd propagates a restart of a required unit to every unit that requires it, so restarting it would
-// restart docker, containerd and every runner on each deploy. RemainAfterExit keeps a converged run active,
-// so `systemctl is-active` reads whether this boot's removal held; a refusal leaves it failed.
+// restart docker, containerd and every runner on each deploy. A refusing start leaves the unit failed; a
+// refusing RELOAD does not -- systemd returns a RemainAfterExit oneshot to active whatever ExecReload exits
+// with -- so the unit's state is not what the gate reads. The gate reads the admission latch the converge
+// writes and removes (gunbc.fleet.board_function_admission_marker).
 fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisionBinding) -> BoardFunctionConvergeUnitFile {
   match board_function_converge_argv(host: host, revision: revision) {
     BoardFunctionConvergeArgvRefused { cause } => BoardFunctionConvergeUnitRefused { cause: cause }
@@ -126,17 +129,23 @@ fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisi
 }
 
 // THE WORKLOADS A FAILED CONVERGE KEEPS FROM STARTING. Successful convergence is a prerequisite at the
-// workload-admission boundary, declared on the workload's side: each gated unit gets a drop-in with
-// Requires= and After= this unit, so when the converge fails, times out or is missing, systemd does not start
-// the workload (measured on systemd 255, srv1 2026-11-02: a dependency job failed and the dependent stayed
-// inactive). The gated set is where workloads are admitted on a fleet host: the container runtimes and the
+// workload-admission boundary, declared on the workload's side, in two parts. Requires= and After= this unit
+// order every start after the converge and refuse it when the converge's start fails, times out or the unit
+// is missing. AssertPathExists= on the admission latch refuses it when the LATEST converge refused, including
+// a refusing reload that left this unit active. Measured on systemd 255 (srv1, 2026-11-02, throwaway units
+// under /run/systemd/system): a cold start ran the converge first and then admitted the workload; after a
+// failed reload the converge stayed active, the marker was gone, the running workload was untouched, and a
+// start of a previously inactive workload failed with "Assertion failed"; after a fixed converge reloaded,
+// that workload started. The gated set is where workloads are admitted on a fleet host: the container runtimes and the
 // GitHub Actions runner template, whose drop-in directory applies to every runner instance.
 //
 // DELIBERATELY NOT GATED: sshd, tailscaled, the serial console and the gunbc management surface (the
 // dashboard and approval broker). Those are how an operator reaches a host whose converge failed, and the
 // requirement is to block workload admission, not to make the machine unmanageable. Recovery is to fix
 // the cause and start this unit (or the workload, which pulls it in); to admit workloads without the
-// removal, the operator removes the drop-in, a deliberate act outside this route.
+// removal, the operator removes the drop-in, a deliberate act outside this route. Workloads already
+// running when a re-run refuses keep running: the latch governs admission, and stopping running work is a
+// separate decision this route does not take.
 type BoardFunctionGatedWorkload {
   unit: NonEmptyStr
   drop_in_path: NonEmptyStr
@@ -160,6 +169,7 @@ fn board_function_converge_gate_drop_in() -> SystemdDropIn {
   SystemdDropIn { sections: [DropInUnitSection { directives: [
     Requires { target: board_function_converge_unit_name },
     After { target: board_function_converge_unit_name },
+    Assert { kind: ConditionPathExists, negated: false, argument: board_function_converge_admission_marker },
   ] }] }
 }
 

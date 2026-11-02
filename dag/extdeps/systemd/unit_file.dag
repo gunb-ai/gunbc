@@ -130,6 +130,10 @@ type SystemdUnitDirective
   | OnSuccess { unit: NonEmptyStr }
   | OnFailure { unit: NonEmptyStr }
   | Condition { kind: SystemdConditionKind, negated: Bool, argument: NonEmptyStr }
+  // systemd.unit(5) (v255), Assert*=: the same checks as Condition*=, but a false assertion FAILS the start
+  // job ("Assertion failed on job for ...") instead of skipping it, so a unit that must not start without
+  // the asserted state is refused loudly rather than quietly reported as a successful skip.
+  | Assert { kind: SystemdConditionKind, negated: Bool, argument: NonEmptyStr }
   | SuccessAction { action: SystemdUnitStateAction }
   | FailureAction { action: SystemdUnitStateAction }
 
@@ -145,6 +149,13 @@ fn systemd_condition_kind_wire(kind: SystemdConditionKind) -> String {
   match kind {
     ConditionPathExists => "ConditionPathExists"
     ConditionDirectoryNotEmpty => "ConditionDirectoryNotEmpty"
+  }
+}
+
+fn systemd_assert_kind_wire(kind: SystemdConditionKind) -> String {
+  match kind {
+    ConditionPathExists => "AssertPathExists"
+    ConditionDirectoryNotEmpty => "AssertDirectoryNotEmpty"
   }
 }
 
@@ -790,6 +801,7 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     OnSuccess { unit: v } => join(["OnSuccess=", v as String], "")
     OnFailure { unit: v } => join(["OnFailure=", v as String], "")
     Condition { kind: k, negated: n, argument: v } => join([systemd_condition_kind_wire(kind: k), "=", if n { "!" } else { "" }, v as String], "")
+    Assert { kind: k, negated: n, argument: v } => join([systemd_assert_kind_wire(kind: k), "=", if n { "!" } else { "" }, v as String], "")
     SuccessAction { action: a } => join(["SuccessAction=", systemd_unit_state_action_wire(action: a)], "")
     FailureAction { action: a } => join(["FailureAction=", systemd_unit_state_action_wire(action: a)], "")
   }

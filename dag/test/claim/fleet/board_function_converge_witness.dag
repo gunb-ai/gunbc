@@ -19,6 +19,7 @@ import gunbc.fleet.board_function_converge {
   DetachAlreadyConverged, DetachConvergedAfterApply, DetachNotConverged,
   PcieDetachDecision, DetachConverged, DetachApply, DetachRefused,
   pcie_detach_decision, converge_plan,
+  BoardFunctionConvergeLine, admission_marker_action, WriteAdmissionMarker, RemoveAdmissionMarker,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -238,4 +239,15 @@ test fn an_operator_switch_is_reported_not_claimed() -> Bool {
     let line = converge_plan(plan: p)
     !line.refused && contains(line.text, "operator switch") && contains(line.text, "not claimed set")
   })
+}
+
+// THE LATCH FOLLOWS THE RESULT: any refused line removes it, so a refusing re-run closes admission even while
+// the converge unit stays active; a run with no refusal -- reported, kept or unmodeled lines included --
+// writes it.
+test fn the_admission_latch_follows_the_latest_result() -> Bool {
+  let kept = BoardFunctionConvergeLine { text: "kept", refused: false }
+  let refused_line = BoardFunctionConvergeLine { text: "REFUSED", refused: true }
+  admission_marker_action(lines: [kept, kept]) == WriteAdmissionMarker
+    && admission_marker_action(lines: [kept, refused_line]) == RemoveAdmissionMarker
+    && admission_marker_action(lines: []) == WriteAdmissionMarker
 }

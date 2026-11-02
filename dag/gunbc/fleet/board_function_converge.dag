@@ -7,6 +7,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io {
   Filesystem, listed_entry_presence, filesystem_listing_observation, filesystem_listing_entry_names,
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_delete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
 }
 import extdeps.linux.procfs { ProcSelfStatus, procfs_path_literal, procfs_status_effective_uid }
@@ -23,6 +24,7 @@ import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.fleet.fleet_host_identity { operator_hosts }
 import gunbc.fleet.board_function_topology { PcieFunctionIdentity, PcieDetachRoute }
+import gunbc.fleet.board_function_admission_marker { board_function_converge_admission_marker }
 import gunbc.fleet.board_function_admission {
   HostBoardFunctionPlan, PlannedFunction, PlannedUnreadPorts,
   NothingToRemove, RemovedAtBoard, RemovedByHostAfterBoot, RemovalUnmodeled,
@@ -423,9 +425,38 @@ fn running_as_root() -> Bool {
   status.success && (match procfs_status_effective_uid(content: status.content) { Present { value: uid } => uid == 0 Absent => false })
 }
 
+// THE ADMISSION LATCH FOLLOWS THE RUN (gunbc.fleet.board_function_admission_marker). A converged run writes
+// it; a run with any refusal removes it, so a refusing re-run closes admission to the gated workloads even
+// though the converge unit stays active. The latch is never touched before the run finishes: a successful
+// re-run leaves admission open throughout, and only a result changes it.
+type AdmissionMarkerAction
+  = WriteAdmissionMarker
+  | RemoveAdmissionMarker
+
+fn admission_marker_action(lines: List<BoardFunctionConvergeLine>) -> AdmissionMarkerAction {
+  if any(lines, l => l.refused) { RemoveAdmissionMarker } else { WriteAdmissionMarker }
+}
+
+fn write_admission_marker() -> String? {
+  let w = Filesystem.Write(path: board_function_converge_admission_marker as String, content: "converged\n")
+  if w.success { none } else { Present { value: join(["writing the admission marker ", board_function_converge_admission_marker as String, " failed: ", w.error], "") } }
+}
+
+fn remove_admission_marker() -> String? {
+  let path = board_function_converge_admission_marker as String
+  let d = Filesystem.Delete(path: path)
+  match filesystem_delete(path: path, success: d.success, error: d.error, error_kind: d.error_kind) {
+    FilesystemDeleted { path: _ } => none
+    FilesystemDeleteTargetAbsent { path: _ } => none
+    FilesystemDeleteRefused { path: _, kind: _, error } => Present { value: join(["the admission marker ", path, " could not be removed, so gated workloads may still start: ", error], "") }
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error } => Present { value: join(["the admission marker ", path, " could not be removed, so gated workloads may still start: ", error], "") }
+  }
+}
+
 // THE ENTRY. `host` names the machine in gunbc.fleet.fleet_host_identity operator_hosts; the deployment
 // that installs the unit passes its own target host. Exit 0 means every host-side removal the plans license
-// is in place and read back; any refusal exits non-zero with every plan's line printed.
+// is in place and read back, and the admission latch is written; any refusal removes the latch and exits
+// non-zero with every plan's line printed.
 fn board_function_converge_cli(host: NonEmptyStr) -> CliWireResponse {
   match filter(operator_hosts, h => (h as String) == (host as String)).first() {
     Absent => board_function_converge_refused(reason: concat("board-function converge: no operator host is named ", host as String))
@@ -434,10 +465,17 @@ fn board_function_converge_cli(host: NonEmptyStr) -> CliWireResponse {
       else {
         let lines = map(host_board_function_plans(host: identity), p => converge_plan(plan: p))
         let text = join(map(lines, l => concat(l.text, "\n")), "")
-        if any(lines, l => l.refused) {
-          CliWirePrintable { bytes: text, exit: exit_failure(reason: "board-function converge: a host-side removal did not converge; see the REFUSED line") }
-        } else {
-          CliWirePrintable { bytes: text, exit: ExitSuccess }
+        match admission_marker_action(lines: lines) {
+          WriteAdmissionMarker =>
+            match write_admission_marker() {
+              Absent => CliWirePrintable { bytes: concat(text, "board-function admission: open\n"), exit: ExitSuccess }
+              Present { value: cause } => CliWirePrintable { bytes: text, exit: exit_failure(reason: concat("board-function converge: every removal read back, but ", cause)) }
+            }
+          RemoveAdmissionMarker =>
+            match remove_admission_marker() {
+              Absent => CliWirePrintable { bytes: concat(text, "board-function admission: closed\n"), exit: exit_failure(reason: "board-function converge: a host-side removal did not converge; see the REFUSED line. Gated workloads will not start until a converge succeeds") }
+              Present { value: cause } => CliWirePrintable { bytes: text, exit: exit_failure(reason: concat("board-function converge: a host-side removal did not converge, and ", cause)) }
+            }
         }
       }
   }
