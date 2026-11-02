@@ -33,10 +33,12 @@ import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimR
 //                         legs.
 //
 // RED: the entry built at the PRE-FIX seed (the seed emission whose v2_compiler_parse.rs carries sha
-// 188439f2, pre-fix src/v1/05_emit_rust.dag) must exit NOT-HELD (1); built at the fix (the rc-ref arm of
-// emit_resolved_variant_pattern_rc_aware emitting `field: ref var` for a renamed Bind) it must exit HELD
-// (0). Both legs are run by hand; the discriminating cases are renamed_bind_capture and
-// nested_variant_rename -- shorthand_bind holds on both legs by construction.
+// 188439f2, pre-fix src/v1/05_emit_rust.dag) must exit NOT-HELD (1); built at the fix it must exit HELD
+// (0). The fix binds the rc-ref PAIR under one emitter-owned binder: the pattern renders
+// `field: ref __rc_field` and the prelude reads `__rc_field.as_ref()`, so no arm-body identifier can be
+// captured by a field binder and the declared variable is bound from the pair source. Both legs are run
+// by hand; the discriminating case is renamed_bind_capture -- shorthand_bind and nested_variant_rename
+// hold on both legs by construction.
 //
 // NOT ON THE REQUIRED PATH: this label is executed by host runs, not by the required job; the class rung
 // is mechanical-by-label, not gate-enrolled (gunbc.recurring_failure_mode
