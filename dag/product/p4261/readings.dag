@@ -139,6 +139,7 @@ import product.p4261.carrier {
   RowSide,
   SideUnrecorded,
   away_side,
+  housing_admitted_whole,
   latch_side,
   row_side_key,
 }
@@ -159,6 +160,7 @@ import product.p4261.e1_b {
 
 type PolarityGap
   = SidesUnrecorded
+  | HousingNotMappedWhole
   | NoMeasuredBoard
   | InputUnmapped
   | BeepsNotOfOneState
@@ -323,8 +325,13 @@ fn polarity_with(g: ReachabilityGraph, input: InputConnector, fused: RowSide) ->
   }
 }
 
+// Whole-row polarity rests only on a housing admitted whole (product.p4261.carrier
+// housing_admitted_whole): a partial or inconsistent mapping states no row's conclusion, whatever its
+// observed terminals reach. Placement across the input inherits this through the polarity it reads.
 fn measured_polarity(g: ReachabilityGraph, input: InputConnector) -> InputPolarity {
-  if any(input.housing.positions, p => row_side_key(s: p.side) == 0) {
+  if !housing_admitted_whole(h: input.housing) {
+    PolarityUnestablished { gaps: [HousingNotMappedWhole] }
+  } else if any(input.housing.positions, p => row_side_key(s: p.side) == 0) {
     PolarityUnestablished { gaps: [SidesUnrecorded] }
   } else {
     if side_reaches_fuse(g: g, input: input, side: latch_side()) && !side_reaches_fuse(g: g, input: input, side: away_side()) {

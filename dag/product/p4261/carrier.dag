@@ -97,29 +97,28 @@ type ConnectorPositionCensus
 
 // ── THE OBSERVED INVENTORY, DERIVED ONCE ───────────────────────────────────────────────────────
 //
-// What a board's census establishes about its connector, from distinct positions only: a terminal
-// listed twice at one coordinate is one position; a terminal placed at two coordinates, or two
-// terminals at one coordinate, is a defect, and the census is refused with it rather than counted. A
-// complete mapping with every side read gives the count per row; a complete count, or a complete
-// mapping with a side unread, gives a total and no row split; a partial mapping gives lower bounds per
-// row and the positions whose side is unread -- never an exact count by leaving the unread ones out.
+// What a board's census establishes about its connector, from distinct positions only. A position's
+// index is always read; its side may not be. One terminal read twice at compatible positions is one
+// position (its side taken from whichever reading recorded it). A terminal at two different indices,
+// or on two different read sides, is a defect; so are two terminals at the same index on the same READ
+// side. An unread side is unknown, never a row of its own: two terminals at one index whose sides are
+// unread collide with nothing. A defective census is refused with the defect, never counted.
+//
+// The rows read keep their counts whatever else is unread:
+//   every position mapped, every side read       the count per row
+//   every position mapped, some sides unread     the known count per row, and how many are unread
+//   mapped in part                               lower bounds per row, and how many are unread
+//   a count off a photograph                     a total, and no row information at all
 type MappingDefect
   = TerminalAtTwoCoordinates { terminal: TerminalIdentity }
   | TwoTerminalsAtOneCoordinate { side: RowSide, index: Nat }
 
 type ObservedInventory
   = InventoryByRow { latch_row: Nat, away_row: Nat }
-  | InventoryTotalOnly { total: Nat }
+  | InventorySidesUnread { latch_row_known: Nat, away_row_known: Nat, side_unread: Nat }
   | InventoryInPart { latch_row_at_least: Nat, away_row_at_least: Nat, side_unread: Nat }
+  | InventoryTotalOnly { total: Nat }
   | InventoryRefused { defect: MappingDefect }
-
-fn same_coordinate(a: HousingPosition, b: HousingPosition) -> Bool {
-  row_side_key(s: a.side) == row_side_key(s: b.side) && a.index == b.index
-}
-
-fn same_terminal(a: HousingPosition, b: HousingPosition) -> Bool {
-  (a.terminal as String) == (b.terminal as String)
-}
 
 fn row_side_key(s: RowSide) -> Nat {
   match s {
@@ -128,16 +127,37 @@ fn row_side_key(s: RowSide) -> Nat {
   }
 }
 
+fn side_read(s: RowSide) -> Bool {
+  row_side_key(s: s) != 0
+}
+
+fn same_terminal(a: HousingPosition, b: HousingPosition) -> Bool {
+  (a.terminal as String) == (b.terminal as String)
+}
+
+// Two readings that cannot both place one terminal: different indices, or different READ sides.
+fn coordinates_incompatible(a: HousingPosition, b: HousingPosition) -> Bool {
+  a.index != b.index || (side_read(s: a.side) && side_read(s: b.side) && row_side_key(s: a.side) != row_side_key(s: b.side))
+}
+
+// The same known position: both sides read and equal, and the same index.
+fn same_known_coordinate(a: HousingPosition, b: HousingPosition) -> Bool {
+  side_read(s: a.side) && side_read(s: b.side) && row_side_key(s: a.side) == row_side_key(s: b.side) && a.index == b.index
+}
+
 fn mapping_defects(ps: List<HousingPosition>) -> List<MappingDefect> {
   concat(
-    map(filter(ps, p => any(ps, q => same_terminal(a: p, b: q) && !same_coordinate(a: p, b: q))), p => TerminalAtTwoCoordinates { terminal: p.terminal }),
-    map(filter(ps, p => any(ps, q => same_coordinate(a: p, b: q) && !same_terminal(a: p, b: q))), p => TwoTerminalsAtOneCoordinate { side: p.side, index: p.index }),
+    map(filter(ps, p => any(ps, q => same_terminal(a: p, b: q) && coordinates_incompatible(a: p, b: q))), p => TerminalAtTwoCoordinates { terminal: p.terminal }),
+    map(filter(ps, p => any(ps, q => same_known_coordinate(a: p, b: q) && !same_terminal(a: p, b: q))), p => TwoTerminalsAtOneCoordinate { side: p.side, index: p.index }),
   )
 }
 
-// One entry per distinct terminal: a repeat of the same terminal at the same coordinate counts once.
+// One entry per distinct terminal, keeping a read side over an unread one.
 fn distinct_positions(ps: List<HousingPosition>) -> List<HousingPosition> {
-  fold(ps, init: no_positions(), f: (acc, p) => if any(acc, q => same_terminal(a: p, b: q)) { acc } else { concat(acc, [p]) })
+  fold(ps, init: no_positions(), f: (acc, p) =>
+    if any(acc, q => same_terminal(a: p, b: q)) {
+      if side_read(s: p.side) { map(acc, q => if same_terminal(a: p, b: q) && !side_read(s: q.side) { p } else { q }) } else { acc }
+    } else { concat(acc, [p]) })
 }
 
 fn no_positions() -> List<HousingPosition> {
@@ -157,10 +177,20 @@ fn observed_inventory(census: ConnectorPositionCensus) -> ObservedInventory {
         let ps = distinct_positions(ps: housing.positions)
         match housing.coverage {
           MappedInPart { obligation: _ } => InventoryInPart { latch_row_at_least: on_row(ps: ps, key: 1), away_row_at_least: on_row(ps: ps, key: 2), side_unread: on_row(ps: ps, key: 0) }
-          EveryPositionMapped => if on_row(ps: ps, key: 0) > 0 { InventoryTotalOnly { total: count(ps) } } else { InventoryByRow { latch_row: on_row(ps: ps, key: 1), away_row: on_row(ps: ps, key: 2) } }
+          EveryPositionMapped => if on_row(ps: ps, key: 0) > 0 { InventorySidesUnread { latch_row_known: on_row(ps: ps, key: 1), away_row_known: on_row(ps: ps, key: 2), side_unread: on_row(ps: ps, key: 0) } } else { InventoryByRow { latch_row: on_row(ps: ps, key: 1), away_row: on_row(ps: ps, key: 2) } }
         }
       }
     }
+  }
+}
+
+// A housing the electrical derivations may read whole: every position mapped and the mapping
+// consistent. A partial or defective mapping keeps its observed terminals, but no whole-row conclusion
+// rests on it.
+fn housing_admitted_whole(h: ConnectorHousing) -> Bool {
+  match h.coverage {
+    MappedInPart { obligation: _ } => false
+    EveryPositionMapped => count(mapping_defects(ps: h.positions)) == 0
   }
 }
 

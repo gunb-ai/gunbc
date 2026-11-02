@@ -53,6 +53,7 @@ import product.p4261.carrier {
   InventoryByRow,
   InventoryInPart,
   InventoryRefused,
+  InventorySidesUnread,
   InventoryTotalOnly,
   MappedOnHousing,
   MappingDefect,
@@ -293,7 +294,6 @@ fn identification_evidence(i: ComponentIdentification) -> EvidenceRef? {
   }
 }
 
-// Read on a photograph or in a statement of ours, not only off the seller's listing.
 // Evidence of ours: a photograph or statement made at our bench, not the seller's listing.
 fn evidence_is_ours(e: EvidenceRef) -> Bool {
   match e {
@@ -303,6 +303,7 @@ fn evidence_is_ours(e: EvidenceRef) -> Bool {
   }
 }
 
+// Read on a photograph or in a statement of ours, not only off the seller's listing.
 fn read_on_our_board(i: ComponentIdentification) -> Bool {
   match identification_evidence(i: i) {
     Absent => false
@@ -518,6 +519,8 @@ fn p4261_k1_population_standings() -> List<PositionStanding> {
 //                                          the census) is ours; read off the seller's listing, missing
 //   both rows counted, either different    contradicted
 //   a total only (no row split)            contradicted if different, otherwise missing the split
+//   every position, some sides unread      contradicted if a known row already exceeds the claim or the
+//                                          total differs, otherwise missing the split
 //   a partial mapping                      contradicted if a row already holds more than claimed, or the
 //                                          positions read exceed the claim's total; otherwise missing
 //   a refused mapping                      missing, with the defect kept
@@ -559,6 +562,9 @@ fn inventory_bearing(claim: P4261ContactInventory, observed: ObservedInventory, 
       if latch_row == claim.latch_row_positions && away_row == claim.away_row_positions { if ours { InventorySupportedOnSpecimen } else { InventoryMissing { gap: ReadOnlyOffListing } } }
       else { InventoryContradicted { observed: observed } }
     InventoryTotalOnly { total } => if total != inventory_total(i: claim) { InventoryContradicted { observed: observed } } else { InventoryMissing { gap: RowSplitUnread } }
+    InventorySidesUnread { latch_row_known, away_row_known, side_unread } =>
+      if latch_row_known > claim.latch_row_positions || away_row_known > claim.away_row_positions || latch_row_known + away_row_known + side_unread != inventory_total(i: claim) { InventoryContradicted { observed: observed } }
+      else { InventoryMissing { gap: RowSplitUnread } }
     InventoryInPart { latch_row_at_least, away_row_at_least, side_unread } =>
       if latch_row_at_least > claim.latch_row_positions || away_row_at_least > claim.away_row_positions || latch_row_at_least + away_row_at_least + side_unread > inventory_total(i: claim) { InventoryContradicted { observed: observed } }
       else { InventoryMissing { gap: CoverageIncomplete } }
@@ -585,5 +591,48 @@ fn j20_inventory_assessment(layout: CarrierLayoutObservation) -> InventoryAssess
   match (filter(p4261_contact_inventories, c => p4261_revision_eq(a: c.position.revision, b: layout.revision) && (c.position.designator as String) == "J20")).first() {
     Absent => Absent
     Present { value: c } => Present { value: assess_contact_inventory(claim: c, layout: layout, admitted: admit_correspondence(layout: layout).admitted) }
+  }
+}
+
+// ── THE RECORDED J20 INVENTORY: WHAT THE RECOUNT ESTABLISHES ON THIS BOARD ───────────────────────
+//
+// Independent of any revision claim, and of whether one agrees: a recount establishes this board's J20
+// inventory when its census is a mapping of the component admitted at this board's J20, read on our
+// own board (the mapping's sides and the designator reading alike), complete, consistent, and with
+// every position's row read against the latch. A count without rows, a partial or refused mapping, an
+// unread side, another connector's census, or one read only off the seller's listing does not -- each
+// kept as its reason, beside whatever the census did observe.
+type RecountGap
+  = RecountNotAMapping
+  | RecountNotAtAdmittedJ20
+  | RecountReadOffListing
+  | RecountInPart
+  | RecountSidesUnread
+  | RecountRefused { defect: MappingDefect }
+
+type RecountStanding
+  = RecountEstablished { latch_row: Nat, away_row: Nat }
+  | RecountNotEstablished { gap: RecountGap, observed: ObservedInventory }
+
+fn at_j20(layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>) -> List<SpecimenPosition> {
+  filter(admitted, s => p4261_revision_eq(a: s.position.position.revision, b: layout.revision) && (s.position.position.designator as String) == "J20")
+}
+
+fn j20_recount(layout: CarrierLayoutObservation) -> RecountStanding {
+  let observed = observed_inventory(census: layout.j20)
+  let subject = census_component(census: layout.j20)
+  let bound = filter(at_j20(layout: layout, admitted: admit_correspondence(layout: layout).admitted), s => component_identity_eq(a: s.specimen, b: subject))
+  match layout.j20 {
+    CountedFromPhotograph { component: _, positions: _, evidence: _ } => RecountNotEstablished { gap: RecountNotAMapping, observed: observed }
+    MappedOnHousing { housing } =>
+      if count(bound) == 0 { RecountNotEstablished { gap: RecountNotAtAdmittedJ20, observed: observed } }
+      else if !evidence_is_ours(e: housing.sides_evidence) || !all(bound, s => evidence_is_ours(e: s.evidence)) { RecountNotEstablished { gap: RecountReadOffListing, observed: observed } }
+      else { match observed {
+        InventoryByRow { latch_row, away_row } => RecountEstablished { latch_row: latch_row, away_row: away_row }
+        InventorySidesUnread { latch_row_known: _, away_row_known: _, side_unread: _ } => RecountNotEstablished { gap: RecountSidesUnread, observed: observed }
+        InventoryInPart { latch_row_at_least: _, away_row_at_least: _, side_unread: _ } => RecountNotEstablished { gap: RecountInPart, observed: observed }
+        InventoryRefused { defect } => RecountNotEstablished { gap: RecountRefused { defect: defect }, observed: observed }
+        InventoryTotalOnly { total: _ } => RecountNotEstablished { gap: RecountNotAMapping, observed: observed }
+      } }
   }
 }
