@@ -1278,3 +1278,211 @@ test fn the_declared_row_names_the_instance_the_pass_reads_and_the_root_it_left_
     _ => false
   }
 }
+
+// ============================================================================================
+// THE CARRY'S PARTIAL STATE, AND WHAT A RE-RUN WRITES.
+//
+// The rows above prove the carry over ONE reference: a slot left under a moved root lands in the
+// store the settle pass reads, a second carry reports AlreadyCarried, another instance's slot is not
+// moved. Two things they cannot see, and both are the operator's requirement 4:
+//   (a) what a carry does when references in the abandoned root cannot be read -- does it stop, skip
+//       them in silence, or carry the rest and name each one it refused;
+//   (b) whether a re-run WROTE anything, as opposed to reporting the labels it would report whether
+//       or not it wrote. Labels cannot see a write. A generation number can.
+// ============================================================================================
+
+// TWO MORE ORPHANED REFERENCES in the same abandoned root, used only as slots the store cannot read.
+// They need no grant and no ledger seat: the carry moves slot files and decides nothing about a
+// holder, and inventing a reservation for them would make the row prove less than it claims. TWO, not
+// one, so that the row does not depend on what order the store lists its keys in: with two unreadable
+// references among four, the first refusal can never be the last arm, so a carry that quits at the
+// first problem is caught whichever order the listing comes back in.
+data node_c: String = "g5-node-c"
+data key_c: String = "000000000000000c"
+data node_d: String = "g5-node-d"
+data key_d: String = "000000000000000d"
+
+fn unit_c() -> String {
+  match session_unit_wire(node_id: node_c, attempt_key: key_c) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+fn unit_d() -> String {
+  match session_unit_wire(node_id: node_d, attempt_key: key_d) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+fn slot_b(opened: EpochSecs) -> AttemptRecord {
+  session_attempt_record(node_id: node_b, attempt_key: key_b, unit: unit_b() as NonEmptyStr, granted: kibibyte(count: 8388608), now: opened)
+}
+
+// THE SECOND ORPHAN, under its own reference and its own attempt, in the root the re-root abandoned.
+// Seeded the way the host has it: the attempt's own transitions write the bytes, generation 1 opened,
+// generation 2 Launching -- the only writer whose bytes the reader accepts.
+fn orphan_launched_b(dir: String) -> Bool {
+  match old_store(dir: dir) {
+    Absent => false
+    Present { value: old } =>
+      match attempt_open(store: old, record: slot_b(opened: 99999999998)) {
+        AttemptAdvanced { state: _, generation: g } =>
+          match attempt_begin_launch(store: old, reference: unit_b() as NonEmptyStr, expected: g) {
+            AttemptAdvanced { state: _, generation: _ } => true
+            AttemptLostRace { expected: _, observed: _ } => false
+            AttemptTransitionRefused { detail: _ } => false
+          }
+        AttemptLostRace { expected: _, observed: _ } => false
+        AttemptTransitionRefused { detail: _ } => false
+      }
+  }
+}
+
+// HOW MANY REFERENCES THE CARRY CLAIMS IT MOVED. A re-run that moves nothing reports none -- whatever
+// its per-reference labels say. The count is over the arms, not over names.
+fn carry_carried_arms(c: AttemptSlotsCarry) -> Int {
+  match carry_report_of(c: c) {
+    Absent => 0
+    Present { value: report } => count(filter(report.outcomes, o => match o { AttemptSlotsCarried { reference: _, source_generation: _, target_generation: _ } => true  _ => false }))
+  }
+}
+
+// THE LIVE STORE HOLDS THIS REFERENCE AT EXACTLY THIS GENERATION, and at no other. The number is the
+// store's own, read back through the census the cutover computed -- never one the fixture typed in.
+fn census_target_held_at(c: AttemptSlotsCensus, reference: String, generation: Int) -> Bool {
+  count(filter(census_entries(c: c), e => ((e.reference as String) == reference) && match e.target { SlotRead { generation: g, state: _, payload: _ } => g == generation  _ => false })) == 1
+}
+
+// THE OLD ROOT HOLDS IT (readable or not) AND THE LIVE STORE DOES NOT: the refused reference is left
+// exactly where it was. This is the difference between a carry that stopped at a problem, which is a
+// fact an operator can act on, and a carry that deleted the problem, which is data loss.
+fn census_only_old_holds(c: AttemptSlotsCensus, reference: String) -> Bool {
+  count(filter(census_entries(c: c), e => ((e.reference as String) == reference)
+    && match e.source { SlotAbsent => false  SlotRead { generation: _, state: _, payload: _ } => true  SlotUnreadable { detail: _ } => true }
+    && match e.target { SlotAbsent => true  SlotRead { generation: _, state: _, payload: _ } => false  SlotUnreadable { detail: _ } => false })) == 1
+}
+
+// BOTH SIDES HOLD THE SAME BYTES: the carry copied the slot and rewrote nothing.
+fn census_relation_is_identical(c: AttemptSlotsCensus, reference: String) -> Bool {
+  any(census_entries(c: c), e => (e.reference as String) == reference && match e.payload_relation { PayloadsIdentical => true  PayloadsDifferent => false  PayloadRelationUndecided => false })
+}
+
+// AN INTERRUPTED CARRY: two references the store cannot read, sitting among two it can. The carry is a
+// pass over EVERY reference the abandoned root lists, not a search for the first problem -- so each
+// unreadable one is refused BY NAME, both readable ones still land, and each refused file stays where
+// it was instead of being deleted, skipped in silence, or guessed past.
+//
+// THE MUTATIONS THIS ROW EXISTS TO CATCH, either of which turns it red:
+//   (1) in attempt_slots_carry, replace the fold... the map over the listed keys with a fold that
+//       STOPS at the first AttemptSlotsCarryRefused. The outcome count drops below four and one of the
+//       two carried references goes missing. Two unreadable references among four make this
+//       order-independent: the first refusal is never the last arm.
+//   (2) filter the refusals OUT of the report -- the silent skip, the worse mutation, because the
+//       report then reads as a clean carry. The count drops to two and both carry_refused_at arms fail.
+// No row above catches either: each of them plants ONE reference, so a carry that quits at the first
+// problem, or drops it from the report, still answers its one reference correctly.
+test fn a_carry_that_refuses_one_reference_still_carries_the_others_and_names_the_refusal() -> Bool {
+  let dir = fresh_dir(tag: "cutoverpartial")
+  let seeded_a = orphan_launched(dir: dir)
+  let seeded_b = orphan_launched_b(dir: dir)
+  let planted_c = plant_undecodable_slot(root: old_slots_dir(dir: dir), reference: unit_c())
+  let planted_d = plant_undecodable_slot(root: old_slots_dir(dir: dir), reference: unit_d())
+  let carry = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let census = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  seeded_a
+  && seeded_b
+  && planted_c
+  && planted_d
+  // One outcome per reference the old root listed: four, not three, not two, not one.
+  && match carry_report_of(c: carry) { Present { value: report } => count(report.outcomes) == 4  Absent => false }
+  && carried(c: carry, reference: unit_a())
+  && carried(c: carry, reference: unit_b())
+  && carry_refused_at(c: carry, reference: unit_c())
+  && carry_refused_at(c: carry, reference: unit_d())
+  && !carried(c: carry, reference: unit_c())
+  && !carried(c: carry, reference: unit_d())
+  // The two readable references now sit in BOTH stores with the same bytes. Each unreadable one sits in
+  // the old root only -- unreadable, not absent: the carry neither deleted it nor carried a guess.
+  && census_relation_is_identical(c: census, reference: unit_a())
+  && census_relation_is_identical(c: census, reference: unit_b())
+  && census_source_is_unreadable(c: census, reference: unit_c())
+  && census_source_is_unreadable(c: census, reference: unit_d())
+  && census_only_old_holds(c: census, reference: unit_c())
+  && census_only_old_holds(c: census, reference: unit_d())
+  && census_buckets_add_up(c: census)
+  && match census_counts(c: census) {
+      Present { value: k } => (k.total == 4) && (k.in_both_identical == 2) && (k.in_both_different == 0) && (k.either_side_unreadable == 2)
+      Absent => false
+    }
+}
+
+// A RE-RUN WRITES NOTHING, AND THE LABELS CANNOT SEE WHETHER IT DID. The idempotency row above reads
+// the report's labels: the second carry answers AlreadyCarried and not Carried. Labels are silent about
+// a write -- an already-carried arm that published a fresh generation "to record that the re-run
+// happened" reports EXACTLY the same labels, and every row above stays green. So this row reads the
+// number the carry itself reported it wrote, and requires the live store to still hold that same
+// generation after a second carry, with no Carried arm anywhere in the second report.
+//
+// THE MUTATION THIS ROW EXISTS TO CATCH: in attempt_slots_carry_one, let the same-identity arm publish
+// the payload again -- a commit under ExpectSlotGeneration at the generation it just read -- to stamp
+// the re-run, then answer AlreadyCarried exactly as it did. The labels are unchanged; the generation
+// goes up; this row is the only one red, and a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads
+// stays green beside it. That pair, green next to red, is the whole point of the row.
+test fn a_carry_re_run_writes_no_new_generation_into_the_store_it_owns() -> Bool {
+  let dir = fresh_dir(tag: "cutoverregen")
+  let seeded = orphan_launched(dir: dir)
+  let carry_first = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let census_first = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let carry_second = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let census_second = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  seeded
+  && carried(c: carry_first, reference: unit_a())
+  && already_carried(c: carry_second, reference: unit_a())
+  // Nothing in the second report claims a move.
+  && carry_carried_arms(c: carry_second) == 0
+  // The generation the FIRST carry reported is the generation the store still holds after the SECOND.
+  // The number comes out of the first carry's own outcome, so the row cannot be satisfied by a fixture
+  // that guessed it, and cannot be satisfied by a re-run that stamped a new one.
+  && match carry_report_of(c: carry_first) {
+      Absent => false
+      Present { value: report } => any(report.outcomes, o => match o {
+        AttemptSlotsCarried { reference: r, source_generation: _, target_generation: g } =>
+          ((r as String) == unit_a())
+          && census_target_held_at(c: census_first, reference: unit_a(), generation: g)
+          && census_target_held_at(c: census_second, reference: unit_a(), generation: g)
+        _ => false
+      })
+    }
+  // And the census itself is unchanged between the two runs: same references, same buckets. A re-run
+  // that wrote anything would move at least one of these.
+  && match census_counts(c: census_first) {
+      Absent => false
+      Present { value: before } => match census_counts(c: census_second) {
+        Absent => false
+        Present { value: after } =>
+          (before.total == after.total) && (before.in_both_identical == after.in_both_identical)
+          && (before.in_both_different == after.in_both_different) && (before.only_in_old == after.only_in_old)
+          && (before.either_side_unreadable == after.either_side_unreadable)
+      }
+    }
+}
