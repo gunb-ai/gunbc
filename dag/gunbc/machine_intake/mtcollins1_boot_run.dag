@@ -37,7 +37,7 @@ import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGat
 import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs, MegaRacAttachResult }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text, megarac_operation_evidence }
+import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host_at_current_build, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill }
 import gunbc.machine_intake.megarac_media_attach { PresentationStillReady, presentation_still_served }
 import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_host_admission }
@@ -2006,7 +2006,7 @@ fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<
 // never assumed (gunbc.runner.runner_browser_toolchain). // NOT REQUIRED IN PUBLIC: no public KVM client exists, so this answers NotStarted with its typed reason
 // and the record carries it; the handoff's required observer is the SOL collector (sol_handoff_admission).
 fn mtcollins1_boot_screen_start(proof: UnitHoldProof, password_file: String, attempt: String, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> KvmObserverStart {
-  match admit_megarac_host(host: proof.subject.host, operation: MegaRacKvmCanvasStill) {
+  match admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: proof.subject.host, operation: MegaRacKvmCanvasStill) {
     MegaRacHostRefused { cause: c } => KvmObserverNotStarted { reason: megarac_host_refusal_text(cause: c) }
     MegaRacHostAdmitted { host: h } =>
       megarac_kvm_observer_start(
