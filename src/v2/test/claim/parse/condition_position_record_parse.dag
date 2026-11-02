@@ -1,0 +1,161 @@
+module v2.test.claim.parse.condition_position_record_parse
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Branch, ComputationNode, Match, Node, NodeKind, Symbol }
+import v2.std.node_query { find_arrow_body_child }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DEFECT THESE ARMS DISCRIMINATE. At a CONDITION head (if condition, match scrutinee) a name
+// followed by braces is ambiguous: `if c { i }` is a bare variable with a one-statement block,
+// while `if x == R { value: y } { ... }` carries a genuine record operand. v1 separates them in
+// the condition parser (02_parse parse_if/parse_match -> parse_expr_no_brace: an uppercase head
+// gate plus a retry that abandons the record when it ends at neither `{` nor an operator). v2's
+// grammar cannot read the head's case, and the only prior anti-record device keyed on a one-name
+// brace run FOLLOWED BY ELSE -- so it fired exactly when an else followed: the else-less
+// `if c { i }` followed by a statement had its condition read as the record `c { i }`, the if was
+// starved of its block, and the module refused at PARSE with a token remainder AFTER the braces
+// (cc2-pp6, srv2 run.log dc759c24: BOTH executors, interpreted locus 151..152 = the tail). The
+// condition productions now carry the seed's separation declaratively: the record arm is admitted
+// only when its residue continues with `{` or an infix class (and_predicate over the heads
+// derived from dag_infix_operators), so the braces fall to the block when a statement would
+// start, and every reading that was right keeps its parse.
+//
+// WHAT EACH ARM ESTABLISHES (the set is a pair per shape, never a lone RED):
+//   - elseless_if_with_tail is THE RED: refused before the fix (token remainder at the tail),
+//     parses after it, and the fn body lowers to the same Branch shape the equivalent
+//     return-bodied guard lowers to (the namespace_xl0 guard_fallthrough reading).
+//   - then_branch_record is THE SECOND RED: `if c then R { s } else d` refused under the old
+//     guard although the then-branch has no block slot and the record reading is the only one
+//     that fits; it parses now. Corpus: zero real then-form uses, and the seed has no then-form,
+//     so no source depended on the old refusal (stated correction, grammar-owner review).
+//   - The controls make this a repair and not a trade: a record operand in an ordinary position
+//     (let head, call argument), a parenthesised record condition, a record on the right of an
+//     infix in condition position, a record-headed match scrutinee, and an operator chain of two
+//     records in condition position ALL keep parsing -- each was green before and must stay green.
+
+fn g_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: _ } =>
+      bind_outcome(
+        o: tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn g_parse_accepted(text: String, file: Symbol) -> Bool {
+  match g_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE RED: the verbatim shape of the namespace_xl0 rtp_guard_fallthrough member -- else-less
+// if-block statement, tail statement on the next line.
+data elseless_if_with_tail_source: String = "module probe.elseless_tail\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c {\n    i\n  }\n  i\n}\n"
+
+// THE SECOND RED: then-branch record before else (refused under the deleted guard).
+data then_branch_record_source: String = "module probe.then_record\n\nfn f(c: Bool, s: Int) -> Int {\n  if c then R { s } else 0\n}\n"
+
+// CONTROLS: every record and block reading that was right before stays right.
+data record_let_head_source: String = "module probe.record_let\n\nfn f(x: Int) -> Int {\n  let p = R { x }\n  x\n}\n"
+
+data record_call_arg_source: String = "module probe.record_arg\n\nfn f(x: Int) -> Int {\n  g(R { x })\n}\n"
+
+data paren_record_condition_source: String = "module probe.paren_record\n\nfn f(p: Bool, x: Int) -> Bool {\n  if (p { x: 1 }) {\n    true\n  } else {\n    false\n  }\n}\n"
+
+data infix_record_condition_source: String = "module probe.infix_record\n\nfn f(x: Int, y: Int) -> Bool {\n  if x == Present { value: y } {\n    true\n  } else {\n    false\n  }\n}\n"
+
+data record_match_scrutinee_source: String = "module probe.record_scrutinee\n\nfn f(x: Int) -> Int {\n  match R { value: x } {\n    _ => x\n  }\n}\n"
+
+data record_chain_condition_source: String = "module probe.record_chain\n\nfn f(x: Int, y: Int) -> Bool {\n  if R { value: x } == S { value: y } {\n    true\n  } else {\n    false\n  }\n}\n"
+
+data else_if_chain_source: String = "module probe.else_chain\n\nfn f(c: Bool, i: Int) -> Int {\n  if c {\n    i\n  } else {\n    0\n  }\n}\n"
+
+// THE PAIRS: each RED stands beside its already-green sibling of the same shape.
+fn elseless_if_with_tail_parses() -> Bool { g_parse_accepted(text: elseless_if_with_tail_source, file: ^elseless_tail_probe) }
+
+fn then_branch_record_parses() -> Bool { g_parse_accepted(text: then_branch_record_source, file: ^then_record_probe) }
+
+fn record_let_head_still_parses() -> Bool { g_parse_accepted(text: record_let_head_source, file: ^record_let_probe) }
+
+fn record_call_arg_still_parses() -> Bool { g_parse_accepted(text: record_call_arg_source, file: ^record_arg_probe) }
+
+fn paren_record_condition_still_parses() -> Bool { g_parse_accepted(text: paren_record_condition_source, file: ^paren_record_probe) }
+
+fn infix_record_condition_still_parses() -> Bool { g_parse_accepted(text: infix_record_condition_source, file: ^infix_record_probe) }
+
+fn record_match_scrutinee_still_parses() -> Bool { g_parse_accepted(text: record_match_scrutinee_source, file: ^record_scrutinee_probe) }
+
+fn record_chain_condition_still_parses() -> Bool { g_parse_accepted(text: record_chain_condition_source, file: ^record_chain_probe) }
+
+fn else_if_chain_still_parses() -> Bool { g_parse_accepted(text: else_if_chain_source, file: ^else_chain_probe) }
+
+// The RED's lowering-shape twin (the exemplar's bare_if_body_is_branch shape): the arrow body of
+// the else-less body must lower to the Branch construct -- the if is a branch, not a call to a
+// record constructor. If the record reading ever returns, the arrow body stops being a Branch.
+fn elseless_if_arrow_body_kind() -> Optional<NodeKind> {
+  match g_tokenize_parse(text: elseless_if_with_tail_source, file: ^elseless_tail_probe) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: normalized, diagnostics: _ } => arrow_body_kind(root: normalized.root)
+      }
+  }
+}
+
+fn arrow_body_kind(root: Node) -> Optional<NodeKind> {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: body, diagnostics: _ } => Present { value: body.kind }
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: Absent, f: fn(found, e) {
+        match found {
+          Present { value: _ } => found
+          Absent => arrow_body_kind(root: e.target)
+        }
+      })
+  }
+}
+
+test fn elseless_if_with_tail_parses_holds() -> Bool { elseless_if_with_tail_parses() }
+
+test fn then_branch_record_parses_holds() -> Bool { then_branch_record_parses() }
+
+test fn record_let_head_still_parses_holds() -> Bool { record_let_head_still_parses() }
+
+test fn record_call_arg_still_parses_holds() -> Bool { record_call_arg_still_parses() }
+
+test fn paren_record_condition_still_parses_holds() -> Bool { paren_record_condition_still_parses() }
+
+test fn infix_record_condition_still_parses_holds() -> Bool { infix_record_condition_still_parses() }
+
+test fn record_match_scrutinee_still_parses_holds() -> Bool { record_match_scrutinee_still_parses() }
+
+test fn record_chain_condition_still_parses_holds() -> Bool { record_chain_condition_still_parses() }
+
+test fn else_if_chain_still_parses_holds() -> Bool { else_if_chain_still_parses() }
+
+test fn elseless_if_body_is_branch_holds() -> Bool {
+  match elseless_if_arrow_body_kind() {
+    Present { value: ComputationNode { behavior: Branch } } => true
+    _ => false
+  }
+}
