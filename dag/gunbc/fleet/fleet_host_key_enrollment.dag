@@ -219,7 +219,9 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
 // mints a new one and re-enrols), and the same slot stating one half twice, the verbatim
 // paste included, the most likely copy-paste mistake. This rule did not exist before T2: the
 // Spark rows' key-distinctness cross-check was manual prose. It compares the public half
-// itself, so provenance arms cannot dodge it.
+// itself, so provenance arms cannot dodge it. SCOPE, stated honestly: this form is SCOPED and
+// NARROWS the catalog-wide rule the note's approval (msg_34308ee8) named; the narrowing is
+// pending side-chat review by merry-fox-82, not approved.
 // RUNG, stated honestly (DESIGN 4b): this rule is evaluated when the claim
 // dag/test/claim/fleet/fleet_host_key_enrollment_witness is RUN, against the catalog itself.
 // That run is NOT on the required path - DESIGN's Building & checks keeps witnesses off it, and
