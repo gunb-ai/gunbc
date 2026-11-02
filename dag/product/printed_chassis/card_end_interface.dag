@@ -92,3 +92,26 @@ data a16_card_end: CardEndInterface = CardEndInterface {
   inserts: FeaturePresent { value: a16_end_cap_inserts },
   connector: FeaturePresent { value: a16_face_connector },
 }
+
+// ═══ THE A2, READ 2026-11-02 ═══
+// Operator caliper readings on a held A2, intake end (opposite the bracket), with the bracket removed. The
+// face's TOP end is the end away from the slot; its BACK edge is the PCB side. The opening sits 2.2 mm below
+// the top and 2 mm in from the PCB-side edge, with 2 mm read on the other side too: the widths sum 0.42 mm
+// short of the face because the opening's sides are pitched and it was read at its tightest, as on the A16.
+// The bottom border (55.6 - 52.37 - 2.2 = 1.03 mm) was not read on its own. The fins sit about 1 mm behind
+// the face ("very close, like 1 mm"), and the top and bottom 4.9 mm of the opening are tapered and fin-free.
+// The intake end has no threaded holes and no power header: the only holes are on the bracket end, and the
+// card is powered from the slot (extdeps.gpu.nvidia_a2 a2_card_row auxiliary_power is the cited empty list).
+data a2_card_end: CardEndInterface = CardEndInterface {
+  source: "Operator caliper readings on a held A2, intake end, 2026-11-02",
+  face_length: micrometer(count: 55600),
+  face_thickness: micrometer(count: 18620),
+  window_length: micrometer(count: 52370),
+  window_depth: micrometer(count: 14200),
+  window_from_top: micrometer(count: 2200),
+  window_from_back: micrometer(count: 2000),
+  fin_setback: micrometer(count: 1000),
+  fin_free_bands: FeaturePresent { value: FinFreeBands { top: micrometer(count: 4900), bottom: micrometer(count: 4900) } },
+  inserts: FeatureAbsentObserved,
+  connector: FeatureAbsentObserved,
+}

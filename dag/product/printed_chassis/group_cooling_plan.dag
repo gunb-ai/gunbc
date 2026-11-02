@@ -205,13 +205,21 @@ type GroupFabrication
   = GroupFabricableByExistingDucts
   | GroupFabricationBlocked { reasons: List<String> }
 
+fn add_unfit(acc: List<DuctCard>, m: InstalledCard) -> List<DuctCard> {
+  match duct_card_dims(card: m.instance.card) {
+    Present { value: _ } => acc
+    Absent => if any(acc, x => x.row.id == m.instance.card.row.id) { acc } else { concat(acc, [m.instance.card]) }
+  }
+}
+
+fn unfit_cards(ms: List<InstalledCard>) -> List<DuctCard> {
+  let start: List<DuctCard> = []
+  fold(ms, init: start, f: (acc, m) => add_unfit(acc: acc, m: m))
+}
+
 fn group_fabrication(inst: CardInstallation, g: CardGroup) -> GroupFabrication {
   let ms = group_members(g: g)
-  let unread = fold(ms, init: [], f: (acc, m) => match duct_card_dims(card: m.instance.card) {
-    Present { value: _ } => acc
-    Absent => if any(acc, x => x == (m.instance.card.row.id as String)) { acc } else { concat(acc, [m.instance.card.row.id as String]) }
-  })
-  let reasons_unread = map(unread, c => join(["no fittable end face for ", c], ""))
+  let reasons_unread = map(unfit_cards(ms: ms), c => duct_card_unread_reason(card: c))
   let shape = if length(list: ms) == 1 { [] } else { concat(match group_contiguity(inst: inst, g: g) {
     GroupContiguous => []
     GroupNotConsecutive { instance: i } => [join(["members are not side by side (", i as String, ")"], "")]

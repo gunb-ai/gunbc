@@ -11,7 +11,7 @@ import extdeps.gpu.nvidia_a2 { a2_card_row }
 import extdeps.fans.noctua { noctua_nf_a9_pwm_mounting_pattern, noctua_nf_a9_pwm_frame_depth }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy }
 import product.printed_chassis.gpu_duct { EndFaceMeasurement, CardEnvelope, GpuDuctDesign, BlowerDuctDesign, card_envelope_of, duct_design, blower_duct_design_of, screwed_end_cap_of, ScrewedEndCap, ScrewedEndCapMissing }
-import product.printed_chassis.card_end_interface { CardEndInterface, a16_card_end }
+import product.printed_chassis.card_end_interface { CardEndInterface, a16_card_end, a2_card_end }
 
 // ═══ THE CARDS A DUCT IS PRINTED FOR: A VENDOR ROW JOINED TO WHAT THIS REPOSITORY HAS READ ON THE CARD ═══
 //
@@ -41,15 +41,10 @@ fn end_face_obligation(card: NonEmptyStr) -> NonEmptyStr {
 data a16_duct_card: DuctCard = DuctCard { row: a16_card_row, end_face: EndFaceRead { face: a16_card_end } }
 data t10_duct_card: DuctCard = DuctCard { row: t10_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA Tesla T10") } }
 data t4_duct_card: DuctCard = DuctCard { row: t4_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA T4") } }
-// THE A2 WAS PARTLY READ ON 2026-11-02 (operator, caliper, intake end): outer face 55.6 mm by 18.62 mm; fin
-// opening 52.37 mm by 14.2 mm at its tightest, its top and bottom 4.9 mm tapered and fin-free; fins about
-// 1 mm behind the face; no threaded holes on that end (the only holes are on the bracket end); no power
-// header; the face's bottom edge about 10 mm above the motherboard; the opening's near edge 2 mm from the
-// face's PCB-side edge and 2 mm from the other edge. Those three widths sum to 18.2 mm against the 18.62 mm
-// face, 0.42 mm short -- the same shortfall the A16's readings showed across its thickness (0.43 mm), and for
-// the same reason: the opening's sides are pitched and it was read at its tightest. One position is still unread, so the
-// face is not yet a reading a duct can be fitted to, and the obligation names exactly that.
-data a2_duct_card: DuctCard = DuctCard { row: a2_card_row, end_face: EndFaceNeedsReading { read_obligation: "operator, on the held A2's intake end (opposite the bracket), with a caliper: where the 52.37 mm by 14.2 mm fin opening sits along the 55.6 mm face -- its top edge's distance from the face's top end (its edge is 2 mm from the PCB-side edge, read 2026-11-02) -- and which flat surfaces around it a duct may seat or seal against without loading the PCB or covering fins. The rest of the face was read on 2026-11-02 (product.printed_chassis.duct_card_catalog a2_duct_card)." } }
+// The A2's intake end was read on 2026-11-02 (product.printed_chassis.card_end_interface a2_card_end). It has
+// no end-cap inserts and no end-face header, so the ducts that screw into inserts refuse it by name; a duct
+// that seats on the A2 is a different realization.
+data a2_duct_card: DuctCard = DuctCard { row: a2_card_row, end_face: EndFaceRead { face: a2_card_end } }
 
 data duct_cards: List<DuctCard> = [a16_duct_card, t10_duct_card, t4_duct_card, a2_duct_card]
 
