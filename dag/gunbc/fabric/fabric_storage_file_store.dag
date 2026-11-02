@@ -109,9 +109,9 @@ fn fabric_store_area_paths(members: List<NonEmptyStr>, instance: HostDashboardIn
 }
 
 // THE MINT. It takes the declared member chain and the business key -- never a path, never a directory
-// someone chose. It first lists the store root the declaration picks: a root the substrate has not
-// provisioned is Unready, and no caller can hand the mint a directory to paper over that. Then it LISTS the two
-// AREAS under that root and creates nothing: a missing area is Unready naming it (creation and mode are
+// someone chose. It LISTS the two AREAS under the root the declaration picks and creates nothing. The root
+// itself is not listed: the public store's root is provisioned traverse-only for the service (fabric_storage_store_directories,
+// writes: false), so listing it would refuse on the live host, and a listable area proves the root is traversable: a missing area is Unready naming it (creation and mode are
 // the owned-directory rows'). `entry_mode` is a PUBLISHING posture, not a
 // location: the placement mint derives it from the writer rosters (refusing while they are unresolved)
 // and hands it here; stores with no declared publication mode pass Absent and post at the process umask,
@@ -119,16 +119,7 @@ fn fabric_store_area_paths(members: List<NonEmptyStr>, instance: HostDashboardIn
 type FabricStoreStanding = FabricStoreReady { store: FabricStorageOperations } | FabricStoreUnready { area: String, detail: String }
 
 fn fabric_store_open(members: List<NonEmptyStr>, instance: HostDashboardInstance, entry_mode: FileMode?) -> FabricStoreStanding {
-  let root = fabric_store_declared_root(members: members, root: instance.instance_root)
-  let areas = fabric_store_area_paths(members: members, instance: instance)
-  let listing = Filesystem.List(path: root as String)
-  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
-      FabricStoreUnready { area: "root", detail: join(["the store's directory ", root as String, " is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } =>
-      FabricStoreUnready { area: "root", detail: join(["the store's directory ", root as String, " could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => fabric_store_area_standing(areas: areas, entry_mode: entry_mode)
-  }
+  fabric_store_area_standing(areas: fabric_store_area_paths(members: members, instance: instance), entry_mode: entry_mode)
 }
 
 // EACH AREA IS OBSERVED, NEVER CREATED. Creation (and the mode) belongs to the owned-directory rows
