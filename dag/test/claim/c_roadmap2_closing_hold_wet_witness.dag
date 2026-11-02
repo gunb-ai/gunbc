@@ -8,10 +8,12 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_metering {
-  AttemptMeteringClosingAcquisition, AttemptMeteringStore, AttemptMeteringStoreReading, AttemptMeteringStoreReady, AttemptMeteringStoreUnready,
+  AttemptMeteringClosingAcquisition, AttemptMeteringListing, AttemptMeteringListingRead, AttemptMeteringListingUnreadable,
+  AttemptMeteringStore, AttemptMeteringStoreReading, AttemptMeteringStoreReady, AttemptMeteringStoreUnready,
   ClosingHoldAcquired, ClosingHoldHeldByThisWriter, ClosingHoldHeldByAnotherWriter, ClosingAcquireRefused,
   MeteringRoster, RosterSealed, RosterOpen, RosterRefused,
-  metering_attempt_closing_acquire_at_key, metering_closing_owner_ref, metering_roster_seal,
+  attempt_metering_listing_of, attempt_metering_store,
+  metering_attempt_closing_acquire_at_key, metering_closing_hold_key, metering_closing_owner_ref, metering_roster_seal,
 }
 
 // THE ROSTER CLOSING HOLD IS AN EXCLUSION PER WRITER, NOT A FLAG ANY SEALER MAY PASS. The metering roster is
@@ -158,6 +160,31 @@ test fn the_roster_seal_still_seals_under_its_own_hold_and_on_reentry() -> Bool 
         RosterSealed { launches: _, digest: _ } => true
         RosterOpen { launches: _ } => false
         RosterRefused { cause: _ } => false
+      }
+    RosterOpen { launches: _ } => false
+    RosterRefused { cause: _ } => false
+  }
+}
+
+// 6. THE ROUTE AT THIS HEAD WRITES ONLY THE SUFFIXED SLOT, NEVER THE PLAIN CLOSING NAME. The pre-seal build's
+// closing marker was a PLAIN entry named exactly metering-roster-closing in the attempt directory; the route
+// here takes the hold, which the hold library writes as <key>.<generation>. This is the cutover's "the legacy
+// writer is gone at this head" half, executed instead of asserted: the directory the PRODUCTION seal route just
+// wrote is listed, the plain name is absent from it, and the suffixed slot is present.
+test fn the_seal_route_writes_the_suffixed_slot_and_never_the_plain_closing_name() -> Bool {
+  let dir = fx_root(tag: "slotname")
+  let instance = fx_instance(tag: "slotname", dir: dir)
+  match metering_roster_seal(instance: instance, node_id: fx_node(), attempt_key: fx_key()) {
+    RosterSealed { launches: _, digest: _ } =>
+      match attempt_metering_store(instance: instance, node_id: fx_node(), attempt_key: fx_key()) {
+        AttemptMeteringStoreReady { store } =>
+          match attempt_metering_listing_of(store: store) {
+            AttemptMeteringListingRead { names } =>
+              !any(names, n => n == metering_closing_hold_key as String)
+                && any(names, n => starts_with(s: n, prefix: join([metering_closing_hold_key as String, "."], "")))
+            AttemptMeteringListingUnreadable { detail: _ } => false
+          }
+        AttemptMeteringStoreUnready { detail: _ } => false
       }
     RosterOpen { launches: _ } => false
     RosterRefused { cause: _ } => false
