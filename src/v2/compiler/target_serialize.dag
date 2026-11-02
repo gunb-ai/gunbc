@@ -8,7 +8,7 @@ import v2.compiler.inferred_tree {
   InferredFacts,
   InferredTree
 }
-import v2.compiler.infer { infer_nullary_zero_param_coproduct_arm_use }
+import v2.compiler.infer { infer_nullary_zero_param_coproduct_arm_use, infer_nullary_zero_param_coproduct_arm_declared }
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
   dag_value_expression_projection,
@@ -883,6 +883,8 @@ fn project_nullary_arm_binding(node: Node) -> Outcome<TargetValueExpression> {
 // A NESTED VALUE REUSES THE FACTS-AWARE RULE. A marked declaration reference reached through a record
 // field or a match arm is projected by project_value_node_from_inferred_facts, the one place that
 // knows a reference is a nullary coproduct arm; every other node stays the transform projection.
+// A match-arm PATTERN has no inferred facts (inference does not type patterns), so a marked reference
+// with no facts asks the declaration directly -- the same predicate, minus the facts hop.
 fn project_nested_node_with_facts(
   arrow: Node,
   node: Node,
@@ -892,16 +894,35 @@ fn project_nested_node_with_facts(
 ) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Conj } =>
-      project_value_node_from_inferred_facts(
-        arrow: arrow,
-        node: node,
-        target: target,
-        tree: tree,
-        declarations: declarations,
-        handle_transform: fn(a, b, t) {
-          project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations)
-        }
-      )
+      match inferred_facts_for_projected_node(tree: tree, node: node) {
+        Absent =>
+          if declaration_reference_body_marked(target: node)
+            && infer_nullary_zero_param_coproduct_arm_declared(node: node, index: declarations) {
+            project_nullary_arm_binding(node: node)
+          } else {
+            project_value_node_from_inferred_facts(
+              arrow: arrow,
+              node: node,
+              target: target,
+              tree: tree,
+              declarations: declarations,
+              handle_transform: fn(a, b, t) {
+                project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations)
+              }
+            )
+          }
+        Present { value: _ } =>
+          project_value_node_from_inferred_facts(
+            arrow: arrow,
+            node: node,
+            target: target,
+            tree: tree,
+            declarations: declarations,
+            handle_transform: fn(a, b, t) {
+              project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations)
+            }
+          )
+      }
     ComputationNode { behavior: _ } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
     TypeNode { connective: Atom { identity: _ } } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
     TypeNode { connective: Disj } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
