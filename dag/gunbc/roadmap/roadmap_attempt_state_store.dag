@@ -687,8 +687,9 @@ fn attempt_append_log_mint_listing(store: AttemptState, node: String, attempt_ke
   match attempt_append_log_census_slot(member: member) {
     Absent => AttemptAppendLogUnready { detail: "no census slot for this AttemptLogMember variant" }
     Present { value: slot } => {
+      let file_name = attempt_log_member_name(member: member) as NonEmptyStr
       match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
-        AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: slot.member, directory: s.parent, slot: slot } }
+        AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: file_name, directory: s.parent, slot: slot } }
         AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
         AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
       }
@@ -775,7 +776,7 @@ fn attempt_append_log_host_create(instance: HostDashboardInstance, node: String,
     AttemptAppendLogUnready { detail } => AttemptAppendLogHostUnready { detail: detail }
     AttemptAppendLogLegacyRefused { cause } => AttemptAppendLogHostLegacyRefused { cause: cause }
     AttemptAppendLogReady { store: sealed } => {
-      let member_path = join([sealed.directory, "/", sealed.member_name], "")
+      let member_path = join([sealed.directory, "/", attempt_log_member_name(member: member)], "")
       match filesystem_entry_presence_of_path(path: member_path) {
         FilesystemEntryListed { directory: _, name: _ } =>
           AttemptAppendLogAlreadyExists { path: member_path }

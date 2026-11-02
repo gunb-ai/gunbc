@@ -92,7 +92,7 @@ test fn the_service_user_host_create_creates_the_member() -> Bool {
 fn service_user_create_cell(instance: HostDashboardInstance) -> Bool {
   let ensured = ensure_member_dir(instance: instance)
   match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
-    AttemptAppendLogCreated { path: p, created_mode: _ } => ensured && Filesystem.Read(path: p).success
+    AttemptAppendLogCreated { path: p, created_mode: _ } => ensured && Filesystem.Read(path: p).success && string_contains(s: p, pattern: "provider-events.jsonl")
     _ => false
   }
 }
