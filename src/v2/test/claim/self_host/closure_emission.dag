@@ -3,11 +3,13 @@ module v2.test.claim.self_host.closure_emission
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.languages.json.emit { JsonArray, JsonValue }
 import v2.std.integer { Int }
+import v2.std.provenance { SpanIndex }
 import extdeps.languages.json.parse {
   FieldRead,
   JsonDocumentParsed,
   JsonDocumentUnreadable,
   json_field,
+  json_field_int,
   json_field_string,
   json_field_string_list,
   parse_json_document
@@ -74,6 +76,8 @@ data ce_base_source: String = "module v2.test.ce_base\n\ntype CeBase = CeBaseA |
 data ce_importer_source: String = "module v2.test.ce_importer\n\nimport v2.test.ce_base { CeBase }\n\nfn ce_importer_fn(p: CeBase) -> CeBase { p }\n"
 
 data ce_absent_importer_source: String = "module v2.test.ce_absent_importer\n\nimport v2.test.ce_absent { CeAbsent }\n\nfn ce_absent_importer_fn(p: CeAbsent) -> CeAbsent { p }\n"
+
+data ce_unbound_name_source: String = "module v2.test.ce_unbound_name\n\nimport v2.std.logic { Bool }\n\nfn ce_unbound_name_fn(p: Bool) -> Bool { ce_no_such_fn(p) }\n"
 
 data ce_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False\n"
 
@@ -193,6 +197,16 @@ fn ce_emission_import_absent() -> ClosureEmissionLocated {
       ce_read(source: ce_absent_importer_source, id: ^ce_absent_importer_read, path: "src/v2/test/ce_absent_importer.dag")
     ],
     entry: "v2.test.ce_absent_importer"
+  )
+}
+
+fn ce_emission_unbound_symbol() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_unbound_name_source, id: ^ce_unbound_name_read, path: "src/v2/test/ce_unbound_name.dag")
+    ],
+    entry: "v2.test.ce_unbound_name"
   )
 }
 
@@ -450,8 +464,8 @@ fn ce_names_match(names: FreeMonoid<String>, members: FreeMonoid<QualifiedName>)
 // direction, the entry and the ORDERED member identities come back equal, and row by row the modules
 // come back as the same identities, each with exactly one of emitted/refused matching its arm. A
 // serializer that repeated one name, dropped an arm, or swapped emitted for refused reds here.
-fn ce_round_trip_holds(e: ClosureEmission) -> Bool {
-  match parse_json_document(s: closure_emission_json(emission: e)) {
+fn ce_round_trip_holds(e: ClosureEmission, spans: SpanIndex) -> Bool {
+  match parse_json_document(s: closure_emission_json(emission: e, spans: spans)) {
     JsonDocumentUnreadable { gap: _ } => false
     JsonDocumentParsed { value: doc } =>
       (match json_field_string(obj: doc, key: "entry") {
@@ -470,8 +484,92 @@ fn ce_round_trip_holds(e: ClosureEmission) -> Bool {
 }
 
 test fn the_emission_renders_through_its_codec_and_reads_back_the_same_identities_holds() -> Bool {
-  match ce_emission_clean().outcome {
+  let located = ce_emission_clean()
+  match located.outcome {
     Rejected { diagnostics: _ } => false
-    Accepted { value: e, diagnostics: _ } => ce_round_trip_holds(e: e)
+    Accepted { value: e, diagnostics: _ } => ce_round_trip_holds(e: e, spans: located.spans)
+  }
+}
+
+// The parsed row the rendering holds for one module identity, if any.
+fn ce_row_of(located: ClosureEmissionLocated, name: String) -> Optional<JsonValue> {
+  match located.outcome {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: e, diagnostics: _ } =>
+      match parse_json_document(s: closure_emission_json(emission: e, spans: located.spans)) {
+        JsonDocumentUnreadable { gap: _ } => Absent
+        JsonDocumentParsed { value: doc } =>
+          match json_field(obj: doc, key: "modules") {
+            FieldRead { value: JsonArray { elements: rows } } =>
+              list_find_first(xs: rows, predicate: fn(r) {
+                match json_field_string(obj: r, key: "module") {
+                  FieldRead { value: m } => m == name
+                  _ => false
+                }
+              })
+            _ => Absent
+          }
+      }
+  }
+}
+
+fn ce_field_string_is(obj: JsonValue, key: String, expected: String) -> Bool {
+  match json_field_string(obj: obj, key: key) {
+    FieldRead { value: v } => v == expected
+    _ => false
+  }
+}
+
+fn ce_field_int_present(obj: JsonValue, key: String) -> Bool {
+  match json_field_int(obj: obj, key: key) {
+    FieldRead { value: _ } => true
+    _ => false
+  }
+}
+
+// RED (emit per-module diagnostic). A member refused on an unbound name renders, beside the unchanged
+// `refused` reason, a `diagnostic` carrying the reason, the SPELLING the author wrote, and the authored
+// file and byte range -- as fields, so a population of refusals groups by spelling without parsing a sentence.
+test fn a_refused_row_carries_the_unbound_spelling_and_its_authored_position_holds() -> Bool {
+  match ce_row_of(located: ce_emission_unbound_symbol(), name: "v2.test.ce_unbound_name") {
+    Absent => false
+    Present { value: row } =>
+      ce_field_string_is(obj: row, key: "refused", expected: "resolve_reason_unbound_symbol")
+        && (match json_field(obj: row, key: "diagnostic") {
+          FieldRead { value: d } =>
+            ce_field_string_is(obj: d, key: "reason", expected: "resolve_reason_unbound_symbol")
+              && ce_field_string_is(obj: d, key: "unbound_ref", expected: "ce_no_such_fn")
+              && ce_field_string_is(obj: d, key: "file", expected: "src/v2/test/ce_unbound_name.dag")
+              && ce_field_int_present(obj: d, key: "start")
+              && ce_field_int_present(obj: d, key: "end")
+          _ => false
+        })
+  }
+}
+
+// A refusal with no unbound mention says so with an explicit absence, not an invented spelling.
+test fn a_refused_row_without_an_unbound_mention_has_an_explicit_absent_spelling_holds() -> Bool {
+  match ce_row_of(located: ce_emission_import_absent(), name: "v2.test.ce_absent_importer") {
+    Absent => false
+    Present { value: row } =>
+      match json_field(obj: row, key: "diagnostic") {
+        FieldRead { value: d } =>
+          ce_field_string_is(obj: d, key: "reason", expected: "resolve_module_not_found")
+            && (match json_field_string(obj: d, key: "unbound_ref") { FieldAbsent => true
+              _ => false })
+        _ => false
+      }
+  }
+}
+
+// CONTROL. An emitting member's row is unchanged: `emitted` and no `diagnostic`.
+test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
+  match ce_row_of(located: ce_emission_import_present(), name: "v2.test.ce_importer") {
+    Absent => false
+    Present { value: row } =>
+      (match json_field_string(obj: row, key: "emitted") { FieldRead { value: _ } => true
+        _ => false })
+        && (match json_field(obj: row, key: "diagnostic") { FieldAbsent => true
+          _ => false })
   }
 }
