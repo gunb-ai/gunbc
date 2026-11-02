@@ -6,7 +6,7 @@ import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // Q1e: std.algebra algebra_carriers names each carrier by leaf name, so the v1 arithmetic fold
-// (v1.compiler.types carrier_in_algebra_table, carrier_defines_field) asks whether a carrier defines an operator
+// (v1.compiler.types carrier_defines_field) asks whether a carrier defines an operator
 // by leaf name; a homonym such as v2.std.nat.Nat is told apart from std.nat.Nat only by the declaration-compared
 // operands and injection rows that feed the fold.
 data algebra_carrier_table_keyed_by_leaf_name_stall: GuaranteeStall = GuaranteeStall {
@@ -16,7 +16,7 @@ data algebra_carrier_table_keyed_by_leaf_name_stall: GuaranteeStall = GuaranteeS
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation {
     members: Cons {
-      head: "v1.compiler.types carrier_in_algebra_table and carrier_defines_field",
+      head: "v1.compiler.types carrier_defines_field",
       tail: Cons {
         head: "v1.compiler.types arithmetic_carrier_type nominal_type_ref(name: selected.decl_name) when neither operand node is the selected carrier",
         tail: Empty {}

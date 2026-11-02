@@ -1869,10 +1869,6 @@ fn arithmetic_requirement(op: BinOp) -> ArithmeticRequirement? {
 // this lookup is the table's own contract: a homonym such as v2.std.nat.Nat is told apart from std.nat.Nat
 // only by the injection rows and operand declarations that feed the fold, which are compared by
 // declaration_ref_eq. Giving AlgebraCarrier a declaration identity is the climb gunbc.guarantee_stall algebra_carrier_table_keyed_by_leaf_name_stall declares.
-fn carrier_in_algebra_table(carrier: DeclarationRef) -> Bool {
-  algebra_carriers() |> any(c => c.name == carrier.decl_name)
-}
-
 fn carrier_defines_field(carrier: DeclarationRef, field: String) -> Bool {
   algebra_carriers() |> any(c => c.name == carrier.decl_name && (algebra_templates_for_profile(profile: c.profile) |> any(t => t.name == field)))
 }
@@ -1979,6 +1975,12 @@ fn operand_is_text(n: Node, env: TypeEnv) -> Bool {
   }
 }
 
+// THE SELECTION JUDGES AN OPERATOR OVER CARRIERS WHOSE ALGEBRA DEFINES IT (carrier_defines_field), not over every
+// carrier the algebra table names. A free monoid is in the table, but its `+` is concatenation, not the additive
+// field: two operands of ONE such carrier keep that carrier, which is the typing they had, and nothing here is owed.
+// Asking table membership instead read `xs + [x]` over FreeMonoid as a carrier with no `add` and refused 31 corpus
+// sites (srv2 kh-q1e-c main_wet at 3c162a5d, gunbc 9667dc1d). A pair whose carriers DIFFER, one lacking the operation
+// (`FreeMonoid<Int> + Int`), still refuses: there is no carrier both reach.
 fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> ArithmeticCarrierSelection? {
   let right_is_text = match right_type { Absent => false  Present { value: rt } => operand_is_text(n: rt, env: env) }
   if operand_is_text(n: left_type, env: env) || right_is_text { return none }
@@ -1990,7 +1992,7 @@ fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: N
           match operand_carrier_ref(n: rt, source_indices: source_indices, env: env) {
             Absent => none
             Present { value: r } =>
-              if carrier_in_algebra_table(carrier: r) && !operand_identity_unknown(n: left_type, source_indices: source_indices, env: env) { Present { value: ArithmeticNoCarrier } } else { none }
+              if carrier_defines_field(carrier: r, field: requirement.field) && !operand_identity_unknown(n: left_type, source_indices: source_indices, env: env) { Present { value: ArithmeticNoCarrier } } else { none }
           }
       }
     Present { value: left } =>
@@ -2003,11 +2005,11 @@ fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: N
         Absent => false
         Present { value: _ } => match right { Absent => true  Present { value: _ } => false }
       }
-      let right_outside = match right { Absent => false  Present { value: r } => !carrier_in_algebra_table(carrier: r) }
+      let right_outside = match right { Absent => false  Present { value: r } => !carrier_defines_field(carrier: r, field: requirement.field) }
       let pair_differs = match right { Absent => false  Present { value: r } => !declaration_ref_eq(a: left, b: r) }
-      let one_outside = match right { Absent => false  Present { value: r } => right_outside || !carrier_in_algebra_table(carrier: left) }
+      let one_outside = match right { Absent => false  Present { value: r } => right_outside || !carrier_defines_field(carrier: left, field: requirement.field) }
       let right_blind = match right_type { Absent => false  Present { value: rt } => operand_identity_unknown(n: rt, source_indices: source_indices, env: env) }
-      if (right_missing && carrier_in_algebra_table(carrier: left) && !right_blind) || (pair_differs && one_outside) { Present { value: ArithmeticNoCarrier } } else if right_missing || right_outside || !carrier_in_algebra_table(carrier: left) { none } else {
+      if (right_missing && carrier_defines_field(carrier: left, field: requirement.field) && !right_blind) || (pair_differs && one_outside) { Present { value: ArithmeticNoCarrier } } else if right_missing || right_outside || !carrier_defines_field(carrier: left, field: requirement.field) { none } else {
         let named = match right { Absent => [left]  Present { value: r } => [left, r] }
         let candidates = concat(named, named |> flat_map(d => injection_targets(rows: rows, from: d, preserved: requirement.preserved)))
         let definers = candidates |> filter(d => carrier_defines_field(carrier: d, field: requirement.field))
