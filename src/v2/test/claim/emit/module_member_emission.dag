@@ -28,6 +28,10 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { bind_outcome, outcome_accepted }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredResource }
 import std.algebra { fold_list }
+import v2.compiler.body_lowering_fold { body_lower_find_where_host_conj, body_lower_type_decl_record_name_optional }
+import v2.extdeps.languages.dag { dag_surface_kw_then_ident_from_captured, parse_production_captured_child_optional }
+import v2.std.grammar { parse_production_emitted_identity_optional }
+import v2.std.node { node_subtree_nodes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -354,5 +358,53 @@ fn ce_probe_kinds_text() -> String {
   concat(
     concat("REFINEMENT> ", ce_probe_kinds_of(source: "module v2.test.member_emission\n\ntype Pos = Int where positive\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n")),
     concat("\nALIAS> ", ce_probe_kinds_of(source: "module v2.test.member_emission\n\ntype Id = Int\n\nfn f(x: Int) -> Int { x as Int }\n"))
+  )
+}
+
+// PROBE 2: per type_decl shell on the PARSE tree, which of the three capture predicates answers.
+fn ce_probe_pin_shell(n: Node) -> String {
+  match parse_production_emitted_identity_optional(node: n) {
+    Absent => ""
+    Present { value: id } =>
+      if id == ^dag_surface_type_decl {
+        match parse_production_captured_child_optional(node: n) {
+          Absent => " [shell:no-captured-child]"
+          Present { value: c } =>
+            concat(
+              concat(" [shell: record_name=", match body_lower_type_decl_record_name_optional(shell: n) { Present { value: x } => symbol_lexeme(sym: x) Absent => "ABSENT" }),
+              concat(
+                concat(" where_host=", match body_lower_find_where_host_conj(root: c) { Present { value: _ } => "FOUND" Absent => "ABSENT" }),
+                concat(" name=", match dag_surface_kw_then_ident_from_captured(captured: c) { Present { value: x } => concat(symbol_lexeme(sym: x), "]") Absent => "ABSENT]" })
+              )
+            )
+        }
+      } else {
+        ""
+      }
+  }
+}
+
+fn ce_probe_pin_of(source: String) -> String {
+  let lm = dag_language_model()
+  match bind_outcome(
+    o: tokenize(text: source, file: ^member_emission_read, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          outcome_accepted(value: fold_list(xs: node_subtree_nodes(root: artifact.tree), empty: "PIN:", cons: fn(acc, n) { concat(acc, ce_probe_pin_shell(n: n)) }))
+        }
+      )
+    }
+  ) {
+    Accepted { value: t, diagnostics: _ } => t
+    Rejected { diagnostics: d } => concat("REJECTED:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+  }
+}
+
+fn ce_probe_pin_text() -> String {
+  concat(
+    concat("REFINEMENT> ", ce_probe_pin_of(source: "module v2.test.member_emission\n\ntype Pos = Int where positive\n\nfn positive(x: Int) -> Bool { true }\n")),
+    concat("\nRECORD> ", ce_probe_pin_of(source: "module v2.test.member_emission\n\ntype Point { a: Int }\n"))
   )
 }
