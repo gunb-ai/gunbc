@@ -1,0 +1,44 @@
+module test.claim.fabric.fabric_store_traverse_only_root_wet_witness
+
+// srv1's public store root is provisioned TRAVERSE-ONLY for the service (fabric_storage_store_directories:
+// fabric-storage-root, writes: false => Execute only, mode 0100). A mint that LISTS the root is refused there
+// (the owner bit has no read) and would leave the live store Unready on first deploy. This claim stands up a
+// scratch store root at 0100 through the install -d -m route (coreutils_install_directories_arguments), with
+// objects/heads provisioned beneath it, and asks the real mint. The first conjunct is the discriminator: the
+// mode really does exclude this (non-root) user from listing the root, so a root-listing mint cannot be Ready.
+
+import std.types { Bool, NonEmptyStr, String, FilePath }
+import extdeps.shell
+import extdeps.access.posix { FileMode, PermissionBits }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
+import extdeps.gunbc
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.fabric.fabric_storage_file_store { fabric_store_open, fabric_store_declared_root, fabric_storage_slots, FabricStoreReady, FabricStoreUnready }
+import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance, fabric_wet_provision }
+
+fn traverse_bits() -> PermissionBits { PermissionBits { read: false, write: false, execute: true } }
+fn no_bits() -> PermissionBits { PermissionBits { read: false, write: false, execute: false } }
+fn owner_all() -> PermissionBits { PermissionBits { read: true, write: true, execute: true } }
+
+fn set_dir_mode(owner: PermissionBits, path: String) -> Bool {
+  let m = FileMode { owner: owner, group: no_bits(), other: no_bits(), setuid: false, setgid: false, sticky: false }
+  gunbc.WitnessBin.Run(workdir: "/tmp" as FilePath, bin_path: "/usr/bin/install" as FilePath,
+    args: coreutils_install_directories_arguments(mode: m, paths: [path]), expect: OutcomeIsData).success
+}
+
+test fn a_store_root_provisioned_traverse_only_still_opens_ready_over_its_listable_areas() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_traverse_root.XXXXXX")
+  let instance = fabric_fixture_instance(root: dir.path as String)
+  let root = fabric_store_declared_root(members: fabric_storage_slots, root: instance.instance_root) as String
+  let provisioned = fabric_wet_provision(instance: instance)
+  let narrowed = set_dir_mode(owner: traverse_bits(), path: root)
+  let root_excluded = !Filesystem.List(path: root).success
+  let opened = match fabric_store_open(members: fabric_storage_slots, instance: instance, entry_mode: none) {
+    FabricStoreReady { store: _ } => true
+    FabricStoreUnready { area: _, detail: _ } => false
+  }
+  let restored = set_dir_mode(owner: owner_all(), path: root)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  provisioned && narrowed && root_excluded && opened && restored && cleaned.success
+}

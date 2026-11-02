@@ -1,0 +1,121 @@
+module test.claim.container_alias_empty_collection_witness
+
+// THE CLASS THIS FILE HOLDS OPEN (regression from #15539, d0969ea38a8).
+// v1.compiler.infer expected_type_is_keyed_collection / expected_type_is_set_collection once admitted
+// a call to empty_map()/empty_set() whose expected type RESOLVED to a Map/Set carrier. #15539 replaced
+// the resolved-core test with an authored-leaf spelling test (container_spelling_is_algebra on the
+// written leaf name), so an alias whose written name is not a roster spelling -- a module-local alias,
+// or an imported alias such as gunbc.scm.object_table_json.DecodePositions = Map<String, ScmObjectRef>
+// used at repository_envelope.dag -- was refused at empty_map()/empty_set() ("expected type is not a
+// keyed collection"). The repair decides the expected type on the SPELLING of its resolved carrier head
+// (core.name) through the kernel container roster, never the written leaf -- a check on the resolved
+// head's spelling, not a declaration-identity check.
+//
+// Each row hands the compiler an isolated fixture module through gunbc.compile_census_probe, so a pass
+// row and a refusal row coexist without one closure diagnostic aborting the whole file.
+//
+// The refusal rows assert the EXACT diagnostic (class + subject) they mean, so a row cannot go red for
+// an unrelated reason (an unresolved name would be UnresolvedType/UnresolvedImport, not the class named).
+// The class+subject below were taken from a census dump of each fixture on the fix binary 421e5f6702de:
+//   record@empty_map -> DeclaredTypeNotInhabited @ "direct call argument for parameter 'p'"
+//   Map-alias@empty_set -> InternalError @ "empty_set(): expected type is not Set<...>"
+//   type Map = {...} / type Set = {...} @ empty_map/empty_set -> ArityMismatch@Map / ArityMismatch@Set,
+//     plus ImportShadowedByLocalDefinition@Map / @Set (a kernel carrier name cannot be shadowed locally)
+//   type Map<K,V> = {...} @ empty_map -> ImportShadowedByLocalDefinition@Map
+// The empty_set()/empty_map() kernel constructors are builtins (src/v1/04_method.dag builtin_function_registry);
+// they need no import, so a refusal row cannot be an unresolved-name artifact.
+//
+// WHO RUNS THIS WITNESS (v2-bootstrap evaluates no claims): each row is executed by claim_batch on a real
+// aarch64 build, not by the bootstrap. See the PR body for the command, the three oracle binaries
+// (flip 09118b0f, flip-parent b944f16c, fix 421e5f6702de) and the per-row results.
+
+import gunbc.compile_census_probe { census_exit, census_verdict, total_blocking_census, blocking_subject_census }
+
+// ---- PASS rows (zero blocking diagnostics) ----
+
+data local_map_alias_empty_map_source: String = "module ca_local_map\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map }\ntype LocalMap = Map<String, Int>\nfn use_map(positions: LocalMap) -> Bool { true }\nfn probe() -> Bool { use_map(positions: empty_map()) }\n"
+
+test fn a_local_map_alias_at_empty_map_is_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: local_map_alias_empty_map_source), holds: fn(n) { n == 0 }))
+}
+
+// The discriminating row: RED on the #15539 flip binary (node_is_set_collection does not resolve a
+// module-local Set alias, and #15539 deleted the resolved-core Set disjunct), GREEN on flip-parent + fix.
+data local_set_alias_empty_set_source: String = "module ca_local_set\nimport std.types { Bool, String, Set }\nimport std.algebra { empty_map }\ntype LocalSet = Set<String>\nfn use_set(tags: LocalSet) -> Bool { true }\nfn probe() -> Bool { use_set(tags: empty_set()) }\n"
+
+test fn a_local_set_alias_at_empty_set_is_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: local_set_alias_empty_set_source), holds: fn(n) { n == 0 }))
+}
+
+data concrete_map_empty_map_source: String = "module ca_concrete_map\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map }\nfn use_map(positions: Map<String, Int>) -> Bool { true }\nfn probe() -> Bool { use_map(positions: empty_map()) }\n"
+
+test fn a_concrete_map_at_empty_map_is_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: concrete_map_empty_map_source), holds: fn(n) { n == 0 }))
+}
+
+data well_typed_map_source: String = "module ca_well_typed\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map, map_insert }\nfn probe() -> Map<String, Int> { map_insert(m: empty_map(), key: \"k\", value: 1) }\n"
+
+test fn the_well_typed_map_call_is_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: well_typed_map_source), holds: fn(n) { n == 0 }))
+}
+
+// ---- REFUSAL controls (assert the EXACT diagnostic class + subject) ----
+
+// A record that is not a collection at empty_map() refuses via inhabitance.
+data record_at_empty_map_source: String = "module ca_record\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map }\ntype LocalPoint = { x: String, y: Int }\nfn use_point(p: LocalPoint) -> Bool { true }\nfn probe() -> Bool { use_point(p: empty_map()) }\n"
+
+test fn a_record_at_empty_map_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: record_at_empty_map_source, wanted_class: "DeclaredTypeNotInhabited", wanted_subject: "direct call argument for parameter 'p'"), holds: fn(n) { n >= 1 }))
+}
+
+// A Map carrier asked for empty_set() refuses because empty_set's expected type is not a set carrier.
+data map_alias_at_empty_set_source: String = "module ca_map_set\nimport std.types { Bool, String, Int, Map, Set }\nimport std.algebra { empty_map }\ntype LocalMap = Map<String, Int>\nfn use_set(tags: LocalMap) -> Bool { true }\nfn probe() -> Bool { use_set(tags: empty_set()) }\n"
+
+test fn a_map_alias_at_empty_set_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: map_alias_at_empty_set_source, wanted_class: "InternalError", wanted_subject: "empty_set(): expected type is not Set<...>"), holds: fn(n) { n >= 1 }))
+}
+
+// ARITY / SHADOW control (the condition the pre-#15539 `core.children|count == 2` disjunct carried): a
+// module-local type literally named Map at empty_map() must refuse. It refuses at declaration (the
+// kernel carrier name cannot be shadowed and a carrier name used without its declared arity is refused),
+// so the resolved-carrier roster arity guard is never reached -- recorded in the PR body as defense-in-depth.
+data type_named_map_at_empty_map_source: String = "module ca_named_map\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map }\ntype Map = { x: String, y: Int }\nfn use_m(m: Map) -> Bool { true }\nfn probe() -> Bool { use_m(m: empty_map()) }\n"
+
+test fn a_type_named_map_at_empty_map_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: type_named_map_at_empty_map_source, wanted_class: "ArityMismatch", wanted_subject: "Map"), holds: fn(n) { n >= 1 }))
+}
+
+// Set twin of the arity control.
+data type_named_set_at_empty_set_source: String = "module ca_named_set\nimport std.types { Bool, String, Int, Set }\nimport std.algebra { empty_map }\ntype Set = { x: String, y: Int }\nfn use_s(s: Set) -> Bool { true }\nfn probe() -> Bool { use_s(s: empty_set()) }\n"
+
+test fn a_type_named_set_at_empty_set_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: type_named_set_at_empty_set_source, wanted_class: "ArityMismatch", wanted_subject: "Set"), holds: fn(n) { n >= 1 }))
+}
+
+// SHADOWING control (this fixture IMPORTS Map, then re-declares it): a parameterized record literally
+// named Map is refused at declaration with ImportShadowedByLocalDefinition@Map. This proves an import
+// cannot be shadowed -- NOT that a user declaration named Map cannot reach the collection check. That
+// is the separate leaf-name gap: see a_user_map_named_record_at_empty_map_is_admitted (same shape, no
+// std.types Map import, so nothing is shadowed) which is ADMITTED on the fix, on the pre-#15539
+// flip-parent, and on the flip -- a pre-existing gap whose trigger to close is to key on the qualified
+// kernel declaration rather than qualified_last_segment of the leaf name.
+data type_named_map_params_at_empty_map_source: String = "module ca_named_map_params\nimport std.types { Bool, String, Int, Map }\nimport std.algebra { empty_map }\ntype Map<K, V> = { a: K, b: V }\nfn use_m(m: Map<String, Int>) -> Bool { true }\nfn probe() -> Bool { use_m(m: empty_map()) }\n"
+
+test fn a_type_named_map_with_params_at_empty_map_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: type_named_map_params_at_empty_map_source, wanted_class: "ImportShadowedByLocalDefinition", wanted_subject: "Map"), holds: fn(n) { n >= 1 }))
+}
+
+// LEAF-NAME GAP (manager point 3, msg_748aacdc; DESIGN section 4): a module that does NOT import
+// std.types Map, declares its own `type Map<K,V> = { a: K, b: V }`, and calls empty_map() at a
+// Map<String,Int> position. Nothing is shadowed, so ImportShadowedByLocalDefinition does not fire; the
+// position's resolved core head is the leaf "Map", the roster says FinitelySupportedFunction, arity 2 --
+// so the check ADMITS it. EXECUTED: this is ADMITTED (0 blocking) on the fix AND on the pre-#15539
+// flip-parent b944f16c AND on the flip 09118b0f -- the gap is PRE-EXISTING, not introduced by this fix,
+// and not blocking for it. It is an expected-ADMITTED row that documents the gap. TRIGGER to close it:
+// key the check on the qualified kernel declaration (std.types Map/Set) rather than qualified_last_segment
+// of the leaf name -- then a same-named user record no longer resolves to the carrier.
+data user_map_noinport_at_empty_map_source: String = "module ca_user_map_noinport\nimport std.types { Bool, String, Int }\nimport std.algebra { empty_map }\ntype Map<K, V> = { a: K, b: V }\nfn use_m(m: Map<String, Int>) -> Bool { true }\nfn probe() -> Bool { use_m(m: empty_map()) }\n"
+
+test fn a_user_map_named_record_at_empty_map_is_admitted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: user_map_noinport_at_empty_map_source), holds: fn(n) { n == 0 }))
+}

@@ -13,8 +13,9 @@ module gunbc.ci.repository_mirror_frontier
 // public corpus does not consume, and this is the second one: named, with the consumer and the route that
 // executes it, rather than dangling. Nothing here is reachable from a public row by construction -- gunbc's
 // required gate is emitted by gunbc.witness.compiler_gate_workflow, its drift watch by
-// gunbc.drift_watch_workflow, and gunbc's own profile row sets public_seed, heal.seal and publisher to
-// Absent and routes its roster through the instrument dispatcher. The consumer is a row in another
+// gunbc.drift_watch_workflow, and gunbc's own profile row selects the own-checkout alternative of
+// CompilerSource -- no seed, no overlay, its roster dispatched in the checkout that holds the compiler -- and
+// sets heal.seal to Absent. The consumer is a row in another
 // repository, which cannot import in this tree because private content may not land in the public corpus.
 // A test that calls one of these proves it evaluates, not that a repository runs what it emits, so
 // dag/test/claim is deliberately not offered as the consumer.
@@ -74,22 +75,27 @@ data mirror_lane_module_rows: List<FrontierRow> = [
 
 // THE MIRROR LANE INSIDE A PUBLIC MODULE. Half of gunbc.ci.repository_ci_profile is read by gunbc's own
 // four emitters -- the required-context accessor, the runner target, the four job records, the invocation
-// helper -- and those are deliberately NOT here. These seven are the arms no public row constructs. Every
+// helper -- and those are deliberately NOT here. These eight are the arms no public row constructs. Every
 // name here is a top-level declaration of that module: a frontier subject is a declaration, so the lane's
-// composed-overlay route is rostered as its owning declaration `RosterRoute` (whose
-// ComposedOverlayInterpreterRoster alternative is the arm the mirror selects) rather than as the alternative's
-// name, which is not a declaration and would make the roster claim something the Node tree cannot resolve.
+// composed-overlay source is rostered as its owning declaration `CompilerSource` (whose two seed-carrying
+// alternatives are the arms the mirror selects) rather than as an alternative's name, which is not a
+// declaration and would make the roster claim something the Node tree cannot resolve. The accessors that
+// project the seed, the overlay and the roster-run step name are listed with it: their `Present` answers are
+// produced only by the mirror's row, and `profile_runs_roster_in_composed_root` / `profile_required_bins`
+// are NOT listed because gunbc's own row exercises those.
 data profile_mirror_arm_rows: List<FrontierRow> = frontier_rows_for_decls(
   module_path: "gunbc.ci.repository_ci_profile",
   decl_names: [
     "PublicSeed" as NonEmptyStr,
     "OverlayIngest" as NonEmptyStr,
     "HealSeal" as NonEmptyStr,
-    "RosterRoute" as NonEmptyStr,
+    "CompilerSource" as NonEmptyStr,
     "profile_public_seed" as NonEmptyStr,
+    "profile_overlay" as NonEmptyStr,
+    "profile_run_roster_step_name" as NonEmptyStr,
     "repository_ci_profile_refusal" as NonEmptyStr,
   ],
-  reason: "no public row constructs or executes these. gunbc's own profile row sets public_seed, heal.seal and publisher to Absent and selects RosterRoute InstrumentLabelRows, so these arms are dead in the public repository by that row's construction rather than by omission. The single consumer is the mirror repository's profile row, which builds a Present PublicSeed, a Present OverlayIngest inside RosterRoute ComposedOverlayInterpreterRoster and a Present HealSeal, and reads them back through profile_public_seed, while the emitters themselves match the arms rather than asking a Bool whether they are present. ONE REASON RATHER THAN ONE PER NAME: these names are one fact -- a lane of the profile only the mirror exercises -- and per-name copies would imply seven facts.",
+  reason: "no public row constructs or executes these. gunbc's own profile row is `Own_checkout_under_witness_floor`, sets heal.seal to Absent, and so these arms are dead in the public repository by that row's construction rather than by omission. The single consumer is the mirror repository's profile row, which selects a seed-carrying alternative of CompilerSource -- carrying the PublicSeed, the OverlayIngest composed into it and the step name that runs the roster there -- and reads them back through profile_public_seed, profile_overlay and profile_run_roster_step_name, while the emitters match the arms rather than asking a Bool whether they are present; CompilerSource is rostered for the same reason its predecessor was: the DECLARATION is used by gunbc's row through its own-checkout alternative, and it is the seed-carrying alternatives, which build the repository's compiler from a seed checked out beside it, that no public row selects. ONE REASON RATHER THAN ONE PER NAME: these names are one fact -- a lane of the profile only the mirror exercises -- and per-name copies would imply eight facts.",
   dissolution: mirror_lane_dissolution,
 )
 

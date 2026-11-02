@@ -401,6 +401,8 @@ fn one_twenty_wire() -> ExactDecimal { ExactDecimal { units: 12, fraction_digits
 
 fn vast_min_sample() -> VastAiOffer {
   VastAiOffer {
+    cuda_max_good: Absent,
+    inet_down: Absent,
     id: 1, machine_id: 9, gpu_name: "x", num_gpus: 1, compute_cap: 1,
     gpu_arch: Present { value: "nvidia" }, verification: "verified", geolocation: "US",
     rentable: true, rented: false, is_bid: Present { value: true },

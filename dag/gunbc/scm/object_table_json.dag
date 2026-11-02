@@ -149,6 +149,8 @@ import gunbc.scm.object_store {
   store_admission_admit,
   store_admission_store,
   store_records_in_dependency_order,
+  authored_source_target_of,
+  node_target_of,
 }
 import gunbc.scm.target_reference {
   TargetReferenceRefusal,
@@ -161,6 +163,7 @@ import gunbc.scm.target_reference {
   TargetReferenceNotOneArm,
   TargetReferenceUncontainedDigestInvalid,
   decode_target_reference,
+  target_reference_load_standing,
 }
 import gunbc.scm.json_member {
   MemberReadRefusal,
