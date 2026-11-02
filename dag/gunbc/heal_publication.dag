@@ -642,18 +642,36 @@ fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
 // candidate for a closed PR never reaches mint_publisher_installation_token.
 type PullRequestOpenCheck = PullRequestOpenCheckPassed | PullRequestOpenCheckRefused { reason: String }
 
+// The pull-request state exactly as the publish step OBSERVES it, held separate from the decision that
+// consumes it. Splitting the two lets the refusal be checked by a hermetic claim on supplied values
+// (no network, no token) -- heal_publication_boundary_witness's publish arms -- rather than only by the
+// networked publish inhabitance. The wet reader below produces one of these; classify decides on it.
+type PublishPullRequestState =
+    PublishPrOpen
+  | PublishPrClosed
+  | PublishPrStateUnreadable { detail: String }
+  | PublishPrCredentialAbsent
+
+// THE DECISION, pure. Open admits; closed refuses with the canonical PullRequestNotOpen spelling; an
+// unreadable state (rate-limited, unreachable) or an absent credential refuses too and NEVER passes --
+// failing closed, because a publish that cannot confirm the pull request is open must not write.
+fn classify_pull_request_openness(state: PublishPullRequestState, pull_number: Int) -> PullRequestOpenCheck {
+  match state {
+    PublishPrOpen => PullRequestOpenCheckPassed
+    PublishPrClosed => PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNotOpen { pull_number: pull_number }) }
+    PublishPrStateUnreadable { detail } => PullRequestOpenCheckRefused { reason: join(["HealPublishPreconditionUnmet: the pull request's state could not be read; refusing to publish: ", detail], "") }
+    PublishPrCredentialAbsent => PullRequestOpenCheckRefused { reason: "HealPublishPreconditionUnmet: the publish step's own token is absent, so the pull request's openness cannot be verified; refusing to publish" }
+  }
+}
+
 fn ensure_pull_request_open_wet(subject: HealPublicationSubject, pull_number: Int) -> PullRequestOpenCheck {
-  match env_value(name: github_token_env_name) {
-    Absent => PullRequestOpenCheckRefused { reason: "HealPublishPreconditionUnmet: the publish step's own token is absent, so the pull request's openness cannot be verified; refusing to publish" }
+  let state = match env_value(name: github_token_env_name) {
+    Absent => PublishPrCredentialAbsent
     Present { value: job_token } =>
       match github.Pulls.Get(auth_token: job_token as Secret, owner: subject.repository.owner, repo: subject.repository.name, pull_number: pull_number) {
-        RestRefused { refusal } =>
-          PullRequestOpenCheckRefused { reason: join(["HealPublishPreconditionUnmet: the pull request's state could not be read; refusing to publish: ", rest_refusal_text(o: refusal)], "") }
-        RestAnswered { answer: pr } =>
-          match pr.pr.state {
-            Open => PullRequestOpenCheckPassed
-            Closed => PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNotOpen { pull_number: pull_number }) }
-          }
+        RestRefused { refusal } => PublishPrStateUnreadable { detail: rest_refusal_text(o: refusal) }
+        RestAnswered { answer: pr } => match pr.pr.state { Open => PublishPrOpen  Closed => PublishPrClosed }
       }
   }
+  classify_pull_request_openness(state: state, pull_number: pull_number)
 }
