@@ -1,8 +1,7 @@
 module v2.test.claim.char_at_unicode_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { length }
-import std.host_text { char_at, chars }
+import std.host_text { char_at, string_length }
 import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,11 +56,11 @@ test fn char_at_byte_offset_would_mismatch_at_index_one() -> Bool {
     && !at_is(read: char_at(text: s, pos: 1), want: "\u{a9}")
 }
 
-// The count is taken through the DECLARED unfold -- `chars`, then length over the scalar list -- so this
-// arm says the same thing about code points without routing through the ambient `string_length`, whose
-// egress this PR does not claim.
-test fn the_declared_unfold_counts_code_points_not_bytes() -> Bool {
-  length(xs: chars(text: ae_b_text())) == 3
+// The count arm #15507 added, kept under its name and now read through the DECLARATION: #15507 declared
+// std.host_text string_length, so this call binds that declaration instead of the ambient builtin, and the
+// arm states the same code-point fact without routing through a name this PR does not claim.
+test fn string_length_counts_code_points_not_bytes() -> Bool {
+  string_length(text: ae_b_text()) == 3
 }
 
 // STRING-INDEX-0 discriminating control for the prefix-bounded ASCII fast path. char_at/substring
