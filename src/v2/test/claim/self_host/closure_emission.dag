@@ -77,7 +77,7 @@ data ce_importer_source: String = "module v2.test.ce_importer\n\nimport v2.test.
 
 data ce_absent_importer_source: String = "module v2.test.ce_absent_importer\n\nimport v2.test.ce_absent { CeAbsent }\n\nfn ce_absent_importer_fn(p: CeAbsent) -> CeAbsent { p }\n"
 
-data ce_unbound_name_source: String = "module v2.test.ce_unbound_name\n\nimport v2.std.logic { Bool }\n\nfn ce_unbound_name_fn(p: Bool) -> Bool { ce_no_such_fn(p) }\n"
+data ce_unbound_name_source: String = "module v2.test.ce_unbound_name\n\nimport std.types { Bool }\n\nfn ce_unbound_name_fn(p: Bool) -> Bool { ce_no_such_fn(p: p) }\n"
 
 data ce_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False\n"
 
