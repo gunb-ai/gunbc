@@ -117,7 +117,7 @@ fn ownership() -> List<MarkdownBlock> {
 data physical_machine_boot_program_plan: Plan = Plan {
   projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "physical-machine-boot-program",
-  title: "Physical-machine boot program: one boot transaction, three joined axes, and the cut order to retire per-machine roots",
+  title: "Physical-machine boot program: one boot transaction, separated axes (identity, artifact, delivery, persistence, initialization, trust, role), and the cut order to retire per-machine roots",
   body: concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(opening(), axes()), transaction()), guests()), cuts()), decisions()), separated_axes()), persistence_axis()), cross_product()), adapter_obligations()), initialized_host_contract()), verification()), ownership()),
   retirement: PlanRetiresWhen {
     condition: unbound_dissolution(description: "Retire this plan when every physical machine boots through the one boot transaction AND is reconciled through the one physical-machine convergence entry (cuts 6 and 7 landed: OS provisioning, host-system and workload convergence), and no per-machine workflow mode or boot root remains (the mtcollins1, srv3 and host_reset_return roots deleted, and the mode renames landed)."),
