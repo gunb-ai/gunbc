@@ -123,6 +123,7 @@ fn metering_closing_held_back_units(
 }
 
 fn metering_closing_answer(
+  instance_id: NonEmptyStr,
   declared: List<NonEmptyStr>,
   observed: List<MeteringClosingWriterObservation>,
   legacy_markers_observed: Int,
@@ -133,7 +134,7 @@ fn metering_closing_answer(
   } else if legacy_markers_observed > 0 {
     MeteringClosingCutoverRefused { cause: join(["the closing-marker writer is excluded, but ", to_string(value: legacy_markers_observed), " plain ", metering_closing_legacy_marker_name as String, " entries are still on this host; the mint refuses them and an operator has to say what happens to those bytes"], "") }
   } else {
-    MeteringClosingNoop { reason: join(["every declared closing-marker writer unit is observed stopped and masked, and no plain ", metering_closing_legacy_marker_name as String, " entry is on the host: nothing to do across the deploy"], "") }
+    MeteringClosingNoop { reason: join(["every declared closing-marker writer unit for instance ", instance_id as String, " is observed stopped and masked, and no plain ", metering_closing_legacy_marker_name as String, " entry is on the host: nothing to do across the deploy"], "") }
   }
 }
 
@@ -145,6 +146,6 @@ fn metering_closing_cutover_disposition(
   match metering_closing_writer_fence(instance_id: instance_id) {
     LegacyWriterUndeclared => MeteringClosingCutoverRefused { cause: join(["no closing-marker writer fence is declared for instance ", instance_id as String, "; the cutover refuses rather than assuming nothing on this host still writes ", metering_closing_legacy_marker_name as String], "") }
     LegacyWriterFenceConflict { instance_id: i, rows: n } => MeteringClosingCutoverRefused { cause: join(["the closing-marker writer fence for instance ", i as String, " is declared ", to_string(value: n), " times; one row per instance is what the cutover can act on"], "") }
-    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_answer(declared: declared, observed: observed, legacy_markers_observed: legacy_markers_observed)
+    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_answer(instance_id: instance_id, declared: declared, observed: observed, legacy_markers_observed: legacy_markers_observed)
   }
 }
