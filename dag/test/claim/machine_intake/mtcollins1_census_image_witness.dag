@@ -275,7 +275,10 @@ test fn the_census_roster_is_the_brief_order() -> Bool {
 
 fn census_program_index(needle: String) -> Int {
   let program = census_capture_program(machine: mtcollins1_census_machine, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: mtcollins1_census_stages) as String
-  split(s: program, delimiter: needle).first().length()
+  match split(s: program, delimiter: needle).first() {
+    Absent => -1
+    Present { value: head } => head.length()
+  }
 }
 
 // HALT ONLY AFTER END. END is echoed after the last section, `sync` after END, and the power-off is
