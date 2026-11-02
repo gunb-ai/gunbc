@@ -16042,6 +16042,23 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
+// A FORMAL `P?` MATCHED AGAINST AN ACTUAL `T?` BINDS P TO T, NOT TO `T?`. The formal's own optional layer
+// accounts for the actual's, so binding the actual whole put the layer into P twice over: `P?` still read
+// T?, but every other use of P (a `-> Dec<P>` return, a `-> P`) became `T?`. The type printer does not show
+// cardinality, so `EventDecode<RedemptionEvent>` and `EventDecode<RedemptionEvent?>` printed alike, and
+// the declared-return judgment refused the second against the first (gunbc#15643 corpus gate:
+// product.capacity.redemption, product.capacity.pool_events, gunbc.roadmap.roadmap_task_store;
+// attributed by srv2 kh-evdec2: the refusal appears exactly when P is solved through `P?`). A required
+// actual under a `P?` formal binds as it is. v1 cardinality is one layer (v1.std.core Cardinality), so
+// removing one layer is with_required_cardinality.
+fn generic_binding_through_formal_cardinality(formal: Node, actual: Node) -> Node {
+  if formal.return_cardinality == CardOptional && actual.return_cardinality == CardOptional {
+    with_required_cardinality(n: actual)
+  } else {
+    actual
+  }
+}
+
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
@@ -16049,7 +16066,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     && (generic_names |> any(g => g == bind_name)) {
 
     match map_get(acc, bind_name) {
-      Absent => map_insert(acc, bind_name, actual)
+      Absent => map_insert(acc, bind_name, generic_binding_through_formal_cardinality(formal: formal, actual: actual))
       Present { value: _ } => acc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
