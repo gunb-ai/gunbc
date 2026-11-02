@@ -31,7 +31,7 @@ module test.fixture.machine_intake.mtcollins1_fan_capture
 import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
 import std.algebra { list_find_first }
-import extdeps.bmc.ipmi_sdr { SdrVerboseReadout, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrVerboseUnreadable, SdrBlockThreshold, SdrBlockNotThreshold, SdrBlockUntyped, sdr_verbose_readout, sdr_verbose_block_typing }
+import extdeps.bmc.ipmi_sdr { SdrVerboseReadout, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrVerboseUnreadable, SdrBlockThreshold, SdrBlockNotThreshold, SdrBlockTypingAmbiguous, SdrBlockUntyped, sdr_verbose_readout, sdr_verbose_block_typing }
 
 // The receipt's own run-scope marker line was `run=0 verbose_exit=0`; the parse below is allowed only
 // because the read itself succeeded, so the exit status is carried rather than assumed.
@@ -166,9 +166,9 @@ fn mtcollins1_fan_capture_records() -> List<SdrVerboseRecord> {
 // discrete sensors is real hardware, and refusing to excuse its blank rows because no threshold sensor
 // exists on the board would be a rule about our capture leaking into the gate.
 fn sdr_capture_met_both_kinds(records: List<SdrVerboseRecord>) -> Bool {
-  match list_find_first(xs: records, predicate: r => match sdr_verbose_block_typing(record: r) { SdrBlockThreshold => true SdrBlockNotThreshold => false SdrBlockUntyped => false }) {
+  match list_find_first(xs: records, predicate: r => match sdr_verbose_block_typing(record: r) { SdrBlockThreshold => true SdrBlockNotThreshold => false SdrBlockTypingAmbiguous => false SdrBlockUntyped => false }) {
     Absent => false
-    Present { value: _ } => match list_find_first(xs: records, predicate: r => match sdr_verbose_block_typing(record: r) { SdrBlockThreshold => false SdrBlockNotThreshold => true SdrBlockUntyped => false }) {
+    Present { value: _ } => match list_find_first(xs: records, predicate: r => match sdr_verbose_block_typing(record: r) { SdrBlockThreshold => false SdrBlockNotThreshold => true SdrBlockTypingAmbiguous => false SdrBlockUntyped => false }) {
       Absent => false
       Present { value: _ } => true
     }

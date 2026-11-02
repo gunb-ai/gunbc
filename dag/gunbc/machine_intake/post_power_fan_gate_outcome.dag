@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import extdeps.external_authority { cited_figure_read_obligation }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text, chassis_observation_is_off }
-import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetNotEstablished, FittedFanSetEstablished, FittedFanSetOperatorAssumed, PostPowerFanRefusal, FanFailureSensorNotNominal, FanFailureSensorNoReading, FittedSetUnestablished, PostPowerChassisNotOn, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, PostPowerChassisUnreadable, PostPowerChassisUndecodable, FanReadUnreadable, FanRowsUndecoded, FittedHeaderMissing, FittedHeaderDuplicated, FittedHeaderStatusRefused, FittedHeaderZeroRpm, FittedHeaderNoReading, FittedHeaderDutyOnly, FittedHeaderReadingUnrecognised, SdrRowRefusal, SdrRowRefusedNotAnElistRow, SdrRowRefusedCarriesReading, SdrRowRefusedStatusNotOk, SdrRowRefusedTypingUnread, SdrRowRefusedNoRecordNamed, SdrRowRefusedNameAmbiguous, SdrRowRefusedThresholdTyped, SdrRowRefusedUnlabelledRecord }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetNotEstablished, FittedFanSetEstablished, FittedFanSetOperatorAssumed, PostPowerFanRefusal, FanFailureSensorNotNominal, FanFailureSensorNoReading, FittedSetUnestablished, PostPowerChassisNotOn, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, PostPowerChassisUnreadable, PostPowerChassisUndecodable, FanReadUnreadable, FanRowsUndecoded, FittedHeaderMissing, FittedHeaderDuplicated, FittedHeaderStatusRefused, FittedHeaderZeroRpm, FittedHeaderNoReading, FittedHeaderDutyOnly, FittedHeaderReadingUnrecognised, SdrRowRefusal, SdrRowRefusedNotAnElistRow, SdrRowRefusedCarriesReading, SdrRowRefusedStatusNotOk, SdrRowRefusedTypingUnread, SdrRowRefusedNoRecordNamed, SdrRowRefusedNameAmbiguous, SdrRowRefusedThresholdTyped, SdrRowRefusedUnlabelledRecord, SdrRowRefusedAmbiguousTypingLine }
 import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, render_round_block, render_thermal_publication }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
@@ -109,6 +109,7 @@ fn thermal_row_refusal_line(refusal: SdrRowRefusal) -> String {
     SdrRowRefusedNameAmbiguous { row: r } => concat(r, " (more than one record shares that name)")
     SdrRowRefusedThresholdTyped { row: r } => concat(r, " (typed a threshold sensor)")
     SdrRowRefusedUnlabelledRecord { row: r } => concat(r, " (record printed neither ipmitool threshold label)")
+    SdrRowRefusedAmbiguousTypingLine { row: r } => concat(r, " (record printed more than one Sensor Type line, so no label governs it)")
   }
 }
 

@@ -402,9 +402,14 @@ type SdrVerboseRecord {
 // in stdout: a rule keyed on an 'Event/Reading Type Code' line would key on a line that cannot
 // exist in a capture, and would classify every row absent while looking green.
 //
-// Threshold is checked FIRST on purpose. ipmitool cannot print both labels for one record, but a
-// capture that somehow carried both must refuse rather than admit: when the typing is ambiguous,
-// the blank reading stays undecoded.
+// ipmitool prints EXACTLY ONE typing line per record, and that fact is the model: the detail lines
+// that BEGIN with the 'Sensor Type' label are collected, and the typing is read only when there is
+// exactly one of them and it matches one of the two exact label shapes. Zero, a malformed line, or
+// more than one means the typing is not readable, and the blank reading stays undecoded. A substring
+// search over the detail lines was the defect this replaces: a record carrying a valid
+// ' Sensor Type (Discrete): Power Supply (0x08)' plus a malformed competitor such as
+// ' Sensor Type (Threshold ) : ' typed as NOT threshold and admitted a row the repository never
+// typed. Under this model the two lines make the record's typing ambiguous, and ambiguity refuses.
 type SdrVerboseReadout
   = SdrVerboseRead { records: List<SdrVerboseRecord> }
   | SdrVerboseEmptyRepository
@@ -413,6 +418,7 @@ type SdrVerboseReadout
 type SdrBlockTyping
   = SdrBlockThreshold
   | SdrBlockNotThreshold
+  | SdrBlockTypingAmbiguous
   | SdrBlockUntyped
 
 data ipmitool_sdr_threshold_test_authority: ExternalAuthority = ExternalAuthority {
@@ -422,21 +428,50 @@ data ipmitool_sdr_threshold_test_authority: ExternalAuthority = ExternalAuthorit
   }
 }
 
-// A detail line carrying one of the two labels. Absent means the repository said nothing about
-// this record, which is NOT the same as saying it is not a threshold sensor.
-fn sdr_block_detail_carries(record: SdrVerboseRecord, pattern: String) -> Bool {
-  match list_find_first(xs: record.detail_lines, predicate: d => string_contains(s: d, pattern: pattern)) {
-    Present { value: _ } => true
+// THE LABEL PREFIX, read off the text BEFORE the first '(' and compared exactly: a detail line begins
+// with the 'Sensor Type' label only when that label is what precedes the parenthesised kind. This is
+// what keeps a malformed competitor (' Sensor Type (Threshold ) : ') counted as a typing line at all,
+// so it can never be out-voted by a valid one -- it makes the record's typing ambiguous instead.
+fn sdr_detail_line_begins_with_typing_label(line: String) -> Bool {
+  match sdr_field_at(fields: split(s: line, delimiter: "("), index: 0) {
     Absent => false
+    Present { value: head } => trim(head) == "Sensor Type"
+  }
+}
+
+// THE TWO EXACT SHAPES, from the same print path cited above: ' Sensor Type (Discrete): %s (0x%02x)'
+// (lib/ipmi_sdr.c:1888) and ' Sensor Type (Threshold)  : ' (:1952, two spaces before the colon). The
+// comparison is on the part before the first ": ", trimmed -- never on a substring of the whole line,
+// which is what let a malformed line pass for a label.
+fn sdr_typing_line_is_threshold(line: String) -> Bool {
+  match sdr_field_at(fields: split(s: line, delimiter: ": "), index: 0) {
+    Absent => false
+    Present { value: head } => trim(head) == "Sensor Type (Threshold)"
+  }
+}
+
+fn sdr_typing_line_is_discrete(line: String) -> Bool {
+  match sdr_field_at(fields: split(s: line, delimiter: ": "), index: 0) {
+    Absent => false
+    Present { value: head } => trim(head) == "Sensor Type (Discrete)"
   }
 }
 
 fn sdr_verbose_block_typing(record: SdrVerboseRecord) -> SdrBlockTyping {
-  if sdr_block_detail_carries(record: record, pattern: "Sensor Type (Threshold)") {
+  let typing_lines = flat_map(record.detail_lines, d => if sdr_detail_line_begins_with_typing_label(line: d) { [d] } else { [] })
+  let threshold = flat_map(typing_lines, d => if sdr_typing_line_is_threshold(line: d) { [d] } else { [] })
+  let discrete = flat_map(typing_lines, d => if sdr_typing_line_is_discrete(line: d) { [d] } else { [] })
+  if typing_lines.length() > 1 {
+    // More than one typing line in one record: ipmitool prints one, so the record is not something
+    // this tool wrote, and which label governs would be a guess. Refuse.
+    SdrBlockTypingAmbiguous
+  } else if threshold.length() == 1 {
     SdrBlockThreshold
-  } else if sdr_block_detail_carries(record: record, pattern: "Sensor Type (Discrete)") {
+  } else if discrete.length() == 1 {
     SdrBlockNotThreshold
   } else {
+    // No typing line at all, or one that matches neither exact shape. The repository said nothing
+    // readable about this record, which is NOT the same as saying it is not a threshold sensor.
     SdrBlockUntyped
   }
 }

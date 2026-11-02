@@ -6,7 +6,7 @@ import std.measure { rpm_count }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import extdeps.bmc.ipmi_sdr {
   SdrVerboseReadout, SdrVerboseRecord, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseUnreadable,
-  SdrBlockThreshold, SdrBlockNotThreshold, SdrBlockUntyped, sdr_verbose_block_typing,
+  SdrBlockThreshold, SdrBlockNotThreshold, SdrBlockTypingAmbiguous, SdrBlockUntyped, sdr_verbose_block_typing,
   sdr_row_cells, SdrRowCells,
   SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrEmptyReadingRow, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
@@ -216,6 +216,7 @@ type SdrRowRefusal
   | SdrRowRefusedNameAmbiguous { row: String }
   | SdrRowRefusedThresholdTyped { row: String }
   | SdrRowRefusedUnlabelledRecord { row: String }
+  | SdrRowRefusedAmbiguousTypingLine { row: String }
 
 type SdrUndecodedRowJudgement
   = SdrRowAdmittedDiscrete { row: String }
@@ -253,8 +254,9 @@ fn sdr_blank_ok_row_judgement(text: String, typing: SdrVerboseReadout?) -> SdrUn
         // straight off SdrBlockTyping, because a Bool per variant would be a second representation of the
         // distinction the type already carries (§5).
         let named = flat_map(blocks, b => if b.name == cells.name { [b] } else { [] })
-        let not_threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockNotThreshold => [b] SdrBlockThreshold => [] SdrBlockUntyped => [] })
-        let threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockThreshold => [b] SdrBlockNotThreshold => [] SdrBlockUntyped => [] })
+        let not_threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockNotThreshold => [b] SdrBlockThreshold => [] SdrBlockTypingAmbiguous => [] SdrBlockUntyped => [] })
+        let threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockThreshold => [b] SdrBlockNotThreshold => [] SdrBlockTypingAmbiguous => [] SdrBlockUntyped => [] })
+        let ambiguous = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockTypingAmbiguous => [b] SdrBlockThreshold => [] SdrBlockNotThreshold => [] SdrBlockUntyped => [] })
         if blocks.length() == 0 {
           // Nothing to type against, for one of the three reasons the readout distinguishes.
           SdrRowRefused { refusal: SdrRowRefusedTypingUnread { row: text, readout: typing } }
@@ -266,9 +268,15 @@ fn sdr_blank_ok_row_judgement(text: String, typing: SdrVerboseReadout?) -> SdrUn
           SdrRowAdmittedDiscrete { row: text }
         } else if threshold.length() == 1 {
           SdrRowRefused { refusal: SdrRowRefusedThresholdTyped { row: text } }
+        } else if ambiguous.length() == 1 {
+          // The record printed more than one typing line, so ipmitool did not write it and no label
+          // governs. Its own cause, because "the tool printed two labels" is a materially different
+          // fact from "the tool printed none", and the receipt must not blur them (§5).
+          SdrRowRefused { refusal: SdrRowRefusedAmbiguousTypingLine { row: text } }
         } else {
-          // Not threshold, not not-threshold: the record printed neither label, so its event/reading type
-          // is unknown, and an unknown type is not a permission to admit.
+          // Not threshold, not not-threshold, not ambiguous: the record printed no typing line, or one
+          // that matches neither exact shape, so its event/reading type is unknown -- and an unknown
+          // type is not a permission to admit.
           SdrRowRefused { refusal: SdrRowRefusedUnlabelledRecord { row: text } }
         }
       }
