@@ -57,7 +57,6 @@ import std.types { Int, NonEmptyStr, String, Unit }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
-import extdeps.transports.shell { ShellOutcome }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -147,11 +146,25 @@ service CargoBuild {
       bin: NonEmptyStr
     }
 
-    // A build that ran and failed is an ANSWER read from these fields, and a cargo that never spawned is
-    // ShellSpawnRefused with the other fields absent, not a sentinel exit code (extdeps.transports.shell
-    // ShellOutcome). Both are data, which is what the success and nonzero-exit controls read.
+    // A build that ran and failed is an ANSWER read from these fields, not a sentinel exit code: the three
+    // keys are modelled shell channels (v1.compiler.emit names the ten accepted keys at
+    // src/v1/05_emit.dag:1445 -- stdout, stderr, exit_success, success, exists, exit_code, stdout_lines,
+    // stderr_truncated, stderr_total_bytes, stderr_retained_bytes), and these are the ones the success and
+    // nonzero-exit controls read.
+    //
+    // The typed extdeps.transports.shell ShellOutcome sum is NOT one of those keys, and this module learned
+    // that by being refused, not by being told: a compiler-route entry reaching this operation refused at
+    // emit with 'native effect realization refused for entry nefx.cli_probe.v2_cli_main': service
+    // extdeps.rust.cargo_build_service CargoBuild has no native realization: operation 'Build' binds no
+    // transport: shell transport output key 'outcome' has no modeled channel'. So a cargo that never
+    // spawned stays a hard evaluation refusal here (the interpreter's own shell-spawn-refused diagnostic
+    // points the reader at a ShellOutcome output field the native realization cannot lower), and the four
+    // corpus modules that declare one -- extdeps.shell.exec, extdeps.github.ci_runner,
+    // extdeps.github.organizations, extdeps.systemd.systemctl -- have never been realized natively. That
+    // gap is filed as gunbc.recurring_failure_mode
+    // transport_output_field_without_a_native_realization_channel; it is not papered over by declaring the
+    // field and letting the emission refuse.
     output {
-      outcome: ShellOutcome
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
