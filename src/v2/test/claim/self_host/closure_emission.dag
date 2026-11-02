@@ -686,3 +686,67 @@ fn ce_probe_first_analysis_named(name: String) -> String {
       }
   }
 }
+// ---- PUNNED-RECORD vs POST-BLOCK-CONTINUATION discriminator (checkpoint probe, node
+// adhoc-56744ea7; PROBE, not a claim, not for landing). cc2-pp6 showed BOTH executors refusing the
+// else-less `if c { i }` with the leftover AFTER the if-block (tail `i` at 151; fn closing `}` at
+// 149 in blockfinal). Two hypotheses:
+//  H-A punned record (keen-heron-809): the condition reads `c { i }` as a single-pun record,
+//      starving the if of its block. Prediction: texts whose block is NOT a valid record
+//      content, or whose condition cannot start a record, PARSE at PARSE level.
+//  H-B post-block continuation (M2-like): the if-block is consumed and the parse stops right
+//      AFTER it; the stmt_seq/continuation after a block-headed else-less statement never
+//      continues (a leaked commitment from the refused optional else-tail attempt fits).
+//      Prediction: ALL of T2/T3 keep refusing at PARSE with the leftover right after the block.
+// Discriminator rows (member bodies; entry and harness reused verbatim from the family above):
+//  T2 nonpun    { if c { 1 }  i }   `c { 1 }` is not a valid pun record -> H-A: PARSES (refuses
+//       later at lowering like twostat, reason body_lowering_reason_*); H-B: parse_g0_tokens_remain.
+//  T3 paren     { if (c) { i }  i } a record cannot start at `(` -> same fork as T2.
+//  T4 returnblk { if c { return i }  i } the namespace_xl0 guard shape: block body is a return,
+//       never a pun; expected PARSE (control pinning block-body shape, per cc2-pp6 data).
+//  T5 blockfin  { if c { return i } } block-final if with return body; expected PARSE.
+//  T7 elsetail  { if c { i } else { i }  i } else-guard fires and the block is consumed; a tail
+//       statement follows. Separates "continuation after a block-headed statement" from "the
+//       else-less path specifically": if this PARSES while T1 fails, the fault is the absent-else
+//       arm's continuation, not block-headed statements generally.
+// Interpretation rule (keen-koi-376): a parse-ACCEPTED ce_refusing member may refuse at RESOLVE
+// with resolve_module_not_found (hand-built ingest lacks std.types) - that still evidences PARSED.
+
+data ce_refusing_nonpun_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { 1 }\n  i\n}\n"
+
+data ce_refusing_paren_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if (c) { i }\n  i\n}\n"
+
+data ce_refusing_returnblk_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { return i }\n  i\n}\n"
+
+data ce_refusing_blockfin_return_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { return i }\n}\n"
+
+data ce_refusing_elsetail_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { i } else { i }\n  i\n}\n"
+
+fn ce_emission_named_member(member_source: String) -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: member_source, id: ^ce_refusing_variant_member_read, path: "src/v2/test/ce_refusing_member.dag"),
+      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
+    ],
+    entry: "v2.test.ce_refusing_entry"
+  )
+}
+
+fn ce_probe_verdict(member_source: String) -> String {
+  let located = ce_emission_named_member(member_source: member_source)
+  match located.outcome {
+    Rejected { diagnostics: d } =>
+      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
+    Accepted { value: e, diagnostics: _ } =>
+      concat("ACCEPTED: ", closure_emission_json(emission: e))
+  }
+}
+
+fn ce_probe_nonpun_text() -> String { ce_probe_verdict(member_source: ce_refusing_nonpun_member_source) }
+
+fn ce_probe_paren_text() -> String { ce_probe_verdict(member_source: ce_refusing_paren_member_source) }
+
+fn ce_probe_returnblk_text() -> String { ce_probe_verdict(member_source: ce_refusing_returnblk_member_source) }
+
+fn ce_probe_blockfin_return_text() -> String { ce_probe_verdict(member_source: ce_refusing_blockfin_return_member_source) }
+
+fn ce_probe_elsetail_text() -> String { ce_probe_verdict(member_source: ce_refusing_elsetail_member_source) }
