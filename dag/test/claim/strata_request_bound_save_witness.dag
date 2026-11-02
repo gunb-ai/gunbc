@@ -1,0 +1,61 @@
+module test.claim.strata_request_bound_save_witness
+
+import std.types { Bool }
+import extdeps.strata.request_bound_save {
+  BoundSaveRequest, BoundSaveTransferred, BoundSaveConflict, BoundSaveEngineLacksPatch, BoundSaveReplyUnreadable, BoundSaveUpstreamRefused,
+  RequestNotCurrent, RequestInFlight, EngineChanged, RequestIdEcho, bound_save_path, bound_save_body, bound_save_reply,
+}
+
+// Producer inhabitance: the pinned patch's serve.test_request_bound_save drives the real HTTP and FIFO
+// path. Here the replies are supplied at the wire boundary.
+test fn a_stock_engine_reply_without_the_echo_is_a_typed_missing_capability() -> Bool {
+  let request = BoundSaveRequest { request_id: "chatcmpl-a", filename: "a.bin" }
+  let stock = bound_save_reply(request: request, status: 200, body: "{\"id_slot\":0,\"filename\":\"a.bin\",\"n_saved\":100,\"n_written\":2048}")
+  match stock {
+    BoundSaveEngineLacksPatch { missing: RequestIdEcho, unconditional_save_executed: true } => true
+    _ => false
+  }
+}
+
+test fn the_patched_engine_must_echo_the_exact_completed_response() -> Bool {
+  let request = BoundSaveRequest { request_id: "chatcmpl-a", filename: "a.bin" }
+  let counts = "\"id_slot\":0,\"filename\":\"a.bin\",\"n_saved\":100,\"n_written\":2048"
+  let accepted = match bound_save_reply(request: request, status: 200, body: join(["{", counts, ",\"request_id\":\"chatcmpl-a\"}"], "")) { BoundSaveTransferred { transfer: _ } => true _ => false }
+  let other = match bound_save_reply(request: request, status: 200, body: join(["{", counts, ",\"request_id\":\"chatcmpl-b\"}"], "")) { BoundSaveReplyUnreadable { detail: _ } => true _ => false }
+  let duplicate = match bound_save_reply(request: request, status: 200, body: join(["{", counts, ",\"request_id\":\"chatcmpl-a\",\"request_id\":\"chatcmpl-b\"}"], "")) { BoundSaveReplyUnreadable { detail: _ } => true _ => false }
+  let wrong_file = match bound_save_reply(request: request, status: 200, body: "{\"id_slot\":0,\"filename\":\"b.bin\",\"n_saved\":100,\"n_written\":2048,\"request_id\":\"chatcmpl-a\"}") { BoundSaveReplyUnreadable { detail: _ } => true _ => false }
+  accepted && other && duplicate && wrong_file && bound_save_path(request: request) == "/slots/0?action=save"
+    && bound_save_body(request: request) == "{\"filename\": \"a.bin\", \"expected_request_id\": \"chatcmpl-a\"}"
+}
+
+test fn save_conflicts_preserve_cause_and_uncertain_file() -> Bool {
+  let request = BoundSaveRequest { request_id: "chatcmpl-a", filename: "a.bin" }
+  let stale = match bound_save_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"stale\",\"condition\":\"request_not_current\"}}") {
+    BoundSaveConflict { condition: RequestNotCurrent, published: false, message: _ } => true _ => false
+  }
+  let busy = match bound_save_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"busy\",\"condition\":\"request_in_flight\"}}") {
+    BoundSaveConflict { condition: RequestInFlight, published: false, message: _ } => true _ => false
+  }
+  let changed = match bound_save_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"unverified\",\"condition\":\"engine_changed\",\"published\":true}}") {
+    BoundSaveConflict { condition: EngineChanged, published: true, message: _ } => true _ => false
+  }
+  let wrong_status = match bound_save_reply(request: request, status: 500, body: "{\"error\":{\"code\":500,\"message\":\"stale\",\"condition\":\"request_not_current\"}}") { BoundSaveReplyUnreadable { detail: _ } => true _ => false }
+  let unknown = match bound_save_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"unknown\",\"condition\":\"another_condition\"}}") { BoundSaveReplyUnreadable { detail: _ } => true _ => false }
+  stale && busy && changed && wrong_status && unknown
+}
+
+test fn conflict_and_refusal_shapes_are_told_apart() -> Bool {
+  let request = BoundSaveRequest { request_id: "chatcmpl-a", filename: "a.bin" }
+  let bad_published = match bound_save_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"m\",\"condition\":\"engine_changed\",\"published\":\"yes\"}}") {
+    BoundSaveReplyUnreadable { detail: d } => d == "invalid save publication reading" _ => false
+  }
+  let bad_condition = match bound_save_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"message\":\"m\",\"condition\":7}}") {
+    BoundSaveReplyUnreadable { detail: d } => d == "save condition is unreadable" _ => false
+  }
+  let no_message = match bound_save_reply(request: request, status: 409, body: "{\"error\":{\"code\":409,\"condition\":\"request_in_flight\"}}") {
+    BoundSaveReplyUnreadable { detail: d } => d == "save conflict message is unreadable" _ => false
+  }
+  let refused_400 = match bound_save_reply(request: request, status: 400, body: "{\"error\":{\"code\":400,\"message\":\"bad\"}}") { BoundSaveUpstreamRefused { refusal: _ } => true _ => false }
+  let refused_501 = match bound_save_reply(request: request, status: 501, body: "{\"error\":{\"code\":501,\"message\":\"off\"}}") { BoundSaveUpstreamRefused { refusal: _ } => true _ => false }
+  bad_published && bad_condition && no_message && refused_400 && refused_501
+}

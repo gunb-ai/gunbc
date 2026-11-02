@@ -490,7 +490,7 @@ fn typed_census_from_sources(sources: List<SourceFile>) -> String {
 // first worker -- which runs the startup fold, within its own startup_deadline -- BEFORE the bind, so a self-check that refuses
 // never becomes reachable; a driver that declares none is emitted unchanged: bind first, realize after, on the request deadline.
 fn crc_serve_before_bind(startup: Bool) -> String {
-  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false)
+  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false, request_headers: false)
   match (file.content |> split(delimiter: "TcpListener::bind((")).first() {
     Present { value: head } => head
     Absent => ""
@@ -508,7 +508,7 @@ test fn a_driver_with_no_startup_binds_before_it_realizes_its_worker_on_the_requ
 }
 
 test fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness_wait() -> Bool {
-  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: true, startup_bound: true)
+  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: true, startup_bound: true, request_headers: false)
   match (file.content |> split(delimiter: "TcpListener::bind((")).first() {
     Present { value: head } => string_contains(s: head, pattern: "second_count(native_serve_startup_bound())") && !string_contains(s: head, pattern: "second_count(contract.startup_deadline.clone())")
     Absent => false
@@ -516,7 +516,7 @@ test fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness
 }
 
 fn crc_realize_generation_body(startup: Bool) -> String {
-  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false)
+  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false, request_headers: false)
   match (file.content |> split(delimiter: "fn realize_generation(")).last() {
     Present { value: tail } => tail
     Absent => ""

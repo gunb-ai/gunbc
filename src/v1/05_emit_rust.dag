@@ -20234,6 +20234,16 @@ data native_serve_entry_function: String = "native_serve_handle"
 // entry's own module declares it, so a driver that declares none renders exactly what it did.
 data native_serve_startup_function: String = "native_serve_startup"
 
+fn native_serve_declares_request_headers(modules: List<TypedModule>, pipeline_module: String) -> Bool {
+  modules |> any(tm => {
+    let si = tm.type_env.source_indices
+    authored_name_at(source_indices: si, node: tm.module) == pipeline_module &&
+      (tm.items |> any(item => item.module_item_kind == ModuleItemFunction &&
+        authored_name_at(source_indices: si, node: item) == native_serve_entry_function &&
+        (function_value_params(params: item.params) |> any(p => param_node_name_at(n: p, source_indices: si) == "request_headers"))))
+  })
+}
+
 fn native_serve_declares_startup(modules: List<TypedModule>, pipeline_module: String) -> Bool {
   count(native_effect_decl_sites(modules: modules, kind: ModuleItemFunction, name: native_serve_startup_function)
     |> filter(site => site.module_name == pipeline_module)) > 0
@@ -20405,7 +20415,7 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module), startup_bound: native_serve_declares_startup_bound(modules: modules, pipeline_module: pipeline_module))
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name), startup: native_serve_declares_startup(modules: modules, pipeline_module: pipeline_module), startup_bound: native_serve_declares_startup_bound(modules: modules, pipeline_module: pipeline_module), request_headers: native_serve_declares_request_headers(modules: modules, pipeline_module: pipeline_module))
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -20730,7 +20740,7 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // transport error): at startup the main refuses before announcing, so /livez is never answered by a
 // process that cannot serve; a failed replacement ends the process with
 // native_serve_worker_replacement_exit_code once the request in hand is answered.
-fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool, startup_bound: Bool) -> TextFile {
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>, startup: Bool, startup_bound: Bool, request_headers: Bool) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   let effectful = (bindings |> count) > 0
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
@@ -20792,15 +20802,22 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
   let ready_name = if startup { "ready_within" } else { "deadline" }
   let ready_let = if startup { concat("    let ready_within = ", ready_within, ";", "\n") } else { "" }
   let startup_arg = if startup { ", startup_value.clone()" } else { "" }
+  let headers_arg = if request_headers {
+    ", Rc::new(call.request_headers.into_iter().map(|(name, value)| Rc::new(ServeRequestHeader \{ name, value \})).collect::<Vec<_>>().into())"
+  } else { "" }
+  let headers_import = if request_headers { concat("use ", crate_name, "::extdeps_http_server::ServeRequestHeader;\n") } else { "" }
+  let headers_field = if request_headers { "    request_headers: Vec<(String, String)>,\n" } else { "" }
+  let headers_copy = if request_headers { "            request_headers: head.request_headers.iter().map(|h| (h.name.clone(), h.value.clone())).collect(),\n" } else { "" }
+
   let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
   let worker_call = if effectful {
     concat(
-      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
+      "            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", headers_arg, startup_arg, handler_effect_args, ")) \{", "\n",
       "                Ok(response) => response,", "\n",
       "                Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
       "            \};", "\n")
   } else {
-    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, ");\n")
+    concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", headers_arg, startup_arg, ");\n")
   }
   // Order of the serve main: a startup entry realizes its first worker (which runs the startup fold) BEFORE the bind, so a
   // refusing self-check never becomes reachable; a driver with no startup keeps the original bind-then-realize order.
@@ -20852,6 +20869,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
       startup_import,
       bound_import,
+      headers_import,
       "\n",
       "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
       "// handler's values are reference-counted and stay on the worker's thread.", "\n",
@@ -20923,6 +20941,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "    body: String,", "\n",
       "    tailscale_identity: String,", "\n",
       "    release_revision: String,", "\n",
+      headers_field,
       "\}", "\n",
       "\n",
       "// One worker generation: the thread that owns the effect executor and every admitted handle and runs", "\n",
@@ -21021,6 +21040,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String,
       "            body,", "\n",
       "            tailscale_identity: head.tailscale_identity.clone(),", "\n",
       "            release_revision: contract.release_revision.clone(),", "\n",
+      headers_copy,
       "        \}),", "\n",
       "    \}", "\n",
       "\}", "\n",
