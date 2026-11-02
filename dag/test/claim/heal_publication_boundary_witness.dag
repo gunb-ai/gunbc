@@ -83,7 +83,7 @@ fn good_run() -> TriggeringRunFacts {
 }
 
 fn good_pull() -> PullRequestFacts {
-  PullRequestFacts { number: 11493, open: true, head_ref: branch, base_ref: "main" }
+  PullRequestFacts { number: 11493, head_ref: branch, base_ref: "main" }
 }
 
 fn design_base_item(mode: String) -> GitTreeItemWire {
@@ -316,16 +316,14 @@ test fn witness_a_run_from_another_head_repository_is_refused() -> Bool {
   )) == "TriggeringRunRepositoryDisagreed"
 }
 
-test fn witness_a_closed_pull_request_is_refused() -> Bool {
-  admit_with(c: good_candidate(), o: observations_with(
-    run: good_run(), pull: PullRequestFacts { number: 11493, open: false, head_ref: branch, base_ref: "main" },
-    branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
-  )) == "PullRequestNotOpen"
-}
+// "The pull request is still OPEN" no longer lives at admit: it is not a ref, so no git transport
+// can answer it credential-free. It is checked at PUBLISH (which holds the job token and sits closer
+// to the write), by heal_publication_publish_witness's closed-pull control. Admit's identity checks
+// (number, head_ref, base_ref) are unaffected and still refuse below.
 
 test fn witness_a_pull_request_into_another_base_is_refused() -> Bool {
   admit_with(c: good_candidate(), o: observations_with(
-    run: good_run(), pull: PullRequestFacts { number: 11493, open: true, head_ref: branch, base_ref: "release" },
+    run: good_run(), pull: PullRequestFacts { number: 11493, head_ref: branch, base_ref: "release" },
     branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
   )) == "BaseRefNotTheDefaultBranch"
 }
@@ -345,7 +343,7 @@ test fn witness_a_branch_name_that_would_misaddress_a_rest_path_is_refused() -> 
   }
   admit_with(c: hashed, o: observations_with(
     run: TriggeringRunFacts { workflow_path: run.workflow_path, originating_event: run.originating_event, conclusion: run.conclusion, head_sha: run.head_sha, head_branch: "lane#1", head_repository_full_name: run.head_repository_full_name, repository_full_name: run.repository_full_name },
-    pull: PullRequestFacts { number: 11493, open: true, head_ref: "lane#1", base_ref: "main" },
+    pull: PullRequestFacts { number: 11493, head_ref: "lane#1", base_ref: "main" },
     branch_head: head_hex, base_tree: [design_base_item(mode: "100644")], blobs: good_blobs()
   )) == "HeadRefNotAddressable"
 }
