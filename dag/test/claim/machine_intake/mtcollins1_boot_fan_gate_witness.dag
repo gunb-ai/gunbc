@@ -668,14 +668,22 @@ test fn a_read_that_parsed_to_nothing_says_it_was_empty_rather_than_that_the_rec
 // The three shapes are NOT collapsed into one word: one claim, all three verdicts, no two alike. Without
 // this the typed cause would be decorative - every shape rendering the same sentence would still pass
 // each claim above.
+// .first() yields an OPTIONAL in this language (matched Present/Absent everywhere it is used, e.g.
+// dag/product/breakout_leg_programming.dag:179), so the head of a refusal list is taken by matching it,
+// not by handing it to a function that wants a refusal. An empty list here is a real answer -- "nothing
+// was refused" -- and it says so rather than panicking on a missing head.
+fn first_typing_unread_shape(rows: List<String>, typing: SdrVerboseReadout?) -> String {
+  match refusals_of(rows: rows, typing: typing).first() {
+    Present { value: f } => typing_unread_shape(refusal: f)
+    Absent => "nothing refused"
+  }
+}
+
 test fn the_three_ways_to_have_nothing_to_type_against_are_three_different_words() -> Bool {
-  let never = refusals_of(rows: boot5_blank_reading_rows, typing: Absent)
-  let failed = refusals_of(rows: boot5_blank_reading_rows, typing: Present { value: SdrVerboseUnreadable })
-  let empty = refusals_of(rows: boot5_blank_reading_rows, typing: Present { value: SdrVerboseEmptyRepository })
-  let a = typing_unread_shape(refusal: never.first())
-  let b = typing_unread_shape(refusal: failed.first())
-  let c = typing_unread_shape(refusal: empty.first())
-  a != b && b != c && a != c
+  let a = first_typing_unread_shape(rows: boot5_blank_reading_rows, typing: Absent)
+  let b = first_typing_unread_shape(rows: boot5_blank_reading_rows, typing: Present { value: SdrVerboseUnreadable })
+  let c = first_typing_unread_shape(rows: boot5_blank_reading_rows, typing: Present { value: SdrVerboseEmptyRepository })
+  a != "nothing refused" && a != b && b != c && a != c
 }
 
 // A threshold typing is NOT this cause: it is the records being present and saying no, which is the
