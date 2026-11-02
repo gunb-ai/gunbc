@@ -49,6 +49,7 @@ import extdeps.git.enumeration {
   GitRefSetObserved,
   GitRefSetReadRefused,
   GitRefSetUndecodable,
+  git_ref_set_observation_of,
 }
 import extdeps.git.worktree_enumeration {
   GitWorktreeIdentity,
@@ -60,6 +61,7 @@ import extdeps.git.worktree_enumeration {
   GitWorktreeSetObserved,
   GitWorktreeSetReadRefused,
   GitWorktreeSetUndecodable,
+  git_worktree_set_observation_of,
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }

@@ -8,7 +8,7 @@ import product.fabric.envelope {
 
 import std.types { NonEmptyStr, List, String, brand }
 import std.nat { Nat }
-import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, identity_frame }
 import std.measure { HardwareThreadCount, hardware_thread_count_value, byte_size_count }
 import product.fabric.identity { FabricIdentity, WorkKey }
 
@@ -495,10 +495,6 @@ type WorkIdentitySchema {
   tag: NonEmptyStr
   supersedes: NonEmptyStr
   transition: NonEmptyStr
-}
-
-fn identity_frame(label: NonEmptyStr, value: String) -> NonEmptyStr {
-  concat(label, ":", to_string(value.length()), ":", value)
 }
 
 fn work_execution_material(execution: WorkExecution) -> NonEmptyStr {

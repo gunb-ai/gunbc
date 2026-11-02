@@ -567,17 +567,20 @@ fn bmc_fan_observation_value(lines: List<String>, key: String) -> String? {
   if lines.length() == 0 {
     none
   } else {
-    let line = lines.first()
-    if starts_with(s: line, prefix: prefix) {
-      Present {
-        value: substring(
-          s: line,
-          start: prefix.length(),
-          end: line.length(),
-        ),
-      }
-    } else {
-      bmc_fan_observation_value(lines: lines.skip(n: 1), key: key)
+    match lines.first() {
+      Absent => none
+      Present { value: line } =>
+        if starts_with(s: line, prefix: prefix) {
+          Present {
+            value: substring(
+              s: line,
+              start: prefix.length(),
+              end: line.length(),
+            ),
+          }
+        } else {
+          bmc_fan_observation_value(lines: lines.skip(n: 1), key: key)
+        }
     }
   }
 }

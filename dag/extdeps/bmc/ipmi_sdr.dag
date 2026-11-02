@@ -360,3 +360,51 @@ fn sdr_temperature_publication(results: List<SdrLineResult>) -> SdrTemperaturePu
     })
   }
 }
+
+// VERBOSE SDR ELIST: CAPTURE FIRST, CLASSIFY LATER (admission-rule work, manager
+// msg_4049c507/msg_56f4f57b). The plain elist's second field is the BMC-ASSIGNED SENSOR NUMBER -
+// classifying rows by it is number-matching and was rejected. The Sensor Type and the
+// Event/Reading Type code appear only in verbose records, read from the SDR repository (host
+// powered OFF is fine; the repository is BMC-side and the codes do not change with power state).
+// THIS STAGE GROUPS THE RAW RECORDS AND CLASSIFIES NOTHING: the admission rule will be grounded
+// on a committed capture, not on a hand-written shape. record_line is the elist-style line;
+// detail_lines are its indented verbose continuation lines, verbatim.
+type SdrVerboseRecord {
+  record_line: String
+  detail_lines: List<String>
+}
+
+type SdrVerboseReadout
+  = SdrVerboseRead { records: List<SdrVerboseRecord> }
+  | SdrVerboseUnreadable
+
+fn sdr_verbose_group(lines: List<String>, current: SdrVerboseRecord?, acc: List<SdrVerboseRecord>) -> List<SdrVerboseRecord> {
+  match lines {
+    Empty => match current {
+      Present { value: r } => acc.concat([r])
+      Absent => acc
+    }
+    Cons { head: line, tail: rest } => match sdr_row_cells(text: line) {
+      Present { value: _ } => match current {
+        Present { value: r } => sdr_verbose_group(lines: rest, current: SdrVerboseRecord { record_line: line, detail_lines: [] }, acc: acc.concat([r]))
+        Absent => sdr_verbose_group(lines: rest, current: SdrVerboseRecord { record_line: line, detail_lines: [] }, acc: acc)
+      }
+      Absent => match current {
+        Present { value: r } => if trim(line) == "" {
+          sdr_verbose_group(lines: rest, current: current, acc: acc)
+        } else {
+          sdr_verbose_group(lines: rest, current: SdrVerboseRecord { record_line: r.record_line, detail_lines: r.detail_lines.concat([line]) }, acc: acc)
+        }
+        Absent => sdr_verbose_group(lines: rest, current: current, acc: acc)
+      }
+    }
+  }
+}
+
+fn sdr_verbose_readout(success: Bool, stdout: String) -> SdrVerboseReadout {
+  if !success {
+    SdrVerboseUnreadable
+  } else {
+    SdrVerboseRead { records: sdr_verbose_group(lines: split(s: stdout, delimiter: "\n"), current: none, acc: []) }
+  }
+}

@@ -1,9 +1,13 @@
 module test.claim.live_deploy.tailnet_door_cutover_journal_wet_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, FilePath }
 import extdeps.shell
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready,
+}
 import gunbc.live_deploy.tailnet_door_cutover {
   CutoverBinding, CutoverJournalRecord, CapturedRestorableBackend,
   CutoverPrepared, CutoverRepointed, CutoverSettledCommitted,
@@ -18,11 +22,16 @@ import gunbc.live_deploy.tailnet_door_cutover_host { tailnet_door_cutover_journa
 // same, now stale, generation is fenced by the store and changes nothing; and another route's
 // journal is another slot, absent until written.
 test fn the_cutover_journal_survives_its_writer_and_fences_a_stale_write() -> Bool {
-  let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: directory.path)
-  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => {
-      let store = FabricStorageLocalFiles { root: root }
+  // THE JOURNAL'S STORE IS OPENED THROUGH THE ONE MINT (the declared chain over an isolated instance of a
+  // temporary directory): the claim writes the journal, REOPENS the store from the same declaration, and reads
+  // the record back -- the seal does not change what a reopened store sees.
+  let scenario = fabric_wet_scenario(template: "/tmp/gunbc_cutover_journal.XXXXXX" as NonEmptyStr)
+  let passed = match scenario {
+    FabricWetScenarioUnready { detail: _ } => false
+    FabricWetScenarioReady { instance: scenario_instance, root: _ } => match fabric_wet_store(members: fabric_storage_slots, instance: scenario_instance) {
+      FabricWetStoreUnready { area: _, detail: _ } => false
+      FabricWetStoreReady { store: ops } => {
+        let store = FabricStorageLocalFiles { operations: ops }
       let binding = CutoverBinding { route: "fixture 443:/", door_target: "unix:/srv/fixture/tailnet-door.sock", release_revision: "release-a" }
       let other = CutoverBinding { route: "elsewhere 443:/", door_target: "unix:/srv/fixture/tailnet-door.sock", release_revision: "release-a" }
       let capture = CapturedRestorableBackend { target: "http://127.0.0.1:9191", backend: "9191" as NonEmptyStr }
@@ -34,7 +43,7 @@ test fn the_cutover_journal_survives_its_writer_and_fences_a_stale_write() -> Bo
         CutoverJournalFenced => false
         CutoverJournalWriteRefused { detail: _ } => false
         CutoverJournalWritten { generation: first_generation } => {
-          let reopened = FabricStorageLocalFiles { root: fabric_storage_file_root(root: directory.path) }
+          let reopened = FabricStorageLocalFiles { operations: ops }
           let survived = tailnet_door_cutover_journal_read(store: tailnet_door_cutover_store(binding: reopened), binding: binding) == CutoverJournalPresent { record: prepared, generation: first_generation }
           let advanced = tailnet_door_cutover_journal_write(store: tailnet_door_cutover_store(binding: reopened), binding: binding, expected_generation: first_generation, record: repointed)
           let stale = tailnet_door_cutover_journal_write(store: tailnet_door_cutover_store(binding: store), binding: binding, expected_generation: first_generation, record: committed)
@@ -53,8 +62,11 @@ test fn the_cutover_journal_survives_its_writer_and_fences_a_stale_write() -> Bo
         }
       }
     }
-    other => false
-  } }
-  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
-  passed && cleaned.success
+      }
+    }
+  let cleaned = match scenario {
+    FabricWetScenarioUnready { detail: _ } => true
+    FabricWetScenarioReady { instance: _, root: r } => shell.Remove.RecursiveForce(path: r as FilePath).success
+  }
+  passed && cleaned
 }

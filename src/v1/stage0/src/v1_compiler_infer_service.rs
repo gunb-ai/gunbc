@@ -888,6 +888,7 @@ pub fn check_service_method_call_node(
                         } else {
                             Some(Rc::new(ServiceMethodResult {
                                 result_type: Rc::new(Node {
+                                    ident: std::option::Option::None,
                                     occurrence_identity: Rc::new(
                                         NodeOccurrenceIdentity::OccurrenceSynthetic,
                                     ),
@@ -898,6 +899,7 @@ pub fn check_service_method_call_node(
                                         let mut __result = Vec::new();
                                         for f in op.outputs.clone().iter().cloned() {
                                             __result.push(Rc::new(Node {
+                                                ident: std::option::Option::None,
                                                 occurrence_identity: Rc::new(
                                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                                 ),
@@ -926,7 +928,6 @@ pub fn check_service_method_call_node(
                                                 declaration_marker: DeclarationMarker::Unmarked,
                                                 declaration: std::option::Option::None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
-                                                ident: None,
                                             }));
                                         }
                                         __result
@@ -947,7 +948,6 @@ pub fn check_service_method_call_node(
                                     declaration_marker: DeclarationMarker::Unmarked,
                                     declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
                                 }),
                                 op_params: op.params.clone(),
                                 rest: op.rest.clone(),

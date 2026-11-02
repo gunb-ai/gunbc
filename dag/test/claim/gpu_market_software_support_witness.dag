@@ -1,0 +1,74 @@
+module test.claim.gpu_market_software_support_witness
+
+// DRIVER SUPPORT AND TOOLKIT SUPPORT ARE TWO FACTS, EACH READ FROM ITS OWN PINNED SOURCE THROUGH THE BOARD'S
+// OWN IDENTITIES. The K80 is listed only by the driver's 470.xx legacy branch and dropped by CUDA 12.0; the
+// M60 is listed by the unified 580 driver yet dropped by CUDA 13.0; the T4 is listed and targeted by 13;
+// the T10 has no driver name and no compute capability, so both halves are unread. A floor list mutated to
+// keep Kepler would turn the K80 claim red.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.gpu.types { GpuComputeCapability, gpu_board_admission_facts }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.nvidia.cuda_toolkit_release { cuda_architecture_floors, cuda_12_architecture_floor, cuda_13_architecture_floor, cuda_toolkit_targets_capability }
+import extdeps.gpu.nvidia_k80 { nvidia_tesla_k80_board_catalog }
+import extdeps.gpu.nvidia_m60 { nvidia_tesla_m60_passive_board_catalog }
+import extdeps.gpu.nvidia_t4 { nvidia_t4_board_catalog }
+import extdeps.gpu.nvidia_t10 { nvidia_tesla_t10_board_catalog }
+import extdeps.gpu.nvidia_v100 { nvidia_tesla_v100_pcie_32gb_board_catalog }
+import gunbc.gpu_market.software_support {
+  DriverListedUnified, DriverListedLegacyOnly, DriverNotListed, DriverNameUnread,
+  CudaTargetedBy, CudaDroppedAt, CudaCapabilityUnread,
+  gpu_board_software_support, gpu_board_runs_current_software, gpu_cuda_support,
+}
+import gunbc.gpu_market.catalog_boards { gpu_catalog_board_admissions }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_the_k80_is_legacy_driver_only_and_dropped_by_cuda_12() -> Bool {
+  let s = gpu_board_software_support(facts: gpu_board_admission_facts(admission: nvidia_tesla_k80_board_catalog))
+  (match s.driver { DriverListedLegacyOnly { branches: bs } => bs |> any(b => (b as String) == "470.xx")  _ => false })
+    && (match s.cuda { CudaDroppedAt { dropped_at: f, last_targeted_by: Absent } => f.toolkit_major == 12  _ => false })
+    && (match gpu_cuda_support(floors: [cuda_12_architecture_floor], cc: Present { value: GpuComputeCapability { vendor: nvidia, major: 3, minor: 7 } }) {
+      CudaDroppedAt { dropped_at: f, last_targeted_by: Absent } => f.toolkit_major == 12  _ => false })
+    && !gpu_board_runs_current_software(facts: gpu_board_admission_facts(admission: nvidia_tesla_k80_board_catalog))
+}
+
+test fn w_the_m60_is_unified_driver_listed_yet_dropped_by_cuda_13() -> Bool {
+  let s = gpu_board_software_support(facts: gpu_board_admission_facts(admission: nvidia_tesla_m60_passive_board_catalog))
+  (match s.driver { DriverListedUnified => true  _ => false })
+    && (match s.cuda { CudaDroppedAt { dropped_at: f, last_targeted_by: Present { value: 12 } } => f.toolkit_major == 13  _ => false })
+    && (match gpu_cuda_support(floors: [cuda_12_architecture_floor], cc: Present { value: GpuComputeCapability { vendor: nvidia, major: 5, minor: 2 } }) {
+      CudaTargetedBy { toolkit_major: 12 } => true  _ => false })
+}
+
+test fn w_the_t4_runs_current_software_and_the_v100_does_not() -> Bool {
+  gpu_board_runs_current_software(facts: gpu_board_admission_facts(admission: nvidia_t4_board_catalog))
+    && (match gpu_board_software_support(facts: gpu_board_admission_facts(admission: nvidia_t4_board_catalog)).cuda { CudaTargetedBy { toolkit_major: 13 } => true  _ => false })
+    && !gpu_board_runs_current_software(facts: gpu_board_admission_facts(admission: nvidia_tesla_v100_pcie_32gb_board_catalog))
+}
+
+test fn w_the_t10_is_unread_on_both_halves() -> Bool {
+  let s = gpu_board_software_support(facts: gpu_board_admission_facts(admission: nvidia_tesla_t10_board_catalog))
+  (match s.driver { DriverNameUnread => true  _ => false }) && (match s.cuda { CudaCapabilityUnread => true  _ => false })
+}
+
+// The floors are newest first and the Turing boundary is exact: 7.5 is targeted by 13, 7.0 is not.
+test fn w_the_floors_are_newest_first_and_the_turing_boundary_is_exact() -> Bool {
+  (match first(cuda_architecture_floors) { Present { value: f } => f.toolkit_major == 13  Absent => false })
+    && cuda_toolkit_targets_capability(floor: cuda_13_architecture_floor, major: 7, minor: 5)
+    && !cuda_toolkit_targets_capability(floor: cuda_13_architecture_floor, major: 7, minor: 0)
+    && cuda_toolkit_targets_capability(floor: cuda_12_architecture_floor, major: 5, minor: 0)
+    && !cuda_toolkit_targets_capability(floor: cuda_12_architecture_floor, major: 3, minor: 7)
+}
+
+// Every catalogue board gets a reading of each half, and some board the appendix does not list at all
+// exists (the T10), so DriverNotListed is not a dead arm by construction: a board named by the driver can
+// only be unified or legacy, which is why the arm is reached through a listed-name check in the join.
+test fn w_every_catalog_board_has_a_reading() -> Bool {
+  count(gpu_catalog_board_admissions) > 0 && gpu_catalog_board_admissions |> all(a => {
+    let s = gpu_board_software_support(facts: gpu_board_admission_facts(admission: a))
+    (match s.driver { DriverNotListed => false  _ => true })
+  })
+}

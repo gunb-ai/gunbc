@@ -2,7 +2,7 @@ module gunbc.serving.replica_endpoint_launch
 
 import std.types { Bool, String, NonEmptyStr }
 import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.work { identity_frame }
+import std.content_hash { identity_frame }
 import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 
 // ONE ENDPOINT PROCESS ON ONE REPLICA IS ONE SUBJECT, AND THE REPLICA IS NOT IT. A replica outlives

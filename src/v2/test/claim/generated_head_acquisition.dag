@@ -1,0 +1,81 @@
+module v2.test.claim.generated_head_acquisition
+
+import std.types { Bool }
+import v2.compiler.module_acquisition { AcquisitionMemberReadOk, AcquisitionMemberReadRefused, acquisition_env_over, acquisition_member_requests }
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.parse { prepare_grammar }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.source_authority { ModuleFileRef }
+import std.algebra { length }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.text { String }
+
+// A COMPILER-GENERATED HEAD OWES ITS DECLARATION, as `T?` does (operator ruling 2026-10-15, N2b;
+// v2.compiler.generated_head_demand). The source spells none of these declarations, so without the
+// acquisition route a closure lacking std.algebra refuses the generated reference as
+// resolve_reason_generated_reference_declaration_absent. The probe reads a module's member requests with
+// no source root bound: a declaration is owed exactly when it is listed as an imported member, whose
+// unknown module refuses. This module avoids authored `concat`, which v2.test.claim.module_acquisition's
+// own import sweep (ruling B) owns.
+fn owed_in(content: String, spelling: String) -> Bool {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_member_requests(
+        env: acquisition_env_over(
+          layout: repository_storage_layout(),
+          bindings: [],
+          lex: prepare_lex_rules(rules: dag_language_model().lex),
+          grammar: prepared
+        ),
+        module: "v2.test.subject",
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+        content: content
+      ) {
+        AcquisitionMemberReadOk { requests: requests, test_markers: _ } =>
+          length(xs: requests.members |> filter(fn(r) { r == spelling })) > 0
+        AcquisitionMemberReadRefused { refusal: _ } => false
+      }
+  }
+}
+
+fn list_subject() -> String {
+  "module v2.test.subject\n\nfn subject() -> Bool {\n  let xs = [true]\n  true\n}\n"
+}
+
+fn map_subject() -> String {
+  "module v2.test.subject\n\nfn subject() -> Bool {\n  let m = { \"k\": true }\n  true\n}\n"
+}
+
+fn template_subject() -> String {
+  "module v2.test.subject\n\nfn subject(x: String) -> String {\n  \"n=$\{x\}\"\n}\n"
+}
+
+fn plain_subject() -> String {
+  "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  true\n}\n"
+}
+
+test fn a_list_literal_owes_the_free_monoid_declaration() -> Bool {
+  owed_in(content: list_subject(), spelling: "std.algebra.FreeMonoid")
+}
+
+test fn a_map_literal_owes_the_map_introduction_declarations() -> Bool {
+  owed_in(content: map_subject(), spelling: "std.algebra.map_from_entries")
+    && owed_in(content: map_subject(), spelling: "std.algebra.MapIntroductionEntry")
+}
+
+test fn a_string_template_owes_the_collection_concat_declaration() -> Bool {
+  owed_in(content: template_subject(), spelling: "std.algebra.collection_concat_shape")
+}
+
+test fn a_module_without_generated_heads_owes_no_algebra_declaration() -> Bool {
+  !owed_in(content: plain_subject(), spelling: "std.algebra.FreeMonoid")
+    && !owed_in(content: plain_subject(), spelling: "std.algebra.map_from_entries")
+    && !owed_in(content: plain_subject(), spelling: "std.algebra.collection_concat_shape")
+}
+
+test fn a_type_with_optional_sugar_still_owes_std_optional() -> Bool {
+  owed_in(content: "module v2.test.subject\n\nfn subject(x: Bool?) -> Bool {\n  true\n}\n", spelling: "std.optional.Optional")
+}
