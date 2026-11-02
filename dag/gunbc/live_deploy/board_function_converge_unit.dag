@@ -6,7 +6,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdDropIn, DropInUnitSection,
   Description, After, Requires, Assert, ConditionPathExists,
-  ServiceType, OneshotMode, RemainAfterExit, ExecStart, ExecReload, WorkingDirectory, TimeoutStartSec,
+  ServiceType, OneshotMode, RemainAfterExit, ExecStartPre, ExecStart, ExecReload, WorkingDirectory, TimeoutStartSec,
   ServiceResourceControl, service_memory_max, service_memory_swap_max,
   Installable, WantedBy,
 }
@@ -19,6 +19,8 @@ import gunbc.live_deploy.release_locus {
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner.runner_unit { runner_unit_template_name, runner_unit_dropin_path }
 import gunbc.fleet.board_function_admission_marker { board_function_converge_admission_marker }
+import gunbc.fleet.fleet_posix_accounts { fleet_rm_binary_path }
+import extdeps.tools.gnu_coreutils { coreutils_rm_force_flag }
 
 // HOW THE BOARD-FUNCTION CONVERGE ROUTE REACHES A HOST (operator decision 2026-11-02, escalation
 // msg_a7082369: join live_deploy's unit set and run from its per-revision release). The route
@@ -93,6 +95,10 @@ fn board_function_converge_argv(host: HostIdentity, revision: ReleaseRevisionBin
   }
 }
 
+fn close_admission_command() -> NonEmptyStr {
+  join([fleet_rm_binary_path as String, coreutils_rm_force_flag as String, board_function_converge_admission_marker as String], " ") as NonEmptyStr
+}
+
 type BoardFunctionConvergeUnitFile
   = BoardFunctionConvergeUnitReady { file: SystemdUnitFile }
   | BoardFunctionConvergeUnitRefused { cause: NamedArgumentAdmission }
@@ -104,6 +110,18 @@ type BoardFunctionConvergeUnitFile
 // refusing RELOAD does not -- systemd returns a RemainAfterExit oneshot to active whatever ExecReload exits
 // with -- so the unit's state is not what the gate reads. The gate reads the admission latch the converge
 // writes and removes (gunbc.fleet.board_function_admission_marker).
+//
+// ADMISSION IS CLOSED BEFORE THE FALLIBLE RUN, NOT ONLY ON ITS REFUSAL. ExecStartPre and the first ExecReload
+// remove the latch before the interpreter starts; only a converged run writes it again. So a run that times
+// out, is killed, or fails before the entry function returns leaves admission closed, which a cleanup on
+// the refusal path alone could not (systemd 255 kills a timed-out reload and returns the unit to active, with
+// the latch whatever the last completed run left). Measured on srv1, 2026-11-02, throwaway units with a 3 s
+// timeout: a reload that exceeded it, and one whose control process was killed with SIGKILL, each left the
+// unit active and the latch absent, a previously inactive workload's start failed its assertion without its
+// command running, and the running workload kept its PID; a successful reload then re-admitted it. The cost
+// is that new workload starts are refused for the length of each re-run (about 80 s on srv1, once per
+// deploy); running workloads are untouched, and a runner whose restart lands in that window is brought
+// back by runner-liveness-reconcile.
 fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisionBinding) -> BoardFunctionConvergeUnitFile {
   match board_function_converge_argv(host: host, revision: revision) {
     BoardFunctionConvergeArgvRefused { cause } => BoardFunctionConvergeUnitRefused { cause: cause }
@@ -120,7 +138,9 @@ fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisi
           TimeoutStartSec { duration: board_function_converge_start_timeout_seconds() as NonEmptyStr },
           ServiceResourceControl { directive: service_memory_max(bytes: board_function_converge_memory_max) },
           ServiceResourceControl { directive: service_memory_swap_max(bytes: board_function_converge_memory_swap_max) },
+          ExecStartPre { command: close_admission_command() },
           ExecStart { command: join(argv, " ") as NonEmptyStr },
+          ExecReload { command: close_admission_command() },
           ExecReload { command: join(argv, " ") as NonEmptyStr },
         ],
         install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },

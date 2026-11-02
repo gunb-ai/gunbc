@@ -24,6 +24,11 @@ fn unit_text() -> String {
   }
 }
 
+// The text before the first occurrence of `marker`, so `contains(before(...), x)` reads "x comes first".
+fn before(t: String, marker: String) -> String {
+  match split(s: t, delimiter: marker).first() { Present { value: head } => head Absent => "" }
+}
+
 fn argv() -> List<String> {
   match board_function_converge_argv(host: operator_host_srv1, revision: RevisionBoundAtEmission { revision: revision_text }) {
     BoardFunctionConvergeArgvReady { argv } => argv
@@ -44,7 +49,8 @@ test fn the_unit_runs_the_converge_entry_from_the_root_snapshot_for_its_host() -
 }
 
 // A bounded boot oneshot whose reload re-runs the same converge, so a deploy re-runs it without the restart
-// that Requires= would propagate to the gated workloads.
+// that Requires= would propagate to the gated workloads; both the start and the reload close admission
+// before the interpreter runs, so a run that times out or is killed leaves it closed.
 test fn the_unit_is_a_bounded_boot_oneshot_that_reloads_into_the_same_converge() -> Bool {
   let t = unit_text()
   let exec = join(argv(), " ")
@@ -52,6 +58,9 @@ test fn the_unit_is_a_bounded_boot_oneshot_that_reloads_into_the_same_converge()
     && contains(t, "RemainAfterExit=yes")
     && contains(t, concat("ExecStart=", exec))
     && contains(t, concat("ExecReload=", exec))
+    && contains(t, "ExecStartPre=/usr/bin/rm -f /run/gunbc-board-function-converged")
+    && contains(before(t: t, marker: concat("ExecReload=", exec)), "ExecReload=/usr/bin/rm -f /run/gunbc-board-function-converged")
+    && contains(before(t: t, marker: "ExecStart=/"), "ExecStartPre=/usr/bin/rm -f")
     && !contains(t, "Before=")
     && contains(t, "MemoryMax=3221225472")
     && contains(t, "MemorySwapMax=0")
