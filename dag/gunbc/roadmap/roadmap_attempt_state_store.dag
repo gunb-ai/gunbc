@@ -591,14 +591,15 @@ fn attempt_append_log_member_name(member: AttemptLogMember) -> String {
     AttemptAuditLog => "AttemptAuditLog"
     AttemptSupervisorEvents { turn: _ } => "AttemptSupervisorEvents"
     AttemptSupervisorLog => "AttemptSupervisorLog"
-    _ => ""
   }
 }
 
 // The AttemptDirectoryWire census member (row Seeadecb2) is NOT yet sealed: it is still written by the harness
 // through harness_turn.harness_wire_log_path (its two writers) and read by harness_conversation_fork,
-// roadmap_dispatch_actuator and roadmap_authority. Declared as frontier (lane standard for unfinished work), so the
-// append-log store keeps REFUSING to mint it (attempt_append_log_member_name yields "" for it -> Unready). The
+// roadmap_dispatch_actuator and roadmap_authority. It is an in-place record in the wire directory and NOT an
+// AttemptLogMember, so it cannot reach this module's mint at all: attempt_append_log_store_open accepts only the
+// eight closed AttemptLogMember variants, so the append-log store REFUSES to mint it by type (it is minted only
+// through that lane's own directory read). Declared as frontier (lane standard for unfinished work). The
 // frontier dissolves when harness_wire_log_path retires, i.e. when those writers take the attempt append-log store.
 data attempt_directory_wire_frontier_rows: List<FrontierRow> = [frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.harness.harness_turn", decl_name: "harness_wire_log_path"),
@@ -713,10 +714,7 @@ fn attempt_append_log_mint_listing(store: AttemptState, node: String, attempt_ke
 // namespace (a <member>.<digits> generation file, or the member name), ignoring all other entries.
 fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptLogMember) -> AttemptAppendLogReading {
   let name = attempt_append_log_member_name(member: member)
-  if name == "" {
-    AttemptAppendLogUnready { detail: "not an append-log member" }
-  } else {
-    match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+  match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
       AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
       AttemptStateReady { store } => {
         let member_directory = attempt_log_member_directory(member: member)
@@ -743,7 +741,6 @@ fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, 
         }
       }
     }
-  }
 }
 
 // THE HOST-SIDE CREATE, through the SEALED store, for the HostCreatesThenSandboxWrites window. The host's only
