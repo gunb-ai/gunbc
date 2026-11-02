@@ -124,7 +124,8 @@ data mtcollins1_fan_capture_repository_lines: List<String> = [
   " Threshold Read Mask   : lnr lcr lnc unc ucr unr ",
   " Event Status          : Unavailable",
   " Assertions Enabled    : lnc- lcr- lnr+ unc+ ucr- unr+ ",
-  " Deassertions Enabled  : lnc- lcr- lnr+ unc+ ucr- unr+ ",]
+  " Deassertions Enabled  : lnc- lcr- lnr+ unc+ ucr- unr+ ",
+]
 
 data mtcollins1_fan_capture_read_obligation: NonEmptyStr = "re-run fleet-converge.yml mode=mtcollins1_fan_observe host=srv1 and commit the verbose SDR repository read; until then nothing is typed and the four rows stay refused"
 
