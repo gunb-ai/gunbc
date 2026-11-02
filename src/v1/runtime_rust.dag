@@ -164,7 +164,7 @@ fn rt_string_ops() -> String {
     "// value on every in-range position, and differ exactly where absence is involved.\n",
     "#[test]\n",
     "fn char_at_spellings_agree_in_range_and_only_the_adapter_invents_absence() {\n",
-    "    for s in [\"abc\", \"a\\u{e9}b\", \"\\u{e9}\", \"\"] {\n",
+    "    for s in [\"abc\", \"a\\u\{e9\}b\", \"\\u\{e9\}\", \"\"] {\n",
     "        let n = string_length(s);\n",
     "        for p in 0..n {\n",
     "            assert_eq!(char_at(s, p), char_at_optional(s, p).unwrap_or_default(), \"in range: {} at {}\", s, p);\n",
