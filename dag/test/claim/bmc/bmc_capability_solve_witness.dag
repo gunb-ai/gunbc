@@ -30,7 +30,7 @@ import extdeps.boards.asrock_rack {
   asrock_altrad8ud_openbmc_3_06_00_capabilities,
   asrock_altrad8ud_openbmc_3_22_00_capabilities,
 }
-import gunbc.os_install_mechanism { srv3_firmware_catalog }
+import gunbc.fleet.fleet_bmc_firmware_evidence { fleet_bmc_firmware_catalog }
 import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc, Redfish }
 import std.types { Bool, list_length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -127,5 +127,5 @@ test fn altrad8ud_firmware_catalog_is_board_grounded() -> Bool {
 }
 
 test fn catalog_has_no_redfish_vm_capable_firmware_today() -> Bool {
-  catalog_has_vm_capable_firmware(catalog: srv3_firmware_catalog) == false
+  catalog_has_vm_capable_firmware(catalog: fleet_bmc_firmware_catalog) == false
 }

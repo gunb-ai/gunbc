@@ -194,7 +194,7 @@ data host_standup_spine: List<HostStandupStep> = [
     phase: OsInstallMechanismResolved,
     label: "prefix:os-install-mechanism",
     authorities: [
-      decl_ref(module_path: "gunbc.os_install_mechanism", decl_name: "solve_install_mechanism_from_evidence"),
+      decl_ref(module_path: "gunbc.os_install_mechanism", decl_name: "os_install_solution_of_firmware_standing"),
       decl_ref(module_path: "gunbc.os_install_mechanism", decl_name: "srv3_install_mechanism_solution"),
       decl_ref(module_path: "gunbc.os_install", decl_name: "srv3_os_install_plan_standing"),
     ],
