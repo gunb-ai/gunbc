@@ -1,6 +1,7 @@
 module test.claim.fleet.board_function_converge_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, Int, List, String }
+import extdeps.linux.efivarfs { EfiVariableRead, EfiVariableUnread, efivarfs_decode }
 import std.optional { Present, Absent }
 import extdeps.boards.types { BmcGraphicsController, PcieErrorFirmwareFirstHandling }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
@@ -10,6 +11,7 @@ import gunbc.fleet.board_function_admission {
   RemovedByHostAfterBoot, PlannedFunction, board_function_removal, fleet_board_function_plans,
 }
 import gunbc.fleet.board_function_converge {
+  SetupSwitchReadback, SetupSwitchSet, SetupSwitchWrong, SetupSwitchUnrouted, setup_switch_readback,
   PcieFunctionReading, PcieFunctionEnumerated, PcieFunctionNotEnumerated, PcieFunctionUnread,
   LinkControlReading, LinkControlRead, LinkControlUnread,
   BehindReading, PcieDetachObservation,
@@ -230,15 +232,71 @@ test fn the_plan_carries_the_route_the_converge_acts_on() -> Bool {
   }
 }
 
-// A plan the route does not act on is reported, never refused and never claimed set: srv1's firmware-first
-// setting is the operator's, and nothing here reads it back.
-test fn an_operator_switch_is_reported_not_claimed() -> Bool {
-  let plans = filter(fleet_board_function_plans(), p => (p.host as String) == (operator_host_srv1 as String)
-    && p.subject == PlannedFunction { board_function: PcieErrorFirmwareFirstHandling })
-  length(plans) == 1 && all(plans, p => {
-    let line = converge_plan(plan: p)
-    !line.refused && contains(line.text, "operator switch") && contains(line.text, "not claimed set")
-  })
+// THE SETUP-SWITCH DECISION, over supplied bytes. The payload is srv2's RasIfrNVData as read on 2026-11-02:
+// 47 octets, the AER Firmware First octet (5) at 0.
+data aer_menu: String = "Advanced > RAS Configuration"
+data aer_item: String = "PCIe AER Firmware First"
+data srv2_ras_payload: List<Int> = [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 120, 0, 0, 0, 176, 4, 0, 0, 1, 0, 0, 0, 160, 5, 0, 0]
+
+fn aer_readback(bios: String?, payload: List<Int>) -> SetupSwitchReadback {
+  setup_switch_readback(menu: aer_menu, item: aer_item, bios_version: bios, reading: EfiVariableRead { attributes: 7, payload: payload })
+}
+
+test fn a_switched_off_aer_item_reads_set() -> Bool {
+  match aer_readback(bios: Present { value: "2.06" }, payload: srv2_ras_payload) {
+    SetupSwitchSet { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn an_enabled_aer_item_refuses_with_the_observed_value() -> Bool {
+  match aer_readback(bios: Present { value: "2.06" }, payload: concat(take_prefix(xs: srv2_ras_payload, n: 5), concat([1], skip(xs: srv2_ras_payload, n: 6)))) {
+    SetupSwitchWrong { detail } => contains(detail, "reads 1")
+    _ => false
+  }
+}
+
+test fn a_payload_of_another_size_refuses() -> Bool {
+  match aer_readback(bios: Present { value: "2.06" }, payload: take_prefix(xs: srv2_ras_payload, n: 40)) {
+    SetupSwitchWrong { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn another_bios_version_or_none_is_unrouted_not_decoded() -> Bool {
+  match (aer_readback(bios: Present { value: "3.10" }, payload: srv2_ras_payload), aer_readback(bios: Absent, payload: srv2_ras_payload)) {
+    (SetupSwitchUnrouted { cause: _ }, SetupSwitchUnrouted { cause: _ }) => true
+    _ => false
+  }
+}
+
+test fn an_unread_variable_refuses() -> Bool {
+  match setup_switch_readback(menu: aer_menu, item: aer_item, bios_version: Present { value: "2.06" }, reading: EfiVariableUnread { cause: "x" }) {
+    SetupSwitchWrong { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn another_setup_item_has_no_route() -> Bool {
+  match setup_switch_readback(menu: aer_menu, item: "Enable BERT", bios_version: Present { value: "2.06" }, reading: EfiVariableRead { attributes: 7, payload: srv2_ras_payload }) {
+    SetupSwitchUnrouted { cause: _ } => true
+    _ => false
+  }
+}
+
+// THE DECODE: efivarfs od output for a 4-octet attribute word and two data octets.
+test fn the_efivarfs_decode_splits_attributes_from_payload() -> Bool {
+  match efivarfs_decode(stdout: "07 00 00 00 aa 01\n") {
+    EfiVariableRead { attributes, payload } => attributes == 7 && payload == [170, 1]
+    EfiVariableUnread { cause: _ } => false
+  }
+}
+
+test fn the_efivarfs_decode_refuses_short_or_non_hex_output() -> Bool {
+  match (efivarfs_decode(stdout: "07 00\n"), efivarfs_decode(stdout: "zz 00 00 00\n")) {
+    (EfiVariableUnread { cause: _ }, EfiVariableUnread { cause: _ }) => true
+    _ => false
+  }
 }
 
 // THE LATCH FOLLOWS THE RESULT: any refused line removes it, so a refusing re-run closes admission even while
