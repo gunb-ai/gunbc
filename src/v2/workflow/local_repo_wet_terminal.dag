@@ -4017,6 +4017,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
       function: "the_relative_candidate_directory_resolves_at_the_workspace",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "an_inherited_runner_temp_leaves_the_outside_tree_untouched" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "an_inherited_runner_temp_leaves_the_outside_tree_untouched",
+      expectation: ExpectedToHold {}
     }
   ]
 }

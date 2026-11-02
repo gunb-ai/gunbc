@@ -6,8 +6,9 @@ import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.heal_publisher_workflow {
   heal_publisher_workflow_yml_for, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused,
   heal_publisher_route_steps, heal_publisher_resolved_steps, heal_publisher_steps_refusal_reason,
-  heal_publisher_candidate_directory, HealPublisherBoundStep, HealPublisherPolicy, HealPublisherComposedRoot,
-  heal_publisher_download_step, heal_publisher_admit_step, heal_publisher_publish_step, heal_publisher_composed_root
+  heal_publisher_candidate_directory, HealPublisherBoundStep, HealPublisherPolicy,
+  heal_publisher_download_step, heal_publisher_admit_step, heal_publisher_publish_step,
+  heal_publisher_seed_route_steps, heal_publisher_seed_route_without_a_composition_refusal_reason
 }
 import gunbc.ci.ci_materialization { step_display_name }
 import v2.std.diagnostic { diagnostics_reason_lexemes, Accepted, Rejected }
@@ -27,6 +28,7 @@ import gunbc.ci.repository_ci_profile {
   HealPublisherPolicy, CompilerSource, Own_checkout_under_witness_floor, Declared_seed,
   Declared_seed_under_composed_overlay,
   DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal,
+  PublisherCompilerSource, profile_publisher_compiler_source,
   profile_overlay, profile_public_seed, profile_required_bins, profile_runs_roster_in_composed_root,
   fleet_runner_group_target,
   github_hosted_publisher_runner_target,
@@ -297,19 +299,117 @@ fn step_env_entry(step: Step, key: String) -> String {
   }
 }
 
+// ── THE PUBLISHER'S PHASES RUN THE COMPILER ITS OWN BUILD PRODUCED ──────────────────────────
+// Review round 5 asked for this pair by name: a control showing WHICH COMPILER THE PHASES INVOKE, not
+// merely that the build-step names differ. Both controls read the scripts the emitter's own step builders
+// produce under the source the row's `CompilerSource` selected, and both discriminate on the binary path
+// the row carries -- the composed fixture's seed binary is `target/release/example`, a name no own-checkout
+// route can produce, and the own-checkout launcher resolves `target/release/gunbc`, which no seed route
+// can produce. So neither assertion can be satisfied by the other route's text.
+
+test fn the_composed_publisher_phases_invoke_the_seed_binary_the_route_built() -> Bool {
+  let row = mirror_profile(seal: true, publish: true)
+  match row.publisher {
+    Absent => false
+    Present { value: job } =>
+      match publisher_source_of(row: row) {
+        Absent => false
+        Present { value: source } =>
+          let seed = fixture_seed()
+          let overlay = fixture_overlay()
+          let script = publisher_phase_scripts(profile: row, job: job, source: source)
+          // The seed's own binary is what the phases exec, and
+          string_contains(s: script, pattern: seed.seed_binary_relative_path as String)
+          // the tree they stand in is the composed one the overlay row names,
+            && string_contains(s: script, pattern: join([overlay.overlay_dir_name as String, "/dag"], ""))
+          // and the checkout's floor binary -- the one this row never built -- appears nowhere.
+            && !string_contains(s: script, pattern: "target/release/gunbc")
+      }
+  }
+}
+
+test fn the_own_checkout_publisher_phases_invoke_the_floor_binary_it_built() -> Bool {
+  let row = gunbc_repository_ci_profile()
+  match row.publisher {
+    Absent => false
+    Present { value: job } =>
+      match publisher_source_of(row: row) {
+        Absent => false
+        Present { value: source } =>
+          let script = publisher_phase_scripts(profile: row, job: job, source: source)
+          string_contains(s: script, pattern: "target/release/gunbc")
+          // No seed binary and no composed root can appear: this row declares
+          // neither, and were the phases to reach for one the previous control's row would be this one's text.
+            && !string_contains(s: script, pattern: fixture_seed().seed_binary_relative_path as String)
+            && !string_contains(s: script, pattern: join([fixture_overlay().overlay_dir_name as String, "/dag"], ""))
+      }
+  }
+}
+
+// THE THIRD CASE OF THE SUM HAS NO PUBLISHER CONSUMER, and the emitter says so before it resolves a single
+// step: the row below is admitted as a lane (its seed build has a consumer there) but a publisher over it
+// would run admit and publish against a binary its build steps never produced.
+fn publisher_row_on_a_seed_it_cannot_reach() -> RepositoryCiProfile {
+  profile_with_compiler_source(
+    profile: mirror_profile(seal: true, publish: true),
+    source: Declared_seed { seed: fixture_seed(), run_roster_step_name: "Run the roster under the seed compiler" }
+  )
+}
+
+test fn a_publisher_on_a_seed_it_cannot_reach_is_refused_before_any_step_is_resolved() -> Bool {
+  match heal_publisher_workflow_yml_for(profile: publisher_row_on_a_seed_it_cannot_reach()) {
+    HealPublisherWorkflowGenerated { content: _ } => false
+    HealPublisherWorkflowGenerationRefused { reason: r } =>
+      r == heal_publisher_seed_route_without_a_composition_refusal_reason
+        // The reason names the case it refuses and the binary it would have run, so an
+        // operator reading it knows which field to change rather than which step to blame.
+        && string_contains(s: r, pattern: "Declared_seed")
+        && string_contains(s: r, pattern: "target/release/gunbc")
+  }
+}
+
+// THE PUBLISHER'S COMPILER SOURCE, as the emitter reads it. Claims ask the SAME projection the entrypoint
+// asks, so a claim can never be run against a source the emitter would have refused to build from.
+fn publisher_source_of(row: RepositoryCiProfile) -> Optional<PublisherCompilerSource> {
+  profile_publisher_compiler_source(profile: row)
+}
+
+// THE PHASE STEPS' SCRIPTS, joined into one text to read assertions out of. Built from the step builders the
+// emitter itself calls, under the source the row's CompilerSource selected -- which is the whole point of the
+// controls that read it: they ask WHICH COMPILER THE PHASES INVOKE, not merely which step names appeared.
+fn publisher_phase_scripts(profile: RepositoryCiProfile, job: HealPublisherPolicy, source: PublisherCompilerSource) -> String {
+  let admit = match heal_publisher_admit_step(profile: profile, job: job, source: source) {
+    Accepted { value: step, diagnostics: _ } => step_run_text(step: step)
+    Rejected { diagnostics: _ } => ""
+  }
+  let publish = match heal_publisher_publish_step(profile: profile, job: job, source: source) {
+    Accepted { value: step, diagnostics: _ } => step_run_text(step: step)
+    Rejected { diagnostics: _ } => ""
+  }
+  join([admit, "\n", publish], "\n")
+}
+
+// THE TEXT A RUN STEP RUNS.
+fn step_run_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: text, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => text
+    _ => ""
+  }
+}
+
 // THE TWO PHASES' CANDIDATE-DIRECTORY VALUES, in one string. A step the emitter refuses yields "", which
 // cannot equal either expected spelling, so a refusal can only read as red -- there is no branch here where
 // "it did not render" and "it rendered correctly" agree.
 fn publisher_phase_candidate_directories(
   profile: RepositoryCiProfile,
   job: HealPublisherPolicy,
-  composed: Optional<HealPublisherComposedRoot>
+  source: PublisherCompilerSource
 ) -> String {
-  let admit = match heal_publisher_admit_step(profile: profile, job: job, composed: composed) {
+  let admit = match heal_publisher_admit_step(profile: profile, job: job, source: source) {
     Accepted { value: step, diagnostics: _ } => step_env_entry(step: step, key: heal_publication_candidate_directory_env as String)
     Rejected { diagnostics: _ } => ""
   }
-  let publish = match heal_publisher_publish_step(profile: profile, job: job, composed: composed) {
+  let publish = match heal_publisher_publish_step(profile: profile, job: job, source: source) {
     Accepted { value: step, diagnostics: _ } => step_env_entry(step: step, key: heal_publication_candidate_directory_env as String)
     Rejected { diagnostics: _ } => ""
   }
@@ -354,16 +454,24 @@ test fn the_candidate_directory_is_anchored_only_where_a_phase_leaves_the_worksp
       match own_row.publisher {
         Absent => false
         Present { value: own_job } =>
-          publisher_phase_candidate_directories(
-            profile: mirror_row,
-            job: mirror_job,
-            composed: heal_publisher_composed_root(profile: mirror_row)
-          ) == join([composed, "|", composed], "")
-            && publisher_phase_candidate_directories(
-              profile: own_row,
-              job: own_job,
-              composed: heal_publisher_composed_root(profile: own_row)
-            ) == join([relative, "|", relative], "")
+          match profile_publisher_compiler_source(profile: mirror_row) {
+            Absent => false
+            Present { value: mirror_source } =>
+              match profile_publisher_compiler_source(profile: own_row) {
+                Absent => false
+                Present { value: own_source } =>
+                  publisher_phase_candidate_directories(
+                    profile: mirror_row,
+                    job: mirror_job,
+                    source: mirror_source
+                  ) == join([composed, "|", composed], "")
+                    && publisher_phase_candidate_directories(
+                      profile: own_row,
+                      job: own_job,
+                      source: own_source
+                    ) == join([relative, "|", relative], "")
+              }
+          }
             && step_with_entry(step: heal_publisher_download_step(), key: "path") == relative
       }
   }
@@ -1214,10 +1322,14 @@ fn publisher_route_step_names(row: RepositoryCiProfile) -> Optional<List<String>
       // THE ROUTE ANSWERS WITH A VERDICT, not with a bare absence: a refused route has no names to read,
       // which is a different fact from a route that produced steps. The job is not an input: the row's
       // CompilerSource is the only thing that can select a build.
-      match heal_publisher_route_steps(profile: row) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: steps, diagnostics: _ } =>
-          Present { value: list_map(xs: steps, f: fn(b) { step_display_name(s: b.step) }) }
+      match profile_publisher_compiler_source(profile: row) {
+        Absent => Absent
+        Present { value: source } =>
+          match heal_publisher_route_steps(source: source) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: steps, diagnostics: _ } =>
+              Present { value: list_map(xs: steps, f: fn(b) { step_display_name(s: b.step) }) }
+          }
       }
   }
 }
@@ -1278,9 +1390,15 @@ test fn a_seed_built_row_without_an_overlay_builds_the_seed_and_copies_nothing()
     has_a_seed(profile: row) &&
     has_no_overlay(profile: row) &&
     holds_no_bins(profile_required_bins(profile: row)) &&
-    match publisher_route_step_names(row: row) {
-      Absent => false
-      Present { value: step_names } =>
+    // THE ROUTE STEPS ARE READ FROM THE SEED ROUTE'S OWN BUILDER, not through the publisher: a row that
+    // builds a seed without an overlay is a LANE shape, and the publisher refuses to be built from it at
+    // all (`a_publisher_on_a_seed_it_cannot_reach_is_refused_before_any_step_is_resolved` claims that half).
+    // What stays claimable here is the fact this control was always about -- the seed build runs, and the
+    // overlay's copy step, which belongs to a composition this row does not declare, is absent.
+    match heal_publisher_seed_route_steps(seed: fixture_seed()) {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: steps, diagnostics: _ } =>
+        let step_names = list_map(xs: steps, f: fn(b) { step_display_name(s: b.step) })
         any(step_names, n => n == fixture_seed().build_step_name as String) &&
           all(step_names, n => n != step_display_name(s: toolchain_home_isolation_step()))
     }
@@ -1530,9 +1648,13 @@ test fn the_unfoldable_seed_build_is_refused_by_the_step_resolution() -> Bool {
   match row.publisher {
     Absent => false
     Present { value: job } =>
-      match heal_publisher_resolved_steps(profile: row, job: job) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+      match publisher_source_of(row: row) {
+        Absent => false
+        Present { value: source } =>
+          match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: _ } => true
+          }
       }
   }
 }
@@ -1542,17 +1664,22 @@ test fn the_publisher_refusal_names_the_diagnostic_that_refused_it() -> Bool {
   match row.publisher {
     Absent => false
     Present { value: job } =>
-      match heal_publisher_resolved_steps(profile: row, job: job) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } =>
-          match heal_publisher_workflow_yml_for(profile: row) {
-            HealPublisherWorkflowGenerated { content: _ } => false
-            HealPublisherWorkflowGenerationRefused { reason: r } =>
-              // THE CALLER READS WHAT REFUSED. The reason string handed to a caller has to carry the very
-              // lexemes the resolution carried - not a cause reconstructed from `build_route`, and not a
-              // fixed sentence about the build. `the_unfoldable_seed_build_is_refused_by_the_step_resolution`
-              // proves a refusal exists; this proves it survives the trip to the caller.
-              string_contains(s: r, pattern: diagnostics_reason_lexemes(diagnostics: d))
+      match publisher_source_of(row: row) {
+        Absent => false
+        Present { value: source } =>
+          match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: d } =>
+              match heal_publisher_workflow_yml_for(profile: row) {
+                HealPublisherWorkflowGenerated { content: _ } => false
+                HealPublisherWorkflowGenerationRefused { reason: r } =>
+                  // THE CALLER READS WHAT REFUSED. The reason string handed to a caller has to carry the very
+                  // lexemes the resolution carried - not a cause reconstructed from which fields happen to be
+                  // set, and not a fixed sentence about the build.
+                  // `the_unfoldable_seed_build_is_refused_by_the_step_resolution` proves a refusal exists;
+                  // this proves it survives the trip to the caller.
+                  string_contains(s: r, pattern: diagnostics_reason_lexemes(diagnostics: d))
+              }
           }
       }
   }

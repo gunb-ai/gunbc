@@ -37,8 +37,8 @@ import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witn
 import gunbc.ci.ci_materialization { step_display_name }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.ci.repository_ci_profile {
-  DagInvocation, HealPublisherPolicy, OverlayIngest, PublicSeed, RepositoryCiProfile,
-  profile_overlay, profile_public_seed, repository_ci_profile_refusal
+  DagInvocation, HealPublisherPolicy, OverlayIngest, PublicSeed, PublisherCompilerSource, RepositoryCiProfile,
+  profile_overlay, profile_public_seed, profile_publisher_compiler_source, repository_ci_profile_refusal
 }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.heal_workflow {
@@ -91,6 +91,12 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 // which is the check the drift-watch job already runs; a claim re-quoting this file would be a second
 // description of the same bytes.
 data heal_publisher_no_job_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the repository's CI profile row declares no publisher (gunbc.ci.repository_ci_profile RepositoryCiProfile publisher is Absent). A publisher whose candidate source is not declared is a job that fires with nothing to publish - the shape this repository must not be able to commit. Delete .github/workflows/heal-publish.yml, or declare the heal or drift job that seals the candidate."
+
+// THE REFUSAL FOR THE CASE THE PUBLISHER HAS NO CONSUMER FOR. Minted here, in the module that owns the
+// publisher's reasons, rather than in the projection: the projection says only that the case is not one this
+// emitter can be built from, and this is the module that knows why (its two phases would run a compiler the
+// row's build steps never produced).
+data heal_publisher_seed_route_without_a_composition_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the row's CompilerSource is Declared_seed -- it builds a second compiler from a declared seed but names no overlay to compose, so there is no root the publisher's phases could run that compiler in. Admit and publish would run this checkout's own `target/release/gunbc`, a binary these build steps never produced: a candidate sealed from one compiler and admitted against another, which is the drift this workflow exists to prevent (DESIGN section 5, no fabricated default). A publisher that runs under a seed it built declares Declared_seed_under_composed_overlay; a publisher that runs this checkout's floor build declares Own_checkout_under_witness_floor. A lane that runs its roster under a seed compiler it built has a consumer and is emitted by gunbc.witness.repository_witness_workflow, not by this emitter."
 
 data heal_publisher_candidate_directory: String = "heal-candidate"
 
@@ -228,10 +234,13 @@ fn heal_publisher_candidate_directory_absolute() -> String {
   join(["${{ github.workspace }}/", heal_publisher_candidate_directory], "")
 }
 
-fn heal_publisher_candidate_is_composed(composed: Optional<HealPublisherComposedRoot>) -> Bool {
-  match composed {
-    Present { value: _ } => true,
-    Absent { } => false
+// COMPOSED IS A PROJECTION OF THE COMPILER SOURCE, not a second fact: the phases compose the root exactly when
+// the compiler they run was built into that root. Deriving it from the same value the route steps were built
+// from is what keeps "the build produced X" and "the phases ran X" from drifting apart.
+fn heal_publisher_candidate_is_composed(source: PublisherCompilerSource) -> Bool {
+  match source {
+    PublisherRunsUnderComposedSeed { seed: _, overlay: _ } => true,
+    PublisherBuildsItsOwnCheckout { required_bins: _ } => false
   }
 }
 
@@ -254,8 +263,8 @@ fn heal_publisher_candidate_directory_env_row(composed: Bool) -> YamlKeyValue {
 // against rather than over its own checkout - the same compose pieces the drift emitter reads, from the
 // same overlay row, because a candidate admitted against a tree other than the one it was sealed from is
 // the drift this workflow exists to prevent.
-fn heal_publisher_admit_step(profile: RepositoryCiProfile, job: HealPublisherPolicy, composed: Optional<HealPublisherComposedRoot>) -> Outcome<Step> {
-  match heal_publisher_phase_script(profile: profile, phase: job.admit_invocation, composed: composed) {
+fn heal_publisher_admit_step(profile: RepositoryCiProfile, job: HealPublisherPolicy, source: PublisherCompilerSource) -> Outcome<Step> {
+  match heal_publisher_phase_script(profile: profile, phase: job.admit_invocation, source: source) {
     Accepted { value: script, diagnostics: _ } =>
       outcome_accepted(
         value: heal_publisher_gated(
@@ -263,7 +272,7 @@ fn heal_publisher_admit_step(profile: RepositoryCiProfile, job: HealPublisherPol
           run: script,
           env: Present {
             value: [
-              heal_publisher_candidate_directory_env_row(composed: heal_publisher_candidate_is_composed(composed: composed)),
+              heal_publisher_candidate_directory_env_row(composed: heal_publisher_candidate_is_composed(source: source)),
               kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))
             ]
           },
@@ -291,13 +300,20 @@ fn heal_publisher_admit_step_name(profile: RepositoryCiProfile) -> String {
 // the overlay prefix. The ceiling, the composition and the launcher are all imported - ci_spec's prelude,
 // the drift emitter's compose pieces, the same `--source-root` word list - so nothing here re-spells a
 // command line, and the roots come from the row rather than from a constant in this module.
+// WHAT EACH PHASE ACTUALLY RUNS, decided by the SAME value that decided the build. Dispatching on whether a
+// composition happens to exist was the defect: a row that built a second compiler but had no overlay to compose
+// fell into the own-checkout launcher and ran `target/release/gunbc` -- a binary its build steps never produced,
+// in a checkout the profile never named. The sum says which compiler the row's build produced, and the phases
+// run THAT one: this checkout's floor build under `PublisherBuildsItsOwnCheckout`, the seed's own binary under
+// `PublisherRunsUnderComposedSeed` (composed through `compose_gunbc_run_statements`, which cds into the
+// composed root and runs the seed compiler it stands there).
 fn heal_publisher_phase_script(
   profile: RepositoryCiProfile,
   phase: DagInvocation,
-  composed: Optional<HealPublisherComposedRoot>
+  source: PublisherCompilerSource
 ) -> Outcome<String> {
-  match composed {
-    Absent =>
+  match source {
+    PublisherBuildsItsOwnCheckout { required_bins: _ } =>
       outcome_accepted(
         value: gunbc_run_step_script_with_prelude(
           prelude: heal_publisher_cgroup_prelude(),
@@ -308,21 +324,21 @@ fn heal_publisher_phase_script(
           receipt_rel: none
         )
       )
-    Present { value: root } =>
+    PublisherRunsUnderComposedSeed { seed: seed, overlay: overlay } =>
       bind_outcome(
         o: bash_emit_stmts(
           statements: concat(
             compose_preamble_statements(
-              seed: root.seed,
+              seed: seed,
               c: merge_checkout_compose(
-                seed: root.seed,
-                overlay: root.overlay,
-                notes: [overlay_note(overlay: root.overlay), local_runs_note(overlay: root.overlay)]
+                seed: seed,
+                overlay: overlay,
+                notes: [overlay_note(overlay: overlay), local_runs_note(overlay: overlay)]
               )
             ),
             compose_gunbc_run_statements(
-              overlay: root.overlay,
-              source_roots: composed_source_roots(profile_roots: profile.roster.source_roots, overlay: root.overlay),
+              overlay: overlay,
+              source_roots: composed_source_roots(profile_roots: profile.roster.source_roots, overlay: overlay),
               entry: phase.entry,
               function: phase.function
             )
@@ -360,8 +376,8 @@ fn heal_publisher_wif_auth_step(job: HealPublisherPolicy) -> Step {
 // the one phase-script function. It carries the federated access token the WIF step produced and nothing
 // else - the installation token a mirror publishes with is minted inside the subject (heal_publication's
 // own entry), never in this step, so no credential is rendered into shell here.
-fn heal_publisher_publish_step(profile: RepositoryCiProfile, job: HealPublisherPolicy, composed: Optional<HealPublisherComposedRoot>) -> Outcome<Step> {
-  match heal_publisher_phase_script(profile: profile, phase: job.publish_invocation, composed: composed) {
+fn heal_publisher_publish_step(profile: RepositoryCiProfile, job: HealPublisherPolicy, source: PublisherCompilerSource) -> Outcome<Step> {
+  match heal_publisher_phase_script(profile: profile, phase: job.publish_invocation, source: source) {
     Accepted { value: script, diagnostics: _ } =>
       outcome_accepted(
         value: heal_publisher_gated(
@@ -369,7 +385,7 @@ fn heal_publisher_publish_step(profile: RepositoryCiProfile, job: HealPublisherP
           run: script,
           env: Present {
             value: [
-              heal_publisher_candidate_directory_env_row(composed: heal_publisher_candidate_is_composed(composed: composed)),
+              heal_publisher_candidate_directory_env_row(composed: heal_publisher_candidate_is_composed(source: source)),
               kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
               kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", heal_publisher_wif_step_id, ".outputs.access_token }}"], "")))
             ]
@@ -411,44 +427,15 @@ type HealPublisherBoundStep {
   role: StepCapabilityRole
 }
 
-// THE TWO ROWS A COMPOSED PUBLISHER READS TOGETHER: the seed whose compiler it builds, and the overlay it
-// copies into a detached tree. They are resolved ONCE, at the entrypoint, and threaded to every step that
-// needs them - the build steps, both phase scripts and the admit step's own wording - because a publisher
-// whose phases ran a different composition than the one its candidate was sealed from is exactly the drift
-// this workflow exists to prevent, and because reading each arm twice lets two reads disagree. An overlay
-// with no seed to compose into has no resolution because it is not a row: the sum
-// `gunbc.ci.repository_ci_profile.CompilerSource` carries an overlay only alongside the seed it composes
-// into, so `Absent` here means only "this repository composes nothing" and never "an overlay with nowhere
-// to land" -- a state no caller can hand this function at all.
-type HealPublisherComposedRoot {
-  seed: PublicSeed
-  overlay: OverlayIngest
-}
-
-// THE ONE READING of "which tree do the publisher's phases run under": the seed the row declares and the
-// overlay copied into it come from the same case of the row's `CompilerSource`, so this function reads a
-// fact rather than combining two. A repository on `Own_checkout_under_witness_floor` reaches no seed and no
-// overlay to read, which is why an absent resolution here is a normal answer and not a gap to fill.
-fn heal_publisher_composed_root(profile: RepositoryCiProfile) -> Optional<HealPublisherComposedRoot> {
-  match profile_overlay(profile: profile) {
-    Absent => Absent
-    Present { value: overlay } =>
-      match profile_public_seed(profile: profile) {
-        Absent => Absent
-        Present { value: seed } => Present { value: HealPublisherComposedRoot { seed: seed, overlay: overlay } }
-      }
-  }
-}
-
 // THE STEPS THAT BUILD THE COMPILER THE PUBLISHER'S PHASES RUN UNDER, selected by the row's
 // `CompilerSource` and by nothing else - never by which other fields happen to be present, which is how this
 // module once gave one repository another repository's build. Each case carries the facts its own build
 // needs: the own-checkout case names the binaries to build from this checkout under the witness floor's
 // toolchain, and both seed cases hand their declared seed to the one seed build below. A case cannot be
 // handed a row that lacks what it builds from, so there is no arm here that invents a step to fill a gap.
-fn heal_publisher_route_steps(profile: RepositoryCiProfile) -> Outcome<List<HealPublisherBoundStep>> {
-  match profile.source {
-    Own_checkout_under_witness_floor { required_bins: bins } =>
+fn heal_publisher_route_steps(source: PublisherCompilerSource) -> Outcome<List<HealPublisherBoundStep>> {
+  match source {
+    PublisherBuildsItsOwnCheckout { required_bins: bins } =>
       outcome_accepted(
         value: [
           HealPublisherBoundStep {
@@ -474,9 +461,7 @@ fn heal_publisher_route_steps(profile: RepositoryCiProfile) -> Outcome<List<Heal
           },
         ]
       )
-    Declared_seed { seed: seed, run_roster_step_name: _ } => heal_publisher_seed_route_steps(seed: seed)
-    Declared_seed_under_composed_overlay { seed: seed, overlay: _, run_roster_step_name: _ } =>
-      heal_publisher_seed_route_steps(seed: seed)
+    PublisherRunsUnderComposedSeed { seed: seed, overlay: _ } => heal_publisher_seed_route_steps(seed: seed)
   }
 }
 
@@ -518,16 +503,16 @@ fn heal_publisher_bound_steps(
   profile: RepositoryCiProfile,
   job: HealPublisherPolicy,
   route_steps: List<HealPublisherBoundStep>,
-  composed: Optional<HealPublisherComposedRoot>
+  source: PublisherCompilerSource
 ) -> Outcome<List<HealPublisherBoundStep>> {
   // THE GATE'S AND THE PUBLICATION'S OWN REFUSALS TRAVEL OUTWARD. Both builders say which statement of
   // which row they could not fold; folding their verdicts into a bare absence and letting a caller infer
   // a cause from the row would report a failure that did not happen.
   bind_outcome(
-    o: heal_publisher_admit_step(profile: profile, job: job, composed: composed),
+    o: heal_publisher_admit_step(profile: profile, job: job, source: source),
     f: fn(admit_step) {
       bind_outcome(
-        o: heal_publisher_publish_step(profile: profile, job: job, composed: composed),
+        o: heal_publisher_publish_step(profile: profile, job: job, source: source),
         f: fn(publish_step) {
           outcome_accepted(
             value: concat(
@@ -635,10 +620,16 @@ fn heal_publisher_census_workflow(profile: RepositoryCiProfile) -> Optional<Work
         Absent => Absent
         Present { value: job } =>
           // THE SAME RESOLUTION THE RENDER USES, not a second reading of the row: one function resolves
-          // the route, the composition and the step list, and both consumers ask it.
-          match heal_publisher_resolved_steps(profile: profile, job: job) {
-            Rejected { diagnostics: _ } => Absent
-            Accepted { value: steps, diagnostics: _ } => Present { value: heal_publisher_workflow_of(profile: profile, job: job, steps: steps) }
+          // the compiler source, the route and the step list, and both consumers ask it. A row the
+          // publisher cannot be built from -- a `CompilerSource` with no publisher consumer -- yields no
+          // census row here and is refused with its reason by the render entrypoint.
+          match profile_publisher_compiler_source(profile: profile) {
+            Absent => Absent
+            Present { value: source } =>
+              match heal_publisher_resolved_steps(profile: profile, job: job, source: source) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: steps, diagnostics: _ } => Present { value: heal_publisher_workflow_of(profile: profile, job: job, steps: steps) }
+              }
           }
       }
   }
@@ -800,15 +791,19 @@ fn heal_publisher_workflow_yml_for(profile: RepositoryCiProfile) -> HealPublishe
 // THE ROUTE AND THE COMPOSITION, resolved once from the row. Every consumer - the render below and the
 // census in gunbc.runner.runner_fleet_job_timeout_census - asks the SAME resolution, so a check can never be
 // asked of a step list other than the one that gets rendered.
-fn heal_publisher_resolved_steps(profile: RepositoryCiProfile, job: HealPublisherPolicy) -> Outcome<List<HealPublisherBoundStep>> {
+fn heal_publisher_resolved_steps(
+  profile: RepositoryCiProfile,
+  job: HealPublisherPolicy,
+  source: PublisherCompilerSource
+) -> Outcome<List<HealPublisherBoundStep>> {
   bind_outcome(
-    o: heal_publisher_route_steps(profile: profile),
+    o: heal_publisher_route_steps(source: source),
     f: fn(route_steps) {
       heal_publisher_bound_steps(
         profile: profile,
         job: job,
         route_steps: route_steps,
-        composed: heal_publisher_composed_root(profile: profile)
+        source: source
       )
     }
   )
@@ -838,7 +833,14 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
   match profile.publisher {
     Absent => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_no_job_refusal_reason }
     Present { value: job } =>
-      match heal_publisher_resolved_steps(profile: profile, job: job) {
+      // THE COMPILER SOURCE IS RESOLVED BEFORE A SINGLE STEP IS BUILT. The sum the row carries has a case
+      // this emitter has no consumer for, and the honest response to being asked for it is this refusal --
+      // not a step list assembled from the other case's recipe, which is what happened while the phases
+      // dispatched on the presence of a composition instead of on the source that named the compiler.
+      match profile_publisher_compiler_source(profile: profile) {
+        Absent => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_seed_route_without_a_composition_refusal_reason }
+        Present { value: source } =>
+      match heal_publisher_resolved_steps(profile: profile, job: job, source: source) {
         Rejected { diagnostics: d } => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_steps_refusal_reason(diagnostics: d) }
         Accepted { value: steps, diagnostics: _ } =>
       match admit_workflow_checkout_refs(workflow: heal_publisher_workflow_of(profile: profile, job: job, steps: steps), declared: []) {
@@ -860,6 +862,7 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
         }
       }
       }
+  }
   }
   }
   }

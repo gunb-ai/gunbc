@@ -440,7 +440,8 @@ fn run_executed_scenarios() -> ProcessExit {
   let anchored = the_anchored_candidate_directory_resolves_from_the_composed_root()
   let missed = the_relative_candidate_directory_finds_nothing_from_the_composed_root()
   let workspace = the_relative_candidate_directory_resolves_at_the_workspace()
-  let all_held = clean && odd && refusal && no_count && unreadable && anchored && missed && workspace
+  let inherited = an_inherited_runner_temp_leaves_the_outside_tree_untouched()
+  let all_held = clean && odd && refusal && no_count && unreadable && anchored && missed && workspace && inherited
   if all_held {
     ExitSuccess
   } else {
@@ -456,7 +457,8 @@ fn run_executed_scenarios() -> ProcessExit {
           if unreadable { "" } else { " a diagnostic log the reader cannot read is refused;" },
           if anchored { "" } else { " the anchored candidate directory resolves from the composed root;" },
           if missed { "" } else { " a relative candidate directory finds nothing from the composed root;" },
-          if workspace { "" } else { " a relative candidate directory resolves at the workspace;" }
+          if workspace { "" } else { " a relative candidate directory resolves at the workspace;" },
+          if inherited { "" } else { " an inherited RUNNER_TEMP drew a phase body outside the allocated fixture;" }
         ],
         ""
       )

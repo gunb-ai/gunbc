@@ -250,6 +250,33 @@ type CompilerSource
       run_roster_step_name: NonEmptyStr
     }
 
+// WHAT A PUBLISHER IS ALLOWED TO BE BUILT FROM -- the projection of `CompilerSource` that the heal-publisher
+// emitter consumes, with the case it has no consumer for left OUT of the type rather than handled inside it.
+//
+// A publisher runs two phases, admit and publish, and both must run under the compiler the row's build steps
+// produced. Two of the three sources say which compiler that is unambiguously: this checkout's floor build, and
+// the seed built and then composed with the overlay the phases `cd` into. The plain `Declared_seed` case does
+// not: it builds the seed, but the phases would run in the publisher's own checkout, where the only binary is
+// one this row never built -- a candidate sealed from one compiler and admitted against another, which is the
+// drift this workflow exists to prevent. It has no consumer today (a mirror composes; gunbc has no seed), so
+// it is not offered to this emitter at all: the emitter cannot even ask for it, and the refusal for a row that
+// asks for a publisher with it lives in gunbc.heal_publisher_workflow, where the publisher's own reasons live.
+type PublisherCompilerSource
+  = PublisherBuildsItsOwnCheckout { required_bins: List<NonEmptyStr> }
+  | PublisherRunsUnderComposedSeed { seed: PublicSeed, overlay: OverlayIngest }
+
+// THE ONE READING of that projection. Absent means `CompilerSource` named the case the publisher has no
+// consumer for; the caller refuses with its own reason rather than this fold inventing one.
+fn profile_publisher_compiler_source(profile: RepositoryCiProfile) -> Optional<PublisherCompilerSource> {
+  match profile.source {
+    Own_checkout_under_witness_floor { required_bins: bins } =>
+      Present { value: PublisherBuildsItsOwnCheckout { required_bins: bins } }
+    Declared_seed_under_composed_overlay { seed: seed, overlay: overlay, run_roster_step_name: _ } =>
+      Present { value: PublisherRunsUnderComposedSeed { seed: seed, overlay: overlay } }
+    Declared_seed { seed: _, run_roster_step_name: _ } => Absent
+  }
+}
+
 type RepositoryCiProfile {
   repository: String
   default_branch: String
