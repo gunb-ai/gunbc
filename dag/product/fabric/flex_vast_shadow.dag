@@ -13,6 +13,7 @@ import std.measure {
   Bandwidth, bandwidth, bandwidth_count, mebibyte_count, mebibyte_ceiling,
   second, Second, second_count, scale_exponent, Giga, gibibyte_scale_factor_bytes, seconds_per_minute, minutes_per_hour, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
   byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
+  milliseconds_per_second,
   money_amount_micro_count, exact_decimal_to_money_amount_micro_ceil, DecimalMoneyConverted,
 }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -29,7 +30,7 @@ import product.fabric.flex_policy {
   PhysicalMachineObservationIdentity, ProviderAccountObservationIdentity,
 }
 import product.fabric.flex_market {
-  flex_owner_label_gunbc_flex, FlexOwnerLabel,
+  flex_owner_label_gunbc_flex, FlexOwnerLabel, FlexOwnedCard,
   flex_offer_driver_major,
   FlexCapAssessment, FlexCapUnder, FlexCapAtLimit, FlexCapOver,
   FlexCapNeedsExhaustedRoster, FlexCapUnreadable, FlexCapUnobserved,
@@ -1047,6 +1048,283 @@ fn flex_reconcile_acquisition(
   }
 }
 
+// ---- THE CARDS THE PASS HOLDS, BUILT FROM THE LABELLED ROSTER. FlexOwnedCard is what the market fold
+// prices and what flex_cleanup_dead decides on, and NOTHING built one: the pass ran with cards: []
+// forever, so the dead-card fold had nothing to fold (product.fabric.flex_vast_loop
+// flex_run_pass_caller_frontier, trigger 1). The labelled roster is the only account of what we hold: a
+// card is built from an instance row carrying our label, never from a create answer, because the answer
+// can be lost and the roster cannot lie about what is being paid for.
+//
+// THREE FIELDS THE INSTANCES ROW CANNOT SAY, AND WHAT HAPPENS TO EACH (none is invented):
+//   actual_status -- the vendor types it string | null and gives examples, not a closed set (see
+//     extdeps.cloud.vast_ai's note on the search_type token: the same vendor gives examples, not a
+//     closed set). This pass reads exactly the two words the flex lane has seen live, "running" and
+//     "loading". Any other word, and a null, is reported UNREAD and the row is left out of the card
+//     list: an unknown status is never read as not-running, so a card in a state this pass has not seen
+//     cannot be counted dead by the loading cut and cannot be destroyed by the pass.
+//   loading_age -- GET /api/v1/instances/ carries no time field at all (VastAiInstance has none), so the
+//     age a loading card has is not on the wire. It comes from the pass's OWN carry: the instant an
+//     earlier pass FIRST SAW that id loading (FlexLoadingSighting), written by the entry and read back
+//     next pass. Three cases, and only the middle one is a number: the carry was read and this id was in
+//     the previous complete walk NOT loading, so it was first sampled loading now and its age is 0 sampled
+//     passes (NOT a bound on how long it has loaded: a card can load between two samples); the carry was
+//     read and this id was already sighted, so the age counts from the FIRST sample that saw it loading --
+//     a loading-at-two-samples age, which says it was loading at both instants and nothing between; and the
+//     carry was missing or unreadable, which makes the age UNREAD (FlexSightingsUnread) -- not zero. A
+//     pass that cannot age a card cannot cut it, and the next complete walk repairs the carry.
+//   outbid -- whether a host has taken an interruptible contract back is a fact of the market (our bid
+//     against that host's floor), not of the row, and extdeps.cloud.vast_ai refuses to read is_bid as
+//     interruptibility on live evidence (every bid-search offer read is_bid false). So the roster fold
+//     builds outbid FALSE and says so: until the market slice supplies it, the roster fold can destroy a
+//     card only through the loading cut. `held` asks the weaker question -- is this contract a bid
+//     contract, which is what the vendor's own is_bid names -- so it is read from is_bid, UNVERIFIED
+//     against a live instance row; it moves only the switch premium in the ranking, never a destroy.
+type FlexLoadingSighting { instance_id: Int, first_sampled_loading_ms: EpochMs }
+
+data flex_instance_status_running: String = "running"
+data flex_instance_status_loading: String = "loading"
+
+type FlexInstanceStatus
+  = FlexInstanceStatusRunning
+  | FlexInstanceStatusLoading
+  | FlexInstanceStatusUnread { raw: String? }
+
+// The two words this pass reads; everything else is unread. Consumer: flex_roster_card below, and
+// test.claim.fabric.flex_vast_shadow_witness.
+fn flex_instance_status(status: String?) -> FlexInstanceStatus {
+  match status {
+    Absent => FlexInstanceStatusUnread { raw: none }
+    Present { value: s } =>
+      if (s == flex_instance_status_running) {
+        FlexInstanceStatusRunning
+      } else {
+        if (s == flex_instance_status_loading) {
+          FlexInstanceStatusLoading
+        } else {
+          FlexInstanceStatusUnread { raw: Present { value: s } }
+        }
+      }
+  }
+}
+
+fn flex_loading_sighting_for(sightings: List<FlexLoadingSighting>, instance_id: Int) -> FlexLoadingSighting? {
+  fold(
+    sightings,
+    init: none,
+    f: (acc, s) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => if (s.instance_id == instance_id) { Present { value: s } } else { none }
+      },
+  )
+}
+
+// Whether the pass can say ANYTHING about when a card started loading. FlexSightingsUnread is the state of
+// a pass whose carry file is missing or unreadable -- a cargo clean, a fresh worktree, a different runner,
+// or two passes racing on the file. In that state the bound of EVERY loading card is UNREAD, so the loading
+// cut cannot fire at all: the pass keeps a card it cannot age rather than restarting its clock at zero and
+// pretending it is young. Repairing the state is automatic: the next pass that reads a complete roster
+// writes a fresh baseline of sightings.
+type FlexLoadingSightings
+  = FlexSightingsKnown { sightings: List<FlexLoadingSighting> }
+  | FlexSightingsUnread { reason: NonEmptyStr }
+
+// THE PREMISE BEHIND "AT LEAST 0", RECORDED RATHER THAN ASSUMED. A loading id that is absent from the carry
+// may be read as "at least 0 seconds" ONLY because the previous pass read the WHOLE account and this id was
+// not loading in it. That premise is a fact about the previous pass's walk, so the carry records it and the
+// fold checks it: a baseline written from a partial or unreadable walk is Incomplete, and every absent id
+// in it reads UNREAD rather than 0.
+type FlexSightingsBasis = FlexSightingsBaselineComplete | FlexSightingsBaselineIncomplete
+
+// What a pass leaves behind: the sightings AND the basis they were taken on. An incomplete walk DROPS the
+// prior sightings and marks the basis incomplete, so nothing is aged until a complete walk re-establishes it.
+type FlexSightingsCarried { basis: FlexSightingsBasis, sightings: List<FlexLoadingSighting> }
+
+// The SAMPLED age, taken from the FIRST sighting, never the last: a card still sampled loading across
+// passes keeps accruing it. It says the card was loading at T and at now, and nothing between (see
+// FlexOwnedCard.loading_age_sampled), so it is a span of samples and not a lower bound on the current spell.
+// A sighting from the future (the clock moved back) is 0, not a negative age. An id with no
+// sighting inside a KNOWN set is 0, and it is only KNOWN when the baseline came from a complete
+// walk -- which is why the basis is carried and checked rather than assumed.
+fn flex_loading_age(sightings: FlexLoadingSightings, instance_id: Int, now: EpochMs) -> Second? {
+  match sightings {
+    FlexSightingsUnread { reason: _ } => none
+    FlexSightingsKnown { sightings: known } =>
+      match flex_loading_sighting_for(sightings: known, instance_id: instance_id) {
+        Absent => Present { value: second(count: 0) }
+        Present { value: seen } =>
+          if (now < seen.first_sampled_loading_ms) {
+            Present { value: second(count: 0) }
+          } else {
+            Present { value: second(count: (now - seen.first_sampled_loading_ms) / milliseconds_per_second()) }
+          }
+      }
+  }
+}
+
+type FlexRosterCardUnreadCause
+  = FlexRosterCardStatusUnread { raw: String? }
+  | FlexRosterCardRateUnconverted
+  | FlexRosterCardVramUnread
+
+type FlexRosterCardUnread { id: Int, cause: FlexRosterCardUnreadCause }
+
+type FlexRosterCardReading
+  = FlexRosterCardBuilt { card: FlexOwnedCard }
+  | FlexRosterCardRefused { id: Int, cause: FlexRosterCardUnreadCause }
+
+// One row, read as a card. A row whose rate cannot be converted is refused rather than priced at zero:
+// a zero rate would make the card look like the cheapest thing on the market.
+fn flex_roster_card(
+  row: VastAiInstance,
+  ours: FlexOwnerLabel,
+  sightings: FlexLoadingSightings,
+  now: EpochMs,
+) -> FlexRosterCardReading {
+  match flex_instance_status(status: row.actual_status) {
+    FlexInstanceStatusUnread { raw: raw } =>
+      FlexRosterCardRefused { id: row.id, cause: FlexRosterCardStatusUnread { raw: raw } }
+    FlexInstanceStatusRunning =>
+      match vast_gpu_ram_bytes(gpu_ram_mb: row.gpu_ram) {
+        Absent => FlexRosterCardRefused { id: row.id, cause: FlexRosterCardVramUnread }
+        Present { value: vram } =>
+          match vast_ai_instance_dph_total_money_per_hour(instance: row) {
+            DecimalMoneyPerHourRefused { conversion: _ } =>
+              FlexRosterCardRefused { id: row.id, cause: FlexRosterCardRateUnconverted }
+            DecimalMoneyPerHourConverted { rate: rate } =>
+              FlexRosterCardBuilt {
+                card: FlexOwnedCard {
+                  owner: ours,
+                  id: int_to_decimal_string(value: row.id) as NonEmptyStr,
+                  vram: vram,
+                  rate: rate,
+                  held: match row.is_bid { Absent => false Present { value: b } => b },
+                  running: true,
+                  loading: false,
+                  outbid: false,
+                  // Not loading: the age does not apply, and the cut only reads it while loading.
+                  loading_age_sampled: Present { value: second(count: 0) },
+                },
+              }
+          }
+      }
+    FlexInstanceStatusLoading =>
+      match vast_gpu_ram_bytes(gpu_ram_mb: row.gpu_ram) {
+        Absent => FlexRosterCardRefused { id: row.id, cause: FlexRosterCardVramUnread }
+        Present { value: vram } =>
+          match vast_ai_instance_dph_total_money_per_hour(instance: row) {
+            DecimalMoneyPerHourRefused { conversion: _ } =>
+              FlexRosterCardRefused { id: row.id, cause: FlexRosterCardRateUnconverted }
+            DecimalMoneyPerHourConverted { rate: rate } =>
+              FlexRosterCardBuilt {
+                card: FlexOwnedCard {
+                  owner: ours,
+                  id: int_to_decimal_string(value: row.id) as NonEmptyStr,
+                  vram: vram,
+                  rate: rate,
+                  held: match row.is_bid { Absent => false Present { value: b } => b },
+                  running: false,
+                  loading: true,
+                  outbid: false,
+                  loading_age_sampled: flex_loading_age(sightings: sightings, instance_id: row.id, now: now),
+                },
+              }
+          }
+      }
+  }
+}
+
+type FlexRosterCards
+  = FlexRosterCardsBuilt { cards: List<FlexOwnedCard>, unread: List<FlexRosterCardUnread> }
+  | FlexRosterCardsUnobserved
+  | FlexRosterCardsUnreadable
+  | FlexRosterCardsNeedsExhaustedRoster
+
+// OUR rows only: a foreign or unlabelled row is not a card we hold, and the pass must never build a card
+// it has no authority to destroy. A partial roster refuses -- the same rule the cap reads, because a
+// partial walk under-counts what we hold and would understate the fleet.
+fn flex_cards_from_roster(
+  ours: FlexOwnerLabel,
+  roster: FlexInstancesStanding,
+  sightings: FlexLoadingSightings,
+  now: EpochMs,
+) -> FlexRosterCards {
+  match roster {
+    FlexInstancesUnobserved => FlexRosterCardsUnobserved
+    FlexInstancesUnreadable => FlexRosterCardsUnreadable
+    FlexInstancesPartial { next_token: _, observed: _, total: _ } => FlexRosterCardsNeedsExhaustedRoster
+    FlexInstancesComplete { roster: complete } =>
+      fold(
+        complete.instances,
+        init: FlexRosterCardsBuilt { cards: [], unread: [] },
+        f: (acc, row) =>
+          match acc {
+            FlexRosterCardsUnobserved => acc
+            FlexRosterCardsUnreadable => acc
+            FlexRosterCardsNeedsExhaustedRoster => acc
+            FlexRosterCardsBuilt { cards: cards, unread: unread } =>
+              if !flex_instance_ours(instance: row, ours: ours) {
+                FlexRosterCardsBuilt { cards: cards, unread: unread }
+              } else {
+                match flex_roster_card(row: row, ours: ours, sightings: sightings, now: now) {
+                  FlexRosterCardBuilt { card: card } =>
+                    FlexRosterCardsBuilt { cards: concat(cards, [card]), unread: unread }
+                  FlexRosterCardRefused { id: id, cause: cause } =>
+                    FlexRosterCardsBuilt {
+                      cards: cards,
+                      unread: concat(unread, [FlexRosterCardUnread { id: id, cause: cause }]),
+                    }
+                }
+              }
+          },
+      )
+  }
+}
+
+// THE SIGHTINGS THE NEXT PASS READS. A loading id already in the carry keeps its FIRST sighting (age
+// accrues from the first time we saw it, not from the last); a loading id we have not seen before is
+// sighted now; a row that is no longer loading, and an id no longer in the complete roster, drops out --
+// its card is running or gone, and a stale sighting would age nothing (Vast contract ids are not
+// reused). A roster that is not complete RESETS the sightings and marks the BASIS incomplete: the prior
+// instants span a gap this pass cannot see across, so keeping them would age a card over samples that
+// never covered it; the next complete walk re-takes the baseline.
+fn flex_loading_sightings_after(
+  ours: FlexOwnerLabel,
+  roster: FlexInstancesStanding,
+  prior: List<FlexLoadingSighting>,
+  now: EpochMs,
+) -> FlexSightingsCarried {
+  match roster {
+    FlexInstancesComplete { roster: complete } =>
+      FlexSightingsCarried {
+        basis: FlexSightingsBaselineComplete,
+        sightings: fold(
+          complete.instances,
+          init: [],
+          f: (acc, row) =>
+            if !flex_instance_ours(instance: row, ours: ours) {
+              acc
+            } else {
+              match flex_instance_status(status: row.actual_status) {
+                FlexInstanceStatusLoading =>
+                  match flex_loading_sighting_for(sightings: prior, instance_id: row.id) {
+                    Present { value: s } => concat(acc, [s])
+                    Absent => concat(acc, [FlexLoadingSighting { instance_id: row.id, first_sampled_loading_ms: now }])
+                  }
+                FlexInstanceStatusRunning => acc
+                FlexInstanceStatusUnread { raw: _ } => acc
+              }
+            }
+        ),
+      }
+    // AN INCOMPLETE WALK ESTABLISHES NO BASELINE. The prior is dropped and the basis marked incomplete, so
+    // the next pass reads UNREAD ages until a complete walk re-takes the sightings.
+    FlexInstancesUnobserved => FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: [] }
+    FlexInstancesUnreadable => FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: [] }
+    FlexInstancesPartial { next_token: _, observed: _, total: _ } =>
+      FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: [] }
+  }
+}
 type FlexPassRecord {
   roster: FlexInstancesStanding
   receipts: List<FlexShadowBidReceipt>

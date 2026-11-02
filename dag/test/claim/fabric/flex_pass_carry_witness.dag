@@ -1,0 +1,640 @@
+module test.claim.fabric.flex_pass_carry_witness
+
+// WITNESSES FOR THE PASS'S CARRY (gunbc.fleet.flex_pass_run). The flex pass is stateless by construction,
+// but two of its inputs are NOT on the Vast wire -- how long a card has been loading, as two samples that
+// both saw it loading
+// (GET /api/v1/instances/ has no time field) and the standing of the last create ask (its answer can be
+// lost) -- so the pass keeps a carry file for the next pass. These tests cover the WIRE, the RULES and the
+// MAPPING from the two filesystem observations to a reading (flex_carry_reading_of, which flex_carry_read
+// calls with the observations its two effects produce): the observations are SUPPLIED here, so the
+// absent / unreadable / read arms run the real mapping without touching the Filesystem service, which a
+// witness CI does not run would be wet-only (see test.claim.artifact_store_fs_witness's coverage note). The
+// remaining unwitnessed part is the two effect calls themselves. The round-trip is render -> gate, the part
+// that can silently corrupt state between passes.
+import gunbc.fleet.flex_pass_run {
+  FlexCarry, flex_carry_render, flex_carry_after, flex_cards_list, flex_cards_wire,
+  flex_reconcile_wire,
+  FlexCarryReading, FlexCarryLoaded, FlexCarryUnread, flex_carry_wire, flex_carry_basis_word,
+  flex_carry_gate, flex_carry_trust,
+  flex_carry_cooldown, flex_carry_sightings, flex_carry_standing,
+  FlexCarryAbsent, FlexCarryNoAsk, FlexCarryAsk, FlexCarryStandingUnknown,
+  flex_carry_reading_of, flex_pass_exit,
+  FlexCarryWritten, FlexCarryWriteSkipped, FlexCarryWriteFailed, flex_carry_absent_reason,
+  flex_pass_carry_path, flex_pass_carry_directory, flex_pass_carry_name,
+  flex_carry_home_refusal, flex_carry_home_host, flex_carry_read,
+  flex_carry_in_progress, flex_carry_trust_after_write_ahead,
+}
+import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused }
+import product.fabric.flex_vast_loop {
+  FlexRentCooldown, FlexPassOutcome, FlexPassIdle, FlexPassCreated, FlexCarryTrusted, FlexCarryUntrusted,
+}
+import product.fabric.flex_vast_shadow {
+  FlexLoadingSighting, FlexSightingsUnread, FlexSightingsKnown, FlexSightingsBaselineComplete,
+  FlexSightingsBaselineIncomplete, FlexCreateStanding, FlexCreateAnswered, FlexCreateLost,
+  FlexCreateRefused, FlexInstancesStanding, FlexInstancesPartial, FlexInstancesUnreadable, FlexRosterCards,
+  FlexRosterCardsBuilt, FlexRosterCardsUnreadable, FlexRosterCardsNeedsExhaustedRoster,
+}
+import test.claim.fabric.flex_vast_shadow_witness { exhausted, our_running_row }
+import extdeps.filesystem.filesystem_io {
+  filesystem_listing_observation, filesystem_read_outcome,
+}
+import std.process { ExitSuccess, ExitFailure }
+import std.types { EpochMs, NonEmptyStr }
+
+// A carry text with its members spelled out, for the cases the writer never emits (a missing member, a wrong
+// type, a repeated member, a version this reader does not know). The WRITER'S own output is used everywhere
+// else, so the reader is never tested only against text its author typed.
+fn w_doc(members: List<String>) -> String {
+  concat(concat("\{", join(members, ",")), "}")
+}
+
+data w_ok_members: List<String> = [
+  "\"v\":1",
+  "\"basis\":\"complete\"",
+  "\"cooldown\":null",
+  "\"loading\":[]",
+  "\"standing\":\{\"kind\":\"none\"}",
+]
+
+data w_now: EpochMs = 1792008000000
+
+// THE WIRE ROUND-TRIPS THROUGH THE REAL READER. What the pass writes is what the next pass reads, unchanged: a
+// complete baseline, a cooldown, two loading sightings with their FIRST-sampled instants, and the standing of
+// an answered ask. A drift here silently ages the wrong cards, which is how a pass destroys a card still
+// inside its launch envelope. Render and read are the same JSON module in both directions, so this claim is
+// the inhabitance of the one grammar, not a check of two copies.
+test fn the_carry_wire_round_trips_a_baseline_a_cooldown_two_sightings_and_an_answered_ask() -> Bool {
+  let carry = FlexCarry {
+    cooldown: Present { value: FlexRentCooldown { asked_at: w_now, until: w_now + 900000 } },
+    basis: FlexSightingsBaselineComplete,
+    sightings: [
+      FlexLoadingSighting { instance_id: 57968351, first_sampled_loading_ms: w_now - 7200000 },
+      FlexLoadingSighting { instance_id: 57968352, first_sampled_loading_ms: w_now },
+    ],
+    standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 7 } },
+  }
+  match flex_carry_gate(content: flex_carry_render(carry: carry)) {
+    FlexCarryLoaded { carry: c } =>
+      length(c.sightings) == 2
+        && match c.basis {
+          FlexSightingsBaselineComplete => true
+          FlexSightingsBaselineIncomplete => false
+        }
+        && match c.cooldown {
+          Present { value: k } => k.asked_at == w_now && k.until == w_now + 900000
+          Absent => false
+        }
+        && any(c.sightings, s => s.instance_id == 57968351 && s.first_sampled_loading_ms == w_now - 7200000)
+        && any(c.sightings, s => s.instance_id == 57968352 && s.first_sampled_loading_ms == w_now)
+        && match c.standing {
+          FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 7 } } => true
+          _ => false
+        }
+    FlexCarryAbsent => false
+    FlexCarryUnread { reason: _ } => false
+  }
+}
+
+// THE BASELINE IS WRITTEN AND READ BACK. "incomplete" is what makes the next pass read UNREAD bounds for every
+// loading id absent from the carry: the premise that would let it say "at least 0" -- the previous pass read
+// the whole account -- is exactly what an unfinished walk cannot claim. The incomplete carry is rendered by
+// the writer and read by the reader; the complete one is the positive control.
+test fn an_incomplete_baseline_round_trips_and_makes_absent_ids_read_unread() -> Bool {
+  let one = [FlexLoadingSighting { instance_id: 5, first_sampled_loading_ms: w_now - 7200000 }]
+  let incomplete = flex_carry_gate(content: flex_carry_render(carry: FlexCarry { cooldown: none, basis: FlexSightingsBaselineIncomplete, sightings: one, standing: FlexCarryNoAsk }))
+  let complete = flex_carry_gate(content: flex_carry_render(carry: FlexCarry { cooldown: none, basis: FlexSightingsBaselineComplete, sightings: one, standing: FlexCarryNoAsk }))
+  match flex_carry_sightings(reading: incomplete) {
+    FlexSightingsUnread { reason: _ } =>
+      match flex_carry_sightings(reading: complete) {
+        FlexSightingsKnown { sightings: known } => length(known) == 1
+        FlexSightingsUnread { reason: _ } => false
+      }
+    FlexSightingsKnown { sightings: _ } => false
+  }
+}
+
+// A MEMBER THE PASS CANNOT READ IS REPORTED UNREAD, NEVER GUESSED AT. A sighting with no instant (it would
+// otherwise age to 1970 and make the card instantly dead), a non-integer where an integer is declared, a
+// repeated member, a missing member and a version this reader does not know each make the whole carry unread.
+// The positive control is the same document with none of those faults.
+test fn a_member_the_pass_cannot_read_is_reported_unread_and_never_guessed_at() -> Bool {
+  let no_instant = w_doc(members: ["\"v\":1", "\"basis\":\"complete\"", "\"cooldown\":null", "\"loading\":[\{\"instance_id\":42}]", "\"standing\":\{\"kind\":\"none\"}"])
+  let wrong_type = w_doc(members: ["\"v\":1", "\"basis\":\"complete\"", "\"cooldown\":\{\"asked_at\":\"x\",\"until\":5}", "\"loading\":[]", "\"standing\":\{\"kind\":\"none\"}"])
+  let repeated = w_doc(members: concat(w_ok_members, ["\"basis\":\"incomplete\""]))
+  let no_loading = w_doc(members: ["\"v\":1", "\"basis\":\"complete\"", "\"cooldown\":null", "\"standing\":\{\"kind\":\"none\"}"])
+  let other_version = w_doc(members: ["\"v\":2", "\"basis\":\"complete\"", "\"cooldown\":null", "\"loading\":[]", "\"standing\":\{\"kind\":\"none\"}"])
+  w_loads(content: w_doc(members: w_ok_members))
+    && !w_loads(content: no_instant)
+    && !w_loads(content: wrong_type)
+    && !w_loads(content: repeated)
+    && !w_loads(content: no_loading)
+    && !w_loads(content: other_version)
+}
+
+// THE UNREAD REASON IS LOCATED. A document that is not JSON at all reads unread and the reason carries the
+// offset the JSON reader found, so an operator is told where, not merely that.
+test fn a_carry_that_is_not_a_json_document_reads_unread_with_the_located_gap() -> Bool {
+  match flex_carry_gate(content: "flex-carry v1\nsightings complete") {
+    FlexCarryUnread { reason: r } => string_contains(s: r, pattern: "not readable as JSON at offset")
+    FlexCarryAbsent => false
+    FlexCarryLoaded { carry: _ } => false
+  }
+}
+
+// A CREATE THIS PASS PERFORMED SUPERSEDES THE ASK CARRIED IN: one ask in flight at a time, because the
+// cooldown blocks a second until it expires. The new standing and the new cooldown are what the next pass
+// reads.
+test fn a_create_performed_this_pass_supersedes_the_ask_carried_in() -> Bool {
+  let prior = FlexCarryLoaded { carry: FlexCarry {
+    cooldown: Present { value: FlexRentCooldown { asked_at: w_now - 900000, until: w_now - 600000 } },
+    basis: FlexSightingsBaselineComplete,
+    sightings: [],
+    standing: FlexCarryAsk { ask: FlexCreateLost { ask_id: 7, machine_id: 404472 } },
+  } }
+  let after = flex_carry_after(
+    prior: prior,
+    roster: exhausted(rows: []),
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineComplete, sightings: [] },
+    outcome: FlexPassCreated {
+      standing: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 9 },
+      cooldown: FlexRentCooldown { asked_at: w_now, until: w_now + 900000 },
+      allocation: none,
+    },
+    now: w_now,
+  )
+  match after.standing {
+    FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 57968351, machine_id: 404472, ask_id: 9 } } =>
+      match after.cooldown {
+        Present { value: c } => c.asked_at == w_now && c.until == w_now + 900000
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// THE ONE VERDICT THAT RETIRES AN ASK is the existing reconcile authority's FlexMayAcquire: a create the
+// vendor REFUSED, with nothing on the machine it named. Nothing is left to reconcile. An expired cooldown
+// is dropped, not rewritten -- it has done its work.
+test fn a_refused_ask_with_nothing_on_its_machine_is_retired_and_an_expired_cooldown_is_dropped() -> Bool {
+  let prior = FlexCarryLoaded { carry: FlexCarry {
+    cooldown: Present { value: FlexRentCooldown { asked_at: w_now - 900000, until: w_now - 600000 } },
+    basis: FlexSightingsBaselineComplete,
+    sightings: [],
+    standing: FlexCarryAsk { ask: FlexCreateRefused { ask_id: 7, machine_id: 1 } },
+  } }
+  let after = flex_carry_after(
+    prior: prior,
+    roster: exhausted(rows: []),
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineComplete, sightings: [] },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
+  match after.standing { FlexCarryNoAsk => true  FlexCarryAsk { ask: _ } => false  FlexCarryStandingUnknown { reason: _ } => false }
+    && match after.cooldown { Absent => true  Present { value: _ } => false }
+}
+
+// AN ANSWERED ASK WHOSE CONTRACT THE ACCOUNT DOES NOT SHOW IS STILL CARRIED. That is the existing
+// authority's FlexAcquisitionUnknown, and it is the right direction to err in: a create whose answer was
+// read can still be missing from a walk that ran before the contract appeared, and dropping the standing
+// would lose the only record that we asked.
+test fn an_answered_ask_whose_contract_the_account_does_not_show_is_still_carried() -> Bool {
+  let prior = FlexCarryLoaded { carry: FlexCarry {
+    cooldown: none,
+    basis: FlexSightingsBaselineComplete,
+    sightings: [],
+    standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 999, machine_id: 1, ask_id: 7 } },
+  } }
+  let after = flex_carry_after(
+    prior: prior,
+    roster: exhausted(rows: []),
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineComplete, sightings: [] },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
+  match after.standing {
+    FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 999, machine_id: 1, ask_id: 7 } } => true
+    _ => false
+  }
+}
+
+// AN ASK THE ACCOUNT DOES SHOW STAYS CARRIED. The instance is held and counted by the cap, so no second
+// create is planned; the standing itself is what the allocation slice needs to build the allocation, and
+// dropping it here would lose the link between the ask and the card.
+test fn an_ask_the_account_does_show_stays_carried_until_the_allocation_slice_reads_it() -> Bool {
+  let prior = FlexCarryLoaded { carry: FlexCarry {
+    cooldown: none,
+    basis: FlexSightingsBaselineComplete,
+    sightings: [],
+    standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } },
+  } }
+  let after = flex_carry_after(
+    prior: prior,
+    roster: exhausted(rows: [our_running_row(id: 1001)]),
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineComplete, sightings: [] },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
+  match after.standing {
+    FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } } => true
+    _ => false
+  }
+}
+
+// A PARTIAL ACCOUNT CONCLUDES NOTHING, so the ask stays carried: the walk did not finish, and a create that
+// is not in the part we read is not evidence that it did not land.
+test fn a_partial_account_concludes_nothing_and_keeps_the_ask_carried() -> Bool {
+  let prior = FlexCarryLoaded { carry: FlexCarry {
+    cooldown: none,
+    basis: FlexSightingsBaselineComplete,
+    sightings: [],
+    standing: FlexCarryAsk { ask: FlexCreateLost { ask_id: 7, machine_id: 2001 } },
+  } }
+  let partial = FlexInstancesPartial { next_token: Present { value: "tok" }, observed: [], total: 2 }
+  let after = flex_carry_after(
+    prior: prior,
+    roster: partial,
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineIncomplete, sightings: [] },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
+  match after.standing {
+    FlexCarryAsk { ask: FlexCreateLost { ask_id: 7, machine_id: 2001 } } => true
+    _ => false
+  }
+}
+
+// THE BASIS THE PASS WROTE IS THE BASIS THE NEXT PASS READS: a pass whose walk did not finish writes an
+// incomplete baseline, and the receipt says so in words rather than leaving the next pass to infer it.
+test fn an_incomplete_walk_writes_an_incomplete_baseline_and_says_so() -> Bool {
+  let prior = FlexCarryLoaded { carry: FlexCarry {
+    cooldown: none,
+    basis: FlexSightingsBaselineComplete,
+    sightings: [FlexLoadingSighting { instance_id: 5, first_sampled_loading_ms: w_now - 3600000 }],
+    standing: FlexCarryNoAsk,
+  } }
+  let partial = FlexInstancesPartial { next_token: Present { value: "tok" }, observed: [], total: 2 }
+  let after = flex_carry_after(
+    prior: prior,
+    roster: partial,
+    carried: flex_loading_sightings_after(
+      ours: flex_owner_label_gunbc_flex,
+      roster: partial,
+      prior: [FlexLoadingSighting { instance_id: 5, first_sampled_loading_ms: w_now - 3600000 }],
+      now: w_now,
+    ),
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
+  match after.basis {
+    FlexSightingsBaselineIncomplete =>
+      length(after.sightings) == 0
+        && string_contains(s: flex_carry_basis_word(carry: after), pattern: "basis=INCOMPLETE")
+    FlexSightingsBaselineComplete => false
+  }
+}
+
+// A ROSTER THAT CANNOT BE READ BUILDS NO CARDS, and the receipt says which kind of cannot it is: an
+// unreadable walk and an unfinished walk are different failures with different consequences, and the pass
+// that hides that difference is the one that rents a second card on top of the first.
+test fn a_roster_that_cannot_be_read_builds_no_cards_and_says_which_kind_of_cannot_it_is() -> Bool {
+  length(flex_cards_list(c: FlexRosterCardsUnreadable)) == 0
+    && length(flex_cards_list(c: FlexRosterCardsNeedsExhaustedRoster)) == 0
+    && string_contains(s: flex_cards_wire(c: FlexRosterCardsUnreadable), pattern: "unreadable")
+    && string_contains(s: flex_cards_wire(c: FlexRosterCardsNeedsExhaustedRoster), pattern: "partial")
+    && string_contains(
+      s: flex_reconcile_wire(
+        reading: FlexCarryLoaded {
+          carry: FlexCarry { cooldown: none, basis: FlexSightingsBaselineComplete, sightings: [], standing: FlexCarryNoAsk }
+        },
+        roster: exhausted(rows: []),
+      ),
+      pattern: "no-ask",
+    )
+}
+
+// AN UNREAD CARRY CLAIMS NOTHING. No cooldown (the pass does not know it asked), no standing (nothing to
+// reconcile), and the sightings input is FlexSightingsUnread -- which is what makes the loading cut unable
+// to fire, because the bound of every loading card comes back UNREAD rather than zero. The receipt says so
+// in words, because an operator reading a pass that destroyed nothing needs to know WHY it destroyed
+// nothing.
+test fn an_unread_carry_claims_no_cooldown_no_standing_and_says_so_on_the_receipt() -> Bool {
+  let unread = FlexCarryUnread { reason: "the carry file could not be read" as NonEmptyStr }
+  match flex_carry_cooldown(reading: unread) { Absent => true  Present { value: _ } => false }
+    && match flex_carry_standing(reading: unread) { Absent => true  Present { value: _ } => false }
+    && match flex_carry_sightings(reading: unread) { FlexSightingsUnread { reason: _ } => true  _ => false }
+    && string_contains(s: flex_carry_wire(reading: unread), pattern: "carry=UNREAD")
+    && string_contains(s: flex_carry_wire(reading: unread), pattern: "loading cut cannot fire")
+}
+
+// A READ CARRY SAYS WHAT IT READ: the baseline it stands on, how many sightings came in, and whether a
+// create standing came with them, because those are what the next pass's ageing and reconcile turn on.
+test fn a_read_carry_reports_the_baseline_the_sightings_and_the_standing_it_holds() -> Bool {
+  let read = FlexCarryLoaded {
+    carry: FlexCarry {
+      cooldown: none,
+      basis: FlexSightingsBaselineComplete,
+      sightings: [FlexLoadingSighting { instance_id: 5, first_sampled_loading_ms: w_now }],
+      standing: FlexCarryNoAsk,
+    }
+  }
+  string_contains(s: flex_carry_wire(reading: read), pattern: "carry=read sightings=1")
+    && string_contains(s: flex_carry_wire(reading: read), pattern: "basis=complete")
+    && string_contains(s: flex_carry_wire(reading: read), pattern: "standing=no")
+}
+
+// THE RECEIPT NAMES THE RECONCILE IT DID. An ask the account shows is reported already-held with the
+// contract id, because that is the fact the next decision turns on.
+test fn the_receipt_names_the_reconcile_it_did() -> Bool {
+  string_contains(
+    s: flex_reconcile_wire(
+      reading: FlexCarryLoaded {
+        carry: FlexCarry {
+          cooldown: none,
+          basis: FlexSightingsBaselineComplete,
+          sightings: [],
+          standing: FlexCarryAsk { ask: FlexCreateAnswered { instance_id: 1001, machine_id: 2001, ask_id: 7 } },
+        }
+      },
+      roster: exhausted(rows: [our_running_row(id: 1001)]),
+    ),
+    pattern: "already-held instance=1001",
+  )
+}
+
+// THE VERSION IS CHECKED. A document of another version reads unread naming the version; a document that
+// states no version reads unread; the good document must still load, or the refusals prove nothing. The unread
+// reading maps to the typed untrusted carry the create gate refuses on.
+test fn a_carry_of_another_version_or_none_reads_unread_and_untrusted() -> Bool {
+  let good = w_doc(members: w_ok_members)
+  let other = w_doc(members: ["\"v\":2", "\"basis\":\"complete\"", "\"cooldown\":null", "\"loading\":[]", "\"standing\":\{\"kind\":\"none\"}"])
+  let no_version = w_doc(members: ["\"basis\":\"complete\"", "\"cooldown\":null", "\"loading\":[]", "\"standing\":\{\"kind\":\"none\"}"])
+  w_loads(content: good)
+    && match flex_carry_gate(content: other) {
+      FlexCarryUnread { reason: r } => string_contains(s: r, pattern: "version 2")
+      FlexCarryAbsent => false
+      FlexCarryLoaded { carry: _ } => false
+    } && match flex_carry_gate(content: no_version) {
+      FlexCarryUnread { reason: r } => string_contains(s: r, pattern: "v is missing")
+      FlexCarryAbsent => false
+      FlexCarryLoaded { carry: _ } => false
+    } && match flex_carry_trust(reading: flex_carry_gate(content: other)) {
+      FlexCarryUntrusted { reason: r } => string_contains(s: r, pattern: "version 2")
+      FlexCarryTrusted => false
+    }
+}
+
+// THE UNREAD STANDING SURVIVES THE WRITE (review 89235 of gunbc#15462). A pass that could not read its carry
+// still writes one -- the sightings and cooldown it observed are worth keeping, and losing them would freeze
+// the loading cut -- but the standing it could not state is written forward as UNKNOWN, and the NEXT pass
+// reads UNKNOWN rather than "nothing in flight". The JSON carry round-trips the REASON as well, so the next
+// pass reads the cause the detecting pass found.
+test fn an_unread_carry_written_forward_still_reads_untrusted_after_the_round_trip() -> Bool {
+  let prior = FlexCarryUnread { reason: "2 carry line(s) the pass could not parse" as NonEmptyStr }
+  let after = flex_carry_after(
+    prior: prior,
+    roster: exhausted(rows: []),
+    carried: FlexSightingsCarried {
+      basis: FlexSightingsBaselineComplete,
+      sightings: [FlexLoadingSighting { instance_id: 5, first_sampled_loading_ms: w_now }],
+    },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
+  match flex_carry_gate(content: flex_carry_render(carry: after)) {
+    FlexCarryLoaded { carry: c } =>
+      match flex_carry_trust(reading: FlexCarryLoaded { carry: c }) {
+        FlexCarryUntrusted { reason: r } =>
+          string_contains(s: r, pattern: "2 carry line(s) the pass could not parse")
+            && string_contains(s: flex_carry_wire(reading: FlexCarryLoaded { carry: c }), pattern: "standing=UNKNOWN")
+            && length(c.sightings) == 1
+        FlexCarryTrusted => false
+      }
+    FlexCarryAbsent => false
+    FlexCarryUnread { reason: _ } => false
+  }
+}
+
+// A CARRY THAT STATES NO STANDING DOES NOT DEFAULT TO EMPTY. A document without a standing member reads
+// unread, which keeps the create gate shut; the same document with one is the positive control.
+test fn a_carry_that_states_no_standing_reads_untrusted_not_empty() -> Bool {
+  let missing = w_doc(members: ["\"v\":1", "\"basis\":\"complete\"", "\"cooldown\":null", "\"loading\":[]"])
+  w_loads(content: w_doc(members: w_ok_members))
+    && match flex_carry_trust(reading: flex_carry_gate(content: missing)) {
+      FlexCarryUntrusted { reason: r } => string_contains(s: r, pattern: "standing is missing")
+      FlexCarryTrusted => false
+    }
+}
+
+// THE POSITIVE CASE IS STILL POSITIVE. A carry that says no ask is trusted and carries no ask to reconcile --
+// so the refusal above is about the missing statement, not about every carry being suspect.
+test fn a_carry_that_states_no_ask_is_trusted_and_carries_nothing_to_reconcile() -> Bool {
+  match flex_carry_gate(content: w_doc(members: w_ok_members)) {
+    FlexCarryLoaded { carry: c } =>
+      match flex_carry_trust(reading: FlexCarryLoaded { carry: c }) {
+        FlexCarryTrusted =>
+          match flex_carry_standing(reading: FlexCarryLoaded { carry: c }) {
+            Absent => string_contains(s: flex_carry_wire(reading: FlexCarryLoaded { carry: c }), pattern: "standing=no")
+            Present { value: _ } => false
+          }
+        FlexCarryUntrusted { reason: _ } => false
+      }
+    FlexCarryAbsent => false
+    FlexCarryUnread { reason: _ } => false
+  }
+}
+
+// ABSENT AND UNREAD ARE DIFFERENT FACTS, AND NEITHER IS "NO ASK IN FLIGHT" (review 89235 of gunbc#15462). A
+// missing file does not say the last ask is gone: cargo clean, a fresh worktree or another runner loses it,
+// and an ask that has produced no instance yet is invisible to the roster. So absent is UNTRUSTED, the
+// reason names why, the receipt names the remedy, and it stays a distinct word from the unread case.
+test fn an_absent_carry_is_untrusted_names_its_remedy_and_is_not_the_same_fact_as_an_unread_one() -> Bool {
+  match flex_carry_trust(reading: FlexCarryAbsent) {
+    FlexCarryUntrusted { reason: r } =>
+      r == flex_carry_absent_reason
+        && string_contains(s: flex_carry_wire(reading: FlexCarryAbsent), pattern: "carry=absent")
+        && string_contains(s: flex_carry_wire(reading: FlexCarryAbsent), pattern: "REMEDY")
+        && !string_contains(s: flex_carry_wire(reading: FlexCarryAbsent), pattern: "carry=UNREAD")
+        && match flex_carry_sightings(reading: FlexCarryAbsent) {
+          FlexSightingsUnread { reason: _ } => true
+          FlexSightingsKnown { sightings: _ } => false
+        }
+    FlexCarryTrusted => false
+  }
+}
+
+// AN ABSENT PRIOR IS WRITTEN FORWARD AS UNKNOWN, not as no-ask: otherwise one pass launders the absence into a
+// trusted file and the next pass plans the create the absence never cleared.
+test fn an_absent_prior_is_written_forward_as_an_unknown_standing() -> Bool {
+  let after = flex_carry_after(
+    prior: FlexCarryAbsent,
+    roster: exhausted(rows: []),
+    carried: FlexSightingsCarried { basis: FlexSightingsBaselineComplete, sightings: [] },
+    outcome: FlexPassIdle,
+    now: w_now,
+  )
+  match flex_carry_trust(reading: flex_carry_gate(content: flex_carry_render(carry: after))) {
+    FlexCarryUntrusted { reason: r } => r == flex_carry_absent_reason
+    FlexCarryTrusted => false
+  }
+}
+
+// THE FILESYSTEM MAPPING, RUN FOR REAL on supplied observations. Directory listed without the entry ->
+// Absent; listed with the entry and a good read -> Loaded; listed with the entry and a refused read ->
+// Unread (the file exists and cannot be read: never absent); a directory listing that failed -> not Absent.
+fn w_listing(entries: String, ok: Bool) -> FilesystemListingObservation {
+  filesystem_listing_observation(directory: flex_pass_carry_directory(), success: ok, entries: entries, error: if ok { "" } else { "listing refused" })
+}
+
+test fn the_filesystem_observations_map_to_absent_loaded_and_unread_on_the_real_mapping() -> Bool {
+  let sealed = w_doc(members: w_ok_members)
+  let read_ok = filesystem_read_outcome(content: sealed, success: true, error: "")
+  let read_refused = filesystem_read_outcome(content: "", success: false, error: "permission denied")
+  match flex_carry_reading_of(listing: w_listing(entries: "", ok: true), read: read_refused, path: flex_pass_carry_path()) {
+    FlexCarryAbsent => true
+    FlexCarryLoaded { carry: _ } => false
+    FlexCarryUnread { reason: _ } => false
+  } && match flex_carry_reading_of(listing: w_listing(entries: flex_pass_carry_name, ok: true), read: read_ok, path: flex_pass_carry_path()) {
+    FlexCarryLoaded { carry: _ } => true
+    FlexCarryAbsent => false
+    FlexCarryUnread { reason: _ } => false
+  } && match flex_carry_reading_of(listing: w_listing(entries: flex_pass_carry_name, ok: true), read: read_refused, path: flex_pass_carry_path()) {
+    FlexCarryUnread { reason: _ } => true
+    FlexCarryAbsent => false
+    FlexCarryLoaded { carry: _ } => false
+  } && match flex_carry_reading_of(listing: w_listing(entries: "", ok: false), read: read_refused, path: flex_pass_carry_path()) {
+    FlexCarryAbsent => false
+    FlexCarryLoaded { carry: _ } => false
+    FlexCarryUnread { reason: _ } => true
+  }
+}
+
+// A TRUNCATED CARRY READS UNREAD AT THE CUTS, THROUGH THE REAL READER. The writer is not atomic, so a write
+// cut off anywhere must not load, and the unread reading must carry the LOCATED gap. A valid carry is rendered
+// by the writer, then cut at seven offsets short of the whole (empty, first character, thirds, and the last two); every cut is unread, the
+// last-but-one cut (the closing brace lost) names its offset, and the intact text loads.
+test fn a_carry_cut_off_anywhere_reads_unread_and_the_intact_file_still_loads() -> Bool {
+  let carry = FlexCarry {
+    cooldown: Present { value: FlexRentCooldown { asked_at: w_now, until: w_now + 900000 } },
+    basis: FlexSightingsBaselineComplete,
+    sightings: [FlexLoadingSighting { instance_id: 5, first_sampled_loading_ms: w_now }],
+    standing: FlexCarryNoAsk,
+  }
+  let text = flex_carry_render(carry: carry)
+  let n = length(text)
+  w_loads(content: text)
+    && length(filter([0, 1, n / 3, n / 2, (2 * n) / 3, n - 2, n - 1], k => w_loads(content: substring(s: text, start: 0, end: k)))) == 0
+    && match flex_carry_reading_of(
+      listing: w_listing(entries: flex_pass_carry_name, ok: true),
+      read: filesystem_read_outcome(content: substring(s: text, start: 0, end: n - 1), success: true, error: ""),
+      path: flex_pass_carry_path(),
+    ) {
+      FlexCarryUnread { reason: r } => string_contains(s: r, pattern: "not readable as JSON at offset")
+      FlexCarryAbsent => false
+      FlexCarryLoaded { carry: _ } => false
+    }
+}
+
+fn w_loads(content: String) -> Bool {
+  match flex_carry_gate(content: content) {
+    FlexCarryLoaded { carry: _ } => true
+    FlexCarryAbsent => false
+    FlexCarryUnread { reason: _ } => false
+  }
+}
+
+// A FAILED CARRY WRITE FAILS THE RUN; a written or skipped one does not. The exit is the real
+// flex_pass_exit the entry calls, not a restatement of it.
+test fn a_failed_carry_write_exits_failure_and_a_written_or_skipped_one_does_not() -> Bool {
+  match flex_pass_exit(carry: FlexCarryWriteFailed { error: "disk full" }) {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "COULD NOT RECORD ITS CARRY")
+    ExitSuccess => false
+  } && match flex_pass_exit(carry: FlexCarryWritten) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  } && match flex_pass_exit(carry: FlexCarryWriteSkipped { because: "no decision" as NonEmptyStr }) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+// THE THREE PATH LITERALS DENOTE ONE PATH. flex_carry_read lists one directory and reads a path built from
+// another literal; if they drift, absence is "established" for a directory the carry never lived in, and a
+// real carry reads absent -- which is exactly the widen this file refuses everywhere else.
+test fn the_carry_path_and_the_listed_directory_and_entry_name_denote_one_path() -> Bool {
+  flex_pass_carry_path() == concat(concat(flex_pass_carry_directory(), "/"), flex_pass_carry_name)
+}
+
+// THE HOME-HOST WALL: a pass that is not on the carry home host, or cannot say which host it is, gets a
+// refusal naming the cause, and that refusal is what flex_carry_read turns into FlexCarryUnread (so the
+// create gate stays shut). The home host itself gets no refusal. The observations are supplied; the
+// decision under test is the one the pass runs.
+test fn the_carry_is_visible_only_on_its_home_host_and_every_other_host_is_refused_with_the_cause() -> Bool {
+  let other = flex_carry_home_refusal(host: HostnameShortCaptured { value: "srv2" })
+  let unknown = flex_carry_home_refusal(host: HostnameShortCaptureRefused { reason: "hostname -s exited unsuccessfully" })
+  let home = flex_carry_home_refusal(host: HostnameShortCaptured { value: flex_carry_home_host as String })
+  match home {
+    Present { value: _ } => false
+    Absent =>
+      match other {
+        Absent => false
+        Present { value: why } =>
+          string_contains(s: why as String, pattern: "not on the carry home host srv1") && match unknown {
+            Absent => false
+            Present { value: u } => string_contains(s: u as String, pattern: "cannot establish which host it is on")
+          }
+      }
+  }
+}
+
+// The same wall through the REAL reader: flex_carry_read off the home host returns before any filesystem
+// effect, so it runs here unsupplied, and what comes out is the Unread reading the create gate refuses on,
+// carrying the located cause, with no trust.
+test fn the_real_carry_reader_off_the_home_host_reads_unread_with_the_located_cause() -> Bool {
+  match flex_carry_read(path: flex_pass_carry_path(), host: HostnameShortCaptured { value: "srv2" }) {
+    FlexCarryUnread { reason: r } => string_contains(s: r as String, pattern: "not on the carry home host srv1")
+    FlexCarryLoaded { carry: _ } => false
+    FlexCarryAbsent => false
+  }
+}
+
+// THE WRITE-AHEAD RECORD: the carry the pass writes BEFORE its create reads back untrusted, so a final write
+// that never happens leaves the gate shut instead of leaving the previous well-formed carry to be trusted.
+test fn the_write_ahead_record_reads_back_untrusted_and_keeps_the_cooldown() -> Bool {
+  let prior = FlexCarryLoaded { carry: FlexCarry {
+    cooldown: Present { value: FlexRentCooldown { asked_at: w_now, until: w_now + 600000 } },
+    basis: FlexSightingsBaselineComplete,
+    sightings: [],
+    standing: FlexCarryNoAsk,
+  } }
+  match flex_carry_gate(content: flex_carry_render(carry: flex_carry_in_progress(reading: prior))) {
+    FlexCarryLoaded { carry: c } =>
+      match flex_carry_trust(reading: FlexCarryLoaded { carry: c }) {
+        FlexCarryUntrusted { reason: r } =>
+          string_contains(s: r, pattern: "never recorded the outcome")
+            && length(c.sightings) == 0
+            && match c.cooldown {
+              Present { value: k } => k.until == w_now + 600000
+              Absent => false
+            }
+        FlexCarryTrusted => false
+      }
+    _ => false
+  }
+}
+
+// The control for it: with a trusted carry, a write-ahead that LANDED leaves the gate as read, and one that
+// FAILED shuts it with the error named, so a create the pass cannot recover is never planned.
+test fn a_failed_write_ahead_shuts_the_create_gate_and_a_landed_one_leaves_it() -> Bool {
+  let trusted = FlexCarryLoaded { carry: FlexCarry { cooldown: none, basis: FlexSightingsBaselineComplete, sightings: [], standing: FlexCarryNoAsk } }
+  let failed = flex_carry_trust_after_write_ahead(reading: trusted, ahead: FlexCarryWriteFailed { error: "disk full" })
+  let landed = flex_carry_trust_after_write_ahead(reading: trusted, ahead: FlexCarryWritten)
+  match failed {
+    FlexCarryUntrusted { reason: r } =>
+      string_contains(s: r, pattern: "disk full")
+        && match landed {
+          FlexCarryTrusted => true
+          FlexCarryUntrusted { reason: _ } => false
+        }
+    FlexCarryTrusted => false
+  }
+}

@@ -56,6 +56,13 @@ data passive_card_adjacency_is_judged_per_slot_and_by_measurement: DesignRuling 
   provenance: "Operator, relayed by keen-otter-392 from calm-moth-166 and proud-raven to calm-crab-645 on 2026-10-30, correcting gunbc.plans.gpu_card_host_program N0e and N6d (first authored in gunbc#15207): the plan must not blanket-refuse adjacent passive cards. Slot spacing differs between chassis (Butch's is not the H11's), so the authority is per-slot geometry and airflow plus the measured thermal behaviour of the installed position. The H11 incident (96 to 99 C, minimum clocks, a GPU off the bus) stays as evidence for that configuration, not for adjacency itself.",
 }
 
+data flex_pass_carry_is_admitted_single_host_file_debt: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_pass_carry_is_admitted_single_host_file_debt"),
+  decided: "2026-11-01",
+  section: "5",
+  provenance: "Operator ruling, relayed by calm-moth-166 to calm-crab-645 on 2026-11-01 on gunbc#15462: the flex-pass carry (gunbc.fleet.flex_pass_run) as a plain file on srv1 only is ACCEPTED as admitted debt, the deviation DESIGN section 5 requires operator approval for. Other hosts refuse: a pass on any other host, or one that cannot read its own hostname, reads the carry as unread and its create refuses. The dissolution row is gunbc.fleet.flex_pass_run flex_carry_home_frontier, which closes when a durable_cas_file_store slot or a shared store both hosts read replaces the file. The row authorizes the debt; the frontier describes how it ends.",
+}
+
 data conformance_needs_attention: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention"),
   decided: "2026-09-06",
@@ -656,6 +663,7 @@ fn design_rulings() -> List<DesignRuling> {
     one_serving_context_cap,
     installed_cards_converge_first,
     passive_card_adjacency_is_judged_per_slot_and_by_measurement,
+    flex_pass_carry_is_admitted_single_host_file_debt,
   ]
 }
 
