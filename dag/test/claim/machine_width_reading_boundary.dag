@@ -36,32 +36,32 @@ fn width_boundary_application(arguments: List<MachineWidthArgumentFacts>) -> Mac
   }
 }
 
-test fn width_boundary_signed64_reads() -> Bool {
+fn width_boundary_signed64_reads_holds() -> Bool {
   read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: true), width_boundary_constraint(arguments: [Present { value: 64 }])]))
     == WidthReadable { signedness: Signed, bits: bit_width(count: 64) }
 }
 
-test fn width_boundary_unsigned8_reads() -> Bool {
+fn width_boundary_unsigned8_reads_holds() -> Bool {
   read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: false), width_boundary_constraint(arguments: [Present { value: 8 }])]))
     == WidthReadable { signedness: Unsigned, bits: bit_width(count: 8) }
 }
 
-test fn width_boundary_unknown_literal_never_defaults() -> Bool {
+fn width_boundary_unknown_literal_never_defaults_holds() -> Bool {
   read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: false), width_boundary_constraint(arguments: [Absent])]))
     == WidthUnreadable { reason: MachineWidthNotStatic }
 }
 
-test fn width_boundary_extra_width_argument_refuses() -> Bool {
+fn width_boundary_extra_width_argument_refuses_holds() -> Bool {
   read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: false), width_boundary_constraint(arguments: [Present { value: 8 }, Present { value: 16 }])]))
     == WidthUnreadable { reason: MachineWidthNotStatic }
 }
 
-test fn width_boundary_missing_compose_argument_refuses() -> Bool {
+fn width_boundary_missing_compose_argument_refuses_holds() -> Bool {
   read_machine_width(application: width_boundary_application(arguments: [width_boundary_carrier(signed: false)]))
     == WidthUnreadable { reason: MachineWidthComposeMalformed }
 }
 
-test fn width_boundary_foreign_nat_does_not_gain_signedness() -> Bool {
+fn width_boundary_foreign_nat_does_not_gain_signedness_holds() -> Bool {
   let carrier = MachineWidthArgumentFacts {
     declaration: Present { value: decl_ref(module_path: "test.foreign", decl_name: "Nat") },
     is_kernel_int: false, natural_arguments: []
@@ -70,9 +70,37 @@ test fn width_boundary_foreign_nat_does_not_gain_signedness() -> Bool {
     == WidthUnreadable { reason: MachineWidthCarrierSignednessUndeclared }
 }
 
-test fn width_boundary_foreign_compose_is_unconstrained() -> Bool {
+fn width_boundary_foreign_compose_is_unconstrained_holds() -> Bool {
   read_machine_width(application: MachineWidthApplicationFacts {
     head: Present { value: decl_ref(module_path: "test.foreign", decl_name: "Compose") },
     arguments: [width_boundary_carrier(signed: false), width_boundary_constraint(arguments: [Present { value: 8 }])]
   }) == NotWidthConstrained
+}
+
+test fn width_boundary_signed64_reads() -> Bool {
+  width_boundary_signed64_reads_holds()
+}
+
+test fn width_boundary_unsigned8_reads() -> Bool {
+  width_boundary_unsigned8_reads_holds()
+}
+
+test fn width_boundary_unknown_literal_never_defaults() -> Bool {
+  width_boundary_unknown_literal_never_defaults_holds()
+}
+
+test fn width_boundary_extra_width_argument_refuses() -> Bool {
+  width_boundary_extra_width_argument_refuses_holds()
+}
+
+test fn width_boundary_missing_compose_argument_refuses() -> Bool {
+  width_boundary_missing_compose_argument_refuses_holds()
+}
+
+test fn width_boundary_foreign_nat_does_not_gain_signedness() -> Bool {
+  width_boundary_foreign_nat_does_not_gain_signedness_holds()
+}
+
+test fn width_boundary_foreign_compose_is_unconstrained() -> Bool {
+  width_boundary_foreign_compose_is_unconstrained_holds()
 }

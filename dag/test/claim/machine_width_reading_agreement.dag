@@ -77,19 +77,19 @@ fn width_reading_agrees(module_path: String, name: String, expected: MachineWidt
     && width_reading_v2(module_path: module_path, name: name) == Present { value: expected }
 }
 
-test fn width_reading_uint8_agrees() -> Bool {
+fn width_reading_uint8_agrees_holds() -> Bool {
   width_reading_agrees(module_path: "std.integer", name: "UInt8", expected: WidthReadable { signedness: Unsigned, bits: bit_width(count: 8) })
 }
 
-test fn width_reading_int64_agrees() -> Bool {
+fn width_reading_int64_agrees_holds() -> Bool {
   width_reading_agrees(module_path: "std.integer", name: "Int64", expected: WidthReadable { signedness: Signed, bits: bit_width(count: 64) })
 }
 
-test fn width_reading_alias_agrees() -> Bool {
+fn width_reading_alias_agrees_holds() -> Bool {
   width_reading_agrees(module_path: "p", name: "AliasWidth", expected: WidthReadable { signedness: Unsigned, bits: bit_width(count: 8) })
 }
 
-test fn width_reading_unrelated_compose_agrees() -> Bool {
+fn width_reading_unrelated_compose_agrees_holds() -> Bool {
   width_reading_agrees(module_path: "p", name: "Unrelated", expected: NotWidthConstrained)
 }
 
@@ -100,14 +100,38 @@ fn width_reading_is_unreadable(reading: Optional<MachineWidthReading>) -> Bool {
   }
 }
 
-test fn width_reading_pointer_width_stays_unresolved() -> Bool {
+fn width_reading_pointer_width_stays_unresolved_holds() -> Bool {
   width_reading_is_unreadable(reading: width_reading_seed(module_path: "p", name: "Dynamic"))
     && width_reading_is_unreadable(reading: width_reading_v2(module_path: "p", name: "Dynamic"))
 }
 
 // The base v2 logic was observed on the interpreted route to refuse the unary
 // negative literal as not-static; this claim requires both real adapters to refuse.
-test fn width_reading_negative_width_is_unreadable() -> Bool {
+fn width_reading_negative_width_is_unreadable_holds() -> Bool {
   width_reading_is_unreadable(reading: width_reading_seed(module_path: "p", name: "NegativeWidth"))
     && width_reading_is_unreadable(reading: width_reading_v2(module_path: "p", name: "NegativeWidth"))
+}
+
+test fn width_reading_uint8_agrees() -> Bool {
+  width_reading_uint8_agrees_holds()
+}
+
+test fn width_reading_int64_agrees() -> Bool {
+  width_reading_int64_agrees_holds()
+}
+
+test fn width_reading_alias_agrees() -> Bool {
+  width_reading_alias_agrees_holds()
+}
+
+test fn width_reading_unrelated_compose_agrees() -> Bool {
+  width_reading_unrelated_compose_agrees_holds()
+}
+
+test fn width_reading_pointer_width_stays_unresolved() -> Bool {
+  width_reading_pointer_width_stays_unresolved_holds()
+}
+
+test fn width_reading_negative_width_is_unreadable() -> Bool {
+  width_reading_negative_width_is_unreadable_holds()
 }
