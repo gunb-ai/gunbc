@@ -9,6 +9,8 @@ import extdeps.github.actions {
 import extdeps.github.expressions { ContextAccess, Expression, Needs, Steps, interpolate }
 import gunbc.action_use_admission {
   checkout_action, setup_rust_action, checkout_ref_entry, commit_output_producer_path,
+  seed_pin_verifier_producer, seed_pin_verifier_job_id, seed_pin_verifier_output_name,
+  seed_pin_verifier_check_step_id,
 }
 import gunbc.ci.repository_ci_profile { PublicSeed, seed_source_pin, seed_source_refusal_reason }
 import gunbc.ci.repository_compose_overlay { command, command_words, word, var_word, path_under, set_strict_stmt }
@@ -197,11 +199,13 @@ fn seed_build_step(seed: PublicSeed) -> Outcome<Step> {
 // step beside the checkout cannot hand it a ref the wall will accept, and a run-step that fetched and
 // checked out on its own would be the very family the side chat refused (and the family quick-newt-573
 // withdrew a zero-job preference over). Only a JOB output, declared by a record the wall itself folds,
-// can carry the ref. That record is CommitOutputProducer, and the profile row owns it.
+// can carry the ref. That record is CommitOutputProducer, and the MODEL owns it (gunbc.action_use_admission
+// seed_pin_verifier_producer): a row names which repository, where it lands and what it builds, never the
+// verifier's identity.
 //
 // WHAT IT PROVES, AND WHAT IT REFUSES. It fetches the one pinned object -- by sha, never by branch or
-// tag name, never through ls-remote, never `|| github.sha` -- from the row's `fetch_remote_url` and no
-// other remote, into an object store under RUNNER_TEMP that nothing else touches and that it deletes
+// tag name, never through ls-remote, never `|| github.sha` -- from the url derived from the row's
+// `repository` (seed_pin_fetch_url) and no other remote, into an object store under RUNNER_TEMP that nothing else touches and that it deletes
 // before creating (a runner whose temp survives a previous job must not hand this job a store it did not
 // fetch). Then it requires two things: `git cat-file -t` of the pin says `commit` (an object the pin
 // names that is a tag, tree or blob is not a commit), and `git rev-parse` of the pin equals the pin
@@ -211,23 +215,19 @@ fn seed_build_step(seed: PublicSeed) -> Outcome<Step> {
 // The output line is the LAST statement, so a verifier that refused has written nothing -- there is
 // nothing for a checkout to read, which is what "refuses with no output" has to mean operationally.
 //
-// ONE AUTHORITY FOR THE NAME. The job id, the output name and the remote url come from the profile row's
-// SeedPinVerifierProducer; the step id and the store directory are projections of that job id, made
-// here, once; and the allowlist entry the wall admits is commit_output_producer_path of the same record.
-// Renaming the output therefore means editing the row, and the checkout's ref and the wall's allowlist
-// move together because they are the same fold -- not two strings that a hand-edit can pull apart, which
-// is the ruling the reviewer left on #15631 about the checkout allowlist: an entry is earned by a
-// producer record, never hand-written.
-
-fn seed_pin_verifier_step_id(seed: PublicSeed) -> String {
-  join([seed.verifier.producer.job_id as String, "-check"], "")
-}
+// ONE AUTHORITY FOR THE NAME. The job id, the output name and the earning step's id are the single model-owned
+// producer record in gunbc.action_use_admission; the store directory is a projection of the job id, made
+// here, once; the checkout's ref expression, the job's declared output, the guard's refusal text and the
+// allowlist entry the wall admits are all projections of that one record. Nothing in a profile row can move
+// one of them away from the others -- which is the form the reviewer's #15631 ruling asked for: an entry is
+// earned by a producer record, never hand-written, and never row-supplied either (review 90155).
 
 fn seed_pin_store_var_name() -> String { "GUNBC_SEED_PIN_STORE" }
 
-// THE PRODUCER PATH -- the string the checkout reads and the wall admits, from one call.
-fn seed_pin_verifier_output_path(seed: PublicSeed) -> String {
-  commit_output_producer_path(producer: seed.verifier.producer)
+// THE PRODUCER PATH -- the string the checkout reads and the wall admits, from one call. No parameter: the
+// path is the record's, and a `seed` here would suggest a row could move it (review 90155).
+fn seed_pin_verifier_output_path() -> String {
+  commit_output_producer_path(producer: seed_pin_verifier_producer())
 }
 
 // THE REF THE SEED CHECKOUT NAMES: the verifier job's declared output, as an Expression the wall can
@@ -240,9 +240,9 @@ fn seed_pin_checkout_ref_expression(seed: PublicSeed) -> Optional<Expression> {
         value: ContextAccess {
           context: Needs,
           path: [
-            seed.verifier.producer.job_id as String,
+            seed_pin_verifier_job_id(),
             "outputs",
-            seed.verifier.producer.output_name as String,
+            seed_pin_verifier_output_name(),
           ],
         },
       }
@@ -380,7 +380,7 @@ fn seed_pin_verification_statements(seed: PublicSeed, pin: String) -> List<Node>
   let store = var_word(name: store_name)
   let pin_word = word(text: pin)
   let git = word(text: "git")
-  let job_id = seed.verifier.producer.job_id as String
+  let job_id = seed_pin_verifier_job_id()
   let proof_statements = fold(
     seed_pin_proofs(seed: seed, pin: pin),
     init: [],
@@ -409,7 +409,7 @@ fn seed_pin_verification_statements(seed: PublicSeed, pin: String) -> List<Node>
         // LAST, AND ONLY LAST: the job's output exists exactly when every proof passed.
         bash_build_with_redir_to_file(
           inner: bash_build_pipe(
-            left: command(words: [word(text: "echo"), word(text: join([seed.verifier.producer.output_name as String, "=", pin], ""))]),
+            left: command(words: [word(text: "echo"), word(text: join([seed_pin_verifier_output_name(), "=", pin], ""))]),
             right: command(words: [word(text: "tee"), word(text: "-a"), var_word(name: "GITHUB_OUTPUT")])
           ),
           path: word(text: "/dev/null")
@@ -433,7 +433,8 @@ fn seed_pin_refusal(name: String, message: String) -> Node {
   ])
 }
 
-// THE VERIFIER STEP. Its `id` is the step id the job's output map reads, derived from the same job id.
+// THE VERIFIER STEP. Its `id` is the step id the record names as the one that earns the output -- the same
+// value the job's output map reads and the wall looks for when it asks whether the producer is carried.
 fn seed_pin_verifier_step(seed: PublicSeed, pin: String) -> Outcome<Step> {
   bind_outcome(
     o: bash_emit_stmts(statements: seed_pin_verification_statements(seed: seed, pin: pin), set_e: true),
@@ -441,7 +442,7 @@ fn seed_pin_verifier_step(seed: PublicSeed, pin: String) -> Outcome<Step> {
       outcome_accepted(
         value: RunStep {
           name: Present { value: seed.verifier.verification_step_name },
-          id: Present { value: seed_pin_verifier_step_id(seed: seed) },
+          id: Present { value: seed_pin_verifier_check_step_id() },
           run: script,
           shell: none,
           env: none,
@@ -467,7 +468,7 @@ fn seed_pin_verifier_job(seed: PublicSeed, pin: String, runner: RunnerSpec) -> O
     f: fn(step) {
       outcome_accepted(
         value: Job {
-          id: seed.verifier.producer.job_id as String,
+          id: seed_pin_verifier_job_id(),
           name: Present { value: join(["Verify the seed pin ", pin], "") },
           runner: runner,
           environment: none,
@@ -477,12 +478,12 @@ fn seed_pin_verifier_job(seed: PublicSeed, pin: String, runner: RunnerSpec) -> O
           outputs: Present {
             value: [
               kv(
-                key: seed.verifier.producer.output_name as String,
+                key: seed_pin_verifier_output_name(),
                 value: yaml_string(
                   s: interpolate(
                     expression: ContextAccess {
                       context: Steps,
-                      path: [seed_pin_verifier_step_id(seed: seed), "outputs", seed.verifier.producer.output_name as String],
+                      path: [seed_pin_verifier_check_step_id(), "outputs", seed_pin_verifier_output_name()],
                     }
                   )
                 )
@@ -522,7 +523,7 @@ fn seed_pin_consumer_guard_step_name() -> String {
 }
 
 fn seed_pin_consumer_guard_step_id(seed: PublicSeed) -> String {
-  join([seed.verifier.producer.job_id as String, "-guard"], "")
+  join([seed_pin_verifier_job_id(), "-guard"], "")
 }
 
 fn seed_pin_consumer_guard_var_name() -> String {
@@ -542,7 +543,7 @@ fn seed_pin_consumer_guard_env(seed: PublicSeed) -> List<YamlKeyValue> {
 
 fn seed_pin_consumer_guard_statements(seed: PublicSeed, pin: String) -> List<Node> {
   let received = var_word(name: seed_pin_consumer_guard_var_name())
-  let producer = seed.verifier.producer
+  let producer = seed_pin_verifier_producer()
   [
     set_strict_stmt(),
     // Absent and empty are one case in shell terms: both are an unset value at the consumer's edge.

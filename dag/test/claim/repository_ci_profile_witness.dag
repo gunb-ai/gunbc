@@ -55,13 +55,15 @@ import gunbc.ci.repository_compose_overlay {
   word, heal_seal_env }
 import gunbc.action_use_admission {
   checkout_ref_admitted_in_jobs, checkout_ref_value_refusals, job_step_ids,
+  seed_pin_verifier_producer, seed_pin_verifier_job_id, seed_pin_verifier_output_name,
+  seed_pin_verifier_check_step_id,
 }
 import gunbc.ci.repository_seed_steps {
   seed_pin_proofs, seed_pin_fetch_url,
   seed_lane_steps,
   seed_pin_consumer_guard_step_name, seed_pin_consumer_guard_var_name,
   seed_pin_consumer_guard_statements,
-  seed_pin_verifier_output_path, seed_pin_verifier_step_id, seed_pin_checkout_ref_expression,
+  seed_pin_verifier_output_path, seed_pin_checkout_ref_expression,
   seed_pin_verification_statements, seed_pin_verifier_job,
 }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -693,14 +695,7 @@ fn mirror_profile_with_annotation(lane_root: String) -> RepositoryCiProfile {
 data fixture_seed_pin: String = "0123456789abcdef0123456789abcdef01234567"
 
 fn fixture_seed_verifier() -> SeedPinVerifierProducer {
-  SeedPinVerifierProducer {
-    producer: CommitOutputProducer {
-      job_id: "verify-seed-pin" as NonEmptyStr,
-      output_name: "committed_sha" as NonEmptyStr,
-      earns_it_by: "the verifier fetches the pinned commit by sha from the intended public repository and proves it is a commit object with that id",
-    },
-    verification_step_name: "Prove the pinned seed commit exists",
-  }
+  SeedPinVerifierProducer { verification_step_name: "Prove the pinned seed commit exists" }
 }
 
 fn fixture_seed() -> PublicSeed {
@@ -1402,106 +1397,37 @@ test fn the_seed_ref_is_admitted_by_the_job_that_declares_its_output() -> Bool {
        )
 }
 
-// One job-level output declaration, read as the fact it states: does this entry name `output_name` and
-// carry exactly the value the consumer's ref will be rendered from?
-fn declared_output_entry_matches(entry: YamlKeyValue, output_name: String, expected_value: String) -> Bool {
-  match entry {
-    YamlKeyValue { key: k, value: v } =>
-      k == output_name
-        && match v { YamlString { value: s } => s == expected_value  _ => false }
-  }
-}
-
-// THE JOB DECLARES, AT JOB LEVEL, THE OUTPUT ITS CONSUMER READS. GitHub lets a consumer read a job output
-// only if the job says so, and a `run:` step writing to $GITHUB_OUTPUT is not that statement; this is the
-// fact that makes the seed checkout admissible, so it is asserted here rather than inferred from the YAML
-// happening to work. The declared value is spelled by `interpolate` from the same step id the verifier
-// step carries, so the declaration and the step that writes the value cannot name different things, and
-// the control builds the expected text with its own `interpolate` rather than the wall's helper.
-test fn the_verifier_job_declares_the_output_its_consumer_reads() -> Bool {
+// A NAME IS NOT A PRODUCER, AND A WORKFLOW CANNOT VOUCH FOR ITSELF. Three refusals that need only the job
+// the emitter actually builds: with no workflow in front of the wall the record alone admits nothing; with
+// the carried verifier job present, a ref that names a DIFFERENT job's output is refused even though that
+// job's own honest declaration is sitting in the same list -- admission comes from the producer records, and
+// the workflow is only ever asked whether it carries the record, never whether it would like to. The
+// remaining case -- the verifier's own id, declaring from a step the job does not contain -- is mutation
+// `f`: it is a property of what the emitter can build, and it is checked through the driver, where the job
+// comes from the emitter rather than from a literal in this module.
+test fn no_job_output_is_admitted_because_the_workflow_declares_it() -> Bool {
   let seed = fixture_seed()
-  let step_id = seed_pin_verifier_step_id(seed: seed)
-  let output_name = seed.verifier.producer.output_name as String
-  let expected_declaration = interpolate(
-    expression: ContextAccess { context: Steps, path: [step_id, "outputs", output_name] }
-  )
+  let output_name = seed_pin_verifier_output_name()
   match seed_pin_verifier_job(
     seed: seed, pin: fixture_seed_pin, runner: HostedRunner { label: UbuntuLatest }
   ) {
     Accepted { value: j, diagnostics: _ } =>
-      match j.outputs {
-        Present { value: entries } =>
-          (entries |> count) == 1
-            && (filter(
-                 entries,
-                 e => declared_output_entry_matches(entry: e, output_name: output_name, expected_value: expected_declaration)
-               ) |> count) == 1
-            && any(job_step_ids(job: j), s => s == step_id)
-        _ => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// The emitted verifier with its steps removed and its own declaration kept: everything the name claims,
-// with nothing behind it. A `Job` has no update syntax, so the fields are copied one by one and only
-// `steps` differs -- a reviewer can check the single difference by reading the literal.
-fn hollow_verifier_job(job: Job) -> Optional<Job> {
-  match job.outputs {
-    Present { value: es } =>
-      if (es |> count) > 0 {
-        Present {
-          value: Job {
-            id: job.id,
-            name: job.name,
-            runner: job.runner,
-            environment: job.environment,
-            steps: [],
-            needs: job.needs,
-            env: job.env,
-            outputs: Present { value: es },
-            if_condition: job.if_condition,
-            timeout_minutes: job.timeout_minutes,
-            continue_on_error: job.continue_on_error,
-            concurrency: job.concurrency,
-            permissions: job.permissions,
-          }
-        }
-      } else {
-        Absent {  }
-      }
-    _ => Absent {  }
-  }
-}
-
-// A DECLARATION THAT POINTS AT A STEP ITS OWN JOB DOES NOT CONTAIN IS REFUSED. This is the invention case
-// the wall used to leave to caller discipline: the job id, the output name and the declared value are all
-// spelled correctly -- only the step that is supposed to earn the value is missing from the job. The
-// hollow job below is the emitted verifier with its steps removed and its own declaration kept, so the
-// difference the wall sees is exactly the producer being absent behind the name. Admitted with the real
-// job, refused with the hollow one: a name is not a producer.
-test fn a_declaration_with_no_step_behind_it_is_refused() -> Bool {
-  let seed = fixture_seed()
-  let ref_expression = match seed_pin_checkout_ref_expression(seed: seed) {
-    Present { value: e } => e
-    Absent {  } => ContextAccess { context: Needs, path: ["impossible", "outputs", "nothing"] }
-  }
-  match seed_pin_verifier_job(
-    seed: seed, pin: fixture_seed_pin, runner: HostedRunner { label: UbuntuLatest }
-  ) {
-    Accepted { value: honest, diagnostics: _ } =>
-      (honest.steps |> count) > 0
-        && match hollow_verifier_job(job: honest) {
-             Present { value: hollow } =>
-               match hollow.outputs {
-                 Present { value: es } =>
-                   (es |> count) > 0
-                     && checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: [honest])
-                     && !checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: [hollow])
-                 _ => false
-               }
-             Absent {  } => false
-           }
+      checkout_ref_admitted_in_jobs(
+        ref_expression: ContextAccess { context: Needs, path: [seed_pin_verifier_job_id(), "outputs", output_name] },
+        jobs: [j]
+      )
+        && !checkout_ref_admitted_in_jobs(
+             ref_expression: ContextAccess { context: Needs, path: [seed_pin_verifier_job_id(), "outputs", output_name] },
+             jobs: []
+           )
+        && !checkout_ref_admitted_in_jobs(
+             ref_expression: ContextAccess { context: Needs, path: ["some-other-job", "outputs", output_name] },
+             jobs: [j]
+           )
+        && !checkout_ref_admitted_in_jobs(
+             ref_expression: ContextAccess { context: Needs, path: [seed_pin_verifier_job_id(), "outputs", "not-its-output"] },
+             jobs: [j]
+           )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -1518,12 +1444,8 @@ test fn a_declaration_with_no_step_behind_it_is_refused() -> Bool {
 // spelled any other way is a ref the lane silently stops reading.
 test fn the_seed_ref_text_is_the_producer_path_and_nothing_else() -> Bool {
   let seed = fixture_seed()
-  let path = [
-    seed.verifier.producer.job_id as String,
-    "outputs",
-    seed.verifier.producer.output_name as String,
-  ]
-  seed_pin_verifier_output_path(seed: seed) == join(path, ".")
+  let path = [seed_pin_verifier_job_id(), "outputs", seed_pin_verifier_output_name()]
+  seed_pin_verifier_output_path() == join(path, ".")
     && interpolate(expression: ContextAccess { context: Needs, path: path })
       == "${{ needs['verify-seed-pin'].outputs.committed_sha }}"
 }

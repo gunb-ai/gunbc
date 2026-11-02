@@ -336,15 +336,41 @@ data checkout_revision_inputs: List<String> = ["expected_revision", "head_sha", 
 // - `plan-revision` writes only a revision that gunbc.fleet.fleet_converge_plan_revision admitted from
 //   GitHub's record of the plan run; `build` re-exports either that or the event sha. Both sit behind
 //   `|| github.sha` in fleet-converge, so an empty output falls to a commit.
-// - the SEED-PIN VERIFIER jobs are declared by a repository's profile row (a seed's `verifier.producer`
-//   in gunbc.ci.repository_ci_profile), and the step that earns the output is emitted from that same
-//   record: it fetches the pinned commit into an isolated object store from the intended repository and
-//   prints it only after `git cat-file -t` says commit and the object id equals the pin. A job that does
-//   not earn its output does not exist in this fold, because it is not named by any row.
+// - the SEED-PIN VERIFIER is one record, model-owned (below): its step fetches the pinned commit into an
+//   isolated object store from the intended repository and writes the output only after `git cat-file -t`
+//   says commit and the fetched object's own id equals the pin. Because the record names the step that
+//   earns the output, the workflow under admission is checked for carrying it.
+//
+// A record is the only thing that can admit a `needs.` ref. Whether the job behind it is honest is not a
+// matter of a caller vouching for it, and never was a matter of the job declaring SOMETHING: see
+// `workflow_carries_producer`, and review 90155 on why "any job that plumbs a step output to job level"
+// was refused -- that widen would admit `ref: needs.X.outputs.Y` carrying `main`.
 type CommitOutputProducer {
   job_id: NonEmptyStr
   output_name: NonEmptyStr
   earns_it_by: NonEmptyStr
+
+  // The step whose `$GITHUB_OUTPUT` write the job re-exports, WHEN THE PRODUCER IS EMITTED FROM THIS MODEL.
+  // Present makes the record checkable against the workflow under admission: a job with this id must exist,
+  // must declare this output, the declared value must be the rendering of `steps.<that step>.outputs.<name>`,
+  // and a step with that id must be present in that job. Absent is the pre-existing shape of the two
+  // fleet-converge records, which were admitted on the record alone before the seed verifier existed and are
+  // admitted on the record alone still -- their jobs' honesty is decided by the fleet planner and the
+  // plan-revision admission, not here.
+  declaration_step: String?
+}
+
+// THE SEED-PIN VERIFIER'S IDENTITY IS MODEL-OWNED, NOT ROW DATA. A repository's profile row decides WHICH
+// repository it seeds, WHERE it checks out and WHAT it builds -- never what the verifier job is called or
+// which output names the commit. One spelling of that identity exists, here: it is the same record that
+// admits the consumer's `needs.` read, that gunbc.ci.repository_seed_steps builds the job, the earning step
+// and the checkout's ref from, and that the consumer's guard names when it refuses an empty output. A row
+// cannot steer one of those away from the others, which is what makes the entry earned rather than typed.
+data seed_pin_verifier_producer_row: CommitOutputProducer = CommitOutputProducer {
+  job_id: "verify-seed-pin",
+  output_name: "committed_sha",
+  earns_it_by: "the emitted step verify-seed-pin-check fetches the pinned commit into an isolated object store from the intended repository and writes the output only after `git cat-file -t` says commit and the fetched object's own id equals the pin (gunbc.ci.repository_seed_steps::seed_pin_proofs)",
+  declaration_step: Present { value: "verify-seed-pin-check" },
 }
 
 data commit_output_producers: List<CommitOutputProducer> = [
@@ -352,13 +378,32 @@ data commit_output_producers: List<CommitOutputProducer> = [
     job_id: "plan-revision",
     output_name: "revision",
     earns_it_by: "gunbc.fleet.fleet_converge_plan_revision admits the revision from GitHub's record of the plan run before the step writes it",
+    declaration_step: Absent,
   },
   CommitOutputProducer {
     job_id: "build",
     output_name: "revision",
     earns_it_by: "the step re-exports either the admitted plan revision or the event sha, each of which is a commit",
+    declaration_step: Absent,
   },
+  seed_pin_verifier_producer_row,
 ]
+
+// The one record the seed verifier is emitted from, and the projections of it other modules read. Nothing
+// else may spell these names: an id written by hand in an emitter beside an id kept here would be two
+// authorities over which step earns the output.
+fn seed_pin_verifier_producer() -> CommitOutputProducer { seed_pin_verifier_producer_row }
+
+fn seed_pin_verifier_job_id() -> String { seed_pin_verifier_producer_row.job_id as String }
+
+fn seed_pin_verifier_output_name() -> String { seed_pin_verifier_producer_row.output_name as String }
+
+fn seed_pin_verifier_check_step_id() -> String {
+  match seed_pin_verifier_producer_row.declaration_step {
+    Present { value: step_id } => step_id
+    Absent {  } => join([seed_pin_verifier_job_id(), "-check"], "")
+  }
+}
 
 // THE OUTPUT PATH A CONSUMER MAY READ, derived from the producer rather than spelled beside it. One
 // spelling of "job J's output O" exists, and it is this -- the emitter puts it in the checkout's ref
@@ -371,16 +416,15 @@ fn commit_output_producer_path(producer: CommitOutputProducer) -> String {
   join([producer.job_id, ".outputs.", producer.output_name], "")
 }
 
-fn checkout_commit_job_outputs_from_producers(producers: List<CommitOutputProducer>) -> List<String> {
-  fold(producers, init: [], f: fn(acc, p) { concat(acc, [commit_output_producer_path(producer: p)]) })
-}
-
-// WHAT A JOB ACTUALLY DECLARES AS ITS OUTPUT. GitHub's job-level `outputs:` map is where a job says
-// "consumers may read this"; a `run:` step writing to $GITHUB_OUTPUT is not something the wall can see,
-// so a name counts here only when its declared value is the rendering of `steps.<X>.outputs.<name>` for a
-// step X that EXISTS IN THAT SAME JOB. The declaration cannot point at a step that is not there, and the
-// spelling of the value is `interpolate` -- the same renderer the consumer's ref is built with -- rather
-// than a `${{ ... }}` this file re-types and lets drift.
+// WHAT A JOB DECLARES AS ITS OUTPUT, AND WHAT MAKES A PRODUCER CARRIED. GitHub's job-level `outputs:` map is
+// where a job says "consumers may read this"; a `run:` step writing to $GITHUB_OUTPUT is not something the
+// wall can see, so a declaration counts only when its value is the rendering of
+// `steps.<X>.outputs.<name>` for a step X that EXISTS IN THAT SAME JOB, spelled with `interpolate` -- the
+// same renderer the consumer's ref is built with -- rather than a `${{ ... }}` this file re-types and lets
+// drift. That decides only that a job plumbs some step's write through to job level; WHICH jobs may name a
+// COMMIT is decided by the producer records, and a record naming its earning step is checked against the
+// workflow by the predicate below. A ref that no record names is never admitted, whatever the workflow
+// contains -- admitting any honestly-declared job output is the widen that would let `ref:` carry `main`.
 fn job_output_declaration_text(step_id: String, output_name: String) -> String {
   interpolate(
     expression: ContextAccess { context: Steps, path: [step_id, "outputs", output_name] }
@@ -398,39 +442,44 @@ fn job_step_ids(job: Job) -> List<String> {
   })
 }
 
-fn job_honestly_declared_output_names(job: Job) -> List<String> {
-  match job.outputs {
-    Present { value: entries } =>
-      fold(entries, init: [], f: fn(acc, entry) {
-        match entry {
-          YamlKeyValue { key: k, value: v } =>
-            match v {
-              YamlString { value: s } =>
-                if any(job_step_ids(job: job), step_id => s == job_output_declaration_text(step_id: step_id, output_name: k)) {
-                  concat(acc, [k])
-                } else {
-                  acc
+// THE PRODUCER MUST BE CARRIED BY THE WORKFLOW, in the strong sense: the job the record names exists, the
+// step the record names exists IN THAT JOB, and the job's declared output for that name is the rendering of
+// that step's write. A job that declares the output from some other step, or declares it from a step it does
+// not contain, or carries a step with the right id and no such declaration, earns nothing. A record that
+// declares no earning step -- fleet-converge's two, whose earning is decided by the fleet planner and the
+// plan-revision admission rather than by a step emitted from this model -- is carried by existing in the
+// fold, exactly as it was before the seed verifier existed.
+fn workflow_carries_producer(jobs: List<Job>, producer: CommitOutputProducer) -> Bool {
+  match producer.declaration_step {
+    Absent {  } => true
+    Present { value: step_id } =>
+      any(
+        jobs,
+        f: fn(job) {
+          (job.id == (producer.job_id as String))
+            && any(job_step_ids(job: job), id => id == step_id)
+            && any(
+              match job.outputs { Present { value: entries } => entries  Absent {  } => [] },
+              f: fn(entry) {
+                match entry {
+                  YamlKeyValue { key: k, value: v } =>
+                    (k == (producer.output_name as String))
+                      && match v {
+                        YamlString { value: s } =>
+                          s
+                            == job_output_declaration_text(
+                              step_id: step_id,
+                              output_name: producer.output_name as String,
+                            )
+                        _ => false
+                      }
+                  _ => false
                 }
-              _ => acc
-            }
+              }
+            )
         }
-      })
-    _ => []
+      )
   }
-}
-
-// THE NEEDS ARM HAS TWO ANSWERS AND NO PARAMETER. Either the corpus names the producer, or THE WORKFLOW
-// UNDER ADMISSION CARRIES THE PRODUCER ITSELF: a job with that id declaring that output, honestly, from a
-// step that exists. There is no third answer because there is nothing a caller can fill in -- the inputs
-// are the corpus rows and the workflow being admitted, and the check reads the very workflow it is about
-// to refuse. An emitter that invents a job/output pair gains nothing: inventing the pair does not put a
-// declaring job in the workflow. What the wall cannot see from here is whether the declaring step earns
-// what it writes; that is the proof data's job (gunbc.ci.repository_seed_steps) and the consumer guard's,
-// and it is stated here rather than implied by a trust in caller discipline that no code enforced.
-fn workflow_declares_job_output(jobs: List<Job>, dotted: String) -> Bool {
-  any(jobs, job =>
-    any(job_honestly_declared_output_names(job: job), name => dotted == join([job.id, ".outputs.", name], ""))
-  )
 }
 
 fn checkout_names_a_revision_input(name: String) -> Bool {
@@ -444,9 +493,21 @@ fn checkout_context_names_a_commit(context: ExpressionContext, path: List<String
       dotted == "sha" || dotted == "event.pull_request.head.sha"
         || fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || dotted == concat("event.inputs.", n) })
     Inputs => checkout_names_a_revision_input(name: dotted)
+    // The fold over the producer records is the only answer. A `needs.` ref names a commit when a record
+    // says a job earns it and -- where the record names the step that earns it -- when the workflow being
+    // admitted carries that job and that step. `jobs` is never consulted for a ref no record names.
     Needs =>
-      fold(checkout_commit_job_outputs_from_producers(producers: commit_output_producers), init: false, f: fn(acc, n) { acc || dotted == n })
-        || workflow_declares_job_output(jobs: jobs, dotted: dotted)
+      fold(
+        commit_output_producers,
+        init: false,
+        f: fn(acc, producer) {
+          acc
+            || (
+              dotted == commit_output_producer_path(producer: producer)
+                && workflow_carries_producer(jobs: jobs, producer: producer)
+            )
+        }
+      )
     Env => false
     Vars => false
     Job => false

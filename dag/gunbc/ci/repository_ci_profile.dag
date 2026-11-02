@@ -28,7 +28,6 @@ import gunbc.ci.ci_runner_target {
   selected_ci_runner_target,
 }
 import std.types { commit_sha_text_holds }
-import gunbc.action_use_admission { CommitOutputProducer }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
 import gunbc.required_ci_contract_epoch { required_ci_context_name }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
@@ -105,18 +104,16 @@ type SeedSource
   = Seed_commit_pin { sha: String }
   | Seed_pin_owed { owed_because: NonEmptyStr }
 
-// THE VERIFIER PRODUCER, as the wall knows it. This ONE record names both the job that proves the pin
-// exists and the output the seed checkout may consume: the step that earns the output and the allowlist
-// entry that admits consuming it are the same projection of it (gunbc.action_use_admission
-// checkout_commit_job_outputs_from_producers is a fold over these records, so an entry cannot be added, renamed or
-// dropped without touching the job that earned it -- the manager's ruling on #15631 that a hand-added
-// allowlist entry is a second authority). There is deliberately NO url field here: where the seed comes
-// from is derived from the row's own `repository` (gunbc.ci.repository_seed_steps seed_pin_fetch_url), so
-// the verifier cannot certify a pin in a store fetched from a different repository than the one the lane is
-// filled from. The pin is fetched BY SHA and from nothing else, so a pin that exists only in a fork, or
-// only under a tag, or only as a branch tip, is refused rather than quietly used.
+// WHAT A MIRROR'S ROW SAYS ABOUT ITS VERIFIER, and nothing more. The verifier's IDENTITY -- its job id, the
+// name of the output that names the commit, and the step that earns that output -- is model-owned, in
+// gunbc.action_use_admission (seed_pin_verifier_producer), because that identity is what the wall admits a
+// consumer's `needs.` read from; a row that could name them could steer the job it built away from the
+// entry that admits it. What the row legitimately owns is the human-facing step name, and where the seed
+// comes from, derived from the row's own `repository` (gunbc.ci.repository_seed_steps seed_pin_fetch_url),
+// so a verifier cannot certify a pin in a store fetched from a different repository than the one the lane is
+// filled from. The pin is fetched BY SHA and from nothing else, so a pin that exists only in a fork, or only
+// under a tag, or only as a branch tip, is refused rather than quietly used.
 type SeedPinVerifierProducer {
-  producer: CommitOutputProducer
   verification_step_name: NonEmptyStr
 }
 

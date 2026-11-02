@@ -49,6 +49,7 @@ import gunbc.heal_publisher_workflow { heal_publisher_candidate_directory }
 import test.claim.repository_ci_profile_witness {
   fixture_seed, mirror_profile_with_annotation, wet_seed, wet_seed_pin, wet_seed_pin_parent,
 }
+import gunbc.action_use_admission { seed_pin_verifier_output_name }
 import gunbc.ci.repository_seed_steps { seed_pin_verification_statements }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -526,7 +527,7 @@ test fn the_emitted_seed_verifier_admits_the_pinned_commit() -> Bool {
       && written.rendered
       && string_contains(
            s: written.out,
-           pattern: join([wet_seed().verifier.producer.output_name as String, "=", wet_seed_pin], "")
+           pattern: join([seed_pin_verifier_output_name(), "=", wet_seed_pin], "")
          )
   })
 }
