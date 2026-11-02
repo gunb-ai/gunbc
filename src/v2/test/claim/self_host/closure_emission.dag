@@ -782,3 +782,19 @@ data ce_refusing_arg_record_member_source: String = "module v2.test.ce_refusing_
 fn ce_probe_let_record_text() -> String { ce_probe_verdict(member_source: ce_refusing_let_record_member_source) }
 
 fn ce_probe_arg_record_text() -> String { ce_probe_verdict(member_source: ce_refusing_arg_record_member_source) }
+// T13 (keen-heron-809): then-form record before else, WITH the guard present today. Prediction
+// from reading: REJECTS at PARSE under the guard — the then-branch expr stops at `{` (guard bans
+// the record on {a}+else), the then-form production then demands kw_else and meets `{`, and the
+// block-form alternative demands lbrace and meets kw_then. `R { a }` is unambiguously a record
+// here (no block slot follows a then-branch), so the guard is misfiring outside conditions.
+// T14: contrasting then-form row where the record sits after else (nothing follows it) — the
+// guard does not fire there; expected same verdict with and without the guard (sanity).
+// Corpus note: ZERO real then-form uses in dag/ + src/v2 (all "then" hits are prose/comments),
+// and the seed parser has no then-form at all — no source relies on either reading.
+data ce_refusing_thenform_record_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c then R { a } else b\n}\n"
+
+data ce_refusing_thenform_contrast_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c then i else R { b }\n}\n"
+
+fn ce_probe_thenform_record_text() -> String { ce_probe_verdict(member_source: ce_refusing_thenform_record_member_source) }
+
+fn ce_probe_thenform_contrast_text() -> String { ce_probe_verdict(member_source: ce_refusing_thenform_contrast_member_source) }
