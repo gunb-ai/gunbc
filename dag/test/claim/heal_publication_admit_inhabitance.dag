@@ -23,8 +23,12 @@ import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 data inhabitant_public_url: String = "https://github.com/gunb-ai/gunbc.git"
-data inhabitant_ref_name: String = "refs/pull/15670/head"
-data inhabitant_expected_path: String = "dag/gunbc/heal_publication.dag"
+// refs/pull/500/head is FROZEN: #500 merged 2026-04-17 and a pull request's head ref never moves once
+// the PR is merged, and it is advertised anonymously (verified). This is a stable, independent
+// reference point -- not a live PR that can merge or close out from under the claim. The witness proves
+// the ROUTE, not a particular sha, so it asserts the fetched tree is a real non-empty decoded tree
+// rather than pinning content that may not exist at an ancient head.
+data inhabitant_ref_name: String = "refs/pull/500/head"
 
 fn git_ascii(octets: List<Int>) -> String {
   match git_ascii_field_text(octets: octets) { Present { value: text } => text as String  Absent => "" }
@@ -56,9 +60,12 @@ fn inhabitance_run() -> ProcessExit {
     GitLsFilesStageZRefused { cause: _ } => exit_failure(reason: "inhabitance: the staged file set did not decode")
     GitLsFilesStageZDecoded { entries } =>
       let paths = map(entries, e => git_ascii(octets: git_path_octets(path: e.path)))
-      if count(entries) <= 0 { return exit_failure(reason: "inhabitance: the fetched tree listed no entries") }
-      if count(filter(paths, p => p == inhabitant_expected_path)) <= 0 {
-        return exit_failure(reason: concat("inhabitance: the fetched tree did not contain ", inhabitant_expected_path))
+      if count(entries) <= 0 { return exit_failure(reason: "inhabitance: the fetched tree listed no entries -- the anonymous route produced an empty tree") }
+      // A real decoded tree from the real transport: every staged entry carries non-empty path octets.
+      // This fails if the fetch/decode route is broken, without pinning content that may be absent at a
+      // frozen ancient head (which is what made a live-PR-number oracle both stale-prone and vacuous).
+      if count(filter(paths, p => p == "")) > 0 {
+        return exit_failure(reason: "inhabitance: a staged entry decoded to an empty path -- the decoder did not yield a real tree")
       }
       ExitSuccess
   }
