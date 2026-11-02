@@ -1,5 +1,6 @@
 module gunbc.provisioning.provisioning_arm
 
+import gunbc.boot_artifact_delivery { BootControlTarget, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
@@ -34,15 +35,6 @@ import gunbc.firmware_network_boot_standing {
 import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin }
 // S4, owner deep-ram-338: the autoinstall seed binding an attempt boots with.
 import gunbc.provisioning.ubuntu_autoinstall_seed { UbuntuAutoinstallSeedBinding, BindingBlocker }
-
-// THE CLOSED SET OF DELIVERY STRATEGIES THE OPERATOR HAS PERMITTED. Network boot (PXE or UEFI HTTP,
-// one family: the firmware picks the transport) and BMC virtual media. There is deliberately no
-// USB arm: the operator ruled a USB interim out for these boards, so a variant would model a decision
-// already made against. A fleet where USB is admitted adds the constructor here and one arm in
-// provisioning_arm_derive; nothing else in this module names a transport.
-type DeliveryStrategy
-  = PxeOrUefiHttp
-  | VirtualMedia
 
 // What the BMC says about presenting virtual media. Evidence the caller observes (the board's BMC
 // firmware capability catalog is its authority); it is never read off a host name.
@@ -123,17 +115,21 @@ type ProvisioningArm {
   shape: ArmShape
 }
 
+// THE STRATEGY IS gunbc.boot_artifact_delivery BootControlTarget, the one authority for what the firmware is told to boot
+// from (replacing the retired DeliveryStrategy). Network boot (PXE or UEFI HTTP, one family: the firmware picks the
+// transport) and BMC removable media; there is deliberately no USB arm (operator ruling).
 // THE DERIVATION. Total over (strategy, evidence). The attempt is bound to the result and is not an
 // argument of any deriving fn. Evidence is checked in a fixed order so the same evidence always yields
 // the same missing/refused cause. No attempt-time fallback: a Refused or Unobserved shape ends the attempt.
-fn provisioning_arm_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+fn provisioning_arm_derive(strategy: BootControlTarget, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
   ProvisioningArm { attempt: attempt, shape: arm_shape_derive(strategy: strategy, evidence: evidence) }
 }
 
-fn arm_shape_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence) -> ArmShape {
+fn arm_shape_derive(strategy: BootControlTarget, evidence: DeliveryEvidence) -> ArmShape {
   match strategy {
-    PxeOrUefiHttp => derive_pxe(evidence: evidence)
-    VirtualMedia => derive_virtual_media(evidence: evidence)
+    BootFromNetworkPxe => derive_pxe(evidence: evidence)
+    BootFromUefiHttp => derive_pxe(evidence: evidence)
+    BootFromRemovableMedia => derive_virtual_media(evidence: evidence)
   }
 }
 
