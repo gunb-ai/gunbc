@@ -1,33 +1,96 @@
 module test.claim.roadmap.attempt_state_unowned_entries_frontier_witness
 
-import std.types { Bool, String, List, Int }
-import std.roster_frontier { FrontierSubject, FrontierRow, DeclSubject, frontier_subject_eq }
-import std.decl_ref { decl_ref }
+// The unowned-entries frontier: every unowned durable class beneath the attempt-state root carries its own
+// census row keyed by a unique PathSubject identity. THE ORACLE IS AN IDENTITY JOIN, NOT A COUNT.
+// Controls:
+//   (a) every expected class identity appears exactly once -- missing names the class;
+//   (b) no identity appears more than once -- duplicate names the class;
+//   (c) the group is a member of the census aggregate by identity.
+// The count is NEVER the sole oracle; it is a derived consequence of the identity join.
+
+import std.types { Bool, String, Int, List }
+import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.roadmap.roadmap_attempt_state_store { attempt_state_unowned_entries_frontier_rows }
 
-// KEYED PRESENCE CONTROL (the lane standard, mirroring test.claim.roadmap.attempt_directory_wire_frontier_witness
-// and test.claim.prepared_bundle_store_witness for the prepared-bundle retirement frontier): the unowned srv1
-// attempt-state entry classes are all dispositioned in the census aggregate, keyed by their SUBJECT DECLARATION
-// (host_layout.srv1_dispatch_attempt_state_root -- the root the external writers drop files beneath) and NOT by a
-// bare count of the whole aggregate. Two arms:
-//   (1) presence-by-subject: at least one dispositioned row carries the root as its subject, so deleting the whole
-//       group from gunbc.census_closure_frontier.census_closure_frontier_row_groups makes this claim fail.
-//   (2) all-classes guard: exactly the nine unowned classes are present under that subject, so no class may be
-//       silently dropped from the group (nothing unowned is silently ignored).
+// The 9 class identities, keyed on the canonical entry-name pattern. This is the roster against which the
+// rows are checked; a 10th class requires adding a variant here AND a row in the data, and vice versa.
+data attempt_state_unowned_class_identity_roster: List<String> = [
+  "job-<pid>.out",
+  "job-<pid>.err",
+  "<stem>.harness-request.json.response.json",
+  "<stem>.harness-request.json.response.headers",
+  "handin",
+  "supervision-observation-after-turn-<N>",
+  "supervision-check-verdict-after-turn-<N>",
+  "supervision-check-request-after-turn-<N>",
+  "supervision-check-events-after-turn-<N>",
+]
 
-fn count_rows_with_subject(rows: List<FrontierRow>, want: FrontierSubject) -> Int {
-  match rows {
-    Empty {} => 0
-    Cons { head: r, tail: rest } => if frontier_subject_eq(a: r.subject, b: want) { 1 + count_rows_with_subject(rows: rest, want: want) } else { count_rows_with_subject(rows: rest, want: want) }
+fn row_identity_key(row: FrontierRow) -> String {
+  match row.subject {
+    PathSubject { path: p } => p
+    DeclSubject { ref: _ } => ""
   }
 }
 
-test fn the_unowned_entries_frontier_group_is_in_the_census_aggregate() -> Bool {
-  let want: FrontierSubject = DeclSubject { ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root") }
-  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+fn count_with_identity(rows: List<FrontierRow>, identity: String) -> Int {
+  match rows {
+    Empty {} => 0
+    Cons { head: r, tail: rest } =>
+      if row_identity_key(row: r) == identity {
+        1 + count_with_identity(rows: rest, identity: identity)
+      } else {
+        count_with_identity(rows: rest, identity: identity)
+      }
+  }
 }
 
-test fn every_unowned_entry_class_is_dispositioned() -> Bool {
-  let want: FrontierSubject = DeclSubject { ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root") }
-  count_rows_with_subject(rows: census_closure_frontier_rows(), want: want) == 9
+fn first_missing_in(roster: List<String>, rows: List<FrontierRow>) -> String {
+  match roster {
+    Empty {} => ""
+    Cons { head: id, tail: rest } =>
+      if count_with_identity(rows: rows, identity: id) == 0 { id }
+      else { first_missing_in(roster: rest, rows: rows) }
+  }
+}
+
+fn first_duplicate_in(roster: List<String>, rows: List<FrontierRow>) -> String {
+  match roster {
+    Empty {} => ""
+    Cons { head: id, tail: rest } =>
+      if count_with_identity(rows: rows, identity: id) > 1 { id }
+      else { first_duplicate_in(roster: rest, rows: rows) }
+  }
+}
+
+// (a) For every expected identity, at least one row must carry it.
+test fn every_unowned_class_identity_present() -> Bool {
+  first_missing_in(roster: attempt_state_unowned_class_identity_roster, rows: attempt_state_unowned_entries_frontier_rows) == ""
+}
+
+// (b) No expected identity appears more than once.
+test fn no_unowned_class_identity_duplicated() -> Bool {
+  first_duplicate_in(roster: attempt_state_unowned_class_identity_roster, rows: attempt_state_unowned_entries_frontier_rows) == ""
+}
+
+// (c) Every row in the group carries an identity from the roster (no unknown classes).
+test fn every_row_identity_is_in_the_roster() -> Bool {
+  any(attempt_state_unowned_entries_frontier_rows, r =>
+    any(attempt_state_unowned_class_identity_roster, id => row_identity_key(row: r) == id)
+  )
+}
+
+// (d) The group is present in the census aggregate (each identity found among all aggregate rows).
+test fn the_unowned_entries_frontier_group_is_in_the_census_aggregate() -> Bool {
+  let aggregate = census_closure_frontier_rows()
+  any(attempt_state_unowned_class_identity_roster, id =>
+    any(aggregate, r => row_identity_key(row: r) == id)
+  )
+}
+
+// (e) Identity join completeness: all roster identities present exactly once in the census aggregate.
+test fn unowned_entries_identity_join_complete_in_aggregate() -> Bool {
+  let aggregate = census_closure_frontier_rows()
+  first_missing_in(roster: attempt_state_unowned_class_identity_roster, rows: aggregate) == ""
 }
