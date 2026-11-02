@@ -1,21 +1,15 @@
 module gunbc.recurring_failure_mode.a_type_parameter_solved_through_an_optional_formal_keeps_the_optional_layer
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { StructurallyGuaranteed }
-import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_type_parameter_solved_through_an_optional_formal_keeps_the_optional_layer: RecurringFailureMode = RecurringFailureMode {
   identity: "a_type_parameter_solved_through_an_optional_formal_keeps_the_optional_layer" as NonEmptyStr,
 
   rung: RungRead {
     found_at: FoundBelowTheLadder,
-    standing: BelowCeiling {
-      current: FoundBelowTheLadder,
-      ceiling: StructurallyGuaranteed,
-      blocker: ClimbableButUnbuilt,
-      trigger_capability: "test.claim.generic_optional_formal_binding_witness executed on the real acceptance path at this change's head, its four REDs refused-before and accepted-after and its three controls green, with v1.compiler.infer unify_generics binding through generic_binding_through_formal_cardinality in the regenerated stage0 mirror -- sufficient for the class to stand at structurally guaranteed: no Accepted program carries a type parameter bound to `T?` through a `P?` formal."
-    },
+    standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "v1.compiler.infer unify_generics binds through generic_binding_through_formal_cardinality, so no Accepted program carries a type parameter bound to `T?` through a `P?` formal. Executed on srv2 kh-arm3 at e365325f (gunbc 9128793d, built 2026-11-02T17:23:58Z; regenerated v1_compiler_infer.rs sha256 e12cb172, second regen first_generation_equal=true): test.claim.generic_optional_formal_binding_witness 7 of 7, its four REDs refused before (srv2 kh-evdec2, gunbc df91740c) and accepted now, three controls green" as NonEmptyStr },
   },
 
   receipts: [

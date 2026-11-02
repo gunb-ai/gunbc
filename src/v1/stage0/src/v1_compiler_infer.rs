@@ -27360,6 +27360,16 @@ pub fn param_is_generic_decl(
     }
 }
 
+pub fn generic_binding_through_formal_cardinality(formal: Rc<Node>, actual: Rc<Node>) -> Rc<Node> {
+    if ((formal.return_cardinality.clone() == Cardinality::CardOptional)
+        && (actual.return_cardinality.clone() == Cardinality::CardOptional))
+    {
+        crate::v1_std_core::with_required_cardinality(actual.clone())
+    } else {
+        actual.clone()
+    }
+}
+
 pub fn unify_generics(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -27388,9 +27398,11 @@ pub fn unify_generics(
             })
         {
             match v1_rt::map_get(&acc, bind_name.clone()) {
-                std::option::Option::None => {
-                    v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
-                }
+                std::option::Option::None => v1_rt::rc_map_insert(
+                    acc.clone(),
+                    bind_name.clone(),
+                    generic_binding_through_formal_cardinality(formal.clone(), actual.clone()),
+                ),
                 Some(_) => acc.clone(),
             }
         } else {
