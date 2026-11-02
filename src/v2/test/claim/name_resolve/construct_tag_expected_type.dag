@@ -250,6 +250,11 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
           coinciding_unimported: coinciding_unimported.verdict,
           type_param: type_param.verdict,
           nullary: nullary.verdict,
+          atom_field: verdict.atom_field,
+          atom_binder: verdict.atom_binder,
+          atom_misspelled: verdict.atom_misspelled,
+          atom_unresolved: verdict.atom_unresolved,
+          atom_unresolved_binder: verdict.atom_unresolved_binder,
         })
       }
   }

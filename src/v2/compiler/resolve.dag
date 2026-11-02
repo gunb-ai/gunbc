@@ -895,7 +895,7 @@ fn pattern_binders(
       ctx: ctx,
       atoms: constructor_atoms,
       name: c.name,
-      atom: c.atom
+      atom: c.atom.occurrence_id
     ) {
       acc
     } else {
