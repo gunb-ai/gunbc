@@ -28,7 +28,7 @@ module test.fixture.machine_intake.mtcollins1_fan_capture
 // TRIGGER to re-ground: re-run fleet-converge.yml mode=mtcollins1_fan_observe host=srv1 and replace
 // these lines with the new run's output. A row whose record is absent stays refused, so a stale fixture
 // can only ever refuse, never admit.
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
 import std.algebra { list_find_first }
 import extdeps.bmc.ipmi_sdr { SdrVerboseReadout, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrVerboseUnreadable, SdrBlockThreshold, SdrBlockNotThreshold, SdrBlockUntyped, sdr_verbose_readout, sdr_verbose_block_typing }
@@ -124,8 +124,6 @@ data mtcollins1_fan_capture_repository_lines: List<String> = [
   " Assertions Enabled    : lnc- lcr- lnr+ unc+ ucr- unr+ ",
   " Deassertions Enabled  : lnc- lcr- lnr+ unc+ ucr- unr+ ",
 ]
-
-data mtcollins1_fan_capture_read_obligation: NonEmptyStr = "re-run fleet-converge.yml mode=mtcollins1_fan_observe host=srv1 and commit the verbose SDR repository read; until then nothing is typed and the four rows stay refused"
 
 // The readout the live path would produce from these bytes: the SAME parser, so a capture that does not
 // parse is refused here exactly as it would be refused on the machine.
