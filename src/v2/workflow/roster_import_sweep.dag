@@ -462,6 +462,17 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     RosterHeadRow { call: "reverse", key: "reverse", import_name: "list_reverse", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_reverse", positional: ["xs"], appended: [] } },
     RosterHeadRow { call: "take", key: "take", import_name: "take_prefix", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "take_prefix", positional: ["xs", "n"], appended: [] } },
     RosterHeadRow { call: "flat_map", key: "flat_map", import_name: "list_flat_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_flat_map", positional: ["xs", "f"], appended: [] } },
+    // T4 group A1 rulings (tidy-ant-251, checked against origin/main): each verified against the ambient builtin first.
+    // get: the builtin (xs, index) answers the element at optional cardinality (interpreter list_get_at_optional, Rust
+    // bridge list_get_optional), the same contract as std.algebra list_at_optional, so the rename is a respell. A get on a
+    // Map is NOT this row: runs over get are occurrence-scoped to list sites.
+    RosterHeadRow { call: "get", key: "get", import_name: "list_at_optional", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_at_optional", positional: ["xs", "index"], appended: [] } },
+    // fold: the builtin template (xs, init: A, f: fn(A, T) -> A) is std.algebra fold_list(xs, empty, cons) in the same
+    // accumulator order; only the labels differ. Applied only where the parsed reading resolves the ambient builtin.
+    RosterHeadRow { call: "fold", key: "fold", import_name: "fold_list", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [RosterLabelRename { from: "init", to: "empty" }, RosterLabelRename { from: "f", to: "cons" }], head: RenameHead { to: "fold_list", positional: ["xs"], appended: [] } },
+    // length: the list length, std.algebra length (FreeMonoid). Host-text length is string_length (G2); runs over length are
+    // occurrence-scoped to list sites. std.types list_length is a second name for this concept, a follow-up (tidy-ant-251).
+    RosterHeadRow { call: "length", key: "length", import_name: "length", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
   ]
 }
 
