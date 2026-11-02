@@ -142,6 +142,23 @@ service cargo.Build {
     }
   }
 
+  // THE WORKING ROOT AND THE ARTIFACT DIRECTORY AT THESE WORKFLOW-ROUTE CALL SITES, STATED AS MEASURED.
+  // These transports inject `CARGO_TARGET_DIR={target_dir}` through `env` and take their cwd through the
+  // coreutils `env -C` wrapper. Both were left as they are, deliberately and by scope: the ruled H1 change
+  // is the modelled native operation plus its binding, and rewriting an existing workflow-route command
+  // would move emitted workflow argv and generated artifacts that no H1 consumer needs moved.
+  //
+  // The target directory is worth moving to cargo's own `--target-dir` flag on its own item, so that a
+  // build's output location is visible in the argv instead of arriving as configuration; the residue is
+  // filed in gunbc.recurring_failure_mode.build_target_directory_declared_only_through_injected_env.
+  //
+  // WHY THE DIRECTORY CANNOT COME FROM CARGO ITSELF HERE, MEASURED 2026-11-02 on the pinned toolchain
+  // (rust-toolchain.toml channel 1.93.0): `cargo build --workdir p` answers "unexpected argument
+  // '--workdir' found", and `cargo -C p build` answers "the `-C` flag is unstable, pass -Z unstable-options
+  // on the nightly channel". So on this route the only argv that can name a working root for a spawn is
+  // `env -C`, which changes the directory and not the environment. The NATIVE route has no wrapper and
+  // needs none: the working root is an explicit argument of the entry and the emitted binding constructs
+  // the process config from it (gunbc.design_ruling native_compiler_route_admits_the_declared_cargo_build).
   operation BuildManifest {
     requires opaque
     input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }

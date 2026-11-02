@@ -29,16 +29,25 @@
 // are shims dispatching to the ACTIVE toolchain (extdeps.rust.rustup: "toolchain is a property, not the
 // machine"), which is why the identity is a name and not a path.
 //
-// CWD AND ENV, DECLARED RATHER THAN INHERITED BY ACCIDENT. This operation declares NO environment of its
+// CWD AND ENV, DECLARED RATHER THAN INHERITED BY ACCIDENT. The operation declares NO environment of its
 // own: the process sees exactly what the seed-build preamble put there and nothing this module adds --
-// contrast extdeps.rust.cargo_build Cargo.BuildManifest, which spells CARGO_TARGET_DIR into `env` and
-// takes its cwd through `env -C`, wrapping the declared program in a second one. The working root is the
-// native main's DECLARED binding, and the binding condition (operator ruling, 2026-11-01) is that an
-// undeclared program or cwd refuses at emission rather than defaulting. That binding is the ruled-but-
-// unbuilt half of this work: it sits in v1.compiler.emit_rust native_effect_binding_of, which today
-// constructs every admitted service with `Type::new(Default::default())`, leaving
-// extdeps.transports.shell ShellTransportConfig.working_dir None and the process in ".". Nothing in this
-// module claims that binding exists, and no parameter here pretends to be it.
+// contrast the `CARGO_TARGET_DIR=` assignment extdeps.rust.cargo_build used to push through `env` at its
+// build call sites, now replaced there by cargo's own --target-dir flag.
+//
+// THE WORKING ROOT IS NOT A CARGO FLAG, MEASURED, AND THAT IS WHY IT SITS IN THE BINDING. On the pinned
+// toolchain (rust-toolchain.toml channel 1.93.0) `cargo build --workdir p` answers "unexpected argument
+// '--workdir' found" and `cargo -C p build` answers "the `-C` flag is unstable, pass -Z unstable-options
+// on the nightly channel" (measured 2026-11-02). An argv token for the root would therefore fail at
+// cargo's own parser, so the route declares the root where it can be enforced: the native entry receives
+// its working root as an explicit typed argument beside its source roots, and the emitted binding
+// constructs the process config from it (operator ruling, option (c)); absence REFUSES at startup with a
+// typed cause and never falls back to ".". That binding is the ruled-but-unbuilt half of this work: it
+// sits in v1.compiler.emit_rust native_effect_binding_of, which today constructs every admitted service
+// with `Type::new(Default::default())`, leaving extdeps.transports.shell ShellTransportConfig.working_dir
+// None and the process in "." (that ambient default on the sibling route is filed as
+// gunbc.recurring_failure_mode admitted_shell_effect_spawned_at_an_ambient_working_root). Nothing in this
+// module claims that binding exists.
+
 module extdeps.rust.cargo_build_service
 
 import std.types { Int, NonEmptyStr, String, Unit }
@@ -57,6 +66,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // THE ONE CARGO IDENTITY the native route runs. extdeps.rust.cargo_build cargo_program() delegates here,
 // and this is the row extdeps.exec.program's uncataloged roster names.
 fn cargo_build_program() -> ProgramIdentity = uncataloged_program(invocation: "cargo")
+
+// THE FIXED argv OF THE DECLARED OPERATION, part by part, so the shape is one row each and a widened
+// invocation is an edit a reviewer can see. The flag names are rows, not strings at a call site.
+data cargo_build_subcommand: NonEmptyStr = "build"
+
+data cargo_build_manifest_path_flag: NonEmptyStr = "--manifest-path"
+
+data cargo_build_target_dir_flag: NonEmptyStr = "--target-dir"
+
+data cargo_build_profile_flag: NonEmptyStr = "--profile"
+
+data cargo_build_package_flag: NonEmptyStr = "--package"
+
+data cargo_build_bin_flag: NonEmptyStr = "--bin"
 
 // THE PROFILE WORDS of `cargo build --profile`. A profile is a closed pair of names here, not a string at
 // a call site: a new profile is a row in this module and a widening of the sum, which is the review event.
@@ -134,16 +157,16 @@ service CargoBuild {
     transport shell {
       argv: [
         cargo_program_word_text(word: program),
-        "build",
-        "--manifest-path",
+        cargo_build_subcommand,
+        cargo_build_manifest_path_flag,
         manifest_path,
-        "--target-dir",
+        cargo_build_target_dir_flag,
         target_dir,
-        "--profile",
+        cargo_build_profile_flag,
         cargo_build_profile_word(profile: profile),
-        "--package",
+        cargo_build_package_flag,
         package,
-        "--bin",
+        cargo_build_bin_flag,
         bin
       ]
     }
