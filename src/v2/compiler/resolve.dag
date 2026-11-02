@@ -873,9 +873,30 @@ fn binder_hides_visible_value_diagnostic(binder: Symbol, at: Node) -> Diagnostic
 // pattern_binder_candidates, which module acquisition reads too) less the one exclusion that needs the
 // symbol index: an atom that names a CONSTRUCTOR is a nullary variant (the whole pattern) or a nested
 // pattern (a field target), not a binder.
-fn pattern_binders(ctx: ResolveContext, pat: Node) -> List<PatternBinderCandidate> {
+// THE ONE COLLECTION POINT, and the only place the constructor reading excludes an atom. Every
+// consumer of this list -- the visible-value gate, the value-shadowing gate, the catch-all-unread gate,
+// the arm's frame push -- reads the same excluded list, so no reader is left holding a binder another
+// reader called a constructor (jolly-cat-271's condition: the exclusion at the collection point, not a
+// local filter in the walk). The exclusion is keyed by OCCURRENCE, never by spelling, and the list
+// arrives from the arm, which is where the pattern's expected type is known:
+// resolve_pattern_constructor_atom_occurrences walks the positions with the same producer the pattern
+// walk uses, so one rule is read twice rather than two rules written. Precedence stays gate-first: an
+// atom the reading binds is excluded ONLY while no value the arm can see carries that spelling, so a
+// shadowing name remains the loud refusal it is today.
+fn pattern_binders(
+  ctx: ResolveContext,
+  pat: Node,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> List<PatternBinderCandidate> {
   fold(pattern_binder_candidates(pat: pat), init: [], f: fn(acc, c) {
     if resolve_pattern_atom_names_constructor(ctx: ctx, id: c.name) {
+      acc
+    } else if pattern_atom_is_bound_by_the_expected_set(
+      ctx: ctx,
+      atoms: constructor_atoms,
+      name: c.name,
+      atom: c.atom
+    ) {
       acc
     } else {
       list_snoc_item(xs: acc, item: c)
@@ -883,8 +904,23 @@ fn pattern_binders(ctx: ResolveContext, pat: Node) -> List<PatternBinderCandidat
   })
 }
 
-fn pattern_binder_name_list(ctx: ResolveContext, pat: Node) -> List<Symbol> {
-  list_map(xs: pattern_binders(ctx: ctx, pat: pat), f: fn(c) { c.name })
+// Bound by the expected type's arm set AND naming no value the arm can see.
+fn pattern_atom_is_bound_by_the_expected_set(
+  ctx: ResolveContext,
+  atoms: List<NodeOccurrenceIdentity>,
+  name: Symbol,
+  atom: NodeOccurrenceIdentity
+) -> Bool {
+  any(xs: atoms, predicate: fn(x) { x == atom })
+    && !resolve_pattern_atom_names_frame_value(ctx: ctx, id: name)
+}
+
+fn pattern_binder_name_list(
+  ctx: ResolveContext,
+  pat: Node,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> List<Symbol> {
+  list_map(xs: pattern_binders(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms), f: fn(c) { c.name })
 }
 
 // A `let`'s list mirrors bind_frame_binders: the binder is the FIRST positional child, and that
@@ -1396,6 +1432,14 @@ type ResolveRefusalReason
   // NOT empty — naming it unbound would send a reader to a missing import for a site whose import is
   // present and whose tag is wrong.
   | ResolveConstructTagNotInExpectedType
+  // A PAYLOAD-ABSENT PATTERN ATOM WHOSE SPELLING NAMES A NULLARY CONSTRUCTOR IN SCOPE WHILE THE
+  // PATTERN'S EXPECTED TYPE HAS NOT RESOLVED. The arm would otherwise be collected as a catch-all
+  // BINDER (v2.compiler.lexical_scope pattern_binder_candidates), which silently accepts every value
+  // of the scrutinee: one source text would mean a constructor when the scrutinee's type resolved and
+  // a catch-all when it did not. Refusing is the fail-closed half of the joint rule (the visible-value
+  // gate first, then the constructor reading by the expected set, then the binder). A spelling that
+  // names no constructor in scope is untouched and stays a binder.
+  | ResolvePatternAtomConstructorTypeUnresolved
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
@@ -1412,6 +1456,7 @@ fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
     ResolveDeclarerRefused => ^resolve_reason_declarer_refused
     ResolveGeneratedReferenceDeclarationAbsent => ^resolve_reason_generated_reference_declaration_absent
     ResolveConstructTagNotInExpectedType => ^resolve_construct_tag_not_in_expected_type
+    ResolvePatternAtomConstructorTypeUnresolved => ^resolve_reason_pattern_atom_constructor_type_unresolved
   }
 }
 
@@ -3199,8 +3244,13 @@ fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bo
   }
 }
 
-fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) -> FrameBinders {
-  fold(pattern_binders(ctx: ctx, pat: pat), init: acc, f: fn(fb, c) {
+fn resolve_pattern_binders(
+  ctx: ResolveContext,
+  pat: Node,
+  acc: FrameBinders,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> FrameBinders {
+  fold(pattern_binders(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms), init: acc, f: fn(fb, c) {
     frame_binders_add(
       fb: fb,
       name: c.name,
@@ -4583,7 +4633,14 @@ fn resolve_match_arm_walk(
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
-      match resolve_pattern_atom_naming_a_frame_value(ctx: ctx, pat: pat) {
+      // ONE reading of which atoms this pattern reads as constructors of the expected type, taken once
+      // for the whole pattern and carried to every consumer of the binder list and to the pattern walk.
+      let constructor_atoms = resolve_pattern_constructor_atom_occurrences(ctx: ctx, pat: pat, expected: expected)
+      match resolve_pattern_atom_naming_a_frame_value(
+        ctx: ctx,
+        pat: pat,
+        constructor_atoms: constructor_atoms
+      ) {
         Present { value: atom } =>
           resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
             reason: ^resolve_reason_pattern_atom_names_visible_value,
@@ -4591,13 +4648,24 @@ fn resolve_match_arm_walk(
             correction: Unavailable { reason: AmbiguousIntent }
           }))
         Absent =>
-      match gate_value_binders(names: pattern_binder_name_list(ctx: ctx, pat: pat), outer: ctx.scope, at: pat) {
+      match gate_value_binders(
+        names: pattern_binder_name_list(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms),
+        outer: ctx.scope,
+        at: pat
+      ) {
         BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
         BinderGateAdmitted =>
           resolve_catch_all_binder_read_gate(
             ctx: ctx,
             pat: pat,
-            walk: resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat, fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty()), expected: expected)
+            constructor_atoms: constructor_atoms,
+            walk: resolve_match_arm_admitted(
+              ctx: ctx,
+              arm: arm,
+              pat: pat,
+              fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty(), constructor_atoms: constructor_atoms),
+              expected: expected
+            )
           )
       }
       }
@@ -4620,8 +4688,12 @@ fn resolve_match_arm_walk(
 // tells the two apart through v2.std.symbol_index type_decl_member_shape). Ruling:
 // gunbc.design_ruling pattern_atom_naming_a_visible_value_is_never_a_binder.
 // The first such atom, in the pre-order resolution binds them.
-fn resolve_pattern_atom_naming_a_frame_value(ctx: ResolveContext, pat: Node) -> Optional<Node> {
-  fold(pattern_binders(ctx: ctx, pat: pat), init: Absent, f: fn(found, c) {
+fn resolve_pattern_atom_naming_a_frame_value(
+  ctx: ResolveContext,
+  pat: Node,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> Optional<Node> {
+  fold(pattern_binders(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms), init: Absent, f: fn(found, c) {
     match found {
       Present { value: _ } => found
       Absent =>
@@ -4685,12 +4757,17 @@ fn resolve_candidate_is_value(ctx: ResolveContext, candidate: LexicalBindingCand
 // A misspelling whose own arm READS it (`Absnet => Absnet`) is judged in infer, against the alternatives
 // the earlier arms leave it (v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary).
 // Ruling: gunbc.design_ruling unread_catch_all_binder_refuses.
-fn resolve_catch_all_binder_read_gate(ctx: ResolveContext, pat: Node, walk: ResolveNodeWalk) -> ResolveNodeWalk {
+fn resolve_catch_all_binder_read_gate(
+  ctx: ResolveContext,
+  pat: Node,
+  walk: ResolveNodeWalk,
+  constructor_atoms: List<NodeOccurrenceIdentity>
+) -> ResolveNodeWalk {
   match walk {
     // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
     ResolveWalkRefused { first: _first, rest: _, observation: _, partial: _ } => walk
     ResolveWalkAccepted { value: _, diagnostics: _, bindings: bindings } =>
-      if any(xs: pattern_binders(ctx: ctx, pat: pat), predicate: fn(c) {
+      if any(xs: pattern_binders(ctx: ctx, pat: pat, constructor_atoms: constructor_atoms), predicate: fn(c) {
         match c.site {
           ArmPatternBinderSite => !resolve_binder_site_read(site: c.atom.occurrence_id, bindings: bindings)
           // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
