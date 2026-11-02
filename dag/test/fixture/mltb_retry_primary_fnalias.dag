@@ -1,0 +1,7 @@
+module test.fixture.mltb_retry_primary_fnalias
+
+// THE SAME-NAMED SIBLING of the retry-path pair in
+// dag/test/claim/module_local_type_binds_witness.dag: a NON-GENERIC alias of a FUNCTION type. Its
+// resolved node is an Arrow, whose `params` are the callable's VALUE parameters -- read raw, they pass
+// for a declaration's TYPE PARAMETERS, and the paramless-use retry selects this binding.
+type Handler = fn(Int) -> Int
