@@ -192,13 +192,14 @@ test fn the_activation_step_names_the_transient_enqueue_unit_family() -> Bool {
 
 // 11. THE PLAN CARRIES THE GATE FOR THE INSTANCES THAT DECLARE A FENCE, and not for the one that has no systemd.
 // Read through the plan rows, the way the apply route reads them: the kind is the row's, not a name guessed here.
+fn fx_plan_carries_the_gate(i: HostDashboardInstance) -> Bool {
+  any(dashboard_instance_provision_plan_rows(instance: i), r => (r.kind as String) == "assert-metering-closing-writer-excluded")
+}
+
 test fn the_plan_carries_the_closing_gate_for_the_instances_that_declare_a_fence() -> Bool {
-  let has_gate = fn(i: HostDashboardInstance) -> Bool {
-    any(dashboard_instance_provision_plan_rows(instance: i), r => (r.kind as String) == "assert-metering-closing-writer-excluded")
-  }
-  has_gate(srv1_lab_dashboard_instance())
-    && has_gate(srv2_lab_dashboard_instance())
-    && !has_gate(macbook_local_dashboard_instance())
+  fx_plan_carries_the_gate(i: srv1_lab_dashboard_instance())
+    && fx_plan_carries_the_gate(i: srv2_lab_dashboard_instance())
+    && !fx_plan_carries_the_gate(i: macbook_local_dashboard_instance())
 }
 
 // 12. THE CONSUMER, WET: the apply route refuses the gate while the fenced unit is running. The stub systemctl
