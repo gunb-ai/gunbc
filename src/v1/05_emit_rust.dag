@@ -11479,7 +11479,7 @@ fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, pa
             let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, bare_name), fb_name))
             concat(qualified, " { ", emit_ident(name: fb_name, target: Rust), ": ref ", bind_name, ", .. }")
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
-            concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
+            concat(qualified, " { ", emit_ident(name: fb_name, target: Rust), ": ref ", rc_field_binder_name(field_name: fb_name), ", .. }")
           } else {
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
             let pat_str = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, bare_name), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
