@@ -3,12 +3,23 @@ module gunbc.ci.repository_seed_steps
 import std.types { Bool, List, String, NonEmptyStr }
 import std.optional { Optional, Present, Absent }
 import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv, YamlKeyValue }
-import extdeps.github.actions { RunStep, Step, UsesStep }
-import gunbc.action_use_admission { checkout_action, setup_rust_action }
-import gunbc.ci.repository_ci_profile { PublicSeed }
-import gunbc.ci.repository_compose_overlay { command_words }
-import v2.std.diagnostic { Outcome, Accepted, bind_outcome }
+import extdeps.github.actions {
+  Job, RunnerSpec, RunStep, Step, UsesStep, WorkflowPermissions, PermRead,
+}
+import extdeps.github.expressions { ContextAccess, Expression, Needs, Steps, interpolate }
+import gunbc.action_use_admission {
+  checkout_action, setup_rust_action, checkout_ref_entry, CommitOutputProducer, commit_output_producer_path,
+}
+import gunbc.ci.repository_ci_profile { PublicSeed, seed_source_pin, seed_source_refusal_reason }
+import gunbc.ci.repository_compose_overlay { command, command_words, word, var_word, path_under, set_strict_stmt }
+import v2.std.diagnostic {
+  Outcome, Accepted, Rejected, bind_outcome, outcome_accepted, outcome_rejected, module_unavailable_diagnostic,
+}
 import v2.std.node { Node }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes, bash_build_test_bracket,
+  bash_build_pipe, bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir_to_file, bash_build_exit,
+}
 import v2.workflow.bash_emit { bash_emit_stmts }
 
 // THE FIVE STEPS EVERY CI JOB IN A MIRROR REPOSITORY HAS, written once. A repository that runs its
@@ -42,22 +53,37 @@ fn repository_checkout_step(step_name: NonEmptyStr) -> Step {
 // THE SEED, CHECKED OUT BESIDE THE REPOSITORY UNDER CI. `ref` is a row rather than "whatever the runner
 // happens to have", because the claims are judged by that compiler and an unpinned checkout makes the
 // verdict unattributable.
-fn seed_checkout_step(seed: PublicSeed) -> Step {
-  UsesStep {
-    name: Present { value: join(["Checkout ", seed.repository as String], "") },
-    id: none,
-    uses: checkout_action,
-    with: Present {
-      value: [
-        kv(key: "repository", value: yaml_string(s: seed.repository as String)),
-        kv(key: "ref", value: yaml_string(s: seed.ref_name as String)),
-        kv(key: "path", value: yaml_string(s: seed.checkout_path as String))
-      ]
-    },
-    env: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
+fn seed_checkout_step(seed: PublicSeed) -> Outcome<Step> {
+  match seed_pin_checkout_ref_entry(seed: seed) {
+    // NO FALLBACK EXISTS ON THIS PATH. Not a branch, not a branch tip, not the event sha, not an empty
+    // ref (GitHub reads an empty ref as the default branch, which is the same hazard wearing a hat). The
+    // consumer turns this into a refusal of the whole workflow, and the text names the missing fact.
+    Absent {  } =>
+      outcome_rejected(
+        d: module_unavailable_diagnostic(
+          reason: seed_source_refusal_reason(source: seed.source),
+          module_file: "gunbc.ci.repository_seed_steps"
+        )
+      )
+    Present { value: ref_entry } =>
+      outcome_accepted(
+        value: UsesStep {
+          name: Present { value: join(["Checkout ", seed.repository as String], "") },
+          id: none,
+          uses: checkout_action,
+          with: Present {
+            value: [
+              kv(key: "repository", value: yaml_string(s: seed.repository as String)),
+              ref_entry,
+              kv(key: "path", value: yaml_string(s: seed.checkout_path as String))
+            ]
+          },
+          env: none,
+          if_condition: none,
+          continue_on_error: none,
+          timeout_minutes: none
+        }
+      )
   }
 }
 
@@ -147,5 +173,285 @@ fn seed_build_step(seed: PublicSeed) -> Outcome<Step> {
     env: none,
     if_condition: none,
     working_directory: Present { value: seed.checkout_path as String }
+  )
+}
+
+// ── THE SEED-PIN VERIFIER ────────────────────────────────────────────────────────────────────────
+//
+// WHY THE SEED CHECKOUT'S REF IS A JOB OUTPUT AND NOT A ROW STRING.
+// The field this replaces was `ref_name: NonEmptyStr`, and the seed checkout wrote it into `with.ref`
+// verbatim. For every mirror that string was a branch -- `main` -- which is not a commit: a publisher
+// job waits in the runner queue behind the heal run it follows, so the branch it resolves is whatever
+// `main` meant WHEN THE JOB STARTED, and the compiler that judged the seal and the compiler that admits
+// the publication can be two different trees. gunbc.action_use_admission::admit_workflow_checkout_refs
+// exists to refuse exactly that, and it admits a checkout ref in four forms only: the event sha, the
+// pull-request head sha, a declared revision input, or a `needs.<job>.outputs.<name>` naming a job that
+// earns the output. A literal is "anything else: refused". The publisher emitter never declared its ref
+// and was refused fail-closed at #15631 -- no bad YAML, which is what a wall is for. The witness and
+// drift emitters never called that wall at all: the same hazard, with no gate in front of it. Both now
+// do, and the only ref a seed checkout can carry is the verifier's declared output.
+//
+// WHY A JOB AND NOT A STEP. The four admitted forms are contexts the wall reads, and a step-local
+// `${{ steps.x.outputs.y }}` is not one of them -- gunbc.action_use_admission
+// checkout_expression_context_admitted refuses Steps, Job, Runner, Secrets and Matrix outright. So a
+// step beside the checkout cannot hand it a ref the wall will accept, and a run-step that fetched and
+// checked out on its own would be the very family the side chat refused (and the family quick-newt-573
+// withdrew a zero-job preference over). Only a JOB output, declared by a record the wall itself folds,
+// can carry the ref. That record is CommitOutputProducer, and the profile row owns it.
+//
+// WHAT IT PROVES, AND WHAT IT REFUSES. It fetches the one pinned object -- by sha, never by branch or
+// tag name, never through ls-remote, never `|| github.sha` -- from the row's `fetch_remote_url` and no
+// other remote, into an object store under RUNNER_TEMP that nothing else touches and that it deletes
+// before creating (a runner whose temp survives a previous job must not hand this job a store it did not
+// fetch). Then it requires two things: `git cat-file -t` of the pin says `commit` (an object the pin
+// names that is a tag, tree or blob is not a commit), and `git rev-parse` of the pin equals the pin
+// (the object's own id, so a nearby object cannot satisfy it -- and `rev-parse` without `^{commit}`,
+// because peeling would accept a tag pointing at a commit). Either check failing refuses the step, and
+// with it the job, and with it the seed checkout: a mirror never publishes against a tree nobody named.
+// The output line is the LAST statement, so a verifier that refused has written nothing -- there is
+// nothing for a checkout to read, which is what "refuses with no output" has to mean operationally.
+//
+// ONE AUTHORITY FOR THE NAME. The job id, the output name and the remote url come from the profile row's
+// SeedPinVerifierProducer; the step id and the store directory are projections of that job id, made
+// here, once; and the allowlist entry the wall admits is commit_output_producer_path of the same record.
+// Renaming the output therefore means editing the row, and the checkout's ref and the wall's allowlist
+// move together because they are the same fold -- not two strings that a hand-edit can pull apart, which
+// is the ruling the reviewer left on #15631 about checkout_commit_job_outputs.
+
+fn seed_pin_verifier_step_id(seed: PublicSeed) -> String {
+  join([seed.verifier.producer.job_id as String, "-check"], "")
+}
+
+fn seed_pin_store_var_name() -> String { "GUNBC_SEED_PIN_STORE" }
+
+// THE PRODUCER PATH -- the string the checkout reads and the wall admits, from one call.
+fn seed_pin_verifier_output_path(seed: PublicSeed) -> String {
+  commit_output_producer_path(producer: seed.verifier.producer)
+}
+
+// THE REF THE SEED CHECKOUT NAMES: the verifier job's declared output, as an Expression the wall can
+// read. Absent when the row's source is not a proven commit, and there is no branch fallback anywhere
+// in this module to catch it.
+fn seed_pin_checkout_ref_expression(seed: PublicSeed) -> Optional<Expression> {
+  match seed_source_pin(source: seed.source) {
+    Present { value: _ } =>
+      Present {
+        value: ContextAccess {
+          context: Needs,
+          path: [
+            seed.verifier.producer.job_id as String,
+            "outputs",
+            seed.verifier.producer.output_name as String,
+          ],
+        },
+      }
+    Absent {  } => Absent {  }
+  }
+}
+
+// THE `ref:` ENTRY, from that same expression. There is one place either is built, so the ref a step
+// renders cannot be a different spelling from the Expression its workflow declares -- the identity join
+// in gunbc.action_use_admission::step_checkout_ref_refusals refuses exactly that mismatch.
+fn seed_pin_checkout_ref_entry(seed: PublicSeed) -> Optional<YamlKeyValue> {
+  match seed_pin_checkout_ref_expression(seed: seed) {
+    Present { value: e } => Present { value: checkout_ref_entry(ref_expression: e) }
+    Absent {  } => Absent {  }
+  }
+}
+
+// THE TWO LISTS A CONSUMER MUST PASS TO THE WALL, both projections of the row. Passing one and not the
+// other is refused by the consumer's own admission call: a ref that is not the rendering of a declared
+// Expression refuses, and a declared Needs ref whose producer is not named is not in the allowlist.
+fn seed_pin_verifier_declared_expressions(seed: PublicSeed) -> List<Expression> {
+  match seed_pin_checkout_ref_expression(seed: seed) {
+    Present { value: e } => [e]
+    Absent {  } => []
+  }
+}
+
+fn seed_pin_verifier_producers(seed: PublicSeed) -> List<CommitOutputProducer> {
+  match seed_source_pin(source: seed.source) {
+    Present { value: _ } => [seed.verifier.producer]
+    Absent {  } => []
+  }
+}
+
+// WHERE THE SEED COMES FROM, spelled ONCE. The checkout step takes `repository:` (an owner/repo) and the
+// verifier's fetch takes a URL; had those been two fields on the row they could have named two repositories
+// -- the verifier would then have proved a pin in a store fetched from somewhere else while the lane was
+// filled with a tree from somewhere else still, which is precisely the trust the verifier exists to supply.
+// Deriving it here means the two can only ever disagree if `repository` disagrees with itself. `github.com`
+// is spelled in this one place because the whole hosted-CI stack already assumes it (actions/checkout
+// resolves a bare owner/repo against the host it runs on); admitting a seed on another host means bringing
+// a host authority row, not editing this join.
+fn seed_pin_fetch_url(seed: PublicSeed) -> String {
+  join(["https://github.com/", seed.repository as String, ".git"], "")
+}
+
+// THE FETCH AND ITS TWO PROOFS, as typed shell nodes. `set -e` comes from the fold; strict mode is
+// imposed here because a fetch that silently produced nothing must fail rather than leave an empty
+// store for the next statement to mistake for success.
+fn seed_pin_verification_statements(seed: PublicSeed, pin: String) -> List<Node> {
+  let store_name = seed_pin_store_var_name()
+  let store = var_word(name: store_name)
+  let pin_word = word(text: pin)
+  let git = word(text: "git")
+  let job_id = seed.verifier.producer.job_id as String
+  [
+    set_strict_stmt(),
+    bash_build_assign(
+      name: store_name,
+      value: path_under(name: "RUNNER_TEMP", tail: join(["gunbc-seed-pin/", job_id], ""))
+    ),
+    command(words: [word(text: "rm"), word(text: "-rf"), word(text: "--"), store]),
+    command(words: [word(text: "mkdir"), word(text: "-p"), word(text: "--"), store]),
+    command(words: [git, word(text: "init"), word(text: "--bare"), word(text: "--quiet"), word(text: "--"), store]),
+    command(words: [
+      git, word(text: "-C"), store, word(text: "fetch"), word(text: "--quiet"), word(text: "--no-tags"),
+      word(text: "--depth"), word(text: "1"), word(text: seed_pin_fetch_url(seed: seed)), pin_word,
+    ]),
+    // A command substitution is assigned and read back, never used as a bare argument (v2.workflow.bash_emit
+    // renders a substitution argument unquoted, so the value would be word-split).
+    bash_build_assign(
+      name: "GUNBC_SEED_PIN_TYPE",
+      value: bash_build_word_cmdsubst(
+        body: bash_build_or_else(
+          left: command(words: [git, word(text: "-C"), store, word(text: "cat-file"), word(text: "-t"), pin_word]),
+          right: command_words(rest: ["true"])
+        )
+      )
+    ),
+    bash_build_or_else(
+      left: bash_build_test_bracket(words: [var_word(name: "GUNBC_SEED_PIN_TYPE"), word(text: "="), word(text: "commit")]),
+      right: seed_pin_refusal(
+        name: "SeedPinIsNotACommit",
+        message: join(
+          [
+            seed_pin_fetch_url(seed: seed), " does not have a commit object at ", pin,
+            " (it resolved to ", seed_pin_type_or_nothing(), "); the pin names something else, or nothing",
+          ],
+          ""
+        )
+      )
+    ),
+    bash_build_assign(
+      name: "GUNBC_SEED_PIN_OBJECT",
+      value: bash_build_word_cmdsubst(
+        body: bash_build_or_else(
+          left: command(words: [git, word(text: "-C"), store, word(text: "rev-parse"), pin_word]),
+          right: command_words(rest: ["true"])
+        )
+      )
+    ),
+    bash_build_or_else(
+      left: bash_build_test_bracket(words: [var_word(name: "GUNBC_SEED_PIN_OBJECT"), word(text: "="), pin_word]),
+      right: seed_pin_refusal(
+        name: "SeedPinObjectIdDiffers",
+        message: join(
+          ["git rev-parse of ", pin, " answered ", seed_pin_object_or_nothing(), ", which is not the pin; refusing to check out a tree by an identity it does not carry"],
+          ""
+        )
+      )
+    ),
+    // LAST, AND ONLY LAST: the job's output exists exactly when both proofs passed.
+    bash_build_with_redir_to_file(
+      inner: bash_build_pipe(
+        left: command(words: [word(text: "echo"), word(text: join([seed.verifier.producer.output_name as String, "=", pin], ""))]),
+        right: command(words: [word(text: "tee"), word(text: "-a"), var_word(name: "GITHUB_OUTPUT")])
+      ),
+      path: word(text: "/dev/null")
+    ),
+  ]
+}
+
+// A REFUSAL THAT SAYS WHAT IT FOUND. The two `or_nothing` readers exist because `set -u` makes an unset
+// variable an error, and a diagnostic that errors while explaining an absence is worse than the absence.
+fn seed_pin_type_or_nothing() -> Node {
+  bash_build_word_concat_from_nodes(parts: [word(text: "<"), var_word(name: "GUNBC_SEED_PIN_TYPE"), word(text: ">")])
+}
+
+fn seed_pin_object_or_nothing() -> Node {
+  bash_build_word_concat_from_nodes(parts: [word(text: "<"), var_word(name: "GUNBC_SEED_PIN_OBJECT"), word(text: ">")])
+}
+
+fn seed_pin_refusal(name: String, message: String) -> Node {
+  bash_build_subshell_from_stmts(stmts: [
+    command(words: [word(text: "echo"), word(text: join(["::error title=seed-pin ", name, "::", message], ""))]),
+    bash_build_exit(code: "1"),
+  ])
+}
+
+// THE VERIFIER STEP. Its `id` is the step id the job's output map reads, derived from the same job id.
+fn seed_pin_verifier_step(seed: PublicSeed, pin: String) -> Outcome<Step> {
+  bind_outcome(
+    o: bash_emit_stmts(statements: seed_pin_verification_statements(seed: seed, pin: pin), set_e: true),
+    f: fn(script) {
+      outcome_accepted(
+        value: RunStep {
+          name: Present { value: seed.verifier.verification_step_name },
+          id: Present { value: seed_pin_verifier_step_id(seed: seed) },
+          run: script,
+          shell: none,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: none,
+          timeout_minutes: none
+        }
+      )
+    }
+  )
+}
+
+// THE VERIFIER JOB. Read-only permissions and no checkout: it authenticates to nothing, because the
+// intended repository is public and a proof that needed a credential would be a proof the publisher's
+// admit step could not run -- which is the defect class the heal publisher just learned about the hard
+// way (AuthDeclaredButUnwired). `runner` is the consumer's own runner target: the proof is about the
+// seed, but it is the consumer that cannot proceed without it, and a verifier scheduled somewhere the
+// consumer cannot reach would be a job that proves nothing to anyone.
+fn seed_pin_verifier_job(seed: PublicSeed, pin: String, runner: RunnerSpec) -> Outcome<Job> {
+  bind_outcome(
+    o: seed_pin_verifier_step(seed: seed, pin: pin),
+    f: fn(step) {
+      outcome_accepted(
+        value: Job {
+          id: seed.verifier.producer.job_id as String,
+          name: Present { value: join(["Verify the seed pin ", pin], "") },
+          runner: runner,
+          environment: none,
+          steps: [step],
+          needs: [],
+          env: none,
+          outputs: Present {
+            value: [
+              kv(
+                key: seed.verifier.producer.output_name as String,
+                value: yaml_string(
+                  s: interpolate(
+                    expression: ContextAccess {
+                      context: Steps,
+                      path: [seed_pin_verifier_step_id(seed: seed), "outputs", seed.verifier.producer.output_name as String],
+                    }
+                  )
+                )
+              )
+            ]
+          },
+          if_condition: none,
+          timeout_minutes: none,
+          continue_on_error: none,
+          concurrency: none,
+          permissions: Present {
+            value: WorkflowPermissions {
+              contents: Present { value: PermRead },
+              pull_requests: none,
+              issues: none,
+              actions: none,
+              id_token: none,
+            }
+          }
+        }
+      )
+    }
   )
 }

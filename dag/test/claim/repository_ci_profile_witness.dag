@@ -24,7 +24,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.ci.repository_ci_profile {
-  RepositoryCiProfile, RosterGate, PublicSeed, OverlayIngest, AnnotationStep, ProjectionDrift, HealSeal,
+  RepositoryCiProfile, RosterGate, PublicSeed, SeedSource, Seed_commit_pin, Seed_pin_owed,
+  SeedPinVerifierProducer, seed_source_pin, seed_source_refusal_reason, profile_seed_pin_is_a_commit_or_is_owed,
+  OverlayIngest, AnnotationStep, ProjectionDrift, HealSeal,
   HealPublisherPolicy, CompilerSource, Own_checkout_under_witness_floor, Declared_seed,
   Declared_seed_under_composed_overlay,
   DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal,
@@ -50,6 +52,15 @@ import gunbc.ci.repository_mirror_frontier { repository_mirror_frontier_rows }
 import gunbc.ci.repository_compose_overlay {
   command,
   word, heal_seal_env }
+import gunbc.action_use_admission {
+  CommitOutputProducer, checkout_ref_admitted_with_producers, checkout_ref_value_refusals,
+}
+import gunbc.ci.repository_seed_steps {
+  seed_pin_verifier_output_path, seed_pin_verifier_step_id, seed_pin_checkout_ref_expression,
+  seed_pin_verification_statements,
+}
+import v2.workflow.bash_emit { bash_emit_stmts }
+import extdeps.github.expressions { ContextAccess, Expression, ExpressionContext, Needs, interpolate }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
   ProjectionDriftWorkflowGenerated, ProjectionDriftWorkflowGenerationRefused,
@@ -670,11 +681,29 @@ fn mirror_profile_with_annotation(lane_root: String) -> RepositoryCiProfile {
   }
 }
 
+// THE FIXTURE'S SEED COMMIT, as the only kind of reference a seed can carry. It is a fixture sha, not a
+// production one: no claim here depends on a real commit existing, and the production pin is the
+// operator's to record (gunbc.ci.repository_ci_profile Seed_pin_owed is what an unrecorded pin looks
+// like, and every seed-consuming emitter refuses it).
+data fixture_seed_pin: String = "0123456789abcdef0123456789abcdef01234567"
+
+fn fixture_seed_verifier() -> SeedPinVerifierProducer {
+  SeedPinVerifierProducer {
+    producer: CommitOutputProducer {
+      job_id: "verify-seed-pin" as NonEmptyStr,
+      output_name: "committed_sha" as NonEmptyStr,
+      earns_it_by: "the verifier fetches the pinned commit by sha from the intended public repository and proves it is a commit object with that id",
+    },
+    verification_step_name: "Prove the pinned seed commit exists",
+  }
+}
+
 fn fixture_seed() -> PublicSeed {
   PublicSeed {
     repository: "example-org/example-public",
     checkout_path: "seed_repo",
-    ref_name: "main",
+    source: Seed_commit_pin { sha: fixture_seed_pin },
+    verifier: fixture_seed_verifier(),
     build_command: [
       command(
         words: [
@@ -1179,13 +1208,198 @@ test fn the_drift_entrypoint_refuses_a_profile_that_builds_its_own_compiler() ->
   }
 }
 
+// THE SEED THE GATE CHECKS OUT IS THE COMMIT ITS OWN VERIFIER PROVED -- not a branch, and not the row's
+// string pasted into `with.ref`. Three things have to hold together for the gate to mean anything: the
+// checkout's ref names the verifier job's declared output, the gate waits on that job, and the pin the
+// verifier fetches is the one the row carries. Asserting only the last one is how the old control passed
+// while the workflow it described checked out `main` on every run.
 test fn the_seed_the_lane_checks_out_is_the_rows_seed() -> Bool {
-  string_contains(
-    s: expected_repository_witnesses_yml(
-      profile: mirror_profile_with_seed_ref(ref: "rev-9-9-9"),
-      program: fixture_program()
-    ),
-    pattern: "rev-9-9-9"
+  let yml = expected_repository_witnesses_yml(
+    profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+    program: fixture_program()
+  )
+  // The bracket access is not a style choice: a job id containing `-` is not an expression identifier,
+  // so the expression renderer must index it (extdeps.github.expressions path_segment_takes_dot_form
+  // admits only letters, digits and `_`). Pinned here because the alternative -- a ref the renderer
+  // spells a different way -- is a ref the lane silently stops reading.
+  string_contains(s: yml, pattern: "ref: ${{ needs['verify-seed-pin'].outputs.committed_sha }}")
+    && string_contains(s: yml, pattern: "verify-seed-pin")
+    && string_contains(s: yml, pattern: fixture_seed_pin)
+    && !string_contains(s: yml, pattern: "ref: main")
+}
+
+// THE VERIFIER PROVES THE TWO FACTS THAT MAKE A PIN A COMMIT, from the intended repository and by
+// nothing looser than a sha fetch. The negative half is the point: ls-remote, a branch refspec and a
+// `|| github.sha` fallback are each a way to check out a tree the row did not name, and each has been
+// the shape of a real bug in this family.
+test fn the_verifier_proves_the_facts_that_make_a_pin_a_commit() -> Bool {
+  let yml = expected_repository_witnesses_yml(
+    profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+    program: fixture_program()
+  )
+  string_contains(s: yml, pattern: "cat-file")
+    && string_contains(s: yml, pattern: "commit")
+    && string_contains(s: yml, pattern: "rev-parse")
+    && string_contains(s: yml, pattern: fixture_seed_pin)
+    // The fetch target and the checkout target are the SAME repository: the url is derived from the row's
+    // `repository`, so "the verifier certified a pin in a store fetched from somewhere else" is not a
+    // shape a row can describe -- there is only one field that says where the seed comes from.
+    && string_contains(s: yml, pattern: "https://github.com/example-org/example-public.git")
+    && string_contains(s: yml, pattern: "repository: example-org/example-public")
+    && !string_contains(s: yml, pattern: "ls-remote")
+    && !string_contains(s: yml, pattern: "refs/heads")
+    && !string_contains(s: yml, pattern: "|| github.sha")
+}
+
+// THE OUTPUT IS WRITTEN LAST, OR THERE IS NO OUTPUT. `needs` is what stops the checkout when the
+// verifier JOB fails, but a step that wrote its output and THEN proved the pin would hand the checkout a
+// sha nobody certified. So the order of the statement list is the guarantee, and it is read here as a
+// model fact rather than as a substring of YAML: each statement is rendered on its own, exactly one may
+// write the job output, and no git work may appear after it.
+type VerifierStatementOrder {
+  writes: Int
+  saw_write: Bool
+  git_after_write: Bool
+}
+
+fn verifier_statement_order_step(state: VerifierStatementOrder, text: String) -> VerifierStatementOrder {
+  let writes = string_contains(s: text, pattern: "GITHUB_OUTPUT")
+  VerifierStatementOrder {
+    writes: if writes { state.writes + 1 } else { state.writes },
+    saw_write: state.saw_write || writes,
+    git_after_write: state.git_after_write || (state.saw_write && !writes),
+  }
+}
+
+fn verifier_statement_texts(seed: PublicSeed, pin: String) -> List<String> {
+  fold(
+    seed_pin_verification_statements(seed: seed, pin: pin),
+    init: [],
+    f: fn(acc, stmt) {
+      match bash_emit_stmts(statements: [stmt], set_e: false) {
+        Accepted { value: t, diagnostics: _ } => concat(acc, [t])
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+test fn the_verifier_writes_its_output_only_after_both_proofs() -> Bool {
+  let seed = fixture_seed()
+  let statements = seed_pin_verification_statements(seed: seed, pin: fixture_seed_pin)
+  let texts = verifier_statement_texts(seed: seed, pin: fixture_seed_pin)
+  let order = fold(texts, init: VerifierStatementOrder { writes: 0, saw_write: false, git_after_write: false }, f: verifier_statement_order_step)
+  // Every statement must have rendered, or the comparison below would be reading a shorter list than the
+  // model produced -- a renderer refusal is a failure of the control, never a skipped row.
+  count(texts) == count(statements)
+    && order.writes == 1
+    && order.saw_write
+    && order.git_after_write == false
+    && for_all(xs: texts, predicate: fn(t) { !string_contains(s: t, pattern: "cat-file") || string_contains(s: t, pattern: fixture_seed_pin) })
+}
+
+// AN OWED PIN REFUSES EVERY LANE THAT JUDGES CLAIMS BY THE SEED, naming the missing fact. This is the
+// standing of a mirror whose approved commit the operator has not recorded: the workflow is not emitted,
+// and the reason is a requirement to fill rather than a defect to debug.
+test fn an_owed_pin_refuses_every_lane_that_judges_claims_by_the_seed() -> Bool {
+  let gate = repository_witnesses_yml_emission(
+    profile: mirror_profile_with_owed_pin(),
+    program: fixture_program()
+  )
+  let drift = expected_projection_drift_workflow_yml(
+    profile: mirror_profile_with_owed_pin(),
+    program: mirror_drift_program()
+  )
+  let publisher = heal_publisher_workflow_yml_for(profile: mirror_profile_with_owed_pin())
+  !yaml_emission_admitted(result: gate)
+    && match drift {
+         ProjectionDriftWorkflowGenerationRefused { reason: r } => string_contains(s: r as String, pattern: "Seed_pin_owed")
+         ProjectionDriftWorkflowGenerated { content: _ } => false
+       }
+    && match publisher {
+         HealPublisherWorkflowGenerationRefused { reason: r } => string_contains(s: r as String, pattern: "Seed_pin_owed")
+         HealPublisherWorkflowGenerated { content: _ } => false
+       }
+}
+
+// A PIN THAT IS NOT AN ADDRESS IS REFUSED BY THE ROW ITSELF, before any emitter is consulted. The
+// verifier would otherwise spend a job fetching a string that cannot name an object, and every consumer
+// would refuse with text that reads like an emitter defect.
+test fn a_seed_pin_that_is_not_a_commit_sha_is_refused_by_the_row() -> Bool {
+  let broken = mirror_profile_with_seed_pin(pin: "main")
+  profile_seed_pin_is_a_commit_or_is_owed(profile: broken) == false
+    && match repository_ci_profile_refusal(profile: broken) {
+         Present { value: r } => string_contains(s: r as String, pattern: "Seed_commit_pin")
+         Absent {  } => false
+       }
+}
+
+// THE ALLOWLIST ENTRY AND THE JOB THAT EARNS IT ARE ONE RECORD. The row's producer path is admitted by
+// the wall only while the same record is passed to it: strip the record and the same ref is refused,
+// which is what makes a hand-added allowlist string -- an entry with no job behind it -- unable to be
+// added at all.
+test fn the_seed_ref_is_admitted_only_by_the_record_that_earns_it() -> Bool {
+  let seed = fixture_seed()
+  let ref_expression = match seed_pin_checkout_ref_expression(seed: seed) {
+    Present { value: e } => e
+    Absent {  } => ContextAccess { context: Needs, path: ["impossible", "outputs", "nothing"] }
+  }
+  checkout_ref_admitted_with_producers(ref_expression: ref_expression, extra_producers: [seed.verifier.producer])
+    && !checkout_ref_admitted_with_producers(ref_expression: ref_expression, extra_producers: [])
+    && !checkout_ref_admitted_with_producers(
+         ref_expression: ContextAccess { context: Needs, path: ["some-other-job", "outputs", "committed_sha"] },
+         extra_producers: [seed.verifier.producer]
+       )
+}
+
+// THE VERIFIER OUTPUT THE CHECKOUT READS IS THE PRODUCER'S PATH, spelled in one place. A second spelling
+// is how a checkout ends up reading an output no job assigns. Three forms of one fact have to agree, and
+// this states the relations rather than trusting them: the path the wall compares is the Expression's own
+// path joined on dots -- WITHOUT the `needs.` the renderer prefixes, because the fold compares the two and
+// a prefix on one side only is an allowlist that matches nothing, indistinguishable from an empty one
+// (that is exactly how every Needs-based ref in this family was once silently refused); the text a step
+// renders is that Expression interpolated; and the rendered text is pinned literally, bracket and all --
+// a job id containing `-` is not an expression identifier (extdeps.github.expressions
+// path_segment_takes_dot_form admits letters, digits and `_`), so the renderer must index it, and a ref
+// spelled any other way is a ref the lane silently stops reading.
+test fn the_seed_ref_text_is_the_producer_path_and_nothing_else() -> Bool {
+  let seed = fixture_seed()
+  let path = [
+    seed.verifier.producer.job_id as String,
+    "outputs",
+    seed.verifier.producer.output_name as String,
+  ]
+  seed_pin_verifier_output_path(seed: seed) == join(path, ".")
+    && interpolate(expression: ContextAccess { context: Needs, path: path })
+      == "${{ needs['verify-seed-pin'].outputs.committed_sha }}"
+}
+
+// A MIRROR ON ITS OWN COMPILER GAINS NO VERIFIER JOB. The verifier exists for the seed route alone, and
+// gunbc's own rows are the proof at the byte level; this is the same fact at the fixture level, so the
+// "no new jobs" ruling is checkable without a public workflow that has a seed.
+test fn a_profile_without_a_seed_emits_no_verifier_job() -> Bool {
+  match heal_publisher_workflow_yml_for(profile: mirror_profile_own_checkout_source()) {
+    HealPublisherWorkflowGenerated { content: c } => !string_contains(s: c, pattern: "verify-seed-pin")
+    HealPublisherWorkflowGenerationRefused { reason: _ } => false
+  }
+}
+
+// A PROFILE WITH AN OWED PIN IS A ROW THE VALIDATOR ACCEPTS AND THE EMITTERS REFUSE. The distinction is
+// the point: an unfiled requirement is not a malformed row, and the place it surfaces is the byte that
+// would have used it.
+test fn an_owed_pin_is_an_honest_row_and_an_unusable_one() -> Bool {
+  let owed = mirror_profile_with_owed_pin()
+  profile_seed_pin_is_a_commit_or_is_owed(profile: owed)
+    && match repository_ci_profile_refusal(profile: owed) {
+         Absent {  } => true
+         Present { value: r } => false
+       }
+    && !yaml_emission_admitted(result: repository_witnesses_yml_emission(profile: owed, program: fixture_program()))
+}
+
+fn mirror_profile_with_owed_pin() -> RepositoryCiProfile {
+  mirror_profile_on_seed_source(
+    seed_source: Seed_pin_owed { owed_because: "the operator owes the approved source commit for the fixture repository" }
   )
 }
 
@@ -1215,7 +1429,10 @@ fn mirror_profile_own_checkout_source() -> RepositoryCiProfile {
 // THE ROW'S SEED, SWAPPED FOR ANOTHER WITH EVERYTHING ELSE LEFT ALONE -- the overlay, the step name and the
 // rest of the row. `with_seed_source` rebuilds the SAME VARIANT of the sum with the new seed inside it, so a
 // control that changes the seed cannot accidentally change where the compiler comes from.
-fn mirror_profile_with_seed_ref(ref: NonEmptyStr) -> RepositoryCiProfile {
+// A MIRROR ROW ON A SEED NAMED THIS WAY. One builder for both pins the row can carry, so the pinned
+// control and the owed control cannot drift apart in their fixtures -- the only difference between them
+// is the SeedSource they hand in.
+fn mirror_profile_on_seed_source(seed_source: SeedSource) -> RepositoryCiProfile {
   let base = mirror_profile(seal: true, publish: true)
   let seed = match profile_public_seed(profile: base) {
     Present { value: s } => s
@@ -1230,7 +1447,8 @@ fn mirror_profile_with_seed_ref(ref: NonEmptyStr) -> RepositoryCiProfile {
       base: base,
       seed: PublicSeed {
         repository: seed.repository,
-        ref_name: ref,
+        source: seed_source,
+        verifier: seed.verifier,
         checkout_path: seed.checkout_path,
         build_command: seed.build_command,
         seed_binary_relative_path: seed.seed_binary_relative_path,
@@ -1241,6 +1459,10 @@ fn mirror_profile_with_seed_ref(ref: NonEmptyStr) -> RepositoryCiProfile {
     drift: base.drift,
     publisher: base.publisher
   }
+}
+
+fn mirror_profile_with_seed_pin(pin: String) -> RepositoryCiProfile {
+  mirror_profile_on_seed_source(seed_source: Seed_commit_pin { sha: pin })
 }
 
 // EVERY GUNBC EMITTER ADMITS THE ROW BEFORE IT RENDERS (review 89604). The four emitters that read
@@ -1616,7 +1838,8 @@ fn publisher_row_with_unfoldable_seed_build() -> RepositoryCiProfile {
           base: base,
           seed: PublicSeed {
             repository: seed.repository,
-            ref_name: seed.ref_name,
+            source: seed.source,
+            verifier: seed.verifier,
             checkout_path: seed.checkout_path,
             build_command: [ command(words: []) ],
             seed_binary_relative_path: seed.seed_binary_relative_path,
