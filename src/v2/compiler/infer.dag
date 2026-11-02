@@ -25,7 +25,7 @@ import v2.std.compilers.target_model {
   target_model_canonical_operation_member_declared_type,
 }
 import v2.compiler.lexical_scope { bind_binder, bind_value }
-import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
+import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_occurrence_resolution, resolved_tree_unavailable_provider, BoundToDeclaration, BoundByExpectedType, ResolvedToDeclaration }
 import v2.compiler.body_lowering_fold { TypeDeclModifier, TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.inferred_tree { authored_occurrence_id, RefinementObligation, DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, ComparisonNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, FunctionValueSignatureUndetermined, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding }
@@ -2959,11 +2959,11 @@ fn infer_match_arm_pattern_is_literal(arm: Node) -> Bool {
 // family's refusal (infer_match_pattern_not_bool_literal): routing it here instead would meet an
 // untyped scrutinee and accept it at the frontier, widening a refusal into an admission
 // (v2.test.claim.manual.match_infer_fail_open_audit match_infer_fail_open_audit_rejects_holds).
-fn infer_match_arm_pattern_is_constructor(arm: Node) -> Bool {
+fn infer_match_arm_pattern_is_constructor(arm: Node, resolved: ResolvedTree) -> Bool {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => false
     Accepted { value: pat, diagnostics: _ } =>
-      match infer_coproduct_arm_pattern(pat: pat) {
+      match infer_coproduct_arm_pattern(pat: pat, resolved: resolved) {
         ArmPatternVariant { tag: _, fields: _ } => true
         ArmPatternWildcard => false
         ArmPatternBinder { name: _ } => false
@@ -2985,7 +2985,7 @@ fn infer_match(
     infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders)
   } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
     infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders)
-  } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
+  } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm, resolved: resolved) }) {
     infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders)
   } else {
     infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders)
@@ -3172,9 +3172,30 @@ type InferCoproductArmPattern
   | ArmPatternBinder { name: Symbol }
   | ArmPatternUnread
 
-fn infer_coproduct_arm_pattern(pat: Node) -> InferCoproductArmPattern {
+fn infer_coproduct_arm_pattern(pat: Node, resolved: ResolvedTree) -> InferCoproductArmPattern {
   match lexical_reference_label_optional(node: pat) {
-    Present { value: name } => ArmPatternBinder { name: name }
+    // WHAT THE ATOM NAMES, NOT WHICH DOOR FOUND IT. Resolve has already answered this occurrence, and
+    // the answer is the front end's fact for inference (DESIGN 3: one meaning per fact; route is
+    // provenance, not classification). An atom bound to a declaration -- through the expected type's
+    // constructor set or through the name door, either way -- is that arm, so it covers one variant and
+    // never swallows the arms after it. An atom with NO recorded answer is the binder it has always
+    // been: a catch-all, catch_all_binder true, exactly today. An atom bound to something this
+    // coproduct does not declare is refused by the membership check below (the not-declared
+    // diagnostic), never silently widened to a catch-all; in practice resolve refuses that pattern
+    // first, at the visible-value gate.
+    Present { value: name } =>
+      match pattern_atom_bound_declaration(pat: pat, resolved: resolved) {
+        Absent => ArmPatternBinder { name: name }
+        Present { value: path } =>
+          match qualified_name_last_segment(qn: path) {
+            // The tag is the bound declaration's own last segment; the membership check the variant arm
+            // already runs (infer_match_variant_payload over this coproduct's arms) is what accepts or
+            // refuses it. A declaration this coproduct does not declare therefore refuses with the
+            // not-declared diagnostic, and is never widened into a catch-all.
+            Absent => ArmPatternUnread
+            Present { value: tag } => ArmPatternVariant { tag: tag, fields: Empty }
+          }
+      }
     Absent =>
       match pat.kind {
         TypeNode { connective: Atom { identity: _ } } =>
@@ -3182,6 +3203,21 @@ fn infer_coproduct_arm_pattern(pat: Node) -> InferCoproductArmPattern {
         TypeNode { connective: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
         ComputationNode { behavior: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
       }
+  }
+}
+
+// THE ARM'S OWN ANSWER: the declaration resolve recorded for this atom's occurrence, read through the
+// occurrence itself (never by spelling). BoundByExpectedType is the arm this PR's door binds;
+// BoundToDeclaration is the same arm reached by name. A lexical binder, a parameter or a type parameter
+// is not a declaration, so the atom keeps today's binder reading.
+fn pattern_atom_bound_declaration(pat: Node, resolved: ResolvedTree) -> Optional<QualifiedName> {
+  match resolved_tree_occurrence_resolution(tree: resolved, reference: pat) {
+    Present { value: BoundToDeclaration { identity: ResolvedToDeclaration { path: path } } } =>
+      optional_present(value: path)
+    Present { value: BoundByExpectedType { identity: ResolvedToDeclaration { path: path } } } =>
+      optional_present(value: path)
+    Present { value: _ } => optional_absent()
+    Absent => optional_absent()
   }
 }
 
@@ -3335,14 +3371,18 @@ fn infer_coproduct_arm_fields_check(pat: Node, payload: Node, fields: List<Edge>
   })
 }
 
-fn infer_coproduct_arm_row(arm: Node, coproduct: InferMatchCoproduct) -> Outcome<InferCoproductArmRow> {
+fn infer_coproduct_arm_row(
+  arm: Node,
+  coproduct: InferMatchCoproduct,
+  resolved: ResolvedTree
+) -> Outcome<InferCoproductArmRow> {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     Accepted { value: pat, diagnostics: _ } =>
       match find_core_child(root: arm, marker: MatchArmBodyEdge) {
         Rejected { diagnostics: _ } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
         Accepted { value: body, diagnostics: _ } =>
-          match infer_coproduct_arm_pattern(pat: pat) {
+          match infer_coproduct_arm_pattern(pat: pat, resolved: resolved) {
             ArmPatternUnread => outcome_rejected(infer_match_pattern_unread_diagnostic(pattern: pat))
             ArmPatternWildcard =>
               outcome_accepted(value: InferCoproductArmRow { covers: CoversAll, body: body, arm: arm, catch_all_binder: false })
@@ -3548,7 +3588,7 @@ fn infer_match_coproduct_rows(
     match acc {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: rows, diagnostics: d } =>
-        match infer_coproduct_arm_row(arm: arm, coproduct: coproduct) {
+        match infer_coproduct_arm_row(arm: arm, coproduct: coproduct, resolved: resolved) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: row, diagnostics: _ } => Accepted { value: list_snoc_item(xs: rows, item: row), diagnostics: d }
         }
@@ -10489,20 +10529,39 @@ fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGather
                 CoproductNotDeclared => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
                 CoproductArityMismatch => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
                 UninhabitedScrutinee => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-                CoproductRead { coproduct: coproduct } => infer_match_arm_paid_frame(frame: frame, arm: edge.target, coproduct: coproduct, scrutinee_type: scrutinee_type)
+                CoproductRead { coproduct: coproduct } =>
+                  infer_match_arm_paid_frame(
+                    frame: frame,
+                    arm: edge.target,
+                    coproduct: coproduct,
+                    scrutinee_type: scrutinee_type,
+                    resolved: resolved
+                  )
               }
           }
       }
   }
 }
 
-fn infer_match_arm_paid_frame(frame: InferFrame, arm: Node, coproduct: InferMatchCoproduct, scrutinee_type: Node) -> InferFrame {
-  match infer_match_arm_binder_types(arm: arm, coproduct: coproduct, owed: infer_no_owed_formals()) {
+fn infer_match_arm_paid_frame(
+  frame: InferFrame,
+  arm: Node,
+  coproduct: InferMatchCoproduct,
+  scrutinee_type: Node,
+  resolved: ResolvedTree
+) -> InferFrame {
+  match infer_match_arm_binder_types(arm: arm, coproduct: coproduct, owed: infer_no_owed_formals(), resolved: resolved) {
     MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
     MatchArmBinders { rows: rows } =>
       InferFrame {
         instances: frame.instances,
-        binder_types: infer_append_binder_types(xs: frame.binder_types, ys: infer_append_binder_types(xs: rows, ys: infer_match_arm_catch_all_binder_types(arm: arm, scrutinee_type: scrutinee_type))),
+        binder_types: infer_append_binder_types(
+          xs: frame.binder_types,
+          ys: infer_append_binder_types(
+            xs: rows,
+            ys: infer_match_arm_catch_all_binder_types(arm: arm, scrutinee_type: scrutinee_type, resolved: resolved)
+          )
+        ),
         entering: InferFrameEnteredPlain,
         declared_position_expected: Absent,
         rigid_binders: frame.rigid_binders
@@ -10514,11 +10573,15 @@ fn infer_match_arm_paid_frame(frame: InferFrame, arm: Node, coproduct: InferMatc
 // alias-unfolded form (infer_match_coproduct_of_type unfolds only to read the alternatives), so an alias
 // identity the scrutinee carries reaches every later read of the binder. Its row is keyed by the
 // pattern's own occurrence, where resolve sited the binding (v2.compiler.resolve resolve_pattern_binders).
-fn infer_match_arm_catch_all_binder_types(arm: Node, scrutinee_type: Node) -> List<InferBinderType> {
+fn infer_match_arm_catch_all_binder_types(
+  arm: Node,
+  scrutinee_type: Node,
+  resolved: ResolvedTree
+) -> List<InferBinderType> {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => infer_no_binder_types()
     Accepted { value: pat, diagnostics: _ } =>
-      match infer_coproduct_arm_pattern(pat: pat) {
+      match infer_coproduct_arm_pattern(pat: pat, resolved: resolved) {
         ArmPatternBinder { name: _ } => [InferBinderType { site: pat.occurrence_id, derived: scrutinee_type }]
         // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
         ArmPatternVariant { tag: _tag, fields: _ } => infer_no_binder_types()
@@ -10564,7 +10627,8 @@ fn infer_match_arm_unpaid_frame(frame: InferFrame, arm: Node, resolved: Resolved
                   match infer_match_arm_binder_types(
                     arm: arm,
                     coproduct: InferMatchCoproduct { path: qualified_name_init(qn: arm_path), variants: declared, instances: infer_no_type_variable_instances() },
-                    owed: symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: qualified_name_init(qn: arm_path))
+                    owed: symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: qualified_name_init(qn: arm_path)),
+                    resolved: resolved
                   ) {
                     MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
                     MatchArmBinders { rows: rows } =>
@@ -10596,11 +10660,16 @@ fn infer_match_arm_binders_empty() -> InferMatchArmBinders {
   MatchArmBinders { rows: infer_no_binder_types() }
 }
 
-fn infer_match_arm_binder_types(arm: Node, coproduct: InferMatchCoproduct, owed: List<Symbol>) -> InferMatchArmBinders {
+fn infer_match_arm_binder_types(
+  arm: Node,
+  coproduct: InferMatchCoproduct,
+  owed: List<Symbol>,
+  resolved: ResolvedTree
+) -> InferMatchArmBinders {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => infer_match_arm_binders_empty()
     Accepted { value: pat, diagnostics: _ } =>
-      match infer_coproduct_arm_pattern(pat: pat) {
+      match infer_coproduct_arm_pattern(pat: pat, resolved: resolved) {
         ArmPatternUnread => infer_match_arm_binders_empty()
         ArmPatternWildcard => infer_match_arm_binders_empty()
         ArmPatternBinder { name: _ } => infer_match_arm_binders_empty()
