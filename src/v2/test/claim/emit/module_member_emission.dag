@@ -304,3 +304,20 @@ test fn a_where_refinement_is_not_refused_for_missing_facts_holds() -> Bool {
     MemberClosureRefused { reason: r } => r != ^partition_facts_miss
   }
 }
+
+// PROBE ONLY (branch probe/keen-koi-376-refine, never for landing): the emitted text or refusal reason
+// of the where-refinement and alias fixtures, to read why the refinement claim is a bare false on main.
+fn member_emission_probe_text(v: MemberEmissionVerdict) -> String {
+  match v {
+    MemberEmitted { text: t } => concat("EMITTED: ", t)
+    MemberRefused { reason: r } => concat("MEMBER_REFUSED: ", symbol_lexeme(sym: r))
+    MemberClosureRefused { reason: r } => concat("CLOSURE_REFUSED: ", symbol_lexeme(sym: r))
+  }
+}
+
+fn member_emission_probe_refine_text() -> String {
+  concat(
+    concat("REFINEMENT> ", member_emission_probe_text(v: member_emission_refinement_verdict())),
+    concat("\nALIAS> ", member_emission_probe_text(v: member_emission_alias_verdict()))
+  )
+}
