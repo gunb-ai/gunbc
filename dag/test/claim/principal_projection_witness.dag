@@ -40,6 +40,13 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // accept/refuse arms are test.claim.google_oidc_verdict_witness's subject).
 fn witness_claims(sub: NonEmptyStr, email: Email, email_verified: Bool) -> OidcIdTokenClaims {
   OidcIdTokenClaims {
+    auth_time: Absent,
+    nonce: Absent,
+    acr: Absent,
+    amr: Absent,
+    azp: Absent,
+    session_id: Absent,
+    hosted_domain: Absent,
     issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
     subject: JwtBareString { value: sub },
     audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
@@ -58,6 +65,7 @@ fn witness_claims(sub: NonEmptyStr, email: Email, email_verified: Bool) -> OidcI
 
 fn witness_policy() -> OidcIdTokenVerdictPolicy {
   OidcIdTokenVerdictPolicy {
+    expected_nonce: Absent,
     expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
     admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
     expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },

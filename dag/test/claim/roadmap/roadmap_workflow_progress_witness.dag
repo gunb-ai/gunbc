@@ -739,6 +739,8 @@ fn pub_subject(head: CommitSha) -> RoadmapPublicationSubject {
 
 fn pub_pull(sha: CommitSha) -> PullRequest {
   PullRequest {
+    merged_at: Absent,
+    merge_commit_sha: Absent,
     number: 7552,
     title: "publication slice",
     body: none,

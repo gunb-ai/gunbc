@@ -1815,6 +1815,8 @@ fn belt_pub_receipt(head: CommitSha, node_id: String) -> String {
         pulls: PullRequestsRead {
           pulls: [
             PullRequest {
+              merged_at: Absent,
+              merge_commit_sha: Absent,
               number: 1234,
               title: "a change",
               body: none,

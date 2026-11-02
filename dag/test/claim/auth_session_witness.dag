@@ -43,6 +43,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_claims(nonce: NonEmptyStr?) -> OidcIdTokenClaims {
   OidcIdTokenClaims {
+    auth_time: Absent,
+    nonce: Absent,
+    acr: Absent,
+    amr: Absent,
+    azp: Absent,
+    session_id: Absent,
+    hosted_domain: Absent,
     issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
     subject: JwtBareString { value: "sub-123" as NonEmptyStr },
     audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
@@ -63,6 +70,13 @@ fn witness_claims(nonce: NonEmptyStr?) -> OidcIdTokenClaims {
 // profile picture claim aboard (the shape Google's ID token carries under the profile scope).
 fn witness_claims_with_picture(nonce: NonEmptyStr?) -> OidcIdTokenClaims {
   OidcIdTokenClaims {
+    auth_time: Absent,
+    nonce: Absent,
+    acr: Absent,
+    amr: Absent,
+    azp: Absent,
+    session_id: Absent,
+    hosted_domain: Absent,
     issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
     subject: JwtBareString { value: "sub-123" as NonEmptyStr },
     audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
@@ -89,6 +103,7 @@ fn witness_verdict(nonce: NonEmptyStr?) -> OidcIdTokenVerdict {
       },
     },
     policy: OidcIdTokenVerdictPolicy {
+      expected_nonce: Absent,
       expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
       admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
       expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
@@ -125,6 +140,13 @@ fn witness_verdict_with_picture(nonce: NonEmptyStr?) -> OidcIdTokenVerdict {
 fn witness_refused_verdict() -> OidcIdTokenVerdict {
   verify_oidc_id_token(
     claims: OidcIdTokenClaims {
+      auth_time: Absent,
+      nonce: Absent,
+      acr: Absent,
+      amr: Absent,
+      azp: Absent,
+      session_id: Absent,
+      hosted_domain: Absent,
       issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
       subject: JwtBareString { value: "sub-123" as NonEmptyStr },
       audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },

@@ -58,6 +58,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_claims() -> OidcIdTokenClaims {
   OidcIdTokenClaims {
+    auth_time: Absent,
+    nonce: Absent,
+    acr: Absent,
+    amr: Absent,
+    azp: Absent,
+    session_id: Absent,
+    hosted_domain: Absent,
     issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
     subject: JwtBareString { value: "sub-123" as NonEmptyStr },
     audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
