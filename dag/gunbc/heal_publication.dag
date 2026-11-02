@@ -289,9 +289,13 @@ fn observe_candidate_world_wet(subject: HealPublicationSubject, directory: Strin
     return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: live_hex, detail: concat("the candidate head tree could not be read into the index: ", read_tree.stderr) }) }
   }
   let written = git.Plumbing.WriteTreeFromIndex(address: GitDirectoryAt { path: store, run_in: store }, index: index_file)
-  let head_tree_hex = match git_object_id_from_untagged_hex(hex: trim(s: written.tree)) {
-    Present { value: oid } => git_object_id_wire_hex(oid: oid) as String
-    Absent => return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: live_hex, detail: "the candidate head tree is not a decodable object id" }) }
+  // A write-tree that EXITS NONZERO is refused even when its stdout would otherwise decode -- a failed
+  // completion is not a tree, and decoding a parseable-but-failed stdout would let a broken index through.
+  // The decision is the pure classify_write_tree_completion below, so a bounded control can prove the
+  // exit-code gate discriminates on exit_code alone; the stderr is preserved into the refusal detail.
+  let head_tree_hex = match classify_write_tree_completion(exit_code: written.exit_code, stdout: written.tree, stderr: written.stderr) {
+    WriteTreeCompleted { tree_hex } => tree_hex as String
+    WriteTreeRejected { detail } => return PublisherRunRefused { cause: refusal_line(refusal: BaseTreeUnreadable { tree_sha: live_hex, detail: detail }) }
   }
   let staged = git.Core.LsFilesStageZInRepo(repo: store)
   if !staged.success {
@@ -674,4 +678,23 @@ fn ensure_pull_request_open_wet(subject: HealPublicationSubject, pull_number: In
       }
   }
   classify_publish_pull_request(obs: obs, pull_number: pull_number, expected_head_ref: expected_head_ref, expected_base_ref: expected_base_ref)
+}
+
+// THE WRITE-TREE COMPLETION, pure and offline-testable. git.Plumbing.WriteTreeFromIndex can exit nonzero while
+// still printing something that LOOKS like an object id (a partial write, a lock race). Decoding that stdout as a
+// tree would let a broken index through the fence, so the completion is decided on exit_code FIRST: a nonzero exit
+// is refused regardless of stdout, and the stderr is carried into the refusal. Only a zero exit whose stdout decodes
+// to a git object id yields a tree. Splitting this out lets a bounded control prove the gate discriminates on
+// exit_code alone, with the identical parseable stdout on both sides (deleting the check cannot leave the suite green).
+type WriteTreeCompletion = WriteTreeCompleted { tree_hex: String } | WriteTreeRejected { detail: String }
+
+fn classify_write_tree_completion(exit_code: Int, stdout: String, stderr: String) -> WriteTreeCompletion {
+  if exit_code != 0 {
+    WriteTreeRejected { detail: concat("git write-tree exited nonzero: ", trim(s: stderr)) }
+  } else {
+    match git_object_id_from_untagged_hex(hex: trim(s: stdout)) {
+      Present { value: oid } => WriteTreeCompleted { tree_hex: git_object_id_wire_hex(oid: oid) as String }
+      Absent => WriteTreeRejected { detail: "git write-tree exited 0 but printed no decodable object id" }
+    }
+  }
 }

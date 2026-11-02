@@ -87,11 +87,13 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 // moved head, for the wrong repository, or sealed against a non-default base) fails the admit step, so the
 // downstream federation/mint steps (gated on the admit step's success) never run and no credential is ever
 // requested for it. What admit does NOT do is read the pull request's open/closed state or its identity --
-// no credential-free transport answers those -- so a CLOSED or RETARGETED pull request still passes admit, and
-// the short-lived App installation token IS then federated before the publish step's open/identity check
-// refuses it (that check sits after the mint, next to the write, so it prevents the WRITE but not the mint).
-// The credential-free claim is precisely about ADMIT reading no credential; it is not a claim that a closed
-// PR costs no token. (The admit step once carried `GITHUB_TOKEN: ${{ github.token }}`; that line was dead
+// no credential-free transport answers those -- so a CLOSED or RETARGETED pull request still passes admit. The
+// step order after admit is: the WIF federation (a short-lived GCP ACCESS token -- so a closed PR DOES cost that
+// one exchange) -> the publish step's re-admission -> the open/identity check made under the job's GITHUB_TOKEN
+// -> only on a PASS, the Secret Manager read and the mint of the App INSTALLATION token -> writes, readback,
+// receipt. The check therefore sits BEFORE the App installation token mint and next to the write: it prevents the
+// App token, the write and the readback, but NOT the earlier WIF federation exchange. The credential-free claim
+// is precisely about ADMIT reading no credential; it is not a claim that a closed PR costs no token at all. (The admit step once carried `GITHUB_TOKEN: ${{ github.token }}`; that line was dead
 // decoration -- the credential-free admit reads no environment token -- so it is deleted rather than left
 // cited as a safeguard it does not provide, per DESIGN 5.)
 

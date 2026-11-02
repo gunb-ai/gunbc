@@ -29,6 +29,7 @@ import gunbc.heal_publication {
   classify_publish_pull_request, PublishPullRequestState,
   PublishPrObserved, PublishPrStateUnreadable, PublishPrCredentialAbsent,
   PullRequestOpenCheck, PullRequestOpenCheckPassed, PullRequestOpenCheckRefused,
+  classify_write_tree_completion, WriteTreeCompletion, WriteTreeCompleted, WriteTreeRejected,
   refusal_line
 }
 
@@ -571,6 +572,27 @@ test fn witness_an_absent_publish_credential_refuses_rather_than_passes() -> Boo
   match classify_publish_pull_request(obs: PublishPrCredentialAbsent, pull_number: 11493, expected_head_ref: branch, expected_base_ref: "main") {
     PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "token is absent")
     PullRequestOpenCheckPassed => false
+  }
+}
+
+// BOUNDED CONTROLS FOR THE WRITE-TREE COMPLETION GATE (stern-bat item 1). Both sides carry the IDENTICAL
+// parseable stdout (head_hex decodes to a valid git object id); the only difference is exit_code. The pair proves
+// classify_write_tree_completion refuses a FAILED completion whose stdout would decode, and accepts the SUCCESSFUL
+// one -- so deleting the exit_code check (decoding written.tree unconditionally) turns these RED. The failure
+// detail must carry the stderr, proving the refusal preserves the git diagnostic rather than a canned string.
+test fn witness_a_failed_write_tree_with_parseable_output_refuses() -> Bool {
+  match classify_write_tree_completion(exit_code: 128, stdout: head_hex, stderr: "fatal: cannot lock ref 'HEAD'") {
+    WriteTreeRejected { detail } => contains(haystack: detail, needle: "cannot lock ref")
+    WriteTreeCompleted { tree_hex } => false
+  }
+}
+
+test fn witness_a_successful_write_tree_with_the_same_output_passes() -> Bool {
+  // The positive control: the refusal arm above is not satisfied by a predicate that always refuses. Same
+  // stdout as the failed case, exit_code 0 -> the tree is accepted and its hex round-trips unchanged.
+  match classify_write_tree_completion(exit_code: 0, stdout: head_hex, stderr: "") {
+    WriteTreeCompleted { tree_hex } => tree_hex == head_hex
+    WriteTreeRejected { detail } => false
   }
 }
 
