@@ -374,15 +374,19 @@ test fn a_field_refinement_inside_a_variant_payload_does_not_refine_the_declarat
 }
 
 // A FIELD'S where INSIDE A VARIANT PAYLOAD DOES NOT REFINE THE DECLARATION ON THE LOWERING ROUTE EITHER
-// (body_lower_declared_where_host_optional stops at declared member edges): it emits the coproduct, as the
-// plain control does. Probe cc2-nw at d834c395 read this source as REFUSED undecided before the fix.
+// (body_lower_declared_where_host_optional stops at declared member edges): the member is CLASSIFIED a
+// coproduct, where before it was refused emit_module_member_record_or_refinement_undecided (probe cc2-nw at
+// d834c395). It then reaches the coproduct emitter and refuses at the NEXT link, declared-wrong: the field
+// type `Int where positive` is a Conj, not an atom (target_semantic_decl_field_type_not_atom). Realizing an
+// inline-refined field type is a separate emitter slice; this pin names it and goes RED the moment that
+// slice lands, to be replaced by an emission claim (DESIGN 4b: the control stays enrolled).
 fn member_emission_nested_where_verdict() -> MemberEmissionVerdict {
   member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Bag = A { n: Int where positive } | B\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n")
 }
 
-test fn a_field_where_inside_a_variant_payload_emits_the_coproduct_holds() -> Bool {
+test fn a_field_where_inside_a_variant_payload_is_classified_a_coproduct_and_refuses_at_the_field_type_holds() -> Bool {
   match member_emission_nested_where_verdict() {
-    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Bag")
+    MemberRefused { reason: r } => r == ^target_semantic_decl_field_type_not_atom
     _ => false
   }
 }
