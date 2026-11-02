@@ -1,0 +1,98 @@
+module test.claim.machine_width_reading_v2
+
+import std.types { Bool, List, String }
+import std.optional { Optional, Present, Absent }
+import std.integer { Signed, Unsigned }
+import std.measure { bit_width }
+import std.machine_width_reading { MachineWidthReading, WidthReadable, WidthUnreadable, NotWidthConstrained }
+import v2.compiler.infer { infer_type_alias_normalized_at, infer_machine_width_of }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.test.claim.compiler.width_literal_admission { wla_source, wla_p_artifact, wla_decl }
+
+// One lossless fixture population shared by the v2 native witness and the
+// interpreted cross-tree agreement. No seed compiler modules enter this closure.
+fn width_reading_source(path: String, content: String) -> DagSourceReadWitness {
+  wla_source(src: content,
+    artifact: Artifact { kind: wla_p_artifact.kind, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    cu: symbol_intern_lexeme(lexeme: path))
+}
+
+data width_reading_subject_source: String = "module p\n\nimport std.integer { UInt8, Int64 }\nimport std.machine_constraints { Compose, MachineWidth, PointerWidth }\n\ntype AliasWidth = UInt8\ntype OtherConstraint\ntype Unrelated = Compose<Int64, OtherConstraint>\ntype Dynamic = Compose<Int64, MachineWidth<PointerWidth>>\ntype NegativeWidth = Compose<Int64, MachineWidth<-8>>\n"
+
+data width_reading_integer_source: String = "module std.integer\n\nimport std.nat { Nat }\nimport std.algebra { AbelianGroup, GroupCompletion }\nimport std.machine_constraints { Compose, MachineWidth }\n\ntype Int = AbelianGroup<GroupCompletion<Nat>>\ntype UInt = Nat\ntype UInt8 = Compose<UInt, MachineWidth<8>>\ntype Int64 = Compose<Int, MachineWidth<64>>\n"
+
+data width_reading_constraint_source: String = "module std.machine_constraints\n\nimport std.constructors { Phantom }\n\ntype Compose<A, B> = Phantom\ntype MachineWidth<N>\ntype PointerWidth\n"
+
+data width_reading_sources: List<DagSourceReadWitness> = [
+  width_reading_source(path: "p.dag", content: width_reading_subject_source),
+  width_reading_source(path: "integer.dag", content: width_reading_integer_source),
+  width_reading_source(path: "constraints.dag", content: width_reading_constraint_source),
+  width_reading_source(path: "constructors.dag", content: "module std.constructors\n\ntype Phantom\n"),
+  width_reading_source(path: "nat.dag", content: "module std.nat\n\ntype Nat = Zero | Succ { prev: Nat }\n"),
+  width_reading_source(path: "algebra.dag", content: "module std.algebra\n\ntype AbelianGroup<A>\ntype GroupCompletion<A>\n")
+]
+
+fn width_reading_v2(module_path: String, name: String) -> Optional<MachineWidthReading> {
+  match assemble_program_from_ingest(
+    ingest: width_reading_sources,
+    admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "p") }, imports: [] },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: resolved, diagnostics: _ } => Present { value: infer_machine_width_of(
+      t: infer_type_alias_normalized_at(t: wla_decl(dotted: concat(module_path, ".", name)),
+        bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)
+    ) }
+  }
+}
+
+fn width_reading_is_unreadable(reading: Optional<MachineWidthReading>) -> Bool {
+  match reading {
+    Present { value: WidthUnreadable { reason: _ } } => true
+    _ => false
+  }
+}
+
+fn width_v2_uint8_reads_holds() -> Bool {
+  width_reading_v2(module_path: "std.integer", name: "UInt8") == Present { value: WidthReadable { signedness: Unsigned, bits: bit_width(count: 8) } }
+}
+
+fn width_v2_int64_reads_holds() -> Bool {
+  width_reading_v2(module_path: "std.integer", name: "Int64") == Present { value: WidthReadable { signedness: Signed, bits: bit_width(count: 64) } }
+}
+
+fn width_v2_alias_reads_holds() -> Bool {
+  width_reading_v2(module_path: "p", name: "AliasWidth") == Present { value: WidthReadable { signedness: Unsigned, bits: bit_width(count: 8) } }
+}
+
+fn width_v2_unrelated_compose_is_unconstrained_holds() -> Bool {
+  width_reading_v2(module_path: "p", name: "Unrelated") == Present { value: NotWidthConstrained }
+}
+
+fn width_v2_pointer_width_stays_unresolved_holds() -> Bool {
+  width_reading_is_unreadable(reading: width_reading_v2(module_path: "p", name: "Dynamic"))
+}
+
+fn width_v2_negative_width_is_unreadable_holds() -> Bool {
+  width_reading_is_unreadable(reading: width_reading_v2(module_path: "p", name: "NegativeWidth"))
+}
+
+test fn width_v2_uint8_reads() -> Bool { width_v2_uint8_reads_holds() }
+
+test fn width_v2_int64_reads() -> Bool { width_v2_int64_reads_holds() }
+
+test fn width_v2_alias_reads() -> Bool { width_v2_alias_reads_holds() }
+
+test fn width_v2_unrelated_compose_is_unconstrained() -> Bool { width_v2_unrelated_compose_is_unconstrained_holds() }
+
+test fn width_v2_pointer_width_stays_unresolved() -> Bool { width_v2_pointer_width_stays_unresolved_holds() }
+
+test fn width_v2_negative_width_is_unreadable() -> Bool { width_v2_negative_width_is_unreadable_holds() }
+
