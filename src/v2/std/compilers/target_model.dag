@@ -15100,7 +15100,7 @@ fn target_transform_positional_operand_binding_atom_otherwise(child: Node) -> Ou
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^probe_site_b_otherwise,
           node: child
         )
       )

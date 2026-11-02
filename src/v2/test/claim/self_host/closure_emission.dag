@@ -574,3 +574,42 @@ test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
           _ => false })
   }
 }
+
+// PROBE ONLY (branch probe/keen-koi-376-tsi, never for landing): which transform_shape_invalid site a
+// nullary coproduct arm inside a record literal in a data initializer reaches. The two candidate
+// sites carry distinct probe reasons on this branch, so the reason in the diagnostic names the site.
+data ce_tsi_local_source: String = "module v2.test.ce_tsi_local\n\ntype CeTsiScheme = Https | Http\n\ntype CeTsiUri { scheme: CeTsiScheme }\n\ndata ce_tsi_local_uri: CeTsiUri = CeTsiUri { scheme: Https }\n"
+
+data ce_tsi_scheme_source: String = "module v2.test.ce_tsi_scheme\n\ntype CeTsiScheme = Https | Http\n"
+
+data ce_tsi_imported_source: String = "module v2.test.ce_tsi_imported\n\nimport v2.test.ce_tsi_scheme { CeTsiScheme, Https }\n\ntype CeTsiUri { scheme: CeTsiScheme }\n\ndata ce_tsi_imported_uri: CeTsiUri = CeTsiUri { scheme: Https }\n"
+
+fn ce_tsi_one(label: String, ingest: SourceRootIngest, entry: String) -> String {
+  let located = ce_emit(ingest: ingest, entry: entry)
+  match located.outcome {
+    Rejected { diagnostics: d } =>
+      concat(label, concat(" REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans)))
+    Accepted { value: e, diagnostics: _ } =>
+      concat(label, concat(" ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans)))
+  }
+}
+
+fn ce_probe_tsi_text() -> String {
+  concat(
+    ce_tsi_one(
+      label: "LOCAL",
+      ingest: [ce_read(source: ce_tsi_local_source, id: ^ce_tsi_local_read, path: "src/v2/test/ce_tsi_local.dag")],
+      entry: "v2.test.ce_tsi_local"
+    ),
+    concat("\n",
+      ce_tsi_one(
+        label: "IMPORTED",
+        ingest: [
+          ce_read(source: ce_tsi_scheme_source, id: ^ce_tsi_scheme_read, path: "src/v2/test/ce_tsi_scheme.dag"),
+          ce_read(source: ce_tsi_imported_source, id: ^ce_tsi_imported_read, path: "src/v2/test/ce_tsi_imported.dag")
+        ],
+        entry: "v2.test.ce_tsi_imported"
+      )
+    )
+  )
+}
