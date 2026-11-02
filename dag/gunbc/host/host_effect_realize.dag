@@ -3706,6 +3706,7 @@ fn provision_build_cache_witness_intent() -> HostEffectIntent {
 
 fn provision_build_cache_arch_unknown_host_fixture() -> ComputeHost {
   ComputeHost {
+    bmc_intent: Absent,
     identity: srv1_host.identity,
     baseboard: none,
     processors: [],

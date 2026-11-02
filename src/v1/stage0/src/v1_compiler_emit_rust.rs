@@ -40,7 +40,7 @@ pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, Varia
 pub use crate::std_syntax::{LiteralValue, BinOp, AlgebraFieldKind};
 pub use crate::std_target_representation::{VariantParentIdentity, variant_value_realization_refusal_message, ExactBindingResolution, VariantValueRealization, VariantParentKey};
 pub use crate::std_types::{SourceSpan};
-pub use crate::std_types::{is_container_type, is_kernel_type, container_template_algebra};
+pub use crate::std_types::{is_container_type, is_kernel_type, container_template_algebra, container_spelling_is_algebra};
 pub use crate::std_unicode_scalar::{ascii_lowercase};
 pub use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::{closure_stub_v2_std_integer_source};
@@ -1378,7 +1378,7 @@ pub fn rust_declaration_checkpoint_grounding_at(
 }
 
 pub fn rust_seed_host_container_base(name: String) -> Option<String> {
-    if ((name.clone() == "List".to_string()) || (name.clone() == "FreeMonoid".to_string())) {
+    if crate::std_types::container_spelling_is_algebra(name, "FreeMonoid".to_string()) {
         Some("Vec".to_string())
     } else {
         std::option::Option::None
@@ -1410,7 +1410,8 @@ pub fn is_host_text_carrier_type(
                 crate::v1_std_core::type_reference_provenance(n.clone()),
             )
         } else {
-            if ((nm.clone() == "FreeMonoid".to_string()) || (nm.clone() == "List".to_string())) {
+            if crate::std_types::container_spelling_is_algebra(nm.clone(), "FreeMonoid".to_string())
+            {
                 if (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
                     != "Char".to_string())
                 {
@@ -16797,7 +16798,7 @@ pub fn emit_item_clone_bound_refusal(
                     if (head.clone() == "".to_string()) {
                         "".to_string()
                     } else {
-                        crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)".to_string()))
+                        crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see the well-formedness-propagation note in the // comments in gunbc.v1.trait_derive_emit)".to_string()))
                     }
                 }
             }
@@ -17493,6 +17494,7 @@ pub fn emit_struct_from_children(
                 ),
             ),
             generic_param_names.clone(),
+            emit_info.clone_bounded_type_params.clone(),
             env.source_indices.clone(),
             header_clone_param_names,
             deserialize_forbidden,
@@ -17940,6 +17942,8 @@ pub fn enum_derives(
         ),
         deserialize_forbidden,
         generic_param_names,
+        emit_info.clone_bounded_type_params.clone(),
+        emit_info.type_decl_items.clone(),
         source_indices,
     )
 }
@@ -18053,6 +18057,8 @@ pub fn emit_enum_from_children(
             children.clone(),
             generic_param_names.clone(),
             header_clone_param_names,
+            emit_info.clone_bounded_type_params.clone(),
+            emit_info.type_decl_items.clone(),
             env.source_indices.clone(),
         );
         let with_accessors = if (accessor_impl.clone() == "".to_string()) {

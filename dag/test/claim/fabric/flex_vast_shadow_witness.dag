@@ -247,6 +247,7 @@ fn wire_offer(name: String, ram: Int, bid: Bool, rentable: Bool) -> VastAiOffer 
 
 fn t_charge(start: Int, end: Int, desc: String) -> VastAiCharge {
   VastAiCharge {
+    metadata: Absent,
     start: start,
     end: end,
     type: "compute",
