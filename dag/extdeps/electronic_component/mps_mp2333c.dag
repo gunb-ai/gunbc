@@ -1,0 +1,77 @@
+module extdeps.electronic_component.mps_mp2333c
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.monolithic_power_systems { monolithic_power_systems }
+import std.measure { millivolt, ampere, hertz }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow, SwitchingRegulatorSpec, SwitchingRegulatorSpecification, MillivoltRange, RegulatorPin,
+  RegulatorSupplyInput, SwitchNode, RegulatorGround, BootstrapSupply, EnableInput, SoftStartProgram, FeedbackInput, PowerGoodOpenDrain,
+}
+
+// MPS's MP2333C, "18V, 3A, 650kHz, Synchronous Step-Down Converter With PG, SS, and Forced CCM in
+// SOT583 (1.6x2.1mm) Package" (datasheet Rev. 1.0, 11/16/2018, read in full 2026-10-31 from the
+// operator's copy): the Ordering Information and Top Marking (page 2), the Pin Functions table (page
+// 3), the Electrical Characteristics (page 4) and the package drawing (page 20). The top marking is two
+// lines, "BDFY" over "LLL": BDF is the product code of the MP2333CGTL, Y the year code, LLL the lot
+// number, so a part reading "BDFP / 528" is this row with year code P and lot 528. The package drawing
+// runs pins 1 to 4 down one side (PG, VIN, SW, GND) and 8 to 5 down the other (FB, SS, EN, BST), pin 1
+// across from pin 8 and pin 4 across from pin 5. The typical circuit joins BST to SW through a 1 uF
+// capacitor in series with a 20 ohm resistor, pulls EN to VIN through 604 kohm for automatic start-up,
+// decouples PG with 1 nF and pulls it up externally (the note recommends 100 kohm to a 3.3 V source),
+// sets soft start with a capacitor on SS, and feeds FB from a divider between the output and GND. The
+// datasheet's ordering table names one device, MP2333CGTL, with -Z as its tape-and-reel suffix; MPS's
+// catalogue page (the further citation) lists MP2333CGTL-P and MP2333CGTL-Z as reel options of that one
+// device, so the ordering code here is the device's and a distributor's -P or -Z is packaging.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.monolithicpower.com/en/documentview/productdocument/index/version/2/document_type/Datasheet/lang/en/sku/MP2333C/document_id/4405/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.mps_mp2333c",
+      decl_name: "mp2333cgtl",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "drive.google.com/file/d/1gDcXWi6fXQM0LRUuZ5la4IkZ9j0LQs9g/view" } },
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "www.monolithicpower.com/en/mp2333c.html" } },
+  ]
+}
+
+data mp2333cgtl: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: monolithic_power_systems,
+  ordering_code: "MP2333CGTL",
+  package: "SOT583 (1.6 mm x 2.1 mm), 8 pins at 0.5 mm pitch, four per side",
+  top_marking: "BDFY / LLL (BDF: product code of MP2333CGTL; Y: year code; LLL: lot number)",
+  specification: SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification {
+    pins: [
+      RegulatorPin { number: 1, name: "PG", role: PowerGoodOpenDrain },
+      RegulatorPin { number: 2, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 3, name: "SW", role: SwitchNode },
+      RegulatorPin { number: 4, name: "GND", role: RegulatorGround },
+      RegulatorPin { number: 5, name: "BST", role: BootstrapSupply },
+      RegulatorPin { number: 6, name: "EN", role: EnableInput },
+      RegulatorPin { number: 7, name: "SS", role: SoftStartProgram },
+      RegulatorPin { number: 8, name: "FB", role: FeedbackInput },
+    ],
+    input: MillivoltRange { minimum: millivolt(count: 4200), maximum: millivolt(count: 18000) },
+    continuous_output_current: ampere(count: 3),
+    switching_frequency: hertz(count: 650000),
+    high_side_on_resistance_milliohm: 75,
+    low_side_on_resistance_milliohm: 40,
+  } },
+  vendor_application_statements: [
+    "a fully integrated, high-frequency, synchronous, rectified, step-down, switch-mode converter with internal power MOSFETs, achieving 3A of continuous output current over a wide input range",
+    "constant-on-time (COT) control operation provides very fast transient response, easy loop design, and very tight output regulation",
+    "full protection features include short-circuit protection (SCP), over-current protection (OCP), under-voltage protection (UVP), and thermal shutdown",
+    "Wide 4.2V to 18V Operating Input Range; 75mOhm/40mOhm Low RDS(ON) Internal Power MOSFETs; 650kHz Switching Frequency; Forced PWM Operation; Programmable Soft-Start Time; Power Good (PG) Indication; Pre-Bias Start-Up",
+  ],
+}

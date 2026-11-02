@@ -4469,8 +4469,13 @@ fn infer_declared_position_undecidable_reason(
   type_params: List<Symbol>,
   rigid_binders: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_params) {
-    Present { value: reason } => optional_present(value: reason)
+  // Only a declared position that IS a bare type variable is undecided here: a variable's own position.
+  // A declared type that merely MENTIONS one (`Pair<K, String>`) goes on to the pair judgment, which
+  // undecides the variable's position alone and judges its concrete siblings
+  // (v2.std.inhabitance inhabitance_pair_undecidable_reason); abstaining the whole position here hid a
+  // concrete sibling mismatch before that judgment could run.
+  match infer_type_variable_binder(t: declared, type_params: type_params) {
+    Present { value: _ } => inhabitance_node_undecidable_reason(n: declared, type_variables: type_params)
     Absent =>
       match declared.kind {
         // A rigid binder of an enclosing declaration is a KNOWN type in its scope (the leaf rule,
@@ -10909,17 +10914,83 @@ fn infer_gather_fold_bind_row_on_entries(
         children_remaining: 0
       )
     Accepted { value: _, diagnostics: d } =>
-      infer_gather_transform_frontier_on_entries(
-        node: node,
-        entries: entries,
-        pending: diagnostics_merge(outer: pending, inner: d),
-        partials: partials,
-        kinds: kinds,
-        resolved: resolved,
-        instances: infer_no_type_variable_instances(),
-        binder_types: infer_no_binder_types(),
-        rigid_binders: rigid_binders
-      )
+      match infer_fold_init_closed(node: node, entries: entries, resolved: resolved) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: node,
+            pending: rejected_with_pending(pending: pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: closed_entries, diagnostics: cd } =>
+          infer_gather_transform_frontier_on_entries(
+            node: node,
+            entries: closed_entries,
+            pending: diagnostics_merge(outer: diagnostics_merge(outer: pending, inner: d), inner: cd),
+            partials: partials,
+            kinds: kinds,
+            resolved: resolved,
+            instances: infer_no_type_variable_instances(),
+            binder_types: infer_no_binder_types(),
+            rigid_binders: rigid_binders
+          )
+      }
+  }
+}
+
+// THE FOLD'S INIT FACT IS CLOSED WHERE THE FOLD CLOSES IT. infer_fold_bind_check closes an open carrier (`init: []`)
+// at the type the step produces (infer_fold_carrier_closed_at) -- but only to JUDGE; the closed type was dropped and the
+// init node kept the constructor-use variable it was minted with, which native emission then refuses as an unresolved type
+// variable. Every other site that closes an open arm records the closure: a let annotation instantiates its bound value's
+// fact (infer_judge_declared_position_closing) and a branch join replaces the held arm's root fact
+// (infer_close_held_root_closed). The fold is one more declared position for its init, so it records the same closure through
+// the same relation: the instances of the one closing relation, instantiated at the init's entry. A carrier already closed
+// (a typed init) yields no instances and is left as written; so is a fold whose step type is not derived (the counted
+// advisory infer_fold_bind_check already raised).
+fn infer_fold_init_closed(node: Node, entries: Map<Node, List<InferredFacts>>, resolved: ResolvedTree) -> Outcome<Map<Node, List<InferredFacts>>> {
+  match bind_value(n: node) {
+    Absent => outcome_accepted(entries)
+    Present { value: init } =>
+      match infer_settled_type_at(target: init, entries: entries) {
+        Absent => outcome_accepted(entries)
+        Present { value: carrier } =>
+          if infer_type_is_open(t: carrier) {
+            match bind_slot_target(n: node, slot: BindBodySlot) {
+              Absent => outcome_accepted(entries)
+              Present { value: loop_node } =>
+                match fold_loop_step(loop_node: loop_node) {
+                  Absent => outcome_accepted(entries)
+                  Present { value: step } =>
+                    match infer_fold_step_produced(step: step, entries: entries) {
+                      Absent => outcome_accepted(entries)
+                      Present { value: produced } =>
+                        match infer_close_produced_at_declared(declared: produced, produced: carrier, instances: Empty, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
+                          Empty => outcome_accepted(entries)
+                          Cons { head: h0, tail: ht } => infer_entries_instantiate_at(entries: entries, key: init, instances: Cons { head: h0, tail: ht })
+                        }
+                    }
+                }
+            }
+          } else {
+            outcome_accepted(entries)
+          }
+      }
+  }
+}
+
+// What one step produces, as the fold carrier is judged against it: the declared return when the step has one (the
+// second judgement of infer_fold_bind_check), else the settled type of the step body.
+fn infer_fold_step_produced(step: Node, entries: Map<Node, List<InferredFacts>>) -> Optional<Node> {
+  match fold_step_declared_return(step: step) {
+    Present { value: declared_return } => Present { value: infer_declared_type_denotation(declared: declared_return) }
+    Absent =>
+      match fold_step_body_node(step: step) {
+        Absent => Absent
+        Present { value: body } => infer_settled_type_at(target: body, entries: entries)
+      }
   }
 }
 

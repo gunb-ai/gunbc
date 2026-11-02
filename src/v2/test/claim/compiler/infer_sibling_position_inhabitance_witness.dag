@@ -35,7 +35,7 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 // v2.std.inhabitance inhabitance_pair_undecidable_reason used to make the WHOLE declared/produced pair
 // UndecidableGenericFormal as soon as either side mentioned a type variable anywhere; it now judges the
 // sibling positions (inhabitance_positions_disagree), and a disagreeing sibling wins over the undecided
-// position. v1's counterpart is v1.compiler.types application_arguments_verdict; the relation is mirrored,
+// position. v1's counterpart is v1.compiler.infer application_arguments_inhabitance; the relation is mirrored,
 // not imported.
 //
 // TWO LAYERS, because the whole-pair abstention is reached only where an obligation carries variables

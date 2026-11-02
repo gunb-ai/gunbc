@@ -7,9 +7,9 @@ import extdeps.http.server { ServeWireResponse }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
-import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_ensure }
+import gunbc.fabric.fabric_storage_file_store { FabricStorageOperations, FabricStoreAreas, fabric_store_area_paths, fabric_store_open, fabric_store_declared_root, fabric_storage_slots, fabric_storage_state_slots }
 import gunbc.fabric.fabric_storage_placement {
-  FabricStorage, FabricStateStorage, fabric_storage_store_root, fabric_state_storage_root,
+  FabricStorage, FabricStateStorage, fabric_storage_store_root, fabric_state_storage_root, fabric_storage_store_directories,
   fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused,
   fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready,
 }
@@ -20,15 +20,17 @@ import gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, Fab
 // (gunbc.roadmap.roadmap_dashboard_instance isolated_dashboard_instance, the recorded witness route), the areas
 // created the way the deployment's directory rows would, so every claim reaches the stores through a real
 // readiness observation exactly as the door does. `store` and `state_store` are the minted sealed stores;
-// `files` and `state_files` are the file library's handles over the SAME derived roots, built here only to plant
-// and read back what the sealed stores wrote -- the pre-seal route, kept as the readback referent, never handed to
-// the door.
+// `files` and `state_files` are the declared AREA PATH PAIRS of the two stores (fabric_store_area_paths, the same
+// rows the mint reads) -- carried only so a claim can plant bytes the way the PRE-SEALED code wrote them and read
+// back what the sealed store wrote, byte for byte. They are a path pair, not a store handle: the deleted path mints
+// used to hand a witness a value the door could be driven with, and that route is gone. The stores themselves are
+// reached only through the minted sealed stores (store.ops / state_store.ops).
 type FabricFixture {
   instance: HostDashboardInstance
   store: FabricStorage
   state_store: FabricStateStorage
-  files: FabricStorageFileRoot
-  state_files: FabricStorageFileRoot
+  files: FabricStoreAreas
+  state_files: FabricStoreAreas
 }
 
 fn fabric_fixture_instance(root: String) -> HostDashboardInstance {
@@ -48,13 +50,71 @@ fn fabric_fixture_instance(root: String) -> HostDashboardInstance {
 // ONE FIXTURE PER CLAIM, AND A REFUSED MINT FAILS THE CLAIM. Either mint answering Unready ends the claim with
 // ExitFailure naming the mint's own detail; it is never projected into a 503, an empty head or a refused write,
 // any of which a claim here can expect.
+// THE WITNESS ROUTE TO A FABRIC STORE goes through the same door production does: mktemp a directory,
+// wrap it in the recorded isolated-dashboard-instance route (no new seam for a temporary root), and hand
+// the declared member chain plus that instance to the ONE mint. It takes no store directory -- a helper
+// that accepted one would be the caller-chosen-root route this lane deletes. A scenario whose directory or
+// store will not stand is Unready with its cause, which a claim reports as its own failure, never as a store.
+type FabricWetScenario
+  = FabricWetScenarioReady { instance: HostDashboardInstance, root: NonEmptyStr }
+  | FabricWetScenarioUnready { detail: String }
+
+fn fabric_wet_scenario(template: NonEmptyStr) -> FabricWetScenario {
+  let made = shell.Mktemp.DirWithTemplate(template: template as String)
+  if !made.success {
+    FabricWetScenarioUnready { detail: "the scenario directory could not be made" }
+  } else {
+    FabricWetScenarioReady { instance: fabric_fixture_instance(root: made.path as String), root: made.path as NonEmptyStr }
+  }
+}
+
+// THE CLAIM-SHAPED FORM: run a body over a standing store; an unstanding store fails the claim. This is the
+// route every wet fabric witness uses, so no witness needs a store value it cannot obtain.
+fn fabric_wet_run(members: List<NonEmptyStr>, instance: HostDashboardInstance, body: fn(FabricStorageOperations) -> Bool) -> Bool {
+  match fabric_wet_store(members: members, instance: instance) {
+    FabricWetStoreUnready { area: _, detail: _ } => false
+    FabricWetStoreReady { store: ops } => body(ops)
+  }
+}
+
+type FabricWetStore
+  = FabricWetStoreReady { store: FabricStorageOperations }
+  | FabricWetStoreUnready { area: String, detail: String }
+
+// THE SCENARIO PROVISIONS THROUGH THE PRODUCTION ROWS: fabric_storage_store_directories is the list the
+// instance's directory demands hand the substrate (root, objects and heads of both chains, derived from
+// fabric_storage_slots / fabric_storage_state_slots), and the scenario creates exactly those paths, never a
+// spelling of its own. fabric_wet_store_unprovisioned skips the step and is the BROKEN realization: the mint
+// lists a root that is not there and refuses.
+fn fabric_wet_provision(instance: HostDashboardInstance) -> Bool {
+  all(fabric_storage_store_directories(instance: instance), d => shell.Mkdir.Parents(path: d.path).success)
+}
+
+fn fabric_wet_store(members: List<NonEmptyStr>, instance: HostDashboardInstance) -> FabricWetStore {
+  if !fabric_wet_provision(instance: instance) {
+    FabricWetStoreUnready { area: "provision", detail: "the scenario could not stand up the declared member" }
+  } else {
+    match fabric_store_open(members: members, instance: instance, entry_mode: none) {
+      FabricStoreUnready { area: a, detail: d } => FabricWetStoreUnready { area: a, detail: d }
+      FabricStoreReady { store: ops } => FabricWetStoreReady { store: ops }
+    }
+  }
+}
+
+fn fabric_wet_store_unprovisioned(members: List<NonEmptyStr>, instance: HostDashboardInstance) -> FabricWetStore {
+  match fabric_store_open(members: members, instance: instance, entry_mode: none) {
+    FabricStoreUnready { area: a, detail: d } => FabricWetStoreUnready { area: a, detail: d }
+    FabricStoreReady { store: ops } => FabricWetStoreReady { store: ops }
+  }
+}
+
 fn fabric_fixture_run(claim: String, body: fn(FabricFixture) -> Bool) -> ProcessExit {
   let instance = fabric_fixture_instance(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_fixture.XXXXXX").path)
-  let files = fabric_storage_file_root(root: fabric_storage_store_root(instance: instance))
-  let state_files = fabric_storage_file_root(root: fabric_state_storage_root(instance: instance))
-  let _public = fabric_storage_file_root_ensure(root: files)
-  let _state = fabric_storage_file_root_ensure(root: state_files)
-  match fabric_storage_placed_store(instance: instance) {
+  let files = fabric_store_area_paths(members: fabric_storage_slots, instance: instance)
+  let state_files = fabric_store_area_paths(members: fabric_storage_state_slots, instance: instance)
+  if !fabric_wet_provision(instance: instance) {
+    exit_failure(reason: concat(claim, ": the scenario could not stand up the declared members"))
+  } else { match fabric_storage_placed_store(instance: instance) {
     FabricStoragePlacedRootRefused { detail } => exit_failure(reason: concat(concat(claim, ": the public fabric store mint refused, so nothing was observed: "), detail as String))
     FabricStoragePlacedRootReady { store } => match fabric_state_storage_store(instance: instance) {
       FabricStateStorageUnready { detail } => exit_failure(reason: concat(concat(claim, ": the state fabric store mint refused, so nothing was observed: "), detail as String))
@@ -62,7 +122,7 @@ fn fabric_fixture_run(claim: String, body: fn(FabricFixture) -> Bool) -> Process
         if body(FabricFixture { instance: instance, store: store, state_store: state_store, files: files, state_files: state_files }) { ExitSuccess }
         else { exit_failure(reason: concat(claim, ": the claim did not hold over the minted stores")) }
     }
-  }
+  } }
 }
 
 // ONE REQUEST AT THE PUBLIC DOOR, over the store minted for the fixture's instance.

@@ -441,6 +441,19 @@ pub fn sha512_digest_wire_form(digest: Rc<Sha512Digest>) -> String {
     Rc::new(vec!["sha512:".to_string(), digest.hex.clone()]).join(&"".to_string())
 }
 
+pub fn identity_frame(label: String, value: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(label, ":".to_string()),
+                (v1_rt::string_length(&value)).to_string(),
+            ),
+            ":".to_string(),
+        ),
+        value.clone(),
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Fnv1a64StructuralFamily;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

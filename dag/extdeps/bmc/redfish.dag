@@ -4,7 +4,7 @@ module extdeps.bmc.redfish
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.firmware.types { FirmwareSemanticVersion }
 import extdeps.uri { Uri, Https }
-import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishAccountRole, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor, redfish_account_role_from_wire }
+import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishAccountRole, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor, redfish_account_role_from_wire, redfish_account_role_wire }
 import std.measure { ByteSize, Gibibyte, HardwareThreadCount, gibibyte_to_byte_size, watt, watt_count }
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length, range }
 import std.algebra { list_head, skip }
@@ -14,7 +14,7 @@ import extdeps.languages.json.parse {
   parse_json_document, json_document_gap_text, json_field, json_field_string, json_field_bool, json_field_int,
   JsonDocumentParsed, JsonDocumentUnreadable, JsonFieldRead, FieldRead, FieldAbsent, FieldMalformed,
 }
-import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, json_bool, json_array, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, json_bool, json_int, json_array, serialize_json }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -545,6 +545,44 @@ fn redfish_password_change_required_body(account_odata_id: String, message_id: S
         json_kv(key: "Resolution", value: json_string(s: "Change the password for this account using a PATCH to the Password property at the URI provided."))
       ])
     ]))
+  ]))
+}
+
+// THE BODY THE CONTROLLER SERVES for GET /redfish/v1/AccountService/Accounts: the ManagerAccountCollection,
+// whose Members are the account `@odata.id`s and whose `Members@odata.count` is their count -- the same shape
+// srv13 committed at artifacts/bmc/srv13-first-contact-2026-10-07/AccountService_Accounts.json (one member,
+// root). It is the writer twin of `redfish_manager_account_collection_from_json`: the dry census read
+// (gunbc.machine_intake.bmc_secure.dry_read_bmc_redfish_account_census) parses THESE bytes back through that
+// reader, so what it reads are the bytes a controller would serve -- not a structure handed to it ready-made.
+// The caller (gunbc.bmc_model) supplies the account odata ids the world carries; none are invented here.
+// referenced-by: gunbc.bmc_model.bmc_redfish_account_collection_body
+// schema: DMTF Redfish ManagerAccountCollection (RedfishAccountCollection), dmtf.org/standards/redfish
+fn redfish_manager_account_collection_body(member_odata_ids: List<String>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "@odata.id", value: json_string(s: "/redfish/v1/AccountService/Accounts")),
+    json_kv(key: "@odata.type", value: json_string(s: "#ManagerAccountCollection.ManagerAccountCollection")),
+    json_kv(key: "Name", value: json_string(s: "Accounts Collection")),
+    json_kv(key: "Members", value: json_array(elements: map(member_odata_ids, id =>
+      json_object(members: [json_kv(key: "@odata.id", value: json_string(s: id))])
+    ))),
+    json_kv(key: "Members@odata.count", value: json_int(n: list_length(items: member_odata_ids))),
+  ]))
+}
+
+// THE BODY THE CONTROLLER SERVES for GET one ManagerAccount resource: the account's UserName, Enabled,
+// Locked and RoleId, spelled the way the reader `redfish_manager_account_from_json` reads them back (a
+// `RoleId` carrying one of the schema's three wire words). The caller (gunbc.bmc_model) supplies the fields
+// from the world's account; the census read parses these bytes, so an unreadable or malformed body is a
+// census the read must refuse rather than a value the model hands it.
+// referenced-by: gunbc.bmc_model.bmc_redfish_account_member_body
+// schema: DMTF Redfish ManagerAccount (RedfishAccountRole), dmtf.org/standards/redfish
+fn redfish_manager_account_member_body(odata_id: String, user_name: String, enabled: Bool, locked: Bool, role: RedfishAccountRole) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "@odata.id", value: json_string(s: odata_id)),
+    json_kv(key: "UserName", value: json_string(s: user_name)),
+    json_kv(key: "Enabled", value: json_bool(b: enabled)),
+    json_kv(key: "Locked", value: json_bool(b: locked)),
+    json_kv(key: "RoleId", value: json_string(s: redfish_account_role_wire(role: role) as String)),
   ]))
 }
 // ── THE SERVED ACCOUNT-LOCKOUT POLICY ───────────────────────────────────────────────────────────────

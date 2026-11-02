@@ -732,12 +732,6 @@ pub enum CompilerDiagnostic {
         reason: String,
         span: Rc<SourceSpan>,
     },
-    OwnershipViolation {
-        binding: String,
-        fn_name: String,
-        consumers: i64,
-        span: Rc<SourceSpan>,
-    },
     VariantCollision {
         variant: String,
         enum1: String,
@@ -1071,7 +1065,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::InternalError { span: s, .. } => s.clone(),
         CompilerDiagnostic::ComplexityUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::WhereRefinementUnenforced { span: s, .. } => s.clone(),
-        CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::KernelMintShapeMismatch { span: s, .. } => s.clone(),
@@ -1157,7 +1150,6 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
     CompilerDiagnostic::ComplexityUnknown { func_name: f, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("complexity: ".to_string(), f.clone()), ": ".to_string()), r.clone()),
     CompilerDiagnostic::WhereRefinementUnenforced { predicate: p, formal_type: t, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("where-refinement unenforced: predicate '".to_string(), p.clone()), "' on '".to_string()), t.clone()), "' — ".to_string()), r.clone()),
-    CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
     CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
     CompilerDiagnostic::KernelMintShapeMismatch { declaration_name: d, cause: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("kernel mint binding: '".to_string(), d.clone()), "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ".to_string()), c.clone()),
@@ -1389,10 +1381,6 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 })
     },
-    CompilerDiagnostic::OwnershipViolation { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
     CompilerDiagnostic::VariantCollision { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
