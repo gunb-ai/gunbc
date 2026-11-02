@@ -146,11 +146,10 @@ service CargoBuild {
       bin: NonEmptyStr
     }
 
-    // A build that ran and failed is an ANSWER read from these fields, not a sentinel exit code: the three
-    // keys are modelled shell channels (v1.compiler.emit names the ten accepted keys at
-    // src/v1/05_emit.dag:1445 -- stdout, stderr, exit_success, success, exists, exit_code, stdout_lines,
-    // stderr_truncated, stderr_total_bytes, stderr_retained_bytes), and these are the ones the success and
-    // nonzero-exit controls read.
+    // A build that ran and failed is an ANSWER read from these fields, not a sentinel exit code. The accepted
+    // shell output keys are owned by v1.compiler.emit -- its shell_emission_refusal_fact sentence enumerates
+    // the modeled channels, and no copy of that list belongs here -- and these three are the ones the success
+    // and nonzero-exit controls read.
     //
     // The typed extdeps.transports.shell ShellOutcome sum is NOT one of those keys, and this module learned
     // that by being refused, not by being told: a compiler-route entry reaching this operation refused at
