@@ -61,7 +61,7 @@ data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
 }
 
 test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool {
-  match os_install_actuator_steps(arm: ActuatorArmNbdProxy, export: srv3_nbd_proxy_export_placeholder).first() {
+  match os_install_actuator_steps(arm: ActuatorArmNbdProxy, boot_control: BootFromRemovableMedia, export: srv3_nbd_proxy_export_placeholder).first() {
     Absent => false
     Present { value: first_step } =>
       match actuator_step_realization_under(

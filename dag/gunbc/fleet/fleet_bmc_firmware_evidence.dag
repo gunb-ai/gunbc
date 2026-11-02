@@ -140,22 +140,3 @@ data srv4_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceObserv
 
 data fleet_bmc_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
 
-data srv1_bmc_firmware_capability_standing: BmcFirmwareCapabilityStanding = bmc_firmware_capability_standing(
-  evidence: srv1_bmc_firmware_evidence,
-  catalog: fleet_bmc_firmware_catalog,
-)
-
-data srv2_bmc_firmware_capability_standing: BmcFirmwareCapabilityStanding = bmc_firmware_capability_standing(
-  evidence: srv2_bmc_firmware_evidence,
-  catalog: fleet_bmc_firmware_catalog,
-)
-
-data srv3_bmc_firmware_capability_standing: BmcFirmwareCapabilityStanding = bmc_firmware_capability_standing(
-  evidence: srv3_bmc_firmware_evidence,
-  catalog: fleet_bmc_firmware_catalog,
-)
-
-data srv4_bmc_firmware_capability_standing: BmcFirmwareCapabilityStanding = bmc_firmware_capability_standing(
-  evidence: srv4_bmc_firmware_evidence,
-  catalog: fleet_bmc_firmware_catalog,
-)

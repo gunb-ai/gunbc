@@ -51,8 +51,7 @@ import gunbc.boot_artifact_delivery {
   BootDeliveryRefusalCause,
   BootDeliveryRefused,
   BootDeliverySolution,
-  BootFromNetworkPxe,
-  BootFromRemovableMedia,
+  BootControlTarget,
   MegaRacRestRemoteMedia,
   OpenBmcConfigfsUsbGadget,
   OpenBmcNbdProxyWebsocket,
@@ -60,6 +59,12 @@ import gunbc.boot_artifact_delivery {
   RedfishVirtualMediaPull,
   UefiHttpBoot,
   redfish_boot_target_of_control,
+}
+import gunbc.os_install_arm {
+  OsInstallArmNetworkBoot,
+  OsInstallArmNotRealizable,
+  OsInstallArmVirtualMediaIso,
+  os_install_arm_of,
 }
 import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
 import gunbc.host.host_effect {
@@ -101,22 +106,21 @@ type OsInstallActuatorArmStanding
   = ActuatorArmRealizable { arm: OsInstallActuatorArm }
   | ActuatorArmNotRealizable { delivery: BootArtifactDelivery }
 
+// Realizability is gunbc.os_install_arm's single answer; this actuator only refines its ISO arm into the
+// two step sequences (Redfish insert-media vs nbd-proxy serve) that the shared answer deliberately merges.
 fn os_install_actuator_arm_of(delivery: BootArtifactDelivery) -> OsInstallActuatorArmStanding {
-  match delivery {
-    RedfishVirtualMediaPull { params: _ } => ActuatorArmRealizable { arm: ActuatorArmRedfishVirtualMedia }
-    OpenBmcNbdProxyWebsocket { params: _ } => ActuatorArmRealizable { arm: ActuatorArmNbdProxy }
-    PxeChainBoot { evidence: _ } => ActuatorArmRealizable { arm: ActuatorArmPxe }
-    MegaRacRestRemoteMedia { params: _ } => ActuatorArmNotRealizable { delivery: delivery }
-    OpenBmcConfigfsUsbGadget { params: _ } => ActuatorArmNotRealizable { delivery: delivery }
-    UefiHttpBoot { params: _ } => ActuatorArmNotRealizable { delivery: delivery }
-  }
-}
-
-fn os_install_actuator_arm_boot_target(arm: OsInstallActuatorArm) -> RedfishBootSourceOverrideTarget {
-  match arm {
-    ActuatorArmRedfishVirtualMedia => redfish_boot_target_of_control(control: BootFromRemovableMedia)
-    ActuatorArmNbdProxy => redfish_boot_target_of_control(control: BootFromRemovableMedia)
-    ActuatorArmPxe => redfish_boot_target_of_control(control: BootFromNetworkPxe)
+  match os_install_arm_of(delivery: delivery) {
+    OsInstallArmVirtualMediaIso =>
+      match delivery {
+        RedfishVirtualMediaPull { params: _ } => ActuatorArmRealizable { arm: ActuatorArmRedfishVirtualMedia }
+        OpenBmcNbdProxyWebsocket { params: _ } => ActuatorArmRealizable { arm: ActuatorArmNbdProxy }
+        PxeChainBoot { evidence: _ } => ActuatorArmNotRealizable { delivery: delivery }
+        MegaRacRestRemoteMedia { params: _ } => ActuatorArmNotRealizable { delivery: delivery }
+        OpenBmcConfigfsUsbGadget { params: _ } => ActuatorArmNotRealizable { delivery: delivery }
+        UefiHttpBoot { params: _ } => ActuatorArmNotRealizable { delivery: delivery }
+      }
+    OsInstallArmNetworkBoot => ActuatorArmRealizable { arm: ActuatorArmPxe }
+    OsInstallArmNotRealizable { refusal: _ } => ActuatorArmNotRealizable { delivery: delivery }
   }
 }
 
@@ -145,8 +149,8 @@ fn nbd_proxy_serve_step(export: NbdProxyServeInterface) -> OsInstallActuatorStep
   }
 }
 
-fn os_install_actuator_steps(arm: OsInstallActuatorArm, export: NbdProxyServeInterface) -> List<OsInstallActuatorStep> {
-  let boot_target = os_install_actuator_arm_boot_target(arm: arm)
+fn os_install_actuator_steps(arm: OsInstallActuatorArm, boot_control: BootControlTarget, export: NbdProxyServeInterface) -> List<OsInstallActuatorStep> {
+  let boot_target = redfish_boot_target_of_control(control: boot_control)
   match arm {
     ActuatorArmRedfishVirtualMedia => [
       ActuatorRedfishInsertMedia,
@@ -166,10 +170,10 @@ fn os_install_actuator_steps(arm: OsInstallActuatorArm, export: NbdProxyServeInt
   }
 }
 
-fn os_install_actuator_plan(arm: OsInstallActuatorArm, export: NbdProxyServeInterface) -> OsInstallActuatorPlan {
+fn os_install_actuator_plan(arm: OsInstallActuatorArm, boot_control: BootControlTarget, export: NbdProxyServeInterface) -> OsInstallActuatorPlan {
   OsInstallActuatorPlan {
     arm: arm,
-    steps: os_install_actuator_steps(arm: arm, export: export),
+    steps: os_install_actuator_steps(arm: arm, boot_control: boot_control, export: export),
   }
 }
 
@@ -206,7 +210,7 @@ fn os_install_actuator_plan_standing_for(
     BootDeliveryPlanned { plan: bp } =>
       match os_install_actuator_arm_of(delivery: bp.delivery) {
         ActuatorArmRealizable { arm: a } =>
-          match os_install_actuator_plan(arm: a, export: export) {
+          match os_install_actuator_plan(arm: a, boot_control: bp.boot_control, export: export) {
             p =>
               match actuator_plan_realization(steps: p.steps, image: image) {
                 ActuatorPlanRealized { intents: xs } => ActuatorPlanReady { plan: p, intents: xs }
