@@ -195,7 +195,6 @@ data host_standup_spine: List<HostStandupStep> = [
     phase: OsInstallMechanismResolved,
     label: "prefix:os-install-mechanism",
     authorities: [
-      decl_ref(module_path: "gunbc.boot_artifact_delivery", decl_name: "solve_boot_artifact_delivery"),
       decl_ref(module_path: "gunbc.fleet.fleet_boot_delivery_solution", decl_name: "srv3_boot_delivery_solution"),
       decl_ref(module_path: "gunbc.os_install", decl_name: "srv3_os_install_plan_standing"),
     ],
@@ -722,12 +721,11 @@ fn assimilation_complete_all_satisfied(
   }
 }
 
-// NO SILENT FALLBACK — the same claim as before, now carried by the refusal. This read "is
-// nbd-proxy, no fallback" while srv3 ran 2.07.00; the load-bearing half was always the second: a
-// solver finding no virtual media must not quietly answer PXE. srv3 on 3.22.00 has no catalogued
-// delivery mechanism, so the fallback arm is exactly where a defective solver would land — refusing
-// is the proof it does not. A Selected of any kind here means the fallback fired.
-fn srv3_install_mechanism_refuses_rather_than_falling_back() -> Bool {
+// THE ASSERTED STANDING, NOT A SOLVER READING. srv3's delivery solution is a declared access refusal
+// (gunbc.fleet.fleet_boot_delivery_solution): nothing on the install path runs the solver, so this
+// checks that the standing the spine cites is a refusal and not a plan. It cannot go red from a
+// solver change; the solver's own refusal arms are witnessed in gunbc.boot_artifact_delivery's witness.
+fn srv3_install_mechanism_standing_is_the_asserted_refusal() -> Bool {
   match srv3_boot_delivery_solution {
     BootDeliveryRefused { cause: _ } => true
     BootDeliveryPlanned { plan: _ } => false
