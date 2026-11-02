@@ -1,0 +1,94 @@
+module product.printed_chassis.card_end_interface
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { Micrometer, micrometer }
+
+// ═══ WHAT A DUCT MEETS AT A CARD'S END: THE SHARED INTERFACE AND THE FEATURES ONLY SOME CARDS HAVE ═══
+//
+// Every passive card a duct serves presents an end face with an air opening: its outer extent, the fin
+// opening at its tightest, where that opening sits, and how far the fins sit behind it. Those are what any
+// duct needs. What a duct can FASTEN to or must KEEP CLEAR of differs per card: the A16's end cap has two
+// threaded inserts and its 8-pin header on that face; the A2's intake end has neither. Those are features,
+// and each is in exactly one of three states, because "this card has none" and "nobody has looked" are
+// different facts and a duct may only rely on the first (2026-11-02, after the A2 was measured).
+//
+// The reading is this repository's observation of a held card, not the vendor's (product.printed_chassis
+// .duct_card_catalog says why); the frame is the one the A16 was read in. Lengths along the face are from
+// its TOP end; depths across it are from its BACK face.
+
+type EndFaceFeature<V>
+  = FeaturePresent { value: V }
+  | FeatureAbsentObserved
+  | FeatureNotObserved { read_obligation: NonEmptyStr }
+
+fn feature_value<V>(f: EndFaceFeature<V>) -> V? {
+  match f { FeaturePresent { value: v } => Present { value: v } FeatureAbsentObserved => Absent FeatureNotObserved { read_obligation: _ } => Absent }
+}
+
+// Two threaded inserts in the end cap, each read to its NEAR edge: top edge of the upper hole from the top
+// end, bottom edge of the lower hole from the bottom end, nearest edge from the back face.
+type EndCapInserts {
+  spacing: Micrometer
+  near_edge_from_back: Micrometer
+  upper_near_edge_from_top: Micrometer
+  lower_near_edge_from_bottom: Micrometer
+}
+
+// An auxiliary power header on the end face: its outer pin's distance from the top end.
+type FaceConnector { from_top: Micrometer }
+
+// The fin-free tapered bands at the two ends of the opening: the opening's measured length includes them,
+// and no fins sit behind them.
+type FinFreeBands { top: Micrometer, bottom: Micrometer }
+
+type CardEndInterface {
+  source: NonEmptyStr
+  face_length: Micrometer
+  face_thickness: Micrometer
+  window_length: Micrometer
+  window_depth: Micrometer
+  window_from_top: Micrometer
+  window_from_back: Micrometer
+  fin_setback: Micrometer
+  fin_free_bands: EndFaceFeature<FinFreeBands>
+  inserts: EndFaceFeature<EndCapInserts>
+  connector: EndFaceFeature<FaceConnector>
+}
+
+// The features a realization would need and this reading does not supply, each named with its state. A
+// realization that fastens into inserts or keeps clear of a header reads this before building anything.
+fn missing_feature<V>(name: String, f: EndFaceFeature<V>) -> List<String> {
+  match f {
+    FeaturePresent { value: _ } => []
+    FeatureAbsentObserved => [join([name, ": the card has none (observed)"], "")]
+    FeatureNotObserved { read_obligation: o } => [join([name, ": not observed; ", o as String], "")]
+  }
+}
+
+// ═══ THE A16, READ 2026-10-23 ═══
+// Caliper readings by the operator on an A16 PG171 in hand. The window sides are pitched and the window was
+// read at its tightest point; the taper's fin-free bands were not read separately, so they are NOT observed
+// rather than absent.
+data a16_end_cap_inserts: EndCapInserts = EndCapInserts {
+  spacing: micrometer(count: 27620),
+  near_edge_from_back: micrometer(count: 8860),
+  upper_near_edge_from_top: micrometer(count: 59720),
+  lower_near_edge_from_bottom: micrometer(count: 7540),
+}
+
+data a16_face_connector: FaceConnector = FaceConnector { from_top: micrometer(count: 2560) }
+
+data a16_card_end: CardEndInterface = CardEndInterface {
+  source: "Operator caliper readings on a held A16 PG171, 2026-10-23",
+  face_length: micrometer(count: 97840),
+  face_thickness: micrometer(count: 38600),
+  window_length: micrometer(count: 88030),
+  window_depth: micrometer(count: 23940),
+  window_from_top: micrometer(count: 5540),
+  window_from_back: micrometer(count: 13090),
+  fin_setback: micrometer(count: 6000),
+  fin_free_bands: FeatureNotObserved { read_obligation: "operator, on the held A16: the length of the fin-free tapered band at each end of the fin window, as read on the A2 on 2026-11-02" },
+  inserts: FeaturePresent { value: a16_end_cap_inserts },
+  connector: FeaturePresent { value: a16_face_connector },
+}
