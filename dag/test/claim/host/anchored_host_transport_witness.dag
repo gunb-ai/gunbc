@@ -737,7 +737,9 @@ test fn anchored_pin_and_current_install_record_bind_the_host() -> Bool {
           transport: t,
           presented_key_line: known_hosts_line(k: pin),
         ) {
-          AnchoredBindingBound { bound: _ } => true
+          // B1's anchor semantics: the binding carries the row that vouched for it. The provisioned
+          // path anchors to the pin, so the carried anchor must BE that row - checked, not assumed.
+          AnchoredBindingBound { bound: _, anchor: a } => known_hosts_line(k: a) == known_hosts_line(k: pin)
           _ => false
         }
     }

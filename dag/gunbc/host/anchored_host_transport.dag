@@ -440,7 +440,7 @@ fn anchored_host_transport_provisioned(
                   current_install: subject.attempt.attempt as String,
                 }
               } else if known_hosts_line(k: pin) == presented_key_line {
-                AnchoredBindingBound { bound: bound }
+                AnchoredBindingBound { bound: bound, anchor: pin }
               } else {
                 AnchoredBindingPresentedKeyMismatch {
                   expected_line: known_hosts_line(k: pin),
