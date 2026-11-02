@@ -2,25 +2,24 @@ module gunbc.recurring_failure_mode.ledger_row_authored_unread_after_the_rung_mi
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.recurring_failure_mode { FoundBelowTheLadder, BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 data ledger_row_authored_unread_after_the_rung_migration: RecurringFailureMode = RecurringFailureMode {
   identity: "ledger_row_authored_unread_after_the_rung_migration" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "ingestion-time row-introduced-at-revision for gunbc.recurring_failure_mode rows, so that a row introduced after the typed-rung migration whose rung is RungUnread is refused by the rung census rather than admitted" } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "ingestion-time row-introduced-at-revision for gunbc.recurring_failure_mode rows, so that a row introduced after the typed-rung migration whose rung is RungUnread is refused at ingestion rather than admitted" } },
 
   receipts: [
     "INVALID STATE: a recurring-failure-mode row authored AFTER the typed-rung migration carries `rung: RungUnread { cause: ... }`, so the class is filed with no found-at rung, no ceiling and no next-rung trigger -- the untracked stall DESIGN section 4b obligation 2 forbids. The migration deliberately has no not-yet-migrated arm, but the unread causes are real prose classes and nothing distinguishes a legacy row from a new one.",
-    "HARM: the census `gunbc.instruments.rfm_rung_census` `row_admission` admits every `RungUnread` row unconditionally, so a new row can skip the rung read at no cost and the class never ranks for climbing (rung inflation by omission, section 4b obligation 1). It is counted by cause, which is mitigation, not refusal.",
+    "HARM: nothing refuses or counts a `RungUnread` row authored after the migration (the rung census that counted them by cause was retired), so a new row can skip the rung read at no cost and the class never ranks for climbing (rung inflation by omission, section 4b obligation 1).",
     "RECEIPT, THE GAP IN USE (2026-10-20, gunbc#14383 merge of main): 16 rows that landed on main while the migration was in review had no `rung:` and were given typed unread causes by the merger from their prose, because the field is required and the wall cannot tell new from legacy. Review 83645 on that head raised it.",
     "WHY NO GRANDFATHER LIST: refusing unread on new rows by a roster of the legacy identities would be a second, hand-maintained authority for the one fact `row introduced at revision`, and a count copied from the tree (DESIGN sections 3 and 5). The wall needs the fact as data on the row or its ingestion, not a list.",
-    "CEILING: structurally guaranteed once the introduction revision is a readable fact; decidable, awaiting one grounding. NEXT TRIGGER: the capability named in the standing -- ingestion-time row-introduced-at-revision -- is built; then the census refuses RungUnread for rows introduced after the migration and this row's unread population can only shrink.",
+    "CEILING: structurally guaranteed once the introduction revision is a readable fact; decidable, awaiting one grounding. NEXT TRIGGER: the capability named in the standing -- ingestion-time row-introduced-at-revision -- is built; then ingestion refuses RungUnread for rows introduced after the migration and this row's unread population can only shrink.",
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.instruments.rfm_rung_census", decl_name: "row_admission", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.recurring_failure_mode", decl_name: "UnreadCause", field: WholeDeclaration },
   ],
 }
