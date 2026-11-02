@@ -180,7 +180,7 @@ test fn the_seal_route_writes_the_suffixed_slot_and_never_the_plain_closing_name
         AttemptMeteringStoreReady { store } =>
           match attempt_metering_listing_of(store: store) {
             AttemptMeteringListingRead { names } =>
-              !any(names, n => n == metering_closing_hold_key as String)
+              !any(names, n => n == (metering_closing_hold_key as String))
                 && any(names, n => starts_with(s: n, prefix: join([metering_closing_hold_key as String, "."], "")))
             AttemptMeteringListingUnreadable { detail: _ } => false
           }

@@ -61,7 +61,7 @@ data metering_closing_legacy_marker_name: NonEmptyStr = attempt_metering_slots.r
 
 // The transient per-attempt obligation units that enqueue the metering obligation (one per attempt: this is the
 // family stem, not a unit that can be masked by name).
-data metering_closing_enqueue_unit_family_stem: NonEmptyStr = "gunbc-obligation-attempt-"
+data metering_closing_enqueue_unit_family_stem: NonEmptyStr = "gunbc-obligation-attempt-" as NonEmptyStr
 
 // THE FENCE, PER INSTANCE. Units whose ExecStart reaches the closing-marker writer, in the shape #15413's
 // identity-store cutover declared (roadmap_dashboard_instance.dag:3470). The first unit is the DIRECT writer,
@@ -71,10 +71,10 @@ data metering_closing_writer_fence_rows: List<LegacyWriterFenceRow> = [
   LegacyWriterFenceRow {
     instance_id: srv1_dashboard_lab_id,
     fence: LegacyWriterUnits {
-      systemctl: "/usr/bin/systemctl",
+      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
       units: [
-        "gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service",
-        "gunbc-srv1-lab-codex-feedback-v0-belt.service",
+        "gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service" as NonEmptyStr,
+        "gunbc-srv1-lab-codex-feedback-v0-belt.service" as NonEmptyStr,
       ],
     },
   },
@@ -109,7 +109,33 @@ type MeteringClosingCutover
   | MeteringClosingActivationRequired { units: List<NonEmptyStr>, step: String }
   | MeteringClosingCutoverRefused { cause: String }
 
-data metering_closing_activation_step: NonEmptyStr = "drain any in-flight gunbc-obligation-attempt-<node>-<key> unit, stop and mask the named unit before the build that takes the closing hold is deployed, deploy, restart the unit from the new build, then re-census the plain closing-marker name across the instance's attempt-state tree and require 0"
+data metering_closing_activation_step: NonEmptyStr = "drain any in-flight gunbc-obligation-attempt-<node>-<key> unit, stop and mask the named unit before the build that takes the closing hold is deployed, deploy, restart the unit from the new build, then re-census the plain closing-marker name across the instance's attempt-state tree and require 0" as NonEmptyStr
+
+// The declared units that are NOT excluded -- an empty list is the only answer that lets the move be a Noop.
+fn metering_closing_held_back_units(
+  declared: List<NonEmptyStr>,
+  observed: List<MeteringClosingWriterObservation>,
+) -> List<NonEmptyStr> {
+  declared.filter(u => match metering_closing_unit_exclusion(unit: u, observed: observed) {
+    LegacyWriterExcluded => false
+    LegacyWriterNotExcluded { reason: _ } => true
+  })
+}
+
+fn metering_closing_answer(
+  declared: List<NonEmptyStr>,
+  observed: List<MeteringClosingWriterObservation>,
+  legacy_markers_observed: Int,
+) -> MeteringClosingCutover {
+  let held_back = metering_closing_held_back_units(declared: declared, observed: observed)
+  if length(xs: held_back) > 0 {
+    MeteringClosingActivationRequired { units: held_back, step: metering_closing_activation_step as String }
+  } else if legacy_markers_observed > 0 {
+    MeteringClosingCutoverRefused { cause: join(["the closing-marker writer is excluded, but ", to_string(value: legacy_markers_observed), " plain ", metering_closing_legacy_marker_name as String, " entries are still on this host; the mint refuses them and an operator has to say what happens to those bytes"], "") }
+  } else {
+    MeteringClosingNoop { reason: join(["every declared closing-marker writer unit is observed stopped and masked, and no plain ", metering_closing_legacy_marker_name as String, " entry is on the host: nothing to do across the deploy"], "") }
+  }
+}
 
 fn metering_closing_cutover_disposition(
   instance_id: NonEmptyStr,
@@ -119,17 +145,6 @@ fn metering_closing_cutover_disposition(
   match metering_closing_writer_fence(instance_id: instance_id) {
     LegacyWriterUndeclared => MeteringClosingCutoverRefused { cause: join(["no closing-marker writer fence is declared for instance ", instance_id as String, "; the cutover refuses rather than assuming nothing on this host still writes ", metering_closing_legacy_marker_name as String], "") }
     LegacyWriterFenceConflict { instance_id: i, rows: n } => MeteringClosingCutoverRefused { cause: join(["the closing-marker writer fence for instance ", i as String, " is declared ", to_string(value: n), " times; one row per instance is what the cutover can act on"], "") }
-    LegacyWriterUnits { systemctl: _, units: units } =>
-      let held_back = units.filter(u => match metering_closing_unit_exclusion(unit: u, observed: observed) {
-        LegacyWriterExcluded => false
-        LegacyWriterNotExcluded { reason: _ } => true
-      })
-      if length(xs: held_back) > 0 {
-        MeteringClosingActivationRequired { units: held_back, step: metering_closing_activation_step as String }
-      } else if legacy_markers_observed > 0 {
-        MeteringClosingCutoverRefused { cause: join(["the closing-marker writer is excluded, but ", to_string(value: legacy_markers_observed), " plain ", metering_closing_legacy_marker_name as String, " entries are still on this host; the mint refuses them and an operator has to say what happens to those bytes"], "") }
-      } else {
-        MeteringClosingNoop { reason: join(["every declared closing-marker writer unit for instance ", instance_id as String, " is observed stopped and masked, and no plain ", metering_closing_legacy_marker_name as String, " entry is on the host: nothing to do across the deploy"], "") }
-      }
+    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_answer(declared: declared, observed: observed, legacy_markers_observed: legacy_markers_observed)
   }
 }
