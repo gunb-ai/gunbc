@@ -45,6 +45,7 @@ import gunbc.os_install_mechanism {
   InstallFirmwareVersionUncatalogued,
   InstallBootControlUnestablished,
   InstallNoBootSourceOverride,
+  InstallNoEligibleNetworkTransport,
   InstallNoEligibleTransport,
   OsInstallMechanismRefused,
   OsInstallMechanismSelected,
@@ -79,6 +80,7 @@ fn solution_refuses_at_profile_lookup_not_run(solution: OsInstallMechanismSoluti
         InstallTargetContextMismatch { requested: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallBootControlUnestablished { cause: _ } => false
+        InstallNoEligibleNetworkTransport { considered: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
@@ -163,6 +165,7 @@ test fn unobserved_endpoint_refuses_with_absent_evidence_before_the_access_step(
         InstallTargetContextMismatch { requested: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallBootControlUnestablished { cause: _ } => false
+        InstallNoEligibleNetworkTransport { considered: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
@@ -196,6 +199,7 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
         InstallTargetContextMismatch { requested: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallBootControlUnestablished { cause: _ } => false
+        InstallNoEligibleNetworkTransport { considered: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
@@ -295,6 +299,7 @@ test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool {
         InstallTargetContextMismatch { requested: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallBootControlUnestablished { cause: _ } => false
+        InstallNoEligibleNetworkTransport { considered: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
