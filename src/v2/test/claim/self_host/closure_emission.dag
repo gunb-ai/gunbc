@@ -611,7 +611,7 @@ fn ce_probe_elseless_text() -> String {
     Rejected { diagnostics: d } =>
       concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
     Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+      concat("ACCEPTED: ", closure_emission_json(emission: e))
   }
 }
 
@@ -658,7 +658,7 @@ fn ce_probe_twostat_text() -> String {
     Rejected { diagnostics: d } =>
       concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
     Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+      concat("ACCEPTED: ", closure_emission_json(emission: e))
   }
 }
 
@@ -669,7 +669,7 @@ fn ce_probe_sameline_text() -> String {
     Rejected { diagnostics: d } =>
       concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
     Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+      concat("ACCEPTED: ", closure_emission_json(emission: e))
   }
 }
 
@@ -701,6 +701,6 @@ fn ce_probe_elseelse_text() -> String {
     Rejected { diagnostics: d } =>
       concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
     Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+      concat("ACCEPTED: ", closure_emission_json(emission: e))
   }
 }
