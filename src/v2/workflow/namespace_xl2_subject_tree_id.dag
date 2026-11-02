@@ -1,7 +1,7 @@
 module v2.workflow.namespace_xl2_subject_tree_id
 
 import std.types { Bool, Int, List, Map, String }
-import std.algebra { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup, list_append }
 import std.optional { Present }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 import extdeps.crypto.sha1 { sha1_hex }
@@ -172,7 +172,7 @@ fn xl2_tree_hex(entries: List<Xl2ManifestEntry>) -> Xl2HexOutcome {
       Xl2EntriesBuilt { entries: so_far } =>
         match xl2_group_entry(group: group) {
           Xl2EntriesRefused { reason: why } => Xl2EntriesRefused { reason: why }
-          Xl2EntriesBuilt { entries: next } => Xl2EntriesBuilt { entries: append(so_far, items: next) }
+          Xl2EntriesBuilt { entries: next } => Xl2EntriesBuilt { entries: list_append(left: so_far, right: next) }
         }
     }
   })
