@@ -5,7 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, kernel_settled_name, type_reference_declaration_reading, TypeReferenceIsTypeVariable, is_where_refinement_node, text_representation_by_identity }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, kernel_settled_name, type_reference_declaration_reading, TypeReferenceIsTypeVariable, is_where_refinement_node, text_representation_by_identity, alias_rhs_of_declaration }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -1882,15 +1882,30 @@ fn carrier_defines_field(carrier: DeclarationRef, field: String) -> Bool {
 // unbounded kernel integer in (std.integer Int). The same row the literal elaboration reads, so a kernel Int
 // operand meets the injection rows by identity rather than falling outside the fold.
 fn operand_carrier_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  operand_carrier_ref_settled(n: n, source_indices: source_indices, env: env, fuel: 16)
+}
+
+// AN ALIAS IS THE CARRIER OF WHAT IT SETTLES TO. A declared alias (`type NonNegativeInt = Nat`,
+// `type StateDurabilityInstant = EpochMs`, `type EpochMs = Int where range(min: 0)`) names no algebra of
+// its own; its carrier is its right-hand side's, read through v1.compiler.infer_env alias_rhs_of_declaration,
+// the same alias authority settled_type consumes, never by spelling. Reading the alias's own declaration
+// made `instant + 1` and `nonneg * n` carrier-less and refused (gunbc#15610 heal: std.state_durability,
+// extdeps.git.object_store). Fuel bounds an alias chain; a cycle is refused where aliases are resolved.
+fn operand_carrier_ref_settled(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> DeclarationRef? {
+  if fuel <= 0 { return none }
   // A `T where p` field is the carrier of T: the refinement narrows the value set, not the algebra.
   if is_where_refinement_node(n: n) {
     return match n.children |> first {
-      Present { value: base } => operand_carrier_ref(n: base, source_indices: source_indices, env: env)
+      Present { value: base } => operand_carrier_ref_settled(n: base, source_indices: source_indices, env: env, fuel: fuel - 1)
       Absent => none
     }
   }
   match type_reference_declaration_ref(n: n, source_indices: source_indices, env: env) {
-    Present { value: d } => Present { value: d }
+    Present { value: d } =>
+      match alias_rhs_of_declaration(item_ref: d, env: env) {
+        Present { value: rhs } => operand_carrier_ref_settled(n: rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
+        Absent => Present { value: d }
+      }
     Absent =>
       match kernel_settled_name(n: n, source_indices: source_indices, env: env, fuel: 16) {
         Present { value: kernel } =>
