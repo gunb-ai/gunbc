@@ -1,0 +1,398 @@
+module test.claim.roadmap.roadmap_attempt_slots_carry_cli_witness
+
+// THE DECISION LAYER OF THE CARRY RUNNER, PROVEN OVER REAL SLOTS.
+//
+// WHAT IS NEW HERE AND WHAT IS NOT. The cutover module's own witness rows (in session_placement_wet_witness)
+// already prove the CARRY: a slot left under a moved root lands in the store the settle pass reads, a second
+// carry reports AlreadyCarried, and another instance's slot is not moved. What they cannot see is everything
+// this module adds on top: the all-or-none rule that keeps a run from half-carrying a root, the pre-flight
+// instrument's exit meaning, the mapping from a carry report to a process exit, and the privilege as it is
+// filed. Those are what these rows test.
+//
+// WHY EVERY CENSUS HERE IS A MEASUREMENT. The cutover module makes its census, its entries and its carry
+// report sole_constructor types, so no test can assemble one by hand -- deliberately: a census is what the
+// stores say, and a hand-written one is a fiction a gate can be made to agree with. So each row below builds
+// the state it needs the way the belt does, with the attempt's own transitions (attempt_open,
+// attempt_begin_launch) writing real slot files into two real stores, and hands the row through the module's
+// witness gate. A gate that passes on a fabricated entry proves nothing; one that passes because an
+// undecodable file sits at a real path proves the rule.
+//
+// ONE ARM NO ROW HERE REALIZES: ClassNeitherSideHoldsIt -- the old store listed a reference and by read time
+// no longer held it. That is a race with a concurrent delete, and nothing in a single-threaded fixture can
+// make a listing and a read disagree about the same file. The gate still refuses it, under the same rule as
+// every other class the operator must decide, and deleting the arm would be worse than leaving it unwitnessed:
+// it would make the race ADMIT the run. The race a fixture CAN realize -- the live store acquiring an
+// undecodable slot between the census and the carry -- is realized, in
+// a_slot_the_census_admitted_that_the_carry_then_refuses.
+
+import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs, FilePath }
+import std.measure { kibibyte }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.durable_compare_and_set { cas_generation, cas_generation_count }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.durable_cas_file_store { SlotStore, cas_file_slot_path }
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
+  attempt_slot_read, attempt_open, attempt_begin_launch, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+}
+import gunbc.roadmap.roadmap_session_placement { session_attempt_record, session_unit_wire }
+import gunbc.roadmap.roadmap_session_attempt_slots_root {
+  SessionAttemptSlotsStore, session_attempt_slots_store, session_attempt_slots_path, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready,
+}
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover { attempt_slots_census }
+import test.claim.roadmap.session_placement_wet_witness {
+  fresh_dir, instance_at, old_store, moved_row, slot_a, unit_a, colliding_slot,
+}
+import gunbc.roadmap.roadmap_attempt_slots_carry_cli {
+  AttemptSlotsCarryGate,
+  CarryGateAdmitted,
+  CarryGateBlocked,
+  attempt_slots_carry_gate,
+  attempt_slots_carry_census_exit,
+  attempt_slots_carry_carry_exit,
+  attempt_slots_carry_census_for,
+  attempt_slots_carry_for,
+  attempt_slots_carry_census_with,
+  attempt_slots_carry_with,
+  attempt_slots_carry_privileged_effect_subject,
+  attempt_slots_carry_pattern_selection,
+}
+import gunbc.auth.authorization_pattern_selection {
+  OperatorApprovedCapability,
+  PatternSelected,
+}
+
+data witness_id: NonEmptyStr = "session-wet" as NonEmptyStr
+data node_c: String = "g5-node-c"
+data key_c: String = "0011223344556677"
+// A DIFFERENT attempt wearing the SAME unit name: the reference the carry is asked about, held in the live
+// store by an attempt that is not the one the old root records.
+data node_d: String = "g5-node-d"
+data key_d: String = "ffee001122334455"
+data first_boot: EpochSecs = 1793000000
+
+fn unit_c() -> String {
+  match session_unit_wire(node_id: node_c, attempt_key: key_c) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+fn slot_c(opened: EpochSecs) -> AttemptRecord {
+  session_attempt_record(node_id: node_c, attempt_key: key_c, unit: unit_c() as NonEmptyStr, granted: kibibyte(count: 8388608), now: opened)
+}
+
+fn rival_c(opened: EpochSecs) -> AttemptRecord {
+  session_attempt_record(node_id: node_d, attempt_key: key_d, unit: unit_c() as NonEmptyStr, granted: kibibyte(count: 8388608), now: opened)
+}
+
+fn held_identity(store: SlotStore, reference: String) -> String {
+  match attempt_slot_read(store: store, reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: r, generation: _ } => r.identity as String
+    AttemptSlotAbsent => ""
+    AttemptSlotUnreadable { detail: _ } => "!"
+  }
+}
+
+// THE LIVE STORE, MINTED THE WAY THE INSTANCE DIRECTORY ROW MINTS IT: the demanded directory created, then
+// the production mint reading it. Never a store assembled by hand.
+fn live_store(dir: String) -> SessionAttemptSlotsStore? {
+  let _made = shell.Mkdir.Parents(path: session_attempt_slots_path(instance: instance_at(dir: dir)) as FilePath)
+  match session_attempt_slots_store(instance: instance_at(dir: dir)) {
+    SessionAttemptSlotsStoreReady { store: store } => Present { value: store }
+    SessionAttemptSlotsStoreUnready { detail: _ } => none
+  }
+}
+
+// Both stores the census compares, or the row fails: a fixture that cannot mint its own stores has no
+// verdict to offer, and looping to get one would turn a broken fixture into a green row.
+fn with_stores(dir: String, body: fn(SessionAttemptSlotsStore, SlotStore) -> Bool) -> Bool {
+  match live_store(dir: dir) {
+    Absent => false
+    Present { value: live } =>
+      match old_store(dir: dir) {
+        Absent => false
+        Present { value: previous } => body(live, previous)
+      }
+  }
+}
+
+// PLACE A SLOT IN A STORE THROUGH THE ATTEMPT'S OWN TRANSITIONS -- the only writer whose bytes the reader
+// will accept, so "the old root holds a launching attempt" is a fact about the directory and not a string.
+fn place(store: SlotStore, record: AttemptRecord) -> Bool {
+  match attempt_open(store: store, record: record) {
+    AttemptAdvanced { state: _, generation: g } =>
+      match attempt_begin_launch(store: store, reference: record.reference as NonEmptyStr, expected: g) {
+        AttemptAdvanced { state: _, generation: _ } => true
+        AttemptLostRace { expected: _, observed: _ } => false
+        AttemptTransitionRefused { detail: _ } => false
+      }
+    AttemptLostRace { expected: _, observed: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+}
+
+fn planted_garbage(root: String, reference: String) -> Bool {
+  planted_garbage_at(root: root, reference: reference, at: 1)
+}
+
+// THE GENERATION MATTERS. A slot store is append-only and its reader answers with the NEWEST generation, so
+// garbage at generation 1 is invisible beside a slot at generation 2 -- planting there would leave the row
+// asserting a refusal the store never saw. The race rows therefore plant above the newest generation the
+// fixture itself created.
+fn planted_garbage_at(root: String, reference: String, at: Int) -> Bool {
+  match cas_generation(n: at) {
+    Present { value: g } =>
+      Filesystem.Write(
+        path: cas_file_slot_path(root: root as NonEmptyStr, key: reference as NonEmptyStr, generation: g),
+        content: "not an attempt record",
+      ).success
+    Absent => false
+  }
+}
+
+fn live_root(dir: String) -> String {
+  session_attempt_slots_path(instance: instance_at(dir: dir)) as String
+}
+
+fn holds(store: SlotStore, reference: String) -> Bool {
+  match attempt_slot_read(store: store, reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: _, generation: _ } => true
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+  }
+}
+
+fn held_generation(store: SlotStore, reference: String) -> Int {
+  match attempt_slot_read(store: store, reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g)
+    AttemptSlotAbsent => -1
+    AttemptSlotUnreadable { detail: _ } => -2
+  }
+}
+
+fn gate_admitted(gate: AttemptSlotsCarryGate) -> Bool {
+  match gate {
+    CarryGateAdmitted { to_move: _, already_carried: _, nothing_to_do: _ } => true
+    CarryGateBlocked { blocking: _ } => false
+  }
+}
+
+fn gate_to_move(gate: AttemptSlotsCarryGate) -> List<NonEmptyStr> {
+  match gate {
+    CarryGateAdmitted { to_move: m, already_carried: _, nothing_to_do: _ } => m
+    CarryGateBlocked { blocking: _ } => []
+  }
+}
+
+fn gate_already(gate: AttemptSlotsCarryGate) -> List<NonEmptyStr> {
+  match gate {
+    CarryGateAdmitted { to_move: _, already_carried: a, nothing_to_do: _ } => a
+    CarryGateBlocked { blocking: _ } => []
+  }
+}
+
+fn exit_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: r } => r
+  }
+}
+
+fn exit_is_success(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// ADMITTED SHAPES.
+// ---------------------------------------------------------------------------------------------
+
+// A reference the live store has never seen is the case the migration exists for. The gate admits it and the
+// run names it, so the operator's receipt says WHICH attempt moved rather than that something moved.
+test fn a_slot_only_the_old_root_holds_is_admitted_and_named() -> Bool {
+  let dir = fresh_dir(tag: "carryadmit")
+  with_stores(dir: dir, body: (live, previous) => {
+    let _placed = place(store: previous, record: slot_c(opened: first_boot))
+    gate_admitted(gate: attempt_slots_carry_gate(census: attempt_slots_census(target: live, moved: moved_row(dir: dir))))
+      && gate_to_move(gate: attempt_slots_carry_gate(census: attempt_slots_census(target: live, moved: moved_row(dir: dir)))) == [unit_c() as NonEmptyStr]
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ALL-OR-NONE RULE: WHAT THIS MODULE ADDS OVER THE PER-REFERENCE CARRY.
+// ---------------------------------------------------------------------------------------------
+
+// One reference the carry would happily move, and one it must not decide: the SAME reference under two
+// different attempts, one in each store. The pre-gate behaviour was a per-reference refusal arriving AFTER
+// the movable slot had been written -- a root half in and half out, and the next census describing a state
+// nobody chose. This row is red the moment the gate admits a run containing a contested reference, and it
+// reads the directories rather than trusting the verdict, because the claim is that nothing moved.
+test fn one_contested_reference_keeps_the_slot_that_was_fine_where_it_was() -> Bool {
+  let dir = fresh_dir(tag: "carryblock")
+  with_stores(dir: dir, body: (live, previous) => {
+    let _movable = place(store: previous, record: slot_c(opened: first_boot))
+    let _contested_in_old = place(store: previous, record: slot_a(opened: first_boot))
+    let _contested_in_live = place(store: live.slots, record: colliding_slot(opened: first_boot))
+    let exit = attempt_slots_carry_with(instance_id: witness_id, target: live, moved: moved_row(dir: dir))
+    !exit_is_success(exit: exit)
+      && string_contains(s: exit_reason(exit: exit), pattern: unit_a())
+      && string_contains(s: exit_reason(exit: exit), pattern: "in_both_different")
+      && string_contains(s: exit_reason(exit: exit), pattern: "nothing was carried")
+      && !holds(store: live.slots, reference: unit_c())
+      && holds(store: previous, reference: unit_c())
+  })
+}
+
+// An undecodable seat in the LIVE store is the one thing the carry must never overwrite: it is the only
+// evidence of what occupies a live slot. The gate stops the run before the carry is called, so the movable
+// slot is still where the operator left it when they read the refusal.
+test fn an_undecodable_live_seat_blocks_the_run_before_anything_is_written() -> Bool {
+  let dir = fresh_dir(tag: "carryunread")
+  with_stores(dir: dir, body: (live, previous) => {
+    let _movable = place(store: previous, record: slot_c(opened: first_boot))
+    let _unreadable_in_old = place(store: previous, record: slot_a(opened: first_boot))
+    let _garbage = planted_garbage(root: live_root(dir: dir), reference: unit_a())
+    let exit = attempt_slots_carry_with(instance_id: witness_id, target: live, moved: moved_row(dir: dir))
+    !exit_is_success(exit: exit)
+      && string_contains(s: exit_reason(exit: exit), pattern: "either_side_unreadable")
+      && !holds(store: live.slots, reference: unit_c())
+      && holds(store: previous, reference: unit_c())
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SECOND PASS, THE RACE, AND WHAT THE EXIT MEANS.
+// ---------------------------------------------------------------------------------------------
+
+// Idempotence in the sense the migration needs: the first pass carries, the second reports every reference
+// already carried and SUCCEEDS without adding a generation -- the generation is read back from the store and
+// compared, because the claim is that no new one appeared, not that a report said so. And the old root keeps
+// its own copy: removal is a separate authorized step, so a re-run can never destroy the only evidence of
+// what was where.
+test fn the_second_pass_succeeds_without_adding_a_generation() -> Bool {
+  let dir = fresh_dir(tag: "carryagain")
+  with_stores(dir: dir, body: (live, previous) => {
+    let _placed = place(store: previous, record: slot_c(opened: first_boot))
+    let first = attempt_slots_carry_with(instance_id: witness_id, target: live, moved: moved_row(dir: dir))
+    let after_first = held_generation(store: live.slots, reference: unit_c())
+    let gate = attempt_slots_carry_gate(census: attempt_slots_census(target: live, moved: moved_row(dir: dir)))
+    let second = attempt_slots_carry_with(instance_id: witness_id, target: live, moved: moved_row(dir: dir))
+    let after_second = held_generation(store: live.slots, reference: unit_c())
+    exit_is_success(exit: first)
+      && holds(store: live.slots, reference: unit_c())
+      && gate_admitted(gate: gate)
+      && gate_already(gate: gate) == [unit_c() as NonEmptyStr]
+      && count(gate_to_move(gate: gate)) == 0
+      && exit_is_success(exit: second)
+      && after_first > 0
+      && after_first == after_second
+      && holds(store: previous, reference: unit_c())
+  })
+}
+
+// THE RACE THAT MATTERS MOST, AND THE ONE A FIXTURE CAN REALLY PRODUCE. The census read the live store and
+// found nothing under this reference, so the gate admitted the run; between that reading and the carry, a
+// DIFFERENT attempt came to occupy the live seat under the same unit name. The per-reference rule then
+// refuses (one reference, two attempts, is decided by an operator and not by a carry), the run must fail
+// NAMING it, and -- the part this row exists for -- the live seat must still hold the attempt that arrived,
+// not the bytes the carry was about to put there. An unreadable seat is the sibling case and is covered by
+// an_undecodable_live_seat_blocks_the_run_before_anything_is_written, where the gate catches it before the
+// carry is ever called.
+test fn a_live_seat_taken_between_the_census_and_the_carry_is_refused_and_left_alone() -> Bool {
+  let dir = fresh_dir(tag: "carryrace")
+  with_stores(dir: dir, body: (live, previous) => {
+    let _placed = place(store: previous, record: slot_c(opened: first_boot))
+    let gate = attempt_slots_carry_gate(census: attempt_slots_census(target: live, moved: moved_row(dir: dir)))
+    let _rival = place(store: live.slots, record: rival_c(opened: first_boot))
+    let rival_identity = rival_c(opened: first_boot).identity as String
+    let exit = attempt_slots_carry_with(instance_id: witness_id, target: live, moved: moved_row(dir: dir))
+    gate_admitted(gate: gate)
+      && !exit_is_success(exit: exit)
+      && string_contains(s: exit_reason(exit: exit), pattern: unit_c())
+      && string_contains(s: exit_reason(exit: exit), pattern: ": REFUSED - ")
+      && string_contains(s: exit_reason(exit: exit), pattern: "DIFFERENT attempt")
+      && held_identity(store: live.slots, reference: unit_c()) == rival_identity
+      && holds(store: previous, reference: unit_c())
+  })
+}
+
+// THE INSTRUMENT. Its exit code answers "is anything pending", so it must be non-zero while a reference sits
+// only in the old root and zero once the carry has moved it -- and the document travels either way, because
+// whoever authorizes the carry reads the document, not the code.
+test fn the_instrument_is_non_zero_while_a_carry_is_pending_and_zero_afterwards() -> Bool {
+  let dir = fresh_dir(tag: "carryinst")
+  with_stores(dir: dir, body: (live, previous) => {
+    let _placed = place(store: previous, record: slot_c(opened: first_boot))
+    let before = attempt_slots_carry_census_with(instance_id: witness_id, target: live, moved: moved_row(dir: dir))
+    let _carried = attempt_slots_carry_with(instance_id: witness_id, target: live, moved: moved_row(dir: dir))
+    let after = attempt_slots_carry_census_with(instance_id: witness_id, target: live, moved: moved_row(dir: dir))
+    !exit_is_success(exit: before)
+      && string_contains(s: exit_reason(exit: before), pattern: "a carry is pending")
+      && string_contains(s: exit_reason(exit: before), pattern: "admitted")
+      && string_contains(s: exit_reason(exit: before), pattern: unit_c())
+      && exit_is_success(exit: after)
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE OPERATOR ENTRIES' FIRST TWO REFUSALS, WHICH HAPPEN BEFORE ANY CENSUS.
+// ---------------------------------------------------------------------------------------------
+
+// No declared move: the entry refuses, and says it takes no path. This is the refusal that keeps a "one-time
+// migration" from becoming a general-purpose slot mover, so it carries its own wording and its own row
+// instead of sharing an empty-result path with an instance that never moved.
+test fn an_instance_whose_root_never_moved_refuses_and_says_it_takes_no_path() -> Bool {
+  let dir = fresh_dir(tag: "carrynorow")
+  let _store = live_store(dir: dir)
+  let exit = attempt_slots_carry_for(instance: instance_at(dir: dir))
+  !exit_is_success(exit: exit)
+    && string_contains(s: exit_reason(exit: exit), pattern: "no declared row")
+    && string_contains(s: exit_reason(exit: exit), pattern: "will not accept a path")
+}
+
+// The instance declares no session attempt slot store at all: both entries refuse before they can census
+// anything, and say which half is missing.
+test fn an_instance_with_no_session_slot_store_refuses_before_the_census() -> Bool {
+  let dir = fresh_dir(tag: "carrynostore")
+  let census_exit = attempt_slots_carry_census_for(instance: instance_at(dir: dir))
+  let run_exit = attempt_slots_carry_for(instance: instance_at(dir: dir))
+  !exit_is_success(exit: census_exit)
+    && string_contains(s: exit_reason(exit: census_exit), pattern: "no session attempt slot store")
+    && !exit_is_success(exit: run_exit)
+    && string_contains(s: exit_reason(exit: run_exit), pattern: "no session attempt slot store")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PRIVILEGE AS FILED, AND WHAT THE SELECTOR ANSWERS.
+// ---------------------------------------------------------------------------------------------
+
+// The subject line is what a reader of gunbc.auth.privileged_effect_census sees, so it has to say what is
+// written, how, and -- the part a reassuring subject usually omits -- what the carry leaves alone.
+test fn the_filed_subject_names_the_write_how_and_what_it_leaves_alone() -> Bool {
+  let subject = attempt_slots_carry_privileged_effect_subject() as String
+  string_contains(s: subject, pattern: "session attempt slot store")
+    && string_contains(s: subject, pattern: "CAS-committed")
+    && string_contains(s: subject, pattern: "removes nothing from the old root")
+    && string_contains(s: subject, pattern: "capacity ledger")
+}
+
+// WHAT THE SELECTOR MAKES OF THE FILED EFFECT, KEPT AS A CLAIM. Eleven probes were run against this effect to
+// find the answer (one per arm of AuthorizationPatternSelection, then one per arm of AuthorizationPattern);
+// exactly one of each kind passed, and what it said is recorded here instead of in a comment beside the
+// effect: the selector selects the approval-broker pattern for a hand-run, host-local, reversible write whose
+// workload identity cannot be bound. That is also why the row this effect is rostered under in
+// gunbc.auth.privileged_effect_census records RealizedUnauthorized with a divergence reason -- the shape its
+// sibling fabric_store_write_unverified uses for the same situation -- rather than claiming a capability that
+// nothing mints. If the effect's fields ever change the selector's answer, this row goes red.
+test fn the_selector_names_the_approval_broker_pattern_for_the_filed_effect() -> Bool {
+  match attempt_slots_carry_pattern_selection() {
+    PatternSelected { pattern: OperatorApprovedCapability {}, receipt: _ } => true
+    _ => false
+  }
+}

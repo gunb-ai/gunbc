@@ -10,6 +10,7 @@ import gunbc.auth.mtjade1_arrival_federation {
   mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
 }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_privileged_effect }
+import gunbc.roadmap.roadmap_attempt_slots_carry_cli { attempt_slots_carry_privileged_effect }
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_write_scope, srv1_root_apt_get_scope, srv1_root_mutation_approved_scopes, microvm_controller_install_root_scopes, approval_ntfy_retire_root_scopes }
 import std.scoped_authorization { AuthorizationScope }
@@ -609,6 +610,23 @@ type PrivilegedEffectInterlock {
   refusal: DeclarationRef
   premise: NonEmptyStr
   hold_owning_roots: List<InterlockRoot>
+}
+
+// THE ONE-TIME SLOT CARRY (gunbc.roadmap.roadmap_attempt_slots_carry_cli). The write lands in the live
+// session attempt slot store and the read comes from a replaced root inside a SERVICE USER'S OWN home
+// directory on the host, so the only principal that can perform either half is whoever holds a host session
+// as that user -- and this module's operator-session vocabulary (OperatorSessionArm: GcloudInteractive,
+// OperatorTokenFile) names cloud-credential sessions, not a host login. No RealizedAuthorization here names
+// what performs the write, so the site is recorded unauthorized rather than labelled with an arm that is not
+// it: the sibling class this belongs to is a citation naming an identity nobody read
+// (gunbc.recurring_failure_mode.a_receipt_names_its_subject_from_memory_while_its_numbers_are_real). The
+// entry bounds the harm of the missing label without pretending the label is present: the target store is
+// minted from the instance and no path is accepted, the census runs before any write and one contested
+// reference blocks the whole run, and every slot is CAS-committed under ExpectSlotAbsent so a re-run creates
+// nothing beside an existing one.
+data attempt_slots_carried_by_host_access_alone: DivergenceReason = DivergenceReason {
+  statement: "the carry of an instance's session attempt slots from its replaced root into the live store runs on host access alone: no credential, grant or capability is presented to it, and the only principal able to read the old root (a service user's own home directory) or write the live store is the operator's session on that host. select_authorization_pattern names OperatorApprovedCapability as the pattern this effect belongs to -- hand-run, host-local, reversible, no bindable workload identity -- so a conforming row would carry RealizedApprovalCapability; this one records RealizedUnauthorized because nothing mints that capability today, which is the same shape fabric_store_write_unverified uses" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "a capability minted through gunbc.auth.approval_device_redemption redeem_device_over_store, scoped to one declared replaced-root move for one instance, which the carry entry demands and refuses to run without -- then the realized authorization is RealizedApprovalCapability for the pattern select_authorization_pattern names, and this reason dissolves" as NonEmptyStr),
 }
 
 fn privileged_effect_interlock_hold(interlock: StandingRulingInterlock) -> DeclarationRef? {
@@ -1977,6 +1995,17 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: attempt_system_unit_privileged_effect(),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
+  },
+  // The one-time session attempt-slot carry (work item adhoc-d9ba00a8-980). Its ENTRY is the site, not the
+  // effect: what is filed is the ability an operator exercises by hand to move slots the re-root of
+  // gunb-ai/gunbc#14633 left behind, which is the only modeled route to a lease whose slot no settle pass can
+  // ever see. See the reason above for why the realized arm says unauthorized instead of naming an arm that
+  // does not describe a host login.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.roadmap_attempt_slots_carry_cli", decl_name: "attempt_slots_carry_cli"),
+    effect: attempt_slots_carry_privileged_effect(),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: attempt_slots_carried_by_host_access_alone },
   },
   // ── MANUAL-STEP ROWS (node adhoc-28759c44-922) ───────────────────────────────────────
   PrivilegedEffectSite {

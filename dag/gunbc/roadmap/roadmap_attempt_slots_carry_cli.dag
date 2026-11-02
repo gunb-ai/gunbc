@@ -1,0 +1,399 @@
+module gunbc.roadmap.roadmap_attempt_slots_carry_cli
+
+// THE RUNNER FOR THE ONE-TIME SLOT CARRY (work item adhoc-d9ba00a8-980, defect B).
+//
+// WHY THIS FILE EXISTS. gunbc.roadmap.roadmap_session_attempt_slots_cutover declares, for an instance whose
+// root was moved under it, which older root its session attempt slots were left in, and it provides the
+// census and the carry -- but NOTHING called either. A declared row that no route runs is a note. This is
+// that consumer: the reading and the write, as one entry an operator runs by hand, for one instance, with no
+// path the caller chooses.
+//
+// WHY A HAND-RUN ENTRY AND NOT A PASS IN THE TICK. The old root is a directory inside a SERVICE USER'S OWN
+// home (the srv1 case is the ~/.local/share/gunbc-dashboard-instances/<instance>/attempt-state/session-attempts
+// tree left behind by the re-root of gunb-ai/gunbc#14633). The belt's principal cannot read it, so a per-tick
+// pass would be a pass that fails on every tick for exactly the instances that need it and does nothing
+// elsewhere -- and granting the belt a read into a user's home to make such a pass work is a wider standing
+// grant than a one-time migration deserves. So the carry is an operator action, run once per declared move in
+// the operator's own session. Its privilege is FILED, not assumed: attempt_slots_carry_privileged_effect
+// belongs in gunbc.auth.privileged_effect_census, because a census row naming the belt's principal for a
+// write the belt cannot perform is the same lie as no row at all.
+//
+// WHY THE CENSUS COMES FIRST, AND WHY IT CAN STOP THE WHOLE RUN. The carry is already fail-closed per
+// reference: attempt_slots_carry_one refuses to overwrite a differing slot, refuses to touch a seat the live
+// store cannot decode, and is CAS-committed under ExpectSlotAbsent so a re-run creates nothing beside an
+// existing slot. That is the right rule for one reference and the wrong shape for a RUN: carrying twenty
+// references and refusing on the twenty-first leaves a root half in and half out, and the next reading of the
+// store describes a state nobody chose. So the census classifies every reference FIRST and if any one of them
+// sits in a class the operator must decide -- both stores hold it with different bytes, either side is
+// unreadable, the relation cannot be decided, or the old store listed it and no longer holds it -- NOTHING is
+// written. All of it moves or none of it does. The classes are the census's own (attempt_slots_census_class),
+// so the gate cannot disagree with the reading it gates on.
+//
+// WHAT IT REFUSES, EACH IN ITS OWN WAY. The instance is named the one way the belt's own entries name it --
+// GUNBC_BELT_SPAWN_WORKDIR through belt_instance_from_env, absent or empty refusing, an unknown root refusing
+// -- so this entry adds no second way to name a deployment. The target store is minted by
+// session_attempt_slots_store, which takes an instance and no path; there is no argument here that says
+// "carry it there". A census that blocks is a refusal, not a partial write.
+//
+// WHAT IT DOES NOT DO. It removes nothing from the old root (the cutover module makes removal a separate step
+// with its own authorization), it does not touch the capacity ledger (a carried slot is settled by
+// gunbc.roadmap.roadmap_session_placement's pass, the only authority that releases a lease), it does not
+// enumerate historical roots beyond the ONE declared row, and it does not run the settle. Success is
+// ExitSuccess and every refusal is exit_failure carrying the document; the read-only census entry prints the
+// same document without writing, so a pre-flight is an instrument rather than a promise in a runbook. Its
+// exit code answers "is anything pending" (0: nothing to move and nothing blocked) and its document answers
+// "what is there".
+
+import std.types { String, List, NonEmptyStr, Int }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string, json_array, json_int, json_bool, json_null }
+import gunbc.roadmap.roadmap_belt_tick_cli { belt_instance_from_env }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_session_attempt_slots_root {
+  SessionAttemptSlotsStore,
+  SessionAttemptSlotsStoreReady,
+  SessionAttemptSlotsStoreUnready,
+  session_attempt_slots_store,
+}
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  AttemptSlotsCensus,
+  AttemptSlotsCensusOf,
+  AttemptSlotsCensusRowRefused,
+  AttemptSlotsCensusRefused,
+  AttemptSlotsCensusNoDeclaredRow,
+  AttemptSlotsCensusDeclaredTwice,
+  AttemptSlotsCensusEntry,
+  AttemptSlotsCensusClass,
+  ClassOnlyInOld,
+  ClassOnlyInTarget,
+  ClassBothIdentical,
+  ClassBothDifferent,
+  ClassEitherSideUnreadable,
+  ClassRelationUndecided,
+  ClassNeitherSideHoldsIt,
+  attempt_slots_census_class,
+  attempt_slots_census_for_instance,
+  attempt_slots_carry_for_instance,
+  attempt_slots_census,
+  attempt_slots_carry,
+  ReplacedAttemptSlotsRoot,
+  AttemptSlotsCarry,
+  AttemptSlotsCarryReported,
+  AttemptSlotsCarryNoDeclaredRow,
+  AttemptSlotsCarryDeclaredTwice,
+  AttemptSlotsCarryRowRefused,
+  AttemptSlotsCarrySourceUnlistable,
+  AttemptSlotsCarryKeysRefused,
+  AttemptSlotsCarryReport,
+  AttemptSlotsCarryOutcome,
+  AttemptSlotsCarried,
+  AttemptSlotsCarryAlreadyCarried,
+  AttemptSlotsCarryRefused,
+  AttemptSlotsRowRefusal,
+  AttemptSlotsRowNamesAnotherInstance,
+  AttemptSlotsRowOldRootIsTheLiveRoot,
+}
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect,
+  AuthorizationPatternSelection,
+  select_authorization_pattern,
+}
+
+// WHAT THE CENSUS MUST SHOW BEFORE ANY REFERENCE IS WRITTEN.
+//
+// Admitted when every reference sits in a class where the carry has nothing to decide: only-in-old (it
+// moves), both-identical (the carry already happened -- a re-run reports it and creates nothing), or
+// only-in-target (nothing to do). Blocked otherwise, naming each reference and its class, because which of
+// two attempts owns a reference, and what an unreadable seat holds, are exactly the decisions a carry must
+// not make.
+type AttemptSlotsCarryGate
+  = CarryGateAdmitted { to_move: List<NonEmptyStr>, already_carried: List<NonEmptyStr>, nothing_to_do: List<NonEmptyStr> }
+  | CarryGateBlocked { blocking: List<String> }
+
+fn attempt_slots_carry_gate_blocking_line(entry: AttemptSlotsCensusEntry) -> String {
+  let cls = attempt_slots_census_class(entry: entry)
+  match cls {
+    ClassOnlyInOld => ""
+    ClassBothIdentical => ""
+    ClassOnlyInTarget => ""
+    ClassBothDifferent => join([entry.reference as String, ": in_both_different - both stores hold a slot under this reference and their bytes differ"], "")
+    ClassEitherSideUnreadable => join([entry.reference as String, ": either_side_unreadable - a slot under this reference cannot be decoded"], "")
+    ClassRelationUndecided => join([entry.reference as String, ": relation_undecided - the two sides cannot be compared from what is readable"], "")
+    ClassNeitherSideHoldsIt => join([entry.reference as String, ": neither_side_holds_it - the old store listed the reference and no longer holds it"], "")
+  }
+}
+
+fn attempt_slots_carry_gate_references(entries: List<AttemptSlotsCensusEntry>, wanted: AttemptSlotsCensusClass) -> List<NonEmptyStr> {
+  filter(entries, e => attempt_slots_census_class(entry: e) == wanted) |> map(e => e.reference)
+}
+
+// The gate reads the entries, never the counts: the counts are derived presentation for the operator's
+// question ("how much is only in the old root?"), and a decision taken from a derived number rather than
+// from the reading it is derived from is how a stale count starts deciding things.
+
+fn attempt_slots_carry_gate_of(entries: List<AttemptSlotsCensusEntry>) -> AttemptSlotsCarryGate {
+  let blocking = map(entries, attempt_slots_carry_gate_blocking_line) |> filter(s => s != "")
+  if count(blocking) > 0 {
+    CarryGateBlocked { blocking: blocking }
+  } else {
+    CarryGateAdmitted {
+      to_move: attempt_slots_carry_gate_references(entries: entries, wanted: ClassOnlyInOld),
+      already_carried: attempt_slots_carry_gate_references(entries: entries, wanted: ClassBothIdentical),
+      nothing_to_do: attempt_slots_carry_gate_references(entries: entries, wanted: ClassOnlyInTarget),
+    }
+  }
+}
+
+fn attempt_slots_row_refusal_line(refusal: AttemptSlotsRowRefusal) -> String {
+  match refusal {
+    AttemptSlotsRowNamesAnotherInstance { row_instance: r, store_instance: s } =>
+      join(["the declared row names instance ", r as String, " and the live store is instance ", s as String], "")
+    AttemptSlotsRowOldRootIsTheLiveRoot { root: x } =>
+      join(["the declared row's old root is the live root itself: ", x as String], "")
+  }
+}
+
+fn attempt_slots_carry_gate(census: AttemptSlotsCensus) -> AttemptSlotsCarryGate {
+  match census {
+    // A census that could not be taken blocks the run for its own reason; the reasons are the census's arms
+    // quoted, not a second vocabulary invented here.
+    AttemptSlotsCensusNoDeclaredRow { instance_id: i } =>
+      CarryGateBlocked { blocking: [join(["no declared row: nothing is recorded as replaced for instance ", i as String, "; this entry carries only a declared move and will not accept a path"], "")] }
+    AttemptSlotsCensusDeclaredTwice { instance_id: i, rows: rows } =>
+      CarryGateBlocked { blocking: [join(["the replaced-root roster holds ", to_string(value: count(rows)), " rows for instance ", i as String, "; one instance may declare one replaced root"], "")] }
+    AttemptSlotsCensusRowRefused { refusal: r } =>
+      CarryGateBlocked { blocking: [join(["the declared row is refused by the live store: ", attempt_slots_row_refusal_line(refusal: r)], "")] }
+    AttemptSlotsCensusRefused { old_root: o, detail: d } =>
+      CarryGateBlocked { blocking: [join(["the old root ", o as String, " could not be censused: ", d], "")] }
+    AttemptSlotsCensusOf { entries: entries, counts: _, old_root: _ } => attempt_slots_carry_gate_of(entries: entries)
+  }
+}
+
+fn members_of_move(gate: AttemptSlotsCarryGate) -> List<NonEmptyStr> {
+  match gate {
+    CarryGateAdmitted { to_move: m, already_carried: _, nothing_to_do: _ } => m
+    CarryGateBlocked { blocking: _ } => []
+  }
+}
+
+fn members_of_already(gate: AttemptSlotsCarryGate) -> List<NonEmptyStr> {
+  match gate {
+    CarryGateAdmitted { to_move: _, already_carried: a, nothing_to_do: _ } => a
+    CarryGateBlocked { blocking: _ } => []
+  }
+}
+
+fn members_of_nothing(gate: AttemptSlotsCarryGate) -> List<NonEmptyStr> {
+  match gate {
+    CarryGateAdmitted { to_move: _, already_carried: _, nothing_to_do: n } => n
+    CarryGateBlocked { blocking: _ } => []
+  }
+}
+
+fn members_of_blocking(gate: AttemptSlotsCarryGate) -> List<String> {
+  match gate {
+    CarryGateAdmitted { to_move: _, already_carried: _, nothing_to_do: _ } => []
+    CarryGateBlocked { blocking: b } => b
+  }
+}
+
+// THE ONE CENSUS READING, SHARED BY BOTH ENTRIES so a pre-flight and the run itself cannot print two answers
+// to the same question.
+fn attempt_slots_carry_census_json(instance_id: NonEmptyStr, census: AttemptSlotsCensus, gate: AttemptSlotsCarryGate) -> JsonValue {
+  let counts_json = match census {
+    AttemptSlotsCensusOf { counts: c, entries: _, old_root: _ } => json_object(members: [
+      json_kv(key: "total", value: json_int(n: c.total)),
+      json_kv(key: "only_in_old", value: json_int(n: c.only_in_old)),
+      json_kv(key: "only_in_target", value: json_int(n: c.only_in_target)),
+      json_kv(key: "in_both_identical", value: json_int(n: c.in_both_identical)),
+      json_kv(key: "in_both_different", value: json_int(n: c.in_both_different)),
+      json_kv(key: "either_side_unreadable", value: json_int(n: c.either_side_unreadable)),
+      json_kv(key: "relation_undecided", value: json_int(n: c.relation_undecided)),
+      json_kv(key: "neither_side_holds_it", value: json_int(n: c.neither_side_holds_it)),
+    ])
+    // A census that was never taken has no counts to report. The string says so instead of a null, because a
+    // reader of the document should not have to decide whether an absent number meant zero or an absent census.
+    _ => json_string(s: "no census was taken")
+  }
+  let old_root_json = match census {
+    AttemptSlotsCensusOf { old_root: o, entries: _, counts: _ } => json_string(s: o as String)
+    AttemptSlotsCensusNoDeclaredRow { instance_id: i } => json_string(s: join(["no declared row for instance ", i as String], ""))
+    AttemptSlotsCensusDeclaredTwice { instance_id: i, rows: rows } => json_string(s: join(["declared twice for instance ", i as String, " (", to_string(value: count(rows)), " rows)"], ""))
+    AttemptSlotsCensusRowRefused { refusal: r } => json_string(s: attempt_slots_row_refusal_line(refusal: r))
+    AttemptSlotsCensusRefused { old_root: o, detail: d } => json_string(s: join(["old root ", o as String, " could not be censused: ", d], ""))
+  }
+  let to_move_array = json_array(elements: map(members_of_move(gate: gate), r => json_string(s: r as String)))
+  let already_array = json_array(elements: map(members_of_already(gate: gate), r => json_string(s: r as String)))
+  let nothing_array = json_array(elements: map(members_of_nothing(gate: gate), r => json_string(s: r as String)))
+  let blocking_array = json_array(elements: map(members_of_blocking(gate: gate), s => json_string(s: s)))
+  let gate_json = match gate {
+    CarryGateAdmitted { to_move: _, already_carried: _, nothing_to_do: _ } => json_object(members: [
+      json_kv(key: "admitted", value: json_bool(b: true)),
+      json_kv(key: "to_move", value: to_move_array),
+      json_kv(key: "already_carried", value: already_array),
+      json_kv(key: "nothing_to_do", value: nothing_array),
+    ])
+    CarryGateBlocked { blocking: _ } => json_object(members: [
+      json_kv(key: "admitted", value: json_bool(b: false)),
+      json_kv(key: "blocking", value: blocking_array),
+    ])
+  }
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-attempt-slots-carry-census/v1")),
+    json_kv(key: "instance", value: json_string(s: instance_id as String)),
+    json_kv(key: "old_root", value: old_root_json),
+    json_kv(key: "counts", value: counts_json),
+    json_kv(key: "gate", value: gate_json),
+  ])
+}
+
+fn attempt_slots_carry_outcome_line(outcome: AttemptSlotsCarryOutcome) -> String {
+  match outcome {
+    AttemptSlotsCarried { reference: r, source_generation: sg, target_generation: tg } =>
+      join([r as String, ": carried (old generation ", to_string(value: sg), ", new generation ", to_string(value: tg), ")"], "")
+    AttemptSlotsCarryAlreadyCarried { reference: r } => join([r as String, ": already carried"], "")
+    AttemptSlotsCarryRefused { reference: r, detail: d } => join([r as String, ": REFUSED - ", d], "")
+  }
+}
+
+// THE PRE-FLIGHT'S VERDICT. 0 only when nothing is pending and nothing is blocked; anything else is non-zero
+// WITH the document, because whoever decides whether to authorize a carry needs the reading, not a code.
+fn attempt_slots_carry_census_exit(instance_id: NonEmptyStr, census: AttemptSlotsCensus, gate: AttemptSlotsCarryGate) -> ProcessExit {
+  let document = serialize_json(v: attempt_slots_carry_census_json(instance_id: instance_id, census: census, gate: gate))
+  match gate {
+    CarryGateAdmitted { to_move: m, already_carried: _, nothing_to_do: _ } =>
+      if count(m) == 0 { ExitSuccess } else { exit_failure(reason: join([document, "\na carry is pending: ", to_string(value: count(m)), " reference(s) sit only in the old root"], "")) }
+    CarryGateBlocked { blocking: b } =>
+      exit_failure(reason: join([document, "\n", to_string(value: count(b)), " reference(s) need an operator's decision before anything may be carried"], ""))
+  }
+}
+
+fn attempt_slots_carry_carry_exit(instance_id: NonEmptyStr, carry: AttemptSlotsCarry) -> ProcessExit {
+  match carry {
+    AttemptSlotsCarryReported { report: report } => {
+      let lines = map(report.outcomes, o => attempt_slots_carry_outcome_line(outcome: o))
+      let refusals = filter(lines, l => string_contains(s: l, pattern: ": REFUSED - "))
+      let head = join(["instance ", report.instance_id as String, " old_root ", report.old_root as String, " new_root ", report.new_root as String, "\n", join(lines, "\n")], "")
+      if count(refusals) > 0 {
+        exit_failure(reason: join([head, "\n", to_string(value: count(refusals)), " reference(s) refused; nothing further was written for them"], ""))
+      } else {
+        ExitSuccess
+      }
+    }
+    AttemptSlotsCarryNoDeclaredRow { instance_id: i } => exit_failure(reason: join(["attempt_slots_carry: no declared row for instance ", i as String], ""))
+    AttemptSlotsCarryDeclaredTwice { instance_id: i, rows: rows } =>
+      exit_failure(reason: join(["attempt_slots_carry: ", to_string(value: count(rows)), " rows declare a replaced root for instance ", i as String, "; one instance declares one"], ""))
+    AttemptSlotsCarryRowRefused { refusal: r } => exit_failure(reason: join(["attempt_slots_carry: the declared row is refused: ", attempt_slots_row_refusal_line(refusal: r)], ""))
+    AttemptSlotsCarrySourceUnlistable { old_root: o } => exit_failure(reason: join(["attempt_slots_carry: the old root ", o as String, " could not be listed"], ""))
+    AttemptSlotsCarryKeysRefused { old_root: o, detail: d } => exit_failure(reason: join(["attempt_slots_carry: the old root ", o as String, " refused its keys: ", d], ""))
+  }
+}
+
+fn attempt_slots_carry_refusal_reason(instance_id: NonEmptyStr, census: AttemptSlotsCensus, gate: AttemptSlotsCarryGate, entry: String) -> String {
+  let blocking_count = match gate {
+    CarryGateBlocked { blocking: b } => count(b)
+    CarryGateAdmitted { to_move: _, already_carried: _, nothing_to_do: _ } => 0
+  }
+  join([
+    serialize_json(v: attempt_slots_carry_census_json(instance_id: instance_id, census: census, gate: gate)),
+    "\n", entry, ": nothing was carried; ", to_string(value: blocking_count), " reference(s) need an operator's decision first",
+  ], "")
+}
+
+// THE SAME RUNNER OVER A ROW THE CALLER HANDS IT. This exists for one reason: a witness must be able to
+// drive the gate, the carry and the exit over a root it owns, and the cutover module will not let a test
+// fabricate a measurement (its census, entries and report are sole_constructor types), so the only honest
+// fixture is a real one -- real stores, real slots, and a row minted through declare_replaced_attempt_slots_root,
+// which is the module's own witness gate for exactly that. The operator entries below take NO row: they
+// resolve the one the host declares, which is the only way a host row can arrive.
+fn attempt_slots_carry_census_with(instance_id: NonEmptyStr, target: SessionAttemptSlotsStore, moved: ReplacedAttemptSlotsRoot) -> ProcessExit {
+  let census = attempt_slots_census(target: target, moved: moved)
+  attempt_slots_carry_census_exit(instance_id: instance_id, census: census, gate: attempt_slots_carry_gate(census: census))
+}
+
+fn attempt_slots_carry_with(instance_id: NonEmptyStr, target: SessionAttemptSlotsStore, moved: ReplacedAttemptSlotsRoot) -> ProcessExit {
+  let census = attempt_slots_census(target: target, moved: moved)
+  let gate = attempt_slots_carry_gate(census: census)
+  match gate {
+    // The refusal returns BEFORE attempt_slots_carry is called, which is what makes "all of it moves or
+    // none of it does" a property of the code and not of luck: no reference is written on a blocked run.
+    CarryGateBlocked { blocking: _ } => exit_failure(reason: attempt_slots_carry_refusal_reason(instance_id: instance_id, census: census, gate: gate, entry: "attempt_slots_carry"))
+    CarryGateAdmitted { to_move: _, already_carried: _, nothing_to_do: _ } =>
+      attempt_slots_carry_carry_exit(instance_id: instance_id, carry: attempt_slots_carry(target: target, moved: moved))
+  }
+}
+
+// THE TWO HALF-ENTRIES, NAMED SO A WITNESS CAN DRIVE THEM WITH AN INSTANCE IT OWNS. The operator-facing
+// entries below add nothing but how the instance is named.
+fn attempt_slots_carry_census_for(instance: HostDashboardInstance) -> ProcessExit {
+  match session_attempt_slots_store(instance: instance) {
+    SessionAttemptSlotsStoreUnready { detail: d } =>
+      exit_failure(reason: join(["attempt_slots_carry_census_cli: the instance declares no session attempt slot store: ", d], ""))
+    SessionAttemptSlotsStoreReady { store: store } => {
+      let census = attempt_slots_census_for_instance(instance_id: instance.instance_id, target: store)
+      attempt_slots_carry_census_exit(instance_id: instance.instance_id, census: census, gate: attempt_slots_carry_gate(census: census))
+    }
+  }
+}
+
+fn attempt_slots_carry_for(instance: HostDashboardInstance) -> ProcessExit {
+  match session_attempt_slots_store(instance: instance) {
+    SessionAttemptSlotsStoreUnready { detail: d } =>
+      exit_failure(reason: join(["attempt_slots_carry_cli: the instance declares no session attempt slot store: ", d], ""))
+    SessionAttemptSlotsStoreReady { store: store } => {
+      let census = attempt_slots_census_for_instance(instance_id: instance.instance_id, target: store)
+      let gate = attempt_slots_carry_gate(census: census)
+      match gate {
+        CarryGateBlocked { blocking: b } => exit_failure(reason: join([
+          serialize_json(v: attempt_slots_carry_census_json(instance_id: instance.instance_id, census: census, gate: gate)),
+          "\nnothing was carried; ", to_string(value: count(b)), " reference(s) need an operator's decision first",
+        ], ""))
+        CarryGateAdmitted { to_move: _, already_carried: _, nothing_to_do: _ } =>
+          attempt_slots_carry_carry_exit(instance_id: instance.instance_id, carry: attempt_slots_carry_for_instance(instance_id: instance.instance_id, target: store))
+      }
+    }
+  }
+}
+
+// READ-ONLY PRE-FLIGHT. Prints the census and what the gate would decide; writes nothing. An operator (or the
+// srv1 settle packet) runs this before asking for the authorization to carry, and again after, to see that a
+// second pass finds nothing left to move.
+fn attempt_slots_carry_census_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "attempt_slots_carry_census_cli", continuation: instance => attempt_slots_carry_census_for(instance: instance))
+}
+
+// THE CARRY ITSELF. Census, gate, then the carry -- which is itself CAS-gated per reference, so the gate is
+// the all-or-none rule sitting ON TOP of the per-reference rule, not a replacement for it.
+fn attempt_slots_carry_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "attempt_slots_carry_cli", continuation: instance => attempt_slots_carry_for(instance: instance))
+}
+
+// THE PRIVILEGE, FILED RATHER THAN ASSUMED. The write lands inside a service user's own home directory on the
+// host and is performed in that operator's session -- no federated or workload principal can be bound to it,
+// which is what WorkloadIdentityUnbindable records and what makes the belt's principal the wrong name in the
+// census. It is reversible by re-applying because it destroys nothing: the old root keeps its slots, the
+// target is CAS-committed under ExpectSlotAbsent, and a differing seat is refused rather than overwritten.
+fn attempt_slots_carry_privileged_effect_subject() -> NonEmptyStr {
+  "move an instance's session attempt slots from the replaced root the cutover declares for it into the live session attempt slot store, one reference at a time, CAS-committed and never overwriting; removes nothing from the old root and touches neither another instance's store nor the capacity ledger"
+}
+
+fn attempt_slots_carry_privileged_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: attempt_slots_carry_privileged_effect_subject(),
+    frequency: EveryOperatorRequest,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "the write lands inside a service user's own home directory on the host, which no federated or workload principal can be granted; it runs in the operator's own session" },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// WHAT THE SELECTOR MAKES OF THE FILED EFFECT, EXPOSED so the pattern is read from the selector rather than
+// written into a comment beside the effect, and so a witness can fail when the selection changes.
+fn attempt_slots_carry_pattern_selection() -> AuthorizationPatternSelection {
+  select_authorization_pattern(e: attempt_slots_carry_privileged_effect())
+}
