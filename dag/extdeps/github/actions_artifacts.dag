@@ -1,4 +1,5 @@
 module extdeps.github.actions_artifacts
+import std.types { Bearer }
 
 import extdeps.github.github { default_api_base, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
