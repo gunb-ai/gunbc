@@ -14,7 +14,7 @@ import extdeps.languages.json.parse {
   json_field_string_list,
   parse_json_document
 }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_find_first, list_map, string_concat_join }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_find_first }
 import std.optional { Absent, Optional, Present }
 import v2.compiler.self_host.closure_emission {
   ClosureEmission,
@@ -34,11 +34,9 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text_in_spans }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol, node_synthetic, symbol_lexeme }
+import v2.std.node { Node, Symbol, node_synthetic }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.text { String }
-import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, first_key_class, production_first_row_lookup, symbol_list_contains }
-import v2.compiler.program_assembly { dag_prepared_grammar }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -574,157 +572,5 @@ test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
         _ => false })
         && (match json_field(obj: row, key: "diagnostic") { FieldAbsent => true
           _ => false })
-  }
-}
-
-// ---- PARSE-PATH-UNITY probe (dashboard node adhoc-56744ea7). NOT a claim, NOT for landing. ----
-// The member text below is the VERBATIM ce-probe.sh fixture (source bytes sha256
-// 0f785394e803ce694370e7c917d7faad069b70bfabc2eb2167cd2160dcf409a8), an else-less `if c { i }`
-// followed by the tail statement `i`. The emitted gen-1 refuses this at PARSE with
-// parse_g0_tokens_remain; the interpreter's closure door PARSES it and records the member's body
-// refusal at LOWERING (else_less_if_unlowered) as that member's typed arm, so the closure ACCEPTS.
-// This probe returns the interpreted verdict as text so
-//   gunbc run --source-root dag --source-root src/v2 --entry v2.test.claim.self_host.closure_emission --function ce_probe_elseless_text
-// prints it (the host's "returned ... not ProcessExit" line), to be compared against the emitted
-// side's emit.err on the byte-identical member. PROBE (not a claim, not for landing).
-
-data ce_refusing_int_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\nimport v2.test.ce_refusing_member { ce_refusing_fn }\n\nfn ce_refusing_entry_fn(c: Bool, i: Int) -> Int { ce_refusing_fn(c: c, i: i) }\n"
-
-data ce_refusing_int_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
-
-fn ce_emission_elseless_refusing() -> ClosureEmissionLocated {
-  ce_emit(
-    ingest: [
-      ce_read(source: ce_refusing_int_member_source, id: ^ce_refusing_int_member_read, path: "src/v2/test/ce_refusing_member.dag"),
-      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
-    ],
-    entry: "v2.test.ce_refusing_entry"
-  )
-}
-
-// PROBE (not a claim, not for landing): the observed verdict of the verbatim else-less-if member run
-// through the interpreter's own parse authority (closure door -> parse_module_prepared_seeded). A
-// parse refusal (the parse_g0_tokens_remain the emitted gen-1 gives today) shows its located chain; a
-// parse acceptance (what the interpreter gives, the member then refusing at lowering) shows the whole
-// emission JSON with the member's refused arm.
-fn ce_probe_elseless_text() -> String {
-  let located = ce_emission_elseless_refusing()
-  match located.outcome {
-    Rejected { diagnostics: d } =>
-      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
-    Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e))
-  }
-}
-
-// ---- PARSE-PATH-UNITY discriminating probes (node adhoc-56744ea7). PROBE, not for landing. ----
-// Two controls that localize WHICH link drops the tail statement `i` on the emitted side. Both reuse
-// the same ce_refusing entry (imports + calls ce_refusing_fn). Expected: all three probes ACCEPTED on
-// the interpreter; the else-less multiline probe REJECTED(parse_g0_tokens_remain) on the emitted gen-1.
-//  - ce_probe_twostat_text: member body `i\n i` (TWO bare-statement lines, NO if). If the emitted side
-//    also drops the 2nd statement here, the fault is the statement repeat's no-progress stop
-//    (parse_current_position mis-emitted), a general bug. If it parses on both, the fault is specific to
-//    the if/optional path leaving state that rejects the following statement.
-//  - ce_probe_sameline_text: member body `if c { i } i` (if + tail on the SAME line, no line break). If
-//    the emitted side parses this but not the multiline else-less, the divergence is line-break-dependent.
-// Member bytes (for the emitted side's fixture files): twostat sha256 adba7f4735d961ae2659f3217555dbb70d1b8219abab73dd62af3563f12587da; sameline sha256 26f4ca0a6a575a70561924e1eb0294e247880f76a7c5a4d13cde98b37f502a44.
-
-data ce_refusing_twostat_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  i\n  i\n}\n"
-
-data ce_refusing_sameline_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { i } i\n}\n"
-
-fn ce_emission_twostat() -> ClosureEmissionLocated {
-  ce_emit(
-    ingest: [
-      ce_read(source: ce_refusing_twostat_member_source, id: ^ce_refusing_twostat_member_read, path: "src/v2/test/ce_refusing_member.dag"),
-      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
-    ],
-    entry: "v2.test.ce_refusing_entry"
-  )
-}
-
-fn ce_emission_sameline() -> ClosureEmissionLocated {
-  ce_emit(
-    ingest: [
-      ce_read(source: ce_refusing_sameline_member_source, id: ^ce_refusing_sameline_member_read, path: "src/v2/test/ce_refusing_member.dag"),
-      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
-    ],
-    entry: "v2.test.ce_refusing_entry"
-  )
-}
-
-// PROBE (not for landing): two bare-statement lines, no if -> tests a general statement-repeat stop bug.
-fn ce_probe_twostat_text() -> String {
-  let located = ce_emission_twostat()
-  match located.outcome {
-    Rejected { diagnostics: d } =>
-      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
-    Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e))
-  }
-}
-
-// PROBE (not for landing): if + tail on the same line -> tests line-break dependence.
-fn ce_probe_sameline_text() -> String {
-  let located = ce_emission_sameline()
-  match located.outcome {
-    Rejected { diagnostics: d } =>
-      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
-    Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e))
-  }
-}
-
-// ---- node adhoc-56744ea7 fourth probe: isolate optional ABSENT vs any-block-close-then-statement ----
-// Member body `if c { i } else { i }\n  i` : the if HAS an else, so optional(if_else_tail) takes its
-// PRESENT branch (consumes `else { i }`), then the tail statement `i` follows on a new line -- the exact
-// complement of ce_probe_elseless_text (which exercises the absent branch). Discriminator:
-//  - elseelse ACCEPTED + elseless REJECTED on the emitted side => the defect is in optional's ABSENT
-//    branch specifically (the rejected-else table it returns to the repeat), family O.
-//  - elseelse ALSO REJECTED => any block-close followed by a line-break-gated statement drops its tail,
-//    a more general block/repeat/layout issue independent of optional-absence.
-// Member bytes for the emitted fixture: elseelse member sha256 68012d82bfd906bcfb78ea0fe4058a7037551104e1e5fd50b3cda45a4ff73b8f.
-data ce_refusing_elseelse_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { i } else { i }\n  i\n}\n"
-
-fn ce_emission_elseelse() -> ClosureEmissionLocated {
-  ce_emit(
-    ingest: [
-      ce_read(source: ce_refusing_elseelse_member_source, id: ^ce_refusing_elseelse_member_read, path: "src/v2/test/ce_refusing_member.dag"),
-      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
-    ],
-    entry: "v2.test.ce_refusing_entry"
-  )
-}
-
-// PROBE (not for landing): if WITH else + tail on next line -> isolates optional-absent vs any block-close.
-fn ce_probe_elseelse_text() -> String {
-  let located = ce_emission_elseelse()
-  match located.outcome {
-    Rejected { diagnostics: d } =>
-      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
-    Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e))
-  }
-}
-
-// ---- node adhoc-56744ea7 analysis-dump probe (PROBE, not for landing) ----
-// Renders the PREPARED grammar's FIRST/nullable analysis for EVERY production, one per line. The analysis is
-// TEXT-INDEPENDENT (prepare_grammar is a pure fn of the grammar -- parse.dag prepared_grammar_carrier_note),
-// so this output is identical for every input text; its ONLY purpose is to run on BOTH executors (interpreter
-// and emitted gen-1) and diff. The combinator code AND the analysis code are read-faithful (fragments 1-9); so
-// if interpreter and emitted gen-1 disagree on any production's first-row class set / nullable membership, the
-// emitted GRAMMAR TREE fed to prepare_grammar differs from the .dag -- the parse-path divergence, localized to
-// a mis-emitted dag_grammar_* row. Mirrors the proven access in test/claim/body_lowering/arrow_lambda_block_body.dag.
-fn ce_probe_stmt_first_analysis() -> String {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => "PREPARE-REFUSED"
-    Accepted { value: prepared, diagnostics: _ } =>
-      match prepared {
-        PreparedVoidGrammar => "PREPARED-VOID"
-        PreparedModeled { modeled: modeled } =>
-          string_concat_join(fields: list_map(xs: modeled.validated.root.productions, f: fn(p) {
-            concat(concat(concat(concat(symbol_lexeme(sym: p.name), if symbol_list_contains(xs: modeled.analysis.nullable_set, item: p.name) { " NULL" } else { " -" }), " ["), string_concat_join(fields: list_map(xs: production_first_row_lookup(rows: modeled.analysis.first_rows, name: p.name), f: fn(k) { symbol_lexeme(sym: first_key_class(key: k)) }), separator: ",")), "]")
-          }), separator: "\n")
-      }
   }
 }
