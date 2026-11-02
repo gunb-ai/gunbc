@@ -110,6 +110,10 @@ fn megarac_operation_evidence_of(
     decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
+    // THINNED, NOT INVENTED: the boot-safety claim re-mints the COMMITTED readings, transitions and
+    // attach receipts with the screen and sensor receipts withheld, to show the boot's admission does
+    // not consume them. It mints no evidence the ledger does not already hold.
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_boot_reaches_attach_with_the_screen_and_sensor_operations_ungrounded"),
     // THE FIXTURE MINTS, admitted deliberately. The seal keeps AD HOC evidence fabrication out of
     // production rows; a fixture FOR evidence is exactly what a sole_constructor population must admit
     // through a named door rather than let a witness mint beside it. Both fixtures live in the

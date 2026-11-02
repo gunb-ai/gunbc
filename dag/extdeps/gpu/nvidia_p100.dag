@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.measure { hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
-import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, GpuComputeCapability, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower, SingleGpu, cuda_legacy_gpus_page_authority }
 import extdeps.memory.types { MemoryFacts, Hbm }
 import extdeps.pci.identity { PciDeviceId }
 import extdeps.vendor.nvidia { nvidia }
@@ -16,6 +16,7 @@ import extdeps.uri { Uri, Https }
 // HBM2 at 732 GB/s or 12GB CoWoS HBM2 at 549 GB/s", PCIe Gen3 (no width stated, so the link is Absent),
 // 250 W, passive, PCIe full height/length. Two memory configurations are two SKUs, so two device rows and
 // two boards; the driver lists them as "Tesla P100-PCIE-16GB" (15f8) and "Tesla P100-PCIE-12GB" (15f7).
+// Compute capability 6.0 is the Legacy CUDA GPUs page's ("Tesla P100").
 
 data p100_pcie_datasheet_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -40,7 +41,7 @@ data nvidia_tesla_p100_pcie_16gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Hbm },
   memory_bandwidth: Present { value: bandwidth(count: 732000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 6, minor: 0 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -49,6 +50,7 @@ data nvidia_tesla_p100_pcie_16gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_p100", decl_name: "nvidia_tesla_p100_pcie_16gb_catalog", field_name: "memory_bandwidth"), authority: p100_pcie_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_p100", decl_name: "nvidia_tesla_p100_pcie_16gb_catalog", field_name: "execution_lane_count"), authority: p100_pcie_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_p100", decl_name: "nvidia_tesla_p100_pcie_16gb_catalog", field_name: "microarchitecture"), authority: p100_pcie_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_p100", decl_name: "nvidia_tesla_p100_pcie_16gb_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -57,7 +59,7 @@ data nvidia_tesla_p100_pcie_16gb_board_facts: GpuBoardCatalogFacts = GpuBoardCat
   vendor: nvidia,
   model: "Tesla P100 PCIe 16GB",
   gpu: nvidia_tesla_p100_pcie_16gb_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 250) } },
   zero_power: none,
@@ -82,7 +84,7 @@ data nvidia_tesla_p100_pcie_12gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 12)), memory_kind: Hbm },
   memory_bandwidth: Present { value: bandwidth(count: 549000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 6, minor: 0 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -91,6 +93,7 @@ data nvidia_tesla_p100_pcie_12gb_catalog: GpuDeviceCatalogRow = GpuDeviceCatalog
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_p100", decl_name: "nvidia_tesla_p100_pcie_12gb_catalog", field_name: "memory_bandwidth"), authority: p100_pcie_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_p100", decl_name: "nvidia_tesla_p100_pcie_12gb_catalog", field_name: "execution_lane_count"), authority: p100_pcie_datasheet_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_p100", decl_name: "nvidia_tesla_p100_pcie_12gb_catalog", field_name: "microarchitecture"), authority: p100_pcie_datasheet_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_p100", decl_name: "nvidia_tesla_p100_pcie_12gb_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -99,7 +102,7 @@ data nvidia_tesla_p100_pcie_12gb_board_facts: GpuBoardCatalogFacts = GpuBoardCat
   vendor: nvidia,
   model: "Tesla P100 PCIe 12GB",
   gpu: nvidia_tesla_p100_pcie_12gb_catalog,
-  gpu_count: 1,
+  composition: SingleGpu,
   attachment: PcieAddInBoard { link: none },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 250) } },
   zero_power: none,

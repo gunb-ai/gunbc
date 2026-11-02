@@ -1,0 +1,67 @@
+module test.claim.parameter_default_at_declared_type_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// A PARAMETER DEFAULT IS JUDGED AGAINST ITS PARAMETER'S DECLARED TYPE (v1.compiler.infer PositionParameterDefault via
+// parameter_default_emissions). Before it, `fn f(v: Nat = "x")` was accepted silently: gunbc.recurring_failure_mode
+// a_parameter_default_value_is_never_judged_against_its_parameter_type, executed by sunny-newt-661 on binary f6c9e59c3d84
+// (defaults `3`, `"x"`, `0 - 5`, `Wrap { n: 1 }` all gave blocking-rows zero, indistinguishable from the control).
+//
+// EXECUTED 2026-11-01 (sunny-newt-661), main plus this change at head 609a91e19beb, regenerated stage0 mirror, gunbc sha256
+// 0c8b0004e095b0559c1fb64ae3312e7d459622e8a72136fceaa6f8dc01e2dfbe: all five cells PASS (log sha256
+// 0643d7f737d4cc71779aff59ac600fa1baa60bb75364a5466f5185c14944f9e7). The three REDs (String at Nat, record at Nat, wrong
+// record field) refuse; the two controls (non-negative literal at Nat, well-formed record at a record parameter) are accepted.
+//
+// NOT ASSERTED: `0 - 5` at Nat. Whether it refuses depends on the arithmetic-over-grounded-carriers decision (Q1e), so no
+// cell here claims either answer.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn pdw_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn pdw_source(default: String) -> String {
+  "module pdw.probe\n\nimport std.types { String }\n\nimport std.nat { Nat }\n\ntype Wrap {\n  n: Nat\n}\n\nfn f(v: Nat = " + default + ") -> Nat {\n  v\n}\n"
+}
+
+// RED: a String default at a Nat parameter must refuse.
+test fn a_string_default_at_a_nat_parameter_must_refuse() -> Bool {
+  pdw_refusal_count(source: pdw_source(default: "\"x\"")) >= 1
+}
+
+// RED: a record default at a Nat parameter must refuse.
+test fn a_record_default_at_a_nat_parameter_must_refuse() -> Bool {
+  pdw_refusal_count(source: pdw_source(default: "Wrap { n: 1 }")) >= 1
+}
+
+fn pdw_wrap_source(default: String) -> String {
+  "module pdw.probe\n\nimport std.types { Int, String }\n\ntype Wrap = Wrap { n: Int }\n\nfn h(v: Wrap = " + default + ") -> Int {\n  0\n}\n"
+}
+
+// RED: a record default with a wrong-kind field at a record parameter must refuse (a record literal with a wrong field is
+// refused everywhere it is inferred; the specimen h of the recurring-failure row).
+test fn a_record_default_with_a_wrong_field_must_refuse() -> Bool {
+  pdw_refusal_count(source: pdw_wrap_source(default: "Wrap { n: \"x\" }")) >= 1
+}
+
+// CONTROL: a well-formed record default at a record parameter is accepted.
+test fn a_well_formed_record_default_at_a_record_parameter_is_accepted() -> Bool {
+  pdw_refusal_count(source: pdw_wrap_source(default: "Wrap { n: 1 }")) == 0
+}
+
+// CONTROL: a non-negative literal default at Nat is accepted (the refusal is not a blanket one).
+test fn a_non_negative_literal_default_at_a_nat_parameter_is_accepted() -> Bool {
+  pdw_refusal_count(source: pdw_source(default: "3")) == 0
+}

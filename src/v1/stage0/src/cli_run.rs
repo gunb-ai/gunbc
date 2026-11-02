@@ -11837,7 +11837,6 @@ pub struct MultiEntryIndex {
     intern_table: RefCell<Rc<InternTable>>,
     parse_cache: RefCell<std::collections::HashMap<String, ParseCacheEntry>>,
     normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
-    ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     /// The source roots this index was built from — the tree identities behind the
     /// per-tree bare census layers (a module's bare-name universe is its own tree).
     source_roots: Vec<String>,
@@ -11987,10 +11986,6 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
             index.normalize_diag_cache.borrow().len(),
         ),
         (
-            "ownership_diag_cache",
-            index.ownership_diag_cache.borrow().len(),
-        ),
-        (
             "intern_table_strings",
             index.intern_table.borrow().strings.len(),
         ),
@@ -12046,7 +12041,6 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "module_source_identity" => index.module_source_identity.borrow_mut().clear(),
         "parse_cache" => index.parse_cache.borrow_mut().clear(),
         "normalize_diag_cache" => index.normalize_diag_cache.borrow_mut().clear(),
-        "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
         "pool_parse" => *index.pool_parse.borrow_mut() = None,
         "reference_pool_names" => *index.reference_pool_names.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
@@ -12084,7 +12078,6 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "entry_closure_sources",
         "intern_table",
         "normalize_diag_cache",
-        "ownership_diag_cache",
         "source_hash_by_file",
         "module_source_identity",
     ]
