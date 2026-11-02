@@ -82,7 +82,12 @@ fn opacity_seed_holds(generic: Bool, through_alias: Bool, canonical_phantom: Boo
     Absent => false
     Present { value: s } =>
       if canonical_phantom {
-        s.head == decl_ref(module_path: "test.opacity", decl_name: marker_name) && s.args == args
+        s.head == decl_ref(module_path: "test.opacity", decl_name: marker_name)
+          // These supplied arguments are leaf declaration references. Compare their
+          // ordered declaration identities and require that they remain leaves;
+          // Node equality would also compare function-valued semantic fields.
+          && map(s.args, a => a.declaration) == map(args, a => a.declaration)
+          && count(filter(s.args, a => count(a.children) != 0)) == 0
       } else {
         s.head == decl_ref(module_path: "test.foreign", decl_name: "Phantom") && count(s.args) == 0
       }
