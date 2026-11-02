@@ -6,8 +6,7 @@ import std.measure { rpm_count }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import extdeps.bmc.ipmi_sdr {
   SdrVerboseReadout,
-  SdrVerboseRecord,
-  SdrRowAdmittedDiscrete, sdr_blank_ok_row_judgement,
+  SdrRowAdmittedDiscrete, SdrRowRefusal, SdrRowRefused, sdr_blank_ok_row_judgement,
   SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrEmptyReadingRow, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
 import gunbc.machine_intake.bmc_fan_observation { ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorObservation, FanSensorsRead, FanSensorsUnreadable, fan_failure_sensor_name }
@@ -48,7 +47,7 @@ type PostPowerFanRefusal
   | PostPowerChassisUndecodable { cause: NonEmptyStr }
   | PostPowerThermalUnreadable
   | PostPowerThermalNotPublished { publication: SdrTemperaturePublication }
-  | PostPowerThermalRowsUndecoded { texts: List<String> }
+  | PostPowerThermalRowsUndecoded { refusals: List<SdrRowRefusal> }
   | PostPowerThermalReadingUnrecognised { texts: List<String> }
   | FanReadUnreadable
   | FanRowsUndecoded { texts: List<String> }
@@ -178,17 +177,6 @@ fn first_failure_sensor_refusal(lines: List<SdrTypeLine>, failure_rows: List<Sdr
 // THE TYPING THE GATE MAY READ, OR NOTHING. Absent (the round never read the repository), a read that
 // FAILED, and a repository that parsed to ZERO records all yield no records: an empty repository is not
 // a typed one, and treating it as one is exactly how a row would be admitted on bytes nobody received.
-fn thermal_row_typing_records(typing: SdrVerboseReadout?) -> List<SdrVerboseRecord> {
-  match typing {
-    Absent => []
-    Present { value: t } => match t {
-      SdrVerboseRead { records: recs } => recs
-      SdrVerboseEmptyRepository => []
-      SdrVerboseUnreadable => []
-    }
-  }
-}
-
 // THE THERMAL STANDING IS CONSUMED, NOT DISCARDED (side-chat hold 2026-10-19). Thermal is established only by a read that
 // published at least one decoded temperature AND left no undecoded row. A silent pre-POST sensor list
 // (TemperatureSensorsSilent), an undecodable or empty one, an unreadable read, and any undecoded row refuse: none acquires a
@@ -209,10 +197,15 @@ fn thermal_refusal(thermal: ThermalObservation, typing: SdrVerboseReadout?) -> P
     ThermalUnreadable => Present { value: PostPowerThermalUnreadable }
     ThermalRead { publication: p, undecoded_texts: u, unrecognised_readings: r } => match p {
       TemperaturePublished => {
-        let records = thermal_row_typing_records(typing: typing)
-        let still_undecoded = flat_map(u, t => match sdr_blank_ok_row_judgement(text: t, blocks: records) { SdrRowAdmittedDiscrete => [] _ => [t] })
+        // THE CAUSE SURVIVES THE VERDICT. A row excused by the repository contributes nothing; every
+        // row still refused contributes its TYPED cause, which is what makes the four situations this
+        // rule can fail in - typed as a threshold sensor, name matching two records, no record at all,
+        // and a round that had no repository to type against - distinguishable in the verdict instead
+        // of all four leaving the same "undecoded" text behind (§5: every degradation is typed, located
+        // and countable). The row itself rides inside each cause, so nothing is lost from the receipt.
+        let still_undecoded = flat_map(u, t => match sdr_blank_ok_row_judgement(text: t, typing: typing) { SdrRowAdmittedDiscrete { row: _ } => [] SdrRowRefused { refusal: r } => [r] })
         if still_undecoded.length() > 0 {
-          Present { value: PostPowerThermalRowsUndecoded { texts: still_undecoded } }
+          Present { value: PostPowerThermalRowsUndecoded { refusals: still_undecoded } }
         } else if r.length() > 0 {
           Present { value: PostPowerThermalReadingUnrecognised { texts: r } }
         } else {

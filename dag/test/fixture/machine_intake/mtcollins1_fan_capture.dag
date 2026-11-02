@@ -29,7 +29,9 @@ module test.fixture.machine_intake.mtcollins1_fan_capture
 // these lines with the new run's output. A row whose record is absent stays refused, so a stale fixture
 // can only ever refuse, never admit.
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import extdeps.bmc.ipmi_sdr { SdrVerboseReadout, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrVerboseUnreadable, sdr_verbose_readout, sdr_repository_carries_both_kinds }
+import std.optional { Absent, Present }
+import std.algebra { list_find_first }
+import extdeps.bmc.ipmi_sdr { SdrVerboseReadout, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrVerboseUnreadable, SdrBlockThreshold, SdrBlockNotThreshold, SdrBlockUntyped, sdr_verbose_readout, sdr_verbose_block_typing }
 
 // The receipt's own run-scope marker line was `run=0 verbose_exit=0`; the parse below is allowed only
 // because the read itself succeeded, so the exit status is carried rather than assumed.
@@ -153,9 +155,31 @@ fn mtcollins1_fan_capture_records() -> List<SdrVerboseRecord> {
 // It returns a Bool and constructs no authority of any kind, which is what lets the witnesses hand it
 // readouts they build themselves - a failed read, an empty repository, the threshold-only subset - and
 // watch each one refuse.
+// WHETHER THESE BYTES EVER MET BOTH SIDES OF THE LINE THE RULE RESTS ON.
+//
+// ipmi_sdr.h:427 at be11d948 separates threshold from not-threshold; a repository that parses into
+// records of only ONE kind has not exercised that test, and a capture that never met the distinction
+// cannot be the witness that says "these bytes typed the rows". Computed FROM THE PARSE rather than
+// compared against a count written down beside the bytes, so no edit to a literal can satisfy it.
+//
+// IT LIVES HERE, NOT IN extdeps, ON PURPOSE. This is a property of the COMMITTED CAPTURE, and the
+// guard exists to keep a one-sided transcription from being cited as the typing source. It is NOT a
+// precondition of admitting a row on a live boot: a host whose repository legitimately holds only
+// discrete sensors is real hardware, and refusing to excuse its blank rows because no threshold sensor
+// exists on the board would be a rule about our capture leaking into the gate.
+fn sdr_capture_met_both_kinds(records: List<SdrVerboseRecord>) -> Bool {
+  match list_find_first(xs: records, predicate: r => match sdr_verbose_block_typing(record: r) { SdrBlockThreshold => true SdrBlockNotThreshold => false SdrBlockUntyped => false }) {
+    Absent => false
+    Present { value: _ } => match list_find_first(xs: records, predicate: r => match sdr_verbose_block_typing(record: r) { SdrBlockThreshold => false SdrBlockNotThreshold => true SdrBlockUntyped => false }) {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
 fn mtcollins1_fan_capture_types_the_rows(readout: SdrVerboseReadout) -> Bool {
   match readout {
-    SdrVerboseRead { records: recs } => sdr_repository_carries_both_kinds(records: recs)
+    SdrVerboseRead { records: recs } => sdr_capture_met_both_kinds(records: recs)
     // An empty repository types nothing, and a FAILED read is not an empty repository. Both say no.
     SdrVerboseEmptyRepository => false
     SdrVerboseUnreadable => false

@@ -437,18 +437,18 @@ fn sdr_verbose_block_typing(record: SdrVerboseRecord) -> SdrBlockTyping {
   }
 }
 
-// WHETHER A CAPTURE EVER MET BOTH SIDES OF THE LINE THE RULE RESTS ON.
-//
-// ipmi_sdr.h:427 at be11d948 separates threshold from not-threshold; a repository that parses into
-// records of only ONE kind has not exercised that test, and minting an observation over it would say
-// "these bytes typed the rows" on bytes that type nothing. Computed FROM THE PARSE rather than compared
-// against a count written down beside the bytes, so no edit to a literal can satisfy it.
-fn sdr_repository_carries_both_kinds(records: List<SdrVerboseRecord>) -> Bool {
-  match list_find_first(xs: records, predicate: r => match sdr_verbose_block_typing(record: r) { SdrBlockThreshold => true SdrBlockNotThreshold => false SdrBlockUntyped => false }) {
-    Absent => false
-    Present { value: _ } => match list_find_first(xs: records, predicate: r => match sdr_verbose_block_typing(record: r) { SdrBlockThreshold => false SdrBlockNotThreshold => true SdrBlockUntyped => false }) {
-      Absent => false
-      Present { value: _ } => true
+// THE RECORDS A ROUND MAY TYPE AGAINST, OR NONE. Every state that has no records - the read was never
+// issued, it was issued and failed, it was issued and parsed to nothing - answers the same question here
+// ("is there anything to type against"), and THAT question is the only place they may be collapsed: the
+// refusal that uses it carries the readout itself, so the distinction survives into the verdict rather
+// than being lost here.
+fn sdr_typing_records(typing: SdrVerboseReadout?) -> List<SdrVerboseRecord> {
+  match typing {
+    Absent => []
+    Present { value: t } => match t {
+      SdrVerboseRead { records: recs } => recs
+      SdrVerboseEmptyRepository => []
+      SdrVerboseUnreadable => []
     }
   }
 }
@@ -469,30 +469,47 @@ fn sdr_repository_carries_both_kinds(records: List<SdrVerboseRecord>) -> Bool {
 // types EndOfPost as 'Sensor Type (Discrete): Unknown (0xd0)', an OEM code, so a name-keyed rule
 // would refuse a healthy row), or the row's position. A row is admitted only when a record in the
 // repository carries it: no record, no admission.
-type SdrUndecodedRowJudgement
-  = SdrRowAdmittedDiscrete
-  | SdrRowRefusedNotAnElistRow { row: String }
+type SdrRowRefusal
+  = SdrRowRefusedNotAnElistRow { row: String }
   | SdrRowRefusedCarriesReading { row: String }
   | SdrRowRefusedStatusNotOk { row: String }
+  | SdrRowRefusedTypingUnread { row: String, readout: SdrVerboseReadout? }
   | SdrRowRefusedNoRecordNamed { row: String }
   | SdrRowRefusedNameAmbiguous { row: String }
   | SdrRowRefusedThresholdTyped { row: String }
   | SdrRowRefusedUnlabelledRecord { row: String }
 
+type SdrUndecodedRowJudgement
+  = SdrRowAdmittedDiscrete { row: String }
+  | SdrRowRefused { refusal: SdrRowRefusal }
+
 // WHY a row stayed refused is a RULING, not a sentence. Each cause is its own variant carrying the row
 // it refused, so a caller can match on the reason and a witness can pin each one separately (DESIGN.md
 // §4c: a ruling belongs in a typed carrier; §5: refusals are typed and located). One variant with a
-// String field chosen from seven hard-coded sentences is a sum type the code never declared, and the
+// String field chosen from eight hard-coded sentences is a sum type the code never declared, and the
 // difference matters: the variants can be matched, counted and tested, and a typo in one is a
 // compile error rather than a string nobody compares against.
-fn sdr_blank_ok_row_judgement(text: String, blocks: List<SdrVerboseRecord>) -> SdrUndecodedRowJudgement {
+//
+// SdrRowRefusedTypingUnread is a cause of its own because "this round had no repository to type
+// against" is a materially different fact from "a record named this row and refused it" - the first
+// says the read never happened, the second says the sensor is not a not-threshold one - and the two
+// must not leave the same text behind (§3: one name, two meanings). It carries the round's readout so
+// the verdict says WHICH of the three it was: never issued (Absent), issued and failed
+// (SdrVerboseUnreadable), or issued and parsed to nothing (SdrVerboseEmptyRepository).
+//
+// Refusal is NESTED under SdrRowRefused rather than flattened into the judgement sum so that a list of
+// refusals cannot contain an admitted row: the consumer that carries such a list
+// (gunbc.machine_intake.chassis_fan_establishment PostPowerThermalRowsUndecoded) then has no arm to
+// write for a case that cannot occur, which is what an honest sum is for.
+fn sdr_blank_ok_row_judgement(text: String, typing: SdrVerboseReadout?) -> SdrUndecodedRowJudgement {
   match sdr_row_cells(text: text) {
-    Absent => SdrRowRefusedNotAnElistRow { row: text }
+    Absent => SdrRowRefused { refusal: SdrRowRefusedNotAnElistRow { row: text } }
     Present { value: cells } => match cells.reading_text {
-      Present { value: _ } => SdrRowRefusedCarriesReading { row: text }
+      Present { value: _ } => SdrRowRefused { refusal: SdrRowRefusedCarriesReading { row: text } }
       Absent => if cells.status != "ok" {
-        SdrRowRefusedStatusNotOk { row: text }
+        SdrRowRefused { refusal: SdrRowRefusedStatusNotOk { row: text } }
       } else {
+        let blocks = sdr_typing_records(typing: typing)
         // A name shared by two records is refused: which sensor typed the row would be a guess, and a
         // guess here admits a reading nobody read. Below that, the record's OWN typing decides - matched
         // straight off SdrBlockTyping, because a Bool per variant would be a second representation of the
@@ -500,18 +517,21 @@ fn sdr_blank_ok_row_judgement(text: String, blocks: List<SdrVerboseRecord>) -> S
         let named = flat_map(blocks, b => if b.name == cells.name { [b] } else { [] })
         let not_threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockNotThreshold => [b] SdrBlockThreshold => [] SdrBlockUntyped => [] })
         let threshold = flat_map(named, b => match sdr_verbose_block_typing(record: b) { SdrBlockThreshold => [b] SdrBlockNotThreshold => [] SdrBlockUntyped => [] })
-        if named.length() == 0 {
-          SdrRowRefusedNoRecordNamed { row: text }
+        if blocks.length() == 0 {
+          // Nothing to type against, for one of the three reasons the readout distinguishes.
+          SdrRowRefused { refusal: SdrRowRefusedTypingUnread { row: text, readout: typing } }
+        } else if named.length() == 0 {
+          SdrRowRefused { refusal: SdrRowRefusedNoRecordNamed { row: text } }
         } else if named.length() > 1 {
-          SdrRowRefusedNameAmbiguous { row: text }
+          SdrRowRefused { refusal: SdrRowRefusedNameAmbiguous { row: text } }
         } else if not_threshold.length() == 1 {
-          SdrRowAdmittedDiscrete
+          SdrRowAdmittedDiscrete { row: text }
         } else if threshold.length() == 1 {
-          SdrRowRefusedThresholdTyped { row: text }
+          SdrRowRefused { refusal: SdrRowRefusedThresholdTyped { row: text } }
         } else {
           // Not threshold, not not-threshold: the record printed neither label, so its event/reading type
           // is unknown, and an unknown type is not a permission to admit.
-          SdrRowRefusedUnlabelledRecord { row: text }
+          SdrRowRefused { refusal: SdrRowRefusedUnlabelledRecord { row: text } }
         }
       }
     }

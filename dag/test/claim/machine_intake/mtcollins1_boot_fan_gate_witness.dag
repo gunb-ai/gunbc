@@ -7,7 +7,7 @@ import std.algebra { string_contains }
 import std.process { ExitSuccess, ExitFailure }
 import std.optional { Present, Absent }
 import extdeps.bmc.ipmi_sdr {
-  SdrTypeLine, sdr_decode_lines, sdr_unstructured_texts, sdr_verbose_readout, SdrVerboseRead, SdrVerboseUnreadable, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrBlockThreshold, SdrBlockNotThreshold, SdrBlockUntyped, sdr_verbose_block_typing, sdr_blank_ok_row_judgement, SdrRowRefusedNotAnElistRow, SdrRowRefusedCarriesReading, SdrRowRefusedStatusNotOk, SdrRowRefusedNoRecordNamed, SdrRowRefusedNameAmbiguous, SdrRowRefusedThresholdTyped, SdrRowRefusedUnlabelledRecord, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows }
+  SdrTypeLine, sdr_decode_lines, sdr_unstructured_texts, sdr_verbose_readout, SdrVerboseReadout, SdrVerboseRead, SdrVerboseUnreadable, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrBlockThreshold, SdrBlockNotThreshold, SdrBlockUntyped, sdr_verbose_block_typing, sdr_blank_ok_row_judgement, SdrRowRefusal, SdrRowRefused, SdrRowAdmittedDiscrete, SdrRowRefusedNotAnElistRow, SdrRowRefusedTypingUnread, SdrRowRefusedCarriesReading, SdrRowRefusedStatusNotOk, SdrRowRefusedNoRecordNamed, SdrRowRefusedNameAmbiguous, SdrRowRefusedThresholdTyped, SdrRowRefusedUnlabelledRecord, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
 import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, PostPowerFanVerdict, FanRowsUndecoded, FanFailureSensorNotNominal, FanFailureSensorNoReading, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict, thermal_refusal }
 import gunbc.machine_intake.bmc_fan_observation { SdrVerboseNotRequired, SdrVerboseCaptured, FanObservationRound, ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable, fan_observation, thermal_observation, render_round_block }
@@ -248,7 +248,7 @@ fn thermal_cause(t: ThermalObservation) -> String {
     PostPowerFanVerdictRefused { cause: PostPowerThermalNotPublished { publication: TemperatureSensorsSilent } } => "silent"
     PostPowerFanVerdictRefused { cause: PostPowerThermalNotPublished { publication: TemperatureUndecodable } } => "undecodable"
     PostPowerFanVerdictRefused { cause: PostPowerThermalNotPublished { publication: TemperatureNoSensorRows } } => "norows"
-    PostPowerFanVerdictRefused { cause: PostPowerThermalRowsUndecoded { texts: _ } } => "undecoded-rows"
+    PostPowerFanVerdictRefused { cause: PostPowerThermalRowsUndecoded { refusals: _ } } => "undecoded-rows"
     PostPowerFanVerdictRefused { cause: PostPowerThermalReadingUnrecognised { texts: _ } } => "unrecognised-reading"
     PostPowerFanVerdictRefused { cause: _ } => "other"
   }
@@ -277,8 +277,8 @@ test fn the_unrecognised_reading_refusal_text_carries_the_reading() -> Bool {
 test fn the_thermal_refusal_text_names_each_standing() -> Bool {
   string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalUnreadable), pattern: "temperature sensors were unreadable")
     && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalNotPublished { publication: TemperatureSensorsSilent }), pattern: "published no decoded temperature")
-    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { texts: ["a", "b", "c"] }), pattern: "3 undecoded row(s)")
-    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { texts: ["PSU2_Status      | EBh | ok  |  0.0 | ", "Watchdog2        | D7h | ok  | 33.0 | ", "EndOfPost        | E2h | ok  |  6.2 | "] }), pattern: "PSU2_Status")
+    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a", "b", "c"], r => SdrRowRefusedNoRecordNamed { row: r }) }), pattern: "3 undecoded row(s)") && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["a"], r => SdrRowRefusedThresholdTyped { row: r }) }), pattern: "typed a threshold sensor")
+    && string_contains(s: post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(["PSU2_Status      | EBh | ok  |  0.0 | ", "Watchdog2        | D7h | ok  | 33.0 | ", "EndOfPost        | E2h | ok  |  6.2 | "], r => SdrRowRefusedNoRecordNamed { row: r }) }), pattern: "PSU2_Status")
 }
 
 // THE GATE'S OBSERVATION RECORDS THE UNDECODED THERMAL ROWS THEMSELVES (boot 5, run 40258937016:
@@ -338,7 +338,7 @@ test fn the_four_committed_boot5_empty_reading_rows_are_the_undecoded_rows() -> 
 test fn the_merged_gate_still_refuses_the_boot5_thermal_reading() -> Bool {
   let thermal_read = ThermalRead { publication: TemperaturePublished, undecoded_texts: boot5_unstructured(), unrecognised_readings: [] }
   match thermal_refusal(thermal: thermal_read, typing: Absent) {
-    Present { value: PostPowerThermalRowsUndecoded { texts: t } } => t.length() == 4
+    Present { value: PostPowerThermalRowsUndecoded { refusals: t } } => t.length() == 4
     _ => false
   }
 }
@@ -346,7 +346,7 @@ test fn the_merged_gate_still_refuses_the_boot5_thermal_reading() -> Bool {
 // THE #15327 RECEIPT HALF: the refusal text names each committed row, so a boot that stops here EMITS
 // the bytes the later admission rule will classify.
 test fn the_refusal_text_carries_each_committed_boot5_row() -> Bool {
-  let text = post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { texts: boot5_unstructured() })
+  let text = post_power_fan_refusal_text(cause: PostPowerThermalRowsUndecoded { refusals: map(boot5_unstructured(), r => SdrRowRefusedNoRecordNamed { row: r }) })
   string_contains(s: text, pattern: "PSU2_Status") &&
   string_contains(s: text, pattern: "Watchdog2") &&
   string_contains(s: text, pattern: "EndOfPost") &&
@@ -389,7 +389,7 @@ fn rows_refuse_with(rows: List<String>, wanted: Int) -> Bool {
     thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: rows, unrecognised_readings: [] },
     typing: Present { value: mtcollins1_fan_capture_readout() },
   ) {
-    Present { value: PostPowerThermalRowsUndecoded { texts: still } } => still.length() == wanted
+    Present { value: PostPowerThermalRowsUndecoded { refusals: still } } => still.length() == wanted
     _ => false
   }
 }
@@ -430,7 +430,7 @@ test fn the_four_boot5_rows_stay_refused_without_any_repository_read() -> Bool {
     thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: boot5_blank_reading_rows, unrecognised_readings: [] },
     typing: Absent,
   ) {
-    Present { value: PostPowerThermalRowsUndecoded { texts: still } } => still.length() == 4
+    Present { value: PostPowerThermalRowsUndecoded { refusals: still } } => still.length() == 4
     _ => false
   }
 }
@@ -524,9 +524,15 @@ test fn the_read_obligation_names_the_read_that_would_ground_it() -> Bool {
 // error rather than a string nobody compares against (DESIGN.md §4c: a ruling belongs in a typed
 // carrier; §5: refusals are typed and located, which is why each carries the row it refused).
 
+// THE COMMITTED CAPTURE AS A ROUND'S READ, so the row-level claims ask the judgement the same question
+// the gate asks it: "what did this round have to type against".
+fun the_committed_repository() -> SdrVerboseReadout? {
+  Present { value: mtcollins1_fan_capture_readout() }
+}
+
 test fn a_row_that_is_not_an_elist_row_is_refused_as_malformed() -> Bool {
-  match sdr_blank_ok_row_judgement(text: "Sensor ID              : PSU2_Status (0xeb)", blocks: mtcollins1_fan_capture_records()) {
-    SdrRowRefusedNotAnElistRow { row: r } => r == "Sensor ID              : PSU2_Status (0xeb)"
+  match sdr_blank_ok_row_judgement(text: "Sensor ID              : PSU2_Status (0xeb)", typing: the_committed_repository()) {
+    SdrRowRefused { refusal: SdrRowRefusedNotAnElistRow { row: r } } => true
     _ => false
   }
 }
@@ -534,8 +540,8 @@ test fn a_row_that_is_not_an_elist_row_is_refused_as_malformed() -> Bool {
 // A row with a reading is a different case entirely: the rule exists for blanks, and admitting a row
 // that already has a reading would let the gate call an unread value typed.
 test fn a_row_carrying_a_reading_is_not_the_blank_reading_case() -> Bool {
-  match sdr_blank_ok_row_judgement(text: "  PSU1_FAN_SPEED     | 32h | ok  |  7.1 | 5000 RPM", blocks: mtcollins1_fan_capture_records()) {
-    SdrRowRefusedCarriesReading { row: _ } => true
+  match sdr_blank_ok_row_judgement(text: "  PSU1_FAN_SPEED     | 32h | ok  |  7.1 | 5000 RPM", typing: the_committed_repository()) {
+    SdrRowRefused { refusal: SdrRowRefusedCarriesReading { row: _ } } => true
     _ => false
   }
 }
@@ -543,15 +549,15 @@ test fn a_row_carrying_a_reading_is_not_the_blank_reading_case() -> Bool {
 // ORDER MATTERS, AND THIS PINS IT: PSU2_Status HAS a discrete record, so a rule that consulted the
 // repository before checking status would admit this row. Status is checked first and refuses it.
 test fn a_row_whose_status_is_not_ok_is_refused_on_status_not_on_its_record() -> Bool {
-  match sdr_blank_ok_row_judgement(text: "  PSU2_Status      | EBh | ns  |  0.0 |", blocks: mtcollins1_fan_capture_records()) {
-    SdrRowRefusedStatusNotOk { row: _ } => true
+  match sdr_blank_ok_row_judgement(text: "  PSU2_Status      | EBh | ns  |  0.0 |", typing: the_committed_repository()) {
+    SdrRowRefused { refusal: SdrRowRefusedStatusNotOk { row: _ } } => true
     _ => false
   }
 }
 
 test fn a_blank_ok_row_with_no_record_of_its_name_is_refused_for_that_missing_record() -> Bool {
-  match sdr_blank_ok_row_judgement(text: "  Invented_Sensor    | C0h | ok  |  7.1 |", blocks: mtcollins1_fan_capture_records()) {
-    SdrRowRefusedNoRecordNamed { row: _ } => true
+  match sdr_blank_ok_row_judgement(text: "  Invented_Sensor    | C0h | ok  |  7.1 |", typing: the_committed_repository()) {
+    SdrRowRefused { refusal: SdrRowRefusedNoRecordNamed { row: _ } } => true
     _ => false
   }
 }
@@ -562,15 +568,15 @@ test fn a_blank_ok_row_with_no_record_of_its_name_is_refused_for_that_missing_re
 test fn two_records_sharing_a_name_refuse_the_row_as_ambiguous() -> Bool {
   let twin = SdrVerboseRecord { name: "PSU2_Status", number_hex: "0xeb", detail_lines: [" Sensor Type (Discrete): Power Supply (0x08)"] }
   let doubled = mtcollins1_fan_capture_records().concat([twin])
-  match sdr_blank_ok_row_judgement(text: "  PSU2_Status      | EBh | ok  |  0.0 |", blocks: doubled) {
-    SdrRowRefusedNameAmbiguous { row: _ } => true
+  match sdr_blank_ok_row_judgement(text: "  PSU2_Status      | EBh | ok  |  0.0 |", typing: Present { value: SdrVerboseRead { records: doubled } }) {
+    SdrRowRefused { refusal: SdrRowRefusedNameAmbiguous { row: _ } } => true
     _ => false
   }
 }
 
 test fn a_threshold_record_refuses_the_blank_row_it_is_served() -> Bool {
-  match sdr_blank_ok_row_judgement(text: "  CPU0_SOC_Temp      | 3Dh | ok  |  3.1 |", blocks: mtcollins1_fan_capture_records()) {
-    SdrRowRefusedThresholdTyped { row: _ } => true
+  match sdr_blank_ok_row_judgement(text: "  CPU0_SOC_Temp      | 3Dh | ok  |  3.1 |", typing: the_committed_repository()) {
+    SdrRowRefused { refusal: SdrRowRefusedThresholdTyped { row: _ } } => true
     _ => false
   }
 }
@@ -579,8 +585,8 @@ test fn a_threshold_record_refuses_the_blank_row_it_is_served() -> Bool {
 // is the fail-closed edge - a missing label must never read as "not threshold".
 test fn a_record_with_neither_ipmitool_label_refuses_rather_than_guessing() -> Bool {
   let unlabelled = SdrVerboseRecord { name: "Mystery_Sensor", number_hex: "0x55", detail_lines: [" Entity ID             : 7.1 (Temperature)"] }
-  match sdr_blank_ok_row_judgement(text: "  Mystery_Sensor     | 55h | ok  |  7.1 |", blocks: [unlabelled]) {
-    SdrRowRefusedUnlabelledRecord { row: _ } => true
+  match sdr_blank_ok_row_judgement(text: "  Mystery_Sensor     | 55h | ok  |  7.1 |", typing: Present { value: SdrVerboseRead { records: [unlabelled] } }) {
+    SdrRowRefused { refusal: SdrRowRefusedUnlabelledRecord { row: _ } } => true
     _ => false
   }
 }
@@ -610,4 +616,81 @@ test fn a_captured_verbose_record_prints_its_lines_verbatim() -> Bool {
   string_contains(s: block, pattern: "verbose_sdr=captured(5)") &&
   string_contains(s: block, pattern: "verbose_record=[PSU2_Status (0xeb)]") &&
   string_contains(s: block, pattern: "verbose_detail=[ Sensor Type (Discrete): Unknown (0xd0)]")
+}
+
+// THE FOURTH CAUSE, IN ALL THREE OF ITS SHAPES. A round with nothing to type against is a materially
+// different failure from a record that named the row and refused it, and the verdict must be able to say
+// which of the three it was: the read was never issued, it was issued and failed, or it was issued and
+// parsed to nothing. Before the causes were carried, all three - and a genuine threshold typing - left
+// one "undecoded" string behind, and boot 7 could not tell a missing read from a misclassified sensor.
+//
+// A WITNESS-LOCAL PROJECTION, which is allowed of a witness (§3: a witness discriminates at one
+// interface) and would not be allowed as a production helper: it exists so each shape is separately red.
+fun typing_unread_shape(refusal: SdrRowRefusal) -> String {
+  match refusal {
+    SdrRowRefusedTypingUnread { row: _, readout: ro } => match ro {
+      Absent => "never issued"
+      Present { value: r } => match r {
+        SdrVerboseUnreadable => "issued and failed"
+        SdrVerboseEmptyRepository => "issued, parsed to nothing"
+        SdrVerboseRead { records: _ } => "a read that carries records is never this cause"
+      }
+    }
+    _ => "not a typing-unread refusal"
+  }
+}
+
+fun refusals_of(rows: List<String>, typing: SdrVerboseReadout?) -> List<SdrRowRefusal> {
+  match thermal_refusal(
+    thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: rows, unrecognised_readings: [] },
+    typing: typing,
+  ) {
+    Present { value: PostPowerThermalRowsUndecoded { refusals: t } } => t
+    _ => []
+  }
+}
+
+test fn a_round_that_never_issued_the_read_says_so_rather_than_blaming_the_records() -> Bool {
+  let t = refusals_of(rows: boot5_blank_reading_rows, typing: Absent)
+  t.length() == 4 && flat_map(t, f => if typing_unread_shape(refusal: f) == "never issued" { [1] } else { [] }).length() == 4
+}
+
+test fn a_read_that_failed_says_it_failed_rather_than_that_the_records_are_missing() -> Bool {
+  let t = refusals_of(rows: boot5_blank_reading_rows, typing: Present { value: SdrVerboseUnreadable })
+  t.length() == 4 && flat_map(t, f => if typing_unread_shape(refusal: f) == "issued and failed" { [1] } else { [] }).length() == 4
+}
+
+test fn a_read_that_parsed_to_nothing_says_it_was_empty_rather_than_that_the_records_are_missing() -> Bool {
+  let t = refusals_of(rows: boot5_blank_reading_rows, typing: Present { value: SdrVerboseEmptyRepository })
+  t.length() == 4 && flat_map(t, f => if typing_unread_shape(refusal: f) == "issued, parsed to nothing" { [1] } else { [] }).length() == 4
+}
+
+// The three shapes are NOT collapsed into one word: one claim, all three verdicts, no two alike. Without
+// this the typed cause would be decorative - every shape rendering the same sentence would still pass
+// each claim above.
+test fn the_three_ways_to_have_nothing_to_type_against_are_three_different_words() -> Bool {
+  let never = refusals_of(rows: boot5_blank_reading_rows, typing: Absent)
+  let failed = refusals_of(rows: boot5_blank_reading_rows, typing: Present { value: SdrVerboseUnreadable })
+  let empty = refusals_of(rows: boot5_blank_reading_rows, typing: Present { value: SdrVerboseEmptyRepository })
+  let a = typing_unread_shape(refusal: never.first())
+  let b = typing_unread_shape(refusal: failed.first())
+  let c = typing_unread_shape(refusal: empty.first())
+  a != b && b != c && a != c
+}
+
+// A threshold typing is NOT this cause: it is the records being present and saying no, which is the
+// distinction the whole verdict change exists to keep.
+test fn a_threshold_typing_is_not_reported_as_a_round_that_read_nothing() -> Bool {
+  let t = refusals_of(rows: ["  CPU0_SOC_Temp      | 3Dh | ok  |  3.1 |"], typing: Present { value: mtcollins1_fan_capture_readout() })
+  t.length() == 1 && flat_map(t, f => if typing_unread_shape(refusal: f) == "not a typing-unread refusal" { [1] } else { [] }).length() == 1 &&
+    flat_map(t, f => match f { SdrRowRefusedThresholdTyped { row: _ } => [1] _ => [] }).length() == 1
+}
+
+// THE EXCUSED ROW NAMES ITSELF: the admission carries the row it excused, so a receipt can show which
+// row the repository typed and a claim can pin the row rather than only the fact that something passed.
+test fn the_admitted_judgement_names_the_row_it_excused() -> Bool {
+  match sdr_blank_ok_row_judgement(text: "  PSU2_Status      | EBh | ok  |  0.0 |", typing: the_committed_repository()) {
+    SdrRowAdmittedDiscrete { row: r } => r == "  PSU2_Status      | EBh | ok  |  0.0 |"
+    _ => false
+  }
 }
