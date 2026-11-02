@@ -1596,13 +1596,15 @@ fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
 
 // ONE WITNESS SHAPE FOR EVERY READ THE ACQUIRER MADE, admitted or blocked: the path is the host path
 // the bytes came from, and the bytes are the ones read, so a census reporting a blocked member reports
-// it from acquisition's read and never from a second one.
+// it from acquisition's read and never from a second one. The COMPILATION UNIT is the root-relative
+// source identity (module_file_key), not the host path, so a located diagnostic names the same file
+// whatever directory the root is mounted at.
 fn acquisition_read_witness(file: ModuleFileRef, host_directory: String, content: String) -> DagSourceReadWitness {
   let path = source_root_child_path(directory: host_directory, name: file.relative_path)
   DagSourceReadWitness {
     source: Medium { carried: content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
-    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    compilation_unit: symbol_intern_lexeme(lexeme: module_file_key(file: file)),
     source_root: file.tree
   }
 }
