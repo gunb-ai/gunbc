@@ -154,6 +154,10 @@ pub fn container_template_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_algebra_rows(), name.clone())
 }
 
+pub fn container_spelling_is_algebra(name: String, algebra: String) -> bool {
+    (container_template_algebra(name).as_deref() == Some(algebra.clone()).as_deref())
+}
+
 pub fn container_template_alias_algebra(name: String) -> Option<String> {
     v1_rt::map_get(&container_template_alias_rows(), name.clone())
 }

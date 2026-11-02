@@ -1,0 +1,122 @@
+module test.claim.interpreter_list_read_optional_witness
+
+import std.live_tree { LiveTreeDisposition }
+import std.optional { Optional, Absent, Present }
+import std.types { Bool, List, Map, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ilro_items: List<String> = ["a", "b", "c"]
+
+data ilro_none: List<String> = []
+
+data ilro_map: Map<String, String> = {"k": "v"}
+
+// The interpreter's list reads are the declared Optional<T> (v2 `list_at_optional` is the
+// referent): Present in range, Absent otherwise, never a bare element or host null. Each RED
+// below is false on the pre-fix interpreter (bare element / Null compared with a Present or
+// Absent literal) and true after.
+test fn last_of_a_nonempty_list_is_present() -> Bool {
+  ilro_items.last() == Present { value: "c" }
+}
+
+test fn first_of_an_empty_list_is_absent_not_null() -> Bool {
+  ilro_none.first() == Absent
+}
+
+test fn last_of_an_empty_list_is_absent_not_null() -> Bool {
+  ilro_none.last() == Absent
+}
+
+test fn method_get_in_range_is_present_and_out_of_range_absent() -> Bool {
+  ilro_items.get(1) == Present { value: "b" } && ilro_items.get(3) == Absent
+}
+
+test fn free_get_in_range_is_present_and_out_of_range_absent() -> Bool {
+  get(ilro_items, 2) == Present { value: "c" } && get(ilro_items, 5) == Absent
+}
+
+test fn get_at_a_negative_index_is_absent() -> Bool {
+  ilro_items.get(0 - 1) == Absent
+}
+
+// POSITIVE CONTROL: the same reads eliminated by a match answer by value, before and after.
+test fn a_match_on_each_read_answers_by_value() -> Bool {
+  (match ilro_items.last() { Present { value: v } => v == "c"  Absent => false })
+    && (match ilro_none.first() { Present { value: v } => false  Absent => true })
+    && (match ilro_items.get(1) { Present { value: v } => v == "b"  Absent => false })
+}
+
+// MAP `.get` is the same declared Optional<V> as the list reads: one constructor, not the bare
+// value/Null second representation.
+test fn map_get_hit_is_present_and_miss_is_absent() -> Bool {
+  ilro_map.get("k") == Present { value: "v" } && ilro_map.get("z") == Absent
+}
+
+// POSITIVE CONTROL: eliminating a map `.get` by match answers by value.
+test fn a_match_on_map_get_answers_by_value() -> Bool {
+  (match ilro_map.get("k") { Present { value: v } => v == "v"  Absent => false })
+    && (match ilro_map.get("z") { Present { value: v } => false  Absent => true })
+}
+
+type IlroAcc { bad: Optional<String> }
+
+data ilro_acc_none: IlroAcc = IlroAcc { bad: none }
+
+data ilro_acc_some: IlroAcc = IlroAcc { bad: Present { value: "x" } }
+
+// The `none` shorthand is the optional's Absent: a record field initialized with it eliminates
+// by match (the shape `ipmitool_hpm_check` folds), and equals the Absent literal.
+test fn a_none_field_is_absent_and_matches() -> Bool {
+  (match ilro_acc_none.bad { Present { value: v } => false  Absent => true })
+    && ilro_acc_none.bad == Absent
+}
+
+// POSITIVE CONTROL: a Present field of the same record type matches the other arm.
+test fn a_present_field_matches_present() -> Bool {
+  match ilro_acc_some.bad { Present { value: v } => v == "x"  Absent => false }
+}
+
+// FREE BUILTINS that answer an Optional: Present on success, Absent on failure, never a bare
+// value or host null (the same one constructor as the list reads).
+test fn parse_int_of_digits_is_present() -> Bool {
+  match parse_int(s: "42") { Present { value: n } => n == 42  Absent => false }
+}
+
+test fn parse_int_of_text_is_absent() -> Bool {
+  match parse_int(s: "x") { Present { value: n } => false  Absent => true }
+    && parse_int(s: "x") == Absent
+}
+
+test fn json_unescape_checked_of_plain_text_is_present_and_of_a_bad_escape_absent() -> Bool {
+  (match json_unescape_checked(s: "ab") { Present { value: t } => t == "ab"  Absent => false })
+    && json_unescape_checked(s: "\\q") == Absent
+}
+
+type IlroRow { status: String }
+
+data ilro_rows: List<IlroRow> = [IlroRow { status: "ok" }]
+
+data ilro_no_rows: List<IlroRow> = []
+
+// A FIELD READ OFF AN OPTIONAL is typed optional by the checker (`OptionalValue`): an Absent
+// receiver propagates Absent and a Present one peels and re-wraps the field. The interpreter
+// must not refuse what the checker types as optional.
+test fn a_field_read_off_an_absent_first_is_absent() -> Bool {
+  match ilro_no_rows.first().status { Present { value: s } => false  Absent => true }
+}
+
+// POSITIVE CONTROL: the same read off a Present first answers by value.
+test fn a_field_read_off_a_present_first_is_present() -> Bool {
+  match ilro_rows.first().status { Present { value: s } => s == "ok"  Absent => false }
+}
+
+data ilro_ints: List<Int> = [1]
+
+data ilro_no_ints: List<Int> = []
+
+// The declared Optional eliminated by match on an Int list: Present carries the element, Absent the miss.
+test fn a_present_first_matches_its_value_and_an_absent_first_matches_absent() -> Bool {
+  (match ilro_ints.first() { Present { value: v } => v == 1  Absent => false })
+    && (match ilro_no_ints.first() { Present { value: v } => false  Absent => true })
+}

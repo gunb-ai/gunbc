@@ -66,6 +66,15 @@ data ce_entry_source: String = "module v2.test.ce_entry\n\nimport std.types { Bo
 
 data ce_member_source: String = "module v2.test.ce_member\n\nimport std.types { Bool }\n\nfn ce_member_fn(p: Bool) -> Bool { p }\n"
 
+// F1/F2: an importer over a module that IS in the closure (import-free, non-generic), and one over a
+// module that is NOT. Both import by name, so import admission must find (or fail to find) the target
+// among the closure's roots.
+data ce_base_source: String = "module v2.test.ce_base\n\ntype CeBase = CeBaseA | CeBaseB\n"
+
+data ce_importer_source: String = "module v2.test.ce_importer\n\nimport v2.test.ce_base { CeBase }\n\nfn ce_importer_fn(p: CeBase) -> CeBase { p }\n"
+
+data ce_absent_importer_source: String = "module v2.test.ce_absent_importer\n\nimport v2.test.ce_absent { CeAbsent }\n\nfn ce_absent_importer_fn(p: CeAbsent) -> CeAbsent { p }\n"
+
 data ce_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False\n"
 
 // Two files declaring ONE module identity with INDEPENDENT declarations: the case most likely to pass
@@ -166,6 +175,27 @@ fn ce_emission_unbound_name() -> ClosureEmissionLocated {
   )
 }
 
+fn ce_emission_import_present() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_base_source, id: ^ce_base_read, path: "src/v2/test/ce_base.dag"),
+      ce_read(source: ce_importer_source, id: ^ce_importer_read, path: "src/v2/test/ce_importer.dag")
+    ],
+    entry: "v2.test.ce_importer"
+  )
+}
+
+fn ce_emission_import_absent() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_absent_importer_source, id: ^ce_absent_importer_read, path: "src/v2/test/ce_absent_importer.dag")
+    ],
+    entry: "v2.test.ce_absent_importer"
+  )
+}
+
 fn ce_qn_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   a == b
 }
@@ -201,6 +231,13 @@ fn ce_arm_count(e: ClosureEmission, name: String) -> Int {
 // The arm a member's identity carries, if the carrier holds one.
 fn ce_arm_of(e: ClosureEmission, name: String) -> Optional<ClosureMemberEmission> {
   list_find_first(xs: e.modules, predicate: fn(m) { ce_arm_module(m: m) == name })
+}
+
+fn ce_arm_of_is_emitted(arm: Optional<ClosureMemberEmission>) -> Bool {
+  match arm {
+    Absent => false
+    Present { value: found } => ce_arm_is_emitted(m: found)
+  }
 }
 
 fn ce_arm_is_refused_with(arm: Optional<ClosureMemberEmission>, reason: Symbol) -> Bool {
@@ -344,6 +381,28 @@ test fn a_name_the_ingest_does_not_bind_refuses_its_member_and_never_widens_the_
       ce_members_are(e: e, expected: ["v2.test.ce_entry", "v2.std.logic"])
         && length(xs: e.modules) == 2
         && ce_arm_is_refused(arm: ce_arm_of(e: e, name: "v2.test.ce_entry"))
+  }
+}
+
+// F1 (T4 S2). An importer over a module the closure holds resolves its import against the CLOSURE's
+// roots and is emitted; the import-free base is its own arm. Before the closure-wide context every
+// importer answered resolve_module_not_found whatever it imported.
+test fn an_importer_over_a_module_the_closure_holds_is_emitted_holds() -> Bool {
+  match ce_emission_import_present().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_arm_of_is_emitted(arm: ce_arm_of(e: e, name: "v2.test.ce_importer"))
+        && ce_arm_count(e: e, name: "v2.test.ce_base") == 1
+  }
+}
+
+// F2 (control). An import of a module absent from the closure still refuses resolve_module_not_found,
+// at that member: sharing the closure's roots must not widen what an import may bind.
+test fn an_import_of_a_module_absent_from_the_closure_still_refuses_resolve_module_not_found_holds() -> Bool {
+  match ce_emission_import_absent().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_absent_importer"), reason: ^resolve_module_not_found)
   }
 }
 

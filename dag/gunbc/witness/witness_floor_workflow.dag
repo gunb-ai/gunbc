@@ -797,10 +797,17 @@ data witness_floor_build_step_name: String = "Build the witness fold"
 // build a regenerator, at which point one name would have described two obligations -- the
 // meaning fork DESIGN section 3 names, and the emitted yaml is exactly where a reader looks to
 // find out what a job does. The construction is shared; what it is FOR is per caller.
-fn witness_floor_build_step(step_name: String, build_script: String) -> Step {
+// THE STEP ID IS A PARAMETER, NOT A CONSTANT, because a job may carry more than one repo-self build
+// step, and two steps in one job sharing an id is not cosmetic: a step id is the key OTHER steps read
+// outputs from (`steps.<id>.outputs.<name>`, which is how the located verdict is read), so a collision
+// makes a later reader resolve against the wrong step. The sibling further down keeps the
+// one-build-step spelling that the witness floor, the drift watch and the branch-run-grant broker use.
+data witness_floor_build_step_id: String = "build_witness_fold"
+
+fn witness_floor_build_step_with_id(step_name: String, build_script: String, step_id: String) -> Step {
   RunStep {
     name: Present { value: step_name },
-    id: Present { value: "build_witness_fold" },
+    id: Present { value: step_id },
     // THE PREAMBLE GOES FIRST, OUTSIDE THE FLOOR WRAPPER, AND BOTH HALVES OF THAT PLACEMENT ARE
     // LOAD-BEARING. It precedes the wrapper because it is not part of the measured attempt: the
     // receipt the wrapper records is the build's exit, and a build that never started because its
@@ -819,6 +826,16 @@ fn witness_floor_build_step(step_name: String, build_script: String) -> Step {
     continue_on_error: none,
     timeout_minutes: none
   }
+}
+
+// THE ONE-BUILD-STEP SPELLING: the build step of a job that carries exactly one, under the id the fleet
+// receipts and the verdict lookup have always read.
+fn witness_floor_build_step(step_name: String, build_script: String) -> Step {
+  witness_floor_build_step_with_id(
+    step_name: step_name,
+    build_script: build_script,
+    step_id: witness_floor_build_step_id
+  )
 }
 
 // ONE INVOCATION OF OUR OWN BINARY PER JOB. Everything the run decides -- which witnesses exist,
