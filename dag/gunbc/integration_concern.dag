@@ -1,0 +1,293 @@
+module gunbc.integration_concern
+
+import std.types { String, List, Bool, Int, NonEmptyStr, CommitSha }
+import std.optional { Optional, Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.list { first_duplicate_by_key, distinct_by_key }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.process { ExitSuccess }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.guarantee_stall { NextRungTrigger }
+import extdeps.shell
+
+// THE INTEGRATION REGISTER: where an unfinished reconciliation is recorded instead of remembered
+// (DESIGN section 6b, continuous generalization; ruling gunbc.design_ruling
+// continuous_generalization_is_two_sided). A change may leave integration unfinished; a material
+// concern it identified stays discoverable here, with an explicit disposition, after the session
+// that found it ends.
+//
+// WHAT THIS IS NOT. It is not a census and it gates nothing: rows are concerns somebody raised, not
+// a population discovered completely. It is not evidence that pressure is operating: briefing does
+// not read it, nothing schedules a periodic review over it, and no handoff transfers a row's
+// ownership when a session ends. Those three routes are reported as unconnected (`unconnected_routes`)
+// until they exist, and the view prints that list beside every reading.
+//
+// ONE MODULE, NOT ONE FILE PER ROW, DELIBERATELY. The one-row-per-file ledgers
+// (gunbc.recurring_failure_mode, gunbc.rung_drop, gunbc.guarantee_stall) get their rosters from the
+// seed's DERIVED_ROW_ROSTERS table; enrolling a fourth is a seed change this first cut does not
+// need for a handful of rows. The cost is merge contention when two lanes add rows at once; the
+// trigger to move to row files is that contention actually occurring.
+
+// A SUSPECTED FORK NEEDS TWO DISTINCT AUTHORITIES. FreeSemigroup only proves one or more, and two
+// entries need not be two sites, so the carrier is built only through `distinct_authorities`, which
+// refuses any repeated declaration. A repeated identity is the module path and declaration name:
+// two fields of one declaration are one authority for this purpose.
+type DistinctAuthorities sole_constructor {
+  first: DeclarationRef
+  second: DeclarationRef
+  rest: List<DeclarationRef>
+}
+
+// The identity key: module path and declaration name, joined by a space, which neither may contain.
+fn declaration_identity(r: DeclarationRef) -> String {
+  concat(r.module_path as String, concat(" ", r.decl_name as String))
+}
+
+fn distinct_authorities(first: DeclarationRef, second: DeclarationRef, rest: List<DeclarationRef>) -> DistinctAuthorities? {
+  match first_duplicate_by_key(xs: concat([first, second], rest), key: r => declaration_identity(r: r)) {
+    Present { value: _ } => Absent
+    Absent => Present { value: DistinctAuthorities { first: first, second: second, rest: rest } }
+  }
+}
+
+fn authorities_list(d: DistinctAuthorities) -> List<DeclarationRef> {
+  concat([d.first, d.second], d.rest)
+}
+
+// BOTH KINDS ARE SUSPICIONS UNTIL TRIAGE. A fork is two or more authorities that seem to answer one
+// question; a capability gap is one model that seems unable to express a concrete requirement, so
+// pressure can start before anyone writes the second path. Neither is a confirmed defect: triage,
+// not the kind, carries the conclusion.
+type ConcernKind
+  = SuspectedFork { authorities: DistinctAuthorities }
+  | SuspectedCapabilityGap { model: DeclarationRef, requirement: NonEmptyStr }
+
+// WHERE THE SHARED MEANING BELONGS is a semantic fact, separate from where the affected
+// declarations are stored. Namespace ancestry is never consulted for it.
+type ConceptHome
+  = ExistingHome { model: DeclarationRef }
+  | HomeUnresolved { question: NonEmptyStr }
+
+// A CITATION AT THE REVISION WHERE IT EXISTED. Closing a concern usually deletes its superseded
+// declarations, so these are plain names pinned to a commit and are never resolved against HEAD;
+// a closed record must not break because the integration it records happened.
+type HistoricalDeclaration {
+  at: CommitSha
+  module_path: NonEmptyStr
+  decl_name: NonEmptyStr
+}
+
+// A RETAINED EXECUTION RESULT: which control ran, where the run's record is kept, and what it
+// concluded. A control that merely exists is not a result.
+type RetainedExecutionResult {
+  control: DeclarationRef
+  run: NonEmptyStr
+  conclusion: NonEmptyStr
+}
+
+type IntegrationEvidence {
+  integrated_at: CommitSha
+  superseded: List<HistoricalDeclaration>
+  replacement: FreeSemigroup<DeclarationRef>
+  executions: FreeSemigroup<RetainedExecutionResult>
+}
+
+// THE DISPOSITION. Only Distinct, Withdrawn and Integrated close a row. Triaged carries its next
+// step as gunbc.guarantee_stall NextRungTrigger: the capability owed stands alone and any work item
+// is an `awaiting` referent beside it, so a work item reaching done, being archived or being
+// reassigned closes nothing -- only Integrated evidence does.
+type ConcernDisposition
+  = Open
+  | Triaged { home: ConceptHome, preserve: List<String>, next: NextRungTrigger }
+  | Distinct { reason: NonEmptyStr, scope_examined: NonEmptyStr }
+  | Withdrawn { reason: NonEmptyStr }
+  | Integrated { evidence: IntegrationEvidence }
+
+// A later sighting of the same concern APPENDS to `observations`; it never adds a second row.
+type IntegrationConcern {
+  identity: NonEmptyStr
+  kind: ConcernKind
+  affected: FreeSemigroup<DeclarationRef>
+  question: NonEmptyStr
+  observations: List<String>
+  disposition: ConcernDisposition
+}
+
+fn concern_is_open(c: IntegrationConcern) -> Bool {
+  match c.disposition {
+    Open => true
+    Triaged { home: _, preserve: _, next: _ } => true
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+    Integrated { evidence: _ } => false
+  }
+}
+
+fn kind_label(k: ConcernKind) -> String {
+  match k {
+    SuspectedFork { authorities: _ } => "suspected fork"
+    SuspectedCapabilityGap { model: _, requirement: _ } => "suspected capability gap"
+  }
+}
+
+fn disposition_label(d: ConcernDisposition) -> String {
+  match d {
+    Open => "open, untriaged"
+    Triaged { home: _, preserve: _, next: n } => concat("triaged; owed: ", n.capability)
+    Distinct { reason: r, scope_examined: _ } => concat("closed as distinct: ", r as String)
+    Withdrawn { reason: r } => concat("withdrawn: ", r as String)
+    Integrated { evidence: e } => concat("integrated at ", e.integrated_at as String)
+  }
+}
+
+fn kind_declarations(k: ConcernKind) -> List<DeclarationRef> {
+  match k {
+    SuspectedFork { authorities: a } => authorities_list(d: a)
+    SuspectedCapabilityGap { model: m, requirement: _ } => [m]
+  }
+}
+
+fn home_declarations(d: ConcernDisposition) -> List<DeclarationRef> {
+  match d {
+    Triaged { home: ExistingHome { model: m }, preserve: _, next: _ } => [m]
+    _ => []
+  }
+}
+
+// Every declaration a concern implicates: its affected locations, the authorities or model its
+// kind names, and an existing semantic home once triage names one.
+fn concern_declarations(c: IntegrationConcern) -> List<DeclarationRef> {
+  concat(concat(concat([c.affected.head], c.affected.tail), kind_declarations(k: c.kind)), home_declarations(d: c.disposition))
+}
+
+fn concern_modules(c: IntegrationConcern) -> List<String> {
+  distinct_by_key(xs: map(concern_declarations(c: c), r => r.module_path as String), key: m => m)
+}
+
+// RELEVANCE IS MEMBERSHIP, NOT ANCESTRY. A change is described by the modules it changes and the
+// existing models it references -- a new consumer is relevant to the model it reads even when it
+// changes nothing there. A concern is relevant when one of its declarations lives in one of those
+// modules exactly. Sharing a namespace prefix with a concern never makes it relevant.
+type ConcernScope {
+  changed: List<String>
+  referenced: List<String>
+}
+
+fn concern_relevant(c: IntegrationConcern, s: ConcernScope) -> Bool {
+  let scope_modules = concat(s.changed, s.referenced)
+  any(concern_modules(c: c), m => any(scope_modules, x => x == m))
+}
+
+fn concerns_for(s: ConcernScope, rows: List<IntegrationConcern>) -> List<IntegrationConcern> {
+  filter(rows, c => concern_relevant(c: c, s: s))
+}
+
+// BROWSING, NOT RELEVANCE: every concern with a declaration inside the subtree, including concerns
+// whose other declarations live elsewhere. The match is on whole path segments, so `product.print`
+// does not contain `product.printing`.
+fn module_in_subtree(m: String, prefix: String) -> Bool {
+  m == prefix || starts_with(s: m, prefix: concat(prefix, "."))
+}
+
+fn concerns_in_subtree(prefix: String, rows: List<IntegrationConcern>) -> List<IntegrationConcern> {
+  filter(rows, c => any(concern_modules(c: c), m => module_in_subtree(m: m, prefix: prefix)))
+}
+
+// THE ROUTES THAT WOULD MAKE THIS REGISTER EXERT PRESSURE, AND THAT DO NOT EXIST YET. Printed with
+// every reading so a reader is never told the practice is operating when only the record is.
+data unconnected_routes: List<String> = [
+  "briefing: no work-item brief is generated with the relevant concerns; a brief carries them only if its author ran this view",
+  "periodic review: nothing schedules a bounded integration review over open rows",
+  "ownership handoff: a session or work item closing does not transfer the rows it raised; a row's obligation survives only as the row",
+]
+
+// ---------------------------------------------------------------------------------------------
+// THE ROWS.
+
+data support_restriction_scope: IntegrationConcern = IntegrationConcern {
+  identity: "support_restriction_scope",
+  kind: SuspectedCapabilityGap {
+    model: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
+    requirement: "a manufacturing restriction scoped to a region of a part, where the part as a whole still needs support",
+  },
+  affected: FreeSemigroup {
+    head: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
+    tail: [
+      decl_ref(module_path: "product.printed_chassis.gpu_duct", decl_name: "plane_on_end_blower_bottom_standoff"),
+      decl_ref(module_path: "product.printing.process_geometry", decl_name: "prototype_support_policy"),
+    ],
+  },
+  question: "Does a part need a support restriction finer than whole-part support_free, and if so is it a no-contact region, a permitted post-process, or a tolerance on the resulting geometry?",
+  observations: [
+    "2026-11-01: the A16 flat-on-end duct (root a16-blower-flat-on-end-duct, 3MF sha256 7145d866de97f62491ef6c3d250288e24e0fc2f2b12ff25a0a230860554821cb) printed shoulder-down with bed-only automatic support. Its support centerlines reach the z=33.5 mm seat face the blower rests on (about 7,180 mm2) and a z=39.0 mm strip (about 360 mm2). The seat sets the model-derived 0.5 mm head clearance (plane_on_end_blower_bottom_standoff); 0.1-0.2 mm of interface residue would be 20-40 percent of it.",
+    "UNRESOLVED: whether the seat face requires no support contact, or whether cleanup restores the clearance, is not established. The fit check reads the head gap before and after cleaning; until that reading exists this is a suspected gap, not a requirement.",
+    "Evidence limit: the slice readback's support record (product.printing.deposited_geometry) is motion centerlines, not a solid scaffold or contact surface, so a support-contact check on a face is its own evidence and modeling obligation, not one the existing record discharges.",
+    "Related, not merged: gunbc.recurring_failure_mode functional_print_features_confused_with_supports (2026-10-04, support trapped in mating channels) is an earlier lesson about support meeting functional geometry.",
+  ],
+  disposition: Open,
+}
+
+data started_operation_ownership: IntegrationConcern = IntegrationConcern {
+  identity: "started_operation_ownership",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
+    requirement: "a started physical operation has an owner through terminal observation and handoff that survives the initiating session and the temporary access it used",
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
+    tail: [decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate")],
+  },
+  question: "Who owns a started physical operation until it is observed to finish and handed off, and does that hold for operations started outside the fleet route?",
+  observations: [
+    "2026-11-01/02: on operator direction, the A16 duct was prepared through prepare_request_plate and started on printer-01 out of band, so no fleet print record exists. The starting session read the printer's LAN access code with the operator's one-hour token; once it expired the session could not observe the job and handed observation back to the operator.",
+    "Caveat: the in-band route (converge_print) records print runs and uses workload identity, so part of this may be specific to out-of-band starts. Whether the same gap holds for physical-machine boot has not been examined.",
+  ],
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership]
+
+// ---------------------------------------------------------------------------------------------
+// THE READING PATH.
+//
+//   CONCERN_CHANGED=a.b,c.d CONCERN_REFERENCED=e.f gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern.dag
+//   CONCERN_SUBTREE=product gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern.dag
+//
+// Module paths are comma-separated. With neither variable set it lists every open concern.
+// Deriving `changed` and `referenced` from a diff is not done here; the caller supplies them.
+
+fn env_list(name: String) -> List<String> {
+  match shell.Env.Get(name: name as NonEmptyStr).value {
+    Absent => []
+    Present { value: v } => filter(split(s: v, delimiter: ","), x => x != "")
+  }
+}
+
+fn concern_text(c: IntegrationConcern) -> String {
+  join([
+    concat("- ", c.identity as String),
+    concat("  kind: ", kind_label(k: c.kind)),
+    concat("  disposition: ", disposition_label(d: c.disposition)),
+    concat("  question: ", c.question as String),
+    concat("  modules: ", join(concern_modules(c: c), ", ")),
+  ], "\n")
+}
+
+fn reading_text(title: String, rows: List<IntegrationConcern>) -> String {
+  join(concat(concat([title], map(rows, c => concern_text(c: c))), concat(["unconnected routes:"], map(unconnected_routes, r => concat("- ", r)))), "\n")
+}
+
+fn main() -> CliWireResponse {
+  let changed = env_list(name: "CONCERN_CHANGED")
+  let referenced = env_list(name: "CONCERN_REFERENCED")
+  let subtree = env_list(name: "CONCERN_SUBTREE")
+  let open_rows = filter(integration_concerns, c => concern_is_open(c: c))
+  let text = if count(subtree) > 0 {
+    reading_text(title: concat("open integration concerns in subtree ", join(subtree, ",")), rows: flat_map(subtree, p => concerns_in_subtree(prefix: p, rows: open_rows)))
+  } else if count(changed) + count(referenced) > 0 {
+    reading_text(title: "open integration concerns relevant to the given scope", rows: concerns_for(s: ConcernScope { changed: changed, referenced: referenced }, rows: open_rows))
+  } else {
+    reading_text(title: "all open integration concerns", rows: open_rows)
+  }
+  CliWirePrintable { bytes: text, exit: ExitSuccess }
+}

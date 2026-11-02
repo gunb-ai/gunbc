@@ -1,0 +1,125 @@
+module test.claim.integration_concern_witness
+
+import std.types { Bool, String, List, NonEmptyStr, CommitSha }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_stall { climbs_when_awaiting }
+import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.integration_concern {
+  IntegrationConcern, ConcernScope, ConcernKind, SuspectedFork, SuspectedCapabilityGap,
+  ConcernDisposition, Open, Triaged, Distinct, Withdrawn, Integrated,
+  ExistingHome, HomeUnresolved, HistoricalDeclaration, RetainedExecutionResult, IntegrationEvidence,
+  distinct_authorities, concerns_for, concerns_in_subtree, concern_is_open, kind_declarations,
+  integration_concerns,
+}
+
+// SUPPLIED ROWS (DESIGN section 3, a witness discriminates at one interface): the relevance and
+// closure rules are judged over rows built here, and the last two claims run the same functions over
+// the real register, so the supplied boundary is paired with an inhabitance reading.
+
+fn gap(identity: String, model: DeclarationRef, affected: FreeSemigroup<DeclarationRef>, d: ConcernDisposition) -> IntegrationConcern {
+  IntegrationConcern {
+    identity: identity as NonEmptyStr,
+    kind: SuspectedCapabilityGap { model: model, requirement: "a supplied requirement" },
+    affected: affected,
+    question: "a supplied question",
+    observations: [],
+    disposition: d,
+  }
+}
+
+// One concern whose affected declarations sit in two unrelated subtrees.
+fn cross_namespace_row() -> IntegrationConcern {
+  gap(
+    identity: "cross",
+    model: decl_ref(module_path: "std.shape_model", decl_name: "Shape"),
+    affected: FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [decl_ref(module_path: "gunbc.beta.right", decl_name: "b")] },
+    d: Open,
+  )
+}
+
+fn scope(changed: List<String>, referenced: List<String>) -> ConcernScope {
+  ConcernScope { changed: changed, referenced: referenced }
+}
+
+test fn a_cross_namespace_concern_is_relevant_from_either_affected_module() -> Bool {
+  count(concerns_for(s: scope(changed: ["product.alpha.left"], referenced: []), rows: [cross_namespace_row()])) == 1
+    && count(concerns_for(s: scope(changed: ["gunbc.beta.right"], referenced: []), rows: [cross_namespace_row()])) == 1
+}
+
+test fn a_sibling_under_a_shared_prefix_is_not_relevant() -> Bool {
+  count(concerns_for(s: scope(changed: ["product.alpha.other", "product.alpha", "product"], referenced: []), rows: [cross_namespace_row()])) == 0
+}
+
+test fn a_referenced_existing_model_makes_a_concern_relevant() -> Bool {
+  count(concerns_for(s: scope(changed: ["product.unrelated"], referenced: ["std.shape_model"]), rows: [cross_namespace_row()])) == 1
+}
+
+test fn subtree_browsing_matches_whole_segments_and_crosses_subtrees() -> Bool {
+  count(concerns_in_subtree(prefix: "product.alpha", rows: [cross_namespace_row()])) == 1
+    && count(concerns_in_subtree(prefix: "gunbc", rows: [cross_namespace_row()])) == 1
+    && count(concerns_in_subtree(prefix: "product.alp", rows: [cross_namespace_row()])) == 0
+}
+
+test fn a_fork_needs_two_distinct_authorities() -> Bool {
+  let a = decl_ref(module_path: "product.alpha.left", decl_name: "a")
+  let b = decl_ref(module_path: "gunbc.beta.right", decl_name: "b")
+  let same_twice = match distinct_authorities(first: a, second: a, rest: []) { Present { value: _ } => false Absent => true }
+  let repeated_later = match distinct_authorities(first: a, second: b, rest: [a]) { Present { value: _ } => false Absent => true }
+  let two = match distinct_authorities(first: a, second: b, rest: []) {
+    Present { value: d } => count(kind_declarations(k: SuspectedFork { authorities: d })) == 2
+    Absent => false
+  }
+  same_twice && repeated_later && two
+}
+
+test fn a_capability_gap_names_one_model_and_is_not_a_fork() -> Bool {
+  count(kind_declarations(k: cross_namespace_row().kind)) == 1
+}
+
+test fn an_awaited_work_item_does_not_close_a_concern() -> Bool {
+  let next = climbs_when_awaiting(capability: "the supplied capability", awaiting: [dashboard_work_item_referent(node: "adhoc-00000000-000" as RoadmapNodeId)])
+  let triaged = gap(
+    identity: "triaged",
+    model: decl_ref(module_path: "std.shape_model", decl_name: "Shape"),
+    affected: FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [] },
+    d: Triaged { home: HomeUnresolved { question: "where does it belong" }, preserve: [], next: next },
+  )
+  concern_is_open(c: triaged) && concern_is_open(c: cross_namespace_row())
+}
+
+test fn integrated_evidence_cites_deleted_declarations_at_their_revision() -> Bool {
+  let evidence = IntegrationEvidence {
+    integrated_at: "0000000000000000000000000000000000000001" as CommitSha,
+    superseded: [HistoricalDeclaration { at: "0000000000000000000000000000000000000000" as CommitSha, module_path: "product.deleted_since", decl_name: "removed_leaf" }],
+    replacement: FreeSemigroup { head: decl_ref(module_path: "std.shape_model", decl_name: "Shape"), tail: [] },
+    executions: FreeSemigroup { head: RetainedExecutionResult { control: decl_ref(module_path: "test.claim.shape_witness", decl_name: "shape_control"), run: "supplied-run", conclusion: "success" }, tail: [] },
+  }
+  let closed = gap(
+    identity: "closed",
+    model: decl_ref(module_path: "std.shape_model", decl_name: "Shape"),
+    affected: FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [] },
+    d: Integrated { evidence: evidence },
+  )
+  !concern_is_open(c: closed)
+}
+
+test fn distinct_and_withdrawn_close_a_concern() -> Bool {
+  let model = decl_ref(module_path: "std.shape_model", decl_name: "Shape")
+  let at = FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [] }
+  !concern_is_open(c: gap(identity: "distinct", model: model, affected: at, d: Distinct { reason: "different obligations", scope_examined: "the two supplied consumers" }))
+    && !concern_is_open(c: gap(identity: "withdrawn", model: model, affected: at, d: Withdrawn { reason: "the requirement was not supported by the evidence" }))
+}
+
+// INHABITANCE OVER THE REAL REGISTER: the same reading functions answer over the committed rows.
+test fn the_real_register_answers_a_scoped_reading() -> Bool {
+  count(concerns_for(s: scope(changed: ["product.printed_chassis.print_preparation"], referenced: []), rows: integration_concerns)) == 1
+    && count(concerns_for(s: scope(changed: [], referenced: ["gunbc.fleet.print_converge"]), rows: integration_concerns)) == 1
+    && count(concerns_for(s: scope(changed: ["product.printed_chassis.assembly_geometry"], referenced: []), rows: integration_concerns)) == 0
+}
+
+test fn the_real_register_rows_are_open_suspicions() -> Bool {
+  all(integration_concerns, c => concern_is_open(c: c))
+}
