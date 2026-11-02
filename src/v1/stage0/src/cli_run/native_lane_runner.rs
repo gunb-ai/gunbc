@@ -136,11 +136,11 @@ const CLI_DOOR_ENTRY_MODULE: &str = "gunbc.native_cli_door_probe";
 /// two scratch trees the walk derives from it differ from it in that module alone.
 const NATIVE_PROJECTION_ROOT: &str = "fixtures/native_acquisition_projection/dag";
 const NATIVE_PROJECTION_SAME_NAMED_FILE: &str = "product/y.dag";
-const NATIVE_PROJECTION_PROJECTED_ENTRY: &str = "fixture.native_projection.projected";
+const NATIVE_PROJECTION_PROJECTED_ENTRY: &str = "test.fixture.native_projection_projected";
 /// The module the projection entry spells as a field access and the qualified entry names for real: the
 /// closure the door reports holds it for one entry and must not hold it for the other.
 const NATIVE_PROJECTION_SAME_NAMED_MODULE: &str = "product.y";
-const NATIVE_PROJECTION_QUALIFIED_ENTRY: &str = "fixture.native_projection.qualified";
+const NATIVE_PROJECTION_QUALIFIED_ENTRY: &str = "test.fixture.native_projection_qualified";
 /// The declaration the same-named module emits, present in the carrier's arm for that module when it is read.
 const NATIVE_PROJECTION_SAME_NAMED_WITNESS: &str = "projection_same_named_value";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
@@ -2850,7 +2850,7 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
         &[
             "emit".into(),
             "--entry".into(),
-            "fixture.native_ingest.dag_entry".into(),
+            "test.fixture.native_ingest_two_roots_entry".into(),
             "--source-root".into(),
             two_dag.display().to_string(),
             "--source-root".into(),
@@ -2875,7 +2875,7 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
         &[
             "emit".into(),
             "--entry".into(),
-            "fixture.native_ingest.dag_entry".into(),
+            "test.fixture.native_ingest_two_roots_entry".into(),
             "--source-root".into(),
             two_dag.display().to_string(),
             "--source-root".into(),

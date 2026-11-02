@@ -169,8 +169,9 @@ pub use crate::std_termination::{
 };
 pub use crate::std_types::container_expected_arity;
 pub use crate::std_types::{
-    container_param_name, container_template_algebra, container_template_alias_algebra,
-    is_container_type, is_kernel_type, kernel_type_set, NonEmptyStr, SourceSpan,
+    container_param_name, container_spelling_is_algebra, container_template_algebra,
+    container_template_alias_algebra, is_container_algebra_carrier, is_container_type,
+    is_kernel_type, kernel_type_set, NonEmptyStr, SourceSpan,
 };
 pub use crate::v1_compiler_coercion::provenance_realizes_natively;
 pub use crate::v1_compiler_infer_access::{
@@ -216,8 +217,8 @@ pub use crate::v1_compiler_infer_env::{
     merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
     node_with_children, node_with_inferred, overlay_skips_kernel_name, put_inductive_field,
     put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
-    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_type,
-    settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_head_of_declaration,
+    settled_type, settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
     text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
@@ -275,9 +276,9 @@ pub use crate::v1_compiler_infer_patterns::{
 };
 pub use crate::v1_compiler_infer_resolve::{
     expand_nominal_alias_rhs, fn_type_param_names, generic_declaration_application,
-    is_user_generic_use_site, preserve_nominal_brand_on_resolve, reference_with_declaration,
-    resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
-    ItemResolveResult, NodeResolveResult,
+    is_user_generic_use_site, node_with_declaration, preserve_nominal_brand_on_resolve,
+    reference_with_declaration, resolve_generic_use_decl, resolve_item_types, resolve_node,
+    resolve_node_bounded, ItemResolveResult, NodeResolveResult,
 };
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
     ExpansionBudgetExhausted, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
@@ -8204,29 +8205,77 @@ pub fn structured_kernel_container_identity_verdict(
     )
 }
 
+pub fn kernel_container_carrier_declaration(
+    formal: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<DeclarationRef>> {
+    match structured_formal_carrier_declaration(formal.clone(), scope.clone()) {
+        Some(carrier) => {
+            if kernel_container_roster_carrier(carrier.clone()) {
+                Some(carrier.clone())
+            } else {
+                kernel_container_carrier_under_alias(formal.clone(), scope.clone())
+            }
+        }
+        std::option::Option::None => {
+            kernel_container_carrier_under_alias(formal.clone(), scope.clone())
+        }
+    }
+}
+
+pub fn kernel_container_roster_carrier(decl: Rc<DeclarationRef>) -> bool {
+    ((decl.module_path.clone() == kernel_container_carrier_module())
+        && crate::std_types::is_container_algebra_carrier(decl.decl_name.clone()))
+}
+
+pub fn kernel_container_carrier_under_alias(
+    formal: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let name =
+            crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), formal);
+        if ((name.clone() == "".to_string()) || crate::std_types::is_container_type(name.clone())) {
+            return std::option::Option::None;
+        }
+        match crate::v1_compiler_infer_env::declaration_named_by_type_name(
+            name.clone(),
+            scope.type_env.clone(),
+        ) {
+            Some(d) => match crate::v1_compiler_infer_env::settled_head_of_declaration(
+                d.clone(),
+                scope.type_env.source_indices.clone(),
+                scope.type_env.clone(),
+                16,
+            ) {
+                Some(head) => {
+                    if kernel_container_roster_carrier(head.clone()) {
+                        Some(head.clone())
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            },
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
 pub fn kernel_container_carrier_verdict(
     formal: Rc<Node>,
     owner: Option<Rc<DeclarationRef>>,
     scope: Rc<InferScope>,
 ) -> Option<bool> {
-    {
-        let name = crate::v1_std_core::authored_name_at(
-            scope.type_env.source_indices.clone(),
-            formal.clone(),
-        );
-        if !crate::std_types::is_container_type(name) {
-            return std::option::Option::None;
-        }
-        match structured_formal_carrier_declaration(formal.clone(), scope.clone()) {
-            Some(carrier) => match owner.clone() {
-                Some(o) => Some(crate::std_decl_ref::declaration_ref_eq(
-                    carrier.clone(),
-                    o.clone(),
-                )),
-                std::option::Option::None => std::option::Option::None,
-            },
+    match kernel_container_carrier_declaration(formal, scope) {
+        Some(carrier) => match owner.clone() {
+            Some(o) => Some(crate::std_decl_ref::declaration_ref_eq(
+                carrier.clone(),
+                o.clone(),
+            )),
             std::option::Option::None => std::option::Option::None,
-        }
+        },
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -14833,6 +14882,18 @@ pub fn expected_type_is_open_variable(exp: Rc<Node>) -> bool {
     }
 }
 
+pub fn spelling_is_collection_carrier(name: String) -> bool {
+    ((crate::std_types::container_spelling_is_algebra(name.clone(), "FreeMonoid".to_string())
+        || crate::std_types::container_spelling_is_algebra(
+            name.clone(),
+            "FinitePowerSet".to_string(),
+        ))
+        || crate::std_types::container_spelling_is_algebra(
+            name.clone(),
+            "FinitelySupportedFunction".to_string(),
+        ))
+}
+
 pub fn expected_collection_surface(
     mut __tco_loop_exp: Rc<Node>,
     mut __tco_loop_scope: Rc<InferScope>,
@@ -14853,9 +14914,7 @@ pub fn expected_collection_surface(
                     exp.clone(),
                     scope.clone(),
                 ));
-                if (((last.clone() == "Map".to_string()) || (last.clone() == "Set".to_string()))
-                    || (last.clone() == "List".to_string()))
-                {
+                if spelling_is_collection_carrier(last.clone()) {
                     break exp.clone();
                 } else {
                     match exp.inferred.clone().as_deref().cloned() {
@@ -14863,9 +14922,7 @@ pub fn expected_collection_surface(
                             let rt_last = crate::v1_std_core::qualified_last_segment(
                                 expected_type_spelling(rt.clone(), scope.clone()),
                             );
-                            if (((((rt_last.clone() == "Map".to_string())
-                                || (rt_last.clone() == "Set".to_string()))
-                                || (rt_last.clone() == "List".to_string()))
+                            if ((spelling_is_collection_carrier(rt_last.clone())
                                 || (rt_last.clone() == "Outcome".to_string()))
                                 || (rt_last.clone() == "Optional".to_string()))
                             {
@@ -15095,9 +15152,10 @@ pub fn expected_type_is_keyed_collection(exp: Rc<Node>, scope: Rc<InferScope>) -
                 if crate::v1_compiler_infer_types::node_is_keyed_collection(core.clone(), si) {
                     true
                 } else {
-                    ((last.clone() == "Map".to_string())
-                        || (((core.children.clone().len() as i64) == 2)
-                            && (core.name.clone() == "Map".to_string())))
+                    crate::std_types::container_spelling_is_algebra(
+                        last,
+                        "FinitelySupportedFunction".to_string(),
+                    )
                 }
             }
         }
@@ -15119,9 +15177,10 @@ pub fn expected_type_is_set_collection(exp: Rc<Node>, scope: Rc<InferScope>) -> 
                 if crate::v1_compiler_infer_types::node_is_set_collection(core.clone(), si) {
                     true
                 } else {
-                    ((last.clone() == "Set".to_string())
-                        || (((core.children.clone().len() as i64) == 1)
-                            && (core.name.clone() == "Set".to_string())))
+                    crate::std_types::container_spelling_is_algebra(
+                        last,
+                        "FinitePowerSet".to_string(),
+                    )
                 }
             }
         }
@@ -28459,6 +28518,7 @@ pub fn build_module_interface(
 
 pub fn local_binding_for_item(
     item: Rc<Node>,
+    module_path: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<TypeBinding>> {
     if is_namespace_alias_item(item.clone(), source_indices.clone()) {
@@ -28468,12 +28528,43 @@ pub fn local_binding_for_item(
             let has_structure = (item.connective.clone() != Connective::NoConnective);
             if has_structure.clone() {
                 {
+                    let declared_members = match item.connective.clone() {
+                        Connective::Conj => true,
+                        Connective::Disj => true,
+                        _ => false,
+                    };
+                    let children = if declared_members.clone() {
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for member in item.children.clone().iter().cloned() {
+                                __result.push(
+                                    crate::v1_compiler_infer_resolve::node_with_declaration(
+                                        member.clone(),
+                                        crate::std_decl_ref::decl_field_ref(
+                                            module_path.clone(),
+                                            crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                item.clone(),
+                                            ),
+                                            crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                member.clone(),
+                                            ),
+                                        ),
+                                    ),
+                                );
+                            }
+                            __result
+                        })
+                    } else {
+                        item.children.clone()
+                    };
                     let type_node = Rc::new(Node {
                         occurrence_identity: item.occurrence_identity.clone(),
                         name: item.name.clone(),
                         span: item.span.clone(),
                         ident_span: item.ident_span.clone(),
-                        children: item.children.clone(),
+                        children: children.clone(),
                         connective: item.connective.clone(),
                         params: item.params.clone(),
                         inferred: std::option::Option::None,
@@ -28748,7 +28839,8 @@ pub fn symbol_index_insert_item(
                 },
             }
         } else {
-            match local_binding_for_item(item.clone(), source_indices.clone()) {
+            match local_binding_for_item(item.clone(), module_path.clone(), source_indices.clone())
+            {
                 std::option::Option::None => index.clone(),
                 Some(binding) => crate::v1_compiler_infer_env::symbol_index_insert_decl(
                     index.clone(),
@@ -31135,7 +31227,11 @@ pub fn build_type_env(
                             }
                         }
                     } else {
-                        match local_binding_for_item(item.clone(), source_indices.clone()) {
+                        match local_binding_for_item(
+                            item.clone(),
+                            module_name_str.clone(),
+                            source_indices.clone(),
+                        ) {
                             Some(binding) => v1_rt::rc_map_insert(
                                 acc.clone(),
                                 crate::v1_std_core::intern(

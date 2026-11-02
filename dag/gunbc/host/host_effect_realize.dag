@@ -559,7 +559,7 @@ import gunbc.executor_privileged_operation {
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_dropin_body, deploy_sudoers_install_argv }
 
 import gunbc.runner.runner_microvm_slot_unit {
-  microvm_controller_owner, microvm_controller_root, microvm_slot_controller_receipt_dir,
+  microvm_controller_owner, microvm_controller_root, microvm_receipt_store_path,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
   microvm_controller_slice_unit_file, microvm_controller_slice_unit_path,
   microvm_slot_unit_path, microvm_slot_reserve_unit_path,
@@ -10321,7 +10321,7 @@ fn microvm_controller_install_steps(
         // a failure says which store could not be made.
         microvm_controller_argv_step(
           name: "slot controller receipt dir",
-          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_slot_controller_receipt_dir)),
+          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_receipt_store_path(tree: host_state_tree()) as String)),
         ),
         microvm_controller_argv_step(
           name: "cell readiness store dir",
