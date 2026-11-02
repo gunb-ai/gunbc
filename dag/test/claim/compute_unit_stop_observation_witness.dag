@@ -1,7 +1,7 @@
 module test.claim.compute_unit_stop_observation_witness
 
 import std.types { Bool, String }
-import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit}
+import gunbc.compile_census_probe { total_blocking_census, census_delta_verdict, census_verdict, census_exit}
 import std.process { ProcessExit }
 
 // NEGATIVE CONTROL: compute_run_unit takes a CLOSED LIST of ComputeUnitStopObservation arms, never a
@@ -33,10 +33,25 @@ fn accepted(instance: HostDashboardInstance, layout: ComputeLayout, dir: FilePat
 }
 "
 
+// The census is taken on BLOCKING DIAGNOSTICS, not on one named class: what the control must show is
+// that the same operand carrying property WORDS is refused where the closed arms are accepted, and an
+// assertion on a class name the compiler happens not to use would pass by never testing anything. The
+// control is the lawful module itself, so the red side pays at least one blocking diagnostic the lawful
+// side does not.
 test fn a_compute_unit_cannot_take_a_raw_property_at_stop() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_class_census(source: forged_raw_property_source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 }))
+  census_exit(
+    verdict: census_delta_verdict(
+      red: total_blocking_census(source: forged_raw_property_source),
+      control: total_blocking_census(source: accepted_closed_observation_source),
+      holds: fn(n) { n >= 1 }))
 }
 
+// The accepted probe carries BOTH closed arms -- the sccache stats and the seat's own exit record -- so
+// it shows the record arm is COMPOSABLE, not merely declared, and it must compile with no blocking
+// diagnostic at all.
 test fn a_compute_unit_takes_the_closed_stop_observation() -> ProcessExit {
-  census_exit(census_verdict(census: blocking_class_census(source: accepted_closed_observation_source, wanted_class: "TypeMismatch"), holds: fn(n) { n == 0 }))
+  census_exit(
+    verdict: census_verdict(
+      census: total_blocking_census(source: accepted_closed_observation_source),
+      holds: fn(n) { n == 0 }))
 }
