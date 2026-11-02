@@ -1,22 +1,18 @@
 module v2.test.claim.name_resolve.imported_service_operation_binding
 
-import v2.compiler.source_root_eval {
-  NativeModuleResolveAccepted,
-  NativeModuleResolveRefused,
-  native_test_context_from_ingest,
-  native_module_resolve_verdict,
-  native_lane_file_refusal_index,
-  NativeTestContext,
-  NativeModuleResolveVerdict
-}
+import std.algebra { fold_list, list_snoc_item, map_support_keys, map_lookup }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { List }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.resolve { ResolvedToDeclaration, BoundToDeclaration, ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.source_root_eval { NativeModuleResolveAccepted, NativeModuleResolveRefused, native_test_context_from_ingest, native_module_resolve_verdict, native_lane_file_refusal_index, NativeTestContext, NativeModuleResolveVerdict }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Symbol }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
-import extdeps.communication.medium { Lossless, Medium }
 
 // HOW A SERVICE OPERATION REFERENCE BINDS ACROSS AN IMPORT, ON THE REAL NATIVE PREPARE ROUTE (T4 frontier: gen-0
 // emit of v2.cli.compile_cli refuses unbound_ref=Filesystem.Write). v2.test.claim.resolve.service_operation_call
@@ -92,12 +88,35 @@ fn isob_plain_refusal(v: NativeModuleResolveVerdict) -> Bool {
   }
 }
 
-// THE POSITIVE CONTROL. The declaring-identity spelling binds, so a refusal below is the import door's and not the
-// fixture's service declaration.
+// The declaring paths the module's occurrence records bind to (same read as the XL3 wave witness).
+fn isob_declaring_paths(v: NativeModuleResolveVerdict) -> List<String> {
+  match v {
+    NativeModuleResolveAccepted { resolved: tree } =>
+      fold_list(xs: map_support_keys(m: tree.occurrence_resolutions), empty: [], cons: fn(acc, id) {
+        match map_lookup(m: tree.occurrence_resolutions, key: id) {
+          Present { value: r } =>
+            match r.binding {
+              BoundToDeclaration { identity: ResolvedToDeclaration { path: p } } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: p))
+              _ => acc
+            }
+          Absent => acc
+        }
+      })
+    _ => []
+  }
+}
+
+fn isob_binds_to(v: NativeModuleResolveVerdict, declaring: String) -> Bool {
+  fold_list(xs: isob_declaring_paths(v: v), empty: false, cons: fn(acc, p) { acc || p == declaring })
+}
+
+// THE POSITIVE CONTROL, BY IDENTITY. The declaring-identity spelling BINDS to the declared service operation
+// v2.test.isob.svc.Fs.Put -- acceptance alone would also pass a misbinding (e.g. to an effect-grant Verb constructor),
+// so the resolved declaration identity is asserted, not the verdict's colour.
 test fn the_declaring_identity_spelling_of_a_service_operation_binds() -> Bool {
   match isob_verdicts() {
     Absent => false
-    Present { value: vs } => isob_accepted(v: vs.qualified)
+    Present { value: vs } => isob_accepted(v: vs.qualified) && isob_binds_to(v: vs.qualified, declaring: "v2.test.isob.svc.Fs.Put")
   }
 }
 
