@@ -6,7 +6,7 @@ import extdeps.boards.types { HeldManualRevision,
   PowerInputPopulationStanding, PowerInputMinimumOneStated,
   BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling,
   BoardFunctionSwitch, JumperSwitch, FirmwareSetupSwitch, SwitchNotStated,
-  OnboardEthernetPort, OnboardEthernetPortRow, BmcSharingStated, BmcSharingNotStated,
+  OnboardEthernetPort, OnboardEthernetPortRow, BmcSharingStated, BmcSharingNotStated, PortRowsStated,
 }
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
@@ -94,11 +94,20 @@ data asrock_altrad8ud_board_authority: BoardAuthorityRef = BoardAuthorityRef {
   }
 }
 
+// The rear-panel LAN ports (manual v1.20 section 1.6, I/O panel items 2, 3 and 5; controllers from
+// section 1.2): LAN1 and LAN2 are the X550's two 10GbE ports, ALTRAD8UD-1L2T only, and LAN1 is marked
+// "shared NIC"; LAN3 is the I210's one 1GbE port. The UEFI setup chapter states no item that disables
+// an onboard LAN controller, so every port's switch is SwitchNotStated.
+data asrock_altrad8ud_1l2t_lan1: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN1", controller: "Intel X550", bmc_sharing: BmcSharingStated, switch: SwitchNotStated { coarser: Absent }, citation: "manual v1.20 section 1.6, I/O panel item 3: 10G LAN RJ-45 Port (LAN1, shared NIC)" }
+data asrock_altrad8ud_1l2t_lan2: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN2", controller: "Intel X550", bmc_sharing: BmcSharingNotStated, switch: SwitchNotStated { coarser: Absent }, citation: "manual v1.20 section 1.6, I/O panel item 2: 10G LAN RJ-45 Port (LAN2)" }
+data asrock_altrad8ud_1l2t_lan3: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN3", controller: "Intel i210", bmc_sharing: BmcSharingNotStated, switch: SwitchNotStated { coarser: Absent }, citation: "manual v1.20 section 1.6, I/O panel item 5: 1G LAN RJ-45 Port (LAN3)" }
+
 data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
   model: asrock_altrad8ud_board_authority,
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
   vendor: asrock_rack,
   bmc_firmware: OpenBmc,
+  onboard_ethernet_ports: PortRowsStated { rows: [asrock_altrad8ud_1l2t_lan1, asrock_altrad8ud_1l2t_lan2, asrock_altrad8ud_1l2t_lan3] },
 }
 
 data asrock_altrad8ud_redfish_system_id: NonEmptyStr = "system"
@@ -1110,19 +1119,11 @@ fn asrock_altrad8ud_function_switch(f: BoardFunction) -> BoardFunctionSwitch {
       off_meaning: "Otherwise OS detects AER",
       citation: "manual v1.20 section 3.3.2",
     }
-    OnboardEthernetPort { designator: _ } => SwitchNotStated { coarser: Absent }
+    OnboardEthernetPort { port } => port.switch
   }
 }
 
-// The rear-panel LAN ports (manual v1.20 section 1.6, I/O panel items 2, 3 and 5; controllers from
-// section 1.2): LAN1 and LAN2 are the X550's two 10GbE ports, ALTRAD8UD-1L2T only, and LAN1 is marked
-// "shared NIC"; LAN3 is the I210's one 1GbE port. The UEFI setup chapter states no item that disables
-// an onboard LAN controller.
-data asrock_altrad8ud_1l2t_onboard_ethernet_ports: List<OnboardEthernetPortRow> = [
-  OnboardEthernetPortRow { designator: "LAN1", controller: "Intel X550", bmc_sharing: BmcSharingStated, citation: "manual v1.20 section 1.6, I/O panel item 3: 10G LAN RJ-45 Port (LAN1, shared NIC)" },
-  OnboardEthernetPortRow { designator: "LAN2", controller: "Intel X550", bmc_sharing: BmcSharingNotStated, citation: "manual v1.20 section 1.6, I/O panel item 2: 10G LAN RJ-45 Port (LAN2)" },
-  OnboardEthernetPortRow { designator: "LAN3", controller: "Intel i210", bmc_sharing: BmcSharingNotStated, citation: "manual v1.20 section 1.6, I/O panel item 5: 1G LAN RJ-45 Port (LAN3)" },
-]
+
 
 // Which rear ports carry an Ethernet cable in service. The 1L2T has two 10GbE (LAN1 shared with
 // the BMC NC-SI path), one 1GbE and one dedicated IPMI port; how many a deployment plugs is a

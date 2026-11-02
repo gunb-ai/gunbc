@@ -6,16 +6,17 @@ import extdeps.boards.types {
   BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort,
   BoardFunctionSwitch, JumperSwitch, FirmwareSetupSwitch, SwitchNotStated,
 }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
-import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog, supermicro_h11ssl_function_switch }
+import extdeps.boards.types { OnboardEthernetPortRow }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog, asrock_altrad8ud_1l2t_lan1, asrock_altrad8ud_1l2t_lan2, asrock_altrad8ud_1l2t_lan3 }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog, supermicro_h11ssl_function_switch, supermicro_h11ssl_lan1, supermicro_h11ssl_lan2 }
 import extdeps.boards.gigabyte { gigabyte_mp72_hb0_catalog }
 import gunbc.fleet.board_function_admission {
   BoardFunctionRemoval, NothingToRemove, RemovedAtBoard, RemovedByHostAfterBoot,
   RemovalUnmodeled,
-  HostBoardFunctionPlan,
-  board_functions, board_function_listed, board_function_removal, fleet_board_function_plans,
+  HostBoardFunctionPlan, PlannedFunction, PlannedUnreadPorts,
+  board_functions, board_function_listed, board_function_removal, fleet_board_function_plans, machine_board_function_plans,
 }
-import gunbc.fleet.machine_board { machine_board_rows }
+import gunbc.fleet.machine_board { MachineBoardRow, MachineBoardCatalogued, machine_board_rows }
 import gunbc.fleet.fleet_host_identity {
   operator_hosts, operator_host_srv1, operator_host_srv4, operator_host_6ce85c, operator_host_mtjade1, operator_host_183527,
 }
@@ -70,8 +71,8 @@ fn kept_for_reset_roster(r: BoardFunctionRemoval) -> Bool {
   kept_for(r: r, module_path: "gunbc.host.host_reset_subject_roster", decl_name: "reset_subject_roster")
 }
 
-fn port(d: String) -> BoardFunction {
-  OnboardEthernetPort { designator: d }
+fn port(p: OnboardEthernetPortRow) -> BoardFunction {
+  OnboardEthernetPort { port: p }
 }
 
 // Roster completeness, both directions: every arm is listed (the exhaustive match in
@@ -80,7 +81,7 @@ test fn every_board_function_is_listed_once() -> Bool {
   board_function_listed(f: BmcManagementFunction)
     && board_function_listed(f: BmcGraphicsController)
     && board_function_listed(f: PcieErrorFirmwareFirstHandling)
-    && !board_function_listed(f: port(d: "LAN1"))
+    && !board_function_listed(f: port(p: asrock_altrad8ud_1l2t_lan1))
     && length(board_functions) == 3
 }
 
@@ -122,23 +123,30 @@ test fn an_unread_board_refuses() -> Bool {
 // host's account. srv4 has no primary-network row, so none of its ports may be removed: a plan that
 // removed srv4's X550 by the board-wide default could take the port its network runs on.
 test fn ethernet_ports_follow_the_host_primary_network() -> Bool {
-  kept_for(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(d: "LAN3")), module_path: "gunbc.host.host_primary_network_desired", decl_name: "host_primary_network_rows")
-    && removed_by_host_after_boot(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(d: "LAN2")))
-    && removal_unmodeled(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(d: "LAN1")))
-    && removal_unmodeled(r: board_function_removal(host: operator_host_srv4, catalog: asrock_altrad8ud_1l2t_catalog, f: port(d: "LAN2")))
-    && removal_unmodeled(r: board_function_removal(host: operator_host_6ce85c, catalog: supermicro_h11ssl_catalog, f: port(d: "LAN1")))
+  kept_for(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan3)), module_path: "gunbc.host.host_primary_network_desired", decl_name: "host_primary_network_rows")
+    && removed_by_host_after_boot(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan2)))
+    && removal_unmodeled(r: board_function_removal(host: operator_host_srv1, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan1)))
+    && removal_unmodeled(r: board_function_removal(host: operator_host_srv4, catalog: asrock_altrad8ud_1l2t_catalog, f: port(p: asrock_altrad8ud_1l2t_lan2)))
+    && removal_unmodeled(r: board_function_removal(host: operator_host_6ce85c, catalog: supermicro_h11ssl_catalog, f: port(p: supermicro_h11ssl_lan1)))
 }
 
 // Where the H11SSL removes a port at the board, it uses that port's own jumper.
 test fn h11ssl_lan_ports_have_their_own_jumpers() -> Bool {
-  match supermicro_h11ssl_function_switch(f: port(d: "LAN2")) {
+  match supermicro_h11ssl_function_switch(f: port(p: supermicro_h11ssl_lan2)) {
     JumperSwitch { designator: d, off_position: _, citation: _ } => (d as String) == "JPL2"
     _ => false
   }
 }
 
 fn plan_for(plans: List<HostBoardFunctionPlan>, host: String, f: BoardFunction) -> List<HostBoardFunctionPlan> {
-  filter(plans, p => (p.host as String) == host && p.board_function == f)
+  filter(plans, p => (p.host as String) == host && p.subject == PlannedFunction { board_function: f })
+}
+
+// A catalogued board whose port list is unread gets one refusing plan for its ports, not none. srv1 is
+// planned on the Gigabyte catalog here only to supply a board whose ports are PortRowsNotRead.
+test fn an_unread_port_list_is_a_refusing_plan() -> Bool {
+  let unread = filter(machine_board_function_plans(row: MachineBoardRow { host: operator_host_srv1, board: MachineBoardCatalogued { catalog: gigabyte_mp72_hb0_catalog, source: decl_ref(module_path: "extdeps.boards.gigabyte", decl_name: "gigabyte_mp72_hb0_catalog") } }), p => p.subject == PlannedUnreadPorts)
+  length(unread) == 1 && all(unread, p => removal_unmodeled(r: p.removal))
 }
 
 fn plans_of(plans: List<HostBoardFunctionPlan>, host: String) -> List<HostBoardFunctionPlan> {
