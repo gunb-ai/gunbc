@@ -2,6 +2,8 @@ module gunbc.serving.router_dev_policy
 
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
+import std.nat { Nat }
+import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutConfigured, ServingLayoutRefused }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
@@ -66,6 +68,9 @@ type RouterDevComparisonQuote {
   authority: ExternalAuthority
   // WHEN THE FIGURES WERE READ, not a prose "as_of=". A price is a dated observation or it is nothing.
   read_on: Timestamp
+  // True while the figures are a proxy for another vendor's price rather than this fleet's own tariff. Readers of
+  // comparison_pricing (the dashboard, ctrl's pool router) already read `estimated`, so the field stays.
+  estimated: Bool
   method: String
 }
 
@@ -77,6 +82,8 @@ fn money_micro_text(a: MoneyAmountMicro) -> String {
   to_string(money_amount_micro_count(m: a))
 }
 
+fn bool_text(b: Bool) -> String { if b { "true" } else { "false" } }
+
 // ONE QUOTE AS ONE Lua TABLE LITERAL, with every field name and figure written here and nowhere else. The
 // response header, the meter and the stats document all read THIS table, so a price has one home (DESIGN 3:
 // each fact lives in exactly one place).
@@ -87,6 +94,7 @@ fn router_dev_comparison_row_line(q: RouterDevComparisonQuote) -> String {
     + "', input_micro=" + money_micro_text(a: q.input_per_million)
     + ", cached_micro=" + money_micro_text(a: q.cached_per_million)
     + ", output_micro=" + money_micro_text(a: q.output_per_million)
+    + ", estimated=" + bool_text(b: q.estimated)
     + ", currency='" + currency_alphabetic_code(c: q.currency)
     + "', unit='" + comparison_token_unit
     + "', source='" + (uri_wire(uri: q.authority.uri) as String)
@@ -94,15 +102,30 @@ fn router_dev_comparison_row_line(q: RouterDevComparisonQuote) -> String {
     + "', method='" + q.method + "'\}"
 }
 
+// THE ONE RENDERING BOUNDARY from the quote row to the wire shape the live router publishes (float figures per
+// million, `as_of`, `estimated`). The row above is the only stored shape: micro integers and `read_on`. The wire
+// table is derived from it here, once at init, and read by the response headers, /v1/models and the stats
+// documents; the meter reads the row. Header figures are Lua tostring of the derived float, the live rule
+// (nginx.conf 375-376), applied at this one place; a price with more than 14 significant digits would round,
+// and the cited quotes carry at most 6. End condition: this boundary and the wire names are deleted when the
+// dashboard and ctrl pool router read the row's own names (their readers are unverified from this session,
+// so the live names stay until the cutover confirms them).
 fn router_dev_comparison_lines() -> List<String> {
   list_append(
-    left: [
-      "ROUTER_COMPARISON = \{}",
-      // A model with no row is unpriced: the lookup answers nil and the meter counts the turn unpriced
-      // rather than inventing a figure to fill the gap.
-      "function router_comparison(model) return ROUTER_COMPARISON[model] end",
+    left: list_append(
+      left: [
+        "ROUTER_COMPARISON = \{}",
+        // A model with no row is unpriced: the lookup answers nil and the meter counts the turn unpriced
+        // rather than inventing a figure to fill the gap.
+        "function router_comparison(model) return ROUTER_COMPARISON[model] end",
+      ],
+      right: map(router_dev_comparison_quotes(), q => router_dev_comparison_row_line(q: q)),
+    ),
+    right: [
+      "ROUTER_COMPARISON_WIRE = \{}",
+      "for model, q in pairs(ROUTER_COMPARISON) do ROUTER_COMPARISON_WIRE[model] = \{model=q.model, quantization=q.quantization, reference_model=q.reference_model, input=q.input_micro / 1000000, cached=q.cached_micro / 1000000, output=q.output_micro / 1000000, estimated=q.estimated, currency=q.currency, unit=q.unit, source=q.source, as_of=q.read_on, method=q.method} end",
+      "function router_comparison_wire(model) return ROUTER_COMPARISON_WIRE[model] end",
     ],
-    right: map(router_dev_comparison_quotes(), q => router_dev_comparison_row_line(q: q))
   )
 }
 
@@ -126,6 +149,7 @@ fn qwen3_flash_reference_quote(
     output_per_million: money_amount_micro(count: 470000),
     authority: ExternalAuthority { uri: uri_https(locator: "openrouter.ai/api/v1/models/qwen/qwen3.8-flash/endpoints" as NonEmptyStr) },
     read_on: "2026-10-26" as Timestamp,
+    estimated: true,
     method: "Alibaba prompt, cached-prompt and output price proxy; vendor quantization is undisclosed. Cache discounts apply only to provider-reported cached tokens. Actual owned spend is zero.",
   }
 }
@@ -187,8 +211,8 @@ fn router_dev_models_lines() -> List<String> {
     "  end",
     "end",
     "local data = \{}",
-    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len, comparison_pricing = router_comparison(ROUTER_ALIAS)}",
-    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil, comparison_pricing = router_comparison(m)} end",
+    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len, comparison_pricing = router_comparison_wire(ROUTER_ALIAS)}",
+    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil, comparison_pricing = router_comparison_wire(m)} end",
     "for _, entry in ipairs(data) do",
     "  entry.routes = \{}",
     "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
@@ -200,8 +224,21 @@ fn router_dev_models_lines() -> List<String> {
   ]
 }
 
-fn router_dev_access_lines() -> List<String> {
+// ONE reading of which row owns a stored binding or an active counter: a row's own name or any name it
+// retires, resolved against the COMPLETE configured row set and independent of the requested model. Model
+// conflict, carry, retention counting, trim and the rented-pool summary all read it, so a rename cannot change
+// what any of them decides. Rows are written with no retiring name shared or live (router_dev_retiring_name_conflict).
+fn router_dev_row_lines() -> List<String> {
   [
+    "local owner_of = \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do owner_of[u.name] = u.name end",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do for _, old in ipairs(u.retiring_names or \{}) do owner_of[old] = u.name end end",
+    "local function active(u) local st = ngx.shared.router_state local n = st:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n = n + (st:get('active:' .. old) or 0) end return n end",
+  ]
+}
+
+fn router_dev_access_lines() -> List<String> {
+  list_append(left: router_dev_row_lines(), right: [
     "local cjson = require('cjson.safe')",
     "local function refuse(status, kind, msg) ngx.status = status ngx.header['Content-Type'] = 'application/json' ngx.say(cjson.encode(\{error = \{message = msg, type = kind}})) return ngx.exit(status) end",
     "local h = ngx.var.http_authorization or ''",
@@ -227,7 +264,13 @@ fn router_dev_access_lines() -> List<String> {
     "  session = 'prefix:' .. ngx.md5((sys .. '\\0' .. first):sub(1, 4096))",
     "end",
     "local state = ngx.shared.router_state",
-    "local function active(u) local n=state:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n=n+(state:get('active:' .. old) or 0) end return n end",
+    // STRANDED DEMAND: one record per refused conversation, keyed by the REQUESTED model, holding the time of
+    // the FIRST refusal across retries so its age is how long the conversation has waited. The autoscaler reads
+    // the count and oldest age from /router/stats; the record expires on its own after the span.
+    "local function strand()",
+    "  local sk = 'pending:' .. tostring(body.model) .. '|' .. session",
+    "  state:set(sk, state:get(sk) or ngx.now(), " + to_string(second_count(s: router_dev_pending_ttl())) + ")",
+    "end",
     "local candidates = \{}",
     // An out-of-service row is out of the model entirely: it is not a candidate, is never picked, and is
     // not reachable by a stale binding. A drained engine left in the file only lets a hand edit or a
@@ -270,7 +313,9 @@ fn router_dev_access_lines() -> List<String> {
     // The bytes to forward to one upstream, and the effort it will apply; nil when no in-place splice holds.
     // Computed BEFORE any reservation or binding, so a refused body leaves no counter or binding behind.
     "local function forwarded(pick)",
-    "  local out, effort = raw, nil",
+    // Any string effort is reported, mapped or not: an unmapped name passes through to the engine and the
+    // header still says what it was told (live behavior).
+    "  local out, effort = raw, asked",
     "  if body.model == ROUTER_ALIAS then out = splice(out, 'model', ROUTER_ALIAS, cjson.encode(pick.model), false) end",
     "  local eff = asked and (ROUTER_EFFORT[pick.model] or \{})[asked] or nil",
     "  if out and eff ~= nil then",
@@ -295,6 +340,7 @@ fn router_dev_access_lines() -> List<String> {
     // It is reached only after begin_turn reserved the turn, which is where the turn is counted.
     "local function serve(pick, session, out, effort)",
     "  ngx.ctx.route = pick",
+    "  state:delete('pending:' .. tostring(body.model) .. '|' .. session)",
     "  state:set('seen:' .. session, ngx.now(), " + to_string(second_count(s: router_dev_binding_ttl())) + ")",
     "  ngx.req.set_header('X-Pool-Session', session)",
     "  ngx.req.set_header('X-Session-Id', session)",
@@ -310,72 +356,95 @@ fn router_dev_access_lines() -> List<String> {
     // An upstream is available when it answers this model AND the health guard has not ejected it
     // (unavailable:<name> is set in the log phase on a 5xx or a 401, for the ejection span).
     "local stuck = state:get('session:' .. session)",
-    // A binding may name an engine that no longer answers this model. Refuse only when the bound
-    // row is a LIVE row of a different model: the caller is addressing one engine's model while
-    // holding another's cache, and silently re-placing would answer from the wrong weights.
-    // An unknown name, or a row that is out of service or ejected, is not a conflict -- it has no
-    // surviving cache to lose, so the pick below re-places the session onto a live engine.
+    // A binding to a RETIRED name belongs to the row that retires it: the engine was renamed, not lost, so its
+    // session keeps its placement and its cache.
+    "if stuck then stuck = owner_of[stuck] or stuck end",
+    // A binding may name an engine that no longer answers this model. Refuse when the bound row is a LIVE row
+    // of a different model: the caller is addressing one engine's model while holding another's cache, and
+    // silently re-placing would answer from the wrong weights. A name no configured row owns is refused the
+    // same way, as the live router does: unknown does not establish that no cache survives, and re-placing it
+    // is a permission to reconstruct this policy does not grant (that is the relocation operation's to give).
+    // A row that is out of service is not a conflict; the pick below re-places the session.
     "if stuck and stuck ~= '' and not candidates[stuck] and body.model ~= ROUTER_ALIAS then",
     "  local gone = nil",
     "  for _, u in ipairs(ROUTER_UPSTREAMS) do if u.name == stuck then gone = u end end",
-    "  if gone and gone.in_service ~= false then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
+    "  if gone == nil or gone.in_service ~= false then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
     "end",
     "local function available(u) return candidates[u.name] ~= nil and not state:get('unavailable:' .. u.name) end",
-    // Binding strength is the ROW field cache_locality, never the model string. EngineLocal (a Strata
-    // bus): the prefix cache lives in that engine's memory, so a bound session moves ONLY when its
-    // engine is unavailable; at its cap it is refused 429 with Retry-After so the client retries the
-    // same engine. Letting it migrate re-reads the whole 50-115k context at ~215 tok/s, measured 4%
-    // prompt reuse across 8 engines when binding was soft. Shared (vLLM's own prefix cache, and the
-    // rented pool, which has no router-visible locality) stays soft: the engine dedupes prompts itself,
-    // and the uncapped overflow must soak load once owned capacity is gone.
-    "local function hard_locality(u) return u.cache_locality == 'engine_local' end",
+    // NO MOVE ON CONGESTION, for every capped row (operator 2026-10-28: one placement per conversation; deliberate
+    // moves come only through the relocation operation). A bound session returns to its engine or is refused; it
+    // moves only when that engine is unavailable. An uncapped rented row never refuses, so it never reaches the
+    // refusal either.
+    "local function uncapped(u) return u.overflow and u.cap == nil end",
     // begin_turn is the ONE place a turn is reserved, and the only place ngx.ctx.counted is set: the log
-    // phase releases exactly what was reserved here. A cap is the active-turn ceiling of a non-overflow row,
-    // 0 included (no turns); there is no uncapped sentinel. An overflow row is admitted without a ceiling
-    // and still counted, so its active figure stays true.
+    // phase releases exactly what was reserved here. A cap is the active-turn ceiling of a row, 0 included (no
+    // turns). An uncapped rented row is admitted without a ceiling and still counted, so its active figure
+    // stays true.
     "local function begin_turn(u)",
     "  state:incr('active:' .. u.name, 1, 0)",
-    "  if not u.overflow and active(u) > u.cap then",
+    "  if not uncapped(u) and active(u) > (u.cap or 0) then",
     "    state:incr('active:' .. u.name, -1, 0)",
     "    return false",
     "  end",
     "  ngx.ctx.counted = u.name",
     "  return true",
     "end",
+    // RETENTION ADMISSION: a NEW session binds to a row only while the sessions bound there are fewer than
+    // the conversations it retains (the row's derived retain). A bound session always returns to its own row,
+    // and a row without retain admits as before.
+    // One pass over the shared dict per request, built on first use: bindings expire by TTL, so a maintained
+    // per-row counter would drift on expiry; the scan is bounded by the live bindings and runs only for a new
+    // session facing a row that has a retain.
+    "local bound_counts = nil",
+    "local function bound_count(name)",
+    "  if not bound_counts then",
+    "    bound_counts = {}",
+    "    for _, k in ipairs(state:get_keys(0)) do",
+    "      if k:sub(1, 8) == 'session:' and k:sub(9) ~= session then",
+    "        local row = state:get(k)",
+    "        row = row and (owner_of[row] or row)",
+    "        if row then bound_counts[row] = (bound_counts[row] or 0) + 1 end",
+    "      end",
+    "    end",
+    "  end",
+    "  return bound_counts[name] or 0",
+    "end",
+    "local function retains(c) return c.retain == nil or c.name == stuck or bound_count(c.name) < c.retain end",
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
     "if bound and available(bound) then",
-    // A bound engine-local session is served by ITS engine or refused: no path from here reaches the pick
-    // loop. Falling through would migrate the very session this rule exists to keep in place, and would do
-    // it at the worst moment -- capacity just taken by another turn. When begin_turn refuses, the answer is
-    // 429 + Retry-After so the client retries the SAME engine rather than paying a 50-115k context re-read
-    // on another one. A soft (shared-cache) bound session falls through to the pick below when its engine
-    // is full, because its prefix cache is the engine's own to dedupe.
+    // A bound session is served by ITS engine or refused, on every owned row and every capped rented row: no
+    // path from here reaches the pick loop while the engine is available. Falling through would migrate the
+    // very session this rule exists to keep in place (operator 2026-10-28: deliberate moves come only through
+    // the relocation operation), and would do it at the worst moment -- capacity just taken by another turn.
+    // The former shared-cache fall-through is dropped on purpose, as the live router drops it. When begin_turn
+    // refuses, the answer is 429 + Retry-After so the client retries the SAME engine rather than paying a
+    // 50-115k context re-read on another one.
     "  local out, effort = forwarded(bound)",
     "  if not out then return unspliceable() end",
     "  if begin_turn(bound) then return serve(bound, session, out, effort) end",
-    "  if hard_locality(bound) and not bound.overflow then",
-    "    ngx.header['Retry-After'] = '2'",
-    "    return refuse(429, 'rate_limit_error', 'bound engine-local upstream is at its active-turn cap')",
-    "  end",
+    "  strand()",
+    "  ngx.header['Retry-After'] = '2'",
+    "  return refuse(429, 'rate_limit_error', 'session upstream at its active-turn cap')",
     "end",
     "local pick, priority, spare = nil, nil, -1",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  local c = candidates[u.name]",
-    "  if c and not state:get('unavailable:' .. c.name) then",
+    "  if c and not state:get('unavailable:' .. c.name) and retains(c) then",
     "    local p = c.overflow and 1 or 0",
-    "    local free = c.overflow and 1 or (c.cap - active(c))",
+    "    local free = uncapped(c) and 1 or ((c.cap or 0) - active(c))",
     "    if free > 0 and (not pick or p < priority or (p == priority and ((c.name == stuck and pick.name ~= stuck) or (pick.name ~= stuck and free > spare)))) then pick, priority, spare = c, p, free end",
     "  end",
     "end",
-    "if not pick then ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'every compatible upstream is busy or unavailable') end",
+    "if not pick then strand() ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'every compatible upstream is busy or unavailable') end",
     "local out, effort = forwarded(pick)",
     "if not out then return unspliceable() end",
     "if not begin_turn(pick) then",
+    "  strand()",
     "  ngx.header['Retry-After'] = '2'",
     "  return refuse(429, 'rate_limit_error', 'upstream at its active-turn cap')",
     "end",
     "return serve(pick, session, out, effort)",
-  ]
+  ])
 }
 
 // The log phase releases the turn and tallies the outcome: every answered request by status, and each
@@ -386,7 +455,7 @@ fn router_dev_header_lines() -> List<String> {
   [
     "local u = ngx.ctx.route",
     "if u then",
-    "  local p = router_comparison(u.model)",
+    "  local p = router_comparison_wire(u.model)",
     "  ngx.header['X-Gunbc-Upstream'] = u.name",
     "  ngx.header['X-Gunbc-Model'] = u.model",
     // What the engine was actually told, after the row's dialect -- not what the client asked for.
@@ -394,16 +463,17 @@ fn router_dev_header_lines() -> List<String> {
     "  ngx.header['X-Gunbc-Billing'] = u.overflow and 'rented_hourly' or 'owned'",
     "  if not u.overflow then ngx.header['X-Gunbc-Actual-Spend-Usd'] = '0' end",
     // Every figure shown is READ FROM THE QUOTE ROW (rendered in init_by_lua); none of them is written
-    // here. The micros are printed through one fixed rule so no file gets its own rounding.
+    // here. The figures are the live router's shape (floats, as_of, estimated): its readers already parse them.
     "  if p then",
     "    ngx.header['X-Gunbc-Quantization'] = p.quantization",
     "    ngx.header['X-Gunbc-Comparison-Reference-Model'] = p.reference_model",
-    "    ngx.header['X-Gunbc-Comparison-Input-Per-M'] = string.format('%.6f', p.input_micro / 1000000)",
-    "    ngx.header['X-Gunbc-Comparison-Cached-Per-M'] = string.format('%.6f', p.cached_micro / 1000000)",
-    "    ngx.header['X-Gunbc-Comparison-Output-Per-M'] = string.format('%.6f', p.output_micro / 1000000)",
+    "    ngx.header['X-Gunbc-Comparison-Input-Per-M'] = tostring(p.input)",
+    "    ngx.header['X-Gunbc-Comparison-Cached-Per-M'] = tostring(p.cached)",
+    "    ngx.header['X-Gunbc-Comparison-Output-Per-M'] = tostring(p.output)",
+    "    ngx.header['X-Gunbc-Comparison-Estimated'] = tostring(p.estimated)",
     "    ngx.header['X-Gunbc-Comparison-Currency'] = p.currency",
     "    ngx.header['X-Gunbc-Comparison-Unit'] = p.unit",
-    "    ngx.header['X-Gunbc-Comparison-Read-On'] = p.read_on",
+    "    ngx.header['X-Gunbc-Comparison-Read-On'] = p.as_of",
     "    ngx.header['X-Gunbc-Comparison-Source'] = p.source",
     "  end",
     "end",
@@ -412,9 +482,10 @@ fn router_dev_header_lines() -> List<String> {
 
 // THE USAGE METER. Three rules make the tally worth reading, and all three live in the model:
 //
-// * ONLY OWNED TURNS ARE TALLIED AND ONLY AGAINST A QUOTE. A rented turn is billed by the hour through
-//   ctrl, so counting it as spend here would be a second ledger for one fact (DESIGN 3). An owned card
-//   costs nothing per turn, so actual spend is zero and only the comparison value is a number.
+// * OWNED AND RENTED TURNS ARE BOTH TALLIED, UNDER SEPARATE KEYS, AND ONLY AGAINST A QUOTE. A rented turn is
+//   billed by the hour through ctrl, so its tally is token volume and a comparison value, never spend (that is
+//   a second ledger for one fact, DESIGN 3): stats `usage` is owned only and `usage_all` adds rented. An owned
+//   card costs nothing per turn, so actual spend is zero and only the comparison value is a number.
 // * A CACHED TOKEN IS DISCOUNTED ONLY IF THE ENGINE REPORTED IT. prompt_tokens_details.cached_tokens is
 //   tracked separately from its VALUE: a turn whose engine never declared cache_reported is counted as
 //   cache_unreported rather than silently valued at zero cached tokens, which would understate the
@@ -425,7 +496,10 @@ fn router_dev_header_lines() -> List<String> {
 //
 // The counters live in the shared dict under one prefix, keyed by model, so they survive a reload and a
 // worker boundary; the epoch is set once at init so a reader can tell a zero from an untouched counter.
-fn router_usage_key_prefix() -> String { "meter:v2:owned:" }
+fn router_usage_key_root() -> String { "meter:v2:" }
+
+// How long a refused conversation counts as stranded demand without retrying.
+fn router_dev_pending_ttl() -> Second { second(count: 150) }
 
 // THE CAP ON ONE ACCUMULATED USAGE FRAME. A stream whose usage frame will not fit is an error, not a
 // truncated read -- a size, so it is a ByteSize like the body limits it sits beside, not a count whose
@@ -434,7 +508,7 @@ fn router_usage_frame_cap() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(coun
 
 fn router_dev_body_filter_lines() -> List<String> {
   [
-    "if not ngx.ctx.route or ngx.ctx.route.overflow or ngx.status ~= 200 then return end",
+    "if not ngx.ctx.route or ngx.status ~= 200 then return end",
     "if ngx.arg[2] then ngx.ctx.usage_complete = true end",
     "if ngx.ctx.usage_error then return end",
     "local cjson = require('cjson.safe')",
@@ -491,8 +565,8 @@ fn router_dev_log_lines() -> List<String> {
     "local state = ngx.shared.router_state",
     "state:incr('status:' .. tostring(ngx.status), 1, 0)",
     "local u = ngx.ctx.route",
-    "if u and not u.overflow then",
-    "  local k = '" + router_usage_key_prefix() + "' .. u.model .. ':'",
+    "if u then",
+    "  local k = '" + router_usage_key_root() + "' .. (u.overflow and 'rented' or 'owned') .. ':' .. u.model .. ':'",
     "  local usage = ngx.ctx.usage",
     "  state:incr(k .. 'requests', 1, 0)",
     "  if ngx.status ~= 200 or not ngx.ctx.usage_complete then",
@@ -541,9 +615,42 @@ fn router_dev_ejection() -> Second { second(count: 30) }
 // declared duration, same carrier as the ejection above and the proxy timeouts in openresty.dag.
 fn router_dev_binding_ttl() -> Second { second(count: 21600) }
 
+// POST /router/trim-bindings with a client key: per row with a retain, keep the most recently seen bound
+// sessions up to retain and unbind the rest, so each unbound session pays one cold turn elsewhere instead of
+// evicting its neighbours on every turn. The least recently seen go first; a row without retain is never trimmed.
+fn router_dev_trim_lines() -> List<String> {
+  list_append(left: router_dev_row_lines(), right: [
+    "local cjson = require('cjson.safe')",
+    "local h = ngx.var.http_authorization or ''",
+    "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\"}}') return end",
+    "if ngx.req.get_method() ~= 'POST' then ngx.status = 405 ngx.say('\{\"error\":\{\"message\":\"POST only\"}}') return end",
+    "local state = ngx.shared.router_state",
+    "local by = \{}",
+    "for _, k in ipairs(state:get_keys(0)) do",
+    "  if k:sub(1, 8) == 'session:' then",
+    "    local up = state:get(k)",
+    "    up = up and (owner_of[up] or up)",
+    "    if up then by[up] = by[up] or \{} table.insert(by[up], \{key = k, seen = state:get('seen:' .. k:sub(9)) or 0}) end",
+    "  end",
+    "end",
+    "local out = \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  local l = by[u.name]",
+    "  if u.retain and l and #l > u.retain then",
+    "    table.sort(l, function(a, b) return a.seen > b.seen end)",
+    "    local n = 0",
+    "    for i = u.retain + 1, #l do state:delete(l[i].key) n = n + 1 end",
+    "    out[u.name] = \{bound = #l, kept = u.retain, unbound = n}",
+    "  end",
+    "end",
+    "ngx.header['Content-Type'] = 'application/json'",
+    "ngx.say(cjson.encode(out))",
+  ])
+}
+
 // GET /router/stats with a client key: the tallies and the active turns per upstream, as JSON.
 fn router_dev_stats_lines() -> List<String> {
-  [
+  list_append(left: router_dev_row_lines(), right: [
     "local cjson = require('cjson.safe')",
     "local h = ngx.var.http_authorization or ''",
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\",\"type\":\"authentication_error\"}}') return end",
@@ -552,29 +659,72 @@ fn router_dev_stats_lines() -> List<String> {
     // The usage METER, not a re-total: every field is a counter the log phase wrote, read back as it is.
     // comparison_value_usd is the micros total printed by the same one rule the headers use, and a model
     // with no quote row appears with unpriced_requests filled and value nil -- absent, never zero.
-    "local meter = \{version = 2, epoch = state:get('meter:v2:epoch'), models = \{}\}",
-    "local seen = \{}",
+    "local function row(model, billing, p)",
+    "  local k = '" + router_usage_key_root() + "' .. billing .. ':' .. model .. ':'",
+    "  local value_micro = state:get(k .. 'value_micro')",
+    "  return \{",
+    "    model = model, billing = billing, actual_spend_usd = billing == 'owned' and 0 or cjson.null, comparison_pricing = p,",
+    "    requests = state:get(k .. 'requests') or 0,",
+    "    measured_requests = state:get(k .. 'measured') or 0,",
+    "    unmeasured_requests = state:get(k .. 'unmeasured') or 0,",
+    "    failed_requests = state:get(k .. 'failed') or 0,",
+    "    unpriced_requests = state:get(k .. 'unpriced') or 0,",
+    "    prompt_tokens = state:get(k .. 'prompt') or 0,",
+    "    completion_tokens = state:get(k .. 'generated') or 0,",
+    "    cached_prompt_tokens = state:get(k .. 'cached') or 0,",
+    "    cache_unreported_requests = state:get(k .. 'cache_unreported') or 0,",
+    "    comparison_value_usd = value_micro and value_micro / 1000000 or nil\}",
+    "end",
+    "local meter = \{version = 2, epoch = state:get('meter:v2:epoch'), models = \{}}",
+    "local all = \{version = 2, epoch = meter.epoch, models = \{}}",
+    "local seen, seen_all = \{}, \{}",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
-    "  if not u.overflow and u.in_service ~= false and not seen[u.model] then",
-    "    seen[u.model] = true",
-    "    local k = '" + router_usage_key_prefix() + "' .. u.model .. ':'",
-    "    local p = router_comparison(u.model)",
-    "    local value_micro = state:get(k .. 'value_micro')",
-    "    meter.models[#meter.models + 1] = \{",
-    "      model = u.model, billing = 'owned', actual_spend_usd = 0, comparison_pricing = p,",
-    "      requests = state:get(k .. 'requests') or 0,",
-    "      measured_requests = state:get(k .. 'measured') or 0,",
-    "      unmeasured_requests = state:get(k .. 'unmeasured') or 0,",
-    "      failed_requests = state:get(k .. 'failed') or 0,",
-    "      unpriced_requests = state:get(k .. 'unpriced') or 0,",
-    "      prompt_tokens = state:get(k .. 'prompt') or 0,",
-    "      completion_tokens = state:get(k .. 'generated') or 0,",
-    "      cached_prompt_tokens = state:get(k .. 'cached') or 0,",
-    "      cache_unreported_requests = state:get(k .. 'cache_unreported') or 0,",
-    "      comparison_value_usd = value_micro and string.format('%.6f', value_micro / 1000000) or nil\}",
+    "  if u.in_service ~= false then",
+    "    local billing = u.overflow and 'rented' or 'owned'",
+    "    if billing == 'owned' and not seen[u.model] then seen[u.model] = true meter.models[#meter.models + 1] = row(u.model, 'owned', router_comparison_wire(u.model)) end",
+    "    if not seen_all[billing .. ':' .. u.model] then seen_all[billing .. ':' .. u.model] = true all.models[#all.models + 1] = row(u.model, billing, router_comparison_wire(u.model)) end",
     "  end",
     "end",
     "out.usage = meter",
+    "out.usage_all = all",
+    // STRANDED DEMAND: distinct conversations refused now, by requested model, with the age of the oldest.
+    "local pend = \{by_model = \{}, total = 0}",
+    "for _, k in ipairs(state:get_keys(0)) do",
+    "  local m = k:match('^pending:(.-)|')",
+    "  local first = m and state:get(k)",
+    "  if first then",
+    "    local e = pend.by_model[m] or \{count = 0, oldest_s = 0}",
+    "    e.count = e.count + 1",
+    "    local age = math.floor(ngx.now() - first)",
+    "    if age > e.oldest_s then e.oldest_s = age end",
+    "    pend.by_model[m] = e",
+    "    pend.total = pend.total + 1",
+    "  end",
+    "end",
+    "out.pending = pend",
+    // RENTED POOL ADMISSION: stranded demand asks for a card only when the rented pool is full. An uncapped
+    // pool has no cap to be full against.
+    // A capped row is full at its cap (0 included: no turns); an uncapped rented row admits without a ceiling,
+    // so it is never full while it is in service and not ejected. Active counts read as admission reads them.
+    "local rented = \{active = 0, cap = 0, uncapped = 0}",
+    "local capped_active = 0",
+    "local any_rented = false",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  if u.overflow and u.in_service ~= false then",
+    "    any_rented = true",
+    "    if u.cap == nil then",
+    "      if not state:get('unavailable:' .. u.name) then rented.uncapped = rented.uncapped + 1 end",
+    "      rented.active = rented.active + active(u)",
+    "    else",
+    "      local n = active(u)",
+    "      rented.active = rented.active + n",
+    "      capped_active = capped_active + n",
+    "      rented.cap = rented.cap + u.cap",
+    "    end",
+    "  end",
+    "end",
+    "rented.full = any_rented and rented.uncapped == 0 and capped_active >= rented.cap",
+    "out.rented = rented",
     "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
     "ngx.header['Content-Type'] = 'application/json'",
     "if ngx.var.arg_sessions == '1' then",
@@ -582,7 +732,7 @@ fn router_dev_stats_lines() -> List<String> {
     "  for _, k in ipairs(state:get_keys(0)) do if k:find('^session:') then local id=k:sub(9) out.sessions[id]=\{upstream=state:get(k), last_seen=state:get('seen:' .. id)} end end",
     "end",
     "ngx.say(cjson.encode(out))",
-  ]
+  ])
 }
 
 type RouterDevSite {
@@ -636,6 +786,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   match tok(text: site.state_dir + "/upstream_ca.pem") { Absent => RouterDevConfigRefused { token: "ca" } Present { value: ca } =>
   match tok(text: "router_state") { Absent => RouterDevConfigRefused { token: "dict" } Present { value: dict } =>
   match tok(text: "/router/stats") { Absent => RouterDevConfigRefused { token: "stats" } Present { value: stats } =>
+  match tok(text: "/router/trim-bindings") { Absent => RouterDevConfigRefused { token: "trim" } Present { value: trim } =>
   match tok(text: "/v1/models") { Absent => RouterDevConfigRefused { token: "models" } Present { value: models } =>
   match tok(text: "/v1/") { Absent => RouterDevConfigRefused { token: "v1" } Present { value: v1 } =>
   match tok(text: "Authorization") { Absent => RouterDevConfigRefused { token: "auth" } Present { value: auth } =>
@@ -661,11 +812,12 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
           SslCertificateKey { path: certkey },
           LocationBlock { matching: ExactMatch { path: models }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_models_lines() }, LuaPhaseBlock { phase: LogPhase, lines: router_dev_log_lines() }] },
           LocationBlock { matching: ExactMatch { path: stats }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_stats_lines() }] },
+          LocationBlock { matching: ExactMatch { path: trim }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_trim_lines() }] },
           router_dev_location(up: up, scheme: scheme, key: key, sni: sni, auth: auth, host: host, bearer: bearer, http: http, ca: ca, v1: v1),
         ] },
       ] },
     ]) }
-  } } } } } } } } } } } } } } } } } }
+  } } } } } } } } } } } } } } } } } } }
 }
 
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
@@ -712,9 +864,8 @@ type RouterDevUpstream {
   port: Port
   tls_name: String?
   model: String
-  cap: Int
+  capacity: RouterDevCapacity
   max_model_len: Int
-  overflow: Bool
   path_prefix: String
   // A previous name for the SAME engine, kept while its in-flight requests finish. The turn counter is
   // keyed by name, so without this a rename loses those turns from the active count. The writer refuses a
@@ -727,20 +878,47 @@ type RouterDevUpstream {
   // 2026-10-26 (DIMMs at 104C with corrected ECC errors) and restored the same day with the memory
   // capped at 40 W by a systemd drop-in -- both facts moved through this row, neither through nginx.conf.
   in_service: Bool
-  // Where the engine keeps its prefix cache, which decides whether a bound session may move at the cap.
-  cache_locality: RouterDevCacheLocality
+  // How many conversations this row keeps bound (retention admission): a NEW session binds here only while
+  // fewer are bound, and a bound session always returns. See RouterDevRetention.
+  retention: RouterDevRetention
   // This model's reasoning-effort dialect (RouterDevEffortRule). Empty passes the client's value through.
   effort_effects: List<RouterDevEffortRule>
 }
 
-// Where an engine's prefix cache lives. EngineLocal (Strata's radix tree; a per-engine vLLM without a
-// shared prefix cache) means the KV state lives in THAT engine's memory: a session bound to it stays bound
-// at the cap, answering 429 with Retry-After, because moving it re-reads the whole context (~215 tok/s on
-// a 16 GB A16: minutes per turn; measured 4% prompt reuse under soft binding). Shared (vLLM's own prefix
-// cache) keeps soft binding: at cap, the session may move.
-type RouterDevCacheLocality
-  = EngineLocal
-  | Shared
+// WHAT CAPS A ROW'S ACTIVE TURNS. One integer read two ways was the meaning fork #15113 found: 0 meant "no
+// turns" on an owned row and "uncapped" on the rented one. The arms say it instead. An owned row's cap is its
+// ceiling, 0 included. A rented row is either capped (the pool's admission figure, which the scaler reads as
+// rented.cap) or uncapped, and uncapped renders NO cap on the wire.
+//
+// Congestion never moves a bound session (operator 2026-10-28: one placement per conversation; deliberate moves
+// come only through the relocation operation). So no row's locality is a fact the router branches on: every
+// capped row holds a bound session at its cap with 429 + Retry-After and a stranded record, and the former
+// per-row cache_locality field, which only EngineLocal rows honoured, is gone.
+type RouterDevCapacity
+  = OwnedCap { turns: Nat }
+  | RentedCapped { turns: Nat }
+  | RentedUncapped
+
+// HOW MANY CONVERSATIONS A ROW RETAINS. The first-party Strata rows' count is DERIVED from the serving layout
+// (gunbc.serving.serving_layout, ServingReplicaConfig.admitted_conversations) and never typed here.
+// RetentionFrontier is a declared gap: the row's count cannot yet be derived (srv3's and srv1-vllm's layouts
+// are not modeled), so it renders no retain, as the live file does. RetentionUnderivable is the failure arm
+// -- the layout refused or has no replica for the named group -- and the write refuses it rather than
+// rendering a row that silently admits without bound.
+type RouterDevRetention
+  = NoRetention
+  | RetentionAdmitted { conversations: Nat }
+  | RetentionFrontier
+  | RetentionUnderivable { group: String }
+
+fn router_dev_layout_retention(group: String) -> RouterDevRetention {
+  match host_6ce85c_layout {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
+      fold(rs, init: RetentionUnderivable { group: group }, f: (acc, c) =>
+        if (c.group as String) == group { RetentionAdmitted { conversations: c.admitted_conversations } } else { acc })
+    ServingLayoutRefused { refusal: _ } => RetentionUnderivable { group: group }
+  }
+}
 
 // HOW ONE CLIENT REASONING-EFFORT NAME IS ANSWERED BY ONE UPSTREAM MODEL'S SERVER. The pool alias and
 // each engine accept a DIFFERENT set of effort names, and an engine answers 400 on a name it does not
@@ -777,9 +955,8 @@ fn no_effort_rules() -> List<RouterDevEffortRule> { [] }
 // name a client may use, and it is the row set behind it that decides which engine can honour it.
 fn qwen3_effort_rules() -> List<RouterDevEffortRule> {
   [
-    RouterDevEffortRule { client: "xhigh", effect: EffortRewriteTo { value: "xhigh" } },
-    RouterDevEffortRule { client: "medium", effect: EffortRewriteTo { value: "medium" } },
-    RouterDevEffortRule { client: "low", effect: EffortRewriteTo { value: "low" } },
+    // vLLM's Qwen3.8-Flash-Next template implements xhigh/medium/low and refuses "high" with a 400.
+    RouterDevEffortRule { client: "high", effect: EffortRewriteTo { value: "xhigh" } },
     RouterDevEffortRule { client: "none", effect: EffortDropThinking },
   ]
 }
@@ -792,54 +969,105 @@ fn upstream_scheme_text(s: RouterUpstreamScheme) -> String {
   match s { UpstreamHttp => "http" UpstreamHttps => "https" }
 }
 
-fn cache_locality_text(c: RouterDevCacheLocality) -> String {
-  match c { EngineLocal => "engine_local" Shared => "shared" }
-}
-
 // One upstream row as a JsonValue, rendered by the repository's JSON emitter (extdeps.languages.json.emit),
 // which escapes every string from its named and control-character escape rows.
 fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
   let tls = match u.tls_name { Present { value: n } => [json_kv(key: "sni", value: json_string(s: n))] Absent => no_members() }
-  json_object(members: concat(concat([
+  json_object(members: concat(concat(concat([
     json_kv(key: "name", value: json_string(s: u.name)),
     json_kv(key: "scheme", value: json_string(s: upstream_scheme_text(s: u.scheme))),
     json_kv(key: "host", value: json_string(s: u.host)),
     json_kv(key: "port", value: json_int(n: u.port as Int)),
   ], tls), [
     json_kv(key: "model", value: json_string(s: u.model)),
-    json_kv(key: "cap", value: json_int(n: u.cap)),
     json_kv(key: "max_model_len", value: json_int(n: u.max_model_len)),
-    json_kv(key: "overflow", value: json_bool(b: u.overflow)),
     json_kv(key: "path_prefix", value: json_string(s: u.path_prefix)),
     json_kv(key: "retiring_names", value: json_array(elements: map(u.retiring_names, n => json_string(s: n)))),
     json_kv(key: "effort_effects", value: json_array(elements: map(u.effort_effects, r => router_dev_effort_rule_value(r: r)))),
     json_kv(key: "in_service", value: json_bool(b: u.in_service)),
-    json_kv(key: "cache_locality", value: json_string(s: cache_locality_text(c: u.cache_locality))),
-  ]))
+  ]), concat(router_dev_capacity_members(c: u.capacity), router_dev_retention_members(r: u.retention))))
 }
 
 fn no_members() -> List<JsonKeyValue> { [] }
 
-fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
+fn router_dev_capacity_members(c: RouterDevCapacity) -> List<JsonKeyValue> {
+  match c {
+    OwnedCap { turns: n } => [json_kv(key: "overflow", value: json_bool(b: false)), json_kv(key: "cap", value: json_int(n: n as Int))]
+    RentedCapped { turns: n } => [json_kv(key: "overflow", value: json_bool(b: true)), json_kv(key: "cap", value: json_int(n: n as Int))]
+    RentedUncapped => [json_kv(key: "overflow", value: json_bool(b: true))]
+  }
+}
+
+fn router_dev_retention_members(r: RouterDevRetention) -> List<JsonKeyValue> {
+  match r {
+    RetentionAdmitted { conversations: n } => [json_kv(key: "retain", value: json_int(n: n as Int))]
+    NoRetention => no_members()
+    RetentionFrontier => no_members()
+    RetentionUnderivable { group: _ } => no_members()
+  }
+}
+
+// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-88 is bus c8), so the bus the
+// row's engine is bound to is a separate argument, and the retention is derived from the layout group of that
+// bus (serving_layout's h11-strata@<bus>), never typed. The port follows the engine, not the name.
+fn router_dev_h11_row(name: String, bus: String, port: Port, retiring: List<String>) -> RouterDevUpstream {
+  RouterDevUpstream {
+    name: name, scheme: UpstreamHttp, host: "192.168.1.202", port: port, tls_name: Absent,
+    model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 2 }, max_model_len: 229376, path_prefix: "",
+    retiring_names: retiring, in_service: true,
+    retention: router_dev_layout_retention(group: concat("h11-strata@", bus)),
+    effort_effects: iq3_s_effort_rules(),
+  }
+}
+
+// THE h11 ROWS FOLLOW THE LAYOUT'S REPLICA SET (operator ruling 2026-11-01, A-prime; live parity, #15622 applied
+// 21:11-21:13Z). An engine's NAME, port and retired names are a naming fact; its EXISTENCE and its retention are
+// the layout's: a bus the layout does not grant yields no row, so a router roster cannot outlive the grant. An
+// engine whose bus IS granted keeps its row and a retention the layout cannot derive is still refused.
+type RouterDevH11Engine { name: String, bus: String, port: Port, retiring: List<String> }
+
+fn router_dev_h11_engines() -> List<RouterDevH11Engine> {
   [
-    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [], in_service: true, cache_locality: Shared, effort_effects: qwen3_effort_rules() },
-    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
-    // h11-a16 (x86): one engine per GPU, named by its PCI bus. The current buses are 85, 86, 87, 88, c5, c6,
-    // c7, c8 on ports 18081-18088; the RTX 2000 Ada (c1) was removed, and its in-flight turns still drain
-    // under srv3-strata's retiring list. A single 16 GB engine serves ~10-13 warm tok/s at 200k, so cap 2.
-    // Retiring names count old-worker turns during a graceful rename; old workers decrement their original
-    // counters when those requests finish, so a port's retiring list follows the engine that answers there.
-    RouterDevUpstream { name: "h11-85", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-0", "h11-05"], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
-    RouterDevUpstream { name: "h11-86", scheme: UpstreamHttp, host: "192.168.1.202", port: 18082, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-1", "h11-06"], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
-    RouterDevUpstream { name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18083, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-2", "h11-07"], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
-    RouterDevUpstream { name: "h11-88", scheme: UpstreamHttp, host: "192.168.1.202", port: 18084, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-3", "h11-08"], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
-    RouterDevUpstream { name: "h11-c5", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-4"], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
-    RouterDevUpstream { name: "h11-c6", scheme: UpstreamHttp, host: "192.168.1.202", port: 18086, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
-    RouterDevUpstream { name: "h11-c7", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
-    RouterDevUpstream { name: "h11-c8", scheme: UpstreamHttp, host: "192.168.1.202", port: 18088, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
-    // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router.
-    // cap is unused for overflow: the pool's engines admit work and expose their own queue to the bidder.
-    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool", retiring_names: [], in_service: true, cache_locality: Shared, effort_effects: qwen3_effort_rules() },
+    RouterDevH11Engine { name: "h11-05", bus: "85", port: 18081 as Port, retiring: ["h11-a16-0"] },
+    RouterDevH11Engine { name: "h11-07", bus: "87", port: 18083 as Port, retiring: ["h11-a16-2"] },
+    RouterDevH11Engine { name: "h11-08", bus: "88", port: 18084 as Port, retiring: ["h11-a16-3"] },
+    RouterDevH11Engine { name: "h11-88", bus: "c8", port: 18088 as Port, retiring: [] },
+  ]
+}
+
+fn router_dev_layout_grants(group: String) -> Bool {
+  match host_6ce85c_layout {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } => any(rs, c => (c.group as String) == group)
+    ServingLayoutRefused { refusal: _ } => false
+  }
+}
+
+fn router_dev_h11_rows() -> List<RouterDevUpstream> {
+  map(filter(router_dev_h11_engines(), e => router_dev_layout_grants(group: concat("h11-strata@", e.bus))),
+      e => router_dev_h11_row(name: e.name, bus: e.bus, port: e.port, retiring: e.retiring))
+}
+
+// THE LIVE ROW SET (read from srv1's upstreams.json field names and values, 2026-10-31; keys are joined at
+// deploy and are in no row). The h11 engines follow the layout grant (four since A-prime),
+// srv1's vLLM, srv3's Strata and the ctrl rented pool. A single 16 GB engine serves ~10-13 warm tok/s at 200k,
+// so cap 2. Retiring names count old-worker turns during a graceful rename.
+fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
+  concat(router_dev_first_party_head(), concat(router_dev_h11_rows(), router_dev_first_party_tail()))
+}
+
+fn router_dev_first_party_head() -> List<RouterDevUpstream> {
+  [
+    // Retention is a declared frontier for srv1-vllm and srv3-strata: no layout models their replicas yet.
+    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: RetentionFrontier, effort_effects: qwen3_effort_rules() },
+    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: RetentionFrontier, effort_effects: iq3_s_effort_rules() },
+  ]
+}
+
+fn router_dev_first_party_tail() -> List<RouterDevUpstream> {
+  [
+    // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router. The pool is
+    // capped at 4 turns (live; the figure the scaler reads as rented.cap), and renders as RentedCapped.
+    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", capacity: RentedCapped { turns: 4 }, max_model_len: 229376, path_prefix: "/rented-pool", retiring_names: [], in_service: true, retention: NoRetention, effort_effects: qwen3_effort_rules() },
   ]
 }
 
@@ -883,10 +1111,26 @@ fn router_dev_retiring_name_conflict(rows: List<RouterDevUpstream>) -> String? {
     })
 }
 
+fn router_dev_underivable_retention(rows: List<RouterDevUpstream>) -> String? {
+  fold(rows, init: Absent, f: (acc, u) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => match u.retention {
+        RetentionUnderivable { group: g } => Present { value: concat("a row's retention is not derivable from the serving layout: ", concat(u.name, concat(" (group ", concat(g, ")"))))  }
+        NoRetention => Absent
+        RetentionAdmitted { conversations: _ } => Absent
+        RetentionFrontier => Absent
+      }
+    })
+}
+
 fn router_dev_row_refusal(rows: List<RouterDevUpstream>) -> ProcessExit? {
   match router_dev_retiring_name_conflict(rows: rows) {
     Present { value: why } => Present { value: ExitFailure { code: 1, reason: concat("refused upstream rows: ", why) } }
-    Absent => Absent
+    Absent => match router_dev_underivable_retention(rows: rows) {
+      Present { value: why } => Present { value: ExitFailure { code: 1, reason: concat("refused upstream rows: ", why) } }
+      Absent => Absent
+    }
   }
 }
 
