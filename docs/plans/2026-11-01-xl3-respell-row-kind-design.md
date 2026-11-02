@@ -47,3 +47,16 @@ The row kind's consumer is the existing generator entry (`roster_import_sweep` r
 1. DECIDED (tidy-ant-251): third `RosterHeadRewrite` arm; see Row shape.
 2. Same-module references (sunny-bee-153's note on `authored_is_suffix_of_canonical`): whether they mint occurrence records is decided by the r3 table, then written here as a rule.
 3. `table_holds` answers true on an EMPTY table; the gate must demand at least one row.
+
+## Occurrence kinds of the respell arm (added with the type-position reader)
+
+The arm has two occurrence kinds, both read from the one `ScopedReferenceSite` collection and joined to the parse tree by byte offset:
+
+1. Dotted head: `Home.Op(...)` where `Home` is the imported service/type name (the first reader).
+2. Type position: a single-segment type reference in an annotation, return type or generic argument whose spelling is `call` (`roster_type_respell_edits`). Selection is unchanged (`roster_site_is_free` through the home-kind table, so a type home matches a type position and a value home does not); an already-qualified reference is a sequence capture and is skipped, which makes the arm idempotent. An unplaced, duplicated or mismatched site REFUSES (`LabelsAmbiguous`).
+
+Not in this arm: a brace construct head (`Name { ... }`, value position). Kernel container spellings (`Map`, `PartialFunction`) are also out: the seed's container table is keyed by spelling and refuses the qualified form, so they are `KeepHead` with the import row (tidy-ant-251 ruling).
+
+Status: the type-position reader and its 4 controls are UNEXECUTED; they run in the rerun after the #14876 mirrors exist.
+
+Q3 answer: the gate demands at least one row; an empty table is a refusal, not a pass. Q2 stays open until the r3 table exists.
