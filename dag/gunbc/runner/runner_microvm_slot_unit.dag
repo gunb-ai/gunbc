@@ -424,6 +424,7 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
         ExecStartPost { command: _ } => false
         ExecStop { command: _ } => false
         ExecStopPost { command: _ } => false
+        ExecReload { command: _ } => false
         ExecStopPostIgnoringFailure { command: _ } => false
         ServiceStandardOutput { stream: _ } => false
         ServiceStandardError { stream: _ } => false

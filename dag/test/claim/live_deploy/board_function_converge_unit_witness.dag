@@ -1,0 +1,92 @@
+module test.claim.live_deploy.board_function_converge_unit_witness
+
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_systemd_drop_in }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled }
+import gunbc.live_deploy.board_function_converge_unit {
+  board_function_converge_unit_file, BoardFunctionConvergeUnitReady, BoardFunctionConvergeUnitRefused,
+  board_function_converge_argv, BoardFunctionConvergeArgvReady, BoardFunctionConvergeArgvRefused,
+  retired_hand_installed_removals_on,
+  board_function_converge_gated_workloads, board_function_converge_gate_drop_in,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data revision_text: String = "0123456789abcdef0123456789abcdef01234567"
+
+fn unit_text() -> String {
+  match board_function_converge_unit_file(host: operator_host_srv1, revision: RevisionBoundAtEmission { revision: revision_text }) {
+    BoardFunctionConvergeUnitReady { file } => serialize_systemd_unit_file(file: file)
+    BoardFunctionConvergeUnitRefused { cause: _ } => ""
+  }
+}
+
+// The text before the first occurrence of `marker`, so `contains(before(...), x)` reads "x comes first".
+fn before(t: String, marker: String) -> String {
+  match split(s: t, delimiter: marker).first() { Present { value: head } => head Absent => "" }
+}
+
+fn argv() -> List<String> {
+  match board_function_converge_argv(host: operator_host_srv1, revision: RevisionBoundAtEmission { revision: revision_text }) {
+    BoardFunctionConvergeArgvReady { argv } => argv
+    BoardFunctionConvergeArgvRefused { cause: _ } => []
+  }
+}
+
+// The unit runs the converge entry from the root-owned snapshot of THIS release, for THIS host, and nothing
+// in its argv names another tree.
+test fn the_unit_runs_the_converge_entry_from_the_root_snapshot_for_its_host() -> Bool {
+  let dir = concat("/opt/gunbc/board-function-converge-helpers/", revision_text)
+  let words = argv()
+  any(words, w => w == concat(dir, "/gunbc"))
+    && any(words, w => w == concat(dir, "/dag/gunbc/fleet/board_function_converge.dag"))
+    && any(words, w => w == "board_function_converge_cli")
+    && any(words, w => w == "host=srv1")
+    && all(words, w => !contains(w, "/opt/gunbc/approval-broker"))
+}
+
+// A bounded boot oneshot whose reload re-runs the same converge, so a deploy re-runs it without the restart
+// that Requires= would propagate to the gated workloads; both the start and the reload close admission
+// before the interpreter runs, so a run that times out or is killed leaves it closed.
+test fn the_unit_is_a_bounded_boot_oneshot_that_reloads_into_the_same_converge() -> Bool {
+  let t = unit_text()
+  let exec = join(argv(), " ")
+  contains(t, "Type=oneshot")
+    && contains(t, "RemainAfterExit=yes")
+    && contains(t, concat("ExecStart=", exec))
+    && contains(t, concat("ExecReload=", exec))
+    && contains(t, "ExecStartPre=/usr/bin/rm -f /run/gunbc-board-function-converged")
+    && contains(before(t: t, marker: concat("ExecReload=", exec)), "ExecReload=/usr/bin/rm -f /run/gunbc-board-function-converged")
+    && contains(before(t: t, marker: "ExecStart=/"), "ExecStartPre=/usr/bin/rm -f")
+    && !contains(t, "Before=")
+    && !contains(t, "WorkingDirectory=")
+    && contains(t, "MemoryMax=3221225472")
+    && contains(t, "MemorySwapMax=0")
+    && contains(t, "TimeoutStartSec=600")
+    && contains(t, "WantedBy=multi-user.target")
+}
+
+// THE GATE IS ON THE WORKLOAD'S SIDE: every gated unit's drop-in Requires= and orders After= the converge, so a
+// failed converge keeps it from starting; the management surface is not in the gated set.
+test fn the_workloads_require_the_converge_and_the_management_surface_does_not() -> Bool {
+  let d = serialize_systemd_drop_in(drop_in: board_function_converge_gate_drop_in())
+  let units = map(board_function_converge_gated_workloads(), w => w.unit as String)
+  contains(d, "[Unit]")
+    && contains(d, "Requires=gunbc-board-function-converge.service")
+    && contains(d, "After=gunbc-board-function-converge.service")
+    && contains(d, "AssertPathExists=/run/gunbc-board-function-converged")
+    && units == ["docker.service", "containerd.service", "actions-runner@.service"]
+    && all(board_function_converge_gated_workloads(), w => starts_with(s: w.drop_in_path as String, prefix: concat(concat("/etc/systemd/system/", w.unit as String), ".d/")))
+    && all(["ssh.service", "tailscaled.service", "gunbc-roadmap.service", "gunbc-approval-broker.service"], u => !any(units, g => g == u))
+}
+
+// The hand-installed removal is retired only where it was installed.
+test fn the_hand_unit_is_retired_on_srv1_only() -> Bool {
+  let srv1 = retired_hand_installed_removals_on(host: operator_host_srv1)
+  length(srv1) == 1
+    && all(srv1, r => (r.unit as String) == "srv1-bmcvga-off.service" && any(r.paths, p => (p as String) == "/usr/local/sbin/srv1-bmcvga-off.sh"))
+    && length(retired_hand_installed_removals_on(host: operator_host_srv2)) == 0
+}

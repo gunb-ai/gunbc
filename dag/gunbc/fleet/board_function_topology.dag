@@ -1,0 +1,53 @@
+module gunbc.fleet.board_function_topology
+
+import std.types { List, NonEmptyStr }
+import extdeps.pci.identity { PciAddress, PciVendorId, PciDeviceId }
+import extdeps.boards.types { BaseboardCatalogRow, BoardFunction, BmcGraphicsController }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+
+// WHERE A BOARD FUNCTION SITS ON THE PCIe TREE, FOR THE BOARDS WHOSE TREE HAS BEEN READ. A host-side
+// removal acts on concrete functions, so it needs their addresses and ids; the manual states neither, so
+// these are this repository's observations, not upstream facts (DESIGN §3: an observation is a receipt in
+// the observing layer). A row is held at board grain because the same board and firmware enumerate the
+// same tree, and the route that consumes it checks every id on the host before it acts and refuses on any
+// difference -- so a host whose tree differs refuses rather than having the wrong link disabled.
+type PcieFunctionIdentity {
+  address: PciAddress
+  vendor: PciVendorId
+  device: PciDeviceId
+}
+
+// THE ROUTE: detach one function -- the bridge the unwanted function sits behind -- which removes it and
+// every function behind it from the kernel, then Set Link Disable on the root port that leads to it, so the
+// link carries nothing until the next reset brings it up again.
+type PcieDetachRoute {
+  root_port: PcieFunctionIdentity
+  detached: PcieFunctionIdentity
+  behind: List<PcieFunctionIdentity>
+  grounds: NonEmptyStr
+}
+
+type BoardFunctionTopologyRow {
+  catalog: BaseboardCatalogRow
+  board_function: BoardFunction
+  route: PcieDetachRoute
+}
+
+data asrock_altrad8ud_1l2t_bmc_graphics_route: PcieDetachRoute = PcieDetachRoute {
+  root_port: PcieFunctionIdentity { address: "0003:00:01.0", vendor: "1def", device: "e101" },
+  detached: PcieFunctionIdentity { address: "0003:01:00.0", vendor: "1849", device: "1150" },
+  behind: [PcieFunctionIdentity { address: "0003:02:00.0", vendor: "1a03", device: "2000" }],
+  grounds: "Read from sysfs on three ALTRAD8UD-1L2T hosts: srv1 on 2026-11-01, before its hand-installed removal ran, and srv2 and srv4 on 2026-11-02. On each, root port 0003:00:01.0 (1def:e101, driver pcieport) leads to the bridge 0003:01:00.0 (1849:1150), and behind it the VGA function 0003:02:00.0 (1a03:2000, class 030000, driver ast). The other hosts on this board have not been read; the route checks these ids on each host before acting.",
+}
+
+data board_function_topology_rows: List<BoardFunctionTopologyRow> = [
+  BoardFunctionTopologyRow {
+    catalog: asrock_altrad8ud_1l2t_catalog,
+    board_function: BmcGraphicsController,
+    route: asrock_altrad8ud_1l2t_bmc_graphics_route,
+  },
+]
+
+fn board_function_detach_route(catalog: BaseboardCatalogRow, f: BoardFunction) -> PcieDetachRoute? {
+  map(filter(board_function_topology_rows, r => r.catalog == catalog && r.board_function == f), r => r.route).first()
+}

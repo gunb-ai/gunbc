@@ -18,7 +18,7 @@ module gunbc.executor_privileged_operation
 // that capability intent, sudoers command, sudoers file, and installation transaction are four
 // facts, not one carrier. This module owns exactly the second, and projects from the first.
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, list_length }
 import extdeps.access.posix { FileMode }
 import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }

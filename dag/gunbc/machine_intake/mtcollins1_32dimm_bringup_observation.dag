@@ -2,7 +2,7 @@ module gunbc.machine_intake.mtcollins1_32dimm_bringup_observation
 
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import gunbc.host.mtcollins_memory_change { mtcollins_training_capture_path, mtcollins_training_capture_sha256 }
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import std.measure { ByteSize, byte_size }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

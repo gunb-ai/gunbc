@@ -4,9 +4,6 @@
 use self::TextJudgment::*;
 use self::TextNotAskedReason::*;
 use self::TypeResolutionVerdict::*;
-pub use crate::gunbc_structural_realization_bindings::{
-    conversion_plan_rows, kernel_grounding_rows,
-};
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
     FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
@@ -18,22 +15,15 @@ use crate::std_algebra::AlgebraTypeTemplate::{
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
-    algebra_carriers, algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate,
-    AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
+    algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile,
+    AlgebraTypeTemplate, ContainerSource,
 };
-use crate::std_coercion::ArithmeticCarrierSelection::{
-    ArithmeticCarrierAmbiguous, ArithmeticCarrierSelected, ArithmeticNoCarrier,
+use crate::std_coercion::SubtractionRefinement::{
+    SubtractionEscapesTo, SubtractionRefinementAmbiguous, SubtractionStaysInOperandAlgebra,
 };
-use crate::std_coercion::TextRepresentation::{
-    CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
-};
-pub use crate::std_coercion::{
-    injection_targets, select_arithmetic_carrier, ArithmeticCarrierSelection, TextRepresentation,
-};
+pub use crate::std_coercion::{dag_subtraction_refinement, SubtractionRefinement};
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
-pub use crate::std_literal_elaboration::IntegerExtent;
-use crate::std_literal_elaboration::IntegerExtent::UnboundedIntegers;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -47,15 +37,13 @@ use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitSym
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::{
-    container_expected_arity, container_param_name, container_template_algebra,
-    container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
+    container_expected_arity, container_param_name, container_spelling_is_algebra,
+    container_template_algebra, container_template_alias_algebra, container_template_alias_rows,
+    is_container_type, SourceSpan,
 };
-use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable;
 pub use crate::v1_compiler_infer_env::{
-    alias_names_settled_agree, alias_rhs_of_declaration, alias_settled_agree,
-    is_where_refinement_node, kernel_settled_name, refinement_rhs_of_declaration, settled_type,
-    text_crossing_by_identity, text_representation_by_identity, type_reference_declaration_reading,
-    type_reference_declaration_ref, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
+    alias_names_settled_agree, alias_settled_agree, settled_type, text_crossing_by_identity,
+    type_reference_declaration_ref, TypeBinding, TypeEnv,
 };
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
@@ -98,6 +86,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
@@ -119,7 +108,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -160,15 +148,13 @@ pub fn node_is_finite_power_set_algebra_spelling(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((n.connective.clone() == Connective::NoConnective)
-        && match crate::std_types::container_template_algebra(
+        && crate::std_types::container_spelling_is_algebra(
             crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
                 source_indices,
                 n.clone(),
             )),
-        ) {
-            Some(algebra) => (algebra.clone() == "FinitePowerSet".to_string()),
-            std::option::Option::None => false,
-        })
+            "FinitePowerSet".to_string(),
+        ))
 }
 
 pub fn node_is_collection(
@@ -197,15 +183,13 @@ pub fn node_is_keyed_algebra_spelling(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((n.connective.clone() == Connective::NoConnective)
-        && match crate::std_types::container_template_algebra(
+        && crate::std_types::container_spelling_is_algebra(
             crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
                 source_indices,
                 n.clone(),
             )),
-        ) {
-            Some(algebra) => (algebra.clone() == "FinitelySupportedFunction".to_string()),
-            std::option::Option::None => false,
-        })
+            "FinitelySupportedFunction".to_string(),
+        ))
 }
 
 pub fn collection_carrier_node(n: Rc<Node>) -> Rc<Node> {
@@ -334,6 +318,7 @@ pub fn reground_alias_carrier_identity(
         && is_declared_container_alias_spelling(n.name.clone()))
     {
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: n.name.clone(),
             span: n.span.clone(),
@@ -355,7 +340,6 @@ pub fn reground_alias_carrier_identity(
             declaration_marker: n.declaration_marker.clone(),
             declaration: n.declaration.clone(),
             expr_data: n.expr_data.clone(),
-            ident: None,
         })
     } else {
         n.clone()
@@ -369,6 +353,7 @@ pub fn structural_carrier_template_name(
     if (n.name.clone() != "".to_string()) {
         canonical_template_name(
             Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: n.name.clone(),
                 span: n.span.clone(),
@@ -390,7 +375,6 @@ pub fn structural_carrier_template_name(
                 declaration_marker: n.declaration_marker.clone(),
                 declaration: n.declaration.clone(),
                 expr_data: n.expr_data.clone(),
-                ident: None,
             }),
             source_indices.clone(),
         )
@@ -589,12 +573,14 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
     match crate::std_types::container_param_name("Map".to_string(), 0) {
         Some(key_id) => match crate::std_types::container_param_name("Map".to_string(), 1) {
             Some(val_id) => Some(Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "Map".to_string(),
                 span: crate::v1_std_core::no_span(),
                 ident_span: Some(crate::v1_std_core::no_span()),
                 children: Rc::new(vec![
                     Rc::new(Node {
+                        ident: std::option::Option::None,
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: key_id.clone(),
                         span: crate::v1_std_core::no_span(),
@@ -618,9 +604,9 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         declaration_marker: DeclarationMarker::Unmarked,
                         declaration: std::option::Option::None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                     }),
                     Rc::new(Node {
+                        ident: std::option::Option::None,
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: val_id.clone(),
                         span: crate::v1_std_core::no_span(),
@@ -644,7 +630,6 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         declaration_marker: DeclarationMarker::Unmarked,
                         declaration: std::option::Option::None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                     }),
                 ]),
                 connective: Connective::NoConnective,
@@ -663,7 +648,6 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             })),
             std::option::Option::None => std::option::Option::None,
         },
@@ -674,11 +658,13 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
 pub fn bare_set_node() -> Option<Rc<Node>> {
     match crate::std_types::container_param_name("Set".to_string(), 0) {
         Some(elem_id) => Some(Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Set".to_string(),
             span: crate::v1_std_core::no_span(),
             ident_span: Some(crate::v1_std_core::no_span()),
             children: Rc::new(vec![Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: elem_id.clone(),
                 span: crate::v1_std_core::no_span(),
@@ -702,7 +688,6 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             })]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -720,7 +705,6 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })),
         std::option::Option::None => std::option::Option::None,
     }
@@ -749,6 +733,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
             kind_name.clone(),
         );
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: crate::v1_std_core::no_span(),
@@ -776,7 +761,6 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
                 kind: ExprErrorKind::InternalExprError,
                 message: msg.clone(),
             }),
-            ident: None,
         })
     }
 }
@@ -789,6 +773,7 @@ pub struct KernelTypeBuild {
 
 pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: field_name.clone(),
         span: crate::v1_std_core::kernel_span(field_name.clone()),
@@ -812,12 +797,12 @@ pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
 pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: type_name.clone(),
         span: crate::v1_std_core::kernel_span(type_name.clone()),
@@ -839,7 +824,6 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -847,11 +831,13 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
     match crate::std_types::container_param_name(kind_name.clone(), 0) {
         Some(param_name) => Rc::new(KernelTypeBuild {
             ty: Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: kind_name.clone(),
                 span: crate::v1_std_core::kernel_span(kind_name.clone()),
                 ident_span: Some(crate::v1_std_core::kernel_span(kind_name.clone())),
                 children: Rc::new(vec![Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: param_name.clone(),
                     span: crate::v1_std_core::kernel_span(param_name.clone()),
@@ -875,7 +861,6 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 })]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -893,7 +878,6 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             }),
             diagnostics: Rc::new(vec![]),
         }),
@@ -911,12 +895,14 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
         Some(key_name) => match crate::std_types::container_param_name("Map".to_string(), 1) {
             Some(val_name) => Rc::new(KernelTypeBuild {
                 ty: Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Map".to_string(),
                     span: crate::v1_std_core::kernel_span("Map".to_string()),
                     ident_span: Some(crate::v1_std_core::kernel_span("Map".to_string())),
                     children: Rc::new(vec![
                         Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -940,9 +926,9 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             declaration_marker: DeclarationMarker::Unmarked,
                             declaration: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                         }),
                         Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -968,7 +954,6 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             declaration_marker: DeclarationMarker::Unmarked,
                             declaration: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                         }),
                     ]),
                     connective: Connective::NoConnective,
@@ -987,7 +972,6 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -1009,6 +993,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
 
 pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Callable".to_string(),
         span: crate::v1_std_core::kernel_span("Callable".to_string()),
@@ -1030,18 +1015,19 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
 pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
         ident_span: std::option::Option::None,
         children: Rc::new(vec![
             Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "first".to_string(),
                 span: crate::v1_std_core::kernel_span("first".to_string()),
@@ -1065,9 +1051,9 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             }),
             Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "second".to_string(),
                 span: crate::v1_std_core::kernel_span("second".to_string()),
@@ -1091,7 +1077,6 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             }),
         ]),
         connective: Connective::Conj,
@@ -1110,12 +1095,12 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
 pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: name.clone(),
         span: crate::v1_std_core::kernel_span(name.clone()),
@@ -1139,7 +1124,6 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1165,6 +1149,7 @@ pub fn algebra_method_field(
         });
         let callable = make_callable_type(params, return_type);
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: crate::v1_std_core::kernel_span(name.clone()),
@@ -1188,7 +1173,6 @@ pub fn algebra_method_field(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1199,6 +1183,7 @@ pub fn enrich_base_with_fields(
     fields: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: base.occurrence_identity.clone(),
         name: name.clone(),
         span: base.span.clone(),
@@ -1220,7 +1205,6 @@ pub fn enrich_base_with_fields(
         declaration_marker: base.declaration_marker.clone(),
         declaration: base.declaration.clone(),
         expr_data: base.expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -3925,399 +3909,19 @@ pub struct BinOpInferred {
     pub algebra_field: Option<AlgebraFieldKind>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ArithmeticRequirement {
-    pub field: String,
-    pub preserved: Rc<Vec<String>>,
-}
-
-pub fn arithmetic_requirement(op: BinOp) -> Option<Rc<ArithmeticRequirement>> {
-    match op.clone() {
-        BinOp::Add => Some(Rc::new(ArithmeticRequirement {
-            field: "add".to_string(),
-            preserved: Rc::new(vec!["add".to_string()]),
-        })),
-        BinOp::Mul => Some(Rc::new(ArithmeticRequirement {
-            field: "mul".to_string(),
-            preserved: Rc::new(vec!["mul".to_string()]),
-        })),
-        BinOp::Sub => Some(Rc::new(ArithmeticRequirement {
-            field: "negate".to_string(),
-            preserved: Rc::new(vec!["add".to_string()]),
-        })),
-        _ => std::option::Option::None,
-    }
-}
-
-pub fn carrier_in_algebra_table(carrier: Rc<DeclarationRef>) -> bool {
-    {
-        let mut __found = false;
-        for c in crate::std_algebra::algebra_carriers().iter().cloned() {
-            if (c.name.clone() == carrier.decl_name.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn carrier_defines_field(carrier: Rc<DeclarationRef>, field: String) -> bool {
-    {
-        let mut __found = false;
-        for c in crate::std_algebra::algebra_carriers().iter().cloned() {
-            if ((c.name.clone() == carrier.decl_name.clone()) && {
-                let mut __found = false;
-                for t in crate::std_algebra::algebra_templates_for_profile(c.profile.clone())
-                    .iter()
-                    .cloned()
-                {
-                    if (t.name.clone() == field.clone()) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            }) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn operand_carrier_ref(
-    n: Rc<Node>,
+pub fn subtraction_refinement_of(
+    left_type: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
-    operand_carrier_ref_settled(n, source_indices, env, 16)
-}
-
-pub fn operand_carrier_ref_settled(
-    mut __tco_loop_n: Rc<Node>,
-    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut __tco_loop_env: Rc<TypeEnv>,
-    mut __tco_loop_fuel: i64,
-) -> Option<Rc<DeclarationRef>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut n = __tco_loop_n;
-            #[allow(unused_mut)]
-            let mut source_indices = __tco_loop_source_indices;
-            #[allow(unused_mut)]
-            let mut env = __tco_loop_env;
-            #[allow(unused_mut)]
-            let mut fuel = __tco_loop_fuel;
-            if (fuel.clone() <= 0) {
-                return std::option::Option::None;
-            }
-            if crate::v1_compiler_infer_env::is_where_refinement_node(n.clone()) {
-                return match n.children.clone().first().cloned() {
-                    Some(base) => operand_carrier_ref_settled(
-                        base.clone(),
-                        source_indices.clone(),
-                        env.clone(),
-                        v1_rt::int_sub(fuel.clone(), 1),
-                    ),
-                    std::option::Option::None => std::option::Option::None,
-                };
-            }
-            match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-                n.clone(),
-                source_indices.clone(),
-                env.clone(),
-            ) {
-                Some(d) => {
-                    match crate::v1_compiler_infer_env::alias_rhs_of_declaration(
-                        d.clone(),
-                        env.clone(),
-                    ) {
-                        Some(rhs) => {
-                            let __tco_0 = rhs.clone();
-                            let __tco_1 = source_indices;
-                            let __tco_2 = env;
-                            let __tco_3 = v1_rt::int_sub(fuel, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_source_indices = __tco_1;
-                            __tco_loop_env = __tco_2;
-                            __tco_loop_fuel = __tco_3;
-                            continue;
-                        }
-                        std::option::Option::None => {
-                            match crate::v1_compiler_infer_env::refinement_rhs_of_declaration(
-                                d.clone(),
-                                env.clone(),
-                            ) {
-                                Some(refined) => {
-                                    let __tco_0 = refined.clone();
-                                    let __tco_1 = source_indices;
-                                    let __tco_2 = env;
-                                    let __tco_3 = v1_rt::int_sub(fuel, 1);
-                                    __tco_loop_n = __tco_0;
-                                    __tco_loop_source_indices = __tco_1;
-                                    __tco_loop_env = __tco_2;
-                                    __tco_loop_fuel = __tco_3;
-                                    continue;
-                                }
-                                std::option::Option::None => {
-                                    break Some(d.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-                std::option::Option::None => {
-                    match crate::v1_compiler_infer_env::kernel_settled_name(
-                        n.clone(),
-                        source_indices.clone(),
-                        env.clone(),
-                        16,
-                    ) {
-                        Some(kernel) => {
-                            if (kernel.clone() != "Int".to_string()) {
-                                break std::option::Option::None;
-                            } else {
-                                match Rc::new({
-                                    let mut __result = Vec::new();
-                                    for g in kernel_grounding_rows().iter().cloned() {
-                                        if match g.extent.clone() {
-                                            IntegerExtent::UnboundedIntegers => true,
-                                            _ => false,
-                                        } {
-                                            __result.push(g);
-                                        }
-                                    }
-                                    __result
-                                })
-                                .first()
-                                .cloned()
-                                {
-                                    Some(g) => {
-                                        break Some(g.carrier.clone());
-                                    }
-                                    std::option::Option::None => {
-                                        break std::option::Option::None;
-                                    }
-                                }
-                            }
-                        }
-                        std::option::Option::None => {
-                            break std::option::Option::None;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn operand_is_type_variable(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> bool {
-    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
-        n,
+) -> Rc<SubtractionRefinement> {
+    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+        left_type,
         source_indices,
         env,
-    ))
-    .clone()
-    {
-        TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => true,
-        _ => false,
-    }
-}
-
-pub fn operand_identity_unknown(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> bool {
-    (operand_is_type_variable(n.clone(), source_indices.clone(), env)
-        || (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
-            == "".to_string()))
-}
-
-pub fn operand_is_text(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    match crate::v1_compiler_infer_env::text_representation_by_identity(n, env) {
-        TextRepresentation::HostText => true,
-        TextRepresentation::CodePointSequence => true,
-        TextRepresentation::NotText => false,
-        TextRepresentation::TextRepresentationUnidentified => false,
-    }
-}
-
-pub fn arithmetic_carrier_selection(
-    requirement: Rc<ArithmeticRequirement>,
-    left_type: Rc<Node>,
-    right_type: Option<Rc<Node>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<ArithmeticCarrierSelection>> {
-    {
-        let right_is_text = match right_type.clone() {
-            std::option::Option::None => false,
-            Some(rt) => operand_is_text(rt.clone(), env.clone()),
-        };
-        if (operand_is_text(left_type.clone(), env.clone()) || right_is_text.clone()) {
-            return std::option::Option::None;
-        }
-        match operand_carrier_ref(left_type.clone(), source_indices.clone(), env.clone()) {
-            std::option::Option::None => match right_type.clone() {
-                std::option::Option::None => std::option::Option::None,
-                Some(rt) => {
-                    match operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone()) {
-                        std::option::Option::None => std::option::Option::None,
-                        Some(r) => {
-                            if (carrier_in_algebra_table(r.clone())
-                                && !operand_identity_unknown(
-                                    left_type.clone(),
-                                    source_indices.clone(),
-                                    env.clone(),
-                                ))
-                            {
-                                Some(Rc::new(ArithmeticCarrierSelection::ArithmeticNoCarrier))
-                            } else {
-                                std::option::Option::None
-                            }
-                        }
-                    }
-                }
-            },
-            Some(left) => {
-                let rows = conversion_plan_rows();
-                let right = match right_type.clone() {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(rt) => {
-                        operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone())
-                    }
-                };
-                let right_missing = match right_type.clone() {
-                    std::option::Option::None => false,
-                    Some(_) => match right.clone() {
-                        std::option::Option::None => true,
-                        Some(_) => false,
-                    },
-                };
-                let right_outside = match right.clone() {
-                    std::option::Option::None => false,
-                    Some(r) => !carrier_in_algebra_table(r.clone()),
-                };
-                let pair_differs = match right.clone() {
-                    std::option::Option::None => false,
-                    Some(r) => !crate::std_decl_ref::declaration_ref_eq(left.clone(), r.clone()),
-                };
-                let one_outside = match right.clone() {
-                    std::option::Option::None => false,
-                    Some(r) => (right_outside.clone() || !carrier_in_algebra_table(left.clone())),
-                };
-                let right_blind = match right_type.clone() {
-                    std::option::Option::None => false,
-                    Some(rt) => {
-                        operand_identity_unknown(rt.clone(), source_indices.clone(), env.clone())
-                    }
-                };
-                if (((right_missing.clone() && carrier_in_algebra_table(left.clone()))
-                    && !right_blind.clone())
-                    || (pair_differs.clone() && one_outside.clone()))
-                {
-                    Some(Rc::new(ArithmeticCarrierSelection::ArithmeticNoCarrier))
-                } else {
-                    if ((right_missing.clone() || right_outside.clone())
-                        || !carrier_in_algebra_table(left.clone()))
-                    {
-                        std::option::Option::None
-                    } else {
-                        {
-                            let named = match right.clone() {
-                                std::option::Option::None => Rc::new(vec![left.clone()]),
-                                Some(r) => Rc::new(vec![left.clone(), r.clone()]),
-                            };
-                            let candidates = v1_rt::concat(
-                                named.clone(),
-                                Rc::new({
-                                    let mut __result = Vec::new();
-                                    for d in named.iter().cloned() {
-                                        __result.extend(
-                                            (*crate::std_coercion::injection_targets(
-                                                rows.clone(),
-                                                d.clone(),
-                                                requirement.preserved.clone(),
-                                            ))
-                                            .iter()
-                                            .cloned(),
-                                        );
-                                    }
-                                    __result
-                                }),
-                            );
-                            let definers = Rc::new({
-                                let mut __result = Vec::new();
-                                for d in candidates.iter().cloned() {
-                                    if carrier_defines_field(d.clone(), requirement.field.clone()) {
-                                        __result.push(d);
-                                    }
-                                }
-                                __result
-                            });
-                            Some(crate::std_coercion::select_arithmetic_carrier(
-                                rows.clone(),
-                                left.clone(),
-                                right.clone(),
-                                definers,
-                                requirement.preserved.clone(),
-                            ))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn arithmetic_carrier_type(
-    selected: Rc<DeclarationRef>,
-    left_type: Rc<Node>,
-    right_type: Option<Rc<Node>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<Node> {
-    {
-        let left_is =
-            match operand_carrier_ref(left_type.clone(), source_indices.clone(), env.clone()) {
-                Some(d) => crate::std_decl_ref::declaration_ref_eq(d.clone(), selected.clone()),
-                std::option::Option::None => false,
-            };
-        if left_is.clone() {
-            left_type.clone()
-        } else {
-            {
-                let right_is = match right_type.clone() {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(rt) => {
-                        match operand_carrier_ref(rt.clone(), source_indices.clone(), env.clone()) {
-                            Some(d) => {
-                                if crate::std_decl_ref::declaration_ref_eq(
-                                    d.clone(),
-                                    selected.clone(),
-                                ) {
-                                    Some(rt.clone())
-                                } else {
-                                    std::option::Option::None
-                                }
-                            }
-                            std::option::Option::None => std::option::Option::None,
-                        }
-                    }
-                };
-                match right_is.clone() {
-                    Some(rt) => rt.clone(),
-                    std::option::Option::None => nominal_type_ref(selected.decl_name.clone()),
-                }
-            }
+    ) {
+        Some(operand) => crate::std_coercion::dag_subtraction_refinement(operand.clone()),
+        std::option::Option::None => {
+            Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
         }
     }
 }
@@ -4325,88 +3929,39 @@ pub fn arithmetic_carrier_type(
 pub fn infer_binop_type_node(
     op: BinOp,
     left_type: Rc<Node>,
-    right_type: Option<Rc<Node>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Rc<BinOpInferred> {
-    match arithmetic_requirement(op.clone()) {
-        std::option::Option::None => {
+    match op.clone() {
+        BinOp::Sub => {
+            match (*subtraction_refinement_of(left_type.clone(), source_indices.clone(), env))
+                .clone()
+            {
+                SubtractionRefinement::SubtractionEscapesTo {
+                    from_type: from_type,
+                    ..
+                } => Rc::new(BinOpInferred {
+                    result_type: nominal_type_ref(from_type.clone()),
+                    algebra_field: std::option::Option::None,
+                }),
+                SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: _, .. } => {
+                    Rc::new(BinOpInferred {
+                        result_type: error_type(),
+                        algebra_field: std::option::Option::None,
+                    })
+                }
+                SubtractionRefinement::SubtractionStaysInOperandAlgebra => {
+                    infer_arithmetic_binop_type_node(
+                        op.clone(),
+                        left_type.clone(),
+                        source_indices.clone(),
+                    )
+                }
+            }
+        }
+        _ => {
             infer_arithmetic_binop_type_node(op.clone(), left_type.clone(), source_indices.clone())
         }
-        Some(req) => match arithmetic_carrier_selection(
-            req.clone(),
-            left_type.clone(),
-            right_type.clone(),
-            source_indices.clone(),
-            env.clone(),
-        )
-        .as_deref()
-        .cloned()
-        {
-            Some(ArithmeticCarrierSelection::ArithmeticCarrierSelected { carrier: c, .. }) => {
-                infer_arithmetic_binop_type_node(
-                    op.clone(),
-                    arithmetic_carrier_type(
-                        c.clone(),
-                        left_type.clone(),
-                        right_type.clone(),
-                        source_indices.clone(),
-                        env.clone(),
-                    ),
-                    source_indices.clone(),
-                )
-            }
-            Some(ArithmeticCarrierSelection::ArithmeticCarrierAmbiguous {
-                candidates: _, ..
-            }) => Rc::new(BinOpInferred {
-                result_type: error_type(),
-                algebra_field: std::option::Option::None,
-            }),
-            Some(ArithmeticCarrierSelection::ArithmeticNoCarrier) => Rc::new(BinOpInferred {
-                result_type: error_type(),
-                algebra_field: std::option::Option::None,
-            }),
-            std::option::Option::None => infer_arithmetic_binop_type_node(
-                op.clone(),
-                left_type.clone(),
-                source_indices.clone(),
-            ),
-        },
-    }
-}
-
-pub fn infer_neg_type_node(
-    operand_type: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<Node> {
-    match arithmetic_carrier_selection(
-        Rc::new(ArithmeticRequirement {
-            field: "negate".to_string(),
-            preserved: Rc::new(vec![]),
-        }),
-        operand_type.clone(),
-        std::option::Option::None,
-        source_indices.clone(),
-        env.clone(),
-    )
-    .as_deref()
-    .cloned()
-    {
-        Some(ArithmeticCarrierSelection::ArithmeticCarrierSelected { carrier: c, .. }) => {
-            arithmetic_carrier_type(
-                c.clone(),
-                operand_type.clone(),
-                std::option::Option::None,
-                source_indices.clone(),
-                env.clone(),
-            )
-        }
-        Some(ArithmeticCarrierSelection::ArithmeticCarrierAmbiguous { candidates: _, .. }) => {
-            error_type()
-        }
-        Some(ArithmeticCarrierSelection::ArithmeticNoCarrier) => error_type(),
-        std::option::Option::None => operand_type.clone(),
     }
 }
 

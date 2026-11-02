@@ -646,10 +646,10 @@ fn select_text_crossing_plan(rows: List<ConversionPlan>, source: TextRepresentat
 // also uses for literals), and the fold writes them back as host text through std.host_text
 // text_of_chars, chars' declared inverse. Both crossings are declared in std.host_text, so the kernel
 // slice writer has one text-crossing caller (text_of_chars), not one per route.
-fn unicode_scalar_unfold(s: String) -> FreeMonoid<Char> {
+fn unicode_scalar_unfold(s: String) -> std.algebra.FreeMonoid<std.types.Char> {
   chars(s)
 }
 
-fn unicode_scalar_fold(xs: FreeMonoid<Char>) -> String {
+fn unicode_scalar_fold(xs: std.algebra.FreeMonoid<std.types.Char>) -> String {
   text_of_chars(scalars: xs)
 }

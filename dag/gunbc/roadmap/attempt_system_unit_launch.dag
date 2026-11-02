@@ -117,6 +117,7 @@ fn attempt_system_unit_launcher_locus(instance: HostDashboardInstance) -> Helper
   HelperLocus {
     base: join([attempt_system_unit_launcher_helpers_root, "/", instance.instance_id as String], ""),
     owner: approval_broker_helper_root_principal,
+    step_stem: "attempt-unit",
   }
 }
 

@@ -146,6 +146,7 @@ import v2.std.provenance {
   node_authored_span_optional,
   span_index_empty,
   span_index_textual_locus_optional,
+  span_index_in_scope,
 }
 import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
 import v2.std.source_position {
@@ -216,6 +217,7 @@ import v2.compiler.module_acquisition {
   acquisition_first_duplicate,
   acquisition_ingest,
   acquisition_module_path,
+  acquisition_compilation_unit,
   acquisition_refusal_text,
   census_acquisition_ingest,
   enumerate_bound_modules,
@@ -322,6 +324,7 @@ import v2.compiler.resolve {
   resolve,
   resolved_tree_of,
   ResolvedTree,
+  declaration_available,
 }
 import v2.compiler.tokenize {
   PreparedLexRules,
@@ -1493,7 +1496,7 @@ type NativeLaneSourceFacts {
 fn native_lane_member_facts(member: AcquiredModule) -> NativeLaneSourceFacts {
   NativeLaneSourceFacts {
     module: member.name,
-    path: symbol_intern_lexeme(lexeme: acquisition_module_path(module: member)),
+    path: acquisition_compilation_unit(file: member.file),
     discovery: discover_floor_rows_for_source(
       repo_path: acquisition_module_path(module: member),
       marked: member.test_markers,
