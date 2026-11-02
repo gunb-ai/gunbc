@@ -37,6 +37,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptWorkerRole,
   AttemptExitRecordFound,
   AttemptExitRecordNone,
+  AttemptExitRecordWriterUnsubstituted,
   AttemptExitRecordUnreadable,
 }
 import gunbc.dispatch_replay_recording {
@@ -128,6 +129,12 @@ fn recording_capture_for_instance(instance: HostDashboardInstance, node_id: Stri
           match attempt_exit_record_observe(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
             AttemptExitRecordNone => replay_capture_refused(reason: "the exit spool holds no exit record for this attempt's worker unit")
             AttemptExitRecordUnreadable { reason } => replay_capture_refused(reason: join(["the exit spool could not be read: ", reason], ""))
+            // #15482's contract for this arm: an entry EXISTS, but its name still spells the stop
+            // variables unexpanded, so the arm names its WRITER as defective and is NOT an answer
+            // about how the unit ended. Capture reads the recorded end out of this record or refuses;
+            // it never substitutes a guess for an end it cannot read, so this arm refuses.
+            AttemptExitRecordWriterUnsubstituted { entries, variables } =>
+              replay_capture_refused(reason: join(["the exit record for this attempt was written without substituting the stop variables (", join(variables, ", "), ") in ", join(entries, ", "), ", so its end cannot be read from it"], ""))
             AttemptExitRecordFound { record } =>
               match recording_capture(repo_root: instance.repo_root as String, base_sha: base_sha, result_commit: result_commit, exit: record) {
                 RecordingCaptured { id: _, ref_name: _ } => ExitSuccess
