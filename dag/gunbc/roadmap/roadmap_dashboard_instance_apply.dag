@@ -1162,7 +1162,7 @@ fn dashboard_metering_closing_marker_census(instance: HostDashboardInstance, roo
     0
   } else {
     let listing = dashboard_target_exec(instance: instance, program: "/bin/ls", args: ["-1R", root as String])
-    length(xs: split(s: trim(s: listing.stdout), delimiter: "\n").filter(line => line == (metering_closing_legacy_marker_name as String)))
+    length(xs: split(s: trim(s: listing.stdout), delimiter: "\n").filter(line => line == (metering_closing_legacy_marker_name as String))) as Int
   }
 }
 
