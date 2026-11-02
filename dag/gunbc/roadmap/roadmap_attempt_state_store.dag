@@ -774,13 +774,12 @@ fn attempt_append_log_host_create(instance: HostDashboardInstance, node: String,
   match attempt_append_log_store_open(instance: instance, node: node, attempt_key: attempt_key, member: member) {
     AttemptAppendLogUnready { detail } => AttemptAppendLogHostUnready { detail: detail }
     AttemptAppendLogLegacyRefused { cause } => AttemptAppendLogHostLegacyRefused { cause: cause }
-    AttemptAppendLogReady { store: sealed } => match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
-      AttemptStateUnready { detail } => AttemptAppendLogHostUnready { detail: detail }
-      AttemptStateReady { store: as_store } => {
-        let member_path = attempt_log_member_path(store: as_store, member: member)
-        let exists_read = Filesystem.Read(path: member_path)
-        let member_exists = exists_read.success
-        match append_write_admission(policy: sealed.slot.writers, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterWindowReleased, member_exists: member_exists) {
+    AttemptAppendLogReady { store: sealed } => {
+      let member_path = join([sealed.directory, "/", sealed.member_name], "")
+      match filesystem_entry_presence_of_path(path: member_path) {
+        FilesystemEntryListed { directory: _, name: _ } =>
+          AttemptAppendLogAlreadyExists { path: member_path }
+        FilesystemEntryAbsent(_) => match append_write_admission(policy: sealed.slot.writers, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterWindowReleased, member_exists: false) {
           AppendWriteAdmitted => match instance.worker {
             WorkerDedicatedAccount => {
               let created = Filesystem.WriteCreateNewWithMode(path: member_path, content: "", mode: file_mode_bits(mode: attempt_append_log_events_group_writable_mode))
@@ -796,6 +795,10 @@ fn attempt_append_log_host_create(instance: HostDashboardInstance, node: String,
             _ => AttemptAppendLogCreateRefused { detail: attempt_append_log_refusal_detail(refusal: r) }
           }
         }
+        FilesystemEntryPresenceIndeterminate { cause: c } =>
+          AttemptAppendLogHostUnready { detail: join(["cannot observe member presence: ", c], "") }
+        FilesystemEntrySubjectRefused { directory: d, name: n, cause: c } =>
+          AttemptAppendLogHostUnready { detail: join(["member presence refused in ", d, "/", n, ": ", c], "") }
       }
     }
   }

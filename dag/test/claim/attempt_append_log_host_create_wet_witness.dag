@@ -126,6 +126,10 @@ fn dedicated_create_mode_cell(instance: HostDashboardInstance) -> Bool {
 // AlreadyExists with a non-empty path. The belt_actuate match is exhaustive over all 5 result variants;
 // the AlreadyExists arm produces AttemptStateInitializationFailed (no wildcard to silently continue),
 // so a stale events file from a prior attempt refuses the launch rather than projecting it.
+// NOTE: presence observation (filesystem_entry_presence_of_path) is used instead of Filesystem.Read
+// for the existence check, so permission-denied on the file no longer masquerades as absent.
+// The indeterminate-presence case (unreadable parent directory) gives HostUnready, never CreateRefused;
+// it cannot be exercised wet because the DAG filesystem extdeps lacks chmod.
 test fn a_host_create_on_an_existing_member_reports_already_exists() -> Bool {
   let root = fresh_root()
   let inst = instance_service_at(root: root)
