@@ -247,10 +247,14 @@ test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   // logs/) were created by the owner alone, so a group bit asserted on the three tops does not reach
   // them -- the first worker commit dies inside objects/f9. Both are named by the ops below rather than
   // only counted, and their ORDER is pinned by name in the other witness. Asserted by count as well as
-  // by name, so a rename or a silently dropped op cannot hide behind either. The twelfth op is the closing-marker
+  // by name, so a rename or a silently dropped op cannot hide behind either. The last op is the closing-marker
   // cutover gate (DashboardAssertMeteringClosingWriterExcluded), named and pinned by kind in
   // test.claim.c_roadmap2_closing_cutover_witness the_plan_carries_the_closing_gate_for_the_instances_that_declare_a_fence.
-  count(plan) == 12
+  // FIFTEEN, measured at this head by running the plan itself (the interpreter's answer, not a guess). The pin
+  // this PR inherited said twelve against a plan that was already fourteen: hydrate-controller-history,
+  // ensure-serve-binary and ensure-ownership-marker joined the plan without this number moving, and no CI job
+  // runs dag/test/claim, so the claim was failing quietly on main.
+  count(plan) == 15
     && plan_has_one_shared_repository_posture(plan: plan, instance: lab)
     && plan_has_one_worker_subtree_migration(plan: plan, instance: lab)
     && demands_cover_every_auth_store(instance: lab)
@@ -670,9 +674,10 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  // ten: the tenth is the closing-marker cutover gate, pinned by kind in
-  // test.claim.c_roadmap2_closing_cutover_witness.
-  count(plan) == 10
+  // thirteen, measured at this head the same way: the last one is the closing-marker cutover gate, pinned by
+  // kind in test.claim.c_roadmap2_closing_cutover_witness. The inherited pin said ten against a plan of twelve,
+  // for the same reason as srv1_lab's.
+  count(plan) == 13
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)

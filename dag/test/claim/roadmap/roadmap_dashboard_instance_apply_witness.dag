@@ -308,7 +308,9 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  count(rows) == 12
+  // fifteen, measured at this head by running the projection (one row per op; the kinds are listed by name
+  // below). The pin this PR inherited said twelve against fourteen rows already on main.
+  count(rows) == 15
     && !any(rows, row => row.kind == "ensure-provider-state-root" || row.kind == "ensure-directory")
     && any(rows, row => row.kind == "assert-metering-closing-writer-excluded")
     && any(rows, row => row.kind == "ensure-serve-binary")
