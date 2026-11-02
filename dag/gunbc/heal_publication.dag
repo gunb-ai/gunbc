@@ -35,7 +35,7 @@ import gunbc.heal_publication_boundary {
   heal_publication_refusal_token, heal_publication_refusal_detail, HealPublicationRefusal,
   HeadRefNotAddressable, BranchRefUnreadable, ExpectedHeadUnreadable, BaseTreeUnreadable, head_ref_is_addressable,
   PullRequestNotOpen, PullRequestNumberDisagreed, PullRequestHeadRefDisagreed,
-  publisher_path_policy, TriggeringRunFacts, PullRequestFacts,
+  publisher_path_policy, TriggeringRunFacts,
   ProposedBlobObservation, ProposedBlobComputed, ProposedBlobReadRefused,
   PublisherObservations, AdmittedHealPublication, AdmittedEntry,
   admit_heal_publication, HealPublicationAdmitted, HealPublicationRefused,
@@ -318,11 +318,6 @@ fn observe_candidate_world_wet(subject: HealPublicationSubject, directory: Strin
     default_branch: subject.repository.default_branch as NonEmptyStr,
     candidate_producer_workflow_path: subject.candidate_producer_workflow_path as NonEmptyStr,
     run: run,
-    pull_request: PullRequestFacts {
-      number: candidate.pull_number,
-      head_ref: candidate.head_ref as String,
-      base_ref: candidate.base_ref as String
-    },
     branch_head_sha: git_object_id_wire_hex(oid: live_oid) as String,
     base_tree_sha: head_tree_hex,
     base_tree_truncated: false,

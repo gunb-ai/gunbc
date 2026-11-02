@@ -83,11 +83,17 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 // ADMISSION HAPPENS BEFORE FEDERATION, AND WITHOUT ANY CREDENTIAL AT ALL. The admit step is emitted with
 // no GITHUB_TOKEN and no publication credential: observe_candidate_world_wet answers head liveness with
 // a credential-free ls-remote of refs/pull/<n>/head and the base tree with a credential-free fetch into an
-// isolated store, so it reaches no auth-declaring operation. Only if a candidate admits does the auth step
-// run and a token get minted, so a malformed, stale or closed-PR candidate never causes a credential to
-// exist. (The step once carried `GITHUB_TOKEN: ${{ github.token }}`; that line was dead decoration -- the
-// credential-free admit reads no environment token -- so it is deleted rather than left cited as a safeguard
-// it does not provide, per DESIGN 5.)
+// isolated store, so it reaches no auth-declaring operation. A candidate REFUSED AT ADMIT (malformed, with a
+// moved head, for the wrong repository, or sealed against a non-default base) fails the admit step, so the
+// downstream federation/mint steps (gated on the admit step's success) never run and no credential is ever
+// requested for it. What admit does NOT do is read the pull request's open/closed state or its identity --
+// no credential-free transport answers those -- so a CLOSED or RETARGETED pull request still passes admit, and
+// the short-lived App installation token IS then federated before the publish step's open/identity check
+// refuses it (that check sits after the mint, next to the write, so it prevents the WRITE but not the mint).
+// The credential-free claim is precisely about ADMIT reading no credential; it is not a claim that a closed
+// PR costs no token. (The admit step once carried `GITHUB_TOKEN: ${{ github.token }}`; that line was dead
+// decoration -- the credential-free admit reads no environment token -- so it is deleted rather than left
+// cited as a safeguard it does not provide, per DESIGN 5.)
 
 // THE PUBLISHER'S NAME, JOB ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW. Two of these
 // literals used to sit beside the step list while the profile also described the job; the row is now the
