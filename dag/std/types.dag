@@ -86,6 +86,16 @@ fn container_template_algebra(name: String) -> String? {
   map_get(container_template_algebra_rows, name)
 }
 
+// Whether one authored spelling resolves to the named carrier algebra through the roster, so a
+// consumer asks the algebra ("FreeMonoid", "FinitePowerSet") and never a spelling ("List", "Set").
+// Relation to `is_container_algebra_carrier`: ONE roster map read in two directions. This asks
+// spelling -> algebra (which carrier does an authored name denote); that one asks declaration ->
+// carrier (is a resolved name itself an algebra carrier). The first is for authored spellings, the
+// second for resolved declaration names; neither re-derives the other's rows.
+fn container_spelling_is_algebra(name: String, algebra: String) -> Bool {
+  container_template_algebra(name: name) == Present { value: algebra }
+}
+
 fn container_template_alias_algebra(name: String) -> String? {
   map_get(container_template_alias_rows, name)
 }
