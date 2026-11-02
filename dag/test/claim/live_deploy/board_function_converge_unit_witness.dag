@@ -1,0 +1,64 @@
+module test.claim.live_deploy.board_function_converge_unit_witness
+
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled }
+import gunbc.live_deploy.board_function_converge_unit {
+  board_function_converge_unit_file, BoardFunctionConvergeUnitReady, BoardFunctionConvergeUnitRefused,
+  board_function_converge_argv, BoardFunctionConvergeArgvReady, BoardFunctionConvergeArgvRefused,
+  retired_hand_installed_removals_on,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data revision_text: String = "0123456789abcdef0123456789abcdef01234567"
+
+fn unit_text() -> String {
+  match board_function_converge_unit_file(host: operator_host_srv1, revision: RevisionBoundAtEmission { revision: revision_text }) {
+    BoardFunctionConvergeUnitReady { file } => serialize_systemd_unit_file(file: file)
+    BoardFunctionConvergeUnitRefused { cause: _ } => ""
+  }
+}
+
+fn argv() -> List<String> {
+  match board_function_converge_argv(host: operator_host_srv1, revision: RevisionBoundAtEmission { revision: revision_text }) {
+    BoardFunctionConvergeArgvReady { argv } => argv
+    BoardFunctionConvergeArgvRefused { cause: _ } => []
+  }
+}
+
+// The unit runs the converge entry from the root-owned snapshot of THIS release, for THIS host, and nothing
+// in its argv names another tree.
+test fn the_unit_runs_the_converge_entry_from_the_root_snapshot_for_its_host() -> Bool {
+  let dir = concat("/opt/gunbc/board-function-converge-helpers/", revision_text)
+  let words = argv()
+  any(words, w => w == concat(dir, "/gunbc"))
+    && any(words, w => w == concat(dir, "/dag/gunbc/fleet/board_function_converge.dag"))
+    && any(words, w => w == "board_function_converge_cli")
+    && any(words, w => w == "host=srv1")
+    && all(words, w => !contains(w, "/opt/gunbc/approval-broker"))
+}
+
+// A boot oneshot, ordered before the container runtimes, with its own memory bound and no swap; a refusal
+// fails the unit and RemainAfterExit keeps a converged boot readable as active.
+test fn the_unit_is_a_bounded_boot_oneshot_before_the_container_runtime() -> Bool {
+  let t = unit_text()
+  contains(t, "Type=oneshot")
+    && contains(t, "RemainAfterExit=yes")
+    && contains(t, "Before=docker.service containerd.service")
+    && contains(t, "MemoryMax=3221225472")
+    && contains(t, "MemorySwapMax=0")
+    && contains(t, "TimeoutStartSec=600")
+    && contains(t, "WantedBy=multi-user.target")
+}
+
+// The hand-installed removal is retired only where it was installed.
+test fn the_hand_unit_is_retired_on_srv1_only() -> Bool {
+  let srv1 = retired_hand_installed_removals_on(host: operator_host_srv1)
+  length(srv1) == 1
+    && all(srv1, r => (r.unit as String) == "srv1-bmcvga-off.service" && any(r.paths, p => (p as String) == "/usr/local/sbin/srv1-bmcvga-off.sh"))
+    && length(retired_hand_installed_removals_on(host: operator_host_srv2)) == 0
+}

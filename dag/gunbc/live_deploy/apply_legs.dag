@@ -66,7 +66,12 @@ import gunbc.live_deploy.spec {
 import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
 import gunbc.live_deploy.release_locus { HelperLocus }
-import gunbc.live_deploy.retract_legs { retract_remove_files }
+import gunbc.live_deploy.retract_legs { retract_remove_files, RetractDisableIfLoaded }
+import gunbc.live_deploy.board_function_converge_unit {
+  board_function_converge_unit_name, board_function_converge_unit_path, board_function_converge_locus,
+  board_function_converge_helpers_root, board_function_converge_unit_file,
+  BoardFunctionConvergeUnitReady, BoardFunctionConvergeUnitRefused, retired_hand_installed_removals_on,
+}
 import extdeps.sudo.visudo { visudo_check_command }
 import std.measure { Second }
 import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_process }
@@ -197,9 +202,9 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
     ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st
     ApplyLegBrokerStateDirectories { revision: _ } => "broker-state-directories"
-    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: a } => match a {
-      HelperSnapshotInstall => "attempt-unit-helper-snapshot"
-      HelperSnapshotRetireSuperseded => "attempt-unit-helper-snapshot-retire"
+    ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: a } => match a {
+      HelperSnapshotInstall => join([l.step_stem as String, "-helper-snapshot"], "")
+      HelperSnapshotRetireSuperseded => join([l.step_stem as String, "-helper-snapshot-retire"], "")
     }
     ApplyLegBrokerTree { revision: _ } => "approval-broker-tree"
     ApplyLegRetract { step: st, leg: _ } => st
@@ -822,6 +827,39 @@ fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) ->
   )
 }
 
+// THE BOARD-FUNCTION CONVERGE UNIT (gunbc.live_deploy.board_function_converge_unit), a host singleton
+// installed only by the deployment that holds the host's role singletons. The order: the root-owned
+// snapshot the unit runs from; the unit; the retirement of any hand-installed removal it replaces on this
+// host (disable if loaded, then remove its files -- both idempotent); a reload; enable and restart, which
+// runs the converge now, so a removal that does not read back stops the apply here; and only then the
+// retirement of the superseded snapshot, once the unit that names the new one stands.
+fn deploy_apply_board_function_converge_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+  if !deployment_owns_the_host_approval_broker(spec: spec) { ApplyPlanReady { legs: [] } } else {
+    match board_function_converge_unit_file(host: spec.target.host.identity, revision: revision) {
+      BoardFunctionConvergeUnitRefused { cause: _ } =>
+        ApplyPlanRefused { step: "board-function-converge-unit", reason: "live-deploy apply refused: the board-function converge host argument was not admitted, so no unit naming a false argv is installed" }
+      BoardFunctionConvergeUnitReady { file: unit } => {
+        let locus = board_function_converge_locus()
+        let retire = flat_map(retired_hand_installed_removals_on(host: spec.target.host.identity), r => match r.paths {
+          Empty => [ApplyLegRetract { step: "board-function-hand-unit-disable", leg: RetractDisableIfLoaded { unit: r.unit } }]
+          Cons { head: h, tail: rest } => [
+            ApplyLegRetract { step: "board-function-hand-unit-disable", leg: RetractDisableIfLoaded { unit: r.unit } },
+            ApplyLegRetract { step: "board-function-hand-unit-remove", leg: retract_remove_files(head: h, rest: rest) },
+          ]
+        })
+        ApplyPlanReady { legs: concat(concat(concat(concat([
+          ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotInstall },
+          apply_staged_leg(step: "board-function-converge-unit", dest: board_function_converge_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: unit))),
+        ], retire), [
+          apply_root_leg(step: "board-function-converge-reload", argv: systemctl_daemon_reload_argv()),
+        ]), apply_enable_restart_legs(step: "board-function-converge", unit: board_function_converge_unit_name)), [
+          ApplyLegRootHelperSnapshot { locus: locus, spine: [board_function_converge_helpers_root], revision: revision, action: HelperSnapshotRetireSuperseded },
+        ]) }
+      }
+    }
+  }
+}
+
 fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> DeployApplyPlan {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
@@ -832,10 +870,13 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
         first: if !plan_writes_unit(plan: plan) { ApplyPlanReady { legs: [] } } else {
           deploy_apply_chain(
             first: deploy_apply_worker_sandbox_plan(spec: spec, revision: revision),
-            rest: ApplyPlanReady { legs: list_append(
-              left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision),
-              right: [apply_staged_leg(step: "serve-unit", dest: deployment_systemd_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
-            ) },
+            rest: deploy_apply_chain(
+              first: deploy_apply_board_function_converge_plan(spec: spec, revision: revision),
+              rest: ApplyPlanReady { legs: list_append(
+                left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision),
+                right: [apply_staged_leg(step: "serve-unit", dest: deployment_systemd_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
+              ) },
+            ),
           )
         },
         rest: ApplyPlanReady { legs: deploy_apply_lifecycle_legs(spec: spec, plan: plan) },

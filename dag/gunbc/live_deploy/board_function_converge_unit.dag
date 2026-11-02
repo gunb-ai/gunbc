@@ -1,0 +1,149 @@
+module gunbc.live_deploy.board_function_converge_unit
+
+import std.types { List, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size, second, second_count }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile,
+  Description, After, Before,
+  ServiceType, OneshotMode, RemainAfterExit, ExecStart, WorkingDirectory, TimeoutStartSec,
+  ServiceResourceControl, service_memory_max, service_memory_swap_max,
+  Installable, WantedBy,
+}
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmission, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
+import gunbc.executor_privileged_operation { gunbc_entry_run_argv }
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding, HelperLocus, helper_locus_dir, release_locus_tree_subdirs, approval_broker_helper_root_principal,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+
+// HOW THE BOARD-FUNCTION CONVERGE ROUTE REACHES A HOST (operator decision 2026-11-02, escalation
+// msg_a7082369: join live_deploy's unit set and run from its per-revision release). The route
+// (gunbc.fleet.board_function_converge) has to run on every boot, because a reset re-enumerates every function
+// the host removed. So it is a boot oneshot, ordered before the container runtime starts work on the host,
+// that runs the seed interpreter over a root-owned snapshot of the deployed release -- the same root-helper
+// form the attempt-unit drain runs from, because this entry runs as root and must not execute a tree a
+// non-root principal can write. Only the deployment that holds the host's role singletons installs it
+// (gunbc.live_deploy.spec deployment_owns_the_host_approval_broker), so two instances on one host never
+// write the same host-level unit. Hosts with no live deployment have no delivery route yet: their plans
+// stand, refusing or unrealized, until a fleet-wide host-converge release exists.
+
+data board_function_converge_unit_name: NonEmptyStr = "gunbc-board-function-converge.service"
+
+fn board_function_converge_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", board_function_converge_unit_name as String], "") as NonEmptyStr
+}
+
+data board_function_converge_helpers_root: String = "/opt/gunbc/board-function-converge-helpers"
+
+// One locus per host, not per instance: the unit is a host singleton.
+fn board_function_converge_locus() -> HelperLocus {
+  HelperLocus {
+    base: board_function_converge_helpers_root,
+    owner: approval_broker_helper_root_principal,
+    step_stem: "board-function-converge",
+  }
+}
+
+data board_function_converge_entry: String = "dag/gunbc/fleet/board_function_converge.dag"
+data board_function_converge_function: String = "board_function_converge_cli"
+
+// THE MEMORY BOUND IS THE UNIT'S OWN, sized from a measured run of this entry. On srv1, 2026-11-02, the entry
+// ran as a system service at 1,161,436 KiB maximum resident set and 80 s of wall time (GNU time -v over the
+// seed interpreter, closure at this change's revision). The bound leaves about 2.5 times that for the
+// closure to grow before the kernel refuses it; a refusal shows as the unit failing, never as a hang, and
+// swap is denied so an overrun is refused rather than paged (DESIGN Building & checks, the memory envelope).
+data board_function_converge_memory_max: ByteSize = byte_size(3221225472)
+data board_function_converge_memory_swap_max: ByteSize = byte_size(0)
+
+// TEN MINUTES IS ABOUT SEVEN TIMES THE MEASURED RUN. A stuck interpreter fails the unit rather than holding
+// the container runtime behind it forever.
+fn board_function_converge_start_timeout_seconds() -> String {
+  to_string(second_count(s: second(count: 600)))
+}
+
+type BoardFunctionConvergeArgv
+  = BoardFunctionConvergeArgvReady { argv: List<String> }
+  | BoardFunctionConvergeArgvRefused { cause: NamedArgumentAdmission }
+
+fn board_function_converge_argv(host: HostIdentity, revision: ReleaseRevisionBinding) -> BoardFunctionConvergeArgv {
+  let dir = helper_locus_dir(locus: board_function_converge_locus(), revision: revision)
+  match admit_named_argument(name: "host", value: host as String) {
+    NamedArgumentNameEmpty => BoardFunctionConvergeArgvRefused { cause: NamedArgumentNameEmpty }
+    NamedArgumentNameHoldsSeparator { name } => BoardFunctionConvergeArgvRefused { cause: NamedArgumentNameHoldsSeparator { name: name } }
+    NamedArgumentAdmitted { argument: arg } =>
+      BoardFunctionConvergeArgvReady {
+        argv: map(
+          concat(
+            gunbc_entry_run_argv(
+              workspace_root: dir as NonEmptyStr,
+              binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
+              source_roots: map(release_locus_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+              entry: join([dir, "/", board_function_converge_entry], "") as NonEmptyStr,
+              function: board_function_converge_function as NonEmptyStr,
+            ),
+            ["--arg" as NonEmptyStr, join([arg.name, "=", arg.value], "") as NonEmptyStr],
+          ),
+          w => w as String,
+        ),
+      }
+  }
+}
+
+type BoardFunctionConvergeUnitFile
+  = BoardFunctionConvergeUnitReady { file: SystemdUnitFile }
+  | BoardFunctionConvergeUnitRefused { cause: NamedArgumentAdmission }
+
+// Before= the container runtimes: CI jobs and serving workloads start there, and the removal should be in
+// place before they do. RemainAfterExit keeps the unit active after a converged run, so `systemctl is-active`
+// reads whether this boot's removal held; a refusal leaves it failed.
+fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisionBinding) -> BoardFunctionConvergeUnitFile {
+  match board_function_converge_argv(host: host, revision: revision) {
+    BoardFunctionConvergeArgvRefused { cause } => BoardFunctionConvergeUnitRefused { cause: cause }
+    BoardFunctionConvergeArgvReady { argv } =>
+      BoardFunctionConvergeUnitReady { file: ServiceUnitFile {
+        unit: [
+          Description { text: "gunbc board-function converge: remove the board functions no consumer admits (gunbc.fleet.board_function_admission)" as NonEmptyStr },
+          After { target: "local-fs.target" as NonEmptyStr },
+          Before { target: "docker.service containerd.service" as NonEmptyStr },
+        ],
+        service: [
+          ServiceType { mode: OneshotMode },
+          RemainAfterExit { active: true },
+          WorkingDirectory { path: helper_locus_dir(locus: board_function_converge_locus(), revision: revision) as NonEmptyStr },
+          TimeoutStartSec { duration: board_function_converge_start_timeout_seconds() as NonEmptyStr },
+          ServiceResourceControl { directive: service_memory_max(bytes: board_function_converge_memory_max) },
+          ServiceResourceControl { directive: service_memory_swap_max(bytes: board_function_converge_memory_swap_max) },
+          ExecStart { command: join(argv, " ") as NonEmptyStr },
+        ],
+        install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+      } }
+  }
+}
+
+// THE HAND-INSTALLED UNIT THIS REPLACES, retired on the host that carries it in the same apply that installs
+// the converge unit, so the host never runs two removals of one function (DESIGN §3, the old authority ends in
+// one motion). It was installed on srv1 on 2026-11-01, enabled under sysinit.target, with its script in
+// /usr/local/sbin; it also masked the root port's AER reporting, which the new route does not carry.
+type RetiredHandInstalledRemoval {
+  host: HostIdentity
+  unit: NonEmptyStr
+  paths: List<NonEmptyStr>
+}
+
+data retired_hand_installed_removals: List<RetiredHandInstalledRemoval> = [
+  RetiredHandInstalledRemoval {
+    host: operator_host_srv1,
+    unit: "srv1-bmcvga-off.service",
+    paths: [
+      "/etc/systemd/system/srv1-bmcvga-off.service",
+      "/etc/systemd/system/sysinit.target.wants/srv1-bmcvga-off.service",
+      "/usr/local/sbin/srv1-bmcvga-off.sh",
+    ],
+  },
+]
+
+fn retired_hand_installed_removals_on(host: HostIdentity) -> List<RetiredHandInstalledRemoval> {
+  filter(retired_hand_installed_removals, r => host_identity_eq(a: r.host, b: host))
+}
