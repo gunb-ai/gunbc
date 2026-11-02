@@ -614,3 +614,61 @@ fn ce_probe_elseless_text() -> String {
       concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
   }
 }
+
+// ---- PARSE-PATH-UNITY discriminating probes (node adhoc-56744ea7). PROBE, not for landing. ----
+// Two controls that localize WHICH link drops the tail statement `i` on the emitted side. Both reuse
+// the same ce_refusing entry (imports + calls ce_refusing_fn). Expected: all three probes ACCEPTED on
+// the interpreter; the else-less multiline probe REJECTED(parse_g0_tokens_remain) on the emitted gen-1.
+//  - ce_probe_twostat_text: member body `i\n i` (TWO bare-statement lines, NO if). If the emitted side
+//    also drops the 2nd statement here, the fault is the statement repeat's no-progress stop
+//    (parse_current_position mis-emitted), a general bug. If it parses on both, the fault is specific to
+//    the if/optional path leaving state that rejects the following statement.
+//  - ce_probe_sameline_text: member body `if c { i } i` (if + tail on the SAME line, no line break). If
+//    the emitted side parses this but not the multiline else-less, the divergence is line-break-dependent.
+// Member bytes (for the emitted side's fixture files): twostat sha256 adba7f4735d961ae2659f3217555dbb70d1b8219abab73dd62af3563f12587da; sameline sha256 26f4ca0a6a575a70561924e1eb0294e247880f76a7c5a4d13cde98b37f502a44.
+
+data ce_refusing_twostat_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  i\n  i\n}\n"
+
+data ce_refusing_sameline_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { i } i\n}\n"
+
+fn ce_emission_twostat() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: ce_refusing_twostat_member_source, id: ^ce_refusing_twostat_member_read, path: "src/v2/test/ce_refusing_member.dag"),
+      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
+    ],
+    entry: "v2.test.ce_refusing_entry"
+  )
+}
+
+fn ce_emission_sameline() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: ce_refusing_sameline_member_source, id: ^ce_refusing_sameline_member_read, path: "src/v2/test/ce_refusing_member.dag"),
+      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
+    ],
+    entry: "v2.test.ce_refusing_entry"
+  )
+}
+
+// PROBE (not for landing): two bare-statement lines, no if -> tests a general statement-repeat stop bug.
+fn ce_probe_twostat_text() -> String {
+  let located = ce_emission_twostat()
+  match located.outcome {
+    Rejected { diagnostics: d } =>
+      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
+    Accepted { value: e, diagnostics: _ } =>
+      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+  }
+}
+
+// PROBE (not for landing): if + tail on the same line -> tests line-break dependence.
+fn ce_probe_sameline_text() -> String {
+  let located = ce_emission_sameline()
+  match located.outcome {
+    Rejected { diagnostics: d } =>
+      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
+    Accepted { value: e, diagnostics: _ } =>
+      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+  }
+}
