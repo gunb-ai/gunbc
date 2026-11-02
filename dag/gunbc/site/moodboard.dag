@@ -1,4 +1,5 @@
 module gunbc.site.moodboard
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 
 import std.markup { MarkupDocument, Fragment, Element, FragmentText, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class }

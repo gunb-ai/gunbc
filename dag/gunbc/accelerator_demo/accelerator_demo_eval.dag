@@ -1,4 +1,5 @@
 module gunbc.accelerator_demo.accelerator_demo_eval
+import gunbc.accelerator_demo.accelerator_demo_program { AcceleratorDemoProgram, ElementwiseArrayOp, pure_elementwise_ops_shape_recognizable }
 
 
 fn int_relu(x: Int) -> Int {

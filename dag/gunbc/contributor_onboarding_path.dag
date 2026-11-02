@@ -1,4 +1,5 @@
 module gunbc.contributor_onboarding_path
+import gunbc.repo.repo_self_build { repo_self_build_all_bins_command }
 
 import std.types { String, List, NonEmptyStr }
 import std.integer { int_to_decimal_string }

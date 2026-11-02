@@ -13,7 +13,7 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.board_authority { BoardAuthorityRef }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -21,6 +21,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Motherboard"
   }
+}
+
+// A BOARD'S EXPANSION SLOTS, AS POSITIONS ALONG THE REAR EDGE. A slot is named by the vendor's
+// designator; its position is counted in expansion-slot pitches along the rear I/O edge, so two slots
+// whose positions differ by N sit N pitches apart, centre to centre. The pitch itself is not a board
+// fact: it is the PCIe CEM slot width (extdeps.standards.pcie_cem cem_slot_width), and a product
+// multiplies the position difference by it. The positions carry ONE standing for the whole list,
+// because they are read together, from one drawing or one ruler pass; a board whose drawing gives no
+// dimensions carries the read that would settle them.
+type BoardExpansionSlot {
+  designator: NonEmptyStr
+  position: Nat
+}
+
+type BoardExpansionSlots {
+  slots: List<BoardExpansionSlot>
+  positions: CitedFigureStanding
 }
 
 // A vendor manual copy a board model was read from. Title and sha256 are optional: a reading

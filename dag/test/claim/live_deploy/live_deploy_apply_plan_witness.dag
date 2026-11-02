@@ -39,6 +39,9 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_h
 import gunbc.host.host_layout { belt_spawn_workdir_env_var }
 import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv }
 import extdeps.tailscale.serve { tailscale_serve_enable_argv }
+import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
+import gunbc.live_deploy.retract_legs { RetractDisableIfLoaded }
+import gunbc.live_deploy.srv1_serving_engine_unit { srv1_serving_engine_unit_name }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_release_revision }
 
 fn lab_spec() -> DeploymentSpec {
@@ -904,4 +907,42 @@ test fn the_launcher_snapshot_is_root_owned_and_outside_the_service_release() ->
   launcher_snapshot_owner(legs: legs) == (approval_broker_helper_root_principal as String)
     && starts_with(s: base, prefix: attempt_system_unit_launcher_helpers_root)
     && !starts_with(s: base, prefix: spec.service.repo_root as String)
+}
+
+// A retract leg that stops a unit: only RetractDisableIfLoaded (`disable --now`) does, and on the serving
+// engine's hand unit it would run that unit's stop hooks and kill what remains in its cgroup.
+fn stops_the_hand_unit(leg: DeployApplyLeg) -> Bool {
+  match leg {
+    ApplyLegRetract { step: _, leg: r } => match r {
+      RetractDisableIfLoaded { unit: u } => (u as String) == "srv1-lil-serve.service"
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// SRV1'S SERVING ENGINE IS CONVERGED FOR THE NEXT BOOT AND NEVER TOUCHED NOW, on every apply including one
+// whose serve unit is unchanged: the wrapper lands as the model's bytes, then the unit, then the hand unit's
+// files are removed, then a reload and enable -- and no leg starts, restarts or reloads the engine unit, no
+// leg stops the hand unit, and no leg carries --now, because the wrapper's first act removes the running
+// container.
+test fn the_serving_engine_is_installed_for_the_next_boot_and_never_started() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  let unit = srv1_serving_engine_unit_name as String
+  let wrapper = match leg_at(legs: kept, step: "serving-engine-wrapper") { Present { value: l } => leg_payload(leg: l) Absent => "" }
+  wrapper == srv1_serving_wrapper.body
+    && step_index(legs: kept, step: "serving-engine-wrapper-dir") < step_index(legs: kept, step: "serving-engine-wrapper")
+    && step_index(legs: kept, step: "serving-engine-wrapper") < step_index(legs: kept, step: "serving-engine-unit")
+    && step_index(legs: kept, step: "serving-engine-unit") < step_index(legs: kept, step: "serving-engine-hand-unit-remove")
+    && step_index(legs: kept, step: "serving-engine-hand-unit-remove") < step_index(legs: kept, step: "serving-engine-reload")
+    && !any(kept, l => stops_the_hand_unit(leg: l))
+    && !any(kept, l => any(leg_argv_words(leg: l), w => w == "--now"))
+    && step_index(legs: kept, step: "serving-engine-reload") < step_index(legs: kept, step: "serving-engine-enable")
+    && any(leg_argv_words(leg: match leg_at(legs: kept, step: "serving-engine-enable") { Present { value: l } => l Absent => ApplyLegReport { step: "", line: "" } }), w => w == unit)
+    && !any(kept, l => {
+      let words = leg_argv_words(leg: l)
+      any(words, w => w == unit) && any(words, w => w == "start" || w == "restart" || w == "reload-or-restart" || w == "try-restart")
+    })
+    && !any(kept, l => any(leg_argv_words(leg: l), w => contains(w, "lil-flash-next")))
 }
