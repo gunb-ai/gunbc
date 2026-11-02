@@ -23,7 +23,7 @@ import extdeps.filesystem.filesystem_io { FilesystemDirectoryListing, filesystem
 import gunbc.durable_append_log_store {
   AppendLogParent, AppendLogStore, AppendLogSlot, AppendLogMinting, AppendLogReady, AppendLogUnready,
   AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, append_log_member_census,
-  append_log_census_slot, MemberCensusRow, MigrateToLogStore,
+  append_log_census_slot, MemberCensusRow,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, WorkerIsServiceUser, WorkerDedicatedAccount }
 import std.durable_append_log { MemberWriterPolicy, HostCreatesThenSandboxWrites, AppendWriter, HostWriter, AppendWriteIntent, IntentCreateEmpty, AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused, AppendWriteRefusal, AppendWriterStanding, WriterWindowReleased, append_write_admission }
@@ -116,9 +116,9 @@ type AttemptStateMember
 // single-shot attempt_state_write -- which takes AttemptStateMember -- can never be handed one: a caller that
 // tries is refused by the type checker on the real acceptance path (the claim), while plain members stay
 // accepted. They are reached only through gunbc.durable_append_log_store, whose owning store mints each
-// member's writer window and the sandboxed worker appends under it. The census in that store is the single
-// authority for the split. Where a site genuinely needs either set, wrap both in
-// gunbc.durable_append_log_store.AttemptStateOrLogMember.
+// member's writer window and the sandboxed worker appends under it. Each variant is keyed to its census row
+// by attempt_append_log_member_census_key (exhaustive match, compile-time safety) and the resulting
+// AppendLogSlot carries the member name from the census itself.
 type AttemptLogMember
   = AttemptWorkerLog
   | AttemptWorkerEvents
@@ -653,44 +653,61 @@ data attempt_state_unowned_entries_frontier_rows: List<FrontierRow> = [
   ),
 ]
 
-fn attempt_append_log_census_row_from(rows: List<MemberCensusRow>, name: String) -> MemberCensusRow? {
-  match rows {
-    Empty {} => Absent
-    Cons { head: r, tail: rest } => match r.disposition {
-      MigrateToLogStore { framing: _, principal: _ } => if r.member == (name as NonEmptyStr) { Present { value: r } } else { attempt_append_log_census_row_from(rows: rest, name: name) }
-      _ => attempt_append_log_census_row_from(rows: rest, name: name)
-    }
+// Single authority mapping each AttemptLogMember variant to its census key. Exhaustive match: a new
+// variant without a case is a compile error. The returned NonEmptyStr is the census member field value.
+fn attempt_append_log_member_census_key(member: AttemptLogMember) -> NonEmptyStr {
+  match member {
+    AttemptWorkerEvents => "AttemptWorkerEvents" as NonEmptyStr
+    AttemptWorkerLog => "AttemptWorkerLog" as NonEmptyStr
+    AttemptReviewEvents { criterion_key: _, head_sha: _ } => "AttemptReviewEvents" as NonEmptyStr
+    AttemptReviewLog { criterion_key: _ } => "AttemptReviewLog" as NonEmptyStr
+    AttemptAuditEvents { head_sha: _ } => "AttemptAuditEvents" as NonEmptyStr
+    AttemptAuditLog => "AttemptAuditLog" as NonEmptyStr
+    AttemptSupervisorEvents { turn: _ } => "AttemptSupervisorEvents" as NonEmptyStr
+    AttemptSupervisorLog => "AttemptSupervisorLog" as NonEmptyStr
   }
 }
 
+// Census lookup keyed on the variant, not on a caller-supplied string. The slot's own member field IS the
+// authoritative key (DESIGN §3: no nicknaming, no string join at the call site).
+fn attempt_append_log_census_slot_from(rows: List<MemberCensusRow>, key: NonEmptyStr) -> AppendLogSlot? {
+  match rows {
+    Empty {} => Absent
+    Cons { head: r, tail: rest } =>
+      if r.member == key { append_log_census_slot(row: r) }
+      else { attempt_append_log_census_slot_from(rows: rest, key: key) }
+  }
+}
+
+fn attempt_append_log_census_slot(member: AttemptLogMember) -> AppendLogSlot? {
+  attempt_append_log_census_slot_from(rows: append_log_member_census, key: attempt_append_log_member_census_key(member: member))
+}
+
+// Thin accessor for witnesses that inspect census rows by name (test-only, not on the mint path).
 fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
-  attempt_append_log_census_row_from(rows: append_log_member_census, name: name)
+  attempt_append_log_census_row_walk(rows: append_log_member_census, name: name)
+}
+
+fn attempt_append_log_census_row_walk(rows: List<MemberCensusRow>, name: String) -> MemberCensusRow? {
+  match rows {
+    Empty {} => Absent
+    Cons { head: r, tail: rest } =>
+      if r.member == (name as NonEmptyStr) { Present { value: r } }
+      else { attempt_append_log_census_row_walk(rows: rest, name: name) }
+  }
 }
 
 // Mints the sealed store over a listing that was OBTAINED (never fabricated). An empty list here means the
 // directory was positively listed as having no relevant entries -- the caller never projects a refused listing
 // into an empty list (no-refusal-projected-to-empty is upheld by the caller's use of FilesystemDirectoryListed).
 fn attempt_append_log_mint_listing(store: AttemptState, node: String, attempt_key: String, member: AttemptLogMember, member_dir: String, names: List<String>) -> AttemptAppendLogReading {
-  let name = match member {
-    AttemptWorkerEvents => "AttemptWorkerEvents"
-    AttemptWorkerLog => "AttemptWorkerLog"
-    AttemptReviewEvents { criterion_key: _, head_sha: _ } => "AttemptReviewEvents"
-    AttemptReviewLog { criterion_key: _ } => "AttemptReviewLog"
-    AttemptAuditEvents { head_sha: _ } => "AttemptAuditEvents"
-    AttemptAuditLog => "AttemptAuditLog"
-    AttemptSupervisorEvents { turn: _ } => "AttemptSupervisorEvents"
-    AttemptSupervisorLog => "AttemptSupervisorLog"
-  }
-  match attempt_append_log_census_row(name: name) {
-    Absent => AttemptAppendLogUnready { detail: join(["no census row for ", name], "") }
-    Present { value: row } => match append_log_census_slot(row: row) {
-      Absent => AttemptAppendLogUnready { detail: join(["census row is not a log row: ", name], "") }
-      Present { value: slot } => {
-        match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
-          AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: name as NonEmptyStr, directory: s.parent, slot: slot } }
-          AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
-          AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
-        }
+  match attempt_append_log_census_slot(member: member) {
+    Absent => AttemptAppendLogUnready { detail: "no census slot for this AttemptLogMember variant" }
+    Present { value: slot } => {
+      match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
+        AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: slot.member, directory: s.parent, slot: slot } }
+        AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
+        AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
       }
     }
   }
