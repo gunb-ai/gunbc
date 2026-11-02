@@ -99,11 +99,14 @@ fn echo_lines(name: String) -> List<String> {
   ["ngx.req.read_body()", "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')"]
 }
 
+// ?enter=1 WITH ?hold=1 PRINTS AND FLUSHES A FIRST LINE, 'entered', BEFORE SLEEPING: the fixture's own signal that the turn is
+// inside the upstream, which the router reaches only after begin_turn admitted it. A reader that waits for this
+// line establishes the hold independently of the router's active count, which it never polls.
 // THE SAME ECHO, ABLE TO HOLD A TURN: ?hold keeps the request inside the upstream for six seconds, which
 // is how a cap becomes observable from the outside -- the turn is active while it sleeps. Without this the
 // binding rules could only ever be tested against a cap of zero.
 fn echo_lines_holding_turn(name: String) -> List<String> {
-  ["ngx.req.read_body()", "if ngx.var.arg_hold then ngx.sleep(6) end", "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')"]
+  ["ngx.req.read_body()", "if ngx.var.arg_hold then if ngx.var.arg_enter then ngx.say('entered') ngx.flush(true) end ngx.sleep(6) end", "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')"]
 }
 
 // THE SAME ECHO, ABLE TO ANSWER AS A STREAM: ?sse=1 answers text/event-stream with the frames below, the
@@ -653,6 +656,15 @@ fn member_is(v: JsonValue, key: String, literal: String) -> Bool {
 
 // THE STATS READ WHILE AN UNCAPPED RENTED TURN IS IN FLIGHT: rented.active must be the one turn, the capped
 // pool's cap only the capped row's, and the pool not full (an uncapped row has no ceiling to fill).
+// THE HELD TURN IS ESTABLISHED BY THE FIXTURE'S SIGNAL, THEN STATS ARE READ. The chat turn runs in the background
+// with -N (no client buffering); the script reads stats only after 'entered' arrives in its output, which the
+// holding fixture prints once it is inside the upstream (after the router admitted the turn). If the signal never
+// arrives the script prints NOT-ENTERED and reads nothing, so the case is red rather than lucky. Stats are read
+// while the turn is outstanding (the fixture holds six seconds); then the turn is waited out and its output printed.
+fn uncapped_inflight_script() -> String {
+  "curl -k -sS -i -N --max-time 30 -H 'Authorization: Bearer ck-falsifier' -H 'x-session-id: un-1' --data-binary '\{\"model\":\"m-u\"}' -w '\n%\{http_code}\n' 'https://127.0.0.1:18445/v1/chat/completions?hold=1&enter=1' > /tmp/held.out 2>&1 & i=0; while ! grep -q '^entered' /tmp/held.out && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); done; if ! grep -q '^entered' /tmp/held.out; then echo NOT-ENTERED; wait; exit 1; fi; curl -k -sS -i --max-time 10 -H 'Authorization: Bearer ck-falsifier' 'https://127.0.0.1:18445/router/stats'; echo; wait; cat /tmp/held.out"
+}
+
 fn rented_reports_uncapped_in_flight(text: String) -> Bool {
   let doc = body_doc(text: text, marker: "\"usage_all\"")
   let rs = doc_members(v: doc, key: "rented")
@@ -911,7 +923,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let rented_turns = turns(n: 11, model: "m-u")
   let rented_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   // 6b. UNCAPPED OCCUPANCY OBSERVED NONZERO: a held turn on the uncapped row while the stats are read.
-  let uncapped_inflight = curl(arguments: ["-k", "-sS", "-i", "-Z", "--parallel-immediate", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: un-1", "--data-binary", "\{\"model\":\"m-u\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/router/stats"])
+  let uncapped_inflight = curl(arguments: ["sh", "-c", uncapped_inflight_script()])
   // 7. OVERFLOW CAP: o1 is rented with cap 1; the second parallel turn is refused.
   let overflow_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--parallel-immediate", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: ov-1", "--data-binary", "\{\"model\":\"m-o\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold=1", "https://127.0.0.1:18445/v1/chat/completions?hold=1"])
   // 8. EFFORT: a vLLM row refuses "high"; any string effort, mapped or not, is reported in a header.
