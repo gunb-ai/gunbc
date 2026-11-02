@@ -1,5 +1,10 @@
 module v1.compiler.infer
 
+import v1.compiler.infer_sigs { call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding }
+import v1.compiler.infer_types { declaration_carried_through_resolution, declaration_is_std_optional, std_optional_declaration_ref, type_node_is_callable, node_declaration_identity, node_declaration_file }
+import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope }
+import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments }
+import v1.compiler.ownership { fold_terminal_expr }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_spelling_is_algebra, container_template_alias_algebra, is_container_type, is_container_algebra_carrier, kernel_type_set, is_kernel_type }
 import std.content_hash {
@@ -18237,18 +18242,32 @@ fn build_local_variants(items: List<Node>, source_indices: Map<String, NewlineIn
 // ruling B, 2026-10-01). A bare variant elects first by its expected coproduct
 // (expected_deciding_variant_owner), then from own coproducts and direct imports, then from this
 // closure-unique tier, then the kernel where nothing above declares the spelling and the closure does
-// not find it ambiguous (merge_kernel_variant_locals_low_priority). This tier lets a module bind an arm
-// it never imported, which the ruled declared scope (own module plus explicit imports) does not admit;
+// not find it ambiguous (merge_kernel_variant_locals_low_priority). This tier is filtered by the arm's
+// declarer through `global_bare_declarer_in_scope` (containment chain or import), so it no longer lets a
+// module bind an arm it never imported (gunbc#15247, DESIGN 4b "names resolve");
 // it stands until quiet-hawk-702's Node.declaration cut installs that scope as
 // v1.compiler.infer build_ancestry_precedence, and that cut DELETES this tier and its threading
 // outright rather than keeping it beside the new scope. The election site above is a named consumer of
 // that definition.
 fn merge_global_bare_variant_locals(
   state: VariantFoldState,
-  global_variant_base: Map<String, TypeBinding>
+  global_variant_base: Map<String, TypeBinding>,
+  env: TypeEnv
 ) -> VariantFoldState {
+  let in_scope = fold(global_variant_base |> map_keys, init: empty_map(), f: (acc, name) =>
+    match map_get(env.symbol_index.global_bare, name) {
+      Present { value: GlobalBareUniqueBinding { module_path: declarer, binding: _ } } =>
+        if global_bare_declarer_in_scope(env: env, name: name, declarer: declarer) {
+          match map_get(global_variant_base, name) {
+            Present { value: b } => map_insert(acc, name, b)
+            Absent => acc
+          }
+        } else { acc }
+      _ => acc
+    }
+  )
   VariantFoldState {
-    locals: map_merge(global_variant_base, state.locals),
+    locals: map_merge(in_scope, state.locals),
     collision_errors: state.collision_errors
   }
 }
@@ -18539,7 +18558,8 @@ fn build_module_context(contributions: List<ItemContribution>,
       module_name: module_name,
       init: local_variant_fold
     ),
-    global_variant_base: global_variant_base
+    global_variant_base: global_variant_base,
+    env: env
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)

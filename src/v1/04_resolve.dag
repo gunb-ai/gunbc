@@ -1,5 +1,6 @@
 module v1.compiler.infer_resolve
 
+import v1.std.core { divergent_type }
 import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter }
 import std.occurrence_identity { OccurrenceSynthetic }
 

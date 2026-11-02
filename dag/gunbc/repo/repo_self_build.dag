@@ -23,6 +23,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_concat_from_nodes,
   bash_build_word_lit,
   bash_build_word_var,
+  bash_build_if_else_from_stmts,
 }
 import gunbc.shell_command_text { shell_command_text_refused_with_cause }
 

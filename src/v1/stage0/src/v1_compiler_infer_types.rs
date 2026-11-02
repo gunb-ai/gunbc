@@ -86,6 +86,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
@@ -107,7 +108,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -318,6 +318,7 @@ pub fn reground_alias_carrier_identity(
         && is_declared_container_alias_spelling(n.name.clone()))
     {
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: n.name.clone(),
             span: n.span.clone(),
@@ -339,7 +340,6 @@ pub fn reground_alias_carrier_identity(
             declaration_marker: n.declaration_marker.clone(),
             declaration: n.declaration.clone(),
             expr_data: n.expr_data.clone(),
-            ident: None,
         })
     } else {
         n.clone()
@@ -353,6 +353,7 @@ pub fn structural_carrier_template_name(
     if (n.name.clone() != "".to_string()) {
         canonical_template_name(
             Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: n.name.clone(),
                 span: n.span.clone(),
@@ -374,7 +375,6 @@ pub fn structural_carrier_template_name(
                 declaration_marker: n.declaration_marker.clone(),
                 declaration: n.declaration.clone(),
                 expr_data: n.expr_data.clone(),
-                ident: None,
             }),
             source_indices.clone(),
         )
@@ -573,12 +573,14 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
     match crate::std_types::container_param_name("Map".to_string(), 0) {
         Some(key_id) => match crate::std_types::container_param_name("Map".to_string(), 1) {
             Some(val_id) => Some(Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "Map".to_string(),
                 span: crate::v1_std_core::no_span(),
                 ident_span: Some(crate::v1_std_core::no_span()),
                 children: Rc::new(vec![
                     Rc::new(Node {
+                        ident: std::option::Option::None,
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: key_id.clone(),
                         span: crate::v1_std_core::no_span(),
@@ -602,9 +604,9 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         declaration_marker: DeclarationMarker::Unmarked,
                         declaration: std::option::Option::None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                     }),
                     Rc::new(Node {
+                        ident: std::option::Option::None,
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: val_id.clone(),
                         span: crate::v1_std_core::no_span(),
@@ -628,7 +630,6 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         declaration_marker: DeclarationMarker::Unmarked,
                         declaration: std::option::Option::None,
                         expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
                     }),
                 ]),
                 connective: Connective::NoConnective,
@@ -647,7 +648,6 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             })),
             std::option::Option::None => std::option::Option::None,
         },
@@ -658,11 +658,13 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
 pub fn bare_set_node() -> Option<Rc<Node>> {
     match crate::std_types::container_param_name("Set".to_string(), 0) {
         Some(elem_id) => Some(Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Set".to_string(),
             span: crate::v1_std_core::no_span(),
             ident_span: Some(crate::v1_std_core::no_span()),
             children: Rc::new(vec![Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: elem_id.clone(),
                 span: crate::v1_std_core::no_span(),
@@ -686,7 +688,6 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             })]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -704,7 +705,6 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })),
         std::option::Option::None => std::option::Option::None,
     }
@@ -733,6 +733,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
             kind_name.clone(),
         );
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: crate::v1_std_core::no_span(),
@@ -760,7 +761,6 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
                 kind: ExprErrorKind::InternalExprError,
                 message: msg.clone(),
             }),
-            ident: None,
         })
     }
 }
@@ -773,6 +773,7 @@ pub struct KernelTypeBuild {
 
 pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: field_name.clone(),
         span: crate::v1_std_core::kernel_span(field_name.clone()),
@@ -796,12 +797,12 @@ pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
 pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: type_name.clone(),
         span: crate::v1_std_core::kernel_span(type_name.clone()),
@@ -823,7 +824,6 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -831,11 +831,13 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
     match crate::std_types::container_param_name(kind_name.clone(), 0) {
         Some(param_name) => Rc::new(KernelTypeBuild {
             ty: Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: kind_name.clone(),
                 span: crate::v1_std_core::kernel_span(kind_name.clone()),
                 ident_span: Some(crate::v1_std_core::kernel_span(kind_name.clone())),
                 children: Rc::new(vec![Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: param_name.clone(),
                     span: crate::v1_std_core::kernel_span(param_name.clone()),
@@ -859,7 +861,6 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 })]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -877,7 +878,6 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             }),
             diagnostics: Rc::new(vec![]),
         }),
@@ -895,12 +895,14 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
         Some(key_name) => match crate::std_types::container_param_name("Map".to_string(), 1) {
             Some(val_name) => Rc::new(KernelTypeBuild {
                 ty: Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Map".to_string(),
                     span: crate::v1_std_core::kernel_span("Map".to_string()),
                     ident_span: Some(crate::v1_std_core::kernel_span("Map".to_string())),
                     children: Rc::new(vec![
                         Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -924,9 +926,9 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             declaration_marker: DeclarationMarker::Unmarked,
                             declaration: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                         }),
                         Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -952,7 +954,6 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             declaration_marker: DeclarationMarker::Unmarked,
                             declaration: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
                         }),
                     ]),
                     connective: Connective::NoConnective,
@@ -971,7 +972,6 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -993,6 +993,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
 
 pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Callable".to_string(),
         span: crate::v1_std_core::kernel_span("Callable".to_string()),
@@ -1014,18 +1015,19 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
 pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
         ident_span: std::option::Option::None,
         children: Rc::new(vec![
             Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "first".to_string(),
                 span: crate::v1_std_core::kernel_span("first".to_string()),
@@ -1049,9 +1051,9 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             }),
             Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "second".to_string(),
                 span: crate::v1_std_core::kernel_span("second".to_string()),
@@ -1075,7 +1077,6 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 declaration_marker: DeclarationMarker::Unmarked,
                 declaration: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             }),
         ]),
         connective: Connective::Conj,
@@ -1094,12 +1095,12 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
 pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: name.clone(),
         span: crate::v1_std_core::kernel_span(name.clone()),
@@ -1123,7 +1124,6 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         declaration_marker: DeclarationMarker::Unmarked,
         declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1149,6 +1149,7 @@ pub fn algebra_method_field(
         });
         let callable = make_callable_type(params, return_type);
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: crate::v1_std_core::kernel_span(name.clone()),
@@ -1172,7 +1173,6 @@ pub fn algebra_method_field(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1183,6 +1183,7 @@ pub fn enrich_base_with_fields(
     fields: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        ident: std::option::Option::None,
         occurrence_identity: base.occurrence_identity.clone(),
         name: name.clone(),
         span: base.span.clone(),
@@ -1204,7 +1205,6 @@ pub fn enrich_base_with_fields(
         declaration_marker: base.declaration_marker.clone(),
         declaration: base.declaration.clone(),
         expr_data: base.expr_data.clone(),
-        ident: None,
     })
 }
 

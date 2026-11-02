@@ -54,6 +54,7 @@ import gunbc.spark.credential_workflow {
   resolve_spark_administrator_credential,
   run_with_materialized_fleet_ssh_binding,
 }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key }
 
 // APPLYING THE PRIVILEGED BOOTSTRAP EFFECTS, over the same bound-credential context the standing
 // derivation used. The Sparks have no BMC, so SSH is the only transport and the admin principal is
