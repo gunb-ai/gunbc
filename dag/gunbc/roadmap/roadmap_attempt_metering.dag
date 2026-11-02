@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_attempt_metering
 
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents, attempt_state_directory_text, attempt_state_text }
-import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs, list_length }
 import std.algebra { trim }
 import std.types { path_segment_is_safe }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }

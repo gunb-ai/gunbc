@@ -6,6 +6,7 @@ import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, obse
 import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1, p4261_revision_eq }
 import extdeps.nvidia.p4261.population {
   P4261DesignPosition,
+  P4261Position,
   PopulatedPart,
   PartRow,
   PartConstrainedToRows,
@@ -45,8 +46,27 @@ import product.electrical.identification {
   PrintedRating,
   observed_presence,
 }
-import product.p4261.carrier { CarrierLayoutObservation, SpecimenPosition, admit_correspondence }
-import product.p4261.findings { assembly_revision_standing, RevisionReadOnBoard }
+import product.p4261.carrier {
+  AssemblyLabel,
+  BoardMarking,
+  PcbCode,
+  CarrierLayoutObservation,
+  ConnectorPositionCensus,
+  CountedFromPhotograph,
+  InventoryByRow,
+  InventoryInPart,
+  InventoryRefused,
+  InventorySidesUnread,
+  InventoryTotalOnly,
+  MappedOnHousing,
+  MappingDefect,
+  ObservedInventory,
+  SpecimenPosition,
+  admit_correspondence,
+  census_component,
+  observed_inventory,
+}
+import extdeps.nvidia.p4261.connectors { P4261ContactInventory, inventory_total, p4261_contact_inventories }
 import product.p4261.e1_b { p4261_e1_layout }
 import product.p4261.k1_a { p4261_k1_layout }
 
@@ -99,6 +119,79 @@ fn p4261_k1_revision_standing() -> CitedFigureStanding {
     ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "product.p4261.k1_a", decl_name: "p4261_k1_layout")) }
   } else {
     p4261_k1.standing
+  }
+}
+
+// ── WHICH REVISION A HELD BOARD WAS BUILT TO ──────────────────────────────────────────────────
+
+// THE RECEIVED BOARD IS NAMED BY ITS OWN LABEL. A label in a listing photograph names what was sold,
+// possibly a sibling unit; only the operator's photograph of the board in hand names this one, so every
+// consumer that labels the carrier reads it here rather than restating it. (Moved from
+// product.p4261.findings in Stage B4: it judges what a board's markings support of NVIDIA's revision
+// row, which is this layer's work, and findings now builds on this module.)
+fn is_operator_photograph(e: EvidenceRef) -> Bool {
+  match e {
+    OperatorPhotograph { taken_on: _, locator: _ } => true
+    _ => false
+  }
+}
+
+fn is_received_label(m: BoardMarking) -> Bool {
+  match m {
+    AssemblyLabel { model: _, part_number: _, revision: _, serial: _, evidence } => is_operator_photograph(e: evidence)
+    _ => false
+  }
+}
+
+fn received_labels(layout: CarrierLayoutObservation) -> List<BoardMarking> {
+  filter(layout.markings, m => is_received_label(m: m))
+}
+
+// WHICH REVISION A BOARD WAS BUILT TO IS READ OFF ITS OWN LABEL AND PCB PRINT. The record names the
+// NVIDIA revision it claims (layout.revision, extdeps.nvidia.p4261). Any received-board marking that
+// disagrees with the row wins, whatever else was read, so a board recorded against the wrong revision
+// says so instead of inheriting another revision's identity. Agreement is reported only for what was
+// read: the assembly label (part number and revision code) and the PCB print (PCB code) are separate
+// evidence, and one agreeing does not stand for the other. A label only in a seller's listing is not
+// the received board's (is_received_label).
+type AssemblyRevisionStanding
+  = RevisionReadOnBoard { revision: P4261AssemblyRevision }
+  | RevisionLabelReadPcbUnread { revision: P4261AssemblyRevision }
+  | RevisionPcbReadLabelUnread { revision: P4261AssemblyRevision }
+  | RevisionContradictedOnBoard { revision: P4261AssemblyRevision, marking: BoardMarking }
+  | RevisionUnreadOnBoard { revision: P4261AssemblyRevision }
+
+fn is_received_pcb_print(m: BoardMarking) -> Bool {
+  match m {
+    PcbCode { code: _, printed_beside: _, evidence } => is_operator_photograph(e: evidence)
+    _ => false
+  }
+}
+
+fn is_revision_marking(m: BoardMarking) -> Bool {
+  is_received_label(m: m) || is_received_pcb_print(m: m)
+}
+
+fn marking_contradicts_revision(m: BoardMarking, r: P4261AssemblyRevision) -> Bool {
+  match m {
+    AssemblyLabel { model, part_number, revision, serial: _, evidence: _ } =>
+      !(model == r.model && part_number == r.assembly_part_number && revision == r.revision_code)
+    PcbCode { code, printed_beside: _, evidence: _ } => !(code == r.pcb_code)
+    _ => false
+  }
+}
+
+fn assembly_revision_standing(layout: CarrierLayoutObservation) -> AssemblyRevisionStanding {
+  let read = filter(layout.markings, m => is_revision_marking(m: m))
+  let label_read = any(read, m => is_received_label(m: m))
+  let pcb_read = any(read, m => is_received_pcb_print(m: m))
+  match (filter(read, m => marking_contradicts_revision(m: m, r: layout.revision))).first() {
+    Present { value: m } => RevisionContradictedOnBoard { revision: layout.revision, marking: m }
+    Absent =>
+      if label_read && pcb_read { RevisionReadOnBoard { revision: layout.revision } }
+      else { if label_read { RevisionLabelReadPcbUnread { revision: layout.revision } }
+      else { if pcb_read { RevisionPcbReadLabelUnread { revision: layout.revision } }
+      else { RevisionUnreadOnBoard { revision: layout.revision } } } }
   }
 }
 
@@ -165,6 +258,7 @@ type AttributionGap
   | RevisionNotEstablishedOnBoard
   | NoPopulationClaim
   | NoAdmittedReading
+  | CensusOfAnotherConnector
 
 type PopulationOutcome
   = SupportedOnSpecimen { supporting: List<InstalledComponent> }
@@ -275,15 +369,20 @@ fn identification_evidence(i: ComponentIdentification) -> EvidenceRef? {
   }
 }
 
+// Evidence of ours: a photograph or statement made at our bench, not the seller's listing.
+fn evidence_is_ours(e: EvidenceRef) -> Bool {
+  match e {
+    OperatorPhotograph { taken_on: _, locator: _ } => true
+    OperatorStatement { stated_on: _, verbatim: _ } => true
+    SellerListingPhotograph { listing: _, read_on: _ } => false
+  }
+}
+
 // Read on a photograph or in a statement of ours, not only off the seller's listing.
 fn read_on_our_board(i: ComponentIdentification) -> Bool {
   match identification_evidence(i: i) {
     Absent => false
-    Present { value: e } => match e {
-      OperatorPhotograph { taken_on: _, locator: _ } => true
-      OperatorStatement { stated_on: _, verbatim: _ } => true
-      SellerListingPhotograph { listing: _, read_on: _ } => false
-    }
+    Present { value: e } => evidence_is_ours(e: e)
   }
 }
 
@@ -414,8 +513,12 @@ fn same_position(a: P4261DesignPosition, b: P4261DesignPosition) -> Bool {
 }
 
 fn unattributed(position: P4261DesignPosition, layout: CarrierLayoutObservation, bindings: List<SpecimenPosition>) -> AttributionGap? {
-  if !p4261_revision_eq(a: position.position.revision, b: layout.revision) { Present { value: PositionOfAnotherRevision } }
-  else if !revision_supported(revision: position.position.revision, specimen: layout) { Present { value: RevisionNotEstablishedOnBoard } }
+  unattributed_at(position: position.position, layout: layout, bindings: bindings)
+}
+
+fn unattributed_at(position: P4261Position, layout: CarrierLayoutObservation, bindings: List<SpecimenPosition>) -> AttributionGap? {
+  if !p4261_revision_eq(a: position.revision, b: layout.revision) { Present { value: PositionOfAnotherRevision } }
+  else if !revision_supported(revision: position.revision, specimen: layout) { Present { value: RevisionNotEstablishedOnBoard } }
   else if count(bindings) == 0 { Present { value: NoAdmittedReading } }
   else { Absent }
 }
@@ -475,4 +578,136 @@ fn p4261_k1_population_standings() -> List<PositionStanding> {
     assessment: x.assessment,
     standing: if is_supported(o: x.assessment.outcome) { ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "product.p4261.k1_a", decl_name: "p4261_k1_layout")) } } else { x.claim.standing },
   })
+}
+
+// ── CONTACT INVENTORY: WHAT ONE BOARD'S OWN CENSUS SAYS OF A RECONSTRUCTED INVENTORY ─────────────
+//
+// A claim is NVIDIA's (extdeps.nvidia.p4261.connectors): so many positions in each housing row at one
+// revision's position. What one held board's census says of it is this assessment, on that board.
+// The board must be established as the claim's revision (as for population); the census must
+// describe the very component admitted at the claim's position, so another connector's count bears
+// on nothing; and the census is read once, as its observed inventory (product.p4261.carrier
+// observed_inventory), from the board's own records -- never generated from the claim.
+//
+// Against the claim's counts:
+//   both rows counted, both equal          supported -- if the whole chain (the designator reading and
+//                                          the census) is ours; read off the seller's listing, missing
+//   both rows counted, either different    contradicted
+//   a total only (no row split)            contradicted if different, otherwise missing the split
+//   every position, some sides unread      contradicted if a known row already exceeds the claim or the
+//                                          total differs, otherwise missing the split
+//   a partial mapping                      contradicted if a row already holds more than claimed, or the
+//                                          positions read exceed the claim's total; otherwise missing
+//   a refused mapping                      missing, with the defect kept
+// An unread side is never a zero, and an unmapped position never an absent one.
+type InventoryGap
+  = RowSplitUnread
+  | CoverageIncomplete
+  | MappingRefused { defect: MappingDefect }
+  | ReadOnlyOffListing
+
+type InventoryOutcome
+  = InventorySupportedOnSpecimen
+  | InventoryMissing { gap: InventoryGap }
+  | InventoryContradicted { observed: ObservedInventory }
+  | InventoryNotAttributable { gap: AttributionGap }
+
+type InventoryAssessment {
+  claim: P4261ContactInventory
+  asset: PhysicalAssetIdentity
+  bindings: List<SpecimenPosition>
+  observed: ObservedInventory
+  outcome: InventoryOutcome
+}
+
+fn same_p4261_position(a: P4261Position, b: P4261Position) -> Bool {
+  p4261_revision_eq(a: a.revision, b: b.revision) && (a.designator as String) == (b.designator as String)
+}
+
+fn census_evidence(c: ConnectorPositionCensus) -> EvidenceRef {
+  match c {
+    CountedFromPhotograph { component: _, positions: _, evidence } => evidence
+    MappedOnHousing { housing } => housing.sides_evidence
+  }
+}
+
+fn inventory_bearing(claim: P4261ContactInventory, observed: ObservedInventory, ours: Bool) -> InventoryOutcome {
+  match observed {
+    InventoryByRow { latch_row, away_row } =>
+      if latch_row == claim.latch_row_positions && away_row == claim.away_row_positions { if ours { InventorySupportedOnSpecimen } else { InventoryMissing { gap: ReadOnlyOffListing } } }
+      else { InventoryContradicted { observed: observed } }
+    InventoryTotalOnly { total } => if total != inventory_total(i: claim) { InventoryContradicted { observed: observed } } else { InventoryMissing { gap: RowSplitUnread } }
+    InventorySidesUnread { latch_row_known, away_row_known, side_unread } =>
+      if latch_row_known > claim.latch_row_positions || away_row_known > claim.away_row_positions || latch_row_known + away_row_known + side_unread != inventory_total(i: claim) { InventoryContradicted { observed: observed } }
+      else { InventoryMissing { gap: RowSplitUnread } }
+    InventoryInPart { latch_row_at_least, away_row_at_least, side_unread } =>
+      if latch_row_at_least > claim.latch_row_positions || away_row_at_least > claim.away_row_positions || latch_row_at_least + away_row_at_least + side_unread > inventory_total(i: claim) { InventoryContradicted { observed: observed } }
+      else { InventoryMissing { gap: CoverageIncomplete } }
+    InventoryRefused { defect } => InventoryMissing { gap: MappingRefused { defect: defect } }
+  }
+}
+
+// One board's assessment of one inventory claim, over the board's admitted correspondence.
+fn assess_contact_inventory(claim: P4261ContactInventory, layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>) -> InventoryAssessment {
+  let bindings = filter(admitted, s => same_p4261_position(a: s.position.position, b: claim.position))
+  let subject = census_component(census: layout.j20)
+  let on_subject = filter(bindings, s => component_identity_eq(a: s.specimen, b: subject))
+  let observed = observed_inventory(census: layout.j20)
+  let outcome = match unattributed_at(position: claim.position, layout: layout, bindings: bindings) {
+    Present { value: gap } => InventoryNotAttributable { gap: gap }
+    Absent => if count(on_subject) == 0 { InventoryNotAttributable { gap: CensusOfAnotherConnector } }
+      else { inventory_bearing(claim: claim, observed: observed, ours: evidence_is_ours(e: census_evidence(c: layout.j20)) && all(on_subject, s => evidence_is_ours(e: s.evidence))) }
+  }
+  InventoryAssessment { claim: claim, asset: layout.asset, bindings: bindings, observed: observed, outcome: outcome }
+}
+
+// The board's revision's J20 inventory claim, if any, assessed on this board's own records.
+fn j20_inventory_assessment(layout: CarrierLayoutObservation) -> InventoryAssessment? {
+  match (filter(p4261_contact_inventories, c => p4261_revision_eq(a: c.position.revision, b: layout.revision) && (c.position.designator as String) == "J20")).first() {
+    Absent => Absent
+    Present { value: c } => Present { value: assess_contact_inventory(claim: c, layout: layout, admitted: admit_correspondence(layout: layout).admitted) }
+  }
+}
+
+// ── THE RECORDED J20 INVENTORY: WHAT THE RECOUNT ESTABLISHES ON THIS BOARD ───────────────────────
+//
+// Independent of any revision claim, and of whether one agrees: a recount establishes this board's J20
+// inventory when its census is a mapping of the component admitted at this board's J20, read on our
+// own board (the mapping's sides and the designator reading alike), complete, consistent, and with
+// every position's row read against the latch. A count without rows, a partial or refused mapping, an
+// unread side, another connector's census, or one read only off the seller's listing does not -- each
+// kept as its reason, beside whatever the census did observe.
+type RecountGap
+  = RecountNotAMapping
+  | RecountNotAtAdmittedJ20
+  | RecountReadOffListing
+  | RecountInPart
+  | RecountSidesUnread
+  | RecountRefused { defect: MappingDefect }
+
+type RecountStanding
+  = RecountEstablished { latch_row: Nat, away_row: Nat }
+  | RecountNotEstablished { gap: RecountGap, observed: ObservedInventory }
+
+fn at_j20(layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>) -> List<SpecimenPosition> {
+  filter(admitted, s => p4261_revision_eq(a: s.position.position.revision, b: layout.revision) && (s.position.position.designator as String) == "J20")
+}
+
+fn j20_recount(layout: CarrierLayoutObservation) -> RecountStanding {
+  let observed = observed_inventory(census: layout.j20)
+  let subject = census_component(census: layout.j20)
+  let bound = filter(at_j20(layout: layout, admitted: admit_correspondence(layout: layout).admitted), s => component_identity_eq(a: s.specimen, b: subject))
+  match layout.j20 {
+    CountedFromPhotograph { component: _, positions: _, evidence: _ } => RecountNotEstablished { gap: RecountNotAMapping, observed: observed }
+    MappedOnHousing { housing } =>
+      if count(bound) == 0 { RecountNotEstablished { gap: RecountNotAtAdmittedJ20, observed: observed } }
+      else if !evidence_is_ours(e: housing.sides_evidence) || !all(bound, s => evidence_is_ours(e: s.evidence)) { RecountNotEstablished { gap: RecountReadOffListing, observed: observed } }
+      else { match observed {
+        InventoryByRow { latch_row, away_row } => RecountEstablished { latch_row: latch_row, away_row: away_row }
+        InventorySidesUnread { latch_row_known: _, away_row_known: _, side_unread: _ } => RecountNotEstablished { gap: RecountSidesUnread, observed: observed }
+        InventoryInPart { latch_row_at_least: _, away_row_at_least: _, side_unread: _ } => RecountNotEstablished { gap: RecountInPart, observed: observed }
+        InventoryRefused { defect } => RecountNotEstablished { gap: RecountRefused { defect: defect }, observed: observed }
+        InventoryTotalOnly { total: _ } => RecountNotEstablished { gap: RecountNotAMapping, observed: observed }
+      } }
+  }
 }

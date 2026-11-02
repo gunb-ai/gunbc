@@ -154,6 +154,7 @@ fn rear_socket_bolt_clearances() -> List<AssemblyPart> {
     x:signed_frame_component_count(c:socket.at.x)+signed_frame_component_count(c:c.x),y:signed_frame_component_count(c:socket.at.y)-micrometer_count(m: socket_hardware_envelope_depth_um) as Int/2,z:signed_frame_component_count(c:socket.at.z)+signed_frame_component_count(c:c.z),
     ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Keep printed material out of this proposed hardware envelope; actual fastener engagement and loaded behavior remain unqualified.")]
    Block {size:_,center:_}=>[]
+   ProfilePrism {outline:_,axis:_,length:_,center:_}=>[]
   })
  })
 }

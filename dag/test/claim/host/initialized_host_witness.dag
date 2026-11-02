@@ -1,0 +1,153 @@
+module test.claim.host.initialized_host_witness
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_mtjade1 }
+import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused }
+import gunbc.fleet.fleet_host_key_enrollment { known_hosts_line }
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_operation_exec { HostOperationOutcome, HostOperationObserved }
+import gunbc.host.anchored_host_transport {
+  AnchoredHostBinding, AnchoredBindingRefused, anchored_host_transport_against, mtcollins1_anchored_host_row,
+}
+import gunbc.host.running_os { RunningOsReading, RunningOsObserved, RunningOsUnobserved, RunningDeliveredArtifact }
+import gunbc.host.initialized_host {
+  HostInitialized, HostNotInitialized, InitializedHostUntrusted, InitializedHostBootUnread, InitializedHostBootDisagrees,
+  InitializedHostReadingOfAnotherHost,
+  initialized_host_over, initialized_host_live, initialized_host_identity, initialized_host_reach, initialized_host_os,
+}
+import gunbc.runner.runner_host_medium { runner_host_running_os }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_medium }
+import test.claim.host.anchored_host_transport_witness { anchored_fixture_row }
+import test.claim.runner.runner_host_medium_witness { subject_with, closed }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INITIALIZED-HOST RECORD (gunbc.host.initialized_host) at its one interface. Its three inputs are supplied
+// values built from mtcollins1's REAL producers: the binding over its real anchored row and real fleet transport
+// route, and the running-OS reading from the runner medium's real readback (runner_host_running_os) of the subject
+// admitted over its real boot medium. Two values are fixtures: the pinned key, because mtcollins1's production pin
+// is absent until boot 7 reads it back, and the console capture, the same closed envelope the runner medium's
+// witness reads. The pin-absent RED runs the production route itself.
+
+// the boot the fixture capture names (test.claim.runner.runner_host_medium_witness begin_line / end_line).
+data captured_boot: String = "aaaaaaaa-0000-4000-8000-000000000001"
+
+data later_boot: String = "bbbbbbbb-0000-4000-8000-000000000002"
+
+fn mtcollins1_fleet_transport() -> HostEffectTransport? {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => none
+    Present { value: ctx } =>
+      match fleet_locus_ssh_target(host: operator_host_mtcollins1) {
+        SshTargetRefused { endpoint: _, refusal: _ } => none
+        SshTargetResolved { target: t } => Present { value: FleetSsh { target: t, context: ctx } }
+      }
+  }
+}
+
+// THE BINDING over mtcollins1's real row with the fixture pin; presented_matches presents the pin's own line,
+// otherwise another key.
+fn mtcollins1_binding(presented_matches: Bool) -> AnchoredHostBinding {
+  let row = anchored_fixture_row()
+  match row.anchor {
+    Absent => AnchoredBindingRefused { cause: "the fixture row carries no pin" }
+    Present { value: anchor } =>
+      match mtcollins1_fleet_transport() {
+        Absent => AnchoredBindingRefused { cause: "no hermetic fleet transport to mtcollins1" }
+        Present { value: t } =>
+          anchored_host_transport_against(
+            row: row,
+            anchor: anchor,
+            transport: t,
+            presented_key_line: if presented_matches { known_hosts_line(k: anchor) } else { "mtcollins1 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINOTTHEPINNOTTHEPINNOTTHEPINNOTTHEPIN0" },
+          )
+      }
+  }
+}
+
+// THE RUNNING-OS READING mtcollins1's Ephemeral row produces: its admitted subject over its real boot medium, read
+// back from a closed runner-host-up capture.
+fn mtcollins1_running_os() -> RunningOsReading {
+  match subject_with(medium: mtcollins1_boot_medium) {
+    Absent => RunningOsUnobserved { cause: "mtcollins1's boot medium was not admitted as a boot subject" }
+    Present { value: s } => runner_host_running_os(capture: closed(install_exit: "0", machine: "aarch64"), subject: s)
+  }
+}
+
+fn boot_read(stdout: String) -> HostOperationOutcome {
+  HostOperationObserved { stdout: stdout, success: true, stderr: none }
+}
+
+// POSITIVE CONTROL, AND THE SHAPE THE mtcollins1 ROUTE PRODUCES: the record names mtcollins1, reaches it at its row's
+// address, runs the delivered artifact whose digest is mtcollins1's boot medium's, and is on the boot the readback
+// observed, and the reading names the host its capture was bound to -- each asserted against its producer, not only "constructed".
+test fn mtcollins1_s_route_yields_an_initialized_host_with_its_own_facts() -> Bool {
+  match initialized_host_over(binding: mtcollins1_binding(presented_matches: true), running: mtcollins1_running_os(), read: boot_read(stdout: concat(captured_boot, "\n"))) {
+    HostInitialized { host: h } =>
+      host_identity_eq(a: initialized_host_identity(host: h), b: operator_host_mtcollins1)
+        && initialized_host_reach(host: h) == mtcollins1_anchored_host_row.address
+        && (match initialized_host_os(host: h).running { RunningDeliveredArtifact { digest: d } => (d as String) == (mtcollins1_boot_medium.digest as String) })
+        && (initialized_host_os(host: h).boot.boot_id as String) == captured_boot
+        && (match mtcollins1_running_os() { RunningOsObserved { running: _, observed_host: o, observed_on: _ } => host_identity_eq(a: o, b: operator_host_mtcollins1)  _ => false })
+    HostNotInitialized { refusal: _ } => false
+  }
+}
+
+// RED, ON THE PRODUCTION ROUTE: mtcollins1's pin is absent on main, so the live route refuses at the anchored
+// transport, contacting nothing, and no record exists. A host with no pin is never initialized.
+test fn a_host_with_no_pinned_key_is_refused_before_any_effect() -> Bool {
+  match initialized_host_live(host: operator_host_mtcollins1, attempt_raw: "witness", running: mtcollins1_running_os()) {
+    HostNotInitialized { refusal: InitializedHostUntrusted { cause: c } } =>
+      string_contains(s: c, pattern: "no trusted statement about mtcollins1") && string_contains(s: c, pattern: "nothing contacted")
+    _ => false
+  }
+}
+
+// RED: a key that is not the pin is not trust, whatever else reads true.
+test fn a_presented_key_that_is_not_the_pin_is_not_initialized() -> Bool {
+  match initialized_host_over(binding: mtcollins1_binding(presented_matches: false), running: mtcollins1_running_os(), read: boot_read(stdout: captured_boot)) {
+    HostNotInitialized { refusal: InitializedHostUntrusted { cause: _ } } => true
+    _ => false
+  }
+}
+
+// RED: trusted, but the kernel did not answer with a boot id.
+test fn a_trusted_host_whose_boot_id_is_unread_is_not_initialized() -> Bool {
+  match initialized_host_over(binding: mtcollins1_binding(presented_matches: true), running: mtcollins1_running_os(), read: boot_read(stdout: "not-a-boot")) {
+    HostNotInitialized { refusal: InitializedHostBootUnread { cause: c } } => string_contains(s: c, pattern: "not a uuid")
+    _ => false
+  }
+}
+
+// RED: the readback observed the artifact on one boot and the host is now on another, so it is not credited with it.
+test fn a_host_that_rebooted_after_its_readback_is_not_initialized() -> Bool {
+  match initialized_host_over(binding: mtcollins1_binding(presented_matches: true), running: mtcollins1_running_os(), read: boot_read(stdout: later_boot)) {
+    HostNotInitialized { refusal: InitializedHostBootDisagrees { running_observed_on: s, read_over_transport: r } } =>
+      (s.boot_id as String) == captured_boot && (r.boot_id as String) == later_boot
+    _ => false
+  }
+}
+
+// RED: the same reading, with the same artifact and the same boot id, but of another machine. The transport
+// authenticated mtcollins1, the boot id it read agrees, and still nothing attributes mtjade1's OS to mtcollins1.
+// The positive control runs this reading with its real host, so only the host differs.
+fn running_os_of_another_host() -> RunningOsReading {
+  match mtcollins1_running_os() {
+    RunningOsObserved { running: r, observed_host: _, observed_on: seen } => RunningOsObserved { running: r, observed_host: operator_host_mtjade1, observed_on: seen }
+    other => other
+  }
+}
+
+test fn a_reading_of_another_host_with_the_same_boot_id_is_not_initialized() -> Bool {
+  match initialized_host_over(binding: mtcollins1_binding(presented_matches: true), running: running_os_of_another_host(), read: boot_read(stdout: captured_boot)) {
+    HostNotInitialized { refusal: InitializedHostReadingOfAnotherHost { observed_host: o, bound_host: h } } =>
+      host_identity_eq(a: o, b: operator_host_mtjade1) && host_identity_eq(a: h, b: operator_host_mtcollins1)
+    _ => false
+  }
+}

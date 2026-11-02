@@ -21,7 +21,7 @@ use self::SignedArmAgreement::*;
 use self::SignedViewDisagreement::*;
 use self::SignedViewReading::*;
 pub use crate::std_algebra::{collection_concat_shape, collection_count_shape};
-pub use crate::std_decl_ref::{declaration_ref_eq, DeclarationRef};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 pub use crate::std_optional::Optional;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};

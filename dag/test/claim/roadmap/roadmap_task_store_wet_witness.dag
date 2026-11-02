@@ -4,7 +4,11 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import extdeps.shell
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
+}
 import gunbc.roadmap.roadmap_model { RoadmapNode }
 import gunbc.roadmap.roadmap_status { TicketLine }
 import gunbc.roadmap.roadmap_task_record { roadmap_task_encode }
@@ -21,11 +25,12 @@ fn titled(n: RoadmapNode, headline: String) -> RoadmapNode {
 // supersession retires the task from the listing.
 test fn task_store_create_replay_and_conflicting_key() -> Bool {
   let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: directory.path)
-  let store = FabricStorageLocalFiles { root: root }
-  if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => {
+  if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
+    FabricWetStoreReady { store: ops } => {
+      let store = FabricStorageLocalFiles { operations: ops }
+      {
       let actor = "briansrls" as NonEmptyStr
+    }
       let k1 = "op-1" as NonEmptyStr
       let k2 = "op-2" as NonEmptyStr
       let first = roadmap_task_create(store: store, actor: actor, at: 1, operation_key: k1, draft: sample_task())
@@ -45,11 +50,12 @@ test fn task_store_create_replay_and_conflicting_key() -> Bool {
 
 test fn task_store_revise_stale_and_supersede() -> Bool {
   let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: directory.path)
-  let store = FabricStorageLocalFiles { root: root }
-  if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => {
+  if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
+    FabricWetStoreReady { store: ops } => {
+      let store = FabricStorageLocalFiles { operations: ops }
+      {
       let actor = "briansrls" as NonEmptyStr
+    }
       let created = roadmap_task_create(store: store, actor: actor, at: 1, operation_key: "op-1" as NonEmptyStr, draft: sample_task())
       match created {
         RuntimeTaskCommitted { task: t, events: _ } => match roadmap_task_definition_digest(task: t) {
