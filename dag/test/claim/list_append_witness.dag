@@ -1,0 +1,53 @@
+module test.claim.list_append_witness
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List }
+import std.algebra { length, list_append, list_at_optional }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data two_items: List<Int> = [1, 2]
+data one_item: List<Int> = [7]
+// Declared, not a bare []: an empty list literal in the LEFT operand of list_append leaves the element type without a
+// declaration to resolve against, and '==' on the result is then refused ("declaration identity unavailable"). The
+// identity arms below need the empty operand TYPED to be judged at all.
+data no_items: List<Int> = []
+
+// list_append IS the concatenation the ambient `append` spelled, in the shape the roster row moves it to
+// (src/v2/workflow/roster_import_sweep.dag, the append row): the `right` parameter is a LIST joined wholesale, not one item
+// and not the left list's element count -- the collection disposition (dag/gunbc/primitive_egress/
+// dispositions_collection.dag) names that confusion, and a list of one element cannot tell them apart (appending [7] to
+// [1, 2] and appending the count 2 differ, but both give length 3), so every arm here checks the ELEMENT, not the length.
+
+test fn list_append_joins_the_right_list_wholesale() -> Bool {
+  list_append(left: two_items, right: one_item) == [1, 2, 7]
+}
+
+// The count-append discrimination: joining three items to a two-item list ends with the third item, where appending the
+// left list's COUNT would end with 2.
+test fn list_append_never_appends_the_element_count() -> Bool {
+  let joined = list_append(left: two_items, right: [3, 4, 5])
+  match list_at_optional(xs: joined, index: 4) {
+    Present { value: v } => v == 5 && list_at_optional(xs: joined, index: 2) == Present { value: 3 }
+    Absent => false
+  }
+}
+
+// ORDER IS LEFT-THEN-RIGHT, witnessed from both ends so a reversed join cannot pass either arm.
+test fn list_append_keeps_the_left_items_first() -> Bool {
+  let joined = list_append(left: one_item, right: two_items)
+  match list_at_optional(xs: joined, index: 0) {
+    Present { value: v } => v == 7 && length(xs: joined) == 3
+    Absent => false
+  }
+}
+
+// THE IDENTITIES, so an empty operand is a join and not a replace: an empty `right` keeps the left list, an empty `left`
+// yields the right list.
+test fn list_append_of_empty_right_is_the_left_list() -> Bool {
+  list_append(left: two_items, right: no_items) == [1, 2]
+}
+
+test fn list_append_of_empty_left_is_the_right_list() -> Bool {
+  list_append(left: no_items, right: two_items) == [1, 2]
+}

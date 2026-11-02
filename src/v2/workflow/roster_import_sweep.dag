@@ -95,6 +95,20 @@ type RosterHeadRow {
   home: QualifiedName
   labels: List<RosterLabelRename>
   head: RosterHeadRewrite
+  // A SPELLING THE SWEEP CANNOT DECIDE ALONE IS NEVER SWEPT BY SPELLING. The sweep matches no type, and two classes of row
+  // turn on information the spelling does not carry: (a) a DUAL-TYPED name whose ambient signature admits two argument kinds
+  // -- the ambient `append` is `[ReceiverSelf, ReceiverElementOrSelf]` in its AlgebraFieldTemplate row of
+  // `free_monoid_collection_templates` (src/v1/stage0/src/std_algebra.rs) -- has halves that mean different
+  // things; (b) an IDENTITY-SPLIT spelling carried by SEVERAL rows of one call and home, told apart by the identity of an
+  // argument (sort_by: a Symbol, String or digest key selects which row's appended order is correct -- applying another
+  // row's would sort a digest by lexeme, silently wrong, review 89793 follow-up from tidy-ant-251). In both classes the
+  // typed census, not the row, decides which row a wave owns. A row with this flag set is ONLY ever applied where a run
+  // carries a site key for it (OnlyOccurrences): a run that keys no site -- EveryRowOfHome, OnlyCall, AllHomes -- refuses
+  // AT THE SITE it would have rewritten (RefusalRowSiteGatedNeedsOccurrences, roster_site_gated_site_refusal), and an
+  // OnlyCall over an identity-split call is refused earlier still by the several-rows rule. Nothing is silently skipped:
+  // a wave cannot report a home migrated while leaving a gated site standing. Every identity-split spelling in the table
+  // carries this flag; one rule, not a flag only on the newest row.
+  site_gated: Bool
 }
 
 // A ROW WHOSE HOME DECLARES THE OPERATION UNDER ANOTHER NAME (tidy-ant-251's map_get ruling A: the ambient spelling's
@@ -211,6 +225,8 @@ type RosterRefusalReason
   // A ONE-HOME SCOPE THAT SELECTS NO ROW, OR AN OnlyCall SELECTING MORE THAN ONE (side chat on #14883, DESIGN 5): a
   // misspelled call or a wrong home would otherwise sweep nothing and report converged. Located by home and selection.
   | RefusalScopeSelectsNoRow { home: String, selection: String }
+  // A site-gated spelling met by a run that keys no site: see roster_site_gated_site_refusal.
+  | RefusalRowSiteGatedNeedsOccurrences { home: String, row: String, call: String, selection: String }
   | RefusalScopeSelectsSeveralRows { home: String, call: String, count: Int }
   | RefusalAppendedCalleeUncovered { row: String, callee: String }
   // A RenameHead row's call whose arguments the row's positional labels cannot place: EXACT ARITY is required (a different
@@ -277,6 +293,7 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalApplyNeedsOneHome => "apply-needs-one-home"
     RefusalAppendedCalleeUncovered { row: k, callee: c } => "appended-callee-uncovered row=" + k + " callee=" + c
     RefusalScopeSelectsNoRow { home: h, selection: sel } => "scope-selects-no-row home=" + h + " " + sel
+    RefusalRowSiteGatedNeedsOccurrences { home: h, row: k, call: c, selection: sel } => "row-site-gated-needs-occurrences home=" + h + " row=" + k + " call=" + c + " selection=" + sel
     RefusalScopeSelectsSeveralRows { home: h, call: c, count: n } => "scope-selects-several-rows home=" + h + " call=" + c + " rows=" + int_to_decimal_string(value: n)
     RefusalRenameCallArity { call: c } => "rename-call-arity call=" + c
     RefusalEditsOverlap { start: st, end: en, reach: re } => "edits-overlap start=" + int_to_decimal_string(value: st) + " end=" + int_to_decimal_string(value: en) + " covered-to=" + int_to_decimal_string(value: re)
@@ -388,17 +405,17 @@ type RosterLabelEdit {
 
 fn roster_head_rows() -> List<RosterHeadRow> {
   [
-    RosterHeadRow { call: "shell_materialize_operation_argv", key: "shell_materialize_operation_argv", import_name: "shell_materialize_operation_argv", home: qualified_name_from_dotted_string(dotted: "std.operation_argv"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "concat", key: "concat", import_name: "collection_concat_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "count", key: "count", import_name: "collection_count_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "map", key: "map", import_name: "collection_map_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
-    RosterHeadRow { call: "join", key: "join", import_name: "collection_join_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "shell_materialize_operation_argv", key: "shell_materialize_operation_argv", import_name: "shell_materialize_operation_argv", home: qualified_name_from_dotted_string(dotted: "std.operation_argv"), labels: [], head: KeepHead, site_gated: false },
+    RosterHeadRow { call: "concat", key: "concat", import_name: "collection_concat_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false },
+    RosterHeadRow { call: "count", key: "count", import_name: "collection_count_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false },
+    RosterHeadRow { call: "map", key: "map", import_name: "collection_map_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false },
+    RosterHeadRow { call: "join", key: "join", import_name: "collection_join_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false },
     // list_push is FreeMonoid's own snoc (tidy-ant-251 ruling): one ambient name, one declared home std.algebra.
-    RosterHeadRow { call: "list_push", key: "list_push", import_name: "list_push", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "list_push", key: "list_push", import_name: "list_push", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false },
     // sha256_hex_of_text: UTF-8 encode, SHA-256, lowercase hex; one declared home beside sha256_hex_digest (sleek-owl-397).
-    RosterHeadRow { call: "sha256_hex_of_text", key: "sha256_hex_of_text", import_name: "sha256_hex_of_text", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "sha256_hex_of_text", key: "sha256_hex_of_text", import_name: "sha256_hex_of_text", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead, site_gated: false },
     // compile_dag_diagnostic_census is the census builtin's one declared home (root-coordinator decision, sleek-owl-397).
-    RosterHeadRow { call: "compile_dag_diagnostic_census", key: "compile_dag_diagnostic_census", import_name: "compile_dag_diagnostic_census", home: qualified_name_from_dotted_string(dotted: "gunbc.compile_diagnostic_census"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "compile_dag_diagnostic_census", key: "compile_dag_diagnostic_census", import_name: "compile_dag_diagnostic_census", home: qualified_name_from_dotted_string(dotted: "gunbc.compile_diagnostic_census"), labels: [], head: KeepHead, site_gated: false },
     // NAMESPACE-XL wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars has one declared home.
     RosterHeadRow {
       call: "chars",
@@ -407,8 +424,7 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       home: qualified_name_from_dotted_string(dotted: "std.host_text"),
       // std.host_text declares fn chars(text: HostText); the ambient spelling's callers wrote s:.
       labels: [RosterLabelRename { from: "s", to: "text" }],
-      head: KeepHead
-    },
+      head: KeepHead, site_gated: false },
     // map_get's operation is ALREADY declared (tidy-ant-251's ruling A): std.algebra map_lookup(m, key), the same keyed
     // read with the same Optional<V> answer, so the call moves to that declaration instead of minting a second name for it.
     RosterHeadRow {
@@ -417,28 +433,32 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       import_name: "map_lookup",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "map_lookup", positional: ["m", "key"], appended: [] }
-    },
+      head: RenameHead { to: "map_lookup", positional: ["m", "key"], appended: [] }, site_gated: false },
     // sort_by -> std.algebra list_sort_by_key(xs, key, order) (S2). The ambient sort_by orders by the key's canonical order;
-    // list_sort_by_key takes that order as a declared argument, and a key kind with no declared order has NO row. Two rows of
+    // list_sort_by_key takes that order as a declared argument, and a key kind with no declared order has NO row. Three rows of
     // one call and home, told apart by their row key (a per-site OnlyOccurrences selection names the key kind's sites):
     // a Symbol key orders by its lexeme (v2.std.node symbol_total_order), a String key by the String order, a digest key by the digest order.
+    // THE KEY KIND IS NOT IN THE SPELLING, so all three are site_gated: an EveryRowOfHome or AllHomes run carrying no site key
+    // meets such a site and refuses there (roster_site_gated_site_refusal) rather than pairing it with whichever row the fold
+    // reached first -- a digest-keyed site under symbol_total_order() sorts by lexeme, silently wrong -- and OnlyCall
+    // { call: "sort_by" } is refused earlier by the several-rows rule (roster_scope_rows_refusal_in). A wave names the key kind's
+    // sites by census keys; the three arms are controls, not prose: sort-by-whole-row-set-refuses, sort-by-whole-call-refuses,
+    // and sort-by-whole-row-set-clean-file-passes (the same unkeyed run over a file spelling none of these calls completes,
+    // which is what keeps the native differential sweep over such files reporting rows instead of a refusal).
     RosterHeadRow {
       call: "sort_by",
       key: "sort_by/symbol",
       import_name: "list_sort_by_key",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "symbol_total_order()" }] }
-    },
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "symbol_total_order()" }] }, site_gated: true },
     RosterHeadRow {
       call: "sort_by",
       key: "sort_by/string",
       import_name: "list_sort_by_key",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "string_total_order()" }] }
-    },
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "string_total_order()" }] }, site_gated: true },
     // A digest key (Fnv1a64Structural.digest, a String where lower_hex_16) is its own key kind: its declared order is over
     // Fnv1a64StructuralDigestHex, which is not String at a typed argument, so it gets its own row and its own order.
     RosterHeadRow {
@@ -447,21 +467,37 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       import_name: "list_sort_by_key",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "fnv1a64_digest_hex_total_order()" }] }
-    },
-    RosterHeadRow { call: "fnv1a64_digest_hex_total_order", key: "fnv1a64_digest_hex_total_order", import_name: "fnv1a64_digest_hex_total_order", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead },
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "fnv1a64_digest_hex_total_order()" }] }, site_gated: true },
+    RosterHeadRow { call: "fnv1a64_digest_hex_total_order", key: "fnv1a64_digest_hex_total_order", import_name: "fnv1a64_digest_hex_total_order", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead, site_gated: false },
     // string_total_order is declared in std.algebra beside list_sort_by_key: the row covers the sort_by/string appended callee.
-    RosterHeadRow { call: "string_total_order", key: "string_total_order", import_name: "string_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "string_total_order", key: "string_total_order", import_name: "string_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false },
     // The Symbol order is declared in v2.std.node, where every sort_by/symbol site lives: this row covers the appended callee
     // (the import pass binds nothing there, the call being a local declaration).
-    RosterHeadRow { call: "symbol_total_order", key: "symbol_total_order", import_name: "symbol_total_order", home: qualified_name_from_dotted_string(dotted: "v2.std.node"), labels: [], head: KeepHead },
+    RosterHeadRow { call: "symbol_total_order", key: "symbol_total_order", import_name: "symbol_total_order", home: qualified_name_from_dotted_string(dotted: "v2.std.node"), labels: [], head: KeepHead, site_gated: false },
     // The collection kernel heads whose .dag body std.algebra ALREADY declares under another name (tidy-ant-251's
     // collection-head egress): the call moves to the declaration instead of minting a second name for it, the map_get and
     // sort_by precedent. `first` answers Optional<T> by list_head's own body (Empty => Absent, never a host null).
-    RosterHeadRow { call: "first", key: "first", import_name: "list_head", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_head", positional: ["xs"], appended: [] } },
-    RosterHeadRow { call: "reverse", key: "reverse", import_name: "list_reverse", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_reverse", positional: ["xs"], appended: [] } },
-    RosterHeadRow { call: "take", key: "take", import_name: "take_prefix", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "take_prefix", positional: ["xs", "n"], appended: [] } },
-    RosterHeadRow { call: "flat_map", key: "flat_map", import_name: "list_flat_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_flat_map", positional: ["xs", "f"], appended: [] } },
+    RosterHeadRow { call: "first", key: "first", import_name: "list_head", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_head", positional: ["xs"], appended: [] }, site_gated: false },
+    RosterHeadRow { call: "reverse", key: "reverse", import_name: "list_reverse", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_reverse", positional: ["xs"], appended: [] }, site_gated: false },
+    RosterHeadRow { call: "take", key: "take", import_name: "take_prefix", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "take_prefix", positional: ["xs", "n"], appended: [] }, site_gated: false },
+    RosterHeadRow { call: "flat_map", key: "flat_map", import_name: "list_flat_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_flat_map", positional: ["xs", "f"], appended: [] }, site_gated: false },
+    // append is the ambient list join AND the ambient element snoc: its v1 template -- the `append` AlgebraFieldTemplate row
+    // of `free_monoid_collection_templates` (src/v1/stage0/src/std_algebra.rs) -- types the second argument
+    // `[ReceiverSelf, ReceiverElementOrSelf]`, so ONE SPELLING carries two operations
+    // and the sweep -- which matches no type -- cannot tell them apart. This row claims only the CONCATENATION half, whose
+    // operation std.algebra already DECLARES (`list_append(left, right)` = `left |> concat(right)`), so
+    // the call moves to that declaration: no new body, no seam. The snoc half is deliberately NOT here -- its declaration is
+    // std.algebra `list_push`, a HostRealizedSeam of its own, and a wave that claimed both would join lists where the site
+    // meant to add one element. Hence site_gated: the row can only be applied at the occurrence keys a typed census
+    // enumerated (roster_site_gated_site_refusal); a run that keys no site refuses at the site it would have rewritten. The judgment for the
+    // five src/v2 sites is cited per site in the PR: both operands are the same List<T> -- `Xl2EntriesBuilt.entries` in
+    // `xl2_tree_hex`, and `xl2_member` / `xl2_real_manifest` in the xl2 witness -- and an element-shaped call
+    // under this row would not even typecheck, because list_append types BOTH operands as FreeMonoid<T> with the same T.
+    // The `items:` label is the home's parameter `right`, so the row carries that rename: the label pass rewrites it and the
+    // rename plan admits it because the row itself declares it (roster_named_arg_label_admitted). Scoped to src/v2: the
+    // ambient `append_contract` row of std.primitives (dag/std/primitives.dag), the interpreter arm, the emitter's concat-form predicate and the
+    // dag/ population stay on the ambient spelling until v1's own list heads are rehomed (tidy-ant-251's F6 batch A).
+    RosterHeadRow { call: "append", key: "append/list", import_name: "list_append", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [RosterLabelRename { from: "items", to: "right" }], head: RenameHead { to: "list_append", positional: ["left", "right"], appended: [] }, site_gated: true },
   ]
 }
 
@@ -667,6 +703,45 @@ fn roster_appended_callee_refusal(table: List<RosterHeadRow>, selected: List<Ros
         }
     }
   })
+}
+
+// A SITE-GATED ROW IS ONLY EVER REACHED THROUGH CENSUS KEYS, AND THE REFUSAL IS RAISED AT THE SITE. A row whose meaning the
+// spelling does not carry -- an ambient signature admitting two argument kinds (append) or several rows of one call split by an
+// argument's identity (sort_by) -- can only be applied where a TYPED census said this site is the row the wave owns. A run that
+// keys NO site (EveryRowOfHome, OnlyCall, AllHomes: the run carries no RosterSiteGate for the row) must not act on those sites,
+// so meeting one refuses the file with RefusalRowSiteGatedNeedsOccurrences. The refusal is raised WHERE THE RUN WOULD HAVE ACTED
+// -- on the file whose parsed sites hold a free-standing call of the gated spelling -- not at selection time: a run that meets
+// no gated site is untouched (the native differential sweep over files carrying none of these spellings still reports its rows),
+// and no gated site is ever SILENTLY SKIPPED (DESIGN section 5: never a silent narrowing), so a wave cannot report a home
+// migrated while leaving its sort_by or append sites standing. A keyed run carries its row's gate (roster_gate_for) and passes;
+// the rename CENSUS reports populations without rewriting them, so it is exempt.
+fn roster_site_gated_site_refusal(candidates: List<RosterHeadRow>, gates: List<RosterSiteGate>, sites: FreeMonoid<ScopedReferenceSite>, census_mode: Bool) -> Optional<RosterRefusalReason> {
+  fold_list(xs: candidates, empty: Absent, cons: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if census_mode || !r.site_gated {
+          Absent
+        } else {
+          match roster_gate_for(gates: gates, row: r) {
+            Present { value: _ } => Absent
+            Absent =>
+              if roster_call_is_spelled(sites: sites, call: r.call) {
+                Present { value: RefusalRowSiteGatedNeedsOccurrences { home: roster_qn_text(qn: r.home), row: r.key, call: r.call, selection: "no-site-keys" } }
+              } else {
+                Absent
+              }
+          }
+        }
+    }
+  })
+}
+
+// Does this module spell `call` as a free-standing reference at all? The sites are the parse's own reference sites -- the same
+// population the sweep joins heads to -- so a mention in a comment or a string is not a site, and a method spelling (parts.append)
+// is not a free-standing call.
+fn roster_call_is_spelled(sites: FreeMonoid<ScopedReferenceSite>, call: String) -> Bool {
+  fold_list(xs: sites, empty: false, cons: fn(acc, st) { acc || roster_spelling_is(qn: st.site.spelling, call: call) })
 }
 
 fn roster_scope_rows_refusal_in(table: List<RosterHeadRow>, scope: RosterHomeScope) -> Optional<RosterRefusalReason> {
@@ -1385,7 +1460,15 @@ fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterC
                 Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
                 Accepted { value: scoped, diagnostics: _ } =>
                   let sites = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites
-                  let unmet = roster_gate_unmet(sides: sides, gates: gates, candidates: candidates, sites: sites, spans: artifact.span_index, imported: scoped.tree.import_bindings)
+                  let census_mode = match census_call {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
+                  let gated = roster_site_gated_site_refusal(candidates: candidates, gates: gates, sites: sites, census_mode: census_mode)
+                  let unmet = match gated {
+                    Present { value: reason } => Present { value: reason }
+                    Absent => roster_gate_unmet(sides: sides, gates: gates, candidates: candidates, sites: sites, spans: artifact.span_index, imported: scoped.tree.import_bindings)
+                  }
                   let outcome = match unmet {
                     Present { value: reason } => RosterRefused { reason: reason }
                     Absent => match roster_sweep_rows(sites: sites, sides: sides, 
@@ -2007,18 +2090,18 @@ fn roster_pipe_site_refusal(head: Node, row: RosterHeadRow, positional: List<Str
   if length(xs: slots) + 1 != length(xs: positional) {
     Present { value: RefusalRenameCallArity { call: row.call } }
   } else {
-    fold_list(xs: roster_zip_slots(slots: slots, labels: roster_drop_first(xs: positional)), empty: Absent, cons: fn(acc, pair) { roster_pipe_label_refusal(acc: acc, pair: pair, call: row.call) })
+    fold_list(xs: roster_zip_slots(slots: slots, labels: roster_drop_first(xs: positional)), empty: Absent, cons: fn(acc, pair) { roster_pipe_label_refusal(acc: acc, pair: pair, call: row.call, labels: row.labels) })
   }
 }
 
-fn roster_pipe_label_refusal(acc: Optional<RosterRefusalReason>, pair: RosterSlotLabel, call: String) -> Optional<RosterRefusalReason> {
+fn roster_pipe_label_refusal(acc: Optional<RosterRefusalReason>, pair: RosterSlotLabel, call: String, labels: List<RosterLabelRename>) -> Optional<RosterRefusalReason> {
   match acc {
     Present { value: r } => Present { value: r }
     Absent =>
       match pair.slot {
         Absent => Absent
         Present { value: arg } =>
-          if roster_arg_is_named(arg: arg) && !roster_named_arg_label_is(arg: arg, label: pair.label) { Present { value: RefusalRenameCallNamedArgument { call: call } } } else { Absent }
+          if roster_arg_is_named(arg: arg) && !roster_named_arg_label_admitted(arg: arg, label: pair.label, labels: labels) { Present { value: RefusalRenameCallNamedArgument { call: call } } } else { Absent }
       }
   }
 }
@@ -2063,7 +2146,7 @@ fn roster_rename_pipe_edit(text: String, head: Node, spans: SpanIndex, row: Rost
                               empty: LabelsSelected { edits: [relocation, drop_connector, RosterLabelEdit { start: hr.end, end: hr.end + 1, from: "(", to: joiner, relocation: Absent }] },
                               cons: fn(acc, pair) {
                                 match acc {
-                                  LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
+                                  LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call, labels: row.labels)
                                   other => other
                                 }
                               }
@@ -2111,6 +2194,28 @@ fn roster_named_arg_label_is(arg: Node, label: String) -> Bool {
     Present { value: name_node } =>
       match node_atom_identity_optional(node: name_node) {
         Present { value: sym } => symbol_lexeme(sym: sym) == label
+        Absent => false
+      }
+  }
+}
+
+// A NAMED ARGUMENT THE ROW ITSELF RENAMES IS ADMITTED. A row's `labels` field is that row's own fact about what its home
+// calls each parameter, and the SAME row's label pass (roster_row_label_edits) rewrites the ambient label to the row's label
+// at its position -- so the call the two passes produce together binds the home's declaration. Refusing it in the rename plan
+// while the label pass relabels the same argument is the two passes contradicting each other: the row would be unappliable
+// at its own sites (`append(xs, items: ys)`, whose `items:` the row renames to the home's `right`). A label the row does NOT
+// rename still refuses typed: the rewrite never guesses a parameter and never reorders one, which would reorder evaluation.
+fn roster_named_arg_label_admitted(arg: Node, label: String, labels: List<RosterLabelRename>) -> Bool {
+  roster_named_arg_label_is(arg: arg, label: label) || roster_row_renames_label_to(arg: arg, labels: labels, to: label)
+}
+
+fn roster_row_renames_label_to(arg: Node, labels: List<RosterLabelRename>, to: String) -> Bool {
+  match dag_named_arg_name_node_optional(arg_capture: arg) {
+    Absent => false
+    Present { value: name_node } =>
+      match node_atom_identity_optional(node: name_node) {
+        Present { value: sym } =>
+          fold_list(xs: labels, empty: false, cons: fn(hit, rename) { hit || (rename.from == symbol_lexeme(sym: sym) && rename.to == to) })
         Absent => false
       }
   }
@@ -2281,7 +2386,7 @@ fn roster_rename_direct_call_edits(head: Node, spans: SpanIndex, row: RosterHead
                 empty: LabelsSelected { edits: [RosterLabelEdit { start: r.start, end: r.end, from: row.call, to: to, relocation: Absent }] },
                 cons: fn(acc, pair) {
                   match acc {
-                    LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
+                    LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call, labels: row.labels)
                     LabelsAmbiguous => LabelsAmbiguous
                     other => other
                   }
@@ -2354,7 +2459,7 @@ fn roster_zip_slots(slots: List<Optional<Node>>, labels: List<String>) -> List<R
 
 // An argument whose capture does not read, or that is NAMED, is never given a label: the first is a placement the row
 // cannot verify, the second a parameter choice the author already made and the row cannot map.
-fn roster_positional_label_edit(edits: List<RosterLabelEdit>, pair: RosterSlotLabel, spans: SpanIndex, call: String) -> RosterLabelPlan {
+fn roster_positional_label_edit(edits: List<RosterLabelEdit>, pair: RosterSlotLabel, spans: SpanIndex, call: String, labels: List<RosterLabelRename>) -> RosterLabelPlan {
   match pair.slot {
     Absent => LabelsAmbiguous
     Present { value: arg } =>
@@ -2363,7 +2468,7 @@ fn roster_positional_label_edit(edits: List<RosterLabelEdit>, pair: RosterSlotLa
         // left as authored; any other label refuses typed. A reordered named argument therefore refuses (its label is not the
         // one at its position): the rewrite never reorders arguments, which would reorder their evaluation.
         Present { value: _ } =>
-          if roster_named_arg_label_is(arg: arg, label: pair.label) {
+          if roster_named_arg_label_admitted(arg: arg, label: pair.label, labels: labels) {
             LabelsSelected { edits: edits }
           } else {
             LabelsRenameRefused { reason: RefusalRenameCallNamedArgument { call: call } }
@@ -2994,7 +3099,10 @@ fn roster_rename_control_names() -> List<String> {
     "appended-argument-symbol-order",
     "appended-argument-string-order", "appended-argument-digest-order",
     "sort-by-undeclared-order-refuses",
+    "sort-by-whole-row-set-refuses", "sort-by-whole-row-set-clean-file-passes", "sort-by-whole-call-refuses",
     "collection-head-first", "collection-head-reverse", "collection-head-take", "collection-head-flat_map",
+    "collection-head-append", "collection-head-append-pipe", "collection-head-append-foreign-label", "collection-head-append-reordered", "collection-head-append-arity",
+    "collection-head-append-site-gated", "collection-head-append-whole-row-set-refuses",
     "appended-callee-uncovered-refuses",
     "appended-callee-covered-admitted",
     "occurrences-byte-column-after-multibyte-text",
@@ -3017,12 +3125,103 @@ fn roster_rename_control_count_check(verdicts: List<RosterControlVerdict>) -> St
 
 // The collection-head controls, consumed by roster_rename_controls_verdicts_all.
 fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
+  let append_import = "import std.algebra { Cons }\n"
+  let append_import_moved = "import std.algebra { Cons, list_append }\n"
+  let append_fn_head = "module c.rename\n\n" + append_import + "\nfn f(xs: List<Int>, ys: List<Int>, y: Int, parts: List<Int>, part: Int) -> List<Int> {\n"
+  let append_fn_head_moved = "module c.rename\n\n" + append_import_moved + "\nfn f(xs: List<Int>, ys: List<Int>, y: Int, parts: List<Int>, part: Int) -> List<Int> {\n"
+  let append_fn_tail = "\n}\n"
+  let append_key = ["control/rename.dag:6:3"]
+  let append_site_gated_before = append_fn_head + "  append(xs, items: ys)\n  append(xs, items: y)\n  parts.append(part)" + append_fn_tail
+  let append_site_gated_after = append_fn_head_moved + "  list_append(left: xs, right: ys)\n  append(xs, items: y)\n  parts.append(part)" + append_fn_tail
   [
-    roster_control_verdict(name: "collection-head-first", fail: roster_head_expect(name: "collection-head-first", call: "first", sig: "xs: List<Int>", arg: "xs", to: "list_head", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "collection-head-reverse", fail: roster_head_expect(name: "collection-head-reverse", call: "reverse", sig: "xs: List<Int>", arg: "xs", to: "list_reverse", out: "List<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "collection-head-take", fail: roster_head_expect(name: "collection-head-take", call: "take", sig: "xs: List<Int>, n: Int", arg: "xs, n", to: "take_prefix", out: "List<Int>", labeled: "xs: xs, n: n", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "collection-head-flat_map", fail: roster_head_expect(name: "collection-head-flat_map", call: "flat_map", sig: "xs: List<Int>", arg: "xs, fn(s) { [s] }", to: "list_flat_map", out: "List<Int>", labeled: "xs: xs, f: fn(s) { [s] }", prepared: prepared, lex: lex))
+    roster_control_verdict(name: "collection-head-first", fail: roster_head_expect(name: "collection-head-first", row: "first", call: "first", sig: "xs: List<Int>", arg: "xs", to: "list_head", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-reverse", fail: roster_head_expect(name: "collection-head-reverse", row: "reverse", call: "reverse", sig: "xs: List<Int>", arg: "xs", to: "list_reverse", out: "List<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-take", fail: roster_head_expect(name: "collection-head-take", row: "take", call: "take", sig: "xs: List<Int>, n: Int", arg: "xs, n", to: "take_prefix", out: "List<Int>", labeled: "xs: xs, n: n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-flat_map", fail: roster_head_expect(name: "collection-head-flat_map", row: "flat_map", call: "flat_map", sig: "xs: List<Int>", arg: "xs, fn(s) { [s] }", to: "list_flat_map", out: "List<Int>", labeled: "xs: xs, f: fn(s) { [s] }", prepared: prepared, lex: lex)),
+    // THE ROW-RENAMED LABEL BINDS THE HOME'S PARAMETER: the join spelling `append(xs, items: ys)` (a LIST on the right; the snoc half is the element-shaped call, which this row does not claim)
+    // `list_append(left: xs, right: ys)` in one write -- the label pass rewrites `items:` to the home's `right` and the
+    // rename plan admits the label because THIS row declares that rename. The three refusals beside it are what makes that
+    // admission a rule and not a fallback: a label the row does not rename (`parts:`) refuses, a renamed label USED OUT OF
+    // POSITION (`items:` first, where the row's first parameter is `left`) refuses rather than remapping -- which would
+    // silently swap the concatenation's two operands -- and a short call refuses rather than guessing an operand.
+    roster_control_verdict(name: "collection-head-append", fail: roster_head_expect(name: "collection-head-append", row: "append/list", call: "append", sig: "xs: List<Int>, ys: List<Int>", arg: "xs, items: ys", to: "list_append", out: "List<Int>", labeled: "left: xs, right: ys", prepared: prepared, lex: lex)),
+    // THE SITE GATE IS THE JUDGMENT, NOT THE SPELLING (review 89793). append's AlgebraFieldTemplate row in
+    // `free_monoid_collection_templates` (src/v1/stage0/src/std_algebra.rs) types its second argument
+    // `[ReceiverSelf, ReceiverElementOrSelf]`, so the SAME spelling is a join at one
+    // site and a snoc at the next, and the sweep reads no type. The row therefore claims only the join half and can only be
+    // applied at census keys. Three arms pin what that means: a key naming the JOIN site rewrites that site and leaves (i)
+    // the SNOC site in the same file byte-for-byte alone -- its `items:` is not even relabelled, which is what a label pass
+    // ignoring the gate would have done -- and (ii) the METHOD spelling beside them (`parts.append(part)`, the shape at
+    // `emit_contribution_parts_step` in src/v2/compiler/emit_module.dag) because `x.call` is never a primary head; and (iii) a whole-call selection, which
+    // would rewrite both halves on the strength of the spelling, refuses. The refusals below then pin that the row's label
+    // admission is positional, not a global relabel: a label the row does not rename (`parts:`) refuses, a renamed label USED
+    // OUT OF POSITION (`items:` first, where the row's first parameter is `left`) refuses rather than remapping -- which would
+    // silently swap the concatenation's operands -- and a short call refuses rather than guessing an operand. Each runs the
+    // row the way a wave does: one keyed site.
+    roster_control_verdict(name: "collection-head-append-site-gated", fail: roster_append_expect_text(name: "collection-head-append-site-gated", before: append_site_gated_before, keys: append_key, after: append_site_gated_after, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-append-whole-row-set-refuses", fail: roster_unkeyed_expect_refusal(name: "collection-head-append-whole-row-set-refuses", text: append_fn_head + "  xs |> append(items: ys)" + append_fn_tail, want: "row-site-gated-needs-occurrences home=std.algebra row=append/list call=append selection=no-site-keys", prepared: prepared, lex: lex)),
+    // THE SAME RULE FOR THE OTHER IDENTITY-SPLIT SPELLING (tidy-ant-251's follow-up on review 89793): sort_by is ONE spelling
+    // carried by THREE rows, split by the key's identity -- Symbol, String, digest -- which is not in the spelling. A run that
+    // never judged the key kind must not pick a row: an EveryRowOfHome over the home refuses naming the first gated row it
+    // meets, and an OnlyCall over the call was already refused by the several-rows rule (roster_scope_rows_refusal_in, checked
+    // first) -- pinned here so both arms of the rule are controls, not prose. The green half is the per-site grain: the
+    // appended-argument controls above apply each sort_by row through census keys and stay green with the flag set.
+    roster_control_verdict(name: "sort-by-whole-row-set-refuses", fail: roster_unkeyed_expect_refusal(name: "sort-by-whole-row-set-refuses", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> List<String> {\n  sort_by(xs, fn(s) { s })\n}\n", want: "row-site-gated-needs-occurrences home=std.algebra row=sort_by/symbol call=sort_by selection=no-site-keys", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "sort-by-whole-row-set-clean-file-passes", fail: roster_unkeyed_expect_clean(name: "sort-by-whole-row-set-clean-file-passes", text: "module c.rename\n\nimport std.algebra { Cons, list_sort_by_key }\n\nfn f(xs: List<String>) -> List<String> {\n  list_sort_by_key(xs: xs, key: fn(s) { s }, order: string_total_order())\n}\n", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "sort-by-whole-call-refuses", fail: roster_scope_exit_refuses(name: "sort-by-whole-call-refuses", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "sort_by"), refusal: RefusalScopeSelectsSeveralRows { home: "std.algebra", call: "sort_by", count: 3 })),
+    roster_control_verdict(name: "collection-head-append-pipe", fail: roster_append_expect_text(name: "collection-head-append-pipe", before: append_fn_head + "  xs |> append(items: ys)" + append_fn_tail, keys: append_key, after: append_fn_head_moved + "  list_append(left: xs, right: ys)" + append_fn_tail, prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-append-foreign-label", fail: roster_append_expect_refusal(name: "collection-head-append-foreign-label", text: append_fn_head + "  append(xs, parts: ys)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-append-reordered", fail: roster_append_expect_refusal(name: "collection-head-append-reordered", text: append_fn_head + "  append(items: ys, xs)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-append-arity", fail: roster_append_expect_refusal(name: "collection-head-append-arity", text: append_fn_head + "  append(xs)" + append_fn_tail, keys: append_key, want: "rename-call-arity call=append", prepared: prepared, lex: lex))
   ]
+}
+
+// THE APPEND ROW IS ONLY EVER REACHED THROUGH CENSUS KEYS (site_gated), so its plan controls run the row the way a wave does:
+// one keyed site of the append/list row of std.algebra, never the whole spelling.
+fn roster_append_occurrence_outcome(keys: List<String>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  let rows = roster_rename_production_row()
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: "append/list", call: "append", occurrences: keys } }
+  roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope_in(table: rows, scope: scope), closures: roster_control_closures(), gates: roster_scope_gates(scope: scope, path: "control/rename.dag", text: text))
+}
+
+fn roster_append_expect_text(name: String, before: String, keys: List<String>, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_applied(before: before, outcome: roster_append_occurrence_outcome(keys: keys, text: before, prepared: prepared, lex: lex)) {
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n"
+    RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL " + name + ": wrote unexpected text: " + c + "\n" }
+  }
+}
+
+fn roster_append_expect_refusal(name: String, text: String, keys: List<String>, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_append_occurrence_outcome(keys: keys, text: text, prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } => if roster_refusal_text(reason: r) == want { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + ", wanted " + want + "\n" }
+    other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other) + "\n"
+  }
+}
+
+// A WHOLE-ROW-SET RUN OVER THE PRODUCTION std.algebra ROWS -- the shape a wave uses when it names no site. The site-gated rows
+// meet their sites carrying no RosterSiteGate, and the run must refuse there (roster_site_gated_site_refusal).
+fn roster_unkeyed_home_outcome(text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  let rows = roster_rename_production_row()
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: EveryRowOfHome }
+  roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope_in(table: rows, scope: scope), closures: roster_control_closures(), gates: roster_scope_gates(scope: scope, path: "control/rename.dag", text: text))
+}
+
+fn roster_unkeyed_expect_refusal(name: String, text: String, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_unkeyed_home_outcome(text: text, prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } => if roster_refusal_text(reason: r) == want { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + ", wanted " + want + "\n" }
+    other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other) + "\n"
+  }
+}
+
+// THE GATE DOES NOT FIRE WHERE IT MEETS NOTHING: the same whole-row-set run over a file that spells none of the gated calls
+// completes. Without this arm the rule would read as a blanket refusal of unkeyed runs, and the native differential sweep --
+// whose subjects carry none of these spellings -- would have no stated contract to hold.
+fn roster_unkeyed_expect_clean(name: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_unkeyed_home_outcome(text: text, prepared: prepared, lex: lex) {
+    RosterClean => ""
+    RosterRefused { reason: r } => "CONTROL-FAIL " + name + ": refused a file with no gated spelling: " + roster_refusal_text(reason: r) + "\n"
+    other => "CONTROL-FAIL " + name + ": rewrote a file with no gated spelling: " + roster_render_outcome(path: "control/rename.dag", outcome: other) + "\n"
+  }
 }
 
 fn roster_rename_controls_verdicts_all(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
@@ -3195,8 +3394,8 @@ fn roster_occ_empty_control() -> String {
 fn roster_occ_twin_rows() -> List<RosterHeadRow> {
   let algebra = qualified_name_from_dotted_string(dotted: "std.algebra")
   [
-    RosterHeadRow { call: "map_get", key: "map_get/first", import_name: "map_lookup", home: algebra, labels: [], head: RenameHead { to: "map_lookup", positional: ["m", "key"], appended: [] } },
-    RosterHeadRow { call: "map_get", key: "map_get/second", import_name: "map_contains_key", home: algebra, labels: [], head: RenameHead { to: "map_contains_key", positional: ["m", "key"], appended: [] } }
+    RosterHeadRow { call: "map_get", key: "map_get/first", import_name: "map_lookup", home: algebra, labels: [], head: RenameHead { to: "map_lookup", positional: ["m", "key"], appended: [] }, site_gated: false },
+    RosterHeadRow { call: "map_get", key: "map_get/second", import_name: "map_contains_key", home: algebra, labels: [], head: RenameHead { to: "map_contains_key", positional: ["m", "key"], appended: [] }, site_gated: false }
   ]
 }
 
@@ -3251,16 +3450,16 @@ fn roster_sort_expect(name: String, row_key: String, elem: String, order: String
 // A COLLECTION HEAD WHOSE BODY THE HOME DECLARES UNDER ANOTHER NAME, over the PRODUCTION rows: the selected site moves to the
 // renamed callee with the home's parameter labels and the import gains the renamed name; the other site of the same
 // spelling is untouched. Deleting the head's row makes the scope select no row, so the control reports CONTROL-FAIL.
-fn roster_head_outcome(call: String, keys: List<String>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+fn roster_head_outcome(row: String, call: String, keys: List<String>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
   let rows = roster_rename_production_row()
-  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: call, call: call, occurrences: keys } }
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: row, call: call, occurrences: keys } }
   roster_sweep_text_gate(sides: roster_home_sides(rows: rows), companions: [], path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope_in(table: rows, scope: scope), closures: roster_control_closures(), gates: roster_scope_gates(scope: scope, path: "control/rename.dag", text: text))
 }
 
-fn roster_head_expect(name: String, call: String, sig: String, arg: String, to: String, out: String, labeled: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+fn roster_head_expect(name: String, row: String, call: String, sig: String, arg: String, to: String, out: String, labeled: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(" + sig + ") -> " + out + " {\n  let a = " + call + "(" + arg + ")\n  " + call + "(" + arg + ")\n}\n"
   let after = "module c.rename\n\nimport std.algebra { Cons, " + to + " }\n\nfn f(" + sig + ") -> " + out + " {\n  let a = " + call + "(" + arg + ")\n  " + to + "(" + labeled + ")\n}\n"
-  match roster_applied(before: before, outcome: roster_head_outcome(call: call, keys: ["control/rename.dag:7:3"], text: before, prepared: prepared, lex: lex)) {
+  match roster_applied(before: before, outcome: roster_head_outcome(row: row, call: call, keys: ["control/rename.dag:7:3"], text: before, prepared: prepared, lex: lex)) {
     RosterApplyRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "\n"
     RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL " + name + ": wrote unexpected text: " + c + "\n" }
   }
@@ -3278,11 +3477,11 @@ fn roster_sort_undeclared_order_control() -> String {
 
 // AN APPENDED CALLEE NO ROW COVERS REFUSES (review 89019), and the same row beside its callee's row is admitted.
 fn roster_ghost_rename_row() -> RosterHeadRow {
-  RosterHeadRow { call: "sort_by", key: "sort_by/ghost", import_name: "list_sort_by_key", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "ghost_total_order()" }] } }
+  RosterHeadRow { call: "sort_by", key: "sort_by/ghost", import_name: "list_sort_by_key", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], appended: [RosterAppendedArg { label: "order", text: "ghost_total_order()" }] }, site_gated: false }
 }
 
 fn roster_ghost_callee_row() -> RosterHeadRow {
-  RosterHeadRow { call: "ghost_total_order", key: "ghost_total_order", import_name: "ghost_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "ghost_total_order", key: "ghost_total_order", import_name: "ghost_total_order", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false }
 }
 
 fn roster_ghost_scope() -> RosterHomeScope {
@@ -3305,7 +3504,7 @@ fn roster_appended_callee_green() -> String {
 
 // AN UNDERIVABLE COMPANION REFUSES THE FILE IT WOULD GOVERN: a rename row whose callee the home does not declare.
 fn roster_companion_underivable_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let ghost = [RosterHeadRow { call: "map_get", key: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], appended: [] } }]
+  let ghost = [RosterHeadRow { call: "map_get", key: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], appended: [] }, site_gated: false }]
   let companions = roster_rename_companions(rows: ghost, prepared: prepared, lex: lex)
   let text = "module c.rename\n\nimport std.algebra { Cons, no_such_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match no_such_lookup(m: m, key: k) {\n    Present { value: _ } => true\n    Absent => false\n  }\n}\n"
   match roster_sweep_text_rows(sides: roster_home_sides(rows: ghost), companions: companions, path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: ghost, closures: roster_control_closures()) {
@@ -3717,7 +3916,7 @@ fn roster_control_row_scope(prepared: PreparedGrammar, lex: PreparedLexRules) ->
 // precedes the lock. The positive control is the same entry with a selecting call reaching the files.
 fn roster_control_scope_selects_its_row() -> String {
   let algebra = qualified_name_from_dotted_string(dotted: "std.algebra")
-  let count_row = RosterHeadRow { call: "count", key: "count", import_name: "collection_count_shape", home: algebra, labels: [], head: KeepHead }
+  let count_row = RosterHeadRow { call: "count", key: "count", import_name: "collection_count_shape", home: algebra, labels: [], head: KeepHead, site_gated: false }
   roster_scope_exit_refuses(name: "misspelled-call", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "cuont"), refusal: RefusalScopeSelectsNoRow { home: "std.algebra", selection: "call=cuont" })
     + roster_scope_exit_refuses(name: "wrong-home", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.host_text", call: "count"), refusal: RefusalScopeSelectsNoRow { home: "std.host_text", selection: "call=count" })
     + roster_scope_exit_refuses(name: "unknown-home", exit: roster_import_sweep_home_exit(paths_csv: "control/none.dag", home: "std.no_such_home"), refusal: RefusalScopeSelectsNoRow { home: "std.no_such_home", selection: "every-row" })
@@ -3970,17 +4169,17 @@ fn roster_kind_specimen_aliased_type() -> String {
 }
 
 fn roster_kind_unclassified_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", key: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.no_such_home"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "List", key: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.no_such_home"), labels: [], head: KeepHead, site_gated: false }
 }
 
 // The real Wave 2 row: List at std.types, an aliased type the census now reads as TypeItem.
 fn roster_kind_wave_two_list_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", key: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "List", key: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [], head: KeepHead, site_gated: false }
 }
 
 // The identical row over a census-classified type home: only `home` differs, which is the whole point.
 fn roster_kind_classified_flipped_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", key: "List", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "List", key: "List", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false }
 }
 
 fn roster_kind_unclassified_control(name: String, text: String, row: RosterHeadRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
@@ -4029,7 +4228,7 @@ fn roster_kind_specimen_data_in_type() -> String {
 // census keys NO row at all for that qualified name (measured kinds=[]): a census coverage gap, reported to the manager
 // as a defect, not absorbed. A control may not assert through an unkeyed census; it would measure the census's silence.
 fn roster_kind_data_row() -> RosterHeadRow {
-  RosterHeadRow { call: "kernel_algebra_profile", key: "kernel_algebra_profile", import_name: "kernel_algebra_profile", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "kernel_algebra_profile", key: "kernel_algebra_profile", import_name: "kernel_algebra_profile", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false }
 }
 
 // THE #14338 SPECIMEN ITSELF, as a position control: `fn u(chars: fn(String) -> Int, x: String) -> Int { chars(s: x) }`.
@@ -4043,7 +4242,7 @@ fn roster_kind_specimen_called_parameter() -> String {
 // THE TWO ROWS THE CONTROLS USE, defined once so the premise control and the specimens cannot drift onto different
 // declarations. Built at the same boundary the real rows are: the dotted home is read into a QualifiedName.
 fn roster_kind_type_row() -> RosterHeadRow {
-  RosterHeadRow { call: "FreeMonoid", key: "FreeMonoid", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "FreeMonoid", key: "FreeMonoid", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: false }
 }
 
 // THE HOME-DIRECTORY POOL PAIR (Seat 7). The home kind is read from the home module's own storage directory, so a name
@@ -4052,15 +4251,15 @@ fn roster_kind_type_row() -> RosterHeadRow {
 // counts 1. std.roster_seat7_absent_home derives dag/std/roster_seat7_absent_home.dag, whose directory holds no chars of
 // that module (chars is std.host_text's); std.9underivable derives no file at all, so its pool is empty.
 fn roster_kind_out_of_home_row() -> RosterHeadRow {
-  RosterHeadRow { call: "chars", key: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.roster_seat7_absent_home"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "chars", key: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.roster_seat7_absent_home"), labels: [], head: KeepHead, site_gated: false }
 }
 
 fn roster_kind_underivable_home_row() -> RosterHeadRow {
-  RosterHeadRow { call: "chars", key: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.9underivable"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "chars", key: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.9underivable"), labels: [], head: KeepHead, site_gated: false }
 }
 
 fn roster_kind_value_row() -> RosterHeadRow {
-  RosterHeadRow { call: "chars", key: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.host_text"), labels: [], head: KeepHead }
+  RosterHeadRow { call: "chars", key: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.host_text"), labels: [], head: KeepHead, site_gated: false }
 }
 
 // THE SPECIMEN'S RECORDED SITES, through the same three front-end steps roster_sweep_text_scoped runs (tokenize, parse,
