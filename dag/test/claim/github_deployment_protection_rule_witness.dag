@@ -754,7 +754,6 @@ test fn an_absent_payload_field_is_a_typed_refusal_by_name() -> Bool {
 
 fn full_wire() -> RuleWebhookWireFields {
   RuleWebhookWireFields {
-    installation: Absent,
     action: Present { value: rule_webhook_action },
     environment: Present { value: srv1_env },
     event: Present { value: rule_webhook_event_name },
@@ -767,7 +766,6 @@ fn full_wire() -> RuleWebhookWireFields {
 
 fn wire_without_environment() -> RuleWebhookWireFields {
   RuleWebhookWireFields {
-    installation: Absent,
     action: Present { value: rule_webhook_action },
     environment: Absent,
     event: Present { value: rule_webhook_event_name },

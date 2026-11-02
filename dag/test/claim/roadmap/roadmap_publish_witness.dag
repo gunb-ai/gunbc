@@ -71,8 +71,6 @@ fn fixture_pull(
   draft: Bool,
 ) -> PullRequest {
   PullRequest {
-    merged_at: Absent,
-    merge_commit_sha: Absent,
     number: number,
     title: "a change",
     body: Absent,

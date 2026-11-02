@@ -1531,8 +1531,6 @@ test fn w_read_address_is_absent_before_the_first_acquisition() -> Bool {
 
 fn conversion(slug: String, client_id: String) -> GitHubAppManifestConversion {
   GitHubAppManifestConversion {
-    installations_count: Absent,
-    webhook_secret: Absent,
     id: 4242,
     slug: slug,
     node_id: "MDM6QXBwNDI0Mg==",
