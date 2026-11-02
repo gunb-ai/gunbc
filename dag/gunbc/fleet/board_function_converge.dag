@@ -477,7 +477,7 @@ fn converge_setup_switch(plan: HostBoardFunctionPlan, menu: String, item: String
   }
 }
 
-// READ-ONLY ENTRY for a real-path receipt: prints the board, BIOS and the AER switch readback line, writes nothing.
+// READ-ONLY ENTRY for a real-path receipt, invoked by name (`--function setup_switch_receipt_cli`) as root on a host, like board_function_converge_cli: prints the board, BIOS and the AER switch readback line, writes nothing.
 fn setup_switch_receipt_cli() -> CliWireResponse {
   let line = match setup_switch_readback(menu: "Advanced > RAS Configuration", item: "PCIe AER Firmware First", board_name: read_dmi_board_name(), bios_version: read_bios_version(), reading: efivarfs_read(variable: ras_ifr_nv_data_variable)) {
     SetupSwitchSet { detail } => concat("set -- ", detail)

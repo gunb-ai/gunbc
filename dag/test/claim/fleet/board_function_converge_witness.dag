@@ -1,6 +1,8 @@
 module test.claim.fleet.board_function_converge_witness
 
 import std.types { Bool, Int, List, String }
+import extdeps.boards.types { FirmwareSetupSwitch }
+import extdeps.boards.asrock_altrad8ud_setup_varstore { ras_setup_switch_route, ras_setup_checkbox_row }
 import extdeps.linux.efivarfs { EfiVariableRead, EfiVariableUnread, efivarfs_decode }
 import std.optional { Present, Absent }
 import extdeps.boards.types { BmcGraphicsController, PcieErrorFirmwareFirstHandling }
@@ -8,7 +10,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.board_function_topology { PcieFunctionIdentity, PcieDetachRoute, asrock_altrad8ud_1l2t_bmc_graphics_route }
 import gunbc.fleet.board_function_admission {
-  RemovedByHostAfterBoot, PlannedFunction, board_function_removal, fleet_board_function_plans,
+  RemovedByHostAfterBoot, RemovedAtBoard, PlannedFunction, board_function_removal, fleet_board_function_plans,
 }
 import gunbc.fleet.board_function_converge {
   SetupSwitchReadback, SetupSwitchSet, SetupSwitchWrong, SetupSwitchUnrouted, setup_switch_readback,
@@ -289,6 +291,28 @@ test fn another_board_is_unrouted_even_at_bios_2_06() -> Bool {
     SetupSwitchUnrouted { cause: _ } => true
     _ => false
   }
+}
+
+// THE INHABITANCE CLAIM for the route: srv1's real plan for the firmware-first handling is a RemovedAtBoard
+// FirmwareSetupSwitch whose real catalog menu and item resolve to a readback route and a varstore row. Breaking
+// the catalog strings, the route rows or the converge_plan arm's input shape turns this red. (The host read
+// itself is run by setup_switch_receipt_cli, as root on srv1 and srv2.)
+test fn the_real_srv1_aer_plan_resolves_to_a_readback_route() -> Bool {
+  let plans = filter(fleet_board_function_plans(), p => (p.host as String) == (operator_host_srv1 as String)
+    && p.subject == PlannedFunction { board_function: PcieErrorFirmwareFirstHandling })
+  length(plans) == 1 && all(plans, p =>
+    match p.removal {
+      RemovedAtBoard { switch: s } =>
+        match s {
+          FirmwareSetupSwitch { menu, item, off_meaning: _, citation: _ } =>
+            match (ras_setup_switch_route(menu: menu as String, item: item as String), ras_setup_checkbox_row(menu: menu as String, item: item as String)) {
+              (Present { value: _ }, Present { value: _ }) => true
+              _ => false
+            }
+          _ => false
+        }
+      _ => false
+    })
 }
 
 // THE DECODE: efivarfs od output for a 4-octet attribute word and two data octets.
