@@ -263,15 +263,21 @@ data refused_solution: BootDeliverySolution = BootDeliveryRefused {
 }
 
 // A solution whose plan selected `control`, for consumers parameterised over the control target. The PXE
-// plan's evidence observes `client_arch` (a plan whose control is not PXE ignores it; an absent observation
-// takes the fixture's UefiArm64 because a PXE plan cannot be solved without one). Delivery and eligibility are
+// plan's evidence observes `client_arch` (removable media ignores it). A network-addressed control with no
+// observed architecture answers the refused solution: no value is substituted for the unobserved client. Delivery and eligibility are
 // the PXE plan's or the removable-media plan's; only boot_control varies for the HTTP-boot arm, which no
 // real-solver witness plans here.
 fn solution_selecting_control(control: BootControlTarget, client_arch: DhcpProcessorArchitecture?) -> BootDeliverySolution {
-  let arch = match client_arch {
-    Present { value: a } => a
-    Absent => UefiArm64
+  match control {
+    BootFromRemovableMedia => removable_media_solution
+    _ => match client_arch {
+      Present { value: a } => network_solution_selecting_control(control: control, arch: a)
+      Absent => refused_solution
+    }
   }
+}
+
+fn network_solution_selecting_control(control: BootControlTarget, arch: DhcpProcessorArchitecture) -> BootDeliverySolution {
   let establishment = network_boot_establishment_observing(t: network_target, digest: intake_artifact.digest, arch: arch)
   let observing_pxe = BootDeliveryPlan {
     target: network_target,
