@@ -61,6 +61,40 @@ type DispatchCliProvider
   | CursorDispatchProvider
   | GunbcHarnessProvider
 
+// ONE OWNER FOR THE PROVIDER WORD. The word is what the dispatch actuator spells in its provider labels and
+// what the credential snapshot store spells in the snapshot file name it derives (gunbc.dispatch_credential_snapshot
+// credential_snapshot_provider_label). Before this row BOTH sites carried their own literal map from provider to
+// word, so they could drift -- and the drift would be invisible in the shape of the data: a snapshot name with a
+// different provider segment is still a well-formed name, it just stops being the file the actuator's launch
+// expects. The word lives here, beside the type that names the provider, because the snapshot module cannot
+// import the actuator (cycle) and the provider enum's own module is the only home both can read. Renaming a word
+// here moves the actuator label and the snapshot name together; test.claim.c_roadmap2_credential_name_witness
+// pins both spellings, and the executed control in the PR report shows the pair moving as one.
+type DispatchProviderWordsDeclaration {
+  claude: NonEmptyStr
+  codex: NonEmptyStr
+  cursor: NonEmptyStr
+  gunbc_harness: NonEmptyStr
+}
+
+data dispatch_provider_words: DispatchProviderWordsDeclaration = DispatchProviderWordsDeclaration {
+  claude: "claude" as NonEmptyStr,
+  codex: "codex" as NonEmptyStr,
+  cursor: "cursor" as NonEmptyStr,
+  gunbc_harness: "gunbc-harness" as NonEmptyStr,
+}
+
+// The word for a provider, read from the row above. This is not a second map of literals: the literals are the
+// row's, and every site that spells a provider word reads it.
+fn dispatch_provider_word(provider: DispatchCliProvider) -> NonEmptyStr {
+  match provider {
+    ClaudeCodeProvider => dispatch_provider_words.claude
+    CodexDispatchProvider => dispatch_provider_words.codex
+    CursorDispatchProvider => dispatch_provider_words.cursor
+    GunbcHarnessProvider => dispatch_provider_words.gunbc_harness
+  }
+}
+
 // THE GITFILE AND WORKTREE POINTER FILES REDIRECT THE CONTROLLER'S GIT. They sit inside the
 // writable carve-outs (the worktree and .git/worktrees/<n>/), and ReadOnlyPaths= on those exact
 // files wins over the parent ReadWritePaths. systemd can only bind a path that exists, so the

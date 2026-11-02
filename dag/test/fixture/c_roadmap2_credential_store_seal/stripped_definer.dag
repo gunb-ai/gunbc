@@ -1,0 +1,15 @@
+module test.fixture.c_roadmap2_credential_store_seal.stripped_definer
+
+import std.types { NonEmptyStr }
+
+// The SAME fixture record as test.fixture.c_roadmap2_credential_store_seal.definer with the `sole_constructor`
+// keyword REMOVED, and nothing else changed. The identical hostile source must draw zero seal violations here
+// and exactly one against the definer: that difference is the seal, not the source. See the definer's header
+// and test.claim.c_roadmap2_credential_store_seal_witness.
+
+type CursorAttemptRuntimeRoot { base: NonEmptyStr }
+
+// With the seal gone the module's own mint is unchanged -- the pair differs in the keyword and nothing else.
+fn mint_cursor_attempt_runtime_root(base: NonEmptyStr) -> CursorAttemptRuntimeRoot {
+  CursorAttemptRuntimeRoot { base: base }
+}

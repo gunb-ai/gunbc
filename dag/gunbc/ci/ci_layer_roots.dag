@@ -429,6 +429,10 @@ data excl_local_repo_wet_browser_ready_label_dissolve: DissolutionCondition = un
 
 data excl_local_repo_wet_tempdir_write_reason: String = "real host-effect execution witness whose effect is a FILESYSTEM WRITE INTO A THROWAWAY TEMP DIRECTORY -- refused by the hermetic envelope (Filesystem.Write and shell.Mktemp.Dir have no mock_response), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT FROM BOTH NEIGHBOURS AND IS NAMED RATHER THAN FOLDED INTO EITHER: it is not excl_local_repo_wet_reason's throwaway REPOSITORY property -- no repository is built and no git operation runs -- and it is not excl_local_repo_wet_host_probe_reason, which admits read-only probes that write NOTHING. What admits it to the same lane is the negative half those rows share: no network, no cargo, no remote host, no install media, and nothing outside a directory the witness created and removes. IT IS ENROLLED IN THE IDENTITY-GRAIN LANE DELIBERATELY rather than in the dark bin-wet class, because the whole purpose of the witness is that a wall which stops executing must REFUSE rather than read as covered -- enrolling a witness about silent absence somewhere it could be silently absent would reproduce its own subject."
 
+data excl_c_roadmap2_credential_store_wet_reason: String = "THE C-ROADMAP-2 CREDENTIAL-STORE COMMAND WITNESSES (three rows below). Their subject is the COMMAND a sealed per-attempt Cursor runtime root produces, and after the seal a root is a record the store module alone builds: the only route to one is to mint the instance's credential store, which is an effect (shell.Mkdir.Parents of the 0700 credential slots directory, then the store's own mint). Refused by the hermetic envelope (that mkdir and the store's Filesystem writes have no mock_response), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. NAMED RATHER THAN FOLDED INTO excl_local_repo_wet_tempdir_write_reason because the destination is not a fresh mktemp per call: the three witnesses mint over the witness's OWN stable root under /tmp (gunbc-c-roadmap2-cursor-<label>), which the witness creates and, where the claim observes absence, removes; the scratch-rooted rows remove what they made. The shared negative half is the lane's: no network, no cargo, no remote host, no install media, nothing outside the witness's own /tmp root. And the reason the rows are ENROLLED rather than left unexecutable is the witnesses' own subject: a minting route that stops executing must REFUSE, not read as covered."
+
+data excl_c_roadmap2_credential_store_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the credential-store mint (the slots-directory mkdir and the store's Filesystem writes), sufficient for fx_cursor_root to hand a witness a minted root under fixed mocks; then these fns re-enroll as ordinary hermetic discovery rows, drop off the wet lane, and these rows delete. A store that cannot be minted REFUSES the claim outright (the witnesses' own none arms), so an unexecutable mint is a RED here rather than a silent pass -- which is what keeps this row honest while it stands.")
+
 // Capture verification hashes the supplied bytes through stdin. The capture
 // reader may first read a committed file; neither route creates a directory.
 data excl_local_repo_wet_digest_stdin_reason: String = "real host-effect capture-verification witnesses reach extdeps.tools.sha256sum Sha256.DigestStdin through gunbc.host.memory_observation verify_memory_capture_content. DigestStdin has no mock_response, so hermetic execution refuses before a verdict. read_verified_memory_capture additionally reads committed artifact bytes through Filesystem.Read; neither route writes files or creates a temporary repository/directory. The required floor executes these identities through v2.workflow.local_repo_wet_terminal local_repo_wet_schedule and retains their DigestStdin route gaps in floor_route_gap_expectations."
@@ -1383,6 +1387,26 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
+  // THE THREE COMMAND-SPELLING WITNESSES THE CREDENTIAL-STORE SEAL MADE WET (this PR): each used to hand a
+  // literal instance root to the deleted cursor_attempt_runtime_root(instance_root:, reference:) and now
+  // takes its root from the one witness route there is (test.claim.dispatch_credential_acquisition_witness
+  // fx_cursor_root), which mints the instance's credential store. What they ASSERT about the command is
+  // unchanged; see excl_c_roadmap2_credential_store_wet_reason for what the mint is and why it is admitted.
+  WitnessExclusionRow {
+    pattern: "cursor_pinned_program_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_c_roadmap2_credential_store_wet_reason,
+    dissolution: excl_c_roadmap2_credential_store_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "cursor_agent_realization_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_c_roadmap2_credential_store_wet_reason,
+    dissolution: excl_c_roadmap2_credential_store_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "worker_turn_standing_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_c_roadmap2_credential_store_wet_reason,
+    dissolution: excl_c_roadmap2_credential_store_wet_dissolve},
   WitnessExclusionRow {
     pattern: "sol_hold_stdin_wet_witness.dag",
     classification: LocalRepoWetLane,
