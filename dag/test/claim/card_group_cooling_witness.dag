@@ -11,6 +11,7 @@ import product.printed_chassis.gpu_duct { screwed_end_cap_of, ScrewedEndCap, Scr
 import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, a2_duct_card, a16_duct_card }
 import product.printed_chassis.group_duct {
   GroupDuctPlan, GroupFitPlateAdmission, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
+  GroupMembersNotSideBySide,
 }
 import product.printed_chassis.printable_assembly { CardGroupRoot, GroupFitPlate, PrintableAssemblyReady, PrintableAssemblyRefused }
 import product.printed_chassis.printable_assembly_selection { group_fit_plate_selection }
@@ -197,5 +198,16 @@ test fn a_fit_plate_needs_each_header_observed_absent() -> Bool {
   selects(p: connector_plan(c: FeatureAbsentObserved))
     && named && refusal_says(p: present, pattern: "b: the end face carries a power header")
     && refusal_says(p: unread, pattern: "b: whether the end face carries a power header was not observed")
+}
+
+// SIDE BY SIDE MEANS NO EMPTY SLOT BETWEEN: A2s in PCIE4 and PCIE6 are a valid installation and a valid
+// group of two, but the next card does not start where the first ends (PCIE4 plus one slot), so no plate
+// is drawn; PCIE4 and PCIE5 select (the positive control).
+test fn a_fit_plate_is_refused_across_an_empty_slot() -> Bool {
+  let gapped = supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_at(id: "b", designator: "PCIE6")])
+  let typed = match admit_group_fit_plate(p: gapped) { GroupMembersNotSideBySide { reason: r } => string_contains(s: r, pattern: "b does not start in the slot where a ends") _ => false }
+  count(installation_refusals(inst: gapped.installation)) == 0
+    && typed && refusal_says(p: gapped, pattern: "an empty slot lies between them")
+    && selects(p: supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_at(id: "b", designator: "PCIE5")]))
 }
 

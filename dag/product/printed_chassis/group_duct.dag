@@ -17,7 +17,7 @@ import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFac
 import product.printed_chassis.gpu_duct { card_envelope_of }
 import product.printed_chassis.card_installation {
   CardInstallation, InstalledCard, CardGroup, group_members, Partition, Partitioned, PartitionRefused, PartitionRefusal, partition_by_sizes,
-  GroupContiguous, GroupNotConsecutive, GroupSlotsNotRecorded, group_contiguity, card_separation, a2_altra_installation,
+  group_contiguity, group_contiguity_text, card_separation, a2_altra_installation,
 }
 
 // ═══ A DUCT THAT SERVES A GROUP OF INSTALLED CARDS SIDE BY SIDE ═══
@@ -138,11 +138,7 @@ fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?) -> GroupFitPla
   match chosen {
     Absent => GroupPlanUnresolved { reason: join(["plan ", p.id as String, " names group ", to_string(value: p.group), ", which its partition does not have"], "") }
     Present { value: g } => {
-      match group_contiguity(inst: p.installation, g: g) {
-        GroupContiguous => {}
-        GroupNotConsecutive { instance: i } => return GroupMembersNotSideBySide { reason: join([i as String, " is not next to the member before it"], "") }
-        GroupSlotsNotRecorded { instance: i } => return GroupMembersNotSideBySide { reason: join(["the slot of ", i as String, " is not recorded"], "") }
-      }
+      match group_contiguity_text(c: group_contiguity(inst: p.installation, g: g)) { Present { value: r } => return GroupMembersNotSideBySide { reason: r } Absent => {} }
       let first = g.members.head
       let ms = group_members(g: g)
       let mixed = fold(ms, init: Absent, f: (acc, m) => match acc { Present { value: v } => Present { value: v } Absent => if m.instance.card.row.id == first.instance.card.row.id { Absent } else { Present { value: m.instance.card.row.id } } })

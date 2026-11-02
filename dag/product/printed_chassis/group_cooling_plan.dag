@@ -19,7 +19,7 @@ import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, EndFac
 import product.printed_chassis.card_installation {
   CardInstallation, InstalledCard, CardGroup, group_members, group_ids, Partition, Partitioned, PartitionRefused,
   partition_by_sizes, partition_refusal_text,
-  GroupContiguity, GroupContiguous, GroupNotConsecutive, GroupSlotsNotRecorded, group_contiguity, card_separation,
+  group_contiguity, group_contiguity_text, card_separation,
   a2_altra_installation, a16_installation,
 }
 
@@ -221,10 +221,9 @@ fn unfit_cards(ms: List<InstalledCard>) -> List<DuctCard> {
 fn group_fabrication(inst: CardInstallation, g: CardGroup) -> GroupFabrication {
   let ms = group_members(g: g)
   let reasons_unread = map(unfit_cards(ms: ms), c => duct_card_unread_reason(card: c))
-  let shape = if length(list: ms) == 1 { [] } else { concat(match group_contiguity(inst: inst, g: g) {
-    GroupContiguous => []
-    GroupNotConsecutive { instance: i } => [join(["members are not side by side (", i as String, ")"], "")]
-    GroupSlotsNotRecorded { instance: i } => [join(["the slot of ", i as String, " is not recorded"], "")]
+  let shape = if length(list: ms) == 1 { [] } else { concat(match group_contiguity_text(c: group_contiguity(inst: inst, g: g)) {
+    Absent => []
+    Present { value: r } => [join(["members are not side by side: ", r], "")]
   }, ["no shared multi-card realization exists yet"]) }
   let reasons = concat(reasons_unread, shape)
   if length(list: reasons) == 0 { GroupFabricableByExistingDucts } else { GroupFabricationBlocked { reasons: reasons } }

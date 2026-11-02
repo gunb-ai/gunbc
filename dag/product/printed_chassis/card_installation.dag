@@ -204,15 +204,20 @@ fn partition_refusal_text(r: PartitionRefusal) -> String {
   }
 }
 
-// A shared manifold needs its members side by side: consecutive in the installation and in adjacent
-// occupied positions. That is the first realization's requirement, not the definition of a group; a group
+// A shared manifold needs its members side by side: consecutive in the installation, and each starting at
+// the slot position where the member before it ends (its position plus its slot count), so no empty slot
+// lies between them. That is the first realization's requirement, not the definition of a group; a group
 // that is not contiguous is still a group, and a realization that cannot serve it says so.
 type GroupContiguity
   = GroupContiguous
   | GroupNotConsecutive { instance: NonEmptyStr }
+  | GroupSlotGap { instance: NonEmptyStr, after: NonEmptyStr }
   | GroupSlotsNotRecorded { instance: NonEmptyStr }
+  | GroupSlotCountUnread { instance: NonEmptyStr }
 
-type ContiguityFold { previous: Int?, verdict: GroupContiguity }
+type PlacedMember { card: InstalledCard, index: Int, position: Int }
+
+type ContiguityFold { previous: PlacedMember?, verdict: GroupContiguity }
 
 type IndexFind { index: Int, found: Int? }
 
@@ -222,23 +227,45 @@ fn installation_index(inst: CardInstallation, id: NonEmptyStr) -> Int? {
   r.found
 }
 
+fn next_member_contiguity(prev: PlacedMember, here: PlacedMember) -> GroupContiguity {
+  if here.index != prev.index + 1 { return GroupNotConsecutive { instance: here.card.instance.id } }
+  match row_field_value(field: prev.card.instance.card.row.slot_count) {
+    Absent => GroupSlotCountUnread { instance: prev.card.instance.id }
+    Present { value: n } => if here.position == prev.position + (n as Int) { GroupContiguous } else { GroupSlotGap { instance: here.card.instance.id, after: prev.card.instance.id } }
+  }
+}
+
 fn group_contiguity(inst: CardInstallation, g: CardGroup) -> GroupContiguity {
   let ms = group_members(g: g)
   if length(list: ms) == 1 { return GroupContiguous }
   let r = fold(ms, init: ContiguityFold { previous: Absent, verdict: GroupContiguous }, f: (acc, m) => match acc.verdict {
     GroupContiguous => match installed_position(c: m) {
       Absent => ContiguityFold { previous: Absent, verdict: GroupSlotsNotRecorded { instance: m.instance.id } }
-      Present { value: _ } => match installation_index(inst: inst, id: m.instance.id) {
+      Present { value: pos } => match installation_index(inst: inst, id: m.instance.id) {
         Absent => ContiguityFold { previous: Absent, verdict: GroupNotConsecutive { instance: m.instance.id } }
-        Present { value: i } => match acc.previous {
-          Absent => ContiguityFold { previous: Present { value: i }, verdict: GroupContiguous }
-          Present { value: p } => if i == p + 1 { ContiguityFold { previous: Present { value: i }, verdict: GroupContiguous } } else { ContiguityFold { previous: Present { value: i }, verdict: GroupNotConsecutive { instance: m.instance.id } } }
+        Present { value: i } => {
+          let here = PlacedMember { card: m, index: i, position: pos }
+          match acc.previous {
+            Absent => ContiguityFold { previous: Present { value: here }, verdict: GroupContiguous }
+            Present { value: prev } => ContiguityFold { previous: Present { value: here }, verdict: next_member_contiguity(prev: prev, here: here) }
+          }
         }
       }
     }
     _ => acc
   })
   r.verdict
+}
+
+// Why a group is not side by side, for every realization that needs it to be; absent when it is.
+fn group_contiguity_text(c: GroupContiguity) -> String? {
+  match c {
+    GroupContiguous => Absent
+    GroupNotConsecutive { instance: i } => Present { value: join([i as String, " is not next to the member before it in the installation"], "") }
+    GroupSlotGap { instance: i, after: a } => Present { value: join([i as String, " does not start in the slot where ", a as String, " ends: an empty slot lies between them"], "") }
+    GroupSlotsNotRecorded { instance: i } => Present { value: join(["the slot of ", i as String, " is not recorded"], "") }
+    GroupSlotCountUnread { instance: i } => Present { value: join([i as String, " has no stated slot count, so where it ends is unknown"], "") }
+  }
 }
 
 // ═══ THE INSTALLATIONS THIS LAYER KNOWS ═══
