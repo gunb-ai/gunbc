@@ -6,7 +6,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdDropIn, DropInUnitSection,
   Description, After, Requires, Assert, ConditionPathExists,
-  ServiceType, OneshotMode, RemainAfterExit, ExecStartPre, ExecStart, ExecReload, WorkingDirectory, TimeoutStartSec,
+  ServiceType, OneshotMode, RemainAfterExit, ExecStartPre, ExecStart, ExecReload, TimeoutStartSec,
   ServiceResourceControl, service_memory_max, service_memory_swap_max,
   Installable, WantedBy,
 }
@@ -122,6 +122,15 @@ type BoardFunctionConvergeUnitFile
 // is that new workload starts are refused for the length of each re-run (about 80 s on srv1, once per
 // deploy); running workloads are untouched, and a runner whose restart lands in that window is brought
 // back by runner-liveness-reconcile.
+//
+// THE UNIT HAS NO WorkingDirectory, so closing admission depends on nothing the deploy can remove. systemd
+// changes into a unit's WorkingDirectory before running ANY of its commands, so with the snapshot as working
+// directory a missing snapshot (a refused or interrupted reinstall of the referenced revision) would fail the
+// rm before it ran and leave the previous latch in place. The interpreter needs no working directory: its
+// workspace root (GUNBC_WORKSPACE_ROOT), binary, source roots and entry are all absolute paths into the
+// snapshot (board_function_converge_argv). Measured on srv1, 2026-11-02: the real entry ran from / over a
+// locus-shaped directory and read back converged; and with throwaway units, renaming the snapshot away before
+// a reload left the latch absent and a new dependent's command unrun, and restoring it re-admitted.
 fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisionBinding) -> BoardFunctionConvergeUnitFile {
   match board_function_converge_argv(host: host, revision: revision) {
     BoardFunctionConvergeArgvRefused { cause } => BoardFunctionConvergeUnitRefused { cause: cause }
@@ -134,7 +143,6 @@ fn board_function_converge_unit_file(host: HostIdentity, revision: ReleaseRevisi
         service: [
           ServiceType { mode: OneshotMode },
           RemainAfterExit { active: true },
-          WorkingDirectory { path: helper_locus_dir(locus: board_function_converge_locus(), revision: revision) as NonEmptyStr },
           TimeoutStartSec { duration: board_function_converge_start_timeout_seconds() as NonEmptyStr },
           ServiceResourceControl { directive: service_memory_max(bytes: board_function_converge_memory_max) },
           ServiceResourceControl { directive: service_memory_swap_max(bytes: board_function_converge_memory_swap_max) },
