@@ -97,7 +97,8 @@ import gunbc.witness.witness_floor_workflow {
 }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.ci.repository_ci_profile {
-  gunbc_roster_gate, gunbc_repository_ci_profile, RepositoryCiProfile, repository_ci_profile_refusal
+  gunbc_roster_gate, gunbc_repository_ci_profile, RepositoryCiProfile, repository_ci_profile_refusal,
+  profile_runs_roster_in_composed_root
 }
 import gunbc.fleet.fleet_workflow_steps { ci_cache_cargo_step_under }
 import gunbc.ci.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
@@ -925,19 +926,22 @@ type CompilerGateGenerationGate {
   holds: Bool
 }
 
-// THIS EMITTER OWNS ONE LANE. The profile's roster route says how a repository's roster is run; the
-// compiler-emission lane is gunbc's, and a repository on the composed-overlay route (a mirror, whose
-// claims are run by another repository's compiler) must not also emit this file - two workflows claiming
-// one required context means whichever runs last decides promotion, silently. The other lane's emitter is
-// gunbc.witness.repository_witness_workflow, and it refuses the mirror image of this case.
-data compiler_gate_wrong_lane_refusal_reason: String = "REFUSED gunbc.witness.compiler_gate_workflow: this repository's CI profile row runs its roster through the composed-overlay interpreter route (gunbc.ci.repository_ci_profile ComposedOverlayInterpreterRoster), so its required gate is emitted by gunbc.witness.repository_witness_workflow. Emitting this workflow as well would put two files behind one required context."
+// THIS EMITTER OWNS ONE LANE. Where the profile says its rows' compiler comes from says which lane a
+// repository is in: this one is the repository that builds its own compiler, under the witness floor. A
+// repository whose claims are judged by a compiler checked out from elsewhere (a mirror) must not also emit
+// this file - two workflows claiming one required context means whichever runs last decides promotion,
+// silently. The other lane's emitter is gunbc.witness.repository_witness_workflow, and it refuses the mirror
+// image of this case. One fact, read by both emitters through `profile_runs_roster_in_composed_root`; no
+// second `route` field to keep in agreement with it.
+data compiler_gate_wrong_lane_refusal_reason: String = "REFUSED gunbc.witness.compiler_gate_workflow: this repository's CI profile row builds its compiler from a declared seed (gunbc.ci.repository_ci_profile CompilerSource), so its required gate is emitted by gunbc.witness.repository_witness_workflow. Emitting this workflow as well would put two files behind one required context."
 
 // WHAT THE ROW FORBIDS BEFORE THE ADMISSIONS RUN: the required context has one owner, and the row says
 // which lane this repository's gate is.
 fn compiler_gate_row_refusal(profile: RepositoryCiProfile) -> Optional<NonEmptyStr> {
-  match profile.roster.route {
-    InstrumentLabelRows => Absent
-    ComposedOverlayInterpreterRoster { overlay: _ } => Present { value: compiler_gate_wrong_lane_refusal_reason }
+  if profile_runs_roster_in_composed_root(profile: profile) {
+    Present { value: compiler_gate_wrong_lane_refusal_reason }
+  } else {
+    Absent
   }
 }
 

@@ -48,7 +48,7 @@ fn removed_at_board_by_setup_item(r: BoardFunctionRemoval, item: String) -> Bool
 
 fn removed_by_host_after_boot(r: BoardFunctionRemoval) -> Bool {
   match r {
-    RemovedByHostAfterBoot { residue: _ } => true
+    RemovedByHostAfterBoot { residue: _, route: _ } => true
     _ => false
   }
 }
