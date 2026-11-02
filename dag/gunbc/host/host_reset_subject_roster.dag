@@ -23,6 +23,7 @@ import gunbc.host.bmc_control_binding {
   BmcControlNotSecured,
   BmcControlEndpointMismatch,
   bmc_control_binding,
+  bmc_control_route_observation,
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
 import gunbc.rung_drop { RungDrop }
