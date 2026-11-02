@@ -134,7 +134,7 @@ fn seat_kept_under(record: AttemptExitRecordObservation, reading: SessionHolderE
 }
 
 test fn a_gone_unit_without_bound_death_evidence_keeps_the_seat() -> Bool {
-  let no_record = attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [] }])
+  let no_record = attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [SpoolListed { names: [] }])
   seat_kept_under(record: no_record, reading: boot_predates_the_hold())
     && seat_kept_under(record: no_record, reading: the_unit_still_reports_its_run())
     && seat_kept_under(record: no_record, reading: the_boot_cannot_be_ordered())
