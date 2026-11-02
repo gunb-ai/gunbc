@@ -371,9 +371,9 @@ test fn the_stale_stop_effect_resolves() -> ProcessExit {
   census_exit(census_verdict(census: total_blocking_census(source: probe_stale_stop_source), holds: fn(n) { n == 0 }))
 }
 
-// EXPECTING-RED: HostSpoolStage must dissolve into SpoolRole (consumers moved: gunbc.durable_handoff_host,
+// PERMANENT CONTROL (was expecting-red): HostSpoolStage dissolved into SpoolRole (consumers moved: gunbc.durable_handoff_host,
 // gunbc.roadmap.spool_stall, gunbc.roadmap.roadmap_attempt_exit_spool, gunbc.roadmap.roadmap_belt_actuate,
-// gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). Flips to MissingExport.
+// gunbc.roadmap.roadmap_launch_deployment_observe, and the claims that import it). It is a MissingExport.
 test fn the_host_spool_stage_enum_is_gone() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: raw_host_spool_stage_source, wanted_class: "MissingExport", wanted_subject: "HostSpoolStage"), holds: fn(n) { n == 1 }))
 }

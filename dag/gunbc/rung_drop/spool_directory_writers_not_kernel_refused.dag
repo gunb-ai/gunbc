@@ -1,0 +1,27 @@
+module gunbc.rung_drop.spool_directory_writers_not_kernel_refused
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// Grain: who can create an entry in a gunbc.spool_queue directory. spool_role_writers names the MAY-write principals and
+// the directory mode/group are derived from it, but the exit spool's ExecStopPost hook writes from outside the corpus.
+
+data spool_directory_writers_not_kernel_refused: RungDrop = RungDrop {
+  identity: "spool_directory_writers_not_kernel_refused" as NonEmptyStr,
+
+  subject: "Whether only the principals gunbc.spool_queue spool_role_writers names can create an entry in a spool directory, every other principal refused by the kernel",
+
+  declared: "2026-11-02",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "directory owner, group and mode derived from spool_role_writers by gunbc.live_deploy.apply_legs spool_role_leg_mode and spool_role_leg_group, for the unit pending and claimed directories and the publication pending directory. The other roles (answers, stalled, receipt, staging) have no writers row and are Blocked on the follow-up that models them."
+    },
+    population: Enumerated { members: FreeSemigroup { head: "the three spools Sbb01362f unit-spool, S4df2b101 exit-spool and S29c50e03 publication requests, as roled by gunbc.spool_queue", tail: ["the PrincipalExternalHook (ExecStopPost) writer of the exit spool, which runs outside the corpus", "any principal in the group of a PrincipalRequester directory whose shape is SpoolDirectoryGroupBlindWrite"] } },
+    restoration_trigger: "THE CAPABILITY: each spool directory creatable only by the principals spool_role_writers names, every other principal refused by the kernel, proved by a wet probe from a non-declared principal that is refused AND a probe from each declared principal that succeeds (a positive control), sufficient to delete this row and the out-of-corpus writers frontier row in gunbc.spool_queue."
+  } }
+}

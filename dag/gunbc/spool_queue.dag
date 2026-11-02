@@ -44,23 +44,18 @@ import std.dissolution { unbound_dissolution }
 // INVENTORY: rows Sbb01362f (attempt-unit request spool), S4df2b101 (attempt-exit spool) and S29c50e03
 // (publication requests) of the store inventory at commit c5671ca07216.
 //
-// MODEL ONLY. This module declares the closed stage roles, the per-spool declaration row, the sealed entry key
+// This module declares the closed stage roles, the per-spool declaration row, the sealed entry key
 // and the pure decisions of the four operations (enqueue, claim, complete, observe) plus the two crash decisions
 // (spool_requeue_assess on boot-id evidence, then spool_stale_assess for the line stop). The effect layer (listing, create-only write, the rename) is
-// the implementation PR; its REDs are the expecting-red claims in test.claim.spool_queue_seal_witness.
+// realized below; its former expecting-red claims are permanent controls in test.claim.spool_queue_seal_witness.
 
 type SpoolKind
   = SpoolAttemptUnit
   | SpoolAttemptExit
   | SpoolPublication
 
-// The closed set of places an entry can stand. HostSpoolStage (gunbc.durable_handoff_host) is the exit spool's
-// private five-stage enum (inbox = RolePending, queued = RoleHandedOff, running = RoleClaimed, done = RoleDone,
-// refused = RoleRefused). STAGED, not yet cut: HostSpoolStage still exists at this revision, and the witness
-// claim the_host_spool_stage_enum_is_importable_today holds it red-to-flip. The cut is the implementation PR,
-// because its consumers (durable_handoff_host, spool_stall, roadmap_attempt_exit_spool, roadmap_belt_actuate,
-// roadmap_launch_deployment_observe/_receipt) are effect code, which this model-only lane was ruled not to touch
-// (parent jolly-hawk-60, design approval). The change node://adhoc-ec4fbad6-dec deletes HostSpoolStage in the same change (DESIGN section 3).
+// The closed set of places an entry can stand (inbox = RolePending, queued = RoleHandedOff, running = RoleClaimed,
+// done = RoleDone, refused = RoleRefused for the exit spool). HostSpoolStage, the exit spool's former private enum, is deleted.
 type SpoolRole
   = RolePending
   | RoleHandedOff
@@ -919,20 +914,19 @@ fn spool_queue_stale_stop(store: SpoolStore, key: SpoolEntryKey, liveness: Spool
 
 
 // FRONTIERS (declared, consumed by a named later change, DESIGN 3c). Annotations, not rows: nothing reads them, and
-// a String row that no fold reads is the dead data of DESIGN 4c. The implementation change is node://adhoc-ec4fbad6-dec
-// (cut HostSpoolStage, move its 7 consumer modules, wire live_deploy.emit); it gives each a typed carrier.
+// a String row that no fold reads is the dead data of DESIGN 4c. HostSpoolStage is cut and its consumers moved.
 //  - answers/: the reply record keyed to a request (publication and attempt-unit spools). Trigger: the publication
 //    spool migrates onto spool_queue; the answer store is then modeled as its own sealed face.
-//  - writers reader: gunbc.live_deploy.emit spells directory ownership beside host_layout; it derives from
-//    spool_role_writers when the implementation PR migrates the three spools and deletes the literal spellings.
+//  - writers reader: live_deploy.emit and apply_legs derive the unit pending/claimed and publication pending directory
+//    mode and group from spool_role_writers via spool_role_directory_shape. The other roles' directories are Blocked
+//    (no writers row) and wait on the answers/stalled/receipt/staging follow-up.
 
 // The out-of-corpus writers frontier, enrolled in gunbc.census_closure_frontier census_closure_frontier_row_groups
-// (the consumer). No rung is established by this model-only change, so none is dropped here; the implementation
-// change (node://adhoc-ec4fbad6-dec) files the gunbc.rung_drop row (previous rung, temporary rung, reason, population).
+// (the consumer). The rung drop is gunbc.rung_drop.spool_directory_writers_not_kernel_refused.
 data spool_out_of_corpus_writers_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.spool_queue", decl_name: "spool_role_writers"),
     reason: "spool_role_writers names who MAY create an entry into a role, but the ExecStopPost hook writes the exit spool from outside the corpus and nothing refuses any other principal: the exclusion holds only by the declared writers' agreement (mitigation), never by the kernel",
-    dissolution: unbound_dissolution(description: "dissolve-on: each spool directory is creatable only by the principals spool_role_writers names, with every other principal kernel-refused (ownership and mode derived from spool_role_writers by gunbc.live_deploy.emit), and a permission-bits readback does not retire it. SUFFICIENT FOR deleting this row. Unbound until the implementation change node://adhoc-ec4fbad6-dec declares that ownership authority as a declaration this corpus can cite.")
+    dissolution: unbound_dissolution(description: "dissolve-on: each spool directory is creatable only by the principals spool_role_writers names, with every other principal kernel-refused (ownership and mode derived from spool_role_writers by gunbc.live_deploy.emit), and a permission-bits readback does not retire it. SUFFICIENT FOR deleting this row. The ownership authority is spool_role_writers, derived for the unit and publication pending directories; the kernel-refusal readback is the unbuilt capability.")
   )
 ]
