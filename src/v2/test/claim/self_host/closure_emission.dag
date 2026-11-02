@@ -750,3 +750,16 @@ fn ce_probe_returnblk_text() -> String { ce_probe_verdict(member_source: ce_refu
 fn ce_probe_blockfin_return_text() -> String { ce_probe_verdict(member_source: ce_refusing_blockfin_return_member_source) }
 
 fn ce_probe_elsetail_text() -> String { ce_probe_verdict(member_source: ce_refusing_elsetail_member_source) }
+// T8 (keen-heron-809): call-head condition. primary_ident_suffix is ONE optional suffix, so after
+// the call suffix consumes (x) no record suffix can attach: H-A (record) predicts PARSE (block
+// reached normally), H-B predicts refusal right after the block like T1.
+data ce_refusing_callcond_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if f(x) { i }\n  i\n}\n"
+
+// T9 (keen-heron-809): field-access head. `c.d` then the single optional suffix attaches the
+// record { i } (guard passes without else): H-A predicts refusal like T1 (swallow); H-B also
+// refuses - this row pins head-shape insensitivity, not the fork.
+data ce_refusing_dotcond_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c.d { i }\n  i\n}\n"
+
+fn ce_probe_callcond_text() -> String { ce_probe_verdict(member_source: ce_refusing_callcond_member_source) }
+
+fn ce_probe_dotcond_text() -> String { ce_probe_verdict(member_source: ce_refusing_dotcond_member_source) }
