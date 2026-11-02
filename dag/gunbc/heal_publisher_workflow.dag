@@ -37,8 +37,8 @@ import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witn
 import gunbc.ci.ci_materialization { step_display_name }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.ci.repository_ci_profile {
-  DagInvocation, HealPublisherPolicy, OverlayIngest, PublicSeed, PublisherBuildRoute, RepositoryCiProfile,
-  profile_overlay, repository_ci_profile_refusal
+  DagInvocation, HealPublisherPolicy, OverlayIngest, PublicSeed, RepositoryCiProfile,
+  profile_overlay, profile_public_seed, repository_ci_profile_refusal
 }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.heal_workflow {
@@ -416,37 +416,38 @@ type HealPublisherBoundStep {
 // needs them - the build steps, both phase scripts and the admit step's own wording - because a publisher
 // whose phases ran a different composition than the one its candidate was sealed from is exactly the drift
 // this workflow exists to prevent, and because reading each arm twice lets two reads disagree. An overlay
-// with no seed has no resolution: nothing exists to build the compiler that would read it. That combination
-// is refused at the row - `gunbc.ci.repository_ci_profile.profile_overlay_has_a_declared_seed`, asked by
-// `repository_ci_profile_refusal` before any byte is rendered, with its own control in the witness - so
-// `Absent` here means only "this route composes nothing", never "an overlay with nowhere to land".
+// with no seed to compose into has no resolution because it is not a row: the sum
+// `gunbc.ci.repository_ci_profile.CompilerSource` carries an overlay only alongside the seed it composes
+// into, so `Absent` here means only "this repository composes nothing" and never "an overlay with nowhere
+// to land" -- a state no caller can hand this function at all.
 type HealPublisherComposedRoot {
   seed: PublicSeed
   overlay: OverlayIngest
 }
 
+// THE ONE READING of "which tree do the publisher's phases run under": the seed the row declares and the
+// overlay copied into it come from the same case of the row's `CompilerSource`, so this function reads a
+// fact rather than combining two. A repository on `Own_checkout_under_witness_floor` reaches no seed and no
+// overlay to read, which is why an absent resolution here is a normal answer and not a gap to fill.
 fn heal_publisher_composed_root(profile: RepositoryCiProfile) -> Optional<HealPublisherComposedRoot> {
   match profile_overlay(profile: profile) {
     Absent => Absent
     Present { value: overlay } =>
-      match profile.public_seed {
+      match profile_public_seed(profile: profile) {
         Absent => Absent
         Present { value: seed } => Present { value: HealPublisherComposedRoot { seed: seed, overlay: overlay } }
       }
   }
 }
 
-// THE STEPS THAT BUILD THE COMPILER THE PUBLISHER'S PHASES RUN UNDER, selected by the row's build_route -
-// never by which other fields happen to be present, which is how this module once gave one repository
-// another repository's build. `Own_checkout_under_witness_floor` is gunbc's: toolchain-home isolation, the
-// witness floor's toolchain, the rustup pin, and a build of the named binaries from this checkout.
-// `Declared_seed` checks out the profile's public seed and builds it there, through the same steps the drift
-// emitter runs for the seal - imported, not re-spelled, because a publisher whose compiler came from
-// somewhere other than the one that sealed the candidate would publish bytes nothing verified. Both routes'
-// steps are gated by the consumers' own condition. NO STEP IS INVENTED WHEN THE ROW CANNOT SUPPLY ONE: an
-// absent resolution yields no steps, and the entrypoint refuses rather than substituting a plausible build.
-fn heal_publisher_route_steps(profile: RepositoryCiProfile, job: HealPublisherPolicy) -> Outcome<List<HealPublisherBoundStep>> {
-  match job.build_route {
+// THE STEPS THAT BUILD THE COMPILER THE PUBLISHER'S PHASES RUN UNDER, selected by the row's
+// `CompilerSource` and by nothing else - never by which other fields happen to be present, which is how this
+// module once gave one repository another repository's build. Each case carries the facts its own build
+// needs: the own-checkout case names the binaries to build from this checkout under the witness floor's
+// toolchain, and both seed cases hand their declared seed to the one seed build below. A case cannot be
+// handed a row that lacks what it builds from, so there is no arm here that invents a step to fill a gap.
+fn heal_publisher_route_steps(profile: RepositoryCiProfile) -> Outcome<List<HealPublisherBoundStep>> {
+  match profile.source {
     Own_checkout_under_witness_floor { required_bins: bins } =>
       outcome_accepted(
         value: [
@@ -473,47 +474,38 @@ fn heal_publisher_route_steps(profile: RepositoryCiProfile, job: HealPublisherPo
           },
         ]
       )
-    Declared_seed =>
-      // THE SEED THE PROFILE DECLARES, read from the one place it is declared; the route says which route
-      // this is, it does not restate the seed. No seed is REFUSED under the seed's own identity, and no
-      // invented toolchain build fills the gap.
-      match profile.public_seed {
-        Absent =>
-          // REFUSED WITH ITS OWN IDENTITY, not folded into a bare absence: which row the operator has to
-          // edit is a fact about this failure, and a caller that reconstructs it from `build_route` sends
-          // an operator to the wrong field.
-          Rejected {
-            diagnostics: diagnostics_singleton(Diagnostic {
-              reason: ^publisher_seed_route_without_a_declared_seed,
-              at: Textual { file: ^heal_publisher_workflow_dag, extent: WholeFile },
-              correction: Unavailable { reason: CorrectionNotModeled }
-            })
-          }
-        // THE SEED GRAMMAR'S OWN REFUSAL IS THE REFUSAL. `seed_build_step` knows which statement of which
-        // seed row it could not fold; re-deriving a cause here from `build_route` would report a different
-        // failure than the one that happened.
-        Present { value: seed } =>
-          match seed_build_step(seed: seed) {
-            Rejected { diagnostics: d } => Rejected { diagnostics: d }
-            Accepted { value: build_step, diagnostics: _ } =>
-              outcome_accepted(
-                value: [
-                  HealPublisherBoundStep {
-                    step: heal_publisher_only_when_repair_owed(step: seed_checkout_step(seed: seed)),
-                    role: capability_neutral,
-                  },
-                  HealPublisherBoundStep {
-                    step: heal_publisher_only_when_repair_owed(step: toolchain_install_step(step_name: heal_publisher_toolchain_install_step_name)),
-                    role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
-                  },
-                  HealPublisherBoundStep {
-                    step: heal_publisher_only_when_repair_owed(step: build_step),
-                    role: consumes_only(capabilities: [CargoCapability]),
-                  },
-                ]
-              )
-          }
-      }
+    Declared_seed { seed: seed, run_roster_step_name: _ } => heal_publisher_seed_route_steps(seed: seed)
+    Declared_seed_under_composed_overlay { seed: seed, overlay: _, run_roster_step_name: _ } =>
+      heal_publisher_seed_route_steps(seed: seed)
+  }
+}
+
+// THE SEED BUILD, ONE IMPLEMENTATION FOR BOTH SEED VARIANTS: the checkout, the toolchain install and the
+// seed's own build command, gated on a repair being owed -- the same steps the drift emitter runs before it
+// seals, imported rather than re-spelled so the compiler that built the candidate and the compiler the
+// publisher runs cannot come from different recipes. NO STEP IS INVENTED WHEN A FOLD FAILS: the seed
+// grammar's own refusal travels outward, and a caller that reconstructed a cause from a field would report a
+// failure that did not happen.
+fn heal_publisher_seed_route_steps(seed: PublicSeed) -> Outcome<List<HealPublisherBoundStep>> {
+  match seed_build_step(seed: seed) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: build_step, diagnostics: _ } =>
+      outcome_accepted(
+        value: [
+          HealPublisherBoundStep {
+            step: heal_publisher_only_when_repair_owed(step: seed_checkout_step(seed: seed)),
+            role: capability_neutral,
+          },
+          HealPublisherBoundStep {
+            step: heal_publisher_only_when_repair_owed(step: toolchain_install_step(step_name: heal_publisher_toolchain_install_step_name)),
+            role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+          },
+          HealPublisherBoundStep {
+            step: heal_publisher_only_when_repair_owed(step: build_step),
+            role: consumes_only(capabilities: [CargoCapability]),
+          },
+        ]
+      )
   }
 }
 
@@ -530,7 +522,7 @@ fn heal_publisher_bound_steps(
 ) -> Outcome<List<HealPublisherBoundStep>> {
   // THE GATE'S AND THE PUBLICATION'S OWN REFUSALS TRAVEL OUTWARD. Both builders say which statement of
   // which row they could not fold; folding their verdicts into a bare absence and letting a caller infer
-  // a cause from `build_route` would report a failure that did not happen.
+  // a cause from the row would report a failure that did not happen.
   bind_outcome(
     o: heal_publisher_admit_step(profile: profile, job: job, composed: composed),
     f: fn(admit_step) {
@@ -749,7 +741,7 @@ fn publisher_checkout_fetches_candidate_code(step: Step, seed: Optional<PublicSe
 fn publisher_job_executes_candidate_code(steps: List<HealPublisherBoundStep>, profile: RepositoryCiProfile) -> Bool {
   any(
     steps,
-    b => publisher_checkout_fetches_candidate_code(step: b.step, seed: profile.public_seed)
+    b => publisher_checkout_fetches_candidate_code(step: b.step, seed: profile_public_seed(profile: profile))
   )
 }
 
@@ -810,7 +802,7 @@ fn heal_publisher_workflow_yml_for(profile: RepositoryCiProfile) -> HealPublishe
 // asked of a step list other than the one that gets rendered.
 fn heal_publisher_resolved_steps(profile: RepositoryCiProfile, job: HealPublisherPolicy) -> Outcome<List<HealPublisherBoundStep>> {
   bind_outcome(
-    o: heal_publisher_route_steps(profile: profile, job: job),
+    o: heal_publisher_route_steps(profile: profile),
     f: fn(route_steps) {
       heal_publisher_bound_steps(
         profile: profile,
@@ -825,7 +817,7 @@ fn heal_publisher_resolved_steps(profile: RepositoryCiProfile, job: HealPublishe
 // THE REFUSAL NAMES WHAT ACTUALLY REFUSED. The step builders carry their own diagnostics - the seed
 // grammar says which statement of which seed row it could not fold, the phase script says which subject it
 // could not render - and the reason a caller reads is composed from those lexemes. Nothing here re-derives
-// a cause from `build_route`: a message that guessed would report a failure that did not happen and send an
+// a cause from the row: a message that guessed would report a failure that did not happen and send an
 // operator to a row that was never the problem.
 fn heal_publisher_steps_refusal_reason(diagnostics: NonEmptyDiagnostics) -> String {
   concat(

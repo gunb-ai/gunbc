@@ -52,8 +52,11 @@ import gunbc.ci.repository_ci_profile {
   RepositoryCiProfile,
   PublicSeed,
   OverlayIngest,
-  ComposedOverlayInterpreterRoster,
   AnnotationStep,
+  profile_overlay,
+  profile_public_seed,
+  profile_run_roster_step_name,
+  profile_runs_roster_in_composed_root,
   repository_ci_profile_refusal,
 }
 import gunbc.ci.repository_compose_overlay {
@@ -171,18 +174,24 @@ fn repository_witness_lane_refusal(profile: RepositoryCiProfile, program: Roster
   match repository_ci_profile_refusal(profile: profile) {
     Present { value: reason } => Present { value: reason }
     Absent =>
-      match profile.roster.route {
-        InstrumentLabelRows => Present { value: "REFUSE: this profile's roster runs through the instrument dispatcher, which is the compiler-emission lane (gunbc.witness.compiler_gate_workflow). Do not emit a second required gate for the same repository: two workflows claiming one required context means whichever runs last decides promotion." }
-        ComposedOverlayInterpreterRoster { overlay: _ } =>
-          match profile.public_seed {
-            Absent => Present { value: "REFUSE: the composed-overlay roster needs the seed repository whose compiler runs the claims (gunbc.ci.repository_ci_profile PublicSeed). A repository that builds its own compiler takes the instrument lane instead." }
+      if profile_runs_roster_in_composed_root(profile: profile) == false {
+        // The own-checkout variant of `CompilerSource` IS the instrument dispatcher: the rows run in the
+        // checkout that already holds the compiler under test, and this emitter would put a second file
+        // behind one required context.
+        Present { value: "REFUSE: this profile's roster runs in its own checkout, which is the compiler-emission lane (gunbc.witness.compiler_gate_workflow). Do not emit a second required gate for the same repository: two workflows claiming one required context means whichever runs last decides promotion." }
+      } else {
+        match profile_public_seed(profile: profile) {
+            // UNREACHABLE WHILE THIS FUNCTION ASKS THE COMPOSED-ROOT QUESTION FIRST: the sum carries a seed
+            // in both composed variants. It stays a REFUSAL rather than a default so a caller that reorders
+            // these checks gets a refusal instead of a lane compiled under an invented compiler.
+            Absent => Present { value: "REFUSE: the composed-overlay roster needs the seed repository whose compiler runs the claims (gunbc.ci.repository_ci_profile CompilerSource). A repository that builds its own compiler takes the instrument lane instead." }
             Present { value: _ } =>
               if count(enforced_entries(entries: program.entries)) == 0 {
                 Present { value: "REFUSE: a required gate that runs no enforced row is a check that cannot fail. Enroll a roster entry, or delete the workflow." }
               } else {
                 Absent
               }
-          }
+        }
       }
   }
 }
@@ -245,10 +254,13 @@ fn run_roster_step(profile: RepositoryCiProfile, seed: PublicSeed, program: Rost
   )
 }
 
+// THE NAME THE STEP THAT RUNS THE ROSTER CARRIES. The variants that run it in a composed root carry the name
+// themselves; the own-checkout lane has no such step, and its job display name stands in for the single
+// call site that prints a heading.
 fn roster_run_step_name(profile: RepositoryCiProfile) -> NonEmptyStr {
-  match profile.roster.route {
-    ComposedOverlayInterpreterRoster { overlay: _, run_roster_step_name: name } => name
-    InstrumentLabelRows => profile.roster.job_display_name
+  match profile_run_roster_step_name(profile: profile) {
+    Present { value: name } => name
+    Absent => profile.roster.job_display_name
   }
 }
 
@@ -265,9 +277,9 @@ fn memory_budget_env(profile: RepositoryCiProfile) -> Optional<List<YamlKeyValue
 // status) is the evidence; the hand-written shell around it is a declared divergence whose trigger the
 // step prints, so nobody has to read this module to learn what would replace it.
 fn roster_run_statements(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>) -> List<Node> {
-  match profile.roster.route {
-    InstrumentLabelRows => [] as List<Node>
-    ComposedOverlayInterpreterRoster { overlay: overlay } => concat(
+  match profile_overlay(profile: profile) {
+    Absent => [] as List<Node>
+    Present { value: overlay } => concat(
       compose_statements,
       composed_roster_statements(profile: profile, program: program, overlay: overlay)
     )
@@ -381,9 +393,9 @@ data compile_terminal_error_count_pattern: NonEmptyStr = "error\\(s\\)"
 // repository. The medium is v2.extdeps.languages.bash_build, the same one
 // gunbc.instruments.instrument_dispatch_workflow uses for the committed instrument-dispatch step.
 fn annotation_compile_statements(profile: RepositoryCiProfile, seed: PublicSeed, annotation: AnnotationStep) -> List<Node> {
-  match profile.roster.route {
-    InstrumentLabelRows => [] as List<Node>
-    ComposedOverlayInterpreterRoster { overlay: overlay } => {
+  match profile_overlay(profile: profile) {
+    Absent => [] as List<Node>
+    Present { value: overlay } => {
       let roots = composed_source_roots(profile_roots: profile.roster.source_roots, overlay: overlay)
       concat(
         [command_words(rest: ["set", "-u"]), seed_gunbc_checkout_assign_stmt(seed: seed)],
@@ -801,10 +813,10 @@ fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, program: Rost
   // the row it was admitted - a caller cannot pair one repository's profile with another's seed, and the
   // Absent arm refuses rather than inventing a default. The lane's overlay already arrives this way,
   // through the route on the row.
-  match profile.public_seed {
+  match profile_public_seed(profile: profile) {
     Absent => YamlEmitRefused {
       path: profile.roster.workflow_file as String,
-      reason: "REFUSE gunbc.witness.repository_witness_workflow: this repository's profile declares no public_seed, and the gate judges its claims under the compiler built from that seed. The row owns the seed; the emitter does not supply one."
+      reason: "REFUSE gunbc.witness.repository_witness_workflow: this repository's profile builds its compiler in its own checkout, and the gate judges its claims under the compiler built from a seed. The row owns where the compiler comes from; the emitter does not supply one."
     }
     Present { value: seed } =>
   match lane_admission(profile: profile, program: program) {
@@ -829,9 +841,9 @@ fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, program: Rost
 // The overlay of the lane this profile routes its roster through; the instrument lane has none, and the
 // composition (and therefore its refusal) only exists for the composed lane.
 fn overlay_of_lane(profile: RepositoryCiProfile) -> OverlayIngest {
-  match profile.roster.route {
-    InstrumentLabelRows => no_overlay_lane()
-    ComposedOverlayInterpreterRoster { overlay: overlay } => overlay
+  match profile_overlay(profile: profile) {
+    Absent => no_overlay_lane()
+    Present { value: overlay } => overlay
   }
 }
 

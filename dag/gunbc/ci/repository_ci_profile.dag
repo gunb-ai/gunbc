@@ -117,13 +117,6 @@ type OverlayIngest {
 // v2.extdeps.languages.bash_build, so what the arms of the gate do is modelled and only their rendering is
 // a fold. What remains admitted as debt is the composition itself, and it carries its own trigger on
 // OverlayIngest rather than a second copy here.
-type RosterRoute
-  = InstrumentLabelRows
-  | ComposedOverlayInterpreterRoster {
-      overlay: OverlayIngest
-      run_roster_step_name: NonEmptyStr
-    }
-
 // THE DESIGN 4c STEP: compile the roster's closure and fail when a source annotation has drifted outside
 // module-item grain. It gates on the roster's enforced closure rather than every module of the
 // repository until its narrowing trigger fires, and it reads exit status plus the reader's classification
@@ -151,7 +144,6 @@ type RosterGate {
   source_roots: List<String>
   schedule: Optional<CronSchedule>
   memory_budget: Optional<ByteSize>
-  route: RosterRoute
   annotation: Optional<AnnotationStep>
 }
 
@@ -226,7 +218,6 @@ type HealPublisherPolicy {
   publish_invocation: DagInvocation
   federation: HealPublisherFederation
   pull_requests: PermissionLevel
-  build_route: PublisherBuildRoute
 }
 
 // HOW THE PUBLISHER OBTAINS THE COMPILER ITS PHASES RUN UNDER. THE TWO WAYS ARE NAMED, NOT IMPLIED. An
@@ -238,15 +229,35 @@ type HealPublisherPolicy {
 // drift job runs for the seal, and is refused unless a seed is declared. There is deliberately no third
 // arm for "no build at all": both phases run `.dag` subjects, so a publisher without a compiler has nothing
 // to run, and an arm nobody can inhabit is a default waiting to be selected by mistake.
-type PublisherBuildRoute
+// WHERE THE COMPILER THAT JUDGED THIS REPOSITORY'S ROWS CAME FROM: one declared sum, three honest answers.
+// Either this checkout holds it, under the witness floor's toolchain isolation and rustup pin; or a declared
+// public seed is checked out and built; or that seed is checked out, built, and the repository's own content
+// is copied into the composed root the roster runs in -- the copy whose dissolution `OverlayIngest` carries.
+//
+// THE COMBINATIONS THAT WERE VALIDATORS ARE NOT VALUES OF THIS TYPE: an overlay with no seed to compose
+// into, a publisher building its compiler "from the profile's seed" while the profile names none, and a job
+// building its own checkout while the profile composes a root its phases would have to run inside. Each was
+// a cross-field predicate restating what a sum says; DESIGN §5 puts the sum first -- "stronger than catching
+// a wrong state is making it unwritable". The step that RUNS the roster in the composed root is carried here
+// too, because it exists only for the variants that compose one, and a `route` field beside the source was
+// the second half of the same fact.
+type CompilerSource
   = Own_checkout_under_witness_floor { required_bins: List<NonEmptyStr> }
-  | Declared_seed
+  | Declared_seed { seed: PublicSeed, run_roster_step_name: NonEmptyStr }
+  | Declared_seed_under_composed_overlay {
+      seed: PublicSeed
+      overlay: OverlayIngest
+      run_roster_step_name: NonEmptyStr
+    }
 
 type RepositoryCiProfile {
   repository: String
   default_branch: String
   roster: RosterGate
-  public_seed: Optional<PublicSeed>
+  // ONE FIELD for where the compiler comes from. The seed, the overlay, the roster's route and the
+  // publisher's build route were four fields expressing one choice, and their agreement was carried by
+  // predicates; the sum carries it now.
+  source: CompilerSource
   heal: Optional<HealWorkflowPolicy>
   drift: Optional<ProjectionDrift>
   publisher: Optional<HealPublisherPolicy>
@@ -272,10 +283,11 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
       source_roots: witness_layer_roots,
       schedule: Absent,
       memory_budget: Absent,
-      route: InstrumentLabelRows,
       annotation: Absent
     },
-    public_seed: Absent,
+    // GUNBC IS THE COMPILER'S HOME: no repository to check out beside itself, no overlay to compose, and the
+    // witness floor says which binary its own checkout has to produce.
+    source: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] },
     heal: Present {
       value: HealWorkflowPolicy {
         workflow_file: "heal.yml",
@@ -332,10 +344,9 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
           function: gunbc_ci_heal_publication_publish_target.function
         },
         federation: public_heal_publisher_federation(),
-        // GUNBC BUILDS ITS OWN PUBLISHER, under the witness floor's toolchain isolation and rustup pin, from
-        // the default branch of this checkout. The step shapes are the emitter's; WHICH of the two routes
-        // this is, and which binaries it must produce, are here.
-        build_route: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] },
+        // NO BUILD ROUTE ON THIS ROW: the publisher builds what the profile's `source` says the repository's
+        // rows are judged by, and for gunbc that is this checkout under the witness floor. A publisher whose
+        // compiler came from somewhere the rows never used is not a value of the type.
         // The job token posts the publication receipt comment on the repaired pull request, which is the
         // only write this job performs with its own token; the publication itself goes over the federated
         // identity, minted inside the publish subject rather than in a workflow step. A mirror that
@@ -473,49 +484,61 @@ fn fleet_runner_group_target(group: NonEmptyStr) -> CiRunnerTarget {
 // THE SEED, when the profile declares one. Emitters that need several seed facts take the row as a
 // parameter (admitted once, at the top) rather than unwrapping an Optional at each step builder, so the
 // refusal for "no seed declared" happens before any step is rendered.
+// THE SEED, in the two variants that name one. Call sites read this rather than matching the sum, so the
+// sum stays the single authority and the accessors are its projections -- there is no second field for a
+// caller to keep in agreement with it.
 fn profile_public_seed(profile: RepositoryCiProfile) -> Optional<PublicSeed> {
-  profile.public_seed
+  match profile.source {
+    Own_checkout_under_witness_floor { required_bins: _ } => Absent
+    Declared_seed { seed: seed, run_roster_step_name: _ } => Present { value: seed }
+    Declared_seed_under_composed_overlay { seed: seed, overlay: _, run_roster_step_name: _ } =>
+      Present { value: seed }
+  }
 }
 
-// THE OVERLAY, when the roster runs over a composed root. Same reasoning as the seed: the route carries
-// it, and a profile on the instrument route has none.
+// THE OVERLAY, and only the variant that composes one can produce it. An overlay with no seed to compose
+// into -- the row whose copy had nowhere to land, whose publisher would then seal a candidate from one
+// composition and admit it against another -- is not a value of `CompilerSource`, so what was a refusal at
+// emit time is now a state that cannot be written (DESIGN §5).
 fn profile_overlay(profile: RepositoryCiProfile) -> Optional<OverlayIngest> {
-  match profile.roster.route {
-    ComposedOverlayInterpreterRoster { overlay: overlay } => Present { value: overlay }
-    InstrumentLabelRows => Absent
+  match profile.source {
+    Declared_seed_under_composed_overlay { seed: _, overlay: overlay, run_roster_step_name: _ } =>
+      Present { value: overlay }
+    _ => Absent
   }
 }
 
-// AN OVERLAY HAS TO COMPOSE INTO A DECLARED SEED. The overlay is copied into a detached tree checked out
-// from the profile's public seed, and the roster and the publisher's phases run inside that composed root.
-// A row that declares the overlay without a seed has no tree to compose into, and the publisher would then
-// admit and publish candidates in its own checkout - sealing from one composition and admitting against
-// another, which is the drift the publisher exists to prevent. Refused at the row, so no caller can render
-// the silent downgrade and none has to.
-fn profile_overlay_has_a_declared_seed(profile: RepositoryCiProfile) -> Bool {
-  match profile_overlay(profile: profile) {
-    Absent => true
-    Present { value: _ } =>
-      match profile_public_seed(profile: profile) {
-        Present { value: _ } => true
-        Absent => false
-      }
+// WHETHER THE ROSTER RUNS IN A COMPOSED ROOT: the instrument dispatcher is what the own-checkout variant
+// does, and the composed interpreter what the two seed variants do. There is no `route` field to keep in
+// agreement with the source, because the source IS the fact -- which is also what makes "the dispatcher
+// while building a second compiler", a gate reporting on a binary none of its rows ran, unwritable.
+fn profile_runs_roster_in_composed_root(profile: RepositoryCiProfile) -> Bool {
+  match profile.source {
+    Own_checkout_under_witness_floor { required_bins: _ } => false
+    _ => true
   }
 }
 
-// THE DISPATCHER RUNS IN THE CHECKOUT THAT ALREADY HOLDS THE COMPILER UNDER TEST. A row that routes its
-// roster through it AND declares a seed to build (or an overlay to compose, which only the composed route
-// carries) is describing two repositories at once: the gate would report on a binary none of its rows ever
-// ran. Read as one match over the route and the seed, because the question is about their combination and
-// not about either arm's presence; the emitter that receives the rows asks this and refuses the combination
-// rather than emitting a gate that cannot fail.
-fn profile_routes_to_dispatcher_while_building_a_second_compiler(profile: RepositoryCiProfile) -> Bool {
-  match profile.roster.route {
-    InstrumentLabelRows => match profile.public_seed {
-      Present { value: _ } => true
-      Absent => false
-    }
-    ComposedOverlayInterpreterRoster { overlay: _ } => false
+// THE STEP THAT RUNS THE ROSTER, carried by the variants that run it in a composed root. The own-checkout
+// variant has no such step, and cannot be given one.
+fn profile_run_roster_step_name(profile: RepositoryCiProfile) -> Optional<NonEmptyStr> {
+  match profile.source {
+    Declared_seed { seed: _, run_roster_step_name: name } => Present { value: name }
+    Declared_seed_under_composed_overlay { seed: _, overlay: _, run_roster_step_name: name } =>
+      Present { value: name }
+    _ => Absent
+  }
+}
+
+// THE BINARIES THE JOB'S OWN CHECKOUT HAS TO PRODUCE under the witness floor. Only the own-checkout variant
+// can name any: a profile whose compiler comes from a seed has no floor to satisfy here, and a publisher
+// that built its own compiler while the profile composed a root its phases would have to `cd` into --
+// running a compiler never built inside the composition the candidate was sealed from -- is not a value of
+// this type either.
+fn profile_required_bins(profile: RepositoryCiProfile) -> List<NonEmptyStr> {
+  match profile.source {
+    Own_checkout_under_witness_floor { required_bins: bins } => bins
+    _ => []
   }
 }
 
@@ -534,18 +557,10 @@ fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEm
     Present { value: "REFUSE: a job pins itself to a runner group that gunbc.runner.runner_group_restriction_ensure does not declare. Ensure the group, or select another CiRunnerTarget (gunbc.ci.ci_runner_target FleetSelfHostedInDeclaredGroup)." }
   } else if profile_publisher_trigger_is_declared(profile: profile) == false {
     Present { value: "REFUSE: the publisher is triggered by the completion of a workflow this profile does not declare, so it can never run with anything to publish. Name the heal or drift workflow that seals the candidate (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared)." }
-  } else if profile_overlay_has_a_declared_seed(profile: profile) == false {
-    Present { value: "REFUSE: this profile composes an overlay into a detached tree, and declares no public seed to check that tree out. The copy has nowhere to land, and a publisher over such a row would seal a candidate from one composition and admit it against another - the drift the publisher exists to prevent. Name the seed, or route the roster through the instrument dispatcher with no overlay (gunbc.ci.repository_ci_profile profile_overlay_has_a_declared_seed)." }
-  } else if profile_publisher_build_route_is_coherent(profile: profile) == false {
-    Present { value: "REFUSE: the publisher says it builds its compiler from the profile's public seed, and the profile declares no seed to build - a step that would check out nothing and compile nothing. Name the seed, or select Own_checkout_under_witness_floor and build from this checkout (gunbc.ci.repository_ci_profile profile_publisher_build_route_is_coherent)." }
-  } else if profile_publisher_build_route_composes_with_the_overlay(profile: profile) == false {
-    Present { value: "REFUSE: the publisher says it builds its compiler in its own checkout while the profile also composes an overlay, so the phases would `cd` into the composed root and run a compiler that was never built inside the composition the candidate was sealed from. Select Declared_seed so the compiler the phases run is the one the composition built (gunbc.ci.repository_ci_profile profile_publisher_build_route_composes_with_the_overlay)." }
   } else if profile_optional_job_timeouts_are_positive(profile: profile) == false {
     Present { value: "REFUSE: a declared job carries a timeout that is not positive, so it would be killed before it could report a reason. The gate's timeout is refused at zero; heal, drift and publisher timeouts are held to the same bound (gunbc.ci.repository_ci_profile profile_optional_job_timeouts_are_positive)." }
   } else if minute_count(m: profile.roster.timeout) == 0 {
     Present { value: "REFUSE: the required gate declares a timeout that is not positive; it would be killed before it could report a reason." }
-  } else if profile_routes_to_dispatcher_while_building_a_second_compiler(profile: profile) {
-    Present { value: "REFUSE: this profile routes its roster through the instrument dispatcher while declaring a seed compiler or an overlay to compose. The dispatcher runs every row in the checkout that already holds the compiler under test, so the seed would build a second copy of it and the overlay would compose a root nothing reads. Take the composed route, or declare neither (gunbc.ci.repository_ci_profile RosterRoute)." }
   } else {
     Absent
   }
@@ -585,49 +600,6 @@ fn profile_runner_group_is_declared(target: CiRunnerTarget) -> Bool {
     FleetSelfHostedInDeclaredGroup { group: group } =>
       any(restricted_runner_groups(), g => g.name == group.name)
     _ => true
-  }
-}
-
-// A ROUTE THAT NAMES A SEED HAS TO HAVE ONE. The route and the seed are separate fields because the seed is
-// shared with the drift job and the witness lane - a publisher may build from its own checkout while the
-// drift job seals against a seed - so their agreement is a rule rather than a type. Only one direction can
-// fail: a route naming a seed the profile does not declare. The other arm checks nothing, because
-// `required_bins` is a List<NonEmptyStr> and an empty bin is a state that cannot be written (DESIGN §4b).
-fn profile_publisher_build_route_is_coherent(profile: RepositoryCiProfile) -> Bool {
-  match profile.publisher {
-    Absent => true
-    Present { value: p } =>
-      match p.build_route {
-        // Which tree that compiler has to be found in is not this predicate's question; it is the one
-        // `profile_publisher_build_route_composes_with_the_overlay` below refuses on.
-        Own_checkout_under_witness_floor { required_bins: _ } => true
-        Declared_seed =>
-          match profile.public_seed {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
-  }
-}
-
-// A ROUTE ALSO HAS TO AGREE WITH THE COMPOSITION. `heal_publisher_composed_root` resolves the tree the
-// phases run in from the row's seed and overlay, and the composed phase `cd`s into that root and runs the
-// compiler THERE. A publisher that says it builds its compiler in its own checkout while the row also
-// composes an overlay therefore has its phases run a compiler that was never built inside the composition
-// the candidate was sealed from - the same drift as a missing overlay arriving from the other side, and it
-// is refused rather than rendered, because nothing downstream could tell the two compositions apart.
-fn profile_publisher_build_route_composes_with_the_overlay(profile: RepositoryCiProfile) -> Bool {
-  match profile.publisher {
-    Absent => true
-    Present { value: p } =>
-      match p.build_route {
-        Own_checkout_under_witness_floor { required_bins: _ } =>
-          match profile_overlay(profile: profile) {
-            Absent => true
-            Present { value: _ } => false
-          }
-        Declared_seed => true
-      }
   }
 }
 
@@ -685,10 +657,9 @@ fn profile_with_roster_runner(profile: RepositoryCiProfile, runner: CiRunnerTarg
       source_roots: profile.roster.source_roots,
       schedule: profile.roster.schedule,
       memory_budget: profile.roster.memory_budget,
-      route: profile.roster.route,
-      annotation: profile.roster.annotation
+        annotation: profile.roster.annotation
     },
-    public_seed: profile.public_seed,
+    source: profile.source,
     heal: profile.heal,
     drift: profile.drift,
     publisher: profile.publisher
@@ -713,10 +684,9 @@ fn profile_with_required_context(profile: RepositoryCiProfile, name: NonEmptyStr
       source_roots: profile.roster.source_roots,
       schedule: profile.roster.schedule,
       memory_budget: profile.roster.memory_budget,
-      route: profile.roster.route,
-      annotation: profile.roster.annotation
+        annotation: profile.roster.annotation
     },
-    public_seed: profile.public_seed,
+    source: profile.source,
     heal: profile.heal,
     drift: profile.drift,
     publisher: profile.publisher
@@ -730,7 +700,7 @@ fn profile_with_heal_runner(profile: RepositoryCiProfile, runner: CiRunnerTarget
       repository: profile.repository,
       default_branch: profile.default_branch,
       roster: profile.roster,
-      public_seed: profile.public_seed,
+      source: profile.source,
       heal: Present {
         value: HealWorkflowPolicy {
           workflow_file: job.workflow_file,
@@ -754,7 +724,7 @@ fn profile_with_drift_runner(profile: RepositoryCiProfile, runner: CiRunnerTarge
       repository: profile.repository,
       default_branch: profile.default_branch,
       roster: profile.roster,
-      public_seed: profile.public_seed,
+      source: profile.source,
       heal: profile.heal,
       drift: Present {
         value: ProjectionDrift {
@@ -781,7 +751,7 @@ fn profile_with_publisher_runner(profile: RepositoryCiProfile, runner: CiRunnerT
       repository: profile.repository,
       default_branch: profile.default_branch,
       roster: profile.roster,
-      public_seed: profile.public_seed,
+      source: profile.source,
       heal: profile.heal,
       drift: profile.drift,
       publisher: Present {
@@ -796,7 +766,6 @@ fn profile_with_publisher_runner(profile: RepositoryCiProfile, runner: CiRunnerT
           admit_invocation: job.admit_invocation,
           publish_invocation: job.publish_invocation,
           federation: job.federation,
-          build_route: job.build_route,
           pull_requests: job.pull_requests
         }
       }
@@ -804,37 +773,18 @@ fn profile_with_publisher_runner(profile: RepositoryCiProfile, runner: CiRunnerT
   }
 }
 
-// A CONTROL'S SINGLE-FIELD EDIT, the same shape as the runner updaters above: a negative is built from
-// gunbc's own row with ONLY the publisher's build route changed, so the refusal a control observes is that
-// field's refusal and not some other conjunct's. As with the others, applying it to a profile with no
-// publisher changes nothing, and the control that uses it asserts the publisher is declared first.
-fn profile_with_publisher_build_route(profile: RepositoryCiProfile, route: PublisherBuildRoute) -> RepositoryCiProfile {
-  match profile.publisher {
-    Absent => profile
-    Present { value: job } =>
-      RepositoryCiProfile {
-        repository: profile.repository,
-        default_branch: profile.default_branch,
-        roster: profile.roster,
-        public_seed: profile.public_seed,
-        heal: profile.heal,
-        drift: profile.drift,
-        publisher: Present {
-          value: HealPublisherPolicy {
-            workflow_file: job.workflow_file,
-            workflow_name: job.workflow_name,
-            job_id: job.job_id,
-            job_display_name: job.job_display_name,
-            runner: job.runner,
-            timeout: job.timeout,
-            trigger_workflow: job.trigger_workflow,
-            admit_invocation: job.admit_invocation,
-            publish_invocation: job.publish_invocation,
-            federation: job.federation,
-            build_route: route,
-            pull_requests: job.pull_requests
-          }
-        }
-      }
+// A CONTROL'S SINGLE-FIELD EDIT, the same shape as the runner updaters above: a negative is built from a
+// valid row with ONLY the compiler's source changed, so the refusal a control observes belongs to that
+// field and not to some other conjunct. Applying it to a profile with no publisher changes nothing, and the
+// control that uses it asserts the publisher is declared first.
+fn profile_with_compiler_source(profile: RepositoryCiProfile, source: CompilerSource) -> RepositoryCiProfile {
+  RepositoryCiProfile {
+    repository: profile.repository,
+    default_branch: profile.default_branch,
+    roster: profile.roster,
+    source: source,
+    heal: profile.heal,
+    drift: profile.drift,
+    publisher: profile.publisher
   }
 }

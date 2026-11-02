@@ -1,4 +1,4 @@
-module test.claim.repository.mirror_lane_4c_execution_local_wet
+module test.claim.ci.mirror_lane_4c_execution_local_wet
 
 // WHAT THIS FILE RUNS, AND WHY IT IS NOT A STRING CHECK.
 //
@@ -76,8 +76,34 @@ type LaneRun {
 // this body either sits in an `if` condition, where errexit does not apply, or is followed by an explicit
 // `exit` whose status is what the scenario reads. A scenario that ever needs an errexit-only verdict has to
 // write `set -e` into the script itself rather than rely on the shell's.
-fn render_and_run(stmts: List<Node>) -> LaneRun {
-  match bash_emit_stmts(statements: stmts, set_e: false) {
+fn render_and_run(stmts: List<Node>, dir: String) -> LaneRun {
+  render_and_run_bound(statements: stmts, dir: dir, inherited_runner_temp: Absent)
+}
+
+// THE HARNESS BINDS RUNNER_TEMP ITSELF. `gunbc.ci.repository_compose_overlay.runner_tmp_root_stmts` -- the
+// production statements the lane body is built from, unchanged here -- prefers a nonempty RUNNER_TEMP over the
+// row's `compose_root_env_default`. Every Actions runner exports RUNNER_TEMP, so a claim run that inherits one
+// from its parent would send `$RUNNER_TMP_ROOT`, `$COMPOSE`, `$OUT` and every file the body writes into a tree
+// this fixture does not own: outside the directory that is deleted afterwards, so the run leaves its evidence
+// (and its junk) on the host, and the scenario ends up asserting against a different tree from the one it set
+// up. Each scenario therefore runs with RUNNER_TEMP pinned to its own allocated directory. The pin is a
+// script-level assignment rather than an exported step `env:` -- nothing the lane body spawns reads the
+// variable, and the body's own first act is to test it, which is exactly the moment the pin governs.
+//
+// `inherited_runner_temp` SIMULATES THE INHERITANCE for the one control that must show the pin beats it: an
+// assignment placed before every statement of the script, the way an inherited variable precedes them all.
+// Production precedence is untouched -- with no pin an inherited value still wins, as it must.
+fn render_and_run_bound(
+  statements: List<Node>,
+  dir: String,
+  inherited_runner_temp: Optional<String>
+) -> LaneRun {
+  let inherited = match inherited_runner_temp {
+    Absent => [] as List<Node>
+    Present { value: value } => [bash_build_assign_lit(name: "RUNNER_TEMP", text: value)]
+  }
+  let pinned = [bash_build_assign_lit(name: "RUNNER_TEMP", text: dir)]
+  match bash_emit_stmts(statements: concat(inherited, concat(pinned, statements)), set_e: false) {
     Accepted { value: script, diagnostics: _ } => {
       let observed = run_shell_command_observe(command: bash_program_command(script: script), transport: LocalExec)
       LaneRun {
@@ -195,7 +221,10 @@ fn lane_annotation_placeholder() -> AnnotationStep {
 
 // ONE SCENARIO = THE SETUP + THE REAL BODY, rendered by the same fold the emitter uses.
 fn lane_scenario(dir: String, diagnostics: List<String>, code: String) -> LaneRun {
-  render_and_run(stmts: concat(fake_compiler_stmts(dir: dir, diagnostics: diagnostics, code: code), lane_body_stmts(dir: dir)))
+  render_and_run(
+    stmts: concat(fake_compiler_stmts(dir: dir, diagnostics: diagnostics, code: code), lane_body_stmts(dir: dir)),
+    dir: dir
+  )
 }
 
 // ── THE FOUR EXITS THE LANE'S CONTRACT NAMES ───────────────────────────────────────────────────
@@ -265,9 +294,53 @@ test fn the_executed_reader_refuses_a_log_it_cannot_read() -> Bool {
           bash_build_assign_lit(name: "OUT", text: out)
         ],
         [read_refusals_or_refuse(annotation: lane_annotation(profile: profile))]
-      )
+      ),
+      dir: dir
     )
     run.rendered && run.status == 1 && string_contains(s: run.out, pattern: "the diagnostic reader exited 2")
+  })
+}
+
+// ── THE ENVIRONMENT THE BODY INHERITS ──────────────────────────────────────────────────────────
+//
+// THE LANE'S WHOLE WORKING TREE HANGS OFF ONE VARIABLE. `runner_tmp_root_stmts` takes `$RUNNER_TEMP` when it
+// is nonempty and only falls back to the row's `compose_root_env_default` otherwise -- production precedence,
+// untouched by this file. A runner exports RUNNER_TEMP (that is where it puts step temporaries), so a claim
+// run that inherits one would compose, compile and log into a directory this fixture never created and never
+// deletes: the scenario would assert against the wrong tree, and the host would keep the debris. The harness
+// therefore pins RUNNER_TEMP to the allocated directory for every scenario.
+//
+// This control is what keeps the pin honest. The inherited value is simulated the way the environment
+// delivers it -- an assignment that precedes every statement of the script -- and it points at a real
+// directory of its own. Two things must hold: the body still finds its composed root and exits clean (that
+// root exists only under the fixture, so an inherited value that won would have refused at the composition
+// check), and the outside directory is LEFT EMPTY -- nothing created there, no evidence and no debris.
+test fn an_inherited_runner_temp_leaves_the_outside_tree_untouched() -> Bool {
+  with_lane_dir(scenario: dir => {
+    let outside = shell.Mktemp.Dir()
+    if outside.success == false {
+      false
+    } else {
+      let outside_dir = outside.path as String
+      let run = render_and_run_bound(
+        statements: concat(
+          fake_compiler_stmts(dir: dir, diagnostics: [] as List<String>, code: "0"),
+          lane_body_stmts(dir: dir)
+        ),
+        dir: dir,
+        inherited_runner_temp: Present { value: outside_dir }
+      )
+      let listing = run_shell_command_observe(
+        command: bash_program_command(script: concat("ls -A ", outside_dir)),
+        transport: LocalExec
+      )
+      let cleanup = shell.Remove.RecursiveForce(path: outside_dir)
+      run.rendered &&
+        run.status == 0 &&
+        listing.exit_code == 0 &&
+        listing.stdout == "" &&
+        cleanup.success
+    }
   })
 }
 
@@ -309,7 +382,8 @@ fn candidate_probe(dir: String, candidate_value: String, stands_in: String) -> L
             )
           ]
         )
-      ]
+      ],
+    dir: dir
   )
 }
 
