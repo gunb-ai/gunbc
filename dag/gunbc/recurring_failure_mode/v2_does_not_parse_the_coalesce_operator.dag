@@ -1,0 +1,42 @@
+module gunbc.recurring_failure_mode.v2_does_not_parse_the_coalesce_operator
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data v2_does_not_parse_the_coalesce_operator: RecurringFailureMode = RecurringFailureMode {
+  identity: "v2_does_not_parse_the_coalesce_operator" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the v2 dag grammar's expression production admitting the null-coalescing operator `??` as a binary operator, as the v1 seed's parser does -- sufficient for `let v = x ?? 1` and `(x ?? 1) == 1` in authored .dag source to parse natively, each as a RED that parses after the fix."
+    },
+  },
+
+  receipts: [
+    "**v2 does not parse the coalesce operator** (authored .dag source using `??` as an operator, which the v1 seed parses, is refused by the native v2 parser).",
+
+    "INVALID STATE: a well-formed module whose expressions use `e1 ?? e2` is refused at parse by the v2 front end while the seed accepts it, so the two front ends disagree on one source (DESIGN section 7: here v2 refuses valid source).",
+
+    "HARM: loud, not silent -- the native parse-population step refuses the module, so v2-bootstrap goes red on any PR adding such source; and no .dag claim using `??` can exist under that step, so `??` behavior can be evidenced only outside the parsed corpus (seed unit tests).",
+
+    "SPECIMENS (gunbc#15501, 2026-11-01, native parse-population, dag/test/claim/interpreter_list_read_optional_witness.dag): 'parse_g0_tokens_remain at 123:16' on head 8cdd7632ea51 for `(ilro_no_int ?? 1) == 1` (v2-bootstrap job 124945572600), then 'parse_g0_tokens_remain at 123:23' on head ab18dbfeb511 for `let v = ilro_no_int ?? 1` (job 124963313828): the second refusal falls exactly on the `??`, with an identifier on its left and no parentheses.",
+
+    "CORRECTION (this row replaces v2_refuses_a_parenthesized_coalesce_as_a_comparison_operand, gunbc#15625): that row named the class as the PARENTHESIZED form and claimed a bare `none ?? 1` parses natively, citing test.claim.dag_parse_continuation_operator_witness and the parse-population refusing only one module. That evidence was wrong: the witness carries `none ?? 1` only inside a string-literal fixture the seed compiles, which the native parser never reads as an operator, and git grep finds no `??` operator in authored dag/ or src/v2 code at main 59e13a2a147f. The second specimen above falsified the narrow reading. The class is the operator itself.",
+
+    "NOT EXERCISED IN #15501 (stated, not silent): that PR's subject is interpreter Optionals, so its claims use no `??` (first/last/get read through ordinary `match`, which the native parser accepts). Its interpreter `??` fix (coalesce_present: Absent takes the right operand, Present peels) stays in, because without it the PR would make `??` silently wrong, but it has NO executed claim there: `??` cannot appear in v2-read source, and moving its tests into seed Rust would route around this gap by growing the seed (parent ruling). Its RED and control land with the grammar change that admits `??`, which is this row's trigger.",
+
+    "RUNG: found on rung 1 (mitigatable): the failure is loud and contained at parse.",
+
+    "CEILING 3, structurally guaranteed: the production admits the operator, so no Accepted program meets the refusal.",
+
+    "REVIEW TELL: evidence that an operator parses taken from a string-literal fixture rather than authored code; a source rewrite made only so the native parser accepts it, with no row naming the grammar gap.",
+  ],
+
+  evidence: [],
+}

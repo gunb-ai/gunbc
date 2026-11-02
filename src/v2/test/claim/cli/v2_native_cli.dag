@@ -432,9 +432,9 @@ test fn an_emit_refusal_exits_general_error_holds() -> Bool {
 // the diagnostic file) and the byte extent of the first remaining token. Before this change the `reason` field carried the head,
 // which on every such refusal was then the same grammar-global advisory (a residue since retired), so three different broken
 // entries refused with one indistinguishable reason (gunbc#11507 measured it on the built binary).
-data cli_probe_entry_source: String = "module v2.cli_probe.entry\n\nimport std.types { Bool }\n\nfn cli_probe_entry_value(p: Bool) -> Bool { p }\n"
+data cli_probe_entry_source: String = "module test.fixture.cli_probe_entry\n\nimport std.types { Bool }\n\nfn cli_probe_entry_value(p: Bool) -> Bool { p }\n"
 
-data cli_probe_trailing_source: String = "module v2.cli_probe.trailing\n\nimport std.types { Bool }\n\nfn cli_probe_trailing_value(p: Bool) -> Bool { p }\n) ) )\n"
+data cli_probe_trailing_source: String = "module test.fixture.cli_probe_trailing\n\nimport std.types { Bool }\n\nfn cli_probe_trailing_value(p: Bool) -> Bool { p }\n) ) )\n"
 
 fn cli_probe_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -446,8 +446,8 @@ fn cli_probe_read(source: String, id: Symbol, unit: Symbol, path: String) -> Dag
 }
 
 data cli_probe_trailing_ingest: SourceRootIngest = [
-  cli_probe_read(source: cli_probe_entry_source, id: ^cli_probe_entry_artifact, unit: ^cli_probe_entry_cu, path: "dag/cli_probe_entry.dag"),
-  cli_probe_read(source: cli_probe_trailing_source, id: ^cli_probe_trailing_artifact, unit: ^cli_probe_trailing_cu, path: "dag/cli_probe_trailing.dag")
+  cli_probe_read(source: cli_probe_entry_source, id: ^cli_probe_entry_artifact, unit: ^cli_probe_entry_cu, path: "dag/test/fixture/cli_probe_entry.dag"),
+  cli_probe_read(source: cli_probe_trailing_source, id: ^cli_probe_trailing_artifact, unit: ^cli_probe_trailing_cu, path: "dag/test/fixture/cli_probe_trailing.dag")
 ]
 
 data argv_emit_cli_probe_entry: FreeMonoid<String> = Cons {
@@ -455,7 +455,7 @@ data argv_emit_cli_probe_entry: FreeMonoid<String> = Cons {
   tail: Cons {
     head: "--entry",
     tail: Cons {
-      head: "v2.cli_probe.entry",
+      head: "test.fixture.cli_probe_entry",
       tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Empty } }
     }
   }
@@ -490,17 +490,17 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
 // token claims: v2_cli_run over a supplied ingest. The fatal stays last; the census projection rides
 // in front of it. Dropping the CLI wiring while keeping the census renderer greens every census
 // claim and reds this one.
-data cli_probe_unbound_source: String = "module v2.cli_probe.unbound\n\nfn go() {\n  never_declared\n}\n"
+data cli_probe_unbound_source: String = "module test.fixture.cli_probe_unbound\n\nfn go() {\n  never_declared\n}\n"
 
 data cli_probe_unbound_ingest: SourceRootIngest = [
-  cli_probe_read(source: cli_probe_unbound_source, id: ^cli_probe_unbound_artifact, unit: ^cli_probe_unbound_cu, path: "dag/cli_probe_unbound.dag")
+  cli_probe_read(source: cli_probe_unbound_source, id: ^cli_probe_unbound_artifact, unit: ^cli_probe_unbound_cu, path: "dag/test/fixture/cli_probe_unbound.dag")
 ]
 
 fn cli_probe_unbound_outcome() -> CliRunOutcome {
   v2_cli_run(
     plan: CliPlanParsed {
       verb: CliEmitClosure {
-        entry: "v2.cli_probe.unbound",
+        entry: "test.fixture.cli_probe_unbound",
         source_roots: Empty,
         target: CliTargetRust
       }

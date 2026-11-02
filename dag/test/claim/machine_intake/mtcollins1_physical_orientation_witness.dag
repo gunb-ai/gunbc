@@ -360,8 +360,23 @@ test fn w_other_end_reverses_left_right_but_not_identity() -> Bool {
   match rear {
     SlotMapRendered { end: _, readback: _, lines: r, damage: _, agreement: _, text: _ } => match front {
       SlotMapRendered { end: _, readback: _, lines: f, damage: _, agreement: _, text: _ } =>
-        r.first().connector == f.last().connector && r.last().connector == f.first().connector
-        && fold(r, init: true, f: (ok, a) => ok && fold(f, init: false, f: (hit, b) => hit || (a.connector == b.connector && a.socket == b.socket && a.controller == b.controller && a.state == b.state && a.from_left + b.from_left == 31)))
+        fold(r, init: true, f: (ok, a) => ok && fold(f, init: false, f: (hit, b) => hit || (a.connector == b.connector && a.socket == b.socket && a.controller == b.controller && a.state == b.state && a.from_left + b.from_left == 31)))
+        && match r.first() {
+          Present { value: r_first } =>
+            match r.last() {
+              Present { value: r_last } =>
+                match f.first() {
+                  Present { value: f_first } =>
+                    match f.last() {
+                      Present { value: f_last } => r_first.connector == f_last.connector && r_last.connector == f_first.connector
+                      Absent => false
+                    }
+                  Absent => false
+                }
+              Absent => false
+            }
+          Absent => false
+        }
       SlotMapRefused { refusal: _ } => false
     }
     SlotMapRefused { refusal: _ } => false
