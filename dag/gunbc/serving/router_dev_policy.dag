@@ -3,7 +3,7 @@ module gunbc.serving.router_dev_policy
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
 import std.nat { Nat }
-import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutConfigured, ServingLayoutRefused }
+import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
@@ -832,7 +832,7 @@ fn router_dev_srv1_site() -> RouterDevSite {
 fn router_dev_srv1_host_config_path() -> String { "/home/briansrls/router/nginx.conf" }
 
 fn router_dev_srv1_write_config() -> ProcessExit {
-  match router_dev_row_refusal(rows: router_dev_first_party_upstreams()) {
+  match router_dev_first_party_refusal(fp: router_dev_first_party()) {
     Present { value: refused } => refused
     Absent => match router_dev_config(site: router_dev_srv1_site()) {
     RouterDevConfigRefused { token: k } => ExitFailure { code: 1, reason: concat("refused token: ", k) }
@@ -910,15 +910,6 @@ type RouterDevRetention
   | RetentionAdmitted { conversations: Nat }
   | RetentionFrontier
   | RetentionUnderivable { group: String }
-
-fn router_dev_layout_retention(group: String) -> RouterDevRetention {
-  match host_6ce85c_layout {
-    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
-      fold(rs, init: RetentionUnderivable { group: group }, f: (acc, c) =>
-        if (c.group as String) == group { RetentionAdmitted { conversations: c.admitted_conversations } } else { acc })
-    ServingLayoutRefused { refusal: _ } => RetentionUnderivable { group: group }
-  }
-}
 
 // HOW ONE CLIENT REASONING-EFFORT NAME IS ANSWERED BY ONE UPSTREAM MODEL'S SERVER. The pool alias and
 // each engine accept a DIFFERENT set of effort names, and an engine answers 400 on a name it does not
@@ -1007,15 +998,15 @@ fn router_dev_retention_members(r: RouterDevRetention) -> List<JsonKeyValue> {
   }
 }
 
-// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-88 is bus c8), so the bus the
-// row's engine is bound to is a separate argument, and the retention is derived from the layout group of that
-// bus (serving_layout's h11-strata@<bus>), never typed. The port follows the engine, not the name.
-fn router_dev_h11_row(name: String, bus: String, port: Port, retiring: List<String>) -> RouterDevUpstream {
+// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-88 is bus c8); the retention
+// is the joined replica's admitted_conversations, handed in by the projection, never typed. The port follows
+// the engine, not the name.
+fn router_dev_h11_row(name: String, port: Port, retiring: List<String>, retention: RouterDevRetention) -> RouterDevUpstream {
   RouterDevUpstream {
     name: name, scheme: UpstreamHttp, host: "192.168.1.202", port: port, tls_name: Absent,
     model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 2 }, max_model_len: 229376, path_prefix: "",
     retiring_names: retiring, in_service: true,
-    retention: router_dev_layout_retention(group: concat("h11-strata@", bus)),
+    retention: retention,
     effort_effects: iq3_s_effort_rules(),
   }
 }
@@ -1023,7 +1014,7 @@ fn router_dev_h11_row(name: String, bus: String, port: Port, retiring: List<Stri
 // THE h11 ROWS FOLLOW THE LAYOUT'S REPLICA SET (operator ruling 2026-11-01, A-prime; live parity, #15622 applied
 // 21:11-21:13Z). An engine's NAME, port and retired names are a naming fact; its EXISTENCE and its retention are
 // the layout's: a bus the layout does not grant yields no row, so a router roster cannot outlive the grant. An
-// engine whose bus IS granted keeps its row and a retention the layout cannot derive is still refused.
+// engine whose bus IS granted keeps its row.
 type RouterDevH11Engine { name: String, bus: String, port: Port, retiring: List<String> }
 
 fn router_dev_h11_engines() -> List<RouterDevH11Engine> {
@@ -1035,24 +1026,62 @@ fn router_dev_h11_engines() -> List<RouterDevH11Engine> {
   ]
 }
 
-fn router_dev_layout_grants(group: String) -> Bool {
-  match host_6ce85c_layout {
-    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } => any(rs, c => (c.group as String) == group)
-    ServingLayoutRefused { refusal: _ } => false
+// THE PROJECTION READS THE CONFIGURED LAYOUT ONCE and joins each replica to its router naming (group
+// h11-strata@<bus> <-> bus), deriving the row's retention from that joined replica. It REFUSES, never
+// narrows: a refused layout, a granted group with no naming, and a granted group with more than one naming are
+// each a typed refusal that stops the write before any row is rendered. An engine in the naming table that
+// no replica names is the only thing omitted -- that is the A-prime case (c5/c7 left the grant).
+type RouterDevH11Projection
+  = RouterDevH11Projected { rows: List<RouterDevUpstream> }
+  | RouterDevH11Refused { reason: String }
+
+fn router_dev_h11_projection(layout: ServingLayoutResult, engines: List<RouterDevH11Engine>) -> RouterDevH11Projection {
+  match layout {
+    ServingLayoutRefused { refusal: _ } => RouterDevH11Refused { reason: "the serving layout is refused, so no h11 row set can be derived" }
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
+      fold(rs, init: RouterDevH11Projected { rows: [] }, f: (acc, c) =>
+        match acc {
+          RouterDevH11Refused { reason: r } => RouterDevH11Refused { reason: r }
+          RouterDevH11Projected { rows: so_far } => {
+            let g = c.group as String
+            let named = filter(engines, e => concat("h11-strata@", e.bus) == g)
+            if count(named) == 0 { RouterDevH11Refused { reason: concat("a granted replica has no router naming: ", g) } }
+            else if count(named) > 1 { RouterDevH11Refused { reason: concat("a granted replica has more than one router naming: ", g) } }
+            else {
+              RouterDevH11Projected { rows: concat(so_far, map(named, e =>
+                router_dev_h11_row(name: e.name, port: e.port, retiring: e.retiring, retention: RetentionAdmitted { conversations: c.admitted_conversations }))) }
+            }
+          }
+        })
   }
 }
 
-fn router_dev_h11_rows() -> List<RouterDevUpstream> {
-  map(filter(router_dev_h11_engines(), e => router_dev_layout_grants(group: concat("h11-strata@", e.bus))),
-      e => router_dev_h11_row(name: e.name, bus: e.bus, port: e.port, retiring: e.retiring))
+type RouterDevFirstParty
+  = RouterDevFirstPartyRows { rows: List<RouterDevUpstream> }
+  | RouterDevFirstPartyRefused { reason: String }
+
+fn router_dev_first_party_for(layout: ServingLayoutResult, engines: List<RouterDevH11Engine>) -> RouterDevFirstParty {
+  match router_dev_h11_projection(layout: layout, engines: engines) {
+    RouterDevH11Refused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+    RouterDevH11Projected { rows: h } => RouterDevFirstPartyRows { rows: concat(router_dev_first_party_head(), concat(h, router_dev_first_party_tail())) }
+  }
+}
+
+fn router_dev_first_party() -> RouterDevFirstParty {
+  router_dev_first_party_for(layout: host_6ce85c_layout, engines: router_dev_h11_engines())
 }
 
 // THE LIVE ROW SET (read from srv1's upstreams.json field names and values, 2026-10-31; keys are joined at
 // deploy and are in no row). The h11 engines follow the layout grant (four since A-prime),
 // srv1's vLLM, srv3's Strata and the ctrl rented pool. A single 16 GB engine serves ~10-13 warm tok/s at 200k,
 // so cap 2. Retiring names count old-worker turns during a graceful rename.
+// Every writer matches router_dev_first_party() and refuses before it reads these rows; a refused projection
+// reads as no rows here, never as a smaller fleet that is written.
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
-  concat(router_dev_first_party_head(), concat(router_dev_h11_rows(), router_dev_first_party_tail()))
+  match router_dev_first_party() {
+    RouterDevFirstPartyRows { rows: r } => r
+    RouterDevFirstPartyRefused { reason: _ } => []
+  }
 }
 
 fn router_dev_first_party_head() -> List<RouterDevUpstream> {
@@ -1134,8 +1163,15 @@ fn router_dev_row_refusal(rows: List<RouterDevUpstream>) -> ProcessExit? {
   }
 }
 
+fn router_dev_first_party_refusal(fp: RouterDevFirstParty) -> ProcessExit? {
+  match fp {
+    RouterDevFirstPartyRefused { reason: r } => Present { value: ExitFailure { code: 1, reason: concat("refused upstream rows: ", r) } }
+    RouterDevFirstPartyRows { rows: rs } => router_dev_row_refusal(rows: rs)
+  }
+}
+
 fn router_dev_srv1_write_first_party_upstreams() -> ProcessExit {
-  match router_dev_row_refusal(rows: router_dev_first_party_upstreams()) {
+  match router_dev_first_party_refusal(fp: router_dev_first_party()) {
     Present { value: refused } => refused
     Absent => {
       let w = Filesystem.Write(path: "/home/briansrls/router/upstreams.first_party.json", content: router_dev_first_party_json())
@@ -1146,7 +1182,7 @@ fn router_dev_srv1_write_first_party_upstreams() -> ProcessExit {
 
 // Render a candidate for a graceful reload, without changing the running router's config.
 fn router_dev_srv1_write_candidate() -> ProcessExit {
-  match router_dev_row_refusal(rows: router_dev_first_party_upstreams()) {
+  match router_dev_first_party_refusal(fp: router_dev_first_party()) {
     Present { value: refused } => refused
     Absent => match router_dev_config(site: router_dev_srv1_site()) {
     RouterDevConfigRefused { token: k } => ExitFailure { code: 1, reason: concat("refused token: ", k) }
