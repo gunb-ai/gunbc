@@ -385,7 +385,7 @@ fn rows_admit(rows: List<String>) -> Bool {
   }
 }
 
-fn rows_refuse_with(rows: List<String], wanted: Int) -> Bool {
+fn rows_refuse_with(rows: List<String>, wanted: Int) -> Bool {
   match thermal_refusal(
     thermal: ThermalRead { publication: TemperaturePublished, undecoded_texts: rows, unrecognised_readings: [] },
     typing: Present { value: mtcollins1_fan_capture_readout() },
