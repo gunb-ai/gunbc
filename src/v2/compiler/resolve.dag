@@ -3936,27 +3936,72 @@ fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName
   match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: record) {
     Absent => optional_absent()
     Present { value: decl } =>
-      // WHERE A RECORD'S FIELDS LIVE, by the shape the index entry has: a record or generic record
-      // declaration carries them as its member; a `type Box = Box { behavior: Behavior }` declaration
-      // carries them behind its alias edge; and an entry sited at a CONSTRUCTOR -- the arm of a
-      // coproduct, which is what a construct tag resolves to -- IS the payload record. The last two
-      // read as "no such record" until a construct tag had to carry its field's declared type into a
-      // nested pattern (v2.std.node_query `match d.kind { ComputationNode { behavior: Value } => ...`).
-      let member = match type_decl_view(target: decl) {
-        PlainTypeDecl { member: m } => optional_present(value: m)
-        GenericTypeDecl { binders: _, member: m } => optional_present(value: m)
-        TypeAlias { binders: _, aliased: a } => optional_present(value: a)
-        NotATypeDecl => optional_present(value: decl)
-        OpaqueTypeDecl { binders: _ } => optional_absent()
-      }
-      match member {
+      match type_decl_member_node(target: decl) {
         Absent => optional_absent()
-        Present { value: m } =>
-          match declared_field_named(payload: m, name: field) {
+        Present { value: member } =>
+          match declared_field_named(payload: member, name: field) {
             Present { value: binder } => optional_present(value: binder.type_node)
-            Absent => optional_absent()
+            // THE ARM THE TAG NAMES. A coproduct body declares no fields of its own: the authored edge
+            // whose label is the tag's own spelling is the arm, and its target is the payload record
+            // where the field is declared. `type Box = Box { behavior: Behavior }` puts the tag and the
+            // type at the SAME path, so the entry read above is the body, not a payload, and the field
+            // is one level in. v2.std.node_query writes `match d.kind { ComputationNode { behavior:
+            // Value } => ... }` and `Box { behavior: Call { name: 1 } }` exactly this way: until the arm
+            // was read, the nested authored tag met no expectation and refused
+            // resolve_reason_unbound_symbol, even though the construct already named the type declaring
+            // it -- and an arm's alias row lives only in its declaring module's scope, so no importer's
+            // name door could reach it either.
+            Absent =>
+              match coproduct_arm_payload(body: member, arm: qualified_name_last_segment(qn: record)) {
+                Absent => optional_absent()
+                Present { value: payload } =>
+                  match declared_field_named(payload: payload, name: field) {
+                    Present { value: binder } => optional_present(value: binder.type_node)
+                    Absent => optional_absent()
+                  }
+              }
           }
       }
+  }
+}
+
+// THE NODE A TYPE ENTRY CARRIES ITS FIELDS ON: the member of a record or generic record declaration;
+// the aliased body of a `type` declaration; the entry itself when it is already a payload record,
+// which is how v2.compiler.symbol_index_fill sites a coproduct arm (kind VariantArmPayload, at
+// `<type path>.<arm>`). An opaque declaration has no readable member, and an entry that is neither a
+// declaration nor a record (an arrow, an atom) is not a field holder.
+fn type_decl_member_node(target: Node) -> Optional<Node> {
+  match type_decl_view(target: target) {
+    PlainTypeDecl { member: m } => optional_present(value: m)
+    GenericTypeDecl { binders: _, member: m } => optional_present(value: m)
+    TypeAlias { binders: _, aliased: a } => optional_present(value: a)
+    NotATypeDecl =>
+      match target.kind {
+        TypeNode { connective: Conj } => optional_present(value: target)
+        _ => optional_absent()
+      }
+    OpaqueTypeDecl { binders: _ } => optional_absent()
+  }
+}
+
+// THE PAYLOAD AN AUTHORED COPRODUCT ARM DECLARES, selected by the arm's own spelling -- the same
+// authored edge v2.compiler.symbol_index_fill sites at `<type path>.<arm>`. A body that is not a
+// coproduct, or an arm the tag does not name, answers Absent: the arm is never guessed from position.
+fn coproduct_arm_payload(body: Node, arm: Symbol) -> Optional<Node> {
+  match body.kind {
+    TypeNode { connective: Disj } =>
+      fold(body.children, init: optional_absent(), f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match e.label {
+              Authored { name: name } => if symbol_eq(a: name, b: arm) { optional_present(value: e.target) } else { optional_absent() }
+              StructuralLabel { label: _ } => optional_absent()
+              Positional => optional_absent()
+            }
+        }
+      })
+    _ => optional_absent()
   }
 }
 
@@ -4383,7 +4428,11 @@ fn resolve_construct_tag_not_a_constructor(reference: Node) -> Outcome<Node> {
   }
 }
 
-fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
+fn resolve_match_arm_walk(
+  ctx: ResolveContext,
+  arm: Node,
+  expected: Optional<ResolveExpectation>
+) -> ResolveNodeWalk {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
@@ -4401,7 +4450,7 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
           resolve_catch_all_binder_read_gate(
             ctx: ctx,
             pat: pat,
-            walk: resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat, fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty()))
+            walk: resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat, fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty()), expected: expected)
           )
       }
       }
@@ -4540,7 +4589,13 @@ fn resolve_binding_entry_key_optional(identity: NodeOccurrenceIdentity) -> Optio
   }
 }
 
-fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node, fb: FrameBinders) -> ResolveNodeWalk {
+fn resolve_match_arm_admitted(
+  ctx: ResolveContext,
+  arm: Node,
+  pat: Node,
+  fb: FrameBinders,
+  expected: Optional<ResolveExpectation>
+) -> ResolveNodeWalk {
   let arm_ctx = resolve_ctx_with_scope(
     ctx: ctx,
     scope: lexical_frame(fb: fb, outer: ctx.scope)
@@ -4550,7 +4605,9 @@ fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node, fb: Fra
       w: acc,
       e: e,
       r: if edge_is_core(e: e, marker: MatchArmPatternEdge) {
-        resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+        // The pattern position is the one place the MATCH's own type is the expectation; the arm body
+        // below is not, and keeps none.
+        resolve_pattern_node_walk_in(ctx: arm_ctx, pat: e.target, expected: expected)
       } else if bind_carries_arm_scope_exit(n: e.target) {
         resolve_arm_scope_exit_bind(arm_ctx: arm_ctx, outer_ctx: ctx, n: e.target)
       } else {
@@ -4604,21 +4661,133 @@ fn resolve_arm_scope_exit_bind(arm_ctx: ResolveContext, outer_ctx: ResolveContex
 // lexical scope and inference read, so a labeled child never shifts which child is the scrutinee. Slots
 // are read off the tree, not off resolution's outcome, so a refused scrutinee never promotes the first arm
 // into its place.
+// THE MATCH CARRIES ITS SCRUTINEE'S DECLARED TYPE INTO EVERY ARM PATTERN. That is where a pattern
+// position gets a constructor set to be read against at all: an arm's tag, a nested field pattern, and
+// a payload-absent arm atom all ask the same question -- what type is this pattern matching -- and the
+// only answer that is not inference is the type the AUTHOR wrote for the scrutinee. Ruling:
+// the expected type's declared constructor set is the authority where it is readable, and a pattern
+// position with no readable set keeps today's behavior (a tag reaches the name door; an atom binds).
 fn resolve_match_node_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  let arms_expected = match match_slot_target(n: n, slot: MatchScrutineeSlot) {
+    Absent => optional_absent()
+    Present { value: scrutinee } =>
+      match resolve_scrutinee_declared_type(ctx: ctx, scrutinee: scrutinee) {
+        Absent => optional_absent()
+        Present { value: declared } =>
+          optional_present(value: ResolveExpectation {
+            expected: declared,
+            position: symbol_index_lookup_position(ctx: ctx),
+            at_use_site: false
+          })
+      }
+  }
   child_walk_node(n: n, w: fold(node_child_slots(n: n), init: child_walk_init(), f: fn(acc, s) {
-    resolve_match_child_step(ctx: ctx, acc: acc, slot: s)
+    resolve_match_child_step(ctx: ctx, acc: acc, slot: s, arms_expected: arms_expected)
   }))
 }
 
-fn resolve_match_child_step(ctx: ResolveContext, acc: ChildWalk, slot: ChildSlot) -> ChildWalk {
+// WHAT THE SCRUTINEE DECLARES, rung by rung, each rung a fact the author wrote and read through the
+// authority that already carries it:
+//   `x.f`      -- the declared type of field f at the record the receiver's own declared type names
+//                 (v2.std.node_query writes `match d.kind { ComputationNode { behavior: Value } => ... }`
+//                 and `match partition.boundary { ... }` this way);
+//   a Lexical frame's binder whose standing carries a declared type -- a lambda parameter at its domain
+//                 edge (LexicalDeclared, built by arrow_domain_frame_binders), a match-payload formal
+//                 typed by its declaring coproduct (LexicalOwedFormal);
+//   a ParameterFrame's formal -- the enclosing declaration's own domain edge declares its type, read
+//                 through v2.compiler.lexical_scope arrow_domain_frame_binders, the same reader that
+//                 built the frame.
+// A `let` with no annotation (LexicalValued), a type parameter, or a scrutinee that is a call, a
+// literal or any other form answers Absent: those types belong to infer, and resolve does not guess a
+// type to make an arm readable (DESIGN 5). An absence is not a refusal -- the arm resolves exactly as
+// it does today.
+fn resolve_scrutinee_declared_type(ctx: ResolveContext, scrutinee: Node) -> Optional<Node> {
+  match field_projection_optional(n: scrutinee) {
+    Present { value: projection } =>
+      match resolve_scrutinee_declared_type(ctx: ctx, scrutinee: projection.base) {
+        Absent => optional_absent()
+        Present { value: receiver } =>
+          match resolve_expected_head_path(
+            ctx: ctx,
+            x: ResolveExpectation {
+              expected: receiver,
+              position: symbol_index_lookup_position(ctx: ctx),
+              at_use_site: false
+            }
+          ) {
+            ExpectedHeadAt { path: path } =>
+              resolve_record_field_type_optional(ctx: ctx, record: path, field: projection.field)
+            ExpectedHeadAbsent => optional_absent()
+            ExpectedHeadAliasCycle => optional_absent()
+          }
+      }
+    Absent =>
+      match scrutinee.kind {
+        TypeNode { connective: Atom { identity: name } } => resolve_frame_declared_type(ctx: ctx, s: ctx.scope, name: name)
+        _ => optional_absent()
+      }
+  }
+}
+
+// THE DECLARED TYPE A SCOPE CHAIN CARRIES FOR A NAME, innermost frame outward, read from the frame's
+// own record of its binders -- never re-derived from shape, and never from inference. A frame that
+// answers the name with no declared type stops the search exactly as the name lookup does (the name is
+// bound THERE); an absence goes outward; a rejected map read answers no type, because this producer
+// only ever declines to carry, it never refuses.
+fn resolve_frame_declared_type(ctx: ResolveContext, s: Scope, name: Symbol) -> Optional<Node> {
+  match s {
+    ScopeRoot { module: _ } => optional_absent()
+    ScopeFrame { locals: frame_locals, outer: frame_outer, kind: kind } =>
+      match map_get_checked(frame_locals, name) {
+        Accepted { value: Present { value: canonical }, diagnostics: _ } =>
+          match kind {
+            LexicalFrame { binders: binders } =>
+              match map_lookup(m: binders, key: canonical) {
+                Present { value: binding } =>
+                  match binding.standing {
+                    LexicalDeclared { node: t } => optional_present(value: t)
+                    LexicalOwedFormal { field_type: t } => optional_present(value: t)
+                    LexicalValued { node: _ } => optional_absent()
+                    LexicalUntyped => optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+            ParameterFrame { arrow_path: arrow_path } =>
+              match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: arrow_path) {
+                Absent => optional_absent()
+                Present { value: declaration } =>
+                  fold(arrow_domain_binders(n: declaration), init: optional_absent(), f: fn(acc, b) {
+                    match acc {
+                      Present { value: _ } => acc
+                      Absent => if symbol_eq(a: b.name, b: name) { member_edge_type_node(e: b.edge) } else { optional_absent() }
+                    }
+                  })
+              }
+            TypeParameterFrame { binders: _, owner: _ } => optional_absent()
+          }
+        Accepted { value: Absent, diagnostics: _ } => resolve_frame_declared_type(ctx: ctx, s: frame_outer, name: name)
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+  }
+}
+
+fn resolve_match_child_step(
+  ctx: ResolveContext,
+  acc: ChildWalk,
+  slot: ChildSlot,
+  arms_expected: Optional<ResolveExpectation>
+) -> ChildWalk {
   child_walk_step(
     w: acc,
     e: slot.edge,
     r: match slot.ordinal {
       PositionalOrdinal { index: i } =>
         match match_positional_slot(ordinal: i) {
+          // The scrutinee is resolved in the enclosing scope and carries no expectation of its own:
+          // its DECLARED type is what the arms are read against, and it is taken from the tree, not
+          // from this walk's result (resolve_scrutinee_declared_type).
           MatchScrutineeSlot => resolve_node_walk(ctx: ctx, n: slot.edge.target)
-          MatchArmSlot => resolve_match_arm_walk(ctx: ctx, arm: slot.edge.target)
+          MatchArmSlot => resolve_match_arm_walk(ctx: ctx, arm: slot.edge.target, expected: arms_expected)
         }
       LabeledChild => resolve_node_walk(ctx: ctx, n: slot.edge.target)
     }
