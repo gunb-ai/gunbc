@@ -74,6 +74,17 @@ import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation
 type HostKeyEnrollmentProvenance
   = ScannedFirstContact { scanned_from: NonEmptyStr }
   | IndependentlyAnchored { authority: NonEmptyStr }
+  // ProvisionedInstall (T2, gunbc.plans.host_trust_provisioned_key): the key was minted ON
+  // the install target during a named provisioning attempt and its public half was announced
+  // over that attempt's console; the row is enrolled from that install's record, so
+  // install_attempt names the attempt whose network_install_receipt row grounds the installed
+  // root, and authority cites the console capture and that receipt. Both fields are
+  // NonEmptyStr: an arm that cannot name its record has no constructor. The row vouches for
+  // THAT installed system only - gunbc.host.anchored_host_transport matches install_attempt
+  // against the host's current complete receipt and refuses a superseded one - and unlike
+  // ScannedFirstContact it is never a provisional state awaiting a flip: the enrollment IS
+  // the record. Minted per host AND per install; never baked into a reusable image.
+  | ProvisionedInstall { install_attempt: NonEmptyStr, authority: NonEmptyStr }
 
 type KnownHostKeyRow {
   host: HostIdentity
@@ -186,7 +197,19 @@ fn host_key_provenance_label(p: HostKeyEnrollmentProvenance) -> String {
   match p {
     ScannedFirstContact { scanned_from: _ } => "scanned-first-contact"
     IndependentlyAnchored { authority: _ } => "independently-anchored"
+    ProvisionedInstall { install_attempt: _, authority: _ } => "provisioned-install"
   }
+}
+
+// T2 CATALOG RULE (gunbc.plans.host_trust_provisioned_key): ONE PUBLIC HALF, ONE ROW. The
+// same public line may not appear under two rows -- not under two hosts (a cloned image or
+// a cloned disk would put one private key at two identities), and not under two installs of
+// ONE host (the key belongs to ITS install; a reinstall mints a new one and re-enrols).
+// This rule did not exist before T2: the Spark rows' key-distinctness cross-check was
+// manual prose. It compares the public half itself, so provenance arms cannot dodge it;
+// rows are field-compared, so two rows differing only in citation still contradict.
+fn fleet_host_key_public_halves_are_unique(rows: List<KnownHostKeyRow>) -> Bool {
+  !any(rows, a => any(rows, b => b != a && b.public_key_base64 == a.public_key_base64))
 }
 
 data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-receipt.txt"
