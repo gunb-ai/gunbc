@@ -24,8 +24,9 @@ import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable,
   observe_escalation, approval_decision_store_root, parse_stored_record, StoredRequestParsed, StoredDecisionParsed, StoredRecordUnreadable,
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal, read_mac_keyring,
-  approval_capability_issuer, approval_capability_authority, approval_mac_key_suite,
+  approval_capability_issuer, approval_capability_authority,
 }
+import gunbc.auth.mac_keyring { approval_mac_key_suite }
 
 // ── THE STORE RECEIPT KEY ─────────────────────────────────────────────────────────────────────
 //

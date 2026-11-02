@@ -366,6 +366,7 @@ import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_f
   VerificationSelectionPublished,
   VerificationSelectionPublishRefused,
   verification_directory_segment,
+  verification_evidence_moves_lamp,
 }
 import extdeps.github.github { Repository }
 import gunbc.roadmap.roadmap_dispatch_destination {
@@ -450,7 +451,7 @@ import extdeps.git {
   git_dir_path_from_gitfile, git_untrusted_config_env_words,
   git_worktree_commondir_relative, git_dir_flag_prefix, git_work_tree_flag_prefix,
 }
-import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision, CandidateCommitSubject, belt_candidate_commit_subject }
+import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision, CandidateCommitSubject, belt_candidate_commit_subject, belt_candidate_commit_message }
 import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { ancestry_walk, AncestryTraced, AncestryBrokenAt, AncestryStartNotInHistory, AncestryRevisitsACommit }
 import gunbc.scm.object_store {
@@ -606,7 +607,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire }
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
@@ -704,6 +705,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 
 // Slice 2b actuation: the belt DECISION (gunbc.roadmap.roadmap_belt.belt_reconcile) is CLOSED against the
 // host by three single-authorities — the actuator's HostExecArgv argv model

@@ -39,6 +39,7 @@ type BaseboardCatalogRow {
   model_label: NonEmptyStr
   vendor: Vendor<Hardware>
   bmc_firmware: BmcFirmwareFamily
+  onboard_ethernet_ports: OnboardEthernetPortRows
 }
 
 type ServerBaseboard {
@@ -154,6 +155,29 @@ type BoardFunction
   = BmcManagementFunction
   | BmcGraphicsController
   | PcieErrorFirmwareFirstHandling
+  | OnboardEthernetPort { port: OnboardEthernetPortRow }
+
+// AN ONBOARD ETHERNET PORT AS ITS BOARD'S MANUAL NAMES IT: the rear-panel designator, the controller
+// behind it, whether the manual states that the BMC may share the port, and how the manual says the
+// port is switched off -- on the row, so the port and its switch are one fact. A shared port is one
+// function serving two consumers (the host's network and the BMC's sideband), so a consumer may not
+// switch it off on the host's account alone. Silence about sharing is BmcSharingNotStated, a fact
+// about the manual.
+type OnboardEthernetBmcSharing = BmcSharingStated | BmcSharingNotStated
+
+type OnboardEthernetPortRow {
+  designator: NonEmptyStr
+  controller: NonEmptyStr
+  bmc_sharing: OnboardEthernetBmcSharing
+  switch: BoardFunctionSwitch
+  citation: NonEmptyStr
+}
+
+// A CATALOG ROW STATES ITS BOARD'S PORTS OR SAYS THEY ARE UNREAD, so a board cannot be catalogued with
+// its ports silently missing: an unread port list is a typed refusal in every plan for that board.
+type OnboardEthernetPortRows
+  = PortRowsStated { rows: List<OnboardEthernetPortRow> }
+  | PortRowsNotRead { obligation: NonEmptyStr }
 
 // HOW A BOARD'S HELD MANUAL SAYS A FUNCTION IS SWITCHED OFF. Silence is SwitchNotStated, a fact about
 // the manual, not a claim that the board has no switch; `coarser` names a stated switch that removes

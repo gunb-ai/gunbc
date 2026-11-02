@@ -60,7 +60,9 @@ import extdeps.github.app {
   observed_access_for,
   permission_access_at_least,
   first_duplicated_observed_permission,
-  permission_axis_wire_name
+  permission_axis_wire_name,
+  hook_content_type_wire_name,
+  hook_tls_wire_name,
 }
 import extdeps.github.effect {
   GitHubOrganizationRef,
