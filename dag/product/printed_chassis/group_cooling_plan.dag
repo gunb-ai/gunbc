@@ -66,9 +66,11 @@ fn member_demand(m: InstalledCard, rise: CelsiusDelta) -> MemberDemand {
   }
 }
 
-fn demand_flow(d: MemberDemand) -> Int? {
-  match d { MemberDemandEstimated { instance: _, heat: _, through_flow: q } => Present { value: millilitre_per_second_count(f: q) as Int } _ => Absent }
+fn demand_flow(d: MemberDemand) -> MillilitrePerSecond? {
+  match d { MemberDemandEstimated { instance: _, heat: _, through_flow: q } => Present { value: q } _ => Absent }
 }
+
+fn ml_s(q: MillilitrePerSecond) -> Int { millilitre_per_second_count(f: q) as Int }
 
 // ═══ FAN ARRANGEMENTS, AND THE SCREEN ═══
 //
@@ -129,8 +131,8 @@ fn demand_instance(d: MemberDemand) -> NonEmptyStr {
   }
 }
 
-fn needed_by(ids: List<NonEmptyStr>, demands: List<MemberDemand>) -> Int {
-  fold(demands, init: 0, f: (acc, d) => if any(ids, i => i == demand_instance(d: d)) { match demand_flow(d: d) { Present { value: q } => acc + q Absent => acc } } else { acc })
+fn needed_by(ids: List<NonEmptyStr>, demands: List<MemberDemand>) -> MillilitrePerSecond {
+  millilitre_per_second(count: fold(demands, init: 0, f: (acc, d) => if any(ids, i => i == demand_instance(d: d)) { match demand_flow(d: d) { Present { value: q } => acc + ml_s(q: q) Absent => acc } } else { acc }))
 }
 
 fn screen_assignment(a: FanAssignment, demands: List<MemberDemand>, fraction: Percent) -> AssignmentScreen {
@@ -139,12 +141,12 @@ fn screen_assignment(a: FanAssignment, demands: List<MemberDemand>, fraction: Pe
     Absent => match a.fan.free_air_flow {
       FreeAirFlowUnread { read_obligation: o } => AssignmentFanFlowUnread { fan: a.fan.model, read_obligation: o }
       FreeAirFlowPublished { flow: f, standing: _ } => {
-        let delivered = (millilitre_per_second_count(f: f) as Int) * (percent_count(p: fraction) as Int) / 100
+        let delivered = millilitre_per_second(count: ml_s(q: f) * (percent_count(p: fraction) as Int) / 100)
         let needed = needed_by(ids: assignment_ids(a: a), demands: demands)
-        if delivered >= needed {
-          AssignmentPassesScreen { fan: a.fan.model, serves: assignment_ids(a: a), assumed_delivered: millilitre_per_second(count: delivered), needed: millilitre_per_second(count: needed) }
+        if ml_s(q: delivered) >= ml_s(q: needed) {
+          AssignmentPassesScreen { fan: a.fan.model, serves: assignment_ids(a: a), assumed_delivered: delivered, needed: needed }
         } else {
-          AssignmentBelowScreen { fan: a.fan.model, serves: assignment_ids(a: a), assumed_delivered: millilitre_per_second(count: delivered), needed: millilitre_per_second(count: needed) }
+          AssignmentBelowScreen { fan: a.fan.model, serves: assignment_ids(a: a), assumed_delivered: delivered, needed: needed }
         }
       }
     }
@@ -185,8 +187,8 @@ fn group_qualification(demands: List<MemberDemand>, observed: List<MemberFlowObs
     match demand_flow(d: d) {
       Absent => concat(acc, [join([id as String, ": its demand is not established"], "")])
       Present { value: need } => match observation_for(observed: observed, id: id) {
-        Absent => concat(acc, [join([id as String, ": no observed through-flow (needs ", to_string(value: need), " mL/s)"], "")])
-        Present { value: x } => if (millilitre_per_second_count(f: x.through_flow) as Int) >= need { acc } else { concat(acc, [join([id as String, ": observed ", to_string(value: millilitre_per_second_count(f: x.through_flow) as Int), " mL/s, below its ", to_string(value: need), " mL/s"], "")]) }
+        Absent => concat(acc, [join([id as String, ": no observed through-flow (needs ", to_string(value: ml_s(q: need)), " mL/s)"], "")])
+        Present { value: x } => if ml_s(q: x.through_flow) >= ml_s(q: need) { acc } else { concat(acc, [join([id as String, ": observed ", to_string(value: ml_s(q: x.through_flow)), " mL/s, below its ", to_string(value: ml_s(q: need)), " mL/s"], "")]) }
       }
     }
   })
@@ -284,8 +286,8 @@ fn group_text(inst: CardInstallation, g: CardGroup) -> List<String> {
   let head = join(["  group: ", join(map(demands, d => demand_text(d: d)), "; ")], "")
   let needs = map(reported_rises, r => {
     let ds = map(ms, m => member_demand(m: m, rise: r))
-    join(["    through-flow at a ", to_string(value: celsius_delta_count(delta: r) as Int), " K air rise: ", to_string(value: needed_by(ids: map(ms, m => m.instance.id), demands: ds)), " mL/s in all, ",
-      join(map(ds, d => match demand_flow(d: d) { Present { value: q } => to_string(value: q) Absent => "?" }), " + ")], "")
+    join(["    through-flow at a ", to_string(value: celsius_delta_count(delta: r) as Int), " K air rise: ", to_string(value: ml_s(q: needed_by(ids: map(ms, m => m.instance.id), demands: ds))), " mL/s in all, ",
+      join(map(ds, d => match demand_flow(d: d) { Present { value: q } => to_string(value: ml_s(q: q)) Absent => "?" }), " + ")], "")
   })
   let fabrication = match group_fabrication(inst: inst, g: g) {
     GroupFabricableByExistingDucts => ["    fabrication: the existing single-card ducts apply"]

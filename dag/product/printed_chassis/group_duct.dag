@@ -64,7 +64,7 @@ fn plan_group(p: GroupDuctPlan) -> CardGroup? {
 
 // ═══ ADMISSION ═══
 
-type GroupMemberFace { member: InstalledCard, face: CardEndInterface, bands: FinFreeBands, offset: Int, length: Micrometer }
+type GroupMemberFace { member: InstalledCard, face: CardEndInterface, bands: FinFreeBands, offset: Micrometer, length: Micrometer }
 
 type GroupFitPlateAdmission
   = GroupFitPlateAdmitted { parts: List<AssemblyPart>, interfaces: List<MechanicalInterface> }
@@ -82,7 +82,7 @@ fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
         Absent => Absent
         Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
           Absent => Absent
-          Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, bands: b, offset: micrometer_count(m: s.across) as Int, length: c.length } }
+          Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, bands: b, offset: s.across, length: c.length } }
         }
       }
     }
@@ -140,11 +140,12 @@ data tab_width_inset: Micrometer = micrometer(count: 2100)
 
 fn opening_top_x(f: CardEndInterface) -> Int { um(m: f.face_length) / 2 - um(m: f.window_from_top) }
 fn opening_bottom_x(f: CardEndInterface) -> Int { opening_top_x(f: f) - um(m: f.window_length) }
-fn opening_low_y(mf: GroupMemberFace) -> Int { mf.offset + um(m: mf.face.window_from_back) }
+fn opening_low_y(mf: GroupMemberFace) -> Int { um(m: mf.offset) + um(m: mf.face.window_from_back) }
 
 // The finned part of the opening only: the bands are fin-free, so covering them with plate costs no fin
 // area, and the plate under them is what the tabs stand on.
-fn fin_window_cut(mf: GroupMemberFace, t: Int) -> Primitive {
+fn fin_window_cut(mf: GroupMemberFace, plate: Micrometer) -> Primitive {
+  let t = um(m: plate)
   let top = opening_top_x(f: mf.face) - um(m: mf.bands.top)
   let bottom = opening_bottom_x(f: mf.face) + um(m: mf.bands.bottom)
   let wd = um(m: mf.face.window_depth)
@@ -154,7 +155,8 @@ fn fin_window_cut(mf: GroupMemberFace, t: Int) -> Primitive {
 // One tab in each band, against the band's inner end (next to the fins, not touching them), narrower than
 // the opening so it clears the pitched sides. Its outer face meets the band's slope as it goes in, and that
 // contact is the grip; the slope itself was not measured, so how hard it grips is what the fit print shows.
-fn band_tabs(mf: GroupMemberFace, t: Int) -> List<Primitive> {
+fn band_tabs(mf: GroupMemberFace, plate: Micrometer) -> List<Primitive> {
+  let t = um(m: plate)
   let tt = um(m: tab_thickness)
   let td = um(m: tab_depth)
   let w = um(m: mf.face.window_depth) - 2 * um(m: tab_width_inset)
@@ -172,7 +174,7 @@ fn card_part(mf: GroupMemberFace, index: Int) -> AssemblyPart {
   let len = um(m: mf.length)
   let th = um(m: f.face_thickness)
   part(id: join(["CARD-", to_string(value: index + 1)], ""), name: join([mf.member.instance.card.row.product as String, " envelope, ", mf.member.instance.id as String], ""), kind: Purchased, scope: FixedFrame,
-    adds: [block(w: um(m: f.face_length), h: th, d: len, x: 0, y: mf.offset + th / 2, z: len / 2)],
+    adds: [block(w: um(m: f.face_length), h: th, d: len, x: 0, y: um(m: mf.offset) + th / 2, z: len / 2)],
     cuts: [block(w: um(m: f.window_length), h: um(m: f.window_depth), d: um(m: f.fin_setback), x: opening_top_x(f: f) - um(m: f.window_length) / 2, y: opening_low_y(mf: mf) + um(m: f.window_depth) / 2, z: um(m: f.fin_setback) / 2)],
     x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 60000, plane: LayOnXY,
     notes: "Envelope only: the read end face and the vendor's stated length, placed at its installed separation. The fin opening is carried as a recess as deep as the read fin setback.")
@@ -187,7 +189,7 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>) -> List<AssemblyPart> {
   let c = um(m: policy.allowances.sleeve_clearance)
   let sd = um(m: policy.allowances.sleeve_depth)
   let half = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.face.face_length) / 2 > acc { um(m: mf.face.face_length) / 2 } else { acc })
-  let y_hi = fold(faces, init: 0, f: (acc, mf) => if mf.offset + um(m: mf.face.face_thickness) > acc { mf.offset + um(m: mf.face.face_thickness) } else { acc })
+  let y_hi = fold(faces, init: 0, f: (acc, mf) => if um(m: mf.offset) + um(m: mf.face.face_thickness) > acc { um(m: mf.offset) + um(m: mf.face.face_thickness) } else { acc })
   let x_in = half + c
   let x_out = x_in + wall
   let y_lo_in = 0 - c
@@ -202,8 +204,8 @@ fn group_fit_plate_parts(faces: List<GroupMemberFace>) -> List<AssemblyPart> {
     block(w: outer_w, h: wall, d: sd, x: 0, y: y_lo_in - wall / 2, z: sd / 2),
     block(w: outer_w, h: wall, d: sd, x: 0, y: y_hi_in + wall / 2, z: sd / 2),
   ]
-  let tabs = fold(faces, init: [], f: (acc, mf) => concat(acc, band_tabs(mf: mf, t: t)))
-  let windows = map(faces, mf => fin_window_cut(mf: mf, t: t))
+  let tabs = fold(faces, init: [], f: (acc, mf) => concat(acc, band_tabs(mf: mf, plate: policy.ring_exercised.flange_thickness)))
+  let windows = map(faces, mf => fin_window_cut(mf: mf, plate: policy.ring_exercised.flange_thickness))
   let plate_part = part(id: "FIT-PLATE", name: join(["Group fit plate: ", to_string(value: length(list: faces)), " end faces, outer lip and band tabs"], ""), kind: Printed, scope: FixedFrame,
     adds: concat(concat([plate], lip), tabs),
     cuts: windows,
