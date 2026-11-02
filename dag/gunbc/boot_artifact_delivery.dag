@@ -617,6 +617,9 @@ fn plan_provenance_matches_target(plan: BootDeliveryPlan) -> Bool {
   has_provenance == boot_delivery_target_has_controller(target: plan.target)
 }
 
+// DIVERGENCE, STATED (DESIGN 3b): this boundary is a rung-2 validator where construction is
+// available; the ceiling is a plan indexed by delivery family. Declared, with trigger, at
+// gunbc.rung_drop boot_delivery_plan_coherence_is_admitted_not_constructed.
 fn admit_boot_delivery_plan(plan: BootDeliveryPlan) -> BootDeliveryPlanAdmission {
   let derived = boot_artifact_delivery_boot_control(delivery: plan.delivery)
   if derived != plan.boot_control {
