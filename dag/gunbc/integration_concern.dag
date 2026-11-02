@@ -4,7 +4,8 @@ import std.types { String, List, Bool, Int, NonEmptyStr, CommitSha }
 import std.optional { Optional, Present, Absent }
 import std.algebra { FreeSemigroup }
 import std.list { first_duplicate_by_key, distinct_by_key }
-import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.process { ExitSuccess }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.guarantee_stall { NextRungTrigger }
@@ -60,7 +61,14 @@ fn authorities_list(d: DistinctAuthorities) -> List<DeclarationRef> {
 // not the kind, carries the conclusion.
 type ConcernKind
   = SuspectedFork { authorities: DistinctAuthorities }
-  | SuspectedCapabilityGap { model: DeclarationRef, requirement: NonEmptyStr }
+  | SuspectedCapabilityGap { model: DeclarationRef, requirement: NonEmptyStr, standing: RequirementStanding }
+
+// WHETHER THE REQUIREMENT A GAP NAMES IS ITSELF ESTABLISHED. A gap can be recorded before anyone
+// knows the requirement is real; recording it does not promote it. Unestablished names the reading
+// that would decide it, and the view prints that beside the row.
+type RequirementStanding
+  = RequirementEstablished { by: SightingEvidence }
+  | RequirementUnestablished { decided_by: NonEmptyStr }
 
 // WHERE THE SHARED MEANING BELONGS is a semantic fact, separate from where the affected
 // declarations are stored. Namespace ancestry is never consulted for it.
@@ -85,6 +93,31 @@ type RetainedExecutionResult {
   conclusion: NonEmptyStr
 }
 
+// WHAT A SIGHTING CITES. Facts with an owner are cited, not restated: a quantity is cited through
+// the declaration that owns it, an output through its digest, a removed declaration at its
+// revision. Nothing here is a second copy of a number another module carries.
+type SightingEvidence
+  = CitesDeclaration { declaration: DeclarationRef }
+  | CitesHistorical { declaration: HistoricalDeclaration }
+  | CitesArtifact { label: NonEmptyStr, sha256: Sha256Digest }
+
+// ONE SIGHTING OF A CONCERN: the main revision it was made against, what it cites, and the account
+// of what was seen -- the one irreducibly prose part. A later sighting of the same concern is
+// appended to the row's `sightings`; it never adds a second row.
+type ConcernSighting {
+  revision: CommitSha
+  evidence: FreeSemigroup<SightingEvidence>
+  account: NonEmptyStr
+}
+
+// AN OBLIGATION A CONSOLIDATION MUST KEEP, held by a declaration, with the control that exercises
+// it where one exists. Its holder is an implicated declaration, so it takes part in relevance.
+type PreservedObligation {
+  holder: DeclarationRef
+  control: DeclarationRef?
+  statement: NonEmptyStr
+}
+
 type IntegrationEvidence {
   integrated_at: CommitSha
   superseded: List<HistoricalDeclaration>
@@ -98,18 +131,17 @@ type IntegrationEvidence {
 // reassigned closes nothing -- only Integrated evidence does.
 type ConcernDisposition
   = Open
-  | Triaged { home: ConceptHome, preserve: List<String>, next: NextRungTrigger }
+  | Triaged { home: ConceptHome, preserve: List<PreservedObligation>, next: NextRungTrigger }
   | Distinct { reason: NonEmptyStr, scope_examined: NonEmptyStr }
   | Withdrawn { reason: NonEmptyStr }
   | Integrated { evidence: IntegrationEvidence }
 
-// A later sighting of the same concern APPENDS to `observations`; it never adds a second row.
 type IntegrationConcern {
   identity: NonEmptyStr
   kind: ConcernKind
   affected: FreeSemigroup<DeclarationRef>
   question: NonEmptyStr
-  observations: List<String>
+  sightings: FreeSemigroup<ConcernSighting>
   disposition: ConcernDisposition
 }
 
@@ -126,7 +158,7 @@ fn concern_is_open(c: IntegrationConcern) -> Bool {
 fn kind_label(k: ConcernKind) -> String {
   match k {
     SuspectedFork { authorities: _ } => "suspected fork"
-    SuspectedCapabilityGap { model: _, requirement: _ } => "suspected capability gap"
+    SuspectedCapabilityGap { model: _, requirement: _, standing: _ } => "suspected capability gap"
   }
 }
 
@@ -143,21 +175,22 @@ fn disposition_label(d: ConcernDisposition) -> String {
 fn kind_declarations(k: ConcernKind) -> List<DeclarationRef> {
   match k {
     SuspectedFork { authorities: a } => authorities_list(d: a)
-    SuspectedCapabilityGap { model: m, requirement: _ } => [m]
+    SuspectedCapabilityGap { model: m, requirement: _, standing: _ } => [m]
   }
 }
 
-fn home_declarations(d: ConcernDisposition) -> List<DeclarationRef> {
+fn disposition_declarations(d: ConcernDisposition) -> List<DeclarationRef> {
   match d {
-    Triaged { home: ExistingHome { model: m }, preserve: _, next: _ } => [m]
+    Triaged { home: h, preserve: ps, next: _ } => concat(match h { ExistingHome { model: m } => [m] HomeUnresolved { question: _ } => [] }, map(ps, o => o.holder))
     _ => []
   }
 }
 
 // Every declaration a concern implicates: its affected locations, the authorities or model its
-// kind names, and an existing semantic home once triage names one.
+// kind names, and, once triaged, an existing semantic home and the holders of preserved obligations.
+// Sighting evidence is cited, not implicated, so it does not take part in relevance.
 fn concern_declarations(c: IntegrationConcern) -> List<DeclarationRef> {
-  concat(concat(concat([c.affected.head], c.affected.tail), kind_declarations(k: c.kind)), home_declarations(d: c.disposition))
+  concat(concat(concat([c.affected.head], c.affected.tail), kind_declarations(k: c.kind)), disposition_declarations(d: c.disposition))
 }
 
 fn concern_modules(c: IntegrationConcern) -> List<String> {
@@ -204,11 +237,19 @@ data unconnected_routes: List<String> = [
 // ---------------------------------------------------------------------------------------------
 // THE ROWS.
 
+data duct_print_source_revision: CommitSha = "799697f5c76b2e86dc34f3408878aef9e0d3d750"
+
+data duct_print_plate: SightingEvidence = CitesArtifact {
+  label: "a16-blower-flat-on-end-duct plate 3MF prepared by product.printed_chassis.print_workflow prepare_request_plate, printed on printer-01 2026-11-01",
+  sha256: Sha256Digest { hex: "7145d866de97f62491ef6c3d250288e24e0fc2f2b12ff25a0a230860554821cb" as Sha256DigestHex },
+}
+
 data support_restriction_scope: IntegrationConcern = IntegrationConcern {
   identity: "support_restriction_scope",
   kind: SuspectedCapabilityGap {
     model: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
     requirement: "a manufacturing restriction scoped to a region of a part, where the part as a whole still needs support",
+    standing: RequirementUnestablished { decided_by: "the A16 duct fit check's head-to-fan gap, read before and after removing support residue from the seat face: if cleanup restores the model-derived clearance, no region restriction is required" },
   },
   affected: FreeSemigroup {
     head: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
@@ -218,12 +259,21 @@ data support_restriction_scope: IntegrationConcern = IntegrationConcern {
     ],
   },
   question: "Does a part need a support restriction finer than whole-part support_free, and if so is it a no-contact region, a permitted post-process, or a tolerance on the resulting geometry?",
-  observations: [
-    "2026-11-01: the A16 flat-on-end duct (root a16-blower-flat-on-end-duct, 3MF sha256 7145d866de97f62491ef6c3d250288e24e0fc2f2b12ff25a0a230860554821cb) printed shoulder-down with bed-only automatic support. Its support centerlines reach the z=33.5 mm seat face the blower rests on (about 7,180 mm2) and a z=39.0 mm strip (about 360 mm2). The seat sets the model-derived 0.5 mm head clearance (plane_on_end_blower_bottom_standoff); 0.1-0.2 mm of interface residue would be 20-40 percent of it.",
-    "UNRESOLVED: whether the seat face requires no support contact, or whether cleanup restores the clearance, is not established. The fit check reads the head gap before and after cleaning; until that reading exists this is a suspected gap, not a requirement.",
-    "Evidence limit: the slice readback's support record (product.printing.deposited_geometry) is motion centerlines, not a solid scaffold or contact surface, so a support-contact check on a face is its own evidence and modeling obligation, not one the existing record discharges.",
-    "Related, not merged: gunbc.recurring_failure_mode functional_print_features_confused_with_supports (2026-10-04, support trapped in mating channels) is an earlier lesson about support meeting functional geometry.",
-  ],
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: duct_print_source_revision,
+      evidence: FreeSemigroup {
+        head: duct_print_plate,
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.gpu_duct", decl_name: "plane_on_end_blower_bottom_standoff") },
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printing.deposited_geometry", decl_name: "deposited_geometry_source") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.functional_print_features_confused_with_supports", decl_name: "functional_print_features_confused_with_supports") },
+        ],
+      },
+      account: "Printed shoulder-down under the bed-only automatic support policy, the duct's generated support reached the seat face the blower rests on, which sets the model-derived head clearance. The readback's support record is motion centerlines, not a contact surface, so it shows where support was laid, not what it left on the face. The earlier failure-mode row cited is a related lesson about support meeting functional geometry, not the same concern.",
+    },
+    tail: [],
+  },
   disposition: Open,
 }
 
@@ -232,16 +282,24 @@ data started_operation_ownership: IntegrationConcern = IntegrationConcern {
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
     requirement: "a started physical operation has an owner through terminal observation and handoff that survives the initiating session and the temporary access it used",
+    standing: RequirementUnestablished { decided_by: "reading whether the in-band converge_print route already carries a started print to terminal observation without its initiating session, and whether physical-machine boot has the same gap" },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
     tail: [decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate")],
   },
   question: "Who owns a started physical operation until it is observed to finish and handed off, and does that hold for operations started outside the fleet route?",
-  observations: [
-    "2026-11-01/02: on operator direction, the A16 duct was prepared through prepare_request_plate and started on printer-01 out of band, so no fleet print record exists. The starting session read the printer's LAN access code with the operator's one-hour token; once it expired the session could not observe the job and handed observation back to the operator.",
-    "Caveat: the in-band route (converge_print) records print runs and uses workload identity, so part of this may be specific to out-of-band starts. Whether the same gap holds for physical-machine boot has not been examined.",
-  ],
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: duct_print_source_revision,
+      evidence: FreeSemigroup {
+        head: duct_print_plate,
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate") }],
+      },
+      account: "On operator direction the duct was prepared through prepare_request_plate and started on printer-01 outside the fleet route, so no fleet print record exists. The starting session read the printer's access code with an operator-supplied short-lived token; once it expired the session could not observe the job and handed observation back to the operator.",
+    },
+    tail: [],
+  },
   disposition: Open,
 }
 
@@ -263,14 +321,63 @@ fn env_list(name: String) -> List<String> {
   }
 }
 
+fn declaration_text(r: DeclarationRef) -> String {
+  let base = concat(r.module_path as String, concat(" ", r.decl_name as String))
+  match r.field {
+    WholeDeclaration => base
+    NamedField { field_name: f } => concat(base, concat(".", f as String))
+    TypeParameter { name: n } => concat(base, concat("<", concat(n as String, ">")))
+  }
+}
+
+fn evidence_text(e: SightingEvidence) -> String {
+  match e {
+    CitesDeclaration { declaration: d } => concat("declaration ", declaration_text(r: d))
+    CitesHistorical { declaration: h } => join(["declaration ", h.module_path as String, " ", h.decl_name as String, " at ", h.at as String], "")
+    CitesArtifact { label: l, sha256: d } => join(["artifact sha256 ", d.hex as String, " (", l as String, ")"], "")
+  }
+}
+
+fn sighting_lines(g: ConcernSighting) -> List<String> {
+  concat(
+    [concat("  sighting at ", g.revision as String), concat("    account: ", g.account as String)],
+    map(concat([g.evidence.head], g.evidence.tail), e => concat("    cites: ", evidence_text(e: e))),
+  )
+}
+
+fn requirement_lines(k: ConcernKind) -> List<String> {
+  match k {
+    SuspectedFork { authorities: _ } => []
+    SuspectedCapabilityGap { model: m, requirement: r, standing: st } => [
+      concat("  model: ", declaration_text(r: m)),
+      concat("  requirement: ", r as String),
+      match st {
+        RequirementEstablished { by: e } => concat("  requirement established by: ", evidence_text(e: e))
+        RequirementUnestablished { decided_by: d } => concat("  requirement NOT established; decided by: ", d as String)
+      },
+    ]
+  }
+}
+
+fn obligation_lines(d: ConcernDisposition) -> List<String> {
+  match d {
+    Triaged { home: _, preserve: ps, next: _ } => map(ps, o => join(["  preserve (", declaration_text(r: o.holder), "): ", o.statement as String], ""))
+    _ => []
+  }
+}
+
 fn concern_text(c: IntegrationConcern) -> String {
-  join([
-    concat("- ", c.identity as String),
-    concat("  kind: ", kind_label(k: c.kind)),
-    concat("  disposition: ", disposition_label(d: c.disposition)),
-    concat("  question: ", c.question as String),
-    concat("  modules: ", join(concern_modules(c: c), ", ")),
-  ], "\n")
+  join(concat(concat(concat(
+    [
+      concat("- ", c.identity as String),
+      concat("  kind: ", kind_label(k: c.kind)),
+      concat("  disposition: ", disposition_label(d: c.disposition)),
+      concat("  question: ", c.question as String),
+      concat("  modules: ", join(concern_modules(c: c), ", ")),
+    ],
+    requirement_lines(k: c.kind)),
+    obligation_lines(d: c.disposition)),
+    flat_map(concat([c.sightings.head], c.sightings.tail), g => sighting_lines(g: g))), "\n")
 }
 
 fn reading_text(title: String, rows: List<IntegrationConcern>) -> String {

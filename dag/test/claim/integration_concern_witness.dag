@@ -11,8 +11,9 @@ import gunbc.integration_concern {
   IntegrationConcern, ConcernScope, ConcernKind, SuspectedFork, SuspectedCapabilityGap,
   ConcernDisposition, Open, Triaged, Distinct, Withdrawn, Integrated,
   ExistingHome, HomeUnresolved, HistoricalDeclaration, RetainedExecutionResult, IntegrationEvidence,
+  RequirementUnestablished, ConcernSighting, CitesDeclaration, PreservedObligation,
   distinct_authorities, concerns_for, concerns_in_subtree, concern_is_open, kind_declarations,
-  integration_concerns,
+  concern_text, integration_concerns,
 }
 
 // SUPPLIED ROWS (DESIGN section 3, a witness discriminates at one interface): the relevance and
@@ -22,10 +23,17 @@ import gunbc.integration_concern {
 fn gap(identity: String, model: DeclarationRef, affected: FreeSemigroup<DeclarationRef>, d: ConcernDisposition) -> IntegrationConcern {
   IntegrationConcern {
     identity: identity as NonEmptyStr,
-    kind: SuspectedCapabilityGap { model: model, requirement: "a supplied requirement" },
+    kind: SuspectedCapabilityGap { model: model, requirement: "a supplied requirement", standing: RequirementUnestablished { decided_by: "a supplied reading" } },
     affected: affected,
     question: "a supplied question",
-    observations: [],
+    sightings: FreeSemigroup {
+      head: ConcernSighting {
+        revision: "0000000000000000000000000000000000000002" as CommitSha,
+        evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "test.fixture.cited_only", decl_name: "cited") }, tail: [] },
+        account: "a supplied account",
+      },
+      tail: [],
+    },
     disposition: d,
   }
 }
@@ -122,4 +130,25 @@ test fn the_real_register_answers_a_scoped_reading() -> Bool {
 
 test fn the_real_register_rows_are_open_suspicions() -> Bool {
   all(integration_concerns, c => concern_is_open(c: c))
+}
+
+// The view consumes the typed sighting and the requirement's standing, not only the row's identity.
+test fn the_view_renders_sightings_and_an_unestablished_requirement() -> Bool {
+  let text = concern_text(c: cross_namespace_row())
+  string_contains(s: text, pattern: "sighting at 0000000000000000000000000000000000000002")
+    && string_contains(s: text, pattern: "cites: declaration test.fixture.cited_only cited")
+    && string_contains(s: text, pattern: "requirement NOT established; decided by: a supplied reading")
+}
+
+// Cited evidence is not an implicated location; a preserved obligation's holder is.
+test fn evidence_is_cited_not_implicated_and_an_obligation_holder_is_implicated() -> Bool {
+  let next = climbs_when_awaiting(capability: "the supplied capability", awaiting: [])
+  let triaged = gap(
+    identity: "held",
+    model: decl_ref(module_path: "std.shape_model", decl_name: "Shape"),
+    affected: FreeSemigroup { head: decl_ref(module_path: "product.alpha.left", decl_name: "a"), tail: [] },
+    d: Triaged { home: HomeUnresolved { question: "where" }, preserve: [PreservedObligation { holder: decl_ref(module_path: "product.holder", decl_name: "keeps"), control: Absent, statement: "keeps its refusal" }], next: next },
+  )
+  count(concerns_for(s: scope(changed: ["test.fixture.cited_only"], referenced: []), rows: [triaged])) == 0
+    && count(concerns_for(s: scope(changed: ["product.holder"], referenced: []), rows: [triaged])) == 1
 }
