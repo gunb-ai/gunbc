@@ -1,6 +1,6 @@
 module extdeps.linux.proc_stat
 
-import std.types { Int, List, NonEmptyStr, EpochSecs }
+import std.types { String, Int, List, NonEmptyStr, EpochSecs }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -41,6 +41,8 @@ type ProcStatBootTime
   | BootTimeLineAbsent
   | BootTimeUnparseable { field: String }
   | BootTimeBeforeEpoch { field: String }
+
+data proc_stat_path: String = "/proc/stat"
 
 data proc_stat_btime_keyword: NonEmptyStr = "btime" as NonEmptyStr
 

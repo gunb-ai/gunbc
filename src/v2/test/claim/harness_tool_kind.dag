@@ -1,4 +1,4 @@
-module test.claim.harness_tool_kind
+module v2.test.claim.harness_tool_kind
 
 import std.types { Bool, String }
 import gunbc.harness.harness_tool_kind {
