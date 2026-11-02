@@ -66,7 +66,7 @@ Still owed: side-chat approval at the exact final head, then the merge. CI heal 
 - **#14940:** set the rung to Mitigatable and make the annotation agree with the typed row.
 - **#14693:** implement the three join seats, or mark them as expected-red probes, then merge main.
 - **#14657:** drop `ev/`, derive cited/uncited from the projection, and retitle.
-- **#14484:** route the partition-mirror derivation through a census row, or declare it a frontier with a trigger.
+- **#14484:** derive the partition mirror from its authority, or declare it a frontier with a trigger.
 - **#15229:** split out the Nat-to-kernel-Int rework and drop `fixtures/zz_*.sh` and the probes.
 
 ### Approved but stale: merge main and regenerate
