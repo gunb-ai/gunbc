@@ -1,11 +1,10 @@
 module test.claim.network_boot_actuation_witness
 
-import gunbc.boot_artifact_delivery { BootControlTarget, BootFromNetworkPxe }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootFromNetworkPxe, BootFromRemovableMedia }
 import std.types { Bool, String, EpochMs, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { decl_ref }
 import extdeps.bmc.types { BootTargetPxe, BootTargetCd }
-import gunbc.os_install_mechanism { PxeHttpInstall, VirtualMediaInstall }
 import std.measure { finite_byte_size, positive_measure_count }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_5_live_server_arm64 }
 import gunbc.provisioning.ubuntu_network_origin_observation {
@@ -249,23 +248,23 @@ fn evidence_with_origin(origin: UbuntuNetworkOrigin?) -> DeliveryEvidence {
 fn is_withheld(a: NetworkBootActuation) -> Bool {
   match a {
     ArmActuationWithheld { attempt: _, shape: _ } => true
-    ArmActuationPxe { attempt: _, mechanism: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => false
-    ArmActuationVirtualMedia { attempt: _, mechanism: _, boot_target: _, media_observation: _, origin: _, seed: _ } => false
+    ArmActuationPxe { attempt: _, boot_control: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => false
+    ArmActuationVirtualMedia { attempt: _, boot_control: _, boot_target: _, media_observation: _, origin: _, seed: _ } => false
   }
 }
 
-test fn a_pxe_arm_names_the_pxe_mechanism_and_target() -> Bool {
+test fn a_pxe_arm_names_the_pxe_boot_control_and_target() -> Bool {
   match actuate(strategy: BootFromNetworkPxe, evidence: full_evidence(), unit: "unit-alpha") {
-    ArmActuationPxe { attempt: _, mechanism: m, boot_target: t, chain: _, firmware: _, origin: _, seed: _ } =>
-      m == PxeHttpInstall && t == BootTargetPxe
+    ArmActuationPxe { attempt: _, boot_control: m, boot_target: t, chain: _, firmware: _, origin: _, seed: _ } =>
+      m == BootFromNetworkPxe && t == BootTargetPxe
     _ => false
   }
 }
 
-test fn a_virtual_media_arm_names_the_virtual_media_mechanism_and_target() -> Bool {
+test fn a_virtual_media_arm_names_the_removable_media_boot_control_and_target() -> Bool {
   match actuate(strategy: BootFromRemovableMedia, evidence: full_evidence(), unit: "unit-alpha") {
-    ArmActuationVirtualMedia { attempt: _, mechanism: m, boot_target: t, media_observation: _, origin: _, seed: _ } =>
-      m == VirtualMediaInstall && t == BootTargetCd
+    ArmActuationVirtualMedia { attempt: _, boot_control: m, boot_target: t, media_observation: _, origin: _, seed: _ } =>
+      m == BootFromRemovableMedia && t == BootTargetCd
     _ => false
   }
 }
@@ -275,7 +274,7 @@ test fn the_actuation_carries_exactly_what_the_pxe_arm_bound() -> Bool {
   match arm.shape {
     ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
       match network_boot_arm_actuator_steps(arm: arm) {
-        ArmActuationPxe { attempt: _, mechanism: _, boot_target: _, chain: c2, firmware: f2, origin: o2, seed: s2 } =>
+        ArmActuationPxe { attempt: _, boot_control: _, boot_target: _, chain: c2, firmware: f2, origin: o2, seed: s2 } =>
           c == c2 && f == f2 && o == o2 && s == s2 && f != FirmwareAlreadyReady
         _ => false
       }
@@ -288,7 +287,7 @@ test fn the_actuation_carries_exactly_what_the_media_arm_bound() -> Bool {
   match arm.shape {
     ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
       match network_boot_arm_actuator_steps(arm: arm) {
-        ArmActuationVirtualMedia { attempt: _, mechanism: _, boot_target: _, media_observation: m2, origin: o2, seed: s2 } =>
+        ArmActuationVirtualMedia { attempt: _, boot_control: _, boot_target: _, media_observation: m2, origin: o2, seed: s2 } =>
           m == m2 && o == o2 && s == s2
         _ => false
       }
@@ -319,7 +318,7 @@ test fn two_pxe_arms_differing_only_in_chainloader_yield_different_actuations() 
 test fn a_ready_firmware_standing_carries_no_preparation_route() -> Bool {
   let e = evidence_with(firmware: fixture_firmware_ready(), chain: pinned(), virtual_media: media_available())
   match actuate(strategy: BootFromNetworkPxe, evidence: e, unit: "unit-alpha") {
-    ArmActuationPxe { attempt: _, mechanism: _, boot_target: _, chain: _, firmware: FirmwareAlreadyReady, origin: _, seed: _ } => true
+    ArmActuationPxe { attempt: _, boot_control: _, boot_target: _, chain: _, firmware: FirmwareAlreadyReady, origin: _, seed: _ } => true
     _ => false
   }
 }
@@ -343,10 +342,10 @@ fn same_actuation_for(strategy: BootControlTarget, evidence: DeliveryEvidence, u
 
 fn relabel(a: NetworkBootActuation, unit: String) -> NetworkBootActuation {
   match a {
-    ArmActuationPxe { attempt: t, mechanism: m, boot_target: b, chain: c, firmware: f, origin: o, seed: s } =>
-      ArmActuationPxe { attempt: AttemptBinding { unit: unit as UnitKey, attempt: t.attempt }, mechanism: m, boot_target: b, chain: c, firmware: f, origin: o, seed: s }
-    ArmActuationVirtualMedia { attempt: t, mechanism: m, boot_target: b, media_observation: mo, origin: o, seed: s } =>
-      ArmActuationVirtualMedia { attempt: AttemptBinding { unit: unit as UnitKey, attempt: t.attempt }, mechanism: m, boot_target: b, media_observation: mo, origin: o, seed: s }
+    ArmActuationPxe { attempt: t, boot_control: m, boot_target: b, chain: c, firmware: f, origin: o, seed: s } =>
+      ArmActuationPxe { attempt: AttemptBinding { unit: unit as UnitKey, attempt: t.attempt }, boot_control: m, boot_target: b, chain: c, firmware: f, origin: o, seed: s }
+    ArmActuationVirtualMedia { attempt: t, boot_control: m, boot_target: b, media_observation: mo, origin: o, seed: s } =>
+      ArmActuationVirtualMedia { attempt: AttemptBinding { unit: unit as UnitKey, attempt: t.attempt }, boot_control: m, boot_target: b, media_observation: mo, origin: o, seed: s }
     ArmActuationWithheld { attempt: t, shape: sh } =>
       ArmActuationWithheld { attempt: AttemptBinding { unit: unit as UnitKey, attempt: t.attempt }, shape: sh }
   }
@@ -362,7 +361,7 @@ test fn the_projection_does_not_depend_on_the_unit_label() -> Bool {
 test fn the_attempt_is_carried_through_as_data() -> Bool {
   let arm = arm_for(strategy: BootFromNetworkPxe, evidence: full_evidence(), unit: "unit-bravo")
   match network_boot_arm_actuator_steps(arm: arm) {
-    ArmActuationPxe { attempt: a, mechanism: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => a == arm.attempt
+    ArmActuationPxe { attempt: a, boot_control: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => a == arm.attempt
     _ => false
   }
 }

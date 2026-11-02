@@ -18,24 +18,23 @@ data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
   path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
 }
 
-// The mapping is the subject here and it is unchanged: a boot target is derived
-// from the mechanism, never hardcoded to Pxe. What changed is that srv3 no
-// longer REACHES the mapping — its 3.22.00 evidence refuses before a mechanism
-// is selected — so the host half asserts the refusal and the mapping is pinned
-// on the mechanisms directly, which is where the claim always actually lived.
-test fn install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
-  match srv3_install_mechanism_solution {
-    OsInstallMechanismRefused { cause: _ } => true
-    OsInstallMechanismSelected { mechanism: _ } => false
+// The mapping is the subject here: a boot target is derived from the arm's boot control, never
+// hardcoded to Pxe. srv3 does not REACH the mapping — its delivery solution refuses at the
+// access context — so the host half asserts the refusal and the mapping is pinned on the arms
+// directly, which is where the claim lives.
+test fn install_boot_target_follows_arm_not_hardcoded_pxe() -> Bool {
+  match srv3_boot_delivery_solution {
+    BootDeliveryRefused { cause: _ } => true
+    BootDeliveryPlanned { plan: _ } => false
   }
-    && install_boot_target_for(mechanism: NbdProxyVirtualMediaInstall) == BootTargetCd
-    && install_boot_target_for(mechanism: PxeHttpInstall) == BootTargetPxe
-    && install_boot_target_for(mechanism: VirtualMediaInstall) == BootTargetCd
+    && os_install_actuator_arm_boot_target(arm: ActuatorArmNbdProxy) == BootTargetCd
+    && os_install_actuator_arm_boot_target(arm: ActuatorArmPxe) == BootTargetPxe
+    && os_install_actuator_arm_boot_target(arm: ActuatorArmRedfishVirtualMedia) == BootTargetCd
 }
 
 // SOLVE-DRIVEN IS STILL THE CLAIM, and the refusal is what proves it. If the
 // plan were hardcoded to nbd-proxy it would still be Ready after srv3's BMC
-// upgrade; because it is derived from the solved mechanism, the upgrade
+// upgrade; because it is derived from the solved delivery, the upgrade
 // propagates and the plan refuses. A plan that survived the firmware change
 // would be the defect this witness exists to catch.
 test fn srv3_actuator_plan_is_solve_driven_and_follows_the_refusal() -> Bool {
@@ -47,7 +46,7 @@ test fn srv3_actuator_plan_is_solve_driven_and_follows_the_refusal() -> Bool {
 
 test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
   let steps = os_install_actuator_steps(
-    mechanism: NbdProxyVirtualMediaInstall,
+    arm: ActuatorArmNbdProxy,
     export: srv3_nbd_proxy_export_placeholder
   )
   list_length(items: steps) == 3
@@ -68,7 +67,7 @@ test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
 
 test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
   let steps = os_install_actuator_steps(
-    mechanism: PxeHttpInstall,
+    arm: ActuatorArmPxe,
     export: srv3_nbd_proxy_export_placeholder
   )
   list_length(items: steps) == 3
@@ -88,7 +87,7 @@ test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
 // and this witness asserts the standing plus the reason that says why.
 test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
   let steps = os_install_actuator_steps(
-    mechanism: NbdProxyVirtualMediaInstall,
+    arm: ActuatorArmNbdProxy,
     export: srv3_nbd_proxy_export_placeholder
   )
   let first_step_ready = match steps.first() {
@@ -154,11 +153,11 @@ test fn unrealized_actuator_steps_refuse_rather_than_reporting_absent() -> Bool 
 }
 
 // A plan whose steps are not all realized is REFUSED, and every unrealized step is reported —
-// not just the first. The PXE mechanism's staging step has no realization, so its plan refuses.
+// not just the first. The PXE arm's staging step has no realization, so its plan refuses.
 test fn plan_with_unrealized_steps_is_refused_and_names_them() -> Bool {
   match actuator_plan_realization(
     steps: os_install_actuator_steps(
-      mechanism: PxeHttpInstall,
+      arm: ActuatorArmPxe,
       export: srv3_nbd_proxy_export_placeholder
     ),
     image: srv3_resolved_image_fixture,
@@ -182,7 +181,7 @@ fn nbd_serve_step_refuses_image(step: OsInstallActuatorStep, image: SeededImageR
 test fn nbd_serve_step_serves_the_resolved_image_and_refuses_an_unresolved_one() -> Bool {
   let selection = ActuatorSelected { host: srv1_host }
   match os_install_actuator_steps(
-    mechanism: NbdProxyVirtualMediaInstall,
+    arm: ActuatorArmNbdProxy,
     export: srv3_nbd_proxy_export_placeholder
   ).first() {
     Absent => false

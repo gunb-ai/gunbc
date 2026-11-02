@@ -126,8 +126,8 @@ type BoundBmcAccessContext {
 
 // Workflow progress and refusal, distinct from the external lookup's answer.
 // AccessContextProfileLookupNotRun is the honest standing of a path that never
-// observed the controller or ran a lookup at all (gunbc.os_install_mechanism's
-// frozen projection); it is not an external fact about any BMC.
+// observed the controller or ran a lookup at all (gunbc.fleet.fleet_boot_delivery_solution's
+// install-path rows); it is not an external fact about any BMC.
 type BoundBmcAccessContextStanding
   = AccessContextBound { context: BoundBmcAccessContext }
   | AccessContextProfileLookupNotRun { endpoint: BmcControllerEndpoint }

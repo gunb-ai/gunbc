@@ -12,7 +12,8 @@ import gunbc.os_install {
   OsInstallPlanRefused,
   OsInstallPlanReady,
 }
-import gunbc.os_install_mechanism { srv3_install_mechanism_solution, OsInstallMechanismRefused, OsInstallMechanismSelected }
+import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliveryRefused }
+import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -68,9 +69,9 @@ test fn srv3_plan_is_solver_derived_and_refuses_with_the_solve() -> Bool {
     OsInstallPlanRefused { cause: _ } => true
     OsInstallPlanReady { plan: _ } => false
   }
-    && match srv3_install_mechanism_solution {
-      OsInstallMechanismRefused { cause: _ } => true
-      OsInstallMechanismSelected { mechanism: _ } => false
+    && match srv3_boot_delivery_solution {
+      BootDeliveryRefused { cause: _ } => true
+      BootDeliveryPlanned { plan: _ } => false
     }
 }
 

@@ -10,9 +10,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reds this.
 test fn srv3_autoinstall_seed_gap_is_unasked_while_the_mechanism_refuses() -> Bool {
   srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses()
-    && match srv3_install_mechanism_solution {
-      OsInstallMechanismRefused { cause: _ } => true
-      OsInstallMechanismSelected { mechanism: _ } => false
+    && match srv3_boot_delivery_solution {
+      BootDeliveryRefused { cause: _ } => true
+      BootDeliveryPlanned { plan: _ } => false
     }
 }
 

@@ -1,0 +1,49 @@
+module gunbc.fleet.fleet_boot_delivery_solution
+
+import extdeps.bmc.endpoint { bmc_controller_of_endpoint }
+import gunbc.boot_artifact_delivery { BootDeliveryRefused, BootDeliverySolution, DeliveryAccessUnbound }
+import gunbc.fleet.fleet_bmc_firmware_evidence {
+  bmc_firmware_evidence_endpoint,
+  srv1_bmc_firmware_evidence,
+  srv2_bmc_firmware_evidence,
+  srv3_bmc_firmware_evidence,
+  srv4_bmc_firmware_evidence,
+}
+import gunbc.machine_intake.access { AccessContextProfileLookupNotRun }
+
+// Nothing on the install path observes a BMC endpoint or runs a profile lookup, so every host's
+// delivery solution is the access refusal for its evidence endpoint: asserted, not defaulted.
+// gunbc.fleet.fleet_bmc_firmware_evidence keeps the firmware-evidence standing (absent,
+// uncatalogued, ambiguous) as its own fact; a catalogued release and an uncatalogued one both
+// refuse here until an access context is bound.
+data srv1_boot_delivery_solution: BootDeliverySolution = BootDeliveryRefused {
+  cause: DeliveryAccessUnbound {
+    standing: AccessContextProfileLookupNotRun {
+      endpoint: bmc_controller_of_endpoint(endpoint: bmc_firmware_evidence_endpoint(evidence: srv1_bmc_firmware_evidence)),
+    },
+  },
+}
+
+data srv2_boot_delivery_solution: BootDeliverySolution = BootDeliveryRefused {
+  cause: DeliveryAccessUnbound {
+    standing: AccessContextProfileLookupNotRun {
+      endpoint: bmc_controller_of_endpoint(endpoint: bmc_firmware_evidence_endpoint(evidence: srv2_bmc_firmware_evidence)),
+    },
+  },
+}
+
+data srv3_boot_delivery_solution: BootDeliverySolution = BootDeliveryRefused {
+  cause: DeliveryAccessUnbound {
+    standing: AccessContextProfileLookupNotRun {
+      endpoint: bmc_controller_of_endpoint(endpoint: bmc_firmware_evidence_endpoint(evidence: srv3_bmc_firmware_evidence)),
+    },
+  },
+}
+
+data srv4_boot_delivery_solution: BootDeliverySolution = BootDeliveryRefused {
+  cause: DeliveryAccessUnbound {
+    standing: AccessContextProfileLookupNotRun {
+      endpoint: bmc_controller_of_endpoint(endpoint: bmc_firmware_evidence_endpoint(evidence: srv4_bmc_firmware_evidence)),
+    },
+  },
+}

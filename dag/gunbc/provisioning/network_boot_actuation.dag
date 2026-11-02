@@ -29,7 +29,7 @@ import gunbc.provisioning.provisioning_arm {
   provisioning_arm_derive,
   FirmwarePreparation,
 }
-import gunbc.os_install_mechanism { OsInstallMechanism, PxeHttpInstall, VirtualMediaInstall, install_boot_target_for }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootFromNetworkPxe, BootFromRemovableMedia, redfish_boot_target_of_control }
 
 // THE EXECUTING CONSUMER OF AN ArmShape (the frontier gunbc.provisioning.provisioning_arm
 // `provisioning_arm_consumer_frontier` binds to `network_boot_arm_actuator_steps`). It runs nothing:
@@ -55,7 +55,7 @@ import gunbc.os_install_mechanism { OsInstallMechanism, PxeHttpInstall, VirtualM
 type NetworkBootActuation
   = ArmActuationPxe {
       attempt: AttemptBinding
-      mechanism: OsInstallMechanism
+      boot_control: BootControlTarget
       boot_target: RedfishBootSourceOverrideTarget
       chain: SitePxeEdgePinnedChain
       firmware: FirmwarePreparation
@@ -64,7 +64,7 @@ type NetworkBootActuation
     }
   | ArmActuationVirtualMedia {
       attempt: AttemptBinding
-      mechanism: OsInstallMechanism
+      boot_control: BootControlTarget
       boot_target: RedfishBootSourceOverrideTarget
       media_observation: DeclarationRef
       origin: UbuntuNetworkOrigin
@@ -80,8 +80,8 @@ fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation
     ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
       ArmActuationPxe {
         attempt: arm.attempt,
-        mechanism: PxeHttpInstall,
-        boot_target: install_boot_target_for(mechanism: PxeHttpInstall),
+        boot_control: BootFromNetworkPxe,
+        boot_target: redfish_boot_target_of_control(control: BootFromNetworkPxe),
         chain: c,
         firmware: f,
         origin: o,
@@ -90,8 +90,8 @@ fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation
     ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
       ArmActuationVirtualMedia {
         attempt: arm.attempt,
-        mechanism: VirtualMediaInstall,
-        boot_target: install_boot_target_for(mechanism: VirtualMediaInstall),
+        boot_control: BootFromRemovableMedia,
+        boot_target: redfish_boot_target_of_control(control: BootFromRemovableMedia),
         media_observation: m,
         origin: o,
         seed: s,
