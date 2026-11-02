@@ -152,7 +152,6 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreateKindUnrecognized, filesystem_create_new,
 }
 import std.filesystem { path_parent_directory }
-import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import extdeps.shell
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile }
@@ -2252,17 +2251,6 @@ fn attempt_state_prepare_argvs_for_instance(
 // launch (belt_attempt_state_initialize_for_instance), so a readable empty file proves event capture was
 // initialized; the harness worker then appends every round's events to it. Under WorkerIsServiceUser the
 // writer is the file's owner and the create is the plain write it always was. Under WorkerDedicatedAccount
-// the writer is a foreign uid in the attempt group, and the plain write left the file owner-writable only
-// (the srv1 lab refused the worker's first append, 2026-10-24, Permission denied), so the file is created
-// group-writable AT CREATION -- the mode set on the new inode, never widened afterwards -- and create-only,
-// because a fresh attempt has no event stream yet.
-data dispatch_attempt_events_group_writable_mode: FileMode = FileMode {
-  owner: PermissionBits { read: true, write: true, execute: false },
-  group: PermissionBits { read: true, write: true, execute: false },
-  other: PermissionBits { read: false, write: false, execute: false },
-  setuid: false, setgid: false, sticky: false,
-}
-
 type DispatchAttemptEventsInitialization
   = DispatchAttemptEventsInitialized
   | DispatchAttemptEventsInitializationFailed { detail: String }
