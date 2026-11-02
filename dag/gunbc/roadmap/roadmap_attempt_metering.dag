@@ -1,8 +1,24 @@
 module gunbc.roadmap.roadmap_attempt_metering
 
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents, attempt_state_directory_text, attempt_state_text }
-import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
+import extdeps.shell
+import gunbc.roadmap.roadmap_attempt_state_store {
+  AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents,
+  AttemptMeteringRecordFile, AttemptMeteringRosterSealed, AttemptMeteringLaunch,
+  attempt_state_directory_text, attempt_state_text, attempt_state_member_name,
+}
+import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
+import gunbc.durable_exclusive_hold_file_store {
+  file_hold_acquire, observe_file_hold,
+  FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
+  FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+}
+import std.durable_compare_and_set { CasGeneration, CasUnreadableSlot, CasUnreadableReadRefused }
+import std.durable_exclusive_hold {
+  DurableHoldObservation, DurableHoldOwnerRef, durable_hold_owner_equal,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+}
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs , FilePath}
 import std.algebra { trim }
 import std.types { path_segment_is_safe }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
@@ -559,7 +575,6 @@ fn metering_seat_time_total(record: AttemptMeteringRecord) -> MeteringSeatTimeTo
 
 // ── codec ─────────────────────────────────────────────────────────────────────────────────────
 data attempt_metering_schema: String = "gunbc-attempt-metering/v4"
-data attempt_metering_basename: String = "metering.json"
 data attempt_metering_roster_schema: String = "gunbc-attempt-metering-roster/v2"
 
 fn role_tokens_json(t: RoleTokens) -> JsonValue {
@@ -932,9 +947,6 @@ fn attempt_metering_decode(raw: String) -> RowDecode<AttemptMeteringRecord> {
 // is present -- so a racing admission either lands in the sealed listing or refuses. The seal is sound
 // only while every harness spawner iterates that ledger; a spawner that bypasses it would admit after
 // a seal it cannot see.
-data metering_launch_entry_prefix: String = "metering-launch."
-data metering_roster_closing_basename: String = "metering-roster-closing"
-data metering_roster_seal_basename: String = "metering-roster-sealed.json"
 
 fn metering_length_prefixed(parts: List<String>) -> String {
   join(map(parts, p => join([to_string(string_length(s: p)), ".", p], "")), ".")
@@ -950,7 +962,7 @@ fn metered_role_key(role: MeteredRole) -> String {
 }
 
 fn metering_launch_entry_name(role: MeteredRole) -> String {
-  join([metering_launch_entry_prefix, metered_role_key(role: role), ".json"], "")
+  attempt_state_member_name(member: AttemptMeteringLaunch { role_key: metered_role_key(role: role) })
 }
 
 fn metering_roster_entry_json(node_id: String, attempt_key: String, role: MeteredRole) -> String {
@@ -1103,12 +1115,127 @@ type OptionalFileRead
   | OptionalFileAbsent
   | OptionalFileRefused { cause: String }
 
-// Absence is established from the directory listing, so an unlistable directory refuses rather than
-// reading as an empty one.
-fn metering_read_file(path: String) -> OptionalFileRead {
-  let parts = split(s: path, delimiter: "/")
-  let dir = join(take(parts, list_length(items: parts) - 1), "/")
-  let name = fold(parts, init: "", f: (_a, x) => x)
+type MeteringListing
+  = MeteringListed { names: List<String> }
+  | MeteringListingRefused { cause: String }
+
+// ══ THE SEALED METERING STORES ═══════════════════════════════════════════════════════════════════════
+// TWO STORES, TWO MINTS, NEITHER TAKING A PATH. The attempt's own directory holds the record, the roster
+// entries and the roster markers; the dispatch attempt-state root holds the per-attempt index. Both roots
+// come from the attempt-state declaration (attempt_state_directory_text /
+// dashboard_instance_dispatch_attempt_state_root), and each entry name comes from the member rows in
+// gunbc.roadmap.roadmap_attempt_state_store, which read the one leaf declaration
+// (gunbc.roadmap.roadmap_attempt_metering_slots). The pre-seal code exported metering_read_file(path),
+// metering_list(dir), metering_create_only(path) and metering_attempt_dir(...): four routes that handed any
+// module a record over a path or a directory it chose. They are deleted; the operations below take the
+// sealed record and an ENTRY NAME from the declaration.
+//
+// WHAT IS ESTABLISHED: a consumer cannot be handed a forged store or one over the wrong root, because
+// construction is sealed (sole_constructor, non-generic, never a variant arm), and the directory has to
+// list for a store to exist at all. WHAT IS NOT: a holder can read `directory` — field reads are not
+// module-private, the declared residual in gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module.
+type AttemptMeteringStore sole_constructor {
+  instance: NonEmptyStr
+  node: String
+  attempt_key: String
+  directory: NonEmptyStr
+}
+
+type AttemptMeteringStoreReading
+  = AttemptMeteringStoreReady { store: AttemptMeteringStore }
+  | AttemptMeteringStoreUnready { detail: String }
+
+type AttemptMeteringIndexStore sole_constructor {
+  instance: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type AttemptMeteringIndexStoreReading
+  = AttemptMeteringIndexStoreReady { store: AttemptMeteringIndexStore }
+  | AttemptMeteringIndexStoreUnready { detail: String }
+
+type AttemptMeteringListing
+  = AttemptMeteringListingRead { names: List<String> }
+  | AttemptMeteringListingUnreadable { detail: String }
+
+type AttemptMeteringWrite
+  = AttemptMeteringWritten
+  | AttemptMeteringWriteRefused { error: String }
+
+type AttemptMeteringCreateOnce
+  = AttemptMeteringCreated
+  | AttemptMeteringAlreadyPresent
+  | AttemptMeteringCreateRefused { error: String }
+
+// THE DIRECTORY OBSERVATION EVERY MINT FOLDS (the attempt-identity precedent,
+// gunbc.roadmap.roadmap_attempt_identity_store_root attempt_identity_listing). It is not a route a caller
+// reaches with a path: both callers pass the root they derived from the attempt-state declaration.
+fn attempt_metering_listing(root: String, what: String) -> AttemptMeteringListing {
+  let listing = Filesystem.List(path: root)
+  match filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListed(l) => AttemptMeteringListingRead { names: filesystem_listing_entry_names(listing: l) }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptMeteringListingUnreadable { detail: join([what, " could not be listed: ", root, " (", e, ")"], "") }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => AttemptMeteringListingUnreadable { detail: join([what, " is not admissible: ", c], "") }
+  }
+}
+
+// THE MINT OF THE ATTEMPT'S OWN METERING DIRECTORY. The business key is (instance, node, attempt key); the
+// directory is the attempt-state declaration's root for that key, and it has to list.
+fn attempt_metering_store(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptMeteringStoreReading {
+  let directory = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
+  // THE MINT ENSURES THE ATTEMPT DIRECTORY AND THEN OBSERVES IT, as #15445's print-runtime store does. The
+  // directory is the one the attempt-state declaration names for this attempt; ensuring it means the mint
+  // never hands out a store over a root it has not itself observed, and it keeps the dispatcher's
+  // provisioning and the store's reading on the SAME declaration rather than two literals.
+  if !shell.Mkdir.Parents(path: directory as FilePath).success { return AttemptMeteringStoreUnready { detail: concat("Cannot create the attempt metering directory ", directory) } }
+  match attempt_metering_listing(root: directory, what: "the attempt metering directory") {
+    AttemptMeteringListingUnreadable { detail } => AttemptMeteringStoreUnready { detail: detail }
+    AttemptMeteringListingRead { names } =>
+      if attempt_metering_closing_held(names: names) {
+        AttemptMeteringStoreUnready { detail: join(["a pre-seal closing marker sits in ", directory, " as a plain entry; the closing marker is a hold now, so this store refuses it rather than reading two layouts. The live-host read taken for this cutover found none, so this is a leftover from a hand run: the operator removes that one file."], "") }
+      } else {
+        AttemptMeteringStoreReady { store: AttemptMeteringStore { instance: instance.instance_id, node: node_id as String, attempt_key: attempt_key, directory: directory as NonEmptyStr } }
+      }
+  }
+}
+
+// THE MINT OF THE PER-ATTEMPT INDEX, which lives flat in the dispatch attempt-state root. The root comes
+// from the same parent declaration every other attempt store reads; the index's OWN entry names are the
+// metering-attempt.* rows this module declares beside it.
+fn attempt_metering_index_store(instance: HostDashboardInstance) -> AttemptMeteringIndexStoreReading {
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+  // Ensured, then listed, from the same parent declaration (see the attempt mint above).
+  if !shell.Mkdir.Parents(path: root as FilePath).success { return AttemptMeteringIndexStoreUnready { detail: concat("Cannot create the dispatch attempt-state root ", root) } }
+  match attempt_metering_listing(root: root, what: "the dispatch attempt-state root") {
+    AttemptMeteringListingUnreadable { detail } => AttemptMeteringIndexStoreUnready { detail: detail }
+    AttemptMeteringListingRead { names: _ } => AttemptMeteringIndexStoreReady { store: AttemptMeteringIndexStore { instance: instance.instance_id, root: root as NonEmptyStr } }
+  }
+}
+
+// THE OPERATIONS, ordinary functions over the sealed records. Each runs its own effect and matches it here
+// and nowhere else; absence is established from the store's own directory listing, so an unlistable
+// directory refuses rather than reading as an empty one, and a refused read is never projected to empty
+// content.
+fn attempt_metering_read(store: AttemptMeteringStore, entry: NonEmptyStr) -> OptionalFileRead {
+  attempt_metering_read_at(path: join([store.directory as String, "/", entry as String], ""), dir: store.directory as String, name: entry as String)
+}
+
+// A read of a file the attempt-state declaration itself names inside the attempt's tree — the worker and
+// reviewer event streams and the seat pointer beside them, which belong to OTHER stores. The path is
+// admitted only while it lies under this store's own directory; anything else refuses typed.
+fn attempt_metering_read_within(store: AttemptMeteringStore, path: String) -> OptionalFileRead {
+  let under = join([store.directory as String, "/"], "")
+  if !starts_with(s: path, prefix: under) {
+    OptionalFileRefused { cause: join(["the path ", path, " is outside the attempt metering directory"], "") }
+  } else {
+    let parts = split(s: path, delimiter: "/")
+    let name = fold(parts, init: "", f: (_a, x) => x)
+    attempt_metering_read_at(path: path, dir: join(take(parts, list_length(items: parts) - 1), "/"), name: name)
+  }
+}
+
+fn attempt_metering_read_at(path: String, dir: String, name: String) -> OptionalFileRead {
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
   match filesystem_file_observation(
@@ -1125,30 +1252,185 @@ fn metering_read_file(path: String) -> OptionalFileRead {
   }
 }
 
-type MeteringListing
-  = MeteringListed { names: List<String> }
-  | MeteringListingRefused { cause: String }
+fn attempt_metering_listing_of(store: AttemptMeteringStore) -> AttemptMeteringListing {
+  attempt_metering_listing(root: store.directory as String, what: "the attempt metering directory")
+}
 
-fn metering_list(dir: String) -> MeteringListing {
-  let listing = Filesystem.List(path: dir)
-  match filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectoryListed(l) => MeteringListed { names: filesystem_listing_entry_names(listing: l) }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => MeteringListingRefused { cause: join(["the directory could not be listed: ", e], "") }
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => MeteringListingRefused { cause: c }
+fn attempt_metering_write(store: AttemptMeteringStore, entry: NonEmptyStr, content: String) -> AttemptMeteringWrite {
+  let path = join([store.directory as String, "/", entry as String], "")
+  let written = Filesystem.Write(path: path, content: content)
+  match filesystem_write_outcome(path: path, success: written.success, error: written.error) {
+    FilesystemWritten { path: _ } => AttemptMeteringWritten
+    FilesystemWriteRefused { path: _, error: e } => AttemptMeteringWriteRefused { error: e }
   }
 }
 
-fn metering_attempt_dir(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
+// THE CREATE-ONCE. The roster's launch entries are create-once RECORDS, not locks: an entry says a launch
+// was admitted, and an existing entry for the same launch is the same admission. That is why they stay here
+// as records rather than moving to gunbc.durable_exclusive_hold_file_store, which owns the exclusions
+// (ruling, this cohort). The effect runs and is matched in this module.
+fn attempt_metering_create_once(store: AttemptMeteringStore, entry: NonEmptyStr, content: String) -> AttemptMeteringCreateOnce {
+  let path = join([store.directory as String, "/", entry as String], "")
+  let w = Filesystem.WriteCreateNew(path: path, content: content)
+  match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
+    FilesystemCreated { path: _ } => AttemptMeteringCreated
+    FilesystemCreateTargetOccupied { path: _ } => AttemptMeteringAlreadyPresent
+    FilesystemCreateRefused { path: _, kind: _, error: e } => AttemptMeteringCreateRefused { error: e }
+    FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => AttemptMeteringCreateRefused { error: e }
+  }
+}
+
+// THE CLOSING MARKER IS THE ONE EXCLUSION IN THIS STORE, and it is exclusion in the strict sense: it
+// exists only while a close is in flight, it is held by whoever closed the roster, and it is released on
+// evidence (the close completing), never by elapsed time (ruling, this cohort: a TTL is release by age).
+// It therefore lives on gunbc.durable_exclusive_hold_file_store and not on this module's create-once,
+// which stays reserved for RECORDS (ruling stern-ram-763). The sealed roster and the launch entries are
+// records and stay exactly where they were, at their old bytes.
+//
+// THE SLOT KEY is the declared closing name; the hold library writes it in its own <key>.<generation>
+// shape, so a pre-seal PLAIN entry of the same name is distinguishable from a hold slot — and the mint
+// below refuses it rather than reading both layouts. Live-host read for this cutover (operator relay via
+// jolly-hawk-60, srv1 /opt/gunbc-lab/codex-provider-feedback-v0/attempt-state, 2026-11-01): 0 closing
+// markers across 20 attempt directories, so nothing is live across the deploy boundary and no move step is
+// needed; a marker left behind by a hand run is an operator removal, and the mint says so in its refusal.
+data metering_closing_hold_key: NonEmptyStr = attempt_metering_slots.roster_closing_basename
+
+fn attempt_metering_closing_held(names: List<String>) -> Bool {
+  any(names, n => n == metering_closing_hold_key as String)
+}
+
+fn attempt_metering_closing_observe(store: AttemptMeteringStore) -> DurableHoldObservation {
+  observe_file_hold(root: store.directory, key: metering_closing_hold_key)
+}
+
+// WHO OWNS THE CLOSING HOLD. The ref names the attempt AND the writer closing it, so a re-entry by this same
+// writer (a retry after a partial failure) is recognizable from the holder read back off the slot, and any
+// OTHER writer that finds the slot occupied refuses instead of joining the close. The writer half is this
+// module's declared ref: the belt's metering pass is the production writer, and any other writer on the same
+// attempt -- another unit, a recovery tool, a witness -- differs here. That difference is what the refusal
+// keys on, so the exclusion is per writer-attempt and not merely per attempt.
+data metering_closing_writer_ref: NonEmptyStr = "roadmap-metering-pass"
+
+fn metering_closing_owner_ref(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> NonEmptyStr {
+  join([
+    "roadmap-metering-closing:",
+    instance.host_identity as String,
+    ":",
+    instance.instance_id as String,
+    ":",
+    node_id as String,
+    ":",
+    attempt_key,
+    ":",
+    metering_closing_writer_ref as String,
+  ], "") as NonEmptyStr
+}
+
+// THE OUTCOME OF TAKING THE EXCLUSION. Four arms, and the distinction that matters is between the two
+// OCCUPIED answers: the slot being held by THIS writer is a re-entry (the caller may proceed; the publish is
+// create-once, so a retry cannot double-write), while the slot being held by ANYONE ELSE is a refusal that
+// names the holder. Mapping Occupied to the same answer as Acquired -- which is what this function used to do
+// -- lets two sealers both pass the exclusion, list one attempt, and race the create-once publish; the loser
+// then reads back the winner's seal as if it had produced it (ruling stern-ram-763, 2026-11-01).
+type AttemptMeteringClosingAcquisition
+  = ClosingHoldAcquired { generation: CasGeneration }
+  | ClosingHoldHeldByThisWriter { holder: DurableHoldOwnerRef, generation: CasGeneration }
+  | ClosingHoldHeldByAnotherWriter { holder: DurableHoldOwnerRef, generation: CasGeneration }
+  | ClosingAcquireRefused { cause: String }
+
+// THE EXCLUSION, taken through the hold library. An occupied slot is NOT a grant: the holder is read back off
+// the slot and compared through the ONE holder equality the hold protocol owns
+// (std.durable_exclusive_hold durable_hold_owner_equal), so a looser or stricter notion of "the same holder"
+// cannot be substituted here.
+fn attempt_metering_closing_acquire(store: AttemptMeteringStore, owner: NonEmptyStr) -> AttemptMeteringClosingAcquisition {
+  match file_hold_acquire(root: store.directory, slot_key: metering_closing_hold_key, requested_owner: owner as DurableHoldOwnerRef) {
+    FileHoldAcquired { slot_key: _, owner: _, generation: g } => ClosingHoldAcquired { generation: g }
+    FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
+      if durable_hold_owner_equal(left: h, right: owner as DurableHoldOwnerRef) {
+        ClosingHoldHeldByThisWriter { holder: h, generation: g }
+      } else {
+        ClosingHoldHeldByAnotherWriter { holder: h, generation: g }
+      }
+    FileHoldAcquireLost { slot_key: k } => ClosingAcquireRefused { cause: join(["the roster closing hold was lost before it landed: ", k as String], "") }
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => ClosingAcquireRefused { cause: "the roster closing hold's slot store is unavailable" }
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => ClosingAcquireRefused { cause: join(["the roster closing hold's slot is not a hold this module can interpret: ", d as String], "") }
+    FileHoldKeyNotSlotAddressable { slot_key: k } => ClosingAcquireRefused { cause: join(["the roster closing hold's key is not slot-addressable: ", k as String], "") }
+  }
+}
+
+fn metering_attempt_closing_observe_at_key(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> DurableHoldObservation {
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail } => HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: detail as NonEmptyStr } }
+    AttemptMeteringStoreReady { store } => attempt_metering_closing_observe(store: store)
+  }
+}
+
+fn metering_attempt_closing_acquire_at_key(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, owner: NonEmptyStr) -> AttemptMeteringClosingAcquisition {
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail } => ClosingAcquireRefused { cause: detail }
+    AttemptMeteringStoreReady { store } => attempt_metering_closing_acquire(store: store, owner: owner)
+  }
+}
+
+fn attempt_metering_index_create_once(store: AttemptMeteringIndexStore, entry: NonEmptyStr, content: String) -> AttemptMeteringCreateOnce {
+  let path = join([store.root as String, "/", entry as String], "")
+  let w = Filesystem.WriteCreateNew(path: path, content: content)
+  match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
+    FilesystemCreated { path: _ } => AttemptMeteringCreated
+    FilesystemCreateTargetOccupied { path: _ } => AttemptMeteringAlreadyPresent
+    FilesystemCreateRefused { path: _, kind: _, error: e } => AttemptMeteringCreateRefused { error: e }
+    FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => AttemptMeteringCreateRefused { error: e }
+  }
+}
+
+fn attempt_metering_index_read(store: AttemptMeteringIndexStore, entry: NonEmptyStr) -> OptionalFileRead {
+  attempt_metering_read_at(path: join([store.root as String, "/", entry as String], ""), dir: store.root as String, name: entry as String)
+}
+
+fn attempt_metering_index_listing(store: AttemptMeteringIndexStore) -> AttemptMeteringListing {
+  attempt_metering_listing(root: store.root as String, what: "the dispatch attempt-state root")
+}
+
+// THE CALLER-SIDE ADAPTERS. They take the business key, mint through the one mint, and hand the typed
+// refusal of an unmintable store to the caller's own refusal case. No caller passes a path or a directory.
+fn metering_attempt_read_at_key(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, entry: NonEmptyStr) -> OptionalFileRead {
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail } => OptionalFileRefused { cause: detail }
+    AttemptMeteringStoreReady { store } => attempt_metering_read(store: store, entry: entry)
+  }
+}
+
+fn metering_attempt_listing_at_key(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringListing {
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail } => MeteringListingRefused { cause: detail }
+    AttemptMeteringStoreReady { store } => match attempt_metering_listing_of(store: store) {
+      AttemptMeteringListingUnreadable { detail } => MeteringListingRefused { cause: detail }
+      AttemptMeteringListingRead { names } => MeteringListed { names: names }
+    }
+  }
+}
+
+fn metering_attempt_create_once_at_key(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, entry: NonEmptyStr, content: String) -> String? {
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail } => Present { value: detail }
+    AttemptMeteringStoreReady { store } => match attempt_metering_create_once(store: store, entry: entry, content: content) {
+      AttemptMeteringCreated => none
+      AttemptMeteringAlreadyPresent => none
+      AttemptMeteringCreateRefused { error: e } => Present { value: e }
+    }
+  }
+}
+
+fn metering_attempt_record_name() -> NonEmptyStr {
+  attempt_state_member_name(member: AttemptMeteringRecordFile) as NonEmptyStr
 }
 
 fn metering_open_roster_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
-  let dir = metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  match metering_list(dir: dir) {
+  match metering_attempt_listing_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key) {
     MeteringListingRefused { cause: c } => RosterRefused { cause: c }
     MeteringListed { names: names } => {
-      let entry_names = filter(names, n => starts_with(s: n, prefix: metering_launch_entry_prefix))
-      let reads = map(entry_names, n => RosterEntryRead { name: n, read: metering_read_file(path: join([dir, "/", n], "")) })
+      let entry_names = filter(names, n => starts_with(s: n, prefix: attempt_metering_slots.launch_prefix as String))
+      let reads = map(entry_names, n => RosterEntryRead { name: n, read: metering_attempt_read_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, entry: n as NonEmptyStr) })
       match fold(reads, init: none, f: (acc, r) =>
         match acc {
           Present { value: c } => Present { value: c }
@@ -1180,7 +1462,7 @@ type RosterEntryRead {
 // A sealed roster is the seal's population; entries committed after the seal belong to launches that
 // refused to spawn and are not members.
 fn metering_roster_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
-  match metering_read_file(path: join([metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", metering_roster_seal_basename], "")) {
+  match metering_attempt_read_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, entry: attempt_state_member_name(member: AttemptMeteringRosterSealed) as NonEmptyStr) {
     OptionalFileRefused { cause: c } => RosterRefused { cause: c }
     OptionalFileContent { content: raw } => metering_roster_seal_decode(node_id: node_id as String, attempt_key: attempt_key, raw: raw)
     OptionalFileAbsent => metering_open_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
@@ -1193,28 +1475,34 @@ type MeteringRosterAdmission
 
 // THE SECOND HALF OF ADMISSION, AFTER THE ENTRY IS COMMITTED: a closing marker means the roster may
 // already have been listed for its seal, so this launch must not spawn.
-fn metering_admission_after_entry(closing: OptionalFileRead) -> MeteringRosterAdmission {
+// THE ADMISSION JUDGES THE HOLD, not a file. An absent slot and a released (free) slot both mean "no
+// close is in flight"; a held slot means closed; an undecodable slot and an unavailable observation both
+// REFUSE — neither is allowed to read as "not closing", because admitting a launch after a close is the
+// failure this marker exists to prevent.
+fn metering_admission_after_hold(closing: DurableHoldObservation) -> MeteringRosterAdmission {
   match closing {
-    OptionalFileAbsent => RosterAdmitted
-    OptionalFileContent { content: _ } => RosterAdmissionRefused { cause: "the attempt's launch roster is closed; no further launch may be admitted" }
-    OptionalFileRefused { cause: c } => RosterAdmissionRefused { cause: join(["the roster closing marker is unreadable: ", c], "") }
+    HoldSlotAbsent => RosterAdmitted
+    HoldSlotFree { generation: _, released_by: _ } => RosterAdmitted
+    HoldSlotHeld { generation: _, owner: _ } => RosterAdmissionRefused { cause: "the attempt's launch roster is closed; no further launch may be admitted" }
+    HoldSlotUndecodable { generation: _, detail: d } => RosterAdmissionRefused { cause: join(["the roster closing hold is not interpretable: ", d as String], "") }
+    HoldObservationUnavailable { cause: _ } => RosterAdmissionRefused { cause: "the roster closing hold could not be observed" }
   }
 }
 
 // THE BELT CALLS THIS BEFORE IT SPAWNS A REVIEWER, AUDITOR OR SUPERVISOR, and does not spawn on a
 // refusal. The entry is create-only; an existing entry for the same launch is the same admission.
 fn metering_roster_admit(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> MeteringRosterAdmission {
-  let dir = metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
   let name = metering_launch_entry_name(role: role)
   if !path_segment_is_safe(raw: name) {
     RosterAdmissionRefused { cause: join(["the launch key ", name, " is not a safe file name"], "") }
   } else {
     let content = metering_roster_entry_json(node_id: node_id as String, attempt_key: attempt_key, role: role)
-    let w = Filesystem.WriteCreateNew(path: join([dir, "/", name], ""), content: content)
-    let committed = match filesystem_create_new(path: join([dir, "/", name], ""), success: w.success, error: w.error, error_kind: w.error_kind) {
-      FilesystemCreated { path: _ } => none
-      FilesystemCreateTargetOccupied { path: p } =>
-        match metering_read_file(path: p) {
+    let committed = match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+      AttemptMeteringStoreUnready { detail } => Present { value: detail }
+      AttemptMeteringStoreReady { store } => match attempt_metering_create_once(store: store, entry: name as NonEmptyStr, content: content) {
+      AttemptMeteringCreated => none
+      AttemptMeteringAlreadyPresent =>
+        match attempt_metering_read(store: store, entry: name as NonEmptyStr) {
           OptionalFileContent { content: existing } =>
             match metering_roster_entry_decode(node_id: node_id as String, attempt_key: attempt_key, name: name, raw: existing) {
               RowDecoded { row: _ } => none
@@ -1223,41 +1511,39 @@ fn metering_roster_admit(instance: HostDashboardInstance, node_id: RoadmapNodeId
           OptionalFileAbsent => Present { value: "the roster entry was occupied and then absent" }
           OptionalFileRefused { cause: c } => Present { value: c }
         }
-      FilesystemCreateRefused { path: _, kind: _, error: e } => Present { value: join(["the roster entry could not be written: ", e], "") }
-      FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => Present { value: join(["the roster entry could not be written: ", e], "") }
+      AttemptMeteringCreateRefused { error: e } => Present { value: join(["the roster entry could not be written: ", e], "") }
+      }
     }
     match committed {
       Present { value: c } => RosterAdmissionRefused { cause: c }
-      Absent => metering_admission_after_entry(closing: metering_read_file(path: join([dir, "/", metering_roster_closing_basename], "")))
+      Absent => metering_admission_after_hold(closing: metering_attempt_closing_observe_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key))
     }
   }
 }
 
-fn metering_create_only(path: String, content: String) -> String? {
-  let w = Filesystem.WriteCreateNew(path: path, content: content)
-  match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
-    FilesystemCreated { path: _ } => none
-    FilesystemCreateTargetOccupied { path: _ } => none
-    FilesystemCreateRefused { path: _, kind: _, error: e } => Present { value: e }
-    FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => Present { value: e }
+// THE SEAL, taken under the exclusion. The owner ref is this module's writer-attempt identity, so the seal
+// proceeds when the hold is ours (freshly acquired, or ours from a retry of the same writer -- the publish
+// below is create-once, so a retry cannot double-write it) and REFUSES, naming the holder, when another writer
+// holds it. Recovery of a stale hold belongs to the holder's release-on-evidence or the hold library's recovery
+// assess, never to a second sealer joining the close.
+fn metering_roster_seal(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
+  match metering_attempt_closing_acquire_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, owner: metering_closing_owner_ref(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
+    ClosingHoldAcquired { generation: _ } => metering_roster_seal_under_hold(instance: instance, node_id: node_id, attempt_key: attempt_key)
+    ClosingHoldHeldByThisWriter { holder: _, generation: _ } => metering_roster_seal_under_hold(instance: instance, node_id: node_id, attempt_key: attempt_key)
+    ClosingHoldHeldByAnotherWriter { holder: h, generation: _ } => RosterRefused { cause: join(["the roster closing hold is held by another writer (", h as String, "); this sealer refuses rather than listing one attempt a second time", ], "") }
+    ClosingAcquireRefused { cause: c } => RosterRefused { cause: join(["the roster closing hold's acquire was refused: ", c], "") }
   }
 }
 
-// SEAL, ONLY FOR AN ATTEMPT THAT HAS LEFT THE WORKFLOW LEDGER: marker, then listing, then the seal.
-// A seal already written is the seal; a second sealer's create-only write loses and reads it.
-fn metering_roster_seal(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
-  let dir = metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  match metering_create_only(path: join([dir, "/", metering_roster_closing_basename], ""), content: "closed: the attempt left the workflow ledger") {
-    Present { value: e } => RosterRefused { cause: join(["the roster closing marker could not be written: ", e], "") }
-    Absent =>
-      match metering_open_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-        RosterRefused { cause: c } => RosterRefused { cause: c }
-        RosterSealed { launches: _, digest: _ } => RosterRefused { cause: "unreachable: an open listing returned a seal" }
-        RosterOpen { launches: ls } =>
-          match metering_create_only(path: join([dir, "/", metering_roster_seal_basename], ""), content: metering_roster_seal_json(node_id: node_id as String, attempt_key: attempt_key, launches: ls)) {
-            Present { value: e } => RosterRefused { cause: join(["the roster seal could not be written: ", e], "") }
-            Absent => metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
-          }
+// The listing-and-publish half, reachable only while THIS writer holds the exclusion.
+fn metering_roster_seal_under_hold(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
+  match metering_open_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    RosterRefused { cause: c } => RosterRefused { cause: c }
+    RosterSealed { launches: _, digest: _ } => RosterRefused { cause: "unreachable: an open listing returned a seal" }
+    RosterOpen { launches: ls } =>
+      match metering_attempt_create_once_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, entry: attempt_state_member_name(member: AttemptMeteringRosterSealed) as NonEmptyStr, content: metering_roster_seal_json(node_id: node_id as String, attempt_key: attempt_key, launches: ls)) {
+        Present { value: e } => RosterRefused { cause: join(["the roster seal could not be written: ", e], "") }
+        Absent => metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
       }
   }
 }
@@ -1303,10 +1589,14 @@ fn metering_attempt_index_decode(name: String, raw: String) -> RowDecode<Metered
 }
 
 fn metering_attempt_index_admit(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> String? {
-  metering_create_only(
-    path: join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", metering_attempt_index_name(node_id: node_id, attempt_key: attempt_key)], ""),
-    content: metering_attempt_index_json(node_id: node_id, attempt_key: attempt_key),
-  )
+  match attempt_metering_index_store(instance: instance) {
+    AttemptMeteringIndexStoreUnready { detail } => Present { value: detail }
+    AttemptMeteringIndexStoreReady { store } => match attempt_metering_index_create_once(store: store, entry: metering_attempt_index_name(node_id: node_id, attempt_key: attempt_key) as NonEmptyStr, content: metering_attempt_index_json(node_id: node_id, attempt_key: attempt_key)) {
+      AttemptMeteringCreated => none
+      AttemptMeteringAlreadyPresent => none
+      AttemptMeteringCreateRefused { error: e } => Present { value: e }
+    }
+  }
 }
 
 type MeteredAttempts
@@ -1314,17 +1604,19 @@ type MeteredAttempts
   | MeteredAttemptsRefused { cause: String }
 
 fn metering_attempt_index(instance: HostDashboardInstance) -> MeteredAttempts {
-  let root = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
-  match metering_list(dir: root) {
-    MeteringListingRefused { cause: c } => MeteredAttemptsRefused { cause: c }
-    MeteringListed { names: names } => {
+  match attempt_metering_index_store(instance: instance) {
+    AttemptMeteringIndexStoreUnready { detail } => MeteredAttemptsRefused { cause: detail }
+    AttemptMeteringIndexStoreReady { store } => match attempt_metering_index_listing(store: store) {
+    AttemptMeteringListingUnreadable { detail: c } => MeteredAttemptsRefused { cause: c }
+    AttemptMeteringListingRead { names: names } => {
       let decoded = map(filter(names, n => starts_with(s: n, prefix: metering_attempt_index_prefix)), n =>
-        match metering_read_file(path: join([root, "/", n], "")) {
+        match attempt_metering_index_read(store: store, entry: n as NonEmptyStr) {
           OptionalFileContent { content: c } => metering_attempt_index_decode(name: n, raw: c)
           OptionalFileAbsent => RowUndecodable { cause: join(["the attempt index entry ", n, " vanished while it was read"], "") }
           OptionalFileRefused { cause: c } => RowUndecodable { cause: c }
         })
-      match fold(decoded, init: none, f: (acc, d) =>
+      let seed: String? = none
+      match fold(decoded, init: seed, f: (acc, d) =>
         match acc {
           Present { value: c } => Present { value: c }
           Absent => match d { RowUndecodable { cause: c } => Present { value: c } RowDecoded { row: _ } => none }
@@ -1333,6 +1625,7 @@ fn metering_attempt_index(instance: HostDashboardInstance) -> MeteredAttempts {
         Absent => MeteredAttemptsObserved { attempts: flat_map(decoded, d => match d { RowDecoded { row: a } => [a] RowUndecodable { cause: _ } => [] as List<MeteredAttempt> }) }
       }
     }
+  }
   }
 }
 
@@ -1344,10 +1637,6 @@ type AttemptMeteringObservation
   | MeteringProvisional { record: AttemptMeteringRecord }
   | MeteringNotYetWritten
   | MeteringRefused { cause: String }
-
-fn attempt_metering_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", attempt_metering_basename], "")
-}
 
 fn metering_observe_from_text(node_id: String, attempt_key: String, roster: MeteringRoster, raw: String) -> AttemptMeteringObservation {
   match roster {
@@ -1377,7 +1666,7 @@ fn metering_observe_against(node_id: String, attempt_key: String, launches: List
 }
 
 fn metering_observe_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptMeteringObservation {
-  match metering_read_file(path: attempt_metering_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
+  match metering_attempt_read_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, entry: metering_attempt_record_name()) {
     OptionalFileAbsent => MeteringNotYetWritten
     OptionalFileRefused { cause: c } => MeteringRefused { cause: c }
     OptionalFileContent { content: raw } =>
@@ -1387,15 +1676,20 @@ fn metering_observe_for_attempt(instance: HostDashboardInstance, node_id: Roadma
 
 // ── the writer the belt tick calls ────────────────────────────────────────────────────────────
 fn metering_launch_tokens(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> RoleTokens {
-  match metering_read_file(path: metered_role_events_path(instance: instance, node_id: node_id, attempt_key: attempt_key, role: role)) {
-    OptionalFileAbsent => TokensStreamAbsent
-    OptionalFileRefused { cause: c } => TokensRefused { cause: c }
-    OptionalFileContent { content: body } => role_tokens_from_events(body: body)
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail } => TokensRefused { cause: detail }
+    AttemptMeteringStoreReady { store: mstore } => match attempt_metering_read_within(store: mstore, path: metered_role_events_path(instance: instance, node_id: node_id, attempt_key: attempt_key, role: role)) {
+      OptionalFileAbsent => TokensStreamAbsent
+      OptionalFileRefused { cause: c } => TokensRefused { cause: c }
+      OptionalFileContent { content: body } => role_tokens_from_events(body: body)
+    }
   }
 }
 
 fn metering_launch_seat(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> SeatHeld {
-  match metering_read_file(path: harness_seat_pointer_path(events_path: metered_role_events_path(instance: instance, node_id: node_id, attempt_key: attempt_key, role: role))) {
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail } => SeatRefused { cause: detail }
+    AttemptMeteringStoreReady { store: mstore } => match attempt_metering_read_within(store: mstore, path: harness_seat_pointer_path(events_path: metered_role_events_path(instance: instance, node_id: node_id, attempt_key: attempt_key, role: role))) {
     OptionalFileAbsent => SeatPointerAbsent
     OptionalFileRefused { cause: c } => SeatRefused { cause: c }
     OptionalFileContent { content: raw } =>
@@ -1415,6 +1709,7 @@ fn metering_launch_seat(instance: HostDashboardInstance, node_id: RoadmapNodeId,
               }
           }
       }
+    }
   }
 }
 
@@ -1453,9 +1748,14 @@ fn metering_persist_record(instance: HostDashboardInstance, node_id: RoadmapNode
       match metering_record_inadmissible(record: record, roster: launches, seal: seal) {
         Present { value: c } => MeteringPersistRefused { cause: c }
         Absent => {
-          let path = attempt_metering_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-          let written = Filesystem.Write(path: path, content: attempt_metering_json(record: record))
-          if written.success { MeteringPersisted { path: path, standing: metering_standing_of(record: record, seal: seal) } } else { MeteringPersistRefused { cause: written.error } }
+          let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptMeteringRecordFile)
+          match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+            AttemptMeteringStoreUnready { detail } => MeteringPersistRefused { cause: detail }
+            AttemptMeteringStoreReady { store: mstore } => match attempt_metering_write(store: mstore, entry: metering_attempt_record_name(), content: attempt_metering_json(record: record)) {
+              AttemptMeteringWritten => MeteringPersisted { path: path, standing: metering_standing_of(record: record, seal: seal) }
+              AttemptMeteringWriteRefused { error: e } => MeteringPersistRefused { cause: e }
+            }
+          }
         }
       }
     }

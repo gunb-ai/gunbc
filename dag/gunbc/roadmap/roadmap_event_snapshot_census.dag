@@ -1,10 +1,16 @@
 module gunbc.roadmap.roadmap_event_snapshot_census
 
-import std.types { String, Int, Bool, List, Map }
+import std.types { String, Int, Bool, List, Map, NonEmptyStr , FilePath}
+import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.algebra { trim }
 import std.list { first_duplicate_by_key }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemWritten, FilesystemWriteRefused,
+  filesystem_listing_observation, filesystem_write_outcome,
+}
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, serialize_json, json_string, json_array, json_object, json_kv }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
@@ -290,27 +296,131 @@ fn snapshot_census_receipt_decode(raw: String, namespace: String) -> SnapshotCen
   }
 }
 
-fn snapshot_census_prior_of_read(namespace: String, success: Bool, content: String, error_kind: String, error: String) -> SnapshotCensusPrior {
-  if success {
-    if trim(content) == "" {
-      SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt exists and is empty" }
-    } else {
-      match snapshot_census_receipt_decode(raw: content, namespace: namespace) {
-        SnapshotCensusReceiptDecoded { receipt } => SnapshotCensusPriorRead { snapshots: receipt.snapshots }
-        SnapshotCensusReceiptUndecodable { reason } => SnapshotCensusPriorUnreadable { reason: reason }
+// WHAT READING THE ENTRY CAN ANSWER WITH. This is the store's OWN sum, not a filesystem outcome: the
+// read runs inside the store module (snapshot_census_receipt_content below), which is the only place a
+// filesystem outcome is matched. Nothing a caller can hand this adjudicator turns a refused read into a
+// success, and a refused read is never projected to empty content: an unreadable entry, an empty entry
+// and an absent entry are three different answers.
+type SnapshotCensusReceiptContent
+  = SnapshotCensusReceiptContentRead { content: String }
+  | SnapshotCensusReceiptContentAbsent
+  | SnapshotCensusReceiptContentUnreadable { reason: String }
+
+fn snapshot_census_prior_of_content(namespace: String, read: SnapshotCensusReceiptContent) -> SnapshotCensusPrior {
+  match read {
+    SnapshotCensusReceiptContentAbsent => SnapshotCensusPriorAbsent
+    SnapshotCensusReceiptContentUnreadable { reason } =>
+      SnapshotCensusPriorUnreadable { reason: concat("the snapshot census receipt could not be read: ", reason) }
+    SnapshotCensusReceiptContentRead { content } =>
+      if trim(content) == "" {
+        SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt exists and is empty" }
+      } else {
+        match snapshot_census_receipt_decode(raw: content, namespace: namespace) {
+          SnapshotCensusReceiptDecoded { receipt } => SnapshotCensusPriorRead { snapshots: receipt.snapshots }
+          SnapshotCensusReceiptUndecodable { reason } => SnapshotCensusPriorUnreadable { reason: reason }
+        }
       }
-    }
-  } else if error_kind == "not_found" {
-    SnapshotCensusPriorAbsent
-  } else {
-    SnapshotCensusPriorUnreadable { reason: concat("the snapshot census receipt could not be read: ", error) }
   }
 }
 
-// Per-instance by construction, in the directory the service principal owns
-// (gunbc.roadmap.roadmap_belt_receipt_store_root belt_tick_receipt_store records why that directory).
-fn roadmap_snapshot_census_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
-  join([instance_receipts_dir(instance_root: instance.instance_root as String), "/roadmap-event-snapshot-census.json"], "")
+// THE CENSUS RECEIPT IS A PLAIN-FILE STORE, SEALED IN PLACE (ruling stern-ram-763 2026-10-24): the
+// bytes on the host are the bytes the census wrote before the seal, one JSON document, written with the
+// same Filesystem.Write. The deferred move of this store's format onto the slot store is carried as a
+// frontier row, not as prose: gunbc.census_closure_frontier c_roadmap2_format_consolidation_frontier_rows,
+// keyed by snapshot_census_receipt_slots and asserted present by test.claim.c_roadmap2_frontier_witness.
+//
+// THE DECLARATION. The receipt lives in the instance's receipts directory (gunbc.host.host_layout
+// instance_receipts_dir), a directory the apply legs already create and enroll and which already holds
+// the belt's own tick and obligation receipts (gunbc.roadmap.roadmap_belt_receipt_store_root), so this
+// store declares only the entry name it owns in it: a stem and a suffix. The receipts directory derives
+// from the instance root, which is what keeps the census per-instance even where two instances share a
+// repository. One stem, spelled once; the mint and the entry name both read this declaration.
+type SnapshotCensusReceiptFileDeclaration { stem: NonEmptyStr, suffix: NonEmptyStr }
+
+data snapshot_census_receipt_slots: SnapshotCensusReceiptFileDeclaration = SnapshotCensusReceiptFileDeclaration {
+  stem: "roadmap-event-snapshot-census" as NonEmptyStr,
+  suffix: ".json" as NonEmptyStr,
+}
+
+type SnapshotCensusReceiptRootReading
+  = SnapshotCensusReceiptRootListed
+  | SnapshotCensusReceiptRootUnlistable { detail: String }
+
+type SnapshotCensusReceiptWrite
+  = SnapshotCensusReceiptWritten
+  | SnapshotCensusReceiptWriteRefused { error: String }
+
+// THE DIRECTORY LISTING EVERY MINT FOLDS, over the root the mint itself derived. It is not a route a
+// caller reaches with a path: every caller passes the root it derived from the declaration.
+fn snapshot_census_receipt_root_reading(root: String) -> SnapshotCensusReceiptRootReading {
+  let listed = Filesystem.List(path: root)
+  match filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+      SnapshotCensusReceiptRootUnlistable { detail: join(["the snapshot census receipt's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } =>
+      SnapshotCensusReceiptRootUnlistable { detail: join(["the snapshot census receipt's directory could not be listed: ", root, " (", e, ")"], "") }
+    FilesystemDirectoryListed(_) => SnapshotCensusReceiptRootListed
+  }
+}
+
+// THE SEALED STORE, A DATA-ONLY VALUE MINTED FROM THE DECLARATION ABOVE: the instance it was minted for
+// and the receipts directory derived from it. sole_constructor, non-generic and never a variant arm,
+// because the seal does not reach variant construction
+// (test.claim.sole_constructor_completeness_audit_probe f13). Field reads are not sealed, so a holder can
+// read the root (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module);
+// what IS sealed is construction: no consumer can be handed a forged store, or one over another root.
+// NOT established: a store minted for instance A refused where B is required.
+type SnapshotCensusReceiptStore sole_constructor {
+  instance: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type SnapshotCensusReceiptStoreReading
+  = SnapshotCensusReceiptStoreReady { store: SnapshotCensusReceiptStore }
+  | SnapshotCensusReceiptStoreUnready { detail: String }
+
+// THE ONE MINT, AND IT TAKES NO PATH. The business key is the instance; the root is derived here from
+// the declaration and the directory is listed, and only a listed directory yields a store.
+fn snapshot_census_receipt_store(instance: HostDashboardInstance) -> SnapshotCensusReceiptStoreReading {
+  let root = instance_receipts_dir(instance_root: instance.instance_root as String)
+  // THE MINT ENSURES THE DIRECTORY AND THEN OBSERVES IT, as #15445's print-runtime store does: the
+  // directory the store's OWN declaration names is created if absent and listed if present, so a mint never
+  // hands out a store over a root it has not itself observed, and no second provisioning literal exists.
+  if !shell.Mkdir.Parents(path: root as FilePath).success { return SnapshotCensusReceiptStoreUnready { detail: concat("Cannot create the snapshot census receipt directory ", root) } }
+  match snapshot_census_receipt_root_reading(root: root) {
+    SnapshotCensusReceiptRootUnlistable { detail } => SnapshotCensusReceiptStoreUnready { detail: detail }
+    SnapshotCensusReceiptRootListed => SnapshotCensusReceiptStoreReady { store: SnapshotCensusReceiptStore { instance: instance.instance_id, root: root as NonEmptyStr } }
+  }
+}
+
+// THE ENTRY NAME, derived from the store's own root and the declared stem and suffix. Only this module
+// names the file.
+fn snapshot_census_receipt_entry(store: SnapshotCensusReceiptStore) -> String {
+  join([store.root as String, "/", snapshot_census_receipt_slots.stem as String, snapshot_census_receipt_slots.suffix as String], "")
+}
+
+// READ THE ENTRY. The effect runs here and its outcome is matched here and nowhere else: absence, an
+// unreadable entry and content are three answers, and the caller of this function never sees a
+// filesystem outcome to project.
+fn snapshot_census_receipt_content(store: SnapshotCensusReceiptStore) -> SnapshotCensusReceiptContent {
+  let before = Filesystem.Read(path: snapshot_census_receipt_entry(store: store))
+  if before.success {
+    SnapshotCensusReceiptContentRead { content: before.content }
+  } else if before.error_kind == "not_found" {
+    SnapshotCensusReceiptContentAbsent
+  } else {
+    SnapshotCensusReceiptContentUnreadable { reason: before.error }
+  }
+}
+
+// WRITE THE RECEIPT. The effect runs here and is matched here; the caller gets Written or Refused with
+// the error, and never a filesystem write outcome to read a success out of.
+fn snapshot_census_receipt_put(store: SnapshotCensusReceiptStore, content: String) -> SnapshotCensusReceiptWrite {
+  let write = Filesystem.Write(path: snapshot_census_receipt_entry(store: store), content: content)
+  match filesystem_write_outcome(path: snapshot_census_receipt_entry(store: store), success: write.success, error: write.error) {
+    FilesystemWritten { path: _ } => SnapshotCensusReceiptWritten
+    FilesystemWriteRefused { path: _, error: e } => SnapshotCensusReceiptWriteRefused { error: e }
+  }
 }
 
 // THE CENSUS PASS. Recorded is a census read and its receipt written. Refused is a census that
@@ -320,32 +430,38 @@ type RoadmapSnapshotCensusPass
   = SnapshotCensusRecorded { receipt: RoadmapSnapshotCensusReceipt }
   | SnapshotCensusRefused { step: String, reason: String }
 
-// The pass over one layout and one receipt path: the previous receipt read, the registry listed,
-// the receipt written. The instance entry below supplies both from the instance and adds nothing.
-fn roadmap_snapshot_census_at(layout: RoadmapEventCarrierLayout, receipt_path: String, observed_at: String) -> RoadmapSnapshotCensusPass {
+// THE PASS OVER ONE LAYOUT AND ONE MINTED STORE: the previous receipt read, the registry listed, the
+// receipt written. Every effect runs and is matched inside this module, so SnapshotCensusRecorded is
+// reachable only by a census that was really read and a receipt that was really written. The instance
+// entry below supplies both the layout and the store from the instance and adds nothing.
+fn roadmap_snapshot_census_at(layout: RoadmapEventCarrierLayout, store: SnapshotCensusReceiptStore, observed_at: String) -> RoadmapSnapshotCensusPass {
   match roadmap_snapshot_census_read(layout: layout) {
     SnapshotCensusUnreadable { reason } => SnapshotCensusRefused { step: "worktree-list", reason: reason }
     SnapshotCensusRead { snapshots } => {
       let namespace = roadmap_event_snapshot_namespace(layout: layout)
-      let before = Filesystem.Read(path: receipt_path)
       let receipt = roadmap_snapshot_census_receipt(
         observed_at: observed_at,
         namespace: namespace,
         snapshots: snapshots,
-        prior: snapshot_census_prior_of_read(namespace: namespace, success: before.success, content: before.content, error_kind: before.error_kind, error: before.error),
+        prior: snapshot_census_prior_of_content(namespace: namespace, read: snapshot_census_receipt_content(store: store)),
       )
-      let write = Filesystem.Write(path: receipt_path, content: serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: receipt)))
-      if write.success { SnapshotCensusRecorded { receipt: receipt } } else { SnapshotCensusRefused { step: "receipt-write", reason: write.error } }
+      match snapshot_census_receipt_put(store: store, content: serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: receipt))) {
+        SnapshotCensusReceiptWritten => SnapshotCensusRecorded { receipt: receipt }
+        SnapshotCensusReceiptWriteRefused { error } => SnapshotCensusRefused { step: "receipt-write", reason: error }
+      }
     }
   }
 }
 
 fn roadmap_snapshot_census_for_instance(instance: HostDashboardInstance, observed_at: String) -> RoadmapSnapshotCensusPass {
-  roadmap_snapshot_census_at(
-    layout: roadmap_event_carrier_layout_for_instance(instance: instance),
-    receipt_path: roadmap_snapshot_census_receipt_path_for_instance(instance: instance),
-    observed_at: observed_at,
-  )
+  match snapshot_census_receipt_store(instance: instance) {
+    SnapshotCensusReceiptStoreUnready { detail } => SnapshotCensusRefused { step: "receipt-store", reason: detail }
+    SnapshotCensusReceiptStoreReady { store } => roadmap_snapshot_census_at(
+      layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+      store: store,
+      observed_at: observed_at,
+    )
+  }
 }
 
 // THE CENSUS JOINED TO THE TICK'S EXIT, pure. A recorded census leaves the exit exactly as it was,

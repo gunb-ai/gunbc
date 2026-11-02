@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_state_store
 
 import std.types { String, NonEmptyStr, FilePath, Int, List, Bool }
+import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { retires_dissolution }
@@ -80,7 +81,6 @@ type AttemptStateMember
   | AttemptEnvironmentAdmission
   | AttemptLaunchIdentity
   | AttemptSpawnOrigin
-  | AttemptVerificationRecord
   | AttemptSpawnFailure
   | AttemptRequestBindingFile
   | AttemptCommitOutcomeLast
@@ -88,6 +88,9 @@ type AttemptStateMember
   | AttemptOracleRevision
   | AttemptOraclePinRefused
   | AttemptValidationReceipt
+  | AttemptMeteringRecordFile
+  | AttemptMeteringRosterSealed
+  | AttemptMeteringLaunch { role_key: NonEmptyStr }
   | AttemptWorkerLog
   | AttemptWorkerRequestScratch
   | AttemptWorkerEvents
@@ -137,7 +140,6 @@ fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDir
     AttemptEnvironmentAdmission => AttemptDirectoryRoot
     AttemptLaunchIdentity => AttemptDirectoryRoot
     AttemptSpawnOrigin => AttemptDirectoryRoot
-    AttemptVerificationRecord => AttemptDirectoryRoot
     AttemptSpawnFailure => AttemptDirectoryRoot
     AttemptRequestBindingFile => AttemptDirectoryRoot
     AttemptCommitOutcomeLast => AttemptDirectoryRoot
@@ -145,6 +147,9 @@ fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDir
     AttemptOracleRevision => AttemptDirectoryRoot
     AttemptOraclePinRefused => AttemptDirectoryRoot
     AttemptValidationReceipt => AttemptDirectoryRoot
+    AttemptMeteringRecordFile => AttemptDirectoryRoot
+    AttemptMeteringRosterSealed => AttemptDirectoryRoot
+    AttemptMeteringLaunch { role_key: _ } => AttemptDirectoryRoot
   }
 }
 
@@ -157,7 +162,6 @@ fn attempt_state_member_name(member: AttemptStateMember) -> String {
     AttemptEnvironmentAdmission => "environment-admission.json"
     AttemptLaunchIdentity => "launch-identity.json"
     AttemptSpawnOrigin => dispatch_spawn_origin_basename
-    AttemptVerificationRecord => "verification.json"
     AttemptSpawnFailure => "spawn-failure.txt"
     AttemptRequestBindingFile => "request-binding.json"
     AttemptCommitOutcomeLast => "commit-outcome-last.json"
@@ -165,6 +169,9 @@ fn attempt_state_member_name(member: AttemptStateMember) -> String {
     AttemptOracleRevision => "validation-oracle-revision"
     AttemptOraclePinRefused => "validation-oracle-pin-refused"
     AttemptValidationReceipt => "validation-receipt.json"
+    AttemptMeteringRecordFile => attempt_metering_slots.record_basename as String
+    AttemptMeteringRosterSealed => attempt_metering_slots.roster_sealed_basename as String
+    AttemptMeteringLaunch { role_key: k } => join([attempt_metering_slots.launch_prefix as String, k as String, attempt_metering_slots.launch_suffix as String], "")
     AttemptWorkerLog => "worker-stdout.log"
     AttemptWorkerRequestScratch => "harness-request.json"
     AttemptWorkerEvents => "provider-events.jsonl"

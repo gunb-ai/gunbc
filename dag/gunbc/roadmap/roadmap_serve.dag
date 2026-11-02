@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_serve
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }import gunbc.roadmap.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
 import gunbc.roadmap.roadmap_served_observation { IssueQueryRows, served_observation_body_digest }
 import gunbc.roadmap.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
-import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
+import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_key, issue_view_preference_store, IssueViewPreferenceStoreReading, IssueViewPreferenceStoreReady, IssueViewPreferenceStoreUnready, issue_view_preference_read, issue_view_preference_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
 import gunbc.auth.request_authentication { ServeActionSaveOwnView }
 import extdeps.http.server { ServeResponseHeaderNoStore, ServeResponseHeaderCacheImmutable, text_css_utf8 }
 import gunbc.site.web_fonts { web_font_stylesheet, web_font_stylesheet_path, web_font_stylesheet_max_age_seconds }
@@ -2331,7 +2331,11 @@ fn issue_view_response(status: HttpStatus, body: String) -> ServeHttpResponse {
   ServeHttpResponse { status: status, content_type: application_json_utf8, body: body, headers: [ServeResponseHeaderNoStore] }
 }
 fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, saving: Bool) -> ServeHttpResponse {
-  match request.security.authentication {
+  // The store is minted from the instance the server was started with, never from a path a caller
+  // supplies; a preferences directory that cannot be listed answers 503, it never answers empty.
+  match issue_view_preference_store(instance: instance) {
+    IssueViewPreferenceStoreUnready { detail: _ } => issue_view_response(status: 503, body: "Account preferences unavailable.")
+    IssueViewPreferenceStoreReady { store } => match request.security.authentication {
     GoogleOidcSession { session } => {
       if saving {
         match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: request.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: fn() { human_write_observed_at(security: request.security) }) {
@@ -2340,7 +2344,7 @@ fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: S
             Absent => issue_view_response(status: 400, body: "Invalid issue view preferences.")
             Present { value: prefs } => match issue_view_store_key(principal: session.principal) {
               Absent => issue_view_response(status: 503, body: "Account preferences unavailable.")
-              Present { value: key } => match issue_view_store_save(root: issue_view_store_root(instance: instance), key: key, prefs: prefs, revision: issue_form_field(body: request.body, name: "revision")) {
+              Present { value: key } => match issue_view_preference_save(store: store, key: key, prefs: prefs, revision: issue_form_field(body: request.body, name: "revision")) {
                 IssueViewSaveOk { revision } => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "revision", value: json_int(n: revision))])))
                 IssueViewSaveConflict => issue_view_response(status: 409, body: "Preferences changed in another tab or browser. Reload to sync.")
                 IssueViewSaveRefused => issue_view_response(status: 503, body: "Account preferences could not be saved.")
@@ -2351,7 +2355,7 @@ fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: S
       } else {
         match issue_view_store_key(principal: session.principal) {
           Absent => issue_view_response(status: 503, body: "Account preferences unavailable.")
-          Present { value: key } => match issue_view_store_read(root: issue_view_store_root(instance: instance), key: key) {
+          Present { value: key } => match issue_view_preference_read(store: store, key: key) {
             IssueViewUnread => issue_view_response(status: 503, body: "Account preferences could not be read.")
             IssueViewAbsent => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [
               json_kv(key: "revision", value: json_int(n: 0)), json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)), json_kv(key: "preferences", value: JsonNull),
@@ -2366,6 +2370,7 @@ fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: S
     AuthAbsent => issue_view_response(status: 401, body: "Sign in for account preferences.")
     SessionStandingInvalid { standing: _ } => issue_view_response(status: 401, body: "Sign in for account preferences.")
     FabricServiceEvidence { kind: _, authenticated_at: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
+  }
   }
 }
 

@@ -1,13 +1,15 @@
 module gunbc.roadmap.roadmap_view_preference_store
 
-import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.types { String, List, Int, Bool, NonEmptyStr, FilePath }
+import extdeps.shell
 import gunbc.roadmap.roadmap_view_preferences { IssueViewPreferences, issue_view_preferences_json, issue_view_preferences_of }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
-import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.durable_cas_file_store { observe_cas_slot_state, admit_cas_attempt_for_derived_payload, file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused, slot_observe, slot_commit, admit_cas_attempt_for_derived_payload, OwnerOnlyCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import std.durable_compare_and_set { CasExpectation, CasObservedUnreadable, CasObservedReadable, CasReadableAbsent, CasReadablePresent, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_count, CasCommitted, CasPreconditionFailed, CasStoreRefused }
 
 type IssueViewStored = IssueViewAbsent | IssueViewFound { prefs: IssueViewPreferences, revision: Int, expected: CasExpectation } | IssueViewUnread
@@ -20,16 +22,67 @@ fn issue_view_store_key(principal: PrincipalRef) -> NonEmptyStr? {
     Sha256FileDigest { digest } => Present { value: digest.hex as NonEmptyStr }
   }
 }
-// THE DIRECTORY THIS STORE DEMANDS; the store root is read off it (gunbc.owned_directory).
-fn issue_view_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  dashboard_instance_private_directory(instance: instance, member: "issue-view-preferences" as NonEmptyStr, child: "issue-view-preferences")
+// THE PREFERENCES LIVE IN ONE DECLARED SLOT DIRECTORY under the instance root, addressed only through
+// the sealed IssueViewPreferenceStore below. One member, one mode, spelled once; the mint and the
+// demanded-directory row both read this declaration, so there is no second place a path or a mode is
+// written. The path is the instance root plus the member, exactly as the private-directory helper derived
+// it before this seal, so the on-disk layout is unchanged.
+type IssueViewPreferenceSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+data issue_view_preference_slots: IssueViewPreferenceSlotsDeclaration = IssueViewPreferenceSlotsDeclaration {
+  member: "issue-view-preferences" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
 }
 
-fn issue_view_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
-  owned_directory_path(t: issue_view_store_directory(instance: instance)) as String as NonEmptyStr
+fn issue_view_preference_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([instance.instance_root as String, "/", issue_view_preference_slots.member as String], "") as NonEmptyStr
 }
-fn issue_view_store_read(root: NonEmptyStr, key: NonEmptyStr) -> IssueViewStored {
-  match observe_cas_slot_state(root: root, key: key) {
+
+// THE SEALED STORE, AND IT IS THE ONLY ROUTE TO A PREFERENCE SLOT. Only this module constructs it; the
+// mint below does so from the declaration alone, and only a directory that lists (Filesystem.List) yields
+// a store. A consumer cannot be handed a store over a forged root or a root for the wrong instance,
+// because the construction is sealed (the field read is not module-private; that residual is declared in
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
+type IssueViewPreferenceStore sole_constructor {
+  instance: NonEmptyStr,
+  slots: SlotStore,
+}
+
+type IssueViewPreferenceStoreReading
+  = IssueViewPreferenceStoreReady { store: IssueViewPreferenceStore }
+  | IssueViewPreferenceStoreUnready { detail: String }
+
+// THE ONE MINT, AND IT TAKES NO PATH. The business key is the instance.
+fn issue_view_preference_store(instance: HostDashboardInstance) -> IssueViewPreferenceStoreReading {
+  // THE MINT ENSURES THE SLOT DIRECTORY AND THEN OBSERVES IT, as #15445's print-runtime store and the four
+  // sibling mints in this cohort do. The directory is the one this store's own declaration names, so the
+  // mint never hands out a store over a root it has not observed, and the provisioning target
+  // (issue_view_store_directory) stays a second VIEW of the same declaration rather than a second literal.
+  let root = issue_view_preference_slots_path(instance: instance)
+  if !shell.Mkdir.Parents(path: root as FilePath).success { return IssueViewPreferenceStoreUnready { detail: concat("Cannot create the issue view preference directory ", root) } }
+  match listed_slot_store(member: issue_view_preference_slots.member as String, root: root) {
+    SlotStoreRefused { detail: d } => IssueViewPreferenceStoreUnready { detail: d }
+    SlotStoreListed { root: r } => IssueViewPreferenceStoreReady { store: IssueViewPreferenceStore { instance: instance.instance_id, slots: file_slot_store(root: r) } }
+  }
+}
+
+// THE DIRECTORY THIS STORE DEMANDS, enrolled in the one list (gunbc.roadmap.dashboard_instance_directories)
+// which deployment ensures and reads back. Owner-only: the preferences belong to the principal whose
+// digest names the slot. Its member, path and mode all come from the declaration above.
+fn issue_view_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: issue_view_preference_slots.member,
+    path: issue_view_preference_slots_path(instance: instance) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: issue_view_preference_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// READ THE SLOT. The observation effect runs and is matched here and nowhere else: a slot that could not
+// be read answers IssueViewUnread, never IssueViewAbsent, so a refused read can never be served as
+// "this principal has no preferences" and then written over.
+fn issue_view_preference_read(store: IssueViewPreferenceStore, key: NonEmptyStr) -> IssueViewStored {
+  match slot_observe(store: store.slots, key: key) {
     CasObservedUnreadable { cause: _ } => IssueViewUnread
     CasObservedReadable { readable } => match readable {
       CasReadableAbsent => IssueViewAbsent
@@ -40,18 +93,23 @@ fn issue_view_store_read(root: NonEmptyStr, key: NonEmptyStr) -> IssueViewStored
     }
   }
 }
-// A stale tab cannot silently replace a newer account view; the caller refreshes explicitly.
-fn issue_view_store_save(root: NonEmptyStr, key: NonEmptyStr, prefs: IssueViewPreferences, revision: String) -> IssueViewSaved {
-  match issue_view_store_read(root: root, key: key) {
+
+// A stale tab cannot silently replace a newer account view; the caller refreshes explicitly. The
+// precondition comparison, the admitted attempt and the commit each run their own effect and are matched
+// inside this module; the caller sees only Ok / Conflict / Refused and can project no effect outcome into
+// a success.
+fn issue_view_preference_save(store: IssueViewPreferenceStore, key: NonEmptyStr, prefs: IssueViewPreferences, revision: String) -> IssueViewSaved {
+  match issue_view_preference_read(store: store, key: key) {
     IssueViewUnread => IssueViewSaveRefused
-    IssueViewAbsent => if revision != "0" { IssueViewSaveConflict } else { issue_view_store_commit(root: root, key: key, prefs: prefs, expected: ExpectSlotAbsent) }
-    IssueViewFound { prefs: _, revision: current, expected } => if revision != to_string(current) { IssueViewSaveConflict } else { issue_view_store_commit(root: root, key: key, prefs: prefs, expected: expected) }
+    IssueViewAbsent => if revision != "0" { IssueViewSaveConflict } else { issue_view_preference_commit(store: store, key: key, prefs: prefs, expected: ExpectSlotAbsent) }
+    IssueViewFound { prefs: _, revision: current, expected } => if revision != to_string(current) { IssueViewSaveConflict } else { issue_view_preference_commit(store: store, key: key, prefs: prefs, expected: expected) }
   }
 }
-fn issue_view_store_commit(root: NonEmptyStr, key: NonEmptyStr, prefs: IssueViewPreferences, expected: CasExpectation) -> IssueViewSaved {
+
+fn issue_view_preference_commit(store: IssueViewPreferenceStore, key: NonEmptyStr, prefs: IssueViewPreferences, expected: CasExpectation) -> IssueViewSaved {
   match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: serialize_json(v: issue_view_preferences_json(prefs: prefs)) as NonEmptyStr) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => IssueViewSaveRefused
-    DerivedPayloadAdmitted { verified } => match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: verified) {
+    DerivedPayloadAdmitted { verified } => match slot_commit(store: store.slots, publication: OwnerOnlyCreateOnly, verified: verified) {
       CasCommitted { committed } => IssueViewSaveOk { revision: cas_generation_count(g: committed.generation) }
       CasPreconditionFailed { expected: _, observed: _ } => IssueViewSaveConflict
       CasStoreRefused { cause: _ } => IssueViewSaveRefused

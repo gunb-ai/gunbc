@@ -1,0 +1,166 @@
+module test.claim.c_roadmap2_closing_cutover_witness
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.algebra { string_contains }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id }
+import gunbc.roadmap.roadmap_belt_obligation { MeteringObligation, belt_instance_obligation_unit_name, belt_attempt_obligation_unit_name }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, LegacyWriterExclusion, LegacyWriterExcluded, LegacyWriterNotExcluded }
+import gunbc.roadmap.roadmap_metering_closing_cutover {
+  MeteringClosingWriterObservation, MeteringClosingCutover, MeteringClosingNoop, MeteringClosingActivationRequired, MeteringClosingCutoverRefused,
+  metering_closing_legacy_marker_name, metering_closing_enqueue_unit_family_stem, metering_closing_activation_step,
+  metering_closing_writer_fence, metering_closing_unit_exclusion, metering_closing_cutover_disposition,
+}
+
+// THE CLOSING-MARKER CUTOVER BOUNDARY, EXECUTED (blocker 1 of stern-ram-763's review of #15574, 2026-11-01).
+// The roster closing marker moved from a plain entry to a hold slot, and a hold fences only the writers that
+// take it -- so the pre-PR build's writer has to be excluded across the deploy, the way #15413's identity-store
+// move excludes its legacy dispatcher. These claims pin the boundary the cutover module declares: the writer
+// unit named by the SAME derivation the enqueue uses, the fence that refuses rather than assumes, the
+// stopped-but-unmasked case that is NOT an exclusion, the unobserved case that is not an exclusion either, and
+// the three dispositions (Noop where nothing can still write the old name and nothing old is on the host;
+// ActivationRequired naming every unit that is not excluded, with the step; Refused where the fence is missing
+// or the old bytes are still there).
+//
+// WITNESS, NOT PROOF: these say what the declared boundary ANSWERS for the states fed to it. Which states
+// srv1's units are actually in is a host read this branch cannot make from here (no systemctl, no route to
+// srv1's systemd), and the module records that as unknown rather than assuming it -- which is exactly why an
+// unobserved unit is not excluded.
+
+fn fx_metering_unit() -> NonEmptyStr {
+  belt_instance_obligation_unit_name(instance_id: srv1_dashboard_lab_id as String, kind: MeteringObligation)
+}
+
+fn fx_belt_unit() -> NonEmptyStr {
+  "gunbc-srv1-lab-codex-feedback-v0-belt.service" as NonEmptyStr
+}
+
+// 1. THE DIRECT WRITER UNIT IS THE ONE THE ENQUEUE DERIVATION SPELLS. The fence row is a literal (units are
+// host names), so the pin that matters is that the literal and the derivation the obligation CLI uses agree:
+// the witness spells the unit from outside the row, through belt_instance_obligation_unit_name, and the row has
+// to contain that spelling. Rename the kind key or the row and this claim is the one that goes red.
+test fn the_direct_writer_unit_is_the_one_the_obligation_derivation_spells() -> Bool {
+  let derived = fx_metering_unit() as String
+  match metering_closing_writer_fence(instance_id: srv1_dashboard_lab_id) {
+    LegacyWriterUnits { systemctl: _, units: units } =>
+      any(units, u => (u as String) == derived)
+        && any(units, u => (u as String) == "gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service")
+    LegacyWriterUndeclared => false
+    LegacyWriterFenceConflict { instance_id: _, rows: _ } => false
+  }
+}
+
+// 2. THE FENCE NAMES ONLY THE UNITS TRACED TO THE CLOSING WRITER: the metering obligation unit (its ExecStart
+// runs the obligation that calls the seal route) and the belt service unit (whose tick enqueues that
+// obligation). The serve unit is NOT in the fence: its entry reaches the attempt mint, not the metering pass.
+test fn the_fence_names_exactly_the_units_traced_to_the_closing_writer() -> Bool {
+  match metering_closing_writer_fence(instance_id: srv1_dashboard_lab_id) {
+    LegacyWriterUnits { systemctl: _, units: units } =>
+      length(xs: units) == 2
+        && any(units, u => (u as String) == "gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service")
+        && any(units, u => (u as String) == "gunbc-srv1-lab-codex-feedback-v0-belt.service")
+    LegacyWriterUndeclared => false
+    LegacyWriterFenceConflict { instance_id: _, rows: _ } => false
+  }
+}
+
+// 3. AN INSTANCE WITH NO DECLARED FENCE REFUSES. The cutover does not get to conclude "no legacy writer" from
+// the absence of a row: it refuses, naming the instance and the marker name at stake.
+test fn an_instance_with_no_declared_fence_refuses_the_cutover() -> Bool {
+  let unrelated = [MeteringClosingWriterObservation { unit: "gunbc-unrelated.service" as NonEmptyStr, active_state: "inactive", enabled_state: "masked" }]
+  match metering_closing_cutover_disposition(instance_id: "c-roadmap2-unfenced-instance" as NonEmptyStr, observed: unrelated, legacy_markers_observed: 0) {
+    MeteringClosingCutoverRefused { cause: c } =>
+      string_contains(s: c, pattern: "c-roadmap2-unfenced-instance") && string_contains(s: c, pattern: "metering-roster-closing")
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+  }
+}
+
+// 4. STOPPED IS NOT EXCLUDED. A unit that is inactive but still enabled can be started again -- by its own
+// event, by a timer, or by the belt enqueueing the obligation -- so it is not excluded, and the refusal names
+// the unit. This is the same rule #15413's cutover applies; the cutover module calls that function rather than
+// spelling its own.
+test fn a_stopped_unit_that_is_not_masked_is_not_excluded_naming_the_unit() -> Bool {
+  let u = fx_metering_unit()
+  match metering_closing_unit_exclusion(unit: u, observed: [MeteringClosingWriterObservation { unit: u, active_state: "inactive", enabled_state: "enabled" }]) {
+    LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "not masked") && string_contains(s: r, pattern: u as String)
+    LegacyWriterExcluded => false
+  }
+}
+
+// 5. THE DISPOSITION FOR A HOST WHERE THE OLD WRITER CAN STILL RUN: ActivationRequired, naming exactly the
+// unit that is not excluded (the belt unit here is stopped AND masked, the metering unit is only stopped).
+test fn a_writer_that_is_not_excluded_gives_an_activation_step_naming_it() -> Bool {
+  let observed = [
+    MeteringClosingWriterObservation { unit: fx_metering_unit(), active_state: "inactive", enabled_state: "enabled" },
+    MeteringClosingWriterObservation { unit: fx_belt_unit(), active_state: "inactive", enabled_state: "masked" },
+  ]
+  match metering_closing_cutover_disposition(instance_id: srv1_dashboard_lab_id, observed: observed, legacy_markers_observed: 0) {
+    MeteringClosingActivationRequired { units: units, step: step } =>
+      length(xs: units) == 1
+        && any(units, u => (u as String) == (fx_metering_unit() as String))
+        && string_contains(s: step, pattern: "mask")
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingCutoverRefused { cause: _ } => false
+  }
+}
+
+// 6. AN UNOBSERVED UNIT IS NOT EXCLUDED. Both declared units have no state read at all (the observation list
+// names a different unit), and the disposition names BOTH as needing the activation step: silence about a
+// writer is not evidence that it is gone.
+test fn a_declared_writer_unit_with_no_observed_state_is_not_excluded() -> Bool {
+  let observed = [MeteringClosingWriterObservation { unit: "gunbc-some-other-instance-metering.service" as NonEmptyStr, active_state: "inactive", enabled_state: "masked" }]
+  match metering_closing_cutover_disposition(instance_id: srv1_dashboard_lab_id, observed: observed, legacy_markers_observed: 0) {
+    MeteringClosingActivationRequired { units: units, step: _ } =>
+      length(xs: units) == 2
+        && any(units, u => (u as String) == (fx_metering_unit() as String))
+        && any(units, u => (u as String) == (fx_belt_unit() as String))
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingCutoverRefused { cause: _ } => false
+  }
+}
+
+// 7. NOOP, AND ONLY THEN: every declared writer unit observed stopped AND masked, and no plain closing marker
+// on the host. The reason names the instance and the marker name that was censused.
+test fn an_excluded_writer_and_no_legacy_marker_is_a_noop() -> Bool {
+  let observed = [
+    MeteringClosingWriterObservation { unit: fx_metering_unit(), active_state: "inactive", enabled_state: "masked" },
+    MeteringClosingWriterObservation { unit: fx_belt_unit(), active_state: "failed", enabled_state: "masked" },
+  ]
+  match metering_closing_cutover_disposition(instance_id: srv1_dashboard_lab_id, observed: observed, legacy_markers_observed: 0) {
+    MeteringClosingNoop { reason: r } =>
+      string_contains(s: r, pattern: srv1_dashboard_lab_id as String) && string_contains(s: r, pattern: "metering-roster-closing")
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+    MeteringClosingCutoverRefused { cause: _ } => false
+  }
+}
+
+// 8. EXCLUDED IS NOT ENOUGH IF THE OLD BYTES ARE STILL THERE. With the writer excluded but plain markers on the
+// host, the cutover refuses: those entries are the mint's refusal case, and deciding what happens to them is an
+// operator call, not something the cutover may do silently.
+test fn plain_closing_markers_still_on_the_host_refuse_even_with_the_writer_excluded() -> Bool {
+  let observed = [
+    MeteringClosingWriterObservation { unit: fx_metering_unit(), active_state: "inactive", enabled_state: "masked" },
+    MeteringClosingWriterObservation { unit: fx_belt_unit(), active_state: "inactive", enabled_state: "masked" },
+  ]
+  match metering_closing_cutover_disposition(instance_id: srv1_dashboard_lab_id, observed: observed, legacy_markers_observed: 3) {
+    MeteringClosingCutoverRefused { cause: c } => string_contains(s: c, pattern: "3") && string_contains(s: c, pattern: "metering-roster-closing")
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+  }
+}
+
+// 9. THE LEGACY NAME IS THE SLOTS MODULE'S OWN BASENAME ROW -- the same row the hold library now addresses with
+// a generation suffix. That is why the mint refuses a plain entry of this name instead of reading both layouts,
+// and why the census and the refusal cannot drift to different names.
+test fn the_legacy_marker_name_is_the_slots_basename_row_spelled_as_the_pre_seal_bytes() -> Bool {
+  (metering_closing_legacy_marker_name as String) == "metering-roster-closing"
+}
+
+// 10. THE ACTIVATION STEP NAMES THE TRANSIENT PER-ATTEMPT UNITS, and the family stem it names is the stem the
+// enqueue derivation spells for a real attempt -- so the step is about the units that actually exist, and a
+// change to that naming moves the step and the pin together.
+test fn the_activation_step_names_the_transient_enqueue_unit_family() -> Bool {
+  let attempt_unit = belt_attempt_obligation_unit_name(node_id: "c-roadmap2-node", attempt_key: "0123456789abcdef") as String
+  string_contains(s: metering_closing_activation_step as String, pattern: metering_closing_enqueue_unit_family_stem as String)
+    && starts_with(s: attempt_unit, prefix: metering_closing_enqueue_unit_family_stem as String)
+}

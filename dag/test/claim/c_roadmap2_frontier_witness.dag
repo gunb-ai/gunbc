@@ -1,0 +1,49 @@
+module test.claim.c_roadmap2_frontier_witness
+
+import std.types { Bool }
+import std.roster_frontier { FrontierSubject, DeclSubject, frontier_subject_eq }
+import std.decl_ref { decl_ref }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+
+// THE DEFERRED SLOT-STORE FORMAT MOVES ARE ENROLLED, AND THE ENROLMENT IS CHECKED BY KEY (ruling
+// stern-ram-763, 2026-11-01). The C-roadmap-2 seal cohort sealed five stores in place and deferred moving their
+// RECORD FORMAT onto the slot store (gunbc.durable_cas_file_store). A deferral that lives in a // comment is not
+// answerable: nothing in the tree has to keep it, and a reader cannot tell whether it still stands. Each of
+// these claims asks the census aggregate for ONE subject -- the declaration that carries the format today --
+// and fails if that subject is missing. Keyed presence, not a row count: a row can be dropped, renamed or
+// moved to another subject and a count would not notice, while these do. The pattern is the one
+// test.claim.prepared_bundle_store_witness sets for retirement rows.
+//
+// The rows themselves are gunbc.census_closure_frontier c_roadmap2_format_consolidation_frontier_rows; the
+// dissolution of each is unbound because the slot-store record-format route they would move onto has no
+// declaration to name yet -- naming a dissolution target that does not exist would be a citation, not a plan.
+
+test fn w_the_metering_record_format_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_schema") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+test fn w_the_metering_index_format_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_attempt_index_prefix") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+test fn w_the_metering_roster_format_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_roster_schema") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+test fn w_the_census_receipt_format_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.roadmap.roadmap_event_snapshot_census", decl_name: "snapshot_census_receipt_slots") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+test fn w_the_served_observation_body_format_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_schema") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+test fn w_the_served_observation_index_format_row_is_in_the_census_aggregate() -> Bool {
+  let want = DeclSubject { ref: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_slots") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}

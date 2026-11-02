@@ -1,0 +1,281 @@
+module test.claim.c_roadmap2_srv1_bytes_wet_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.algebra { string_contains }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead,
+  FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+}
+import extdeps.crypto.sha2 { sha256_hex }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import gunbc.host.host_layout { srv1_host_layout, instance_receipts_dir }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_event_snapshot_census { SnapshotCensusReceiptStore, SnapshotCensusReceiptStoreReading, SnapshotCensusReceiptStoreReady, SnapshotCensusReceiptStoreUnready, SnapshotCensusReceiptContent, SnapshotCensusReceiptContentRead, SnapshotCensusReceiptContentAbsent, SnapshotCensusReceiptContentUnreadable, SnapshotCensusReceiptRead, SnapshotCensusReceiptDecoded, SnapshotCensusReceiptUndecodable, RoadmapSnapshotCensusReceipt, snapshot_census_receipt_slots, snapshot_census_receipt_store, snapshot_census_receipt_content, snapshot_census_receipt_decode }
+import gunbc.roadmap.roadmap_served_observation { ServedObservationStore, ServedObservationStoreReading, ServedObservationStoreReady, ServedObservationStoreUnready, ServedObservationRead, ServedObservationPresent, ServedObservationKind, AttemptsJson, served_observation_slots, served_observation_store, served_observation_read_for_instance, served_observation_body_observe }
+import gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, AttemptMeteringStoreReading, AttemptMeteringStoreReady, AttemptMeteringStoreUnready, AttemptMeteringIndexStore, AttemptMeteringIndexStoreReading, AttemptMeteringIndexStoreReady, AttemptMeteringIndexStoreUnready, AttemptMeteringListing, AttemptMeteringListingRead, AttemptMeteringListingUnreadable, OptionalFileRead, OptionalFileContent, OptionalFileAbsent, RowDecode, RowDecoded, RowUndecodable, AttemptMeteringRecord, MeteredRole, MeteredAuditor, MeteredReviewer, attempt_metering_store, attempt_metering_index_store, attempt_metering_read, attempt_metering_index_read, attempt_metering_index_listing, attempt_metering_decode, metering_roster_entry_decode, metering_launch_entry_name }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptMeteringRecordFile, attempt_state_directory_text, attempt_state_member_name }
+import gunbc.roadmap.roadmap_attempt_request_record { AttemptRequestBindingStore, AttemptRequestBindingStoreReading, AttemptRequestBindingStoreReady, AttemptRequestBindingStoreUnready, AttemptRequestBinding, AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable, attempt_request_binding_store, attempt_request_binding_read }
+
+// THE LIVE srv1 RECORDS, READ BY THE SEALED READER. This is the other half of the old-bytes claim: the bytes
+// were written by the code that is deployed TODAY, not by anything in this PR. They were taken off srv1
+// read-only by the operator relay on 2026-11-01 (the sha256 of every file is quoted in the PR body), copied
+// into test/fixture/c_roadmap2_srv1_bytes, and each claim below (1) re-checks the fixture's sha256 against
+// the hash stern reported BEFORE planting, so a relay or copy slip fails the claim rather than silently
+// testing a different file, (2) plants the bytes at the root the sealed store derives, and (3) reads them
+// back through the store's own reader and asserts the decoded fields. If sealing had moved a path or
+// re-shaped a record, the read or the decode is where it shows.
+//
+// WITNESS, NOT PROOF: it says the deployed bytes still parse and still land under the names the sealed
+// reader looks for; it does not say the seal holds -- that is the job of the REDs in
+// test/claim/c_roadmap2_store_seal_witness.
+
+data fixture_dir: String = "dag/test/fixture/c_roadmap2_srv1_bytes"
+
+data srv1_census_sha: String = "e3838580f69b5ffce174e12606059cdd9f2082cfc9c51a4345d2a46f9299f425"
+data srv1_served_index_sha: String = "364c19764607db57b9f9fd1e1694a8dc1ae876c4c56e4dc2215a27b502e7083a"
+data srv1_served_body_sha: String = "160a141f9525a00d051419aa93b5fbe48c737787d42f7cc8df75c5220f148e6a"
+data srv1_metering_sha: String = "e47c3fc249cefd48967217488c83b0c1059a376f20350b8bc97eb09bda76daca"
+data srv1_binding_sha: String = "20cd3a958b1af06df05846f84f79e3b93aa821d6ab0593fd584112c67bebd064"
+data srv1_auditor_launch_sha: String = "9e8402e745d645ef8ddf2dadc9a3fb0658771c5264af4d0e71f2684007fd1cf8"
+data srv1_reviewer_launch_sha: String = "67f9e725d246890f8faafba10a7985ea3ea9675f35f557deff22f7d06c218d12"
+data srv1_index_entry_sha: String = "5c7f59359366bfdc889b9656511826a78276b47b3cf66d1e04ef092f9c3d0814"
+
+fn fixture_bytes(name: String) -> String {
+  let read = Filesystem.Read(path: join([fixture_dir, "/", name], "") as FilePath)
+  if read.success { read.content } else { join(["<fixture-unreadable:", read.error, ">"], "") }
+}
+
+// The fixture is only planted once its own hash matches the hash the operator read off srv1. A copy that
+// drifted fails here, before any store is asked to read it.
+fn fixture_matches(name: String, sha: String) -> Bool {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: fixture_bytes(name: name)))) == sha
+}
+
+fn mktemp(tag: String) -> String {
+  // The landed wet-witness idiom (test/manual/snapshot_census_wet): DirWithTemplate returns the created
+  // directory, and the template is a FilePath with a trailing XXXXXXXX run.
+  let temporary = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc-c-roadmap2-srv1-", tag, "-XXXXXXXXXX"], "") as FilePath)
+  temporary.path as String
+}
+
+fn wet_instance(tag: String, dir: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["c-roadmap2-srv1-", tag], "") as NonEmptyStr),
+    instance_id: join(["c-roadmap2-srv1-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18108,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn plant(root: String, name: String, content: String) -> Bool {
+  let path = join([root, "/", name], "")
+  let w = Filesystem.Write(path: path as FilePath, content: content)
+  w.success
+}
+
+// 1. THE REQUEST BINDING. srv1's is 72 bytes, schema roadmap-attempt-request-binding/v1, status autonomous.
+// The sealed store must read it as RequestAutonomous without the writer being involved at all.
+test fn the_srv1_request_binding_is_read_by_the_sealed_reader() -> Bool {
+  let name = "request-binding.json"
+  let bytes = fixture_bytes(name: name)
+  if !fixture_matches(name: name, sha: srv1_binding_sha) { return false }
+  let dir = mktemp(tag: "binding")
+  let instance = wet_instance(tag: "binding", dir: dir)
+  let node = "cc-path-census-closing-contract" as RoadmapNodeId
+  let key = "ea7c045854f19f00"
+  match attempt_request_binding_store(instance: instance, node_id: node, attempt_key: key) {
+    AttemptRequestBindingStoreUnready { detail: _ } => false
+    AttemptRequestBindingStoreReady { store: store } =>
+      // The directory the mint derived must be the one srv1 uses: <node>-a<attempt_key> under the
+      // attempt-state root, so planting by that root is planting where the deployed code writes.
+      string_contains(attempt_state_directory_text(instance: instance, node_id: node, attempt_key: key, directory: AttemptDirectoryRoot), join([node as String, "-a", key], "")) &&
+        plant(root: attempt_state_directory_text(instance: instance, node_id: node, attempt_key: key, directory: AttemptDirectoryRoot), name: name, content: bytes) &&
+        match attempt_request_binding_read(store: store) {
+          RequestBindingRead { binding: read } => read == RequestAutonomous
+          RequestBindingAbsent => false
+          RequestBindingUnreadable { reason: _ } => false
+        }
+  }
+}
+
+// 2. THE SNAPSHOT CENSUS RECEIPT. srv1's 249-byte receipt carries schema
+// roadmap-event-snapshot-census/v2, namespace /tmp/gunbc-roadmap-event-snapshot.bce04b228d3a492c. and a
+// prior standing "read". Read back through the store's content op AND its decoder.
+test fn the_srv1_census_receipt_is_read_by_the_sealed_reader() -> ProcessExit {
+  let name = "roadmap-event-snapshot-census.json"
+  let bytes = fixture_bytes(name: name)
+  let dir = mktemp(tag: "census")
+  let instance = wet_instance(tag: "census", dir: dir)
+  let outcome =
+    if !fixture_matches(name: name, sha: srv1_census_sha) { "fixture-hash" }
+    else { match snapshot_census_receipt_store(instance: instance) {
+      SnapshotCensusReceiptStoreUnready { detail: d } => join(["mint-refused: ", d], "")
+      SnapshotCensusReceiptStoreReady { store: store } =>
+        if !string_contains(store.root as String, "receipts") { join(["mint-over-wrong-root: ", store.root as String], "") }
+        else if !plant(root: store.root as String, name: join([snapshot_census_receipt_slots.stem as String, snapshot_census_receipt_slots.suffix as String], ""), content: bytes) { "plant-failed" }
+        else { match snapshot_census_receipt_content(store: store) {
+          SnapshotCensusReceiptContentRead { content: c } => if c != bytes { "read-bytes-differ-from-srv1" }
+            else { match snapshot_census_receipt_decode(raw: c, namespace: "/tmp/gunbc-roadmap-event-snapshot.bce04b228d3a492c.") {
+              SnapshotCensusReceiptDecoded { receipt: receipt } => if receipt.namespace != "/tmp/gunbc-roadmap-event-snapshot.bce04b228d3a492c." { "decoded-namespace-differs" }
+                else if list_length(receipt.snapshots) != 0 { "decoded-snapshot-count" } else { "ok" }
+              SnapshotCensusReceiptUndecodable { reason: r } => join(["undecodable: ", r], "")
+            } }
+          SnapshotCensusReceiptContentAbsent => "absent"
+          SnapshotCensusReceiptContentUnreadable { reason: r } => join(["unreadable: ", r], "")
+        } }
+    } }
+  if outcome == "ok" { ExitSuccess } else { exit_failure(reason: join(["srv1 census readback failed: ", outcome], "")) }
+}
+
+// 3. THE SERVED OBSERVATION INDEX AND ITS BODY. srv1's index names five surfaces, each with a string status
+// and an eight-byte hex digest; the attempts_json body is 19114 bytes. Both must arrive through the sealed
+// reader at the names the pre-seal code wrote (the body is named by KIND on srv1, not by digest).
+test fn the_srv1_served_observation_is_read_by_the_sealed_reader() -> Bool {
+  let index_name = "served-observation.json"
+  let body_name = "served-observation-attempts_json.body"
+  let index_bytes = fixture_bytes(name: index_name)
+  let body_bytes = fixture_bytes(name: body_name)
+  if !fixture_matches(name: index_name, sha: srv1_served_index_sha) { return false }
+  if !fixture_matches(name: body_name, sha: srv1_served_body_sha) { return false }
+  let dir = mktemp(tag: "served")
+  let instance = wet_instance(tag: "served", dir: dir)
+  match served_observation_store(instance: instance) {
+    ServedObservationStoreUnready { detail: _ } => false
+    ServedObservationStoreReady { store: store } =>
+      plant(root: store.root as String, name: index_name, content: index_bytes) &&
+        plant(root: store.root as String, name: body_name, content: body_bytes) &&
+        match served_observation_read_for_instance(instance: instance) {
+          ServedObservationPresent { index: read } => list_length(read.entries) == 5 && read.observed_at == "2026-10-29T11:17:14Z" &&
+            match served_observation_body_observe(store: store, kind: AttemptsJson) {
+              FilesystemFileRead { path: _, content: body } => body == body_bytes
+              FilesystemFileAbsent(_ ) => false
+              FilesystemFileIndeterminate { cause: _ } => false
+              FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+              FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+            }
+          _ => false
+        }
+  }
+}
+
+// 4. THE METERING RECORD. srv1's is 4265 bytes, schema gunbc-attempt-metering/v4, node
+// debt-exclusion-frontier-excludes-nothing, attempt 6ea61c671002a6d4, twenty roles, compute not-attributable.
+// Planted at the attempt directory the declaration derives, then read through the store's reader and its
+// decoder.
+test fn the_srv1_metering_record_is_read_by_the_sealed_reader() -> Bool {
+  let name = "metering.json"
+  let bytes = fixture_bytes(name: name)
+  if !fixture_matches(name: name, sha: srv1_metering_sha) { return false }
+  let dir = mktemp(tag: "metering")
+  let instance = wet_instance(tag: "metering", dir: dir)
+  let node = "debt-exclusion-frontier-excludes-nothing" as RoadmapNodeId
+  let key = "6ea61c671002a6d4"
+  match attempt_metering_store(instance: instance, node_id: node, attempt_key: key) {
+    AttemptMeteringStoreUnready { detail: _ } => false
+    AttemptMeteringStoreReady { store: store } =>
+      attempt_state_member_name(member: AttemptMeteringRecordFile) == name &&
+        plant(root: attempt_state_directory_text(instance: instance, node_id: node, attempt_key: key, directory: AttemptDirectoryRoot), name: name, content: bytes) &&
+        match attempt_metering_read(store: store, entry: name as NonEmptyStr) {
+          OptionalFileContent { content: c } => c == bytes &&
+            match attempt_metering_decode(raw: c) {
+              RowDecoded { row: record } => record.node_id == node as String && record.attempt_key == key
+              RowUndecodable { cause: _ } => false
+            }
+          OptionalFileAbsent => false
+          OptionalFileRefused { cause: _ } => false
+        }
+  }
+}
+
+// 5. THE TWO LAUNCH ENTRY SHAPES, BY THEIR srv1 NAMES. The writer's builder must produce the exact file name
+// the deployed code produced for the same role, and the sealed reader must read those exact bytes back. This
+// is the launch-name fixture with the live host's own strings in it, not with invented ones.
+test fn the_srv1_launch_entries_are_read_by_the_sealed_reader() -> ProcessExit {
+  // THE TWO ENTRIES ARE REAL srv1 BYTES, EACH FROM THE ATTEMPT THAT ACTUALLY HOLDS IT: the auditor entry from
+  // debt-exclusion-frontier-excludes-nothing-a6ea61c671002a6d4 and the reviewer entry from
+  // shell-dag-ci-heal-regen-invoke-a43d2bc0ea4c42999 (the relay's 'all launch names' listing, 2026-11-01). The
+  // roster decoder reads the node-attempt identity out of the ENTRY NAME and refuses an entry whose name names
+  // another attempt, so the fixture keeps each entry in its own attempt directory and each read goes through
+  // the store minted for that attempt.
+  let auditor_name = "metering-launch.auditor.40.387c088173728752ea8971ecea93b519dd19ebce.json"
+  let reviewer_name = "metering-launch.reviewer.48.d2bc3d3375641fa2-conformance-cardinality-absence.40.1ec7a05fe2df77db4085c534576b4e5f39576578.json"
+  let auditor_bytes = fixture_bytes(name: auditor_name)
+  let reviewer_bytes = fixture_bytes(name: reviewer_name)
+  let auditor_role: MeteredRole = MeteredAuditor { head: "387c088173728752ea8971ecea93b519dd19ebce" as NonEmptyStr }
+  let reviewer_role: MeteredRole = MeteredReviewer { criterion_key: "d2bc3d3375641fa2-conformance-cardinality-absence" as NonEmptyStr, head: "1ec7a05fe2df77db4085c534576b4e5f39576578" as NonEmptyStr }
+  let dir = mktemp(tag: "launch")
+  let instance = wet_instance(tag: "launch", dir: dir)
+  let auditor_node = "debt-exclusion-frontier-excludes-nothing" as RoadmapNodeId
+  let auditor_key = "6ea61c671002a6d4"
+  let reviewer_node = "shell-dag-ci-heal-regen-invoke" as RoadmapNodeId
+  let reviewer_key = "43d2bc0ea4c42999"
+  let outcome =
+    if !fixture_matches(name: auditor_name, sha: srv1_auditor_launch_sha) { "auditor-fixture-hash" }
+    else if !fixture_matches(name: reviewer_name, sha: srv1_reviewer_launch_sha) { "reviewer-fixture-hash" }
+    else if metering_launch_entry_name(role: auditor_role) != auditor_name { join(["minted-auditor-name-differs: ", metering_launch_entry_name(role: auditor_role)], "") }
+    else if metering_launch_entry_name(role: reviewer_role) != reviewer_name { join(["minted-reviewer-name-differs: ", metering_launch_entry_name(role: reviewer_role)], "") }
+    else { match attempt_metering_store(instance: instance, node_id: auditor_node, attempt_key: auditor_key) {
+      AttemptMeteringStoreUnready { detail: d } => join(["auditor-mint-refused: ", d], "")
+      AttemptMeteringStoreReady { store: store } => {
+        let root = attempt_state_directory_text(instance: instance, node_id: auditor_node, attempt_key: auditor_key, directory: AttemptDirectoryRoot)
+        if !plant(root: root, name: auditor_name, content: auditor_bytes) { "plant-auditor-failed" }
+        else { match attempt_metering_read(store: store, entry: auditor_name as NonEmptyStr) {
+          OptionalFileContent { content: c } => if c != auditor_bytes { "auditor-raw-bytes-differ" }
+            else { match metering_roster_entry_decode(node_id: auditor_node as String, attempt_key: auditor_key, name: auditor_name, raw: c) {
+              RowDecoded { row: role } => if role != auditor_role { "auditor-decode-differs" }
+                else { match attempt_metering_store(instance: instance, node_id: reviewer_node, attempt_key: reviewer_key) {
+                  AttemptMeteringStoreUnready { detail: d } => join(["reviewer-mint-refused: ", d], "")
+                  AttemptMeteringStoreReady { store: rstore } => {
+                    let rroot = attempt_state_directory_text(instance: instance, node_id: reviewer_node, attempt_key: reviewer_key, directory: AttemptDirectoryRoot)
+                    if !plant(root: rroot, name: reviewer_name, content: reviewer_bytes) { "plant-reviewer-failed" }
+                    else { match attempt_metering_read(store: rstore, entry: reviewer_name as NonEmptyStr) {
+                      OptionalFileContent { content: r } => if r != reviewer_bytes { "reviewer-raw-bytes-differ" }
+                        else { match metering_roster_entry_decode(node_id: reviewer_node as String, attempt_key: reviewer_key, name: reviewer_name, raw: r) {
+                          RowDecoded { row: rrole } => if rrole != reviewer_role { "reviewer-decode-differs" } else { "ok" }
+                          RowUndecodable { cause: cause } => join(["reviewer-undecodable: ", cause], "")
+                        } }
+                      _ => "reviewer-read-absent"
+                    } }
+                  }
+                } }
+              RowUndecodable { cause: cause } => join(["auditor-undecodable: ", cause], "")
+            } }
+          _ => "auditor-read-absent"
+        } }
+      }
+    } }
+  if outcome == "ok" { ExitSuccess } else { exit_failure(reason: join(["srv1 launch readback failed: ", outcome], "")) }
+}
+
+// 6. THE FLAT INDEX ENTRY. srv1 holds sixteen of these at the shared dispatch attempt-state root; this one
+// names node shell-dag-ci-fmt-gate-line, attempt 23cb64f67c7707da. The sealed index store must LIST it and
+// read it back, which is the claim that the shared parent is still one directory with several stores' names
+// in it, each read through its own store.
+test fn the_srv1_metering_index_entry_is_listed_and_read_by_the_sealed_index_store() -> Bool {
+  let name = "metering-attempt.26.shell-dag-ci-fmt-gate-line.16.23cb64f67c7707da.json"
+  let bytes = fixture_bytes(name: name)
+  if !fixture_matches(name: name, sha: srv1_index_entry_sha) { return false }
+  let dir = mktemp(tag: "index")
+  let instance = wet_instance(tag: "index", dir: dir)
+  match attempt_metering_index_store(instance: instance) {
+    AttemptMeteringIndexStoreUnready { detail: _ } => false
+    AttemptMeteringIndexStoreReady { store: store } =>
+      plant(root: store.root as String, name: name, content: bytes) &&
+        match attempt_metering_index_listing(store: store) {
+          AttemptMeteringListingRead { names: listed } => any(listed, n => n == name)
+          AttemptMeteringListingUnreadable { detail: _ } => false
+        } &&
+        match attempt_metering_index_read(store: store, entry: name as NonEmptyStr) {
+          OptionalFileContent { content: c } => c == bytes
+          _ => false
+        }
+  }
+}

@@ -1,0 +1,192 @@
+module test.claim.c_roadmap2_closing_hold_wet_witness
+
+import std.types { String, Bool, NonEmptyStr, FilePath }
+import std.algebra { string_contains }
+import extdeps.shell
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_attempt_metering {
+  AttemptMeteringClosingAcquisition, AttemptMeteringListing, AttemptMeteringListingRead, AttemptMeteringListingUnreadable,
+  AttemptMeteringStore, AttemptMeteringStoreReading, AttemptMeteringStoreReady, AttemptMeteringStoreUnready,
+  ClosingHoldAcquired, ClosingHoldHeldByThisWriter, ClosingHoldHeldByAnotherWriter, ClosingAcquireRefused,
+  MeteringRoster, RosterSealed, RosterOpen, RosterRefused,
+  attempt_metering_listing_of, attempt_metering_store,
+  metering_attempt_closing_acquire_at_key, metering_closing_hold_key, metering_closing_owner_ref, metering_roster_seal,
+}
+
+// THE ROSTER CLOSING HOLD IS AN EXCLUSION PER WRITER, NOT A FLAG ANY SEALER MAY PASS. The metering roster is
+// sealed by taking the attempt's closing hold and then publishing the seal create-once. If an OCCUPIED slot
+// answered the same as an ACQUIRED one -- which is what attempt_metering_closing_acquire used to do -- two
+// sealers both passed the exclusion, both listed the same attempt, and raced the publish: the loser read the
+// winner's seal back as if it had produced it, and the roster the two of them listed could differ between the
+// two passes (ruling stern-ram-763, 2026-11-01). These claims run the real hold store in an isolated instance
+// under a mktemp dir and say what the exclusion ANSWERS, in the order the answers matter: the first writer is
+// granted, a second writer meeting the held slot is refused and the refusal names the holder, and the same
+// writer re-entering is admitted (the publish is create-once, so a retry of one's own close cannot double-write).
+//
+// WITNESS, NOT PROOF: these say what the hold library answers on this host, not what every host must do. The
+// seal-path claim below is the one that runs the production route (metering_roster_seal), so the refusal is not
+// a property of the witness's own calling pattern.
+
+fn fx_root(tag: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc-c-roadmap2-closing-", tag, "-XXXXXXXXXX"], "") as FilePath).path as String
+}
+
+fn fx_instance(tag: String, dir: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["c-roadmap2-closing-hold-", tag], "") as NonEmptyStr),
+    instance_id: join(["c-roadmap2-closing-hold-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18109,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn fx_node() -> RoadmapNodeId {
+  "c-roadmap2-closing-node" as RoadmapNodeId
+}
+
+fn fx_key() -> String {
+  "c-roadmap2-closing-attempt-0123456789abcdef"
+}
+
+// A witness writer identity, distinct from the production module's own ref (which names the belt's metering
+// pass) and from any other witness writer: the host identity, the instance, the node, the attempt and the
+// writer are all in the ref, exactly as metering_closing_owner_ref spells them.
+fn fx_writer(instance: HostDashboardInstance, writer: String) -> NonEmptyStr {
+  join([
+    "roadmap-metering-closing:",
+    instance.host_identity as String,
+    ":",
+    instance.instance_id as String,
+    ":",
+    fx_node() as String,
+    ":",
+    fx_key(),
+    ":",
+    writer,
+  ], "") as NonEmptyStr
+}
+
+// 1. THE FIRST WRITER IS GRANTED THE EXCLUSION.
+test fn the_first_sealer_is_granted_the_closing_hold() -> Bool {
+  let dir = fx_root(tag: "granted")
+  let instance = fx_instance(tag: "granted", dir: dir)
+  match metering_attempt_closing_acquire_at_key(instance: instance, node_id: fx_node(), attempt_key: fx_key(), owner: fx_writer(instance: instance, writer: "witness-writer-a")) {
+    ClosingHoldAcquired { generation: _ } => true
+    ClosingHoldHeldByThisWriter { holder: _, generation: _ } => false
+    ClosingHoldHeldByAnotherWriter { holder: _, generation: _ } => false
+    ClosingAcquireRefused { cause: _ } => false
+  }
+}
+
+// 2. A SECOND WRITER MEETING THE HELD SLOT IS REFUSED, AND THE REFUSAL NAMES THE HOLDER. This is the RED the
+// lane ruling asks for: two sealers, the second refuses. The holder carried in the answer is the FIRST
+// writer's ref read back off the slot -- the refusal is attributable, not a bare "busy".
+test fn a_second_writer_meeting_the_held_slot_is_refused_and_names_the_holder() -> Bool {
+  let dir = fx_root(tag: "second")
+  let instance = fx_instance(tag: "second", dir: dir)
+  let first = fx_writer(instance: instance, writer: "witness-writer-a")
+  let second = fx_writer(instance: instance, writer: "witness-writer-b")
+  match metering_attempt_closing_acquire_at_key(instance: instance, node_id: fx_node(), attempt_key: fx_key(), owner: first) {
+    ClosingHoldAcquired { generation: _ } =>
+      match metering_attempt_closing_acquire_at_key(instance: instance, node_id: fx_node(), attempt_key: fx_key(), owner: second) {
+        ClosingHoldHeldByAnotherWriter { holder: h, generation: _ } => (h as String) == (first as String)
+        ClosingHoldHeldByThisWriter { holder: _, generation: _ } => false
+        ClosingHoldAcquired { generation: _ } => false
+        ClosingAcquireRefused { cause: _ } => false
+      }
+    ClosingHoldHeldByThisWriter { holder: _, generation: _ } => false
+    ClosingHoldHeldByAnotherWriter { holder: _, generation: _ } => false
+    ClosingAcquireRefused { cause: _ } => false
+  }
+}
+
+// 3. THE SAME WRITER RE-ENTERING IS ADMITTED. A retry of one's own close is not a second sealer: the holder
+// read back off the slot matches this invocation's ref, and the answer is the OTHER occupied arm. The publish
+// under the hold is create-once, which is what makes the re-entry safe rather than merely convenient.
+test fn the_same_writer_re_entering_is_admitted() -> Bool {
+  let dir = fx_root(tag: "reentry")
+  let instance = fx_instance(tag: "reentry", dir: dir)
+  let writer = fx_writer(instance: instance, writer: "witness-writer-a")
+  match metering_attempt_closing_acquire_at_key(instance: instance, node_id: fx_node(), attempt_key: fx_key(), owner: writer) {
+    ClosingHoldAcquired { generation: _ } =>
+      match metering_attempt_closing_acquire_at_key(instance: instance, node_id: fx_node(), attempt_key: fx_key(), owner: writer) {
+        ClosingHoldHeldByThisWriter { holder: h, generation: _ } => (h as String) == (writer as String)
+        ClosingHoldHeldByAnotherWriter { holder: _, generation: _ } => false
+        ClosingHoldAcquired { generation: _ } => false
+        ClosingAcquireRefused { cause: _ } => false
+      }
+    ClosingHoldHeldByThisWriter { holder: _, generation: _ } => false
+    ClosingHoldHeldByAnotherWriter { holder: _, generation: _ } => false
+    ClosingAcquireRefused { cause: _ } => false
+  }
+}
+
+// 4. THE PRODUCTION SEAL PATH REFUSES WHILE ANOTHER WRITER HOLDS THE EXCLUSION. The seal takes its own
+// writer-attempt ref (metering_closing_owner_ref); a hold taken under a DIFFERENT ref must turn the seal into
+// a refusal that names that holder, rather than a second listing of the same attempt.
+test fn the_roster_seal_refuses_while_another_writer_holds_the_closing_hold() -> Bool {
+  let dir = fx_root(tag: "sealrefuse")
+  let instance = fx_instance(tag: "sealrefuse", dir: dir)
+  let other = fx_writer(instance: instance, writer: "another-unit")
+  match metering_attempt_closing_acquire_at_key(instance: instance, node_id: fx_node(), attempt_key: fx_key(), owner: other) {
+    ClosingHoldAcquired { generation: _ } =>
+      match metering_roster_seal(instance: instance, node_id: fx_node(), attempt_key: fx_key()) {
+        RosterRefused { cause: c } => string_contains(s: c, pattern: "held by another writer") && string_contains(s: c, pattern: "another-unit")
+        RosterSealed { launches: _, digest: _ } => false
+        RosterOpen { launches: _ } => false
+      }
+    ClosingHoldHeldByThisWriter { holder: _, generation: _ } => false
+    ClosingHoldHeldByAnotherWriter { holder: _, generation: _ } => false
+    ClosingAcquireRefused { cause: _ } => false
+  }
+}
+
+// 5. WITH NO OTHER WRITER IN THE WAY, THE SEAL PATH STILL SEALS -- the fix did not turn the exclusion into a
+// wall. The second call is the same writer re-entering its own hold, and the roster it reads back is sealed.
+test fn the_roster_seal_still_seals_under_its_own_hold_and_on_reentry() -> Bool {
+  let dir = fx_root(tag: "sealseal")
+  let instance = fx_instance(tag: "sealseal", dir: dir)
+  match metering_roster_seal(instance: instance, node_id: fx_node(), attempt_key: fx_key()) {
+    RosterSealed { launches: _, digest: _ } =>
+      match metering_roster_seal(instance: instance, node_id: fx_node(), attempt_key: fx_key()) {
+        RosterSealed { launches: _, digest: _ } => true
+        RosterOpen { launches: _ } => false
+        RosterRefused { cause: _ } => false
+      }
+    RosterOpen { launches: _ } => false
+    RosterRefused { cause: _ } => false
+  }
+}
+
+// 6. THE ROUTE AT THIS HEAD WRITES ONLY THE SUFFIXED SLOT, NEVER THE PLAIN CLOSING NAME. The pre-seal build's
+// closing marker was a PLAIN entry named exactly metering-roster-closing in the attempt directory; the route
+// here takes the hold, which the hold library writes as <key>.<generation>. This is the cutover's "the legacy
+// writer is gone at this head" half, executed instead of asserted: the directory the PRODUCTION seal route just
+// wrote is listed, the plain name is absent from it, and the suffixed slot is present.
+test fn the_seal_route_writes_the_suffixed_slot_and_never_the_plain_closing_name() -> Bool {
+  let dir = fx_root(tag: "slotname")
+  let instance = fx_instance(tag: "slotname", dir: dir)
+  match metering_roster_seal(instance: instance, node_id: fx_node(), attempt_key: fx_key()) {
+    RosterSealed { launches: _, digest: _ } =>
+      match attempt_metering_store(instance: instance, node_id: fx_node(), attempt_key: fx_key()) {
+        AttemptMeteringStoreReady { store } =>
+          match attempt_metering_listing_of(store: store) {
+            AttemptMeteringListingRead { names } =>
+              !any(names, n => n == (metering_closing_hold_key as String))
+                && any(names, n => starts_with(s: n, prefix: join([metering_closing_hold_key as String, "."], "")))
+            AttemptMeteringListingUnreadable { detail: _ } => false
+          }
+        AttemptMeteringStoreUnready { detail: _ } => false
+      }
+    RosterOpen { launches: _ } => false
+    RosterRefused { cause: _ } => false
+  }
+}

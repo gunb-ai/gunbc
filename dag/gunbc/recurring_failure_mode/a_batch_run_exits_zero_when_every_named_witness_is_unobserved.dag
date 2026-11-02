@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.a_batch_run_exits_zero_when_every_named_witness_is_unobserved
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_batch_run_exits_zero_when_every_named_witness_is_unobserved: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_batch_run_exits_zero_when_every_named_witness_is_unobserved" as NonEmptyStr,
+
+  // Rung read from this row's own receipts: the class was FOUND BELOW THE LADDER (a run that certified
+  // nothing reported success, and the reviewer read the certification); the ceiling is MECHANICALLY
+  // PREVENTABLE, because the batch harness already knows, per named witness, whether the probe was
+  // observed -- it prints that fact -- and simply does not fold it into the exit status. The blocker class
+  // is CLIMBABLE BUT UNBUILT: the fold is a local change in the executor's exit computation, needing no
+  // new authority and no new instrument. The trigger is stated as a capability, not as the artifact.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of binding a batch witness run's exit status to whether every named witness was actually OBSERVED by its probe, so a batch in which no witness reached its probe cannot report success." } },
+  receipts: [
+    "**a batch run exits zero when every named witness is unobserved** (a batch harness is handed a roster of named witnesses and runs them; some or all of them never reach the probe they exist to exercise, because the fixture they build was refused before evaluation, the source roots they need are not admitted, or the builtin they call answers with a typed non-observation. The harness prints that fact as a line, folds the exit status over only the witnesses that produced a verdict, and exits zero. The reader is handed an absence of failures and takes it for the presence of evidence).",
+
+    "INVALID STATE: a sealed-store PR is merged on the strength of a witness run whose log contains no FAIL line. Every witness in it was UNOBSERVED -- each fixture closure was refused by the closure authority before evaluation, so no witness ever ran its assertion -- and the run nonetheless reported success. The claims in the PR body ('witnesses pass') are then not lies but not evidence either: they restate a run that measured nothing, and the next reader has no way to tell from the summary that the witnesses were never observed.",
+
+    "WHY IT SURVIVES REVIEW. The reader's check is 'are there any FAIL lines', which is exactly the shape a green run and an empty run share. FAIL is the failure the harness can see; a witness that never ran is not a failure in that vocabulary, so the run's own success is reported in a channel the absence does not darken. The harness is not wrong about the witnesses it ran; it declines to answer the question 'did you run the ones I named', and the name list was supplied by the very person asking. The one sample that distinguishes the classes is a deliberately-mis-run batch, which nobody runs because a mis-run batch looks like a bug in the harness rather than a bug in the code under review.",
+
+    "SPECIMEN (gunbc, this cohort, 2026-11-01). A C-roadmap-2 sealed-store witness module was run through claim_batch with the source roots --source-root dag --source-root src/v1 --source-root src/v2. Its sixteen compile-census witnesses each build a fixture closure whose nested diagnostic census demands the roots [dag, src/v2]; with src/v1 resident in the outer pool the closure authority refuses a second resident pool on the same thread ('SharedIndexSecondResidentPool: slot 0 already holds roots [dag, src/v1, src/v2]; roots [dag, src/v2] demanded at src/v1/stage0/src/cli_run.rs:3925'). Every witness therefore came back UNOBSERVED, the batch printed no FAIL line, and the process exited 0. The run was reported upstream as green, and only a re-read of the raw log (each witness line prefixed UNOBSERVED rather than PASS, and no per-witness cpu=/eval_steps= budget line) showed that nothing had been evaluated. Re-run with the repository's own roots (--source-root dag --source-root src/v2), the same witnesses print PASS with their budget lines: the fixtures were sound all along, and the vacuous green was the harness.",
+
+    "BOUNDARY WITH ITS NEIGHBOURS. a_success_probe_on_an_absent_subject_exits_zero is a status probe asked about a missing SUBJECT, whose absence arm succeeds and is read as health: there the subject is absent and the probe lies by succeeding. Here the subject exists and is well-formed; what is absent is the OBSERVATION, and the liar is the batch's exit status, not the probe. index_suffix_infer_verdict_unobserved is one verdict that fails to arm inside a single claim; that row is about the verdict's own type carrying its cause, and it is this class's ingredient, not its instance. This row is about the AGGREGATOR: the fold from per-witness observation to run status.",
+
+    "CEILING: 2, mechanically preventable. The executor already distinguishes observed, failed and unobserved per named witness -- it prints all three -- so folding 'any named witness unobserved' into a non-zero exit is a change in one computation, with no new instrument and no new authority. It is not rung 3: what the fold yields is a refusal to certify, not a proof that the witness's own assertion holds.",
+
+    "RESIDUAL, STATED: a witness that IS observed but asserts a condition that cannot fail is still a green that measures nothing; that is a_claim_that_runtime_errors_is_dropped_as_no_verdict_rather_than_red and its relatives, and this row claims nothing over it. Nor does this row claim the fixture's own soundness: an unobserved batch proves only that nothing was measured, never that the fixtures were wrong (the specimen's fixtures were correct, and the same claims later passed unmodified).",
+
+    "REVIEW TELL: a witness run summarized as 'no failures', 'exit 0', or 'N witnesses, 0 FAIL', where the log is not read witness by witness for its own PASS line and the per-witness budget line. Ask for the count of OBSERVED witnesses and match it against the roster that was requested; a batch whose observed count is below the named count has not run the tests it names, whatever it exits.",
+  ],
+
+  evidence: [],
+}

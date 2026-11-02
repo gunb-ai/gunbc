@@ -1,0 +1,278 @@
+module test.claim.c_roadmap2_store_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE C-ROADMAP-2 STORES ARE MINTED FROM THEIR DECLARATIONS AND CANNOT BE SPELLED FROM A PATH, AND THE
+// ROOT-TAKING ROUTES THE PRE-SEAL CODE EXPORTED ARE GONE. Five stores are sealed by this cohort:
+//   gunbc.roadmap.roadmap_view_preference_store IssueViewPreferenceStore
+//   gunbc.roadmap.roadmap_event_snapshot_census SnapshotCensusReceiptStore
+//   gunbc.roadmap.roadmap_served_observation ServedObservationStore
+//   gunbc.roadmap.roadmap_attempt_metering AttemptMeteringStore and AttemptMeteringIndexStore
+//   gunbc.roadmap.roadmap_attempt_request_record AttemptRequestBindingStore
+// Each is sole_constructor, non-generic and never a variant arm, built only by its declaring module's mint
+// from a business key (the instance; for the attempt stores, instance + node + attempt key) over the root the
+// declaration derives. Each RED hands the compiler a module OUTSIDE the defining files and asserts the
+// refusal on the real acceptance path:
+//   - a forged record literal: EXACTLY ONE SoleConstructorViolation on that record's name;
+//   - a call to a deleted root-taking route: EXACTLY ONE blocking MissingExport keyed on the deleted name.
+// The GREEN is the lawful route, which adds no blocking diagnostic and draws no seal violation. What these
+// probes do NOT establish is recorded once, in the pattern's own witness
+// (test.claim.slot_store_seal_witness): field reads are not module-private, a plain store over a literal path
+// is still reachable through the ambient filesystem, and a store minted for instance A is not refused where B
+// is required. This file claims only construction and the deletion of the routes.
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn missing_export(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "MissingExport", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data closure_baseline_source: String = "module probe_closure_baseline\nimport std.process { ProcessExit }\nimport std.types { Int }\nfn f(n: Int) -> Int { n + 1 }\n"
+
+// ── forged literals ────────────────────────────────────────────────────────────────────────────────────
+
+data forged_view_preference_store_source: String = "module probe_fpv\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_view_preference_store { IssueViewPreferenceStore }\nimport gunbc.durable_cas_file_store { SlotStore, file_slot_store }\nfn f() -> IssueViewPreferenceStore { IssueViewPreferenceStore { instance: \"any\" as NonEmptyStr, slots: file_slot_store(root: \"/any/chosen/dir\" as NonEmptyStr) } }\n"
+
+data forged_census_receipt_store_source: String = "module probe_fcr\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_event_snapshot_census { SnapshotCensusReceiptStore }\nfn f() -> SnapshotCensusReceiptStore { SnapshotCensusReceiptStore { instance: \"any\" as NonEmptyStr, root: \"/any/chosen/dir\" as NonEmptyStr } }\n"
+
+data forged_served_observation_store_source: String = "module probe_fso\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_served_observation { ServedObservationStore }\nfn f() -> ServedObservationStore { ServedObservationStore { instance: \"any\" as NonEmptyStr, root: \"/any/chosen/dir\" as NonEmptyStr } }\n"
+
+data forged_metering_store_source: String = "module probe_fm\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore }\nfn f() -> AttemptMeteringStore { AttemptMeteringStore { instance: \"any\" as NonEmptyStr, node: \"n\" as NonEmptyStr, attempt_key: \"k\" as NonEmptyStr, directory: \"/any/chosen/dir\" as NonEmptyStr } }\n"
+
+data forged_metering_index_store_source: String = "module probe_fmi\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringIndexStore }\nfn f() -> AttemptMeteringIndexStore { AttemptMeteringIndexStore { instance: \"any\" as NonEmptyStr, root: \"/any/chosen/dir\" as NonEmptyStr } }\n"
+
+data forged_request_binding_store_source: String = "module probe_frb\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_request_record { AttemptRequestBindingStore }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> AttemptRequestBindingStore { AttemptRequestBindingStore { instance: isolated_dashboard_instance(deployment: deployment_id(name: \"p\" as NonEmptyStr), instance_id: \"p\" as NonEmptyStr, layout: srv1_host_layout(), root: \"/any\" as FilePath, serve_function: \"roadmap_serve_handle_srv1_lab\" as NonEmptyStr, listen_port: 18097, source_anchor_ref: \"refs/heads/main\" as NonEmptyStr, actuation: DashboardActuating, provision_transport: DashboardLocalProvision), node: \"n\" as NonEmptyStr, attempt_key: \"k\" as NonEmptyStr } }\n"
+
+test fn a_forged_view_preference_store_is_refused() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_view_preference_store_source, subject: "IssueViewPreferenceStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_snapshot_census_receipt_store_is_refused() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_census_receipt_store_source, subject: "SnapshotCensusReceiptStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_served_observation_store_is_refused() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_served_observation_store_source, subject: "ServedObservationStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_attempt_metering_store_is_refused() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_metering_store_source, subject: "AttemptMeteringStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_metering_index_store_is_refused() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_metering_index_store_source, subject: "AttemptMeteringIndexStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_request_binding_store_is_refused() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: seal_violations(source: forged_request_binding_store_source, subject: "AttemptRequestBindingStore"), holds: fn(n) { n == 1 }))
+}
+
+// ── deleted routes (stripped twins) ────────────────────────────────────────────────────────────────────
+
+data deleted_view_store_root_source: String = "module probe_r1\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_view_preference_store { issue_view_store_root }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(i: HostDashboardInstance) -> NonEmptyStr { issue_view_store_root(instance: i) }\n"
+
+data deleted_view_store_read_source: String = "module probe_r2\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_view_preference_store { issue_view_store_read }\nfn f(root: NonEmptyStr, key: NonEmptyStr) -> Int { match issue_view_store_read(root: root, key: key) { _ => 0 } }\n"
+
+data deleted_census_receipt_path_source: String = "module probe_r3\nimport std.types { String }\nimport gunbc.roadmap.roadmap_event_snapshot_census { roadmap_snapshot_census_receipt_path_for_instance }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(i: HostDashboardInstance) -> String { roadmap_snapshot_census_receipt_path_for_instance(instance: i) }\n"
+
+data deleted_served_observation_path_source: String = "module probe_r4\nimport std.types { String }\nimport gunbc.roadmap.roadmap_served_observation { served_observation_path_for_instance }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(i: HostDashboardInstance) -> String { served_observation_path_for_instance(instance: i) }\n"
+
+data deleted_metering_read_file_source: String = "module probe_r5\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_metering { metering_read_file }\nfn f(path: String) -> Int { match metering_read_file(path: path) { _ => 0 } }\n"
+
+data deleted_metering_path_route_source: String = "module probe_r6\nimport std.types { String, NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_metering { attempt_metering_path_for_instance }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_model { RoadmapNodeId }\nfn f(i: HostDashboardInstance, n: RoadmapNodeId, k: String) -> String { attempt_metering_path_for_instance(instance: i, node_id: n, attempt_key: k) }\n"
+
+data deleted_metering_create_only_source: String = "module probe_r7\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_metering { metering_create_only }\nfn f(path: String, content: String) -> String { match metering_create_only(path: path, content: content) { Present { value: e } => e Absent => \"\" } }\n"
+
+test fn the_view_preference_root_route_is_gone() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_view_store_root_source, subject: "issue_view_store_root"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_view_preference_root_read_route_is_gone() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_view_store_read_source, subject: "issue_view_store_read"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_census_receipt_path_route_is_gone() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_census_receipt_path_source, subject: "roadmap_snapshot_census_receipt_path_for_instance"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_served_observation_path_route_is_gone() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_served_observation_path_source, subject: "served_observation_path_for_instance"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_metering_path_read_route_is_gone() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_metering_read_file_source, subject: "metering_read_file"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_metering_record_path_route_is_gone() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_metering_path_route_source, subject: "attempt_metering_path_for_instance"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_metering_create_only_route_is_gone() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_metering_create_only_source, subject: "metering_create_only"), holds: fn(n) { n == 1 }))
+}
+
+// ── the retired writers are gone ───────────────────────────────────────────────────────────────────────
+
+data deleted_verification_receipt_writer_source: String = "module probe_r8\nimport std.types { String, NonEmptyStr }\nimport gunbc.roadmap.roadmap_verify { persist_verification_receipt }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_model { RoadmapNode }\nfn f(i: HostDashboardInstance, n: RoadmapNode) -> Int { match persist_verification_receipt(instance: i, node: n, receipt: \"{}\" as NonEmptyStr) { _ => 0 } }\n"
+
+test fn the_legacy_verification_receipt_writer_is_gone() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: missing_export(source: deleted_verification_receipt_writer_source, subject: "persist_verification_receipt"), holds: fn(n) { n == 1 }))
+}
+
+// ── the lawful routes are admitted ─────────────────────────────────────────────────────────────────────
+
+data lawful_view_preference_route_source: String = "module probe_g1\nimport std.types { NonEmptyStr, FilePath }\nimport gunbc.roadmap.roadmap_view_preference_store { issue_view_preference_store, issue_view_preference_read }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> Int {\n  let i = isolated_dashboard_instance(deployment: deployment_id(name: \"witness\" as NonEmptyStr), instance_id: \"witness\" as NonEmptyStr, layout: srv1_host_layout(), root: \"/tmp/witness\" as FilePath, serve_function: \"roadmap_serve_handle_srv1_lab\" as NonEmptyStr, listen_port: 18097, source_anchor_ref: \"refs/heads/main\" as NonEmptyStr, actuation: DashboardActuating, provision_transport: DashboardLocalProvision)\n  match issue_view_preference_store(instance: i) {\n    IssueViewPreferenceStoreReady { store } => match issue_view_preference_read(store: store, key: \"v0\" as NonEmptyStr) { _ => 0 }\n    IssueViewPreferenceStoreUnready { detail: _ } => 2\n  }\n}\n"
+
+data lawful_census_route_source: String = "module probe_g2\nimport std.types { NonEmptyStr, FilePath, String }\nimport gunbc.roadmap.roadmap_event_snapshot_census { snapshot_census_receipt_store, snapshot_census_receipt_content, SnapshotCensusReceiptStoreReady, SnapshotCensusReceiptStoreUnready, SnapshotCensusReceiptContent }\nimport gunbc.roadmap.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> Int {\n  let i = isolated_dashboard_instance(deployment: deployment_id(name: \"witness2\" as NonEmptyStr), instance_id: \"witness2\" as NonEmptyStr, layout: srv1_host_layout(), root: \"/tmp/witness2\" as FilePath, serve_function: \"roadmap_serve_handle_srv1_lab\" as NonEmptyStr, listen_port: 18098, source_anchor_ref: \"refs/heads/main\" as NonEmptyStr, actuation: DashboardActuating, provision_transport: DashboardLocalProvision)\n  match snapshot_census_receipt_store(instance: i) {\n    SnapshotCensusReceiptStoreReady { store } => match snapshot_census_receipt_content(store: store) { _ => 0 }\n    SnapshotCensusReceiptStoreUnready { detail: _ } => 1\n  }\n}\n"
+
+test fn the_lawful_view_preference_route_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: missing_export(source: lawful_view_preference_route_source, subject: "issue_view_preference_store"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: lawful_view_preference_route_source, safe: lawful_view_preference_route_baseline_source, holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_view_preference_route_source, subject: "IssueViewPreferenceStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn the_lawful_census_receipt_route_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: missing_export(source: lawful_census_route_source, subject: "snapshot_census_receipt_store"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: lawful_census_route_source, safe: lawful_census_route_baseline_source, holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_census_route_source, subject: "SnapshotCensusReceiptStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+
+data sealed_twin_view_preference_store_source: String = "module probe_twin_view_preference_store_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.definer { IssueViewPreferenceStore }\nfn forged() -> IssueViewPreferenceStore { IssueViewPreferenceStore { instance: \"probe-instance\" as NonEmptyStr, slots: \"probe-slots\" as NonEmptyStr } }\n"
+data stripped_twin_view_preference_store_source: String = "module probe_twin_view_preference_store_stripped_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.stripped_definer { IssueViewPreferenceStore }\nfn forged() -> IssueViewPreferenceStore { IssueViewPreferenceStore { instance: \"probe-instance\" as NonEmptyStr, slots: \"probe-slots\" as NonEmptyStr } }\n"
+
+// THE STRIPPED TWIN (the lead's control). Two fixture modules -- test.fixture.c_roadmap2_store_seal.definer
+// and .stripped_definer -- are the SAME copy of this record, and differ in nothing but the `sole_constructor`
+// keyword. The identical hostile source is run against both. With the keyword the forge draws exactly one
+// SoleConstructorViolation on the record's own name; without it the same forge draws none and the whole
+// closure carries exactly one fewer blocking row. That difference is the proof that the refusal in
+// a_forged_view_preference_store_is_refused comes from the seal, and not from the literal's shape, the field types, the
+// import, or the probe module. A definer constructing its OWN record stays legal in both arms -- the seal
+// binds consumers, which is exactly the rung this PR claims.
+test fn the_view_preference_store_seal_is_what_refuses_construction() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: sealed_twin_view_preference_store_source, subject: "IssueViewPreferenceStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: seal_violations(source: stripped_twin_view_preference_store_source, subject: "IssueViewPreferenceStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: sealed_twin_view_preference_store_source, safe: stripped_twin_view_preference_store_source, holds: fn(n) { n == 1 }),
+  ])
+}
+
+data sealed_twin_snapshot_census_receipt_store_source: String = "module probe_twin_snapshot_census_receipt_store_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.definer { SnapshotCensusReceiptStore }\nfn forged() -> SnapshotCensusReceiptStore { SnapshotCensusReceiptStore { instance: \"probe-instance\" as NonEmptyStr, root: \"/probe/root\" as NonEmptyStr } }\n"
+data stripped_twin_snapshot_census_receipt_store_source: String = "module probe_twin_snapshot_census_receipt_store_stripped_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.stripped_definer { SnapshotCensusReceiptStore }\nfn forged() -> SnapshotCensusReceiptStore { SnapshotCensusReceiptStore { instance: \"probe-instance\" as NonEmptyStr, root: \"/probe/root\" as NonEmptyStr } }\n"
+
+// THE STRIPPED TWIN (the lead's control). Two fixture modules -- test.fixture.c_roadmap2_store_seal.definer
+// and .stripped_definer -- are the SAME copy of this record, and differ in nothing but the `sole_constructor`
+// keyword. The identical hostile source is run against both. With the keyword the forge draws exactly one
+// SoleConstructorViolation on the record's own name; without it the same forge draws none and the whole
+// closure carries exactly one fewer blocking row. That difference is the proof that the refusal in
+// a_forged_snapshot_census_receipt_store_is_refused comes from the seal, and not from the literal's shape, the field types, the
+// import, or the probe module. A definer constructing its OWN record stays legal in both arms -- the seal
+// binds consumers, which is exactly the rung this PR claims.
+test fn the_snapshot_census_receipt_store_seal_is_what_refuses_construction() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: sealed_twin_snapshot_census_receipt_store_source, subject: "SnapshotCensusReceiptStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: seal_violations(source: stripped_twin_snapshot_census_receipt_store_source, subject: "SnapshotCensusReceiptStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: sealed_twin_snapshot_census_receipt_store_source, safe: stripped_twin_snapshot_census_receipt_store_source, holds: fn(n) { n == 1 }),
+  ])
+}
+
+data sealed_twin_served_observation_store_source: String = "module probe_twin_served_observation_store_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.definer { ServedObservationStore }\nfn forged() -> ServedObservationStore { ServedObservationStore { instance: \"probe-instance\" as NonEmptyStr, root: \"/probe/root\" as NonEmptyStr } }\n"
+data stripped_twin_served_observation_store_source: String = "module probe_twin_served_observation_store_stripped_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.stripped_definer { ServedObservationStore }\nfn forged() -> ServedObservationStore { ServedObservationStore { instance: \"probe-instance\" as NonEmptyStr, root: \"/probe/root\" as NonEmptyStr } }\n"
+
+// THE STRIPPED TWIN (the lead's control). Two fixture modules -- test.fixture.c_roadmap2_store_seal.definer
+// and .stripped_definer -- are the SAME copy of this record, and differ in nothing but the `sole_constructor`
+// keyword. The identical hostile source is run against both. With the keyword the forge draws exactly one
+// SoleConstructorViolation on the record's own name; without it the same forge draws none and the whole
+// closure carries exactly one fewer blocking row. That difference is the proof that the refusal in
+// a_forged_served_observation_store_is_refused comes from the seal, and not from the literal's shape, the field types, the
+// import, or the probe module. A definer constructing its OWN record stays legal in both arms -- the seal
+// binds consumers, which is exactly the rung this PR claims.
+test fn the_served_observation_store_seal_is_what_refuses_construction() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: sealed_twin_served_observation_store_source, subject: "ServedObservationStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: seal_violations(source: stripped_twin_served_observation_store_source, subject: "ServedObservationStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: sealed_twin_served_observation_store_source, safe: stripped_twin_served_observation_store_source, holds: fn(n) { n == 1 }),
+  ])
+}
+
+data sealed_twin_attempt_metering_store_source: String = "module probe_twin_attempt_metering_store_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.definer { AttemptMeteringStore }\nfn forged() -> AttemptMeteringStore { AttemptMeteringStore { instance: \"probe-instance\" as NonEmptyStr, node: \"probe-node\" as NonEmptyStr, attempt_key: \"probe-key\" as NonEmptyStr, directory: \"/probe/dir\" as NonEmptyStr } }\n"
+data stripped_twin_attempt_metering_store_source: String = "module probe_twin_attempt_metering_store_stripped_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.stripped_definer { AttemptMeteringStore }\nfn forged() -> AttemptMeteringStore { AttemptMeteringStore { instance: \"probe-instance\" as NonEmptyStr, node: \"probe-node\" as NonEmptyStr, attempt_key: \"probe-key\" as NonEmptyStr, directory: \"/probe/dir\" as NonEmptyStr } }\n"
+
+// THE STRIPPED TWIN (the lead's control). Two fixture modules -- test.fixture.c_roadmap2_store_seal.definer
+// and .stripped_definer -- are the SAME copy of this record, and differ in nothing but the `sole_constructor`
+// keyword. The identical hostile source is run against both. With the keyword the forge draws exactly one
+// SoleConstructorViolation on the record's own name; without it the same forge draws none and the whole
+// closure carries exactly one fewer blocking row. That difference is the proof that the refusal in
+// a_forged_attempt_metering_store_is_refused comes from the seal, and not from the literal's shape, the field types, the
+// import, or the probe module. A definer constructing its OWN record stays legal in both arms -- the seal
+// binds consumers, which is exactly the rung this PR claims.
+test fn the_attempt_metering_store_seal_is_what_refuses_construction() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: sealed_twin_attempt_metering_store_source, subject: "AttemptMeteringStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: seal_violations(source: stripped_twin_attempt_metering_store_source, subject: "AttemptMeteringStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: sealed_twin_attempt_metering_store_source, safe: stripped_twin_attempt_metering_store_source, holds: fn(n) { n == 1 }),
+  ])
+}
+
+data sealed_twin_metering_index_store_source: String = "module probe_twin_metering_index_store_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.definer { AttemptMeteringIndexStore }\nfn forged() -> AttemptMeteringIndexStore { AttemptMeteringIndexStore { instance: \"probe-instance\" as NonEmptyStr, root: \"/probe/root\" as NonEmptyStr } }\n"
+data stripped_twin_metering_index_store_source: String = "module probe_twin_metering_index_store_stripped_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.stripped_definer { AttemptMeteringIndexStore }\nfn forged() -> AttemptMeteringIndexStore { AttemptMeteringIndexStore { instance: \"probe-instance\" as NonEmptyStr, root: \"/probe/root\" as NonEmptyStr } }\n"
+
+// THE STRIPPED TWIN (the lead's control). Two fixture modules -- test.fixture.c_roadmap2_store_seal.definer
+// and .stripped_definer -- are the SAME copy of this record, and differ in nothing but the `sole_constructor`
+// keyword. The identical hostile source is run against both. With the keyword the forge draws exactly one
+// SoleConstructorViolation on the record's own name; without it the same forge draws none and the whole
+// closure carries exactly one fewer blocking row. That difference is the proof that the refusal in
+// a_forged_metering_index_store_is_refused comes from the seal, and not from the literal's shape, the field types, the
+// import, or the probe module. A definer constructing its OWN record stays legal in both arms -- the seal
+// binds consumers, which is exactly the rung this PR claims.
+test fn the_metering_index_store_seal_is_what_refuses_construction() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: sealed_twin_metering_index_store_source, subject: "AttemptMeteringIndexStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: seal_violations(source: stripped_twin_metering_index_store_source, subject: "AttemptMeteringIndexStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: sealed_twin_metering_index_store_source, safe: stripped_twin_metering_index_store_source, holds: fn(n) { n == 1 }),
+  ])
+}
+
+data sealed_twin_request_binding_store_source: String = "module probe_twin_request_binding_store_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.definer { AttemptRequestBindingStore }\nfn forged() -> AttemptRequestBindingStore { AttemptRequestBindingStore { instance: \"probe-instance\" as NonEmptyStr, node: \"probe-node\" as NonEmptyStr, attempt_key: \"probe-key\" as NonEmptyStr } }\n"
+data stripped_twin_request_binding_store_source: String = "module probe_twin_request_binding_store_stripped_definer\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_store_seal.stripped_definer { AttemptRequestBindingStore }\nfn forged() -> AttemptRequestBindingStore { AttemptRequestBindingStore { instance: \"probe-instance\" as NonEmptyStr, node: \"probe-node\" as NonEmptyStr, attempt_key: \"probe-key\" as NonEmptyStr } }\n"
+
+// THE STRIPPED TWIN (the lead's control). Two fixture modules -- test.fixture.c_roadmap2_store_seal.definer
+// and .stripped_definer -- are the SAME copy of this record, and differ in nothing but the `sole_constructor`
+// keyword. The identical hostile source is run against both. With the keyword the forge draws exactly one
+// SoleConstructorViolation on the record's own name; without it the same forge draws none and the whole
+// closure carries exactly one fewer blocking row. That difference is the proof that the refusal in
+// a_forged_request_binding_store_is_refused comes from the seal, and not from the literal's shape, the field types, the
+// import, or the probe module. A definer constructing its OWN record stays legal in both arms -- the seal
+// binds consumers, which is exactly the rung this PR claims.
+test fn the_request_binding_store_seal_is_what_refuses_construction() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: sealed_twin_request_binding_store_source, subject: "AttemptRequestBindingStore"), holds: fn(n) { n == 1 }),
+    census_verdict(census: seal_violations(source: stripped_twin_request_binding_store_source, subject: "AttemptRequestBindingStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: sealed_twin_request_binding_store_source, safe: stripped_twin_request_binding_store_source, holds: fn(n) { n == 1 }),
+  ])
+}
+
+// THE SAME-IMPORTS BASELINE for the lawful-route claim: the identical module, imports and all,
+// whose body does not call the mint. The census row set is the WHOLE COMPILE'S -- the imported closure,
+// not just the probed source -- so only a baseline that imports the same modules can isolate what the mint
+// call itself costs; against an empty baseline every production route would look blocking.
+data lawful_view_preference_route_baseline_source: String = "module probe_g1\nimport std.types { NonEmptyStr, FilePath }\nimport gunbc.roadmap.roadmap_view_preference_store { issue_view_preference_store, issue_view_preference_read }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> Int { 0 }\n"
+
+// THE SAME-IMPORTS BASELINE for the lawful-route claim: the identical module, imports and all,
+// whose body does not call the mint. The census row set is the WHOLE COMPILE'S -- the imported closure,
+// not just the probed source -- so only a baseline that imports the same modules can isolate what the mint
+// call itself costs; against an empty baseline every production route would look blocking.
+data lawful_census_route_baseline_source: String = "module probe_g2\nimport std.types { NonEmptyStr, FilePath, String }\nimport gunbc.roadmap.roadmap_event_snapshot_census { snapshot_census_receipt_store, snapshot_census_receipt_content, SnapshotCensusReceiptStoreReady, SnapshotCensusReceiptStoreUnready, SnapshotCensusReceiptContent }\nimport gunbc.roadmap.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }\nimport gunbc.host.host_layout { srv1_host_layout }\nimport gunbc.deployment_risk { deployment_id }\nfn f() -> Int { 0 }\n"

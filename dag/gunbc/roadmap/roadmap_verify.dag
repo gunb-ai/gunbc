@@ -1,6 +1,5 @@
 module gunbc.roadmap.roadmap_verify
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptVerificationRecord, attempt_state_write_at, attempt_state_provision, attempt_state_provision_path }
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
@@ -48,7 +47,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
 }
 
 import extdeps.filesystem.filesystem_io
-import extdeps.filesystem.filesystem_io { Filesystem, FilesystemWritten, FilesystemWriteRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit {
   JsonValue,
   serialize_json,
@@ -546,56 +545,6 @@ fn verify_attempt(
           }
       }
   }
-  }
-}
-
-// PERSISTING THE RECEIPT IS A HOST EFFECT AND IT OBEYS THE SAME TRANSPORT THE VERIFICATION DID. The
-// attempt state directory lives on the instance's machine, so writing the receipt with a local
-// Filesystem.Write is correct exactly when the instance is locally provisioned and wrong in the
-// same way the old verifier was wrong when it is not — it would put an srv1 attempt's evidence on
-// srv2's disk, under a path that describes srv1, and report success.\n\nSo the remote arm REFUSES
-// rather than writing locally, and the refusal is typed and carries the transport it could not use.
-// This is a real gap and it is named as one: gunbc.WitnessBin.Run and the SSH argv path both move a
-// COMMAND, and neither moves file CONTENT, so a remote receipt needs a content-carrying transport
-// that does not exist here yet. The argv allowlist in gunbc.typed_argv_exec deliberately excludes
-// the braces and quotes a JSON document is made of, which is why smuggling the write through an
-// echo argv is not available and should not be.\n\nDISSOLVES ON a transport-routed write — the same
-// seam gunbc.roadmap.roadmap_dashboard_instance_apply's dashboard_copy_to_target_atomically already crosses
-// for staged files via scp. Until then a remote attempt's verification returns its outcome and its
-// receipt as VALUES, which are complete and checkable, and refuses only the persistence step. Note
-// that gunbc.roadmap.roadmap_belt_actuate's attempt-state initialization writes through the same local
-// Filesystem.Write with the same latent assumption; this row does not fix that, and does not hide
-// it either.
-
-type VerificationReceiptPersistence
-  = ReceiptPersisted { path: String }
-  | ReceiptPersistRefused { reason: String }
-
-fn persist_verification_receipt(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
-  receipt: LegacySingleValidationVerificationReceipt,
-) -> VerificationReceiptPersistence {
-  match instance.provision_transport {
-    DashboardSshProvision { host } =>
-      ReceiptPersistRefused {
-        reason: join([
-          "instance is provisioned over ssh to ",
-          host as String,
-          ", and no content-carrying transport is bound here; the receipt is returned as a value and not written",
-        ], ""),
-      }
-    DashboardLocalProvision => {
-      let write = attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: receipt.attempt_key, member: AttemptVerificationRecord, content: legacy_single_validation_verification_receipt_json(receipt: receipt))
-      match write {
-        FilesystemWritten { path: _ } =>
-          ReceiptPersisted { path: attempt_state_provision_path(provision: attempt_state_provision(instance: instance, node: node.node as String, attempt_key: receipt.attempt_key), member: AttemptVerificationRecord) }
-        FilesystemWriteRefused { path: _, error: e } =>
-          ReceiptPersistRefused {
-            reason: join(["verification receipt write failed: ", e], ""),
-          }
-      }
-    }
   }
 }
 

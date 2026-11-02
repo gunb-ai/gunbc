@@ -1,0 +1,151 @@
+module gunbc.roadmap.roadmap_metering_closing_cutover
+
+import std.types { String, Bool, NonEmptyStr, List, Int }
+import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
+import gunbc.roadmap.roadmap_attempt_state_layout_move {
+  LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, LegacyWriterExclusion, LegacyWriterNotExcluded,
+  LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion, legacy_writer_exclusion_all,
+  legacy_writer_fence_for,
+}
+import gunbc.roadmap.roadmap_belt_obligation { BeltInstanceObligationKind, MeteringObligation, belt_instance_obligation_unit_name }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id }
+
+// THE CLOSING-MARKER MOVE, AND THE WRITER IT MUST EXCLUDE (stern-ram-763 on #15574, 2026-11-01).
+//
+// THE MOVE. The roster closing marker was a PLAIN entry named `metering-roster-closing` inside the attempt's
+// metering directory. It is now a hold slot the hold library writes as `<key>.<generation>` (the key is the
+// same declared basename row, `attempt_metering_slots.roster_closing_basename`, and the hold library appends
+// the generation). Two writers acting on one attempt -- the build deployed today and the build this PR
+// changes -- would otherwise both act on the closing of the same attempt: the pre-PR writer creates the plain
+// entry and lists the roster, the post-PR writer takes the hold and lists it again. The hold fences only
+// writers that TAKE it, so it does not fence a pre-PR build by itself: the boundary is the deploy, and across
+// that boundary the legacy writer's host units have to be excluded, exactly as #15413's identity-store move
+// requires (`legacy_writer_fence_for`, `legacy_writer_exclusion` in gunbc.roadmap.roadmap_attempt_state_layout_move).
+//
+// THE WRITER, BY SYMBOL. `metering_roster_seal` (gunbc.roadmap.roadmap_attempt_metering) is the only route
+// that takes the closing hold, and it has exactly one production caller: `metering_persist_current`
+// (roadmap_attempt_metering.dag:1800), reached from `metering_persist_for_attempt` (:1767), reached from
+// `belt_metering_for_attempt` (roadmap_belt_actuate.dag:8643) and `belt_metering_departed` (:8661), which are
+// called only from `belt_metering_attempts_for_instance` (:8666, calls at :8674 and :8675), which is called
+// only from `belt_instance_obligation_run` under `BeltInstanceObligation.MeteringObligation`
+// (roadmap_belt_tick_cli.dag:514). That obligation is what the metering obligation unit's ExecStart runs:
+// `belt_instance_obligation_cli("metering")` (roadmap_belt_tick_cli.dag:545-551).
+//
+// THE WRITER, BY HOST UNIT. `belt_instance_obligation_unit_name(instance_id, MeteringObligation)` spells it
+// `gunbc-obligation-<instance_id>-<kind_key>.service` (roadmap_belt_obligation.dag:216) and the kind key for
+// MeteringObligation is "metering" (:195) -- so on srv1's lab instance the direct writer is
+// `gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service`. The unit that ENQUEUES that obligation is
+// the belt service unit, `<stem>-belt.service` (gunbc.live_deploy.spec `deployment_belt_service_unit_name`,
+// :736-737), whose tick reaches `belt_attempt_obligations_pass` (roadmap_belt_tick_cli.dag:455, called at :475
+// and :486); the per-attempt obligation units `gunbc-obligation-attempt-<node>-<key>.service` run
+// `belt_attempt_obligations_cli` and are transient -- one per attempt, so they are not a fixed list, and the
+// activation step below drains in-flight ones rather than masking a name that does not persist.
+//
+// ENTRIES TRACED AND NOT REACHING IT. The serve unit's entry (`roadmap_serve_handle_srv1_lab` →
+// `roadmap_serve_route` → `roadmap_serve_attempt_route` → `belt_actuate_spawn_for_instance`) reaches the
+// attempt mint, not the metering pass; the exit drain, the publication answer drain and credential recovery do
+// not call `metering_persist_for_attempt`. `metering_roster_seal` has no other production caller (the other
+// `metering_roster_seal*` names in the tree are the JSON codec, not the route).
+//
+// UNKNOWN, RECORDED RATHER THAN ASSUMED. Whether srv1 loads the metering obligation unit TODAY, and whether a
+// timer starts the belt unit, are host facts this branch cannot read from here (the witness host has no
+// systemctl and no route to srv1's systemd); the disposition function below therefore refuses on an UNDECLARED
+// fence and requires an OBSERVED state per declared unit -- an unobserved unit is not excluded. The 2026-11-01
+// census of srv1's lab attempt-state tree (0 plain closing markers across 20 attempt directories) says nothing
+// is sitting there to migrate; it does NOT say no unit can still write one, which is what the fence is for.
+
+// THE NAME THE OLD WRITER LEFT BEHIND. It is the slots module's own basename row -- the same row the hold
+// library now addresses with a generation suffix -- which is why the mint refuses a plain entry of this name
+// instead of reading both layouts.
+data metering_closing_legacy_marker_name: NonEmptyStr = attempt_metering_slots.roster_closing_basename
+
+// The transient per-attempt obligation units that enqueue the metering obligation (one per attempt: this is the
+// family stem, not a unit that can be masked by name).
+data metering_closing_enqueue_unit_family_stem: NonEmptyStr = "gunbc-obligation-attempt-" as NonEmptyStr
+
+// THE FENCE, PER INSTANCE. Units whose ExecStart reaches the closing-marker writer, in the shape #15413's
+// identity-store cutover declared (roadmap_dashboard_instance.dag:3470). The first unit is the DIRECT writer,
+// spelled here as a literal and pinned in the witness against `belt_instance_obligation_unit_name` so the
+// spelling cannot drift from the derivation; the second is the belt service unit that enqueues the obligation.
+data metering_closing_writer_fence_rows: List<LegacyWriterFenceRow> = [
+  LegacyWriterFenceRow {
+    instance_id: srv1_dashboard_lab_id,
+    fence: LegacyWriterUnits {
+      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
+      units: [
+        "gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service" as NonEmptyStr,
+        "gunbc-srv1-lab-codex-feedback-v0-belt.service" as NonEmptyStr,
+      ],
+    },
+  },
+]
+
+fn metering_closing_writer_fence(instance_id: NonEmptyStr) -> LegacyWriterFence {
+  legacy_writer_fence_for(rows: metering_closing_writer_fence_rows, instance_id: instance_id)
+}
+
+// WHAT WAS OBSERVED ABOUT ONE WRITER UNIT, as systemctl reads it: is-active and is-enabled words.
+type MeteringClosingWriterObservation { unit: NonEmptyStr, active_state: String, enabled_state: String }
+
+// The exclusion of one declared unit, through the ONE exclusion rule the accepted cutover uses: stopped is not
+// enough, a unit that is merely stopped can be started again, so it has to be masked as well. A declared unit
+// with no observation at all is NOT excluded -- the cutover does not get to assume silence means absence.
+fn metering_closing_unit_exclusion(unit: NonEmptyStr, observed: List<MeteringClosingWriterObservation>) -> LegacyWriterExclusion {
+  let states = observed.filter(o => o.unit == unit)
+  if length(xs: states) == 0 {
+    LegacyWriterNotExcluded { reason: join(["the closing-marker writer unit ", unit as String, " has no observed state; an unobserved unit is not excluded"], "") }
+  } else {
+    legacy_writer_exclusion_all(exclusions: map(states, o => legacy_writer_exclusion(unit: unit as String, active_state: o.active_state, enabled_state: o.enabled_state)))
+  }
+}
+
+// THE DISPOSITION, per host. Noop only where every declared writer unit is observed stopped AND masked and no
+// plain marker is on the host; ActivationRequired naming every declared unit that is not excluded, with the
+// step that excludes it (that is the disposition for a host where the old writer can still run); Refused where
+// the fence is undeclared or conflicted, or where the writer is excluded but plain markers are still on the
+// host -- those bytes are the mint's refusal case and a human has to say what happens to them.
+type MeteringClosingCutover
+  = MeteringClosingNoop { reason: String }
+  | MeteringClosingActivationRequired { units: List<NonEmptyStr>, step: String }
+  | MeteringClosingCutoverRefused { cause: String }
+
+data metering_closing_activation_step: NonEmptyStr = "drain any in-flight gunbc-obligation-attempt-<node>-<key> unit, stop and mask the named unit before the build that takes the closing hold is deployed, deploy, restart the unit from the new build, then re-census the plain closing-marker name across the instance's attempt-state tree and require 0" as NonEmptyStr
+
+// The declared units that are NOT excluded -- an empty list is the only answer that lets the move be a Noop.
+fn metering_closing_held_back_units(
+  declared: List<NonEmptyStr>,
+  observed: List<MeteringClosingWriterObservation>,
+) -> List<NonEmptyStr> {
+  declared.filter(u => match metering_closing_unit_exclusion(unit: u, observed: observed) {
+    LegacyWriterExcluded => false
+    LegacyWriterNotExcluded { reason: _ } => true
+  })
+}
+
+fn metering_closing_answer(
+  instance_id: NonEmptyStr,
+  declared: List<NonEmptyStr>,
+  observed: List<MeteringClosingWriterObservation>,
+  legacy_markers_observed: Int,
+) -> MeteringClosingCutover {
+  let held_back = metering_closing_held_back_units(declared: declared, observed: observed)
+  if length(xs: held_back) > 0 {
+    MeteringClosingActivationRequired { units: held_back, step: metering_closing_activation_step as String }
+  } else if legacy_markers_observed > 0 {
+    MeteringClosingCutoverRefused { cause: join(["the closing-marker writer is excluded, but ", to_string(value: legacy_markers_observed), " plain ", metering_closing_legacy_marker_name as String, " entries are still on this host; the mint refuses them and an operator has to say what happens to those bytes"], "") }
+  } else {
+    MeteringClosingNoop { reason: join(["every declared closing-marker writer unit for instance ", instance_id as String, " is observed stopped and masked, and no plain ", metering_closing_legacy_marker_name as String, " entry is on the host: nothing to do across the deploy"], "") }
+  }
+}
+
+fn metering_closing_cutover_disposition(
+  instance_id: NonEmptyStr,
+  observed: List<MeteringClosingWriterObservation>,
+  legacy_markers_observed: Int,
+) -> MeteringClosingCutover {
+  match metering_closing_writer_fence(instance_id: instance_id) {
+    LegacyWriterUndeclared => MeteringClosingCutoverRefused { cause: join(["no closing-marker writer fence is declared for instance ", instance_id as String, "; the cutover refuses rather than assuming nothing on this host still writes ", metering_closing_legacy_marker_name as String], "") }
+    LegacyWriterFenceConflict { instance_id: i, rows: n } => MeteringClosingCutoverRefused { cause: join(["the closing-marker writer fence for instance ", i as String, " is declared ", to_string(value: n), " times; one row per instance is what the cutover can act on"], "") }
+    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_answer(instance_id: instance_id, declared: declared, observed: observed, legacy_markers_observed: legacy_markers_observed)
+  }
+}
