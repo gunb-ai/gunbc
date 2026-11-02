@@ -71,10 +71,7 @@ import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
 import gunbc.native_census_verb_seed_growth { native_census_verb_seed_growth_justification }
 import gunbc.self_host_frontier_seed_growth { self_host_frontier_seed_growth_justification }
-import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
 import gunbc.bootstrap_witness_diagnostic_count_seed_growth { bootstrap_witness_diagnostic_count_seed_growth_justification }
-import gunbc.interpolation_hole_census_seed_growth { interpolation_hole_census_seed_growth_justification }
-import gunbc.shared_type_leaf_collision_census_seed_growth { shared_type_leaf_collision_census_seed_growth_justification }
 import gunbc.cardinality_realization_seed_growth { cardinality_realization_seed_growth_justification }
 import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
 import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
@@ -337,10 +334,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_serve_program_seed_growth_justification,
     native_census_verb_seed_growth_justification,
     self_host_frontier_seed_growth_justification,
-    generic_identity_census_seed_growth_justification,
     bootstrap_witness_diagnostic_count_seed_growth_justification,
-    interpolation_hole_census_seed_growth_justification,
-    shared_type_leaf_collision_census_seed_growth_justification,
     cardinality_realization_seed_growth_justification,
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,

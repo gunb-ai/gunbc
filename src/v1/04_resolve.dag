@@ -336,7 +336,7 @@ fn preserve_nominal_brand_on_resolve(
 // reference to an item's own parameter. This function then looked the node up BY NAME and returned
 // whatever the environment bound to that spelling, so a parameter spelled like some other binding in
 // scope was replaced by that binding and its own identity was dropped: measured by
-// //gunbc/instruments:generic-identity-census as formal_declaration_bound_conformance leaves carrying
+// the (since retired) generic-identity census as formal_declaration_bound_conformance leaves carrying
 // neither mark, where the signature they were read from carried both. There is nothing to peel
 // beneath a parameter, so a node carrying the mark is returned as it was given.
 fn node_is_type_parameter_reference(n: Node) -> Bool {
