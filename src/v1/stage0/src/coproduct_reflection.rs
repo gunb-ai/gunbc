@@ -2154,8 +2154,9 @@ pub fn eval_decl_facts_at(
 /// and none falls back to the walk: a fallback would hide the deficit (DESIGN section 5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclFactsKeyedRefusal {
-    /// The key has no module part, so it is not a qualified key at all. (A module part that is
-    /// not a valid module name is a genuine miss, not this refusal: nothing can declare it.)
+    /// The key has no module part, or its module part is lexable but not layout-storable (a file
+    /// could declare it, so a miss would be silent). A module part the lexer cannot spell at all
+    /// is a genuine miss, not this refusal: no header can declare it.
     KeyUnderivable { key: String, cause: String },
     /// A pool root outside the layout trees: no file the layout derives can lie under it, so an
     /// empty answer there would be a silent miss, not a reading.
@@ -2201,6 +2202,19 @@ impl std::fmt::Display for DeclFactsKeyedRefusal {
             }
         }
     }
+}
+
+/// Whether the dag lexer reads `module` as a dotted sequence of identifiers, by its own
+/// `is_ident_start` / `is_ident_char`: the only names a `module` header can carry.
+fn module_is_lexable(module: &str) -> bool {
+    !module.is_empty()
+        && module.split('.').all(|segment| {
+            let mut chars = segment.chars();
+            chars
+                .next()
+                .is_some_and(|c| crate::v1_compiler_tokenize::is_ident_start(c as i64))
+                && chars.all(|c| crate::v1_compiler_tokenize::is_ident_char(c as i64))
+        })
 }
 
 /// The module part of a qualified key: every segment before the last (a declaration name has no dot).
@@ -2260,12 +2274,21 @@ fn keyed_decl_facts(
     let mut files: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     for key in qualified {
         let module = qualified_key_module(key)?;
-        // A module part that is not a dotted identifier sequence is a name no `module` header can
-        // carry and no layout path can store, so nothing in any pool declares it: zero rows is the
-        // exact answer, the one the walk gives, not a hidden deficit. Refusing here instead aborted
-        // the roster sweep's underivable-home control, whose located refusal reads that empty pool.
-        let Ok(rel) = crate::cli_run::source_layout_lookup::module_storage_relative(module) else {
-            continue;
+        let rel = match crate::cli_run::source_layout_lookup::module_storage_relative(module) {
+            Ok(rel) => rel,
+            // A module part the dag lexer cannot spell as a dotted identifier sequence is a name
+            // no `module` header can carry, so the walk (keyed by the declared module) answers
+            // zero rows for it: the keyed read gives the same exact miss. Refusing here aborted
+            // the roster sweep's underivable-home control, whose located refusal reads that pool.
+            Err(_) if !module_is_lexable(module) => continue,
+            // The lexer can spell it (a non-ASCII identifier, say) but the layout cannot store it:
+            // a file may declare it, so zero rows could be a silent miss. That stays a refusal.
+            Err(cause) => {
+                return Err(DeclFactsKeyedRefusal::KeyUnderivable {
+                    key: key.to_string(),
+                    cause,
+                })
+            }
         };
         files.insert(rel, module.to_string());
     }
@@ -3044,6 +3067,19 @@ mod keyed_decl_facts_tests {
         match keyed_decl_facts(&["dag/std".to_string()], &keys) {
             Ok(rows) => assert!(rows.is_empty(), "expected no rows, got {}", rows.len()),
             other => panic!("expected an empty answer, got {other:?}"),
+        }
+    }
+
+    // The lexer spells a non-ASCII identifier the layout cannot store: a file may declare that
+    // module, so an empty answer could hide it. That still refuses.
+    #[test]
+    fn a_lexable_module_the_layout_cannot_store_refuses() {
+        let keys: HashSet<&str> = ["std.caf\u{e9}.chars"].into_iter().collect();
+        match keyed_decl_facts(&["dag/std".to_string()], &keys) {
+            Err(DeclFactsKeyedRefusal::KeyUnderivable { key, .. }) => {
+                assert_eq!(key, "std.caf\u{e9}.chars")
+            }
+            other => panic!("expected KeyUnderivable, got {other:?}"),
         }
     }
 
