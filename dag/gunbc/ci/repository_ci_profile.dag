@@ -6,7 +6,16 @@ import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
-import gunbc.ci.ci_spec { gunbc_ci_tier_o_drift_check_target }
+import gunbc.ci.ci_spec {
+  gunbc_ci_tier_o_drift_check_target,
+  gunbc_ci_heal_publication_admit_target,
+  gunbc_ci_heal_publication_publish_target,
+}
+// THE FEDERATION IS LEASED, NOT RE-SPELLED (DESIGN 3b): the record of which workload identity provider,
+// which service account and which secret a publisher federates to belongs to this module's neighbour, so
+// the profile row names which federation a publisher uses and never carries those strings itself.
+import gunbc.auth.heal_publisher_federation { HealPublisherFederation, public_heal_publisher_federation }
+import extdeps.github.actions { PermissionLevel, PermWrite }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.std.node {
   Node
@@ -198,6 +207,15 @@ type HealSeal {
 // THE PUBLISHER: admit a sealed candidate with no credential, federate, fast-forward the branch. Absent
 // means the repository commits no generated mirror, so there is nothing to publish and no file to emit -
 // a publisher that can only ever fail is not a job, it is a red check with a name.
+// WHAT THE PUBLISHER RUNS IS ROWS. The two invocations are the admit and the publish subjects, so the
+// emitter never names a repository's module for them; which identity the job federates to and which
+// installation the token is minted for are the federation record, owned by gunbc.auth.heal_publisher_federation
+// (DESIGN 3b leasing), so this row says WHICH one and never re-spells a provider path, a service account or
+// a secret name. What is deliberately NOT here: the overlay a mirror's publisher composes, which is the
+// roster route's OverlayIngest read through profile_overlay - the same authority the drift emitter reads,
+// because a candidate sealed from one composition and admitted against another is precisely the drift this
+// workflow exists to prevent; and any credential-rendering shell, because the mint belongs in the publish
+// subject itself (gunbc.github_effect_perform mint_publisher_installation_token), never in a workflow step.
 type HealPublisherPolicy {
   workflow_file: NonEmptyStr
   workflow_name: NonEmptyStr
@@ -207,16 +225,25 @@ type HealPublisherPolicy {
   timeout: Minute
   trigger_workflow: NonEmptyStr
   candidate_artifact: NonEmptyStr
-  // Present when the repository's publisher runs a .dag subject to admit the candidate and publish it;
-  // Absent for a publisher whose phases are shell over a downloaded artifact, which is what gunbc's
-  // own publisher is. Declaring the invocation only where one exists keeps a row from naming a subject
-  // no module owns.
-  admit: Optional<DagInvocation>
-  publish: Optional<DagInvocation>
-  // Present when the publisher must compose a root to run its subject in (a mirror's rows are not
-  // the publisher's own checkout). Absent means the publisher works in its own checkout.
-  compose: Optional<OverlayIngest>
+  admit_invocation: DagInvocation
+  publish_invocation: DagInvocation
+  federation: HealPublisherFederation
+  pull_requests: PermissionLevel
+  build_route: PublisherBuildRoute
 }
+
+// HOW THE PUBLISHER OBTAINS THE COMPILER ITS PHASES RUN UNDER. THE TWO WAYS ARE NAMED, NOT IMPLIED. An
+// absent seed used to carry this decision, which meant one repository's absence stood for another
+// repository's whole policy - toolchain-home isolation, the witness floor's toolchain, the rustup pin and
+// a build of this checkout (DESIGN 5's fabricated default, DESIGN 3's meaning fork): a repository with no
+// seed silently inherited gunbc's build. `Own_checkout_under_witness_floor` says so and names the binaries;
+// `Declared_seed` says the profile's public seed is checked out and built there, the same two steps the
+// drift job runs for the seal, and is refused unless a seed is declared. There is deliberately no third
+// arm for "no build at all": both phases run `.dag` subjects, so a publisher without a compiler has nothing
+// to run, and an arm nobody can inhabit is a default waiting to be selected by mistake.
+type PublisherBuildRoute
+  = Own_checkout_under_witness_floor { required_bins: List<NonEmptyStr> }
+  | Declared_seed
 
 type RepositoryCiProfile {
   repository: String
@@ -298,9 +325,26 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         timeout: minute(45),
         trigger_workflow: heal_workflow_authority_name,
         candidate_artifact: heal_repair_candidate_artifact_name,
-        admit: Absent,
-        publish: Absent,
-        compose: Absent
+        // The two subjects, taken from the targets ci_spec declares for them, which is where the
+        // declared-target census folds them. The emitter no longer names either one.
+        admit_invocation: DagInvocation {
+          entry: gunbc_ci_heal_publication_admit_target.entry,
+          function: gunbc_ci_heal_publication_admit_target.function
+        },
+        publish_invocation: DagInvocation {
+          entry: gunbc_ci_heal_publication_publish_target.entry,
+          function: gunbc_ci_heal_publication_publish_target.function
+        },
+        federation: public_heal_publisher_federation(),
+        // GUNBC BUILDS ITS OWN PUBLISHER, under the witness floor's toolchain isolation and rustup pin, from
+        // the default branch of this checkout. The step shapes are the emitter's; WHICH of the two routes
+        // this is, and which binaries it must produce, are here.
+        build_route: Own_checkout_under_witness_floor { required_bins: ["gunbc" as NonEmptyStr] },
+        // The job token posts the publication receipt comment on the repaired pull request, which is the
+        // only write this job performs with its own token; the publication itself goes over the federated
+        // identity, minted inside the publish subject rather than in a workflow step. A mirror that
+        // publishes with an installation token and leaves its receipts to the App declares `read` here.
+        pull_requests: PermWrite
       }
     }
   }
@@ -446,6 +490,23 @@ fn profile_overlay(profile: RepositoryCiProfile) -> Optional<OverlayIngest> {
   }
 }
 
+// AN OVERLAY HAS TO COMPOSE INTO A DECLARED SEED. The overlay is copied into a detached tree checked out
+// from the profile's public seed, and the roster and the publisher's phases run inside that composed root.
+// A row that declares the overlay without a seed has no tree to compose into, and the publisher would then
+// admit and publish candidates in its own checkout - sealing from one composition and admitting against
+// another, which is the drift the publisher exists to prevent. Refused at the row, so no caller can render
+// the silent downgrade and none has to.
+fn profile_overlay_has_a_declared_seed(profile: RepositoryCiProfile) -> Bool {
+  match profile_overlay(profile: profile) {
+    Absent => true
+    Present { value: _ } =>
+      match profile_public_seed(profile: profile) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
 // THE DISPATCHER RUNS IN THE CHECKOUT THAT ALREADY HOLDS THE COMPILER UNDER TEST. A row that routes its
 // roster through it AND declares a seed to build (or an overlay to compose, which only the composed route
 // carries) is describing two repositories at once: the gate would report on a binary none of its rows ever
@@ -472,6 +533,12 @@ fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEm
     Present { value: "REFUSE: a job pins itself to a runner group that gunbc.runner.runner_group_restriction_ensure does not declare. Ensure the group, or select another CiRunnerTarget (gunbc.ci.ci_runner_target FleetSelfHostedInDeclaredGroup)." }
   } else if profile_publisher_trigger_is_declared(profile: profile) == false {
     Present { value: "REFUSE: the publisher is triggered by the completion of a workflow this profile does not declare, so it can never run with anything to publish. Name the heal or drift workflow that seals the candidate (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared)." }
+  } else if profile_publisher_build_route_is_coherent(profile: profile) == false {
+    Present { value: "REFUSE: the publisher says it builds its compiler from the profile's public seed, and the profile declares no seed to build - a step that would check out nothing and compile nothing. Name the seed, or select Own_checkout_under_witness_floor and build from this checkout (gunbc.ci.repository_ci_profile profile_publisher_build_route_is_coherent)." }
+  } else if profile_overlay_has_a_declared_seed(profile: profile) == false {
+    Present { value: "REFUSE: this profile composes an overlay into a detached tree, and declares no public seed to check that tree out. The copy has nowhere to land, and a publisher over such a row would seal a candidate from one composition and admit it against another - the drift the publisher exists to prevent. Name the seed, or route the roster through the instrument dispatcher with no overlay (gunbc.ci.repository_ci_profile profile_overlay_has_a_declared_seed)." }
+  } else if profile_optional_job_timeouts_are_positive(profile: profile) == false {
+    Present { value: "REFUSE: a declared job carries a timeout that is not positive, so it would be killed before it could report a reason. The gate's timeout is refused at zero; heal, drift and publisher timeouts are held to the same bound (gunbc.ci.repository_ci_profile profile_optional_job_timeouts_are_positive)." }
   } else if minute_count(m: profile.roster.timeout) == 0 {
     Present { value: "REFUSE: the required gate declares a timeout that is not positive; it would be killed before it could report a reason." }
   } else if profile_routes_to_dispatcher_while_building_a_second_compiler(profile: profile) {
@@ -516,6 +583,49 @@ fn profile_runner_group_is_declared(target: CiRunnerTarget) -> Bool {
       any(restricted_runner_groups(), g => g.name == group.name)
     _ => true
   }
+}
+
+// A ROUTE THAT NAMES A SEED HAS TO HAVE ONE. The route and the seed are separate fields because the seed is
+// shared with the drift job and the witness lane - a publisher may build from its own checkout while the
+// drift job seals against a seed - so their agreement is a rule rather than a type. Only one direction can
+// fail: a route naming a seed the profile does not declare. The other arm checks nothing, because
+// `required_bins` is a List<NonEmptyStr> and an empty bin is a state that cannot be written (DESIGN §4b).
+fn profile_publisher_build_route_is_coherent(profile: RepositoryCiProfile) -> Bool {
+  match profile.publisher {
+    Absent => true
+    Present { value: p } =>
+      match p.build_route {
+        Own_checkout_under_witness_floor { required_bins: _ } => true
+        Declared_seed =>
+          match profile.public_seed {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+// BOTH HALVES OF AN INVOCATION ARE WRITABLE-BY-CONSTRUCTION. `DagInvocation`'s entry and function are
+// NonEmptyStrs, so an admit or publish phase cannot be declared with an empty half and there is no state
+// left for a predicate to catch (DESIGN §5: making a wrong state unwritable beats catching it). An
+// invocation whose module or function is absent is therefore a type error, not a runtime refusal.
+
+// A TIMEOUT OF ZERO KILLS A JOB BEFORE IT REPORTS WHY. The roster's own timeout has always been refused
+// at zero; the three optional jobs are the same kind of job and get the same bound, so declaring a job at
+// `minute(0)` cannot commit a step that is cancelled on arrival.
+fn profile_optional_job_timeouts_are_positive(profile: RepositoryCiProfile) -> Bool {
+  match profile.heal {
+    Present { value: h } => minute_count(m: h.timeout) > 0
+    Absent => true
+  }
+    && match profile.drift {
+        Present { value: d } => minute_count(m: d.timeout) > 0
+        Absent => true
+      }
+    && match profile.publisher {
+        Present { value: p } => minute_count(m: p.timeout) > 0
+        Absent => true
+      }
 }
 
 // THE ADMISSION THE FOUR GUNBC EMITTERS CALL BEFORE THEY RENDER A BYTE is `repository_ci_profile_refusal`
@@ -658,11 +768,49 @@ fn profile_with_publisher_runner(profile: RepositoryCiProfile, runner: CiRunnerT
           timeout: job.timeout,
           trigger_workflow: job.trigger_workflow,
           candidate_artifact: job.candidate_artifact,
-          admit: job.admit,
-          publish: job.publish,
-          compose: job.compose
+          admit_invocation: job.admit_invocation,
+          publish_invocation: job.publish_invocation,
+          federation: job.federation,
+          build_route: job.build_route,
+          pull_requests: job.pull_requests
         }
       }
     }
+  }
+}
+
+// A CONTROL'S SINGLE-FIELD EDIT, the same shape as the runner updaters above: a negative is built from
+// gunbc's own row with ONLY the publisher's build route changed, so the refusal a control observes is that
+// field's refusal and not some other conjunct's. As with the others, applying it to a profile with no
+// publisher changes nothing, and the control that uses it asserts the publisher is declared first.
+fn profile_with_publisher_build_route(profile: RepositoryCiProfile, route: PublisherBuildRoute) -> RepositoryCiProfile {
+  match profile.publisher {
+    Absent => profile
+    Present { value: job } =>
+      RepositoryCiProfile {
+        repository: profile.repository,
+        default_branch: profile.default_branch,
+        roster: profile.roster,
+        public_seed: profile.public_seed,
+        heal: profile.heal,
+        drift: profile.drift,
+        publisher: Present {
+          value: HealPublisherPolicy {
+            workflow_file: job.workflow_file,
+            workflow_name: job.workflow_name,
+            job_id: job.job_id,
+            job_display_name: job.job_display_name,
+            runner: job.runner,
+            timeout: job.timeout,
+            trigger_workflow: job.trigger_workflow,
+            candidate_artifact: job.candidate_artifact,
+            admit_invocation: job.admit_invocation,
+            publish_invocation: job.publish_invocation,
+            federation: job.federation,
+            build_route: route,
+            pull_requests: job.pull_requests
+          }
+        }
+      }
   }
 }
