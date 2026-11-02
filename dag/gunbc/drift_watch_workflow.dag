@@ -2,7 +2,8 @@ module gunbc.drift_watch_workflow
 
 
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.measure { minute_count }
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import extdeps.cron.schedule_model { CronSchedule, CronField, Wildcard, Exact }
@@ -28,10 +29,14 @@ import gunbc.toolchain_home_standing {
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
-import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci.ci_runner_target { ci_runner_target_spec, gunbc_ci_selected_runner_spec }
+import gunbc.ci.repository_ci_profile {
+  ProjectionDrift, RepositoryCiProfile, repository_ci_profile_refusal
+}
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
-import gunbc.ci.ci_spec { gunbc_ci_tier_o_drift_check_invoke }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
 
 // THE SCHEDULED, READ-ONLY HALF OF GENERATION: IT FINDS DRIFT AND REPAIRS NOTHING.
 //
@@ -44,23 +49,12 @@ import gunbc.ci.ci_spec { gunbc_ci_tier_o_drift_check_invoke }
 // typed, located finding per drifted file, each naming its remedy (gunbc.instruments.tier_o_drift_check).
 // It holds read-only permissions and writes nothing; a failed run is a signal, never a gate -- it is
 // not a required context and is not triggered by a pull request or a merge_group.
-data drift_watch_workflow_name: String = "drift-watch"
-
-data drift_watch_job_id: String = "tier-o-drift"
-
-data drift_watch_timeout_minutes: Int = 60
-
+// THE NAME, FROM THE REPOSITORY'S ROW. gunbc has exactly one profile row today and this emitter reads
+// it, so "what this repository calls its drift watch" is one fact in one place rather than a literal here
+// and a copy in a row kept equal by a witness.
 data drift_watch_required_bins: List<String> = ["gunbc"]
 
 data drift_watch_build_step_name: String = "Build the checker this job runs against the default branch"
-
-data drift_watch_cron: CronSchedule = CronSchedule {
-  minute: Exact { value: 17 },
-  hour: Exact { value: 5 },
-  day_of_month: Wildcard,
-  month: Wildcard,
-  day_of_week: Wildcard
-}
 
 fn drift_watch_checkout_step() -> Step {
   UsesStep {
@@ -80,11 +74,20 @@ fn drift_watch_checkout_step() -> Step {
   }
 }
 
-fn drift_watch_check_step() -> Step {
+fn drift_watch_check_step(row: ProjectionDrift) -> Step {
   RunStep {
     name: Present { value: "Compare each Tier O artifact with its authority (read-only)" },
     id: none,
-    run: gunbc_ci_tier_o_drift_check_invoke(),
+    // THE CHECK TARGET, FROM THE REPOSITORY'S ROW. The row's `check` is the same DagInvocation the
+    // mirror's drift emitter reads, so one invocation answers both repositories' "are the committed bytes
+    // what the authority emits" question; this emitter no longer reaches past the row for it.
+    run: gunbc_run_step_script(
+      source_roots: witness_layer_roots,
+      entry: row.check.entry as String,
+      function: row.check.function as String,
+      claim_run: false,
+      receipt_rel: none
+    ),
     shell: none,
     env: none,
     working_directory: none,
@@ -100,7 +103,7 @@ type DriftWatchBoundStep {
   step_name: String
 }
 
-fn drift_watch_bound_steps() -> List<DriftWatchBoundStep> {
+fn drift_watch_bound_steps(row: ProjectionDrift) -> List<DriftWatchBoundStep> {
   [
     DriftWatchBoundStep { step: drift_watch_checkout_step(), role: capability_neutral, step_name: "Checkout the default branch" },
     DriftWatchBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
@@ -119,15 +122,15 @@ fn drift_watch_bound_steps() -> List<DriftWatchBoundStep> {
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: drift_watch_build_step_name,
     },
-    DriftWatchBoundStep { step: drift_watch_check_step(), role: capability_neutral, step_name: "Compare each Tier O artifact with its authority (read-only)" },
+    DriftWatchBoundStep { step: drift_watch_check_step(row: row), role: capability_neutral, step_name: "Compare each Tier O artifact with its authority (read-only)" },
   ]
 }
 
-fn drift_watch_capability_closure_holds() -> Bool {
+fn drift_watch_capability_closure_holds(row: ProjectionDrift) -> Bool {
   capability_closure_is_closed(
     v: workflow_job_capability_closure(
       steps: list_map(
-        xs: drift_watch_bound_steps(),
+        xs: drift_watch_bound_steps(row: row),
         f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
       )
     ),
@@ -142,28 +145,33 @@ data drift_watch_permissions: WorkflowPermissions = WorkflowPermissions {
   id_token: none
 }
 
-fn drift_watch_job() -> Job {
+fn drift_watch_job(row: ProjectionDrift) -> Job {
   Job {
-    id: drift_watch_job_id,
+    id: row.job_id as String,
     name: none,
-    runner: gunbc_ci_selected_runner_spec(),
+    runner: ci_runner_target_spec(target: row.runner),
     environment: none,
-    steps: list_map(xs: drift_watch_bound_steps(), f: fn(b) { b.step }),
+    steps: list_map(xs: drift_watch_bound_steps(row: row), f: fn(b) { b.step }),
     needs: [],
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: drift_watch_timeout_minutes },
+    timeout_minutes: Present { value: minute_count(m: row.timeout) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: drift_watch_permissions }
   }
 }
 
-data drift_watch_workflow: Workflow = Workflow {
-  name: drift_watch_workflow_name,
+// THE WORKFLOW, BUILT FROM THE ROW THE EMITTER WAS GIVEN. Name, job id, runner, cadence, timeout and
+// check target are all reads of that one row; nothing here can be rendered for a repository that did not
+// declare a drift watch, which is the difference between a mirror without a drift check and a mirror with
+// a job that checks nothing on a machine the row never named.
+fn drift_watch_workflow_of(row: ProjectionDrift, cron: CronSchedule) -> Workflow {
+  Workflow {
+  name: row.workflow_name as String,
   run_name: none,
-  on: [Schedule { cron: drift_watch_cron }, WorkflowDispatch { inputs: [] }],
+  on: [Schedule { cron: cron }, WorkflowDispatch { inputs: [] }],
   concurrency: Present { value: ConcurrencyMappingQueueNotMax {
     group: "drift-watch",
     cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
@@ -176,7 +184,8 @@ data drift_watch_workflow: Workflow = Workflow {
     ]
   },
   permissions: Present { value: drift_watch_permissions },
-  jobs: [drift_watch_job()]
+  jobs: [drift_watch_job(row: row)]
+}
 }
 
 type DriftWatchWorkflowGenerationOutcome
@@ -185,19 +194,59 @@ type DriftWatchWorkflowGenerationOutcome
 
 data drift_watch_capability_refusal_reason: String = "REFUSED gunbc.drift_watch_workflow: the job's capability closure does not hold. No workflow yaml was emitted. Fix the step roles in drift_watch_bound_steps."
 
+// WHAT THE ROW FORBIDS, BEFORE ANY OF THE ADMISSIONS RUN. The admissions are about the emitted job;
+// this is about whether the row entitles the repository to have the job at all.
+
+
+data drift_watch_no_job_refusal_reason: String = "REFUSED gunbc.drift_watch_workflow: this repository's RepositoryCiProfile carries no ProjectionDrift row, so there is no scheduled drift watch to emit. The absence is the repository's data, not this emitter's default."
+
+data drift_watch_no_cron_refusal_reason: String = "REFUSED gunbc.drift_watch_workflow: the repository's ProjectionDrift row declares no cadence, so no schedule trigger is emitted; a checkout-driven drift check comes from gunbc.ci.repository_projection_drift_workflow instead."
+
+// THE DRIFT EMITTER, REFUSING BEFORE IT RENDERS. Presence is read by matching, not by asking a Bool of
+// an Optional: the no-row case and the row-without-cadence case are branches of the same match, so the
+// fabricated fallbacks this module used to carry for each (a "no-drift-watch-declared" row, a midnight
+// cron) no longer exist to be rendered. A repository with no drift watch gets a refusal naming its row; a
+// repository whose drift check is checkout-driven gets no file from this emitter at all and takes its check
+// from gunbc.ci.repository_projection_drift_workflow, which adds no schedule trigger.
 fn expected_drift_watch_workflow_yml() -> DriftWatchWorkflowGenerationOutcome {
-  match admit_workflow_checkout_refs(workflow: drift_watch_workflow, declared: []) {
+  drift_watch_workflow_yml_for(profile: gunbc_repository_ci_profile())
+}
+
+fn drift_watch_workflow_yml_for(profile: RepositoryCiProfile) -> DriftWatchWorkflowGenerationOutcome {
+  // THE ROW IT WAS HANDED IS ADMITTED BEFORE A BYTE IS RENDERED, and it is the SAME row the builders read:
+  // the drift job's runner, timeout, cadence, roots and seal all come from this profile, so the check and
+  // the bytes cannot be about different repositories. One match, on the parameter, at the entrypoint.
+  match repository_ci_profile_refusal(profile: profile) {
+    Present { value: reason } => DriftWatchWorkflowGenerationRefused { reason: reason as String }
+    Absent => drift_watch_workflow_yml_of_admitted_row(profile: profile)
+  }
+}
+
+// THE RENDER PATH, REACHABLE ONLY FOR AN ADMITTED ROW.
+fn drift_watch_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> DriftWatchWorkflowGenerationOutcome {
+  match profile.drift {
+    Absent => DriftWatchWorkflowGenerationRefused { reason: drift_watch_no_job_refusal_reason }
+    Present { value: row } =>
+      match row.cron {
+        Absent => DriftWatchWorkflowGenerationRefused { reason: drift_watch_no_cron_refusal_reason }
+        Present { value: cron } => emit_drift_watch_workflow(row: row, cron: cron)
+      }
+  }
+}
+
+fn emit_drift_watch_workflow(row: ProjectionDrift, cron: CronSchedule) -> DriftWatchWorkflowGenerationOutcome {
+  match admit_workflow_checkout_refs(workflow: drift_watch_workflow_of(row: row, cron: cron), declared: []) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       DriftWatchWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.drift_watch_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>
-      match admit_workflow_toolchain_homes(workflow: drift_watch_workflow) {
+      match admit_workflow_toolchain_homes(workflow: drift_watch_workflow_of(row: row, cron: cron)) {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           DriftWatchWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if !drift_watch_capability_closure_holds() {
+          if !drift_watch_capability_closure_holds(row: row) {
             DriftWatchWorkflowGenerationRefused { reason: drift_watch_capability_refusal_reason }
           } else {
-            match emit_yaml(v: project_workflow_to_yaml(workflow: drift_watch_workflow)) {
+            match emit_yaml(v: project_workflow_to_yaml(workflow: drift_watch_workflow_of(row: row, cron: cron))) {
               EmittedYaml { text: t } => DriftWatchWorkflowGenerated { content: t }
               YamlEmitRefused { path: p, reason: r } => DriftWatchWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.drift_watch_workflow", path: p, reason: r) }
             }

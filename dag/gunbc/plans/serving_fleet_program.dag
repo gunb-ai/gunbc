@@ -21,6 +21,7 @@ type ServingFleetRowId
   | SfpD1 | SfpD2 | SfpD3 | SfpD4 | SfpD5 | SfpD6 | SfpD7 | SfpD8
   | SfpE0 | SfpE1 | SfpE2 | SfpE3 | SfpE4
   | SfpF1
+  | SfpG1 | SfpG2 | SfpG3 | SfpG4 | SfpG5 | SfpG6 | SfpG7 | SfpG8
 
 type ServingFleetSection = SfpSupply | SfpRouter | SfpMeasurement | SfpPolicy
 
@@ -69,6 +70,14 @@ fn sfp_row_label(id: ServingFleetRowId) -> String {
     SfpE3 => "E3"
     SfpE4 => "E4"
     SfpF1 => "F1"
+    SfpG1 => "G1"
+    SfpG2 => "G2"
+    SfpG3 => "G3"
+    SfpG4 => "G4"
+    SfpG5 => "G5"
+    SfpG6 => "G6"
+    SfpG7 => "G7"
+    SfpG8 => "G8"
   }
 }
 
@@ -283,6 +292,70 @@ data serving_fleet_rows: List<ServingFleetRow> = [
     done: "a witness where a mid-task tier switch is refused, a task-boundary switch is selected, and the summary carrier is the only thing handed across.",
     depends_on: [SfpE4, SfpD1], related: []
   },
+  ServingFleetRow {
+    id: SfpG1, section: SfpSupply, title: "One serving profile, not one launch per host",
+    owner: SfpOwnedBy { symbol: "product.fabric.serving_recipe::ServingRecipe" },
+    summary: "How a checkpoint is served on hardware is written three times today: the srv1 launch in `gunbc.serving.srv1_serving_launch::srv1_serving_launch`, the srv3 Strata cell `gunbc.serving.strata_ada_pair_cell::srv3_strata_flags`, and the retired Spark arm, whose checkpoint, runtime and topology factoring in `gunbc.spark.serving_arm::ServingCheckpoint`, `gunbc.spark.serving_arm::ServingRuntime` and `gunbc.spark.serving_arm::ServingTopology` is the family to generalise rather than re-invent. The consolidated profile is a value with five parts: the checkpoint as an explicit input, never hard-coded; a placement and a memory budget, which are NOT re-modeled here: `gunbc.serving.serving_layout` (#15434) already derives a host's layout from what it has (`gunbc.serving.serving_layout::ServingResourceGrant`), how its devices serve together (`gunbc.serving.serving_layout::ServingDeviceGroup`) and what one replica of an engine and model needs (`gunbc.serving.serving_layout::ServingBackendProfile`), against `gunbc.serving.serving_layout::ServingRequirement`, through `gunbc.serving.serving_layout::serving_layout_derive`, with per-replica admission in `gunbc.serving.serving_layout::serving_replica_admit`; the profile carries those values rather than a second budget, and memory stays per device, never summed into a pool; the user-visible endpoint, with any hardware-forced context cap stated; and per-axis expectations whose figures carry their standing through `extdeps.external_authority::CitedFigureStanding` (cited to an authority, transcribed uncited with its read obligation, or observed by receipt). Whether a configuration is qualified live is not re-modeled either: it is `gunbc.serving.serving_layout::ServingLiveQualification` and `gunbc.serving.serving_layout::ServingLiveStanding`, kept separate from fit and from backend support. It extends the recipe home and consumes the serving layout, so no parallel authority is created; `gunbc.serving.serving_layout::strata_iq3_s_a16_profile` is the existing backend-profile value the first non-srv1 profile reuses. The context cap is one pool value, `gunbc.serving.serving_context_cap::serving_fleet_context_cap`, under the ruling `gunbc.design_ruling::one_serving_context_cap`; the profile reads it rather than holding a copy, and every adapter renders it in its own engine's spelling.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the profile type lives in the recipe home, the srv1 launch is expressed as one profile value, and a witness shows that two devices of equal nominal memory but different usable memory admit different profiles.",
+    depends_on: [], related: [SfpB1, SfpC1]
+  },
+  ServingFleetRow {
+    id: SfpG2, section: SfpSupply, title: "Engine adapters own what is engine-specific",
+    owner: SfpUnowned { obligation: "no engine-adapter declaration exists; it is a modeling obligation inside the profile home of G1, with vLLM as the first adapter and the second engine unselected. Whether AMD cards are in the first contract is an open operator question, not a ruling; the recorded advice is to defer it unless those cards go into an x86-64 host, since the AMD GPU userspace is x86-64 only upstream." },
+    summary: "The common contract is engine-neutral: checkpoint, placement and group, memory and capacity intent, endpoint, and qualification. Each adapter owns its build pin, its capability check against the kernel arms the checkpoint needs, launch-flag construction and readback, and its own KV, memory and cache sizing. Switching engines preserves the deployment intent and recomputes everything engine-dependent; identical flags and transferable runtime KV are never assumed. vLLM is the first adapter. A second engine is a later selection, not part of this row.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the vLLM adapter builds the srv1 launch from a profile, and a witness shows an engine switch recomputing memory sizing rather than copying it.",
+    depends_on: [SfpG1], related: [SfpC2]
+  },
+  ServingFleetRow {
+    id: SfpG3, section: SfpSupply, title: "srv1 moves onto the profile without changing behaviour",
+    owner: SfpOwnedBy { symbol: "gunbc.serving.serving_provision_derivation::serving_provision_from_vllm" },
+    summary: "Today this provision step refuses every vLLM recipe that is not srv1's. The refusal dissolves into a recipe-owned launch, and srv1 becomes the first profile. The control is byte identity: the launch argv and environment rendered from the profile equal the current srv1 launch, which since G8 carries the pool context cap, and the existing serving witnesses stay green.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the srv1 launch renders byte-identically from its profile and the srv1-only refusal is gone, with no live redeploy needed.",
+    depends_on: [SfpG1, SfpG2, SfpG8], related: [SfpB1]
+  },
+  ServingFleetRow {
+    id: SfpG8, section: SfpSupply, title: "One context cap rendered into both engines",
+    owner: SfpOwnedBy { symbol: "gunbc.serving.serving_context_cap::serving_fleet_context_cap" },
+    summary: "Under the ruling `gunbc.design_ruling::one_serving_context_cap`, every pool engine launches with one context cap, held once at `gunbc.serving.serving_context_cap::serving_fleet_context_cap`. srv3's Strata cell `gunbc.serving.strata_ada_pair_cell::srv3_strata_flags` reads it, and srv1's vLLM launch `gunbc.serving.srv1_serving_launch::srv1_serving_launch` carries it as its maximum model length in place of the launcher profile's wider default. The operator reordered this row ahead of G3, so G3's byte-identity control compares against the launch that already carries the cap. The srv1 observation is not rewritten: its launch witness pins the render as the observed argv plus only the cap, until a launch at the cap is read.",
+    standing: SfpModeled, standing_note: "srv1 not relaunched at the cap; no startup receipt at it yet", pr: "15440",
+    done: "srv1 is relaunched at the cap in an operator window, its startup receipt reads the cap, and the launch witness compares against that reading with no suffix.",
+    depends_on: [], related: [SfpG1, SfpG3]
+  },
+  ServingFleetRow {
+    id: SfpG4, section: SfpPolicy, title: "A profile is selected for an observed card",
+    owner: SfpOwnedBy { symbol: "std.decision::select_realization" },
+    summary: "The subject is an observed placement: each card joined to its catalog row through `gunbc.gpu_market.realization_join::realization_gpu_join`, which exists but has no serving consumer yet. The candidate field is the adapter, grouping and offload options. Hard constraints (memory fit, capability arm, endpoint cap) exclude a candidate before ranking. With no declared policy the answer is a request for policy, never a default. `product.fabric.serving_recipe::serving_recipe_accepts_card` checks one recipe against one card today; it becomes one constraint inside the selection rather than a second chooser.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "a witness where an observed card selects its profile, an unknown card refuses by name, and a missing policy returns a request for policy.",
+    depends_on: [SfpG1], related: [SfpF1]
+  },
+  ServingFleetRow {
+    id: SfpG5, section: SfpSupply, title: "Multi-device replica identity",
+    owner: SfpUnowned { obligation: "no multi-device replica identity is modeled; it is a separate coordinated change that preserves the single-device partition and permit keys or states their migration." },
+    summary: "A replica spread over several cards needs its own identity. The topology half exists: `gunbc.serving.serving_layout::ServingDeviceGroup` already says which devices serve together as one replica, so the identity keys on that group rather than inventing a second grouping; what is missing is the partition and permit identity of a group-spanning replica. A device pair is never represented as device 0, and the change adds no admission authority. The single-device identity already suffices for srv1 and for the checkpoint barrier; this row gates every multi-card profile, including any grouping of the A2 cards and the srv4 enrollment.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "a multi-device replica has its own identity, and single-device replicas keep their keys unchanged under a regression control.",
+    depends_on: [], related: [SfpG4]
+  },
+  ServingFleetRow {
+    id: SfpG6, section: SfpSupply, title: "Worked case: four Tesla A2 cards",
+    owner: SfpUnowned { obligation: "three separate standings, never one read as another. INSTALLED AND OBSERVED, message-grade: four A2 cards are installed in Butch, `gunbc.fleet.fleet_host_identity::operator_host_srv14` (hostname drawn in `gunbc.hostname_allocation`), read only in proud-raven-703 dated messages of 2026-10-30 and 2026-10-31 naming GPUs on PCIe buses 0001:01:00.0, 0004:01:00.0 and 0004:02:00.0; the repository holds no enumeration receipt of all four cards, which stays an install-observation obligation, and the host has no platform row (its board facts are `extdeps.boards.asrock_altrad8ud_beta_firmware`; the ALTRAD8UD managed-host row is a frontier in `gunbc.machine_intake.bmc_secure`). THERMAL QUALIFICATION FAILED, outside the repository: on 2026-10-30 the factory fan curve idled the cards at 84 to 93 C (the comment in `product.zone_thermal_curve`); one card at a time at a 35 W cap with chassis fans at 100 percent reached 94 C during a long prefill and the guard stopped the engine; on 2026-10-31 two cards together reached the clock floor at 86 and 88 C and were stopped by hand; no instrument or row records these runs, and the operator plans to remove cards. SERVING PROFILE UNADMITTED: no profile is admitted on these cards, and nothing here is a live serving result." },
+    summary: "From `extdeps.gpu.nvidia_a2::nvidia_a2_catalog`: 16 GiB per device, 200 GB/s memory bandwidth, compute capability 8.6, 40 to 60 W, low profile, single slot. Still unread on the installed host: its PCIe topology, usable memory per device after driver load, and host RAM. (Design-time snapshot, 2026-10-30, kept as history: the cards were then recorded as on hand and uninstalled with a provisional host, which the installed-and-observed, thermal-qualification and serving-profile standings in this row's obligation supersede.) The current checkpoint in `extdeps.local_inference_lab.qwen3_8_flash_next::qwen3_8_flash_next_manifest` pins about 95 GiB of safetensors, loaded as nvfp4. Its candidates: all weights on device does not fit, since about 95 GiB of weights cannot be placed on four 16 GiB devices even split ideally, and separate devices are never summed into one pool; host-memory expert offload is undecided, missing the active-parameter split, host RAM and per-slot PCIe width; another checkpoint or quantization is undecided until a candidate row exists. Independently of fit, nvfp4 targets newer GPU generations than compute capability 8.6, so engine support for this checkpoint on A2 is a read obligation. No throughput range is claimed while its inputs are missing.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "on Butch, with a thermal qualification that passes first, each card is joined to its catalog row, its usable memory and the PCIe topology are read, one candidate is admitted or every candidate refuses with its named missing input, and the acceptance scenario of G7 runs on the admitted one.",
+    depends_on: [SfpG1, SfpG4, SfpG5, SfpG7], related: []
+  },
+  ServingFleetRow {
+    id: SfpG7, section: SfpMeasurement, title: "Warm acceptance for a profile",
+    owner: SfpUnowned { obligation: "the scenario and its pass criteria await operator review; the existing benchmark material has not been operator-reviewed and sets no threshold." },
+    summary: "One fixed agent-style scenario of one to two minutes, separate from model-quality evaluation. It warms the engine with a stated warm state, then runs at a named low and a named higher concurrency. It reports response correctness, time to first token, per-session decode rate, aggregate throughput, errors, and peak memory against the profile's budget, each beside the profile's estimated range, with hardware, engine image, checkpoint and profile identity recorded. Reusable components exist in `gunbc.serving.serving_benchmark::serving_benchmark_short_n4`, but they are inspected material, not approved policy. A warm pass is not cold-start qualification.",
+    standing: SfpUnstarted, standing_note: "", pr: "unstarted",
+    done: "the operator approves the scenario text and its pass criteria, and one profile has a receipt reporting estimate against measurement.",
+    depends_on: [SfpG1], related: [SfpE4]
+  },
 ]
 
 fn sfp_section_items(s: ServingFleetSection) -> List<MarkdownListItem> {
@@ -318,7 +391,9 @@ fn serving_fleet_program_body() -> List<MarkdownBlock> {
       ", with ", sfp_row_ref(id: SfpA2), " needing only its own Plan pass. ", sfp_row_ref(id: SfpE4),
       " comes before any selection trusts a throughput, and ", sfp_row_ref(id: SfpF1), " after it. ",
       sfp_refs_text(ids: [SfpB1, SfpE2]),
-      " join through the same router once the card powers on. Each row is updated by its own PR, and this plan is retired when every row is closed or has moved to its owner's declarations."
+      " join through the same router once the card powers on. Under the ruling `gunbc.design_ruling::installed_cards_converge_first`, the cards already installed converge before incoming ones: the A16 cards on h11 and the Blackwell card on srv1. The profile consolidation opens at ", sfp_refs_text(ids: [SfpG1, SfpG5]),
+      ", moves srv1 onto it through ", sfp_refs_text(ids: [SfpG8, SfpG2, SfpG3]), ", selects by observed card in ", sfp_row_ref(id: SfpG4),
+      ", and reaches the first new hardware in ", sfp_row_ref(id: SfpG6), " with the acceptance of ", sfp_row_ref(id: SfpG7), ". Each row is updated by its own PR, and this plan is retired when every row is closed or has moved to its owner's declarations."
     ], "")),
 
     h2(text: "6. Acceptance criteria: the first end-to-end milestone"),

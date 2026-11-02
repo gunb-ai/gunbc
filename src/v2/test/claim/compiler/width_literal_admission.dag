@@ -1,6 +1,6 @@
 module v2.test.claim.compiler.width_literal_admission
 
-import v2.compiler.infer { infer }
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.inferred_tree { InferredTree }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // infer_reason_literal_outside_machine_width. No silent truncation or widening (operator ruling CHECKED).
 //
 // EVERY CLAIM RUNS THE REAL ACCEPTANCE PATH: a module is assembled with the peers below and inferred, and the
-// verdict is read from infer. The peers state exactly the shapes of std.integer / std.machine_constraints /
+// verdict includes refinement discharge through the same composition as the compile pipeline. The peers state exactly the shapes of std.integer / std.machine_constraints /
 // std.nat that the check reads (the declaring paths and the Compose<carrier, MachineWidth<literal>> alias), so
 // the check is exercised by name through the same alias normalization production uses. The positive controls
 // (255 at UInt8, -128 at Int8) share the source shape of the REDs, so a refusal is the width's, not a slip.
@@ -90,7 +90,7 @@ fn wla_inferred(src: String) -> Outcome<InferredTree> {
 fn wla_inferred_with(src: String, extra: List<DagSourceReadWitness>) -> Outcome<InferredTree> {
   match wla_assemble_with(src: src, extra: extra) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+    Accepted { value: resolved, diagnostics: _ } => infer_and_discharge(tree: resolved)
   }
 }
 

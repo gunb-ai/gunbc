@@ -21,6 +21,9 @@ import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWrite, RemoteFileM
 import gunbc.runner.runner_host_file_converge {
   FleetHostFileDesired, FleetHostFileStanding, HostFileIdentical, HostFileDiffers, HostFileAbsent, HostFileUnobservable,
 }
+import gunbc.host.host_primary_network_desired {
+  PrimaryAddressing, PrimaryDhcp4, HostPrimaryNetworkDesired, srv1_primary_network_desired, host_primary_network_rows,
+}
 import gunbc.host.host_primary_network_observed {
   OperatorHandNetworkChange, HandChangeReadFromJournal, HandChangeAttestedUnread,
   srv1_primary_network_receipt_2026_10_25, srv1_hand_move_to_1g, hand_network_change_for,
@@ -58,33 +61,6 @@ import gunbc.host.host_primary_network_observed {
 // Moving the uplink to another NIC, or a static address, is a different change: it lands with the
 // first row that needs it, and the try route's fresh-connection readback is what it will rest on.
 
-// DHCP addressing carries its resolver: netplan's default for a dhcp4 definition takes the lease's
-// DNS servers, which is where srv1's resolver comes from today. A static arm, with its own servers,
-// lands with the first row that needs one.
-type PrimaryAddressing = PrimaryDhcp4 { route_metric: Nat? }
-
-type HostPrimaryNetworkDesired {
-  host: HostIdentity
-  nic: Eui48Address
-  renderer: NetplanRenderer
-  addressing: PrimaryAddressing
-  mtu: ByteSize
-  adopted: OperatorHandNetworkChange
-}
-
-// srv1's row is its 2026-10-25 read: the NIC holding the lease, the renderer that rendered it, the
-// route metric the hand file set (200, chosen beside a 10G default route that no longer exists, kept
-// so the first apply changes no route) and the link's MTU.
-data srv1_primary_network_desired: HostPrimaryNetworkDesired = HostPrimaryNetworkDesired {
-  host: srv1_primary_network_receipt_2026_10_25.host,
-  nic: srv1_primary_network_receipt_2026_10_25.lease.holder,
-  renderer: srv1_primary_network_receipt_2026_10_25.renderer,
-  addressing: PrimaryDhcp4 { route_metric: Present { value: srv1_primary_network_receipt_2026_10_25.lease.route_metric } },
-  mtu: srv1_primary_network_receipt_2026_10_25.mtu,
-  adopted: srv1_hand_move_to_1g,
-}
-
-data host_primary_network_rows: List<HostPrimaryNetworkDesired> = [srv1_primary_network_desired]
 
 // A DECLARED ROW CARRIES ITS EMITTED DOCUMENT, so every consumer writes and compares the same bytes
 // and none of them can reach a row whose document the YAML emitter refused.

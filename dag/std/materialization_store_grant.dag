@@ -14,6 +14,7 @@ import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_tmp_scratch_store_root }
 import gunbc.persistent_instance_roots { PersistentInstanceScope, persistent_instance_scope_root }
+import std.integer { int_to_decimal_string }
 
 // THE STORE ROOT IS A COPRODUCT SO DURABILITY IS CONSTRUCTED, NOT INFERRED FROM A PATH. Every arm
 // carries exactly the operand its path is derived from, and nothing rides beside it: no caller hands
@@ -64,7 +65,7 @@ data materialization_store_frame_root_prefix: String = "/tmp/gunbc_compute_"
 
 // The frame's own root, which a hermetic instance also takes as its instance_root.
 fn materialization_store_frame_root(frame: Int) -> String {
-  join([materialization_store_frame_root_prefix, to_string(value: frame)], "")
+  join([materialization_store_frame_root_prefix, int_to_decimal_string(value: frame)], "")
 }
 
 fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {

@@ -44,8 +44,8 @@ import gunbc.cloudflare.zone {
   cloudflare_apex_txt, cloudflare_apex_mx, fleet_gunb_ai_zone_standing,
   ZoneLiveButIdentityUnobserved, boot_origin_hostname_binding_verdict, BindingAwaitingZoneIdentity,
   BindingAwaitingDispatch, BindingNotServing,
-  credential_route_gap, record_list_gap, bind_dispatch_gap,
-  BootOriginBindEffectGap, CloudflareCredentialRouteMissing, CloudflareRecordListUnread, BindDispatchUnmodeled,
+  zone_route_gap, record_list_gap, bind_dispatch_gap,
+  BootOriginBindEffectGap, SelectedRouteUnrealized, CloudflareRecordListUnread, BindDispatchUnmodeled,
   boot_origin_bind_gap_names,
   boot_origin_fqdn_decision, BootOriginFqdnDecision, FqdnDecided, PendingFqdnRecommendation,
   BootOriginHostnameBindingVerdict, BindingAllocated,
@@ -442,8 +442,8 @@ fn gap_reports(gap: BootOriginBindEffectGap) -> Int {
 }
 
 test fn each_gap_constructor_lands_on_its_own_arm() -> Bool {
-  match credential_route_gap() {
-    CloudflareCredentialRouteMissing { missing: _, basis: _ } => gap_reports(gap: credential_route_gap()) == 2
+  match zone_route_gap() {
+    SelectedRouteUnrealized { missing: _, basis: _ } => gap_reports(gap: zone_route_gap()) == 3
     _ => false
   }
     && match record_list_gap() {
@@ -464,10 +464,10 @@ test fn the_verdict_reports_the_zone_standings_own_gap() -> Bool {
   match fleet_gunb_ai_zone_standing() {
     ZoneLiveButIdentityUnobserved { apex: _, nameservers: _, soa: _, gap, observed_at: _, basis: _ } =>
       match gap {
-        CloudflareCredentialRouteMissing { missing: _, basis: _ } => {
+        SelectedRouteUnrealized { missing: _, basis: _ } => {
           match boot_origin_hostname_binding_verdict() {
             BindingAwaitingZoneIdentity { gap: verdict_gap } => match verdict_gap {
-              CloudflareCredentialRouteMissing { missing: _, basis: _ } => gap_reports(gap: verdict_gap) == gap_reports(gap: gap)
+              SelectedRouteUnrealized { missing: _, basis: _ } => gap_reports(gap: verdict_gap) == gap_reports(gap: gap)
               _ => false
             }
             _ => false

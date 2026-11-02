@@ -3,17 +3,16 @@ module v2.cli.if_arm_reader_differential
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse, collection_concat_shape }
 import std.occurrence_identity { occurrence_id_eq }
+import v2.std.compilers.sugar { sugar_deep_unwrap_optional, sugar_unwrap_surface_shell }
 import v2.compiler.body_lowering_fold {
   IfRowArms,
-  body_lower_deep_unwrap_optional,
   body_lower_else_part_if_expr_optional,
   body_lower_find_captured,
   body_lower_if_expr_capture_optional,
   body_lower_if_row_arms_optional,
   body_lower_if_row_else_part_optional,
   body_lower_match_spine_left,
-  body_lower_match_spine_right,
-  body_lower_unwrap_surface_shell
+  body_lower_match_spine_right
 }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
@@ -73,7 +72,7 @@ fn iard_old_fn_body_capture_optional(spine: Node) -> Optional<Node> {
           Present { value: left } =>
             match body_lower_match_spine_right(spine: spine) {
               Present { value: right } =>
-                match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+                match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
                   Present { value: id } =>
                     match id == ^dag_token_kw_else {
                       true => iard_old_fn_body_capture_optional(spine: right)
@@ -98,7 +97,7 @@ fn iard_old_fn_body_capture_optional(spine: Node) -> Optional<Node> {
 }
 
 fn iard_old_then_fn_body_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match iard_old_fn_body_capture_optional(spine: spine) {
     Present { value: first } =>
       match body_lower_find_captured(root: captured, emitted: ^dag_surface_fn_body) {
@@ -110,7 +109,7 @@ fn iard_old_then_fn_body_optional(captured: Node) -> Optional<Node> {
 }
 
 fn iard_old_else_capture_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match is_empty_conj_root(n: spine) {
     true => Absent
     false =>
@@ -118,7 +117,7 @@ fn iard_old_else_capture_optional(captured: Node) -> Optional<Node> {
       Present { value: left } =>
         match body_lower_match_spine_right(spine: spine) {
           Present { value: right } =>
-            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+            match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
               Present { value: id } =>
                 match id == ^dag_token_kw_else {
                   true =>
@@ -160,7 +159,7 @@ fn iard_old_else_capture_optional(captured: Node) -> Optional<Node> {
 }
 
 fn iard_old_then_arm_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
+  let spine = sugar_unwrap_surface_shell(node: captured)
   match body_lower_find_captured(root: spine, emitted: ^dag_surface_fn_body) {
     ParseSubtreeFound { captured: body } => Present { value: body }
     ParseSubtreeAbsent =>
@@ -171,7 +170,7 @@ fn iard_old_then_arm_optional(captured: Node) -> Optional<Node> {
             Present { value: left } =>
               match body_lower_match_spine_right(spine: spine) {
                 Present { value: right } =>
-                  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+                  match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: left)) {
                     Present { value: id } =>
                       match id == ^dag_token_kw_then {
                         true => body_lower_if_expr_capture_optional(spine: right)
