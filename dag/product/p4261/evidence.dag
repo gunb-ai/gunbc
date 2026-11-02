@@ -873,8 +873,8 @@ fn no_board_states() -> List<BoardState> {
 fn placement_gaps(b: MeasuredBoard) -> NetPlacementGaps {
   let cs = unpowered_continuity(b: b)
   NetPlacementGaps {
-    uncovered: count(filter(cs, o => match placement_of(b: b, o: o) { OrderUncovered => true, _ => false })),
-    unresolved: count(filter(cs, o => match placement_of(b: b, o: o) { EventUnresolved { keys: _ } => true, _ => false })),
+    uncovered: count(filter(cs, o => match placement_of(b: b, o: o) { PlacedAfter { after: _ } => false, OrderUncovered => true, EventUnresolved { keys: _ } => false })),
+    unresolved: count(filter(cs, o => match placement_of(b: b, o: o) { PlacedAfter { after: _ } => false, OrderUncovered => false, EventUnresolved { keys: _ } => true })),
     unmintable: count(state_keys(b: b)) - count(connectivity_states(b: b)),
   }
 }
@@ -1035,10 +1035,21 @@ fn assess_in_state(prop: P4261NetProposition, layout: CarrierLayoutObservation, 
 
 fn revision_from(states: List<NetStateAssessment>) -> NetRevisionOutcome {
   let rs = filter(states, a => received(s: a.state))
-  if any(rs, a => match a.outcome { NetEvidenceConflict { readings: _, occupants: _ } => true, _ => false }) { NetRevisionConflict }
-  else if any(rs, a => match a.outcome { NetCounterevidence { terminals: _, readings: _ } => true, _ => false }) { NetRevisionCounterevidence }
-  else if any(rs, a => match a.outcome { NetSupported { terminals: _, readings: _ } => true, _ => false }) { NetRevisionSupported }
+  if any(rs, a => outcome_rank(o: a.outcome) == 3) { NetRevisionConflict }
+  else if any(rs, a => outcome_rank(o: a.outcome) == 2) { NetRevisionCounterevidence }
+  else if any(rs, a => outcome_rank(o: a.outcome) == 1) { NetRevisionSupported }
   else { NetRevisionUnresolved }
+}
+
+// Conflict outranks counterevidence, which outranks support: one received configuration that
+// contradicts or refutes is not outvoted by another that supports.
+fn outcome_rank(o: NetStateOutcome) -> Nat {
+  match o {
+    NetEvidenceConflict { readings: _, occupants: _ } => 3
+    NetCounterevidence { terminals: _, readings: _ } => 2
+    NetSupported { terminals: _, readings: _ } => 1
+    NetUnresolved { gap: _ } => 0
+  }
 }
 
 fn no_net_states() -> List<NetStateAssessment> {
@@ -1052,7 +1063,7 @@ fn no_gaps() -> NetPlacementGaps {
 // One board's assessment of one wiring proposition, computed from the board's own records.
 fn assess_net_proposition(prop: P4261NetProposition, layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>) -> NetPropositionAssessment {
   let input_gap = match prop.relation {
-    SpansInput { component: _, input } => match bound_input(layout: layout, admitted: admitted, input: input) { Absent => match layout.input { Present { value: _ } => true, Absent => true }, Present { value: _ } => false }
+    SpansInput { component: _, input } => match bound_input(layout: layout, admitted: admitted, input: input) { Absent => match layout.input { Present { value: _ } => true, Absent => false }, Present { value: _ } => false }
     RowReachesPosition { connector: _, row: _, target: _ } => false
   }
   match net_unattributed(prop: prop, layout: layout, admitted: admitted) {
