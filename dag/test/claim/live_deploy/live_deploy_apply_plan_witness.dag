@@ -25,7 +25,7 @@ import gunbc.live_deploy.apply_legs {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, deployment_fabric_storage_unit_name, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name }
-import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess, converged_effect_plan }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
@@ -121,6 +121,38 @@ test fn the_srv1_full_install_plan_is_ready_and_carries_every_family() -> Bool {
     && has_step(legs: legs, step: "attempt-unit-helper-snapshot")
     && has_step(legs: legs, step: "serve-unit")
     && has_step(legs: legs, step: "serve-restart")
+}
+
+// THE BOARD-FUNCTION CONVERGE UNIT is a host singleton: the deployment holding srv1's role singletons
+// installs its root snapshot before the unit that names it, retires the hand-installed removal before it
+// starts the converge, and retires the superseded snapshot only after the converge has run; the lab
+// deployment on the same host installs none of it.
+test fn the_board_function_converge_unit_is_installed_by_the_host_singleton_deployment_only() -> Bool {
+  let legs = full_legs(spec: deployment_spec_srv1())
+  let snapshot = step_index(legs: legs, step: "board-function-converge-helper-snapshot")
+  let unit = step_index(legs: legs, step: "board-function-converge-unit")
+  let gate = step_index(legs: legs, step: "board-function-converge-gate")
+  let disable = step_index(legs: legs, step: "board-function-hand-unit-disable")
+  let remove = step_index(legs: legs, step: "board-function-hand-unit-remove")
+  let run = step_index(legs: legs, step: "board-function-converge-run")
+  let retire = step_index(legs: legs, step: "board-function-converge-helper-snapshot-retire")
+  snapshot >= 0 && snapshot < unit && unit < gate && gate < disable && disable < remove && remove < run && run < retire
+    && length(filter(legs, l => deploy_apply_leg_step(leg: l) == "board-function-converge-gate")) == 3
+    && !has_step(legs: legs, step: "board-function-converge-restart")
+    && !has_step(legs: full_legs(spec: lab_spec()), step: "board-function-converge-unit")
+    && !has_step(legs: full_legs(spec: lab_spec()), step: "board-function-converge-helper-snapshot")
+}
+
+// THE CONVERGE IS RECONCILED ON ITS OWN STATE, NOT THE SERVE UNIT'S: an apply whose release plan keeps every
+// member -- the serve unit current, nothing rewritten -- still carries the converge's install, gates and run,
+// so a missing, drifted or failed converge is repaired whatever the serve unit's standing.
+test fn the_converge_is_applied_when_the_serve_unit_is_unchanged() -> Bool {
+  let spec = deployment_spec_srv1()
+  let kept = legs_of(p: plan_for(spec: spec, plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec))))
+  has_step(legs: kept, step: "board-function-converge-unit")
+    && has_step(legs: kept, step: "board-function-converge-gate")
+    && has_step(legs: kept, step: "board-function-converge-run")
+    && !has_step(legs: kept, step: "serve-unit")
 }
 
 // THE DEPLOYMENT'S ORDER: the binary is installed (and verified) before the tree converges, and the
