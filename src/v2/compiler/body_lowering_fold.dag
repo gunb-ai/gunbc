@@ -10942,7 +10942,38 @@ fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
 // where_refinement_clause. The labelled where_refinement_clause EDGE that body_lower_find_where_host_conj
 // looks for is minted by lowering (body_lower_type_variant_suffix_pair_optional rehome), so it exists only
 // on the folded tree body_lower_type_decl_by_body reads; asked of the parse tree it answered Absent and
-// every refinement went kindless (probe ce_probe_pin_text: where_host=ABSENT, name=Pos).
+// every refinement went kindless (probe ce_probe_pin_text: where_host=ABSENT, name=Pos). The clause is read
+// by body_lower_declared_refinement_clause_optional, which stops at the declaration's own grammar boundary.
+// THE WHERE CLAUSE THAT REFINES THE DECLARATION ITSELF, found on the parse tree. The grammar fixes where it
+// can sit: type_variant is `type_expr [where_refinement_clause] [field_decl_block | positional_variant_payload]`
+// (v2.extdeps.languages.dag dag_grammar_type_variant_expr), reached through type_alias_rhs, so the clause is a
+// sibling of the variant's type_expr, not inside it. A where clause that belongs to something INSIDE the
+// declaration -- a field's refinement in a variant payload, or in an anonymous record under the type_expr --
+// does not refine the declaration, so the search does not descend into type_expr, field_decl_block or
+// positional_variant_payload. Without that a coproduct `A { n: Int where positive } | B` read as a refinement.
+fn body_lower_declared_refinement_clause_optional(root: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == ^dag_surface_where_refinement_clause {
+        Present { value: root }
+      } else if (id == ^dag_surface_type_expr) || (id == ^dag_surface_field_decl_block) || (id == ^dag_surface_positional_variant_payload) {
+        Absent
+      } else {
+        body_lower_declared_refinement_clause_under_children(root: root)
+      }
+    Absent => body_lower_declared_refinement_clause_under_children(root: root)
+  }
+}
+
+fn body_lower_declared_refinement_clause_under_children(root: Node) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => body_lower_declared_refinement_clause_optional(root: e.target)
+    }
+  })
+}
+
 type DeclaredTypeKind
   = DeclaredRecord { name: Symbol }
   | DeclaredRefinement { name: Symbol }
@@ -10955,7 +10986,7 @@ fn body_lower_type_decl_declared_kind_optional(shell: Node) -> Optional<Declared
       match parse_production_captured_child_optional(node: shell) {
         Absent => Absent
         Present { value: captured } =>
-          match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_where_refinement_clause) {
+          match body_lower_declared_refinement_clause_optional(root: captured) {
             Absent => Absent
             Present { value: _ } =>
               match dag_surface_kw_then_ident_from_captured(captured: captured) {
