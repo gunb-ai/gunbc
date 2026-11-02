@@ -35,10 +35,15 @@ import test.claim.native_effect_realization_admission_witness { fx_run, refused_
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE SUBJECT: the compiler route's NATIVE effect denominator, and the one declared build effect that
-// joined it (gunbc.design_ruling native_compiler_route_admits_the_declared_cargo_build). Before this cut
-// the compiler route admitted everything except an exclusion list, so a generic-exec service would have
-// been admitted by default and the emitted compiler program had no NAME for the build it needs.
+// THE SUBJECT: the compiler route's NATIVE effect denominator, which this cut makes a declared set, and the
+// one declared build effect that the ruling admits to it IN THE NEXT CUT (gunbc.design_ruling
+// native_compiler_route_admits_the_declared_cargo_build; the sequencing was agreed by the operator
+// 2026-11-02, msg_998d2bf2). Before this cut the compiler route admitted everything except an exclusion
+// list, so a generic-exec service would have been admitted by default and the emitted compiler program had
+// no NAME for the build it needs. The NAME is modelled here; the ADMISSION waits for the cut that binds the
+// effect to an explicitly declared program, working root and dry-run mode, because an admitted effect whose
+// ruled guard is unbuilt is what DESIGN 5 refuses -- so the refusal claim against the real module below is
+// INTENTIONAL C1 behaviour, not a missing H1 handler.
 //
 // TWO KINDS OF CLAIM, AND THEY DEPEND ON DIFFERENT THINGS. The structural and model-level claims read the
 // rows in the tree being checked. The fixture claims compile a closure through the real emitter in
@@ -113,14 +118,15 @@ fn admitted_declarations() -> List<String> {
 
 // THE SET IS CLOSED, AND IT IS A SET. Reverting the row to NativeAdmitAllExcept -- the shape that admitted
 // a spawn effect by default -- is red here even before any fixture runs, and so is adding or dropping a
-// member.
-test fn the_compiler_route_declares_exactly_two_effects() -> Bool {
+// member. The build effect is ASSERTED ABSENT on purpose: it joins the list in the cut that carries its
+// binding, and this claim is what notices if it is admitted early.
+test fn the_compiler_route_declares_exactly_one_effect_and_not_yet_the_build() -> Bool {
   let rows = admitted_declarations()
   match native_compiler_route_denominator.scope {
     NativeAdmitOnly { admitted: _ } =>
-      (rows |> count) == 2
+      (rows |> count) == 1
       && (rows |> any(r => r == "extdeps.filesystem.filesystem_io Filesystem"))
-      && (rows |> any(r => r == "extdeps.rust.cargo_build_service CargoBuild"))
+      && !(rows |> any(r => r == "extdeps.rust.cargo_build_service CargoBuild"))
       && !(rows |> any(r => r == "outgoing-http"))
     NativeAdmitAllExcept { excluded: _ } => false
   }
@@ -130,7 +136,7 @@ test fn the_compiler_route_declares_exactly_two_effects() -> Bool {
 // depend on how the real service spells its own name (dag/extdeps/shell/exec.dag declares it `shell.Exec`).
 test fn the_declared_set_names_no_generic_exec_and_no_clock() -> Bool {
   let rows = admitted_declarations()
-  (rows |> count) == 2
+  (rows |> count) == 1
   && !(rows |> any(r => string_contains(s: r, pattern: "shell.exec")))
   && !(rows |> any(r => string_contains(s: r, pattern: "clock")))
 }
@@ -168,19 +174,26 @@ test fn a_compiler_route_entry_reaching_an_unlisted_shell_service_refuses() -> B
     marker: concat("service nefx.spawn Spawner ", fx_declared_set_ruling_marker))
 }
 
-// THE POSITIVE CONTROL, AGAINST THE REAL MODULE: no row of the refusal class may appear for a compiler-route
-// entry that reaches extdeps.rust.cargo_build_service CargoBuild as the tree carries it. Measured at
-// 69293db53131 after the output-field fix: zero rows of that class for this subject.
-test fn the_real_cargo_build_service_lowers_on_the_compiler_route() -> Bool {
+// INTENTIONAL C1 BEHAVIOUR, NOT AN IMPLEMENTED H1. The modelled build effect is deliberately NOT in the
+// list in this cut, so a compiler-route entry that reaches the REAL extdeps.rust.cargo_build_service
+// CargoBuild, as the tree carries it, must fail at the admission boundary and name it. The subject is the
+// live module resolved against the checkout's own module pool, not a copy of it: the claim measures the
+// refusal that keeps the ambient working root unreachable on this route until the cut binding program,
+// working root and dry-run mode lands. The filter matches the module-path fragment, which is what a real
+// module's subject_name carries; the homonym fixture's service (module nefx.other) cannot match it, so an
+// admission by bare spelling would go red here.
+test fn the_real_cargo_build_service_is_refused_on_the_compiler_route_until_its_binding_lands() -> Bool {
   let c = compile_dag_diagnostic_census(source: fx_cli_real_cargo_source)
   match c {
-    CensusObserved { rows: rows } => (census_rows_of_class(rows: rows, wanted: "NativeEffectRealizationRefused") |> count) == 0
+    CensusObserved { rows: rows } =>
+      (census_rows_of_class(rows: rows, wanted: "NativeEffectRealizationRefused")
+        |> filter(r => string_contains(s: r.subject_name, pattern: "cargo_build_service CargoBuild")) |> count) > 0
     CensusNotRunnable { cause: cause } => false
   }
 }
 
-// CALIBRATION FOR THE CLAIM ABOVE: the same path and the same class DO fire for a real service the set
-// excludes, so the zero above is a measurement and not silence.
+// CALIBRATION FOR THE CLAIM ABOVE: the same path and the same class DO fire for another real service the
+// set excludes, so a refusal row naming cargo_build_service is a reading of the walk and not an artifact.
 test fn the_census_path_observes_a_real_excluded_service() -> Bool {
   let c = compile_dag_diagnostic_census(source: fx_cli_real_clock_source)
   match c {

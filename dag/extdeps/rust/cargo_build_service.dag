@@ -1,7 +1,10 @@
 // THE DECLARED CARGO BUILD OPERATION: one named effect a native (emitted) program may be given, as
 // the performing twin of extdeps.rust.cargo_build. That module BUILDS argv and manifest vocabulary for
 // workflows, CI and release recipes; this one DECLARES the single operation and is what the native
-// compiler-route denominator admits (gunbc.design_ruling native_compiler_route_admits_the_declared_cargo_build).
+// compiler-route denominator is ruled to admit (gunbc.design_ruling
+// native_compiler_route_admits_the_declared_cargo_build). IN THIS CUT THE EFFECT IS NOT IN THAT DECLARED
+// LIST: it joins it in the cut that carries the binding described below, because admitting a spawn effect
+// whose ruled guard does not exist yet is what DESIGN 5 refuses.
 // It is its own module for the reason extdeps.docker.cli_service states at its head (2026-10-25): a
 // program that PERFORMS must not be fused to the module that assembles the argv and JSON vocabulary for
 // other hosts, because emission is per module -- one .rs per module, measured at the 2026-11-01 native
@@ -49,7 +52,10 @@
 // with `Type::new(Default::default())`, leaving extdeps.transports.shell ShellTransportConfig.working_dir
 // None and the process in "." (that ambient default on the sibling route is filed as
 // gunbc.recurring_failure_mode admitted_shell_effect_spawned_at_an_ambient_working_root). Nothing in this
-// module claims that binding exists.
+// module claims that binding exists, and in this cut the effect is not admitted anywhere: std.compiler_entry
+// native_compiler_route_denominator lists the file-transport service alone, so an entry reaching this
+// operation fails at the admission boundary and names it. That refusal is the guard while the binding is
+// missing -- measured against the live module by dag/test/claim/cargo_build_native_route_witness.dag.
 
 module extdeps.rust.cargo_build_service
 
