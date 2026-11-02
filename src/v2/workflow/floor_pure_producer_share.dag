@@ -1689,7 +1689,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.parse.condition_position_record_parse",
     claims: [
       SingleClaimFillDebtClaim { claim: "else_if_chain_still_parses_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "elseless_if_body_is_branch_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "elseless_if_with_tail_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "infix_record_condition_still_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "paren_record_condition_still_parses_holds", standing: ActiveFillDebt },
