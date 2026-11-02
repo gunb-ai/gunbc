@@ -130,3 +130,39 @@ standing statement that the global-bare Unbound arm refuses rather than silently
   17 rows above still refuse. Needs a one-module host probe (`extdeps.uri` for `join` would show it).
 * The 128 non-`unbound_symbol` refusals in the same table.
 * Per-line locations for any of the 96 sites: the census carries no spans.
+
+## OPEN — the identity half of `discriminant` (decider: tidy-ant-251, 2026-11-02)
+
+The ruling was: no primitive and no new declaration for `discriminant`; its uses split onto what the
+language already declares — the 47 tag comparisons become `match` on the value, and the 16 identity
+atoms take the tag as a value (`^name`) **only if** `Atom.identity`'s type accepts a tag value with the
+same identity semantics. I stopped, as instructed, and measured what that field is typed as:
+
+* `type Atom = Atom { identity: Symbol }` — v2.std.node. The field is a **Symbol**, not an Int, so the
+  Int-representation worry does not arise; a different one does.
+* `type Symbol` is an **opaque kernel type** (v2.std.node declares it with no body, beside `type String`
+  and `type Hash = FinitelySupportedFunction`-style kernel rows). `^name` is a **symbol literal**, not a
+  sum tag value — v2.std.node's own comment beside `symbol_type_node`: "THE VALUE TYPE OF A SYMBOL, as a
+  node: what a symbol literal (`^x`) is typed as…". An earlier sentence in this note ("the corpus
+  already spells a tag as a value 2083 times as `^name`") is **withdrawn**: those are symbol literals.
+* The builtin's own signature returns **text**: the `discriminant` entry in `src/v1/04_method.dag` is
+  `BuiltinSignature { params: [v: AlgebraTypeVariable "discriminant_subject"], returns: string_type }`.
+  So today those 16 atoms feed a String (the tag NAME as text) into a field typed Symbol. Either an
+  unstated String→Symbol crossing sits at that position, or those sites are an inhabitant fact native
+  typing will refuse independently.
+* No `^algebra_primitive` / `^ordering_comparison` / `^equality_comparison` style symbol is authored
+  anywhere in the corpus, so the swap would also invent the identity vocabulary rather than reuse it.
+
+So the identity half is **not a mechanical migration**. The three shapes a decision could take:
+
+1. **Model the map**: one declared operation from a sum value to its tag as a Symbol. One new authority,
+   16 sites respelled to call it; the crossing is declared and typed once.
+2. **Respell to authored symbols**: each of the 16 atoms names a Symbol that is declared for the concept
+   (`^ordering_comparison` etc.), so the tag-as-text disappears. Cheapest at the call sites, but it makes
+   16 new symbol names the identity vocabulary, and the correspondence to the sum's alternatives is then
+   convention, not a checked fact.
+3. **Change the identity**: make `Atom.identity` carry the tag text as String. That is a representation
+   change to identity itself (DESIGN §4), with every consumer of atom identity downstream.
+
+Not chosen here; `discriminant` stays unbound in T4 and counted as such until the migration is
+scheduled. The comparison half (47 sites) is unaffected and lands on `match`.
