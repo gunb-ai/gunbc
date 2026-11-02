@@ -452,14 +452,14 @@ fn dev_row_retaining(name: String, retiring: List<String>, retention: RouterDevR
 // A SHIPPED ROW'S RENDERED MEMBER, compared as the JSON value the proxy reads: the typed row and the wire row
 // are two facts, and only this reads the second.
 // THE SHIPPED ROWS, read through the sum: a refused projection is a case not held, never an empty roster.
-fn shipped_rows_hold(p: (List<RouterDevUpstream>) -> Bool) -> Bool {
+fn shipped_rows_hold(p: fn(List<RouterDevUpstream>) -> Bool) -> Bool {
   match router_dev_first_party() {
     RouterDevFirstPartyRows { rows: rs } => p(rs)
     RouterDevFirstPartyRefused { reason: _ } => false
   }
 }
 
-fn shipped_json_holds(p: (String) -> Bool) -> Bool {
+fn shipped_json_holds(p: fn(String) -> Bool) -> Bool {
   match router_dev_first_party_json(fp: router_dev_first_party()) {
     Present { value: j } => p(j)
     Absent => false
