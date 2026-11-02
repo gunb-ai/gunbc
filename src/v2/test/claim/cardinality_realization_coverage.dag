@@ -95,13 +95,19 @@ data specimen_9_foreign_invalid: DeclarationRef = specimen_ref(name: "specimen_f
 
 // SPECIMEN 10, POSITION READ AS TYPED ABSENCE: the cardinality meaning the lane enrolls is char_at's,
 // which v2 declares at std.host_text as a read of one code point that answers Absent past the end. At
-// this revision the Optional is built by the declaration's own .dag body over chars/skip/list_head, NOT
-// by a seed primitive seam: the projection row primitive_projection_row(primitive: primitive_char_at,
-// fidelity: HostRealizedSeam) is declared, but its seed binding (the v1 interpreter's char_at arm
-// returning the Optional, and the regenerated dispatch that calls it) is the follow-up once
-// primitive_char_at is on main. The row below therefore records what is TRUE NOW, and the follow-up
-// flips it to the seam realization. Enrolled because a typed refusal with no realization row is exactly
-// the unstamped state this lane exists to prevent.
+// this revision NOTHING realizes that Optional on the evaluator path: the checker binds the call to
+// std.host_text's declaration, while the interpreter picks the VALUE of a free call by SPELLING, so the
+// ambient builtin's empty text answers a read past the end — MEASURED at this head by the executed probe
+// the_end_of_a_text_reads_as_a_present_until_resolved_target_dispatch_lands in
+// v2.test.claim.cardinality_realization_specimens, which asserts that answer rather than the contract so
+// this lane does not land a red. The declaration's own interim .dag body (chars, std.algebra skip and
+// list_head, text_of_chars) is not what the evaluator runs today, and neither is a seed primitive seam:
+// the projection row primitive_projection_row(primitive: primitive_char_at, fidelity: HostRealizedSeam)
+// is declared, but its seed binding (the v1 interpreter's char_at arm returning the Optional, and the
+// regenerated dispatch that calls it) is the follow-up once primitive_char_at is on main. The rows below
+// therefore record what is TRUE NOW, and the follow-up flips them to the seam realization. Enrolled
+// because a typed refusal with no realization row is exactly the unstamped state this lane exists to
+// prevent.
 data specimen_10_char_at_position: DeclarationRef = specimen_ref(name: "specimen_char_at_position")
 
 data all_specimens: List<DeclarationRef> = [
@@ -181,10 +187,14 @@ data realization_support_rows: List<RealizationSupportRow> = [
   supported(target: seed_rust_target, specimen: specimen_7_foreign_missing),
   supported(target: seed_rust_target, specimen: specimen_8_foreign_null),
   supported(target: seed_rust_target, specimen: specimen_9_foreign_invalid),
-  // The seed Rust route realizes specimen 10 through the declaration's interim .dag body, which is
-  // ordinary seed-lowering source: the tag is the evaluator's answer carried through the emitted crate.
-  // This is NOT yet the host seam's own answer; the seam binding is the follow-up (primitive_char_at on
-  // main), and that follow-up is what makes this row a realization of the projection row.
+  // The seed Rust route realizes specimen 10 as ordinary seed lowering of the call site, which answers
+  // through the ambient builtin's Rust function (v1_rt::char_at, the CHAR_AT-LEGACY-ADAPTER) rather than
+  // through std.host_text's declaration or a host seam: at this revision the call target is chosen by
+  // spelling, so the tag is the builtin's answer carried through the emitted crate. In-range, both the
+  // builtin and the declaration answer Present, so the tag holds either way; the out-of-range half of the
+  // pair is where they part. This is NOT yet the host seam's own answer; the seam binding is the
+  // follow-up (primitive_char_at on main), and that follow-up is what makes this row a realization of
+  // the projection row.
   supported(target: seed_rust_target, specimen: specimen_10_char_at_position),
   refuses(target: native_v2_target, specimen: specimen_1_absent, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_2_present_absent, causes: native_closure_causes),
