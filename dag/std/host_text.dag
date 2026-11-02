@@ -56,7 +56,6 @@ fn text_of_chars(scalars: List<Char>) -> HostText {
   chars_to_string(chars: scalars, start: 0, end: scalars |> count)
 }
 
-EAD
 // THE NUMBER OF UNICODE SCALAR VALUES IN HOST TEXT (G2 ruling A, condition 3, tidy-ant-251 2026-10-31):
 // the length of chars(text), never its UTF-8 bytes, UTF-16 code units or grapheme clusters. Host text
 // only: a site over structural text (v2.std.text String) uses std.algebra length on the list it already
