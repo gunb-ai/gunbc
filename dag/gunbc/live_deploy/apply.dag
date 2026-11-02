@@ -144,6 +144,7 @@ import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decis
 import gunbc.auth.approval_broker_cutover { CutoverAdmission, StageAdmitted, StageRefused, dark_install_release_discharged, cutover_refusal_reason }
 import gunbc.live_deploy.release_locus {
   ReleaseTreeReceiptRead, observe_release_tree_receipt, release_locus_tree_receipt_path, RevisionBoundAtEmission, ReleaseRevisionBinding,
+  TreeReceiptUnreadable, TreeReceiptMalformed, TreeReceiptObserved,
 }
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
