@@ -79,6 +79,17 @@ fn rounded_rectangle(u_lo: Int, u_hi: Int, v_lo: Int, v_hi: Int, r_bottom_left: 
     quarter_arc(cu: u_lo + r_bottom_left, cv: v_lo + r_bottom_left, r: r_bottom_left, q: 2))
 }
 
+// HOW A PART'S PRINT PLANE PUTS IT ON THE BED, in words, for the instructions generated beside it. The plane is
+// the one fact (the CAD check rotates the exported STL by it, product.printed_chassis.review_realization);
+// this only renders it, so a readme cannot state a pose the geometry was not exported in.
+fn print_plane_pose(plane: PrintPlane) -> String {
+  match plane {
+    LayOnXY => "flat, its part-frame Z axis vertical"
+    LayOnXZ => "on its side, its part-frame Y axis vertical"
+    LayOnYZ => "standing on its end, its part-frame X axis vertical"
+  }
+}
+
 fn part(id: String, name: String, kind: PartKind, scope: PartScope, adds: List<Primitive>, cuts: List<Primitive>, x: Int,y: Int,z: Int, ex: Int,ey: Int,ez: Int, plane: PrintPlane, notes: String) -> AssemblyPart {
   AssemblyPart { id: id,name: name,kind: kind,scope: scope,adds: adds,cuts: cuts,at: placed(x: x,y: y,z: z),explode: placed(x: ex,y: ey,z: ez),print_plane: plane,notes: notes }
 }

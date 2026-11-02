@@ -284,7 +284,7 @@ fn admit_home_over(s: RouteSubject, home: BlowerHome, rear: ChassisGap, lane: Ch
       }
     }
     AgainstCardSide {side: _} => {
-      let back = RouteDemand { name: "behind the plug end (chamber, flange and lid)", needed: side_mount_rear_spend(d: d), of_gap: "plug end to rear chassis fan" }
+      let back = RouteDemand { name: "behind the plug end (chamber, flange and back wall)", needed: side_mount_rear_spend(d: d), of_gap: "plug end to rear chassis fan" }
       match ask(gap: rear, need: back.needed, home: home, unmet: back, over: governing_rear(rear: rear)) {
         Present { value: refused } => refused
         Absent => {
@@ -620,7 +620,7 @@ fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Micrometer) -> 
     AgainstCardSide {side: _} => BlowerShape {
       across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: single_card_side_allowance_2026_11_02), deductions: [side_mount_card_gap, d.wall, d.wall, a16_blower_duct_design.socket_clearance, a16_blower_duct_design.socket_clearance]), why: "less the card gap, two socket walls and two socket clearances"),
       along_the_row: unread_extent(obligation: "the housing runs along the card's own side; nothing read here bounds that length but the card"),
-      behind_the_end: extent_of(room: room_less(room: rear, deductions: [d.wall]), why: "the housing does not reach behind the end; only the chamber, flange and lid do"),
+      behind_the_end: extent_of(room: room_less(room: rear, deductions: [d.wall]), why: "the housing does not reach behind the end; only the chamber, flange and back wall do"),
     }
     BesideTheRow => BlowerShape {
       across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: side_lane_width), deductions: concat(walls_two, [d.band_clearance, d.band_clearance])), why: "less two duct walls and the band clearance on both sides"),
