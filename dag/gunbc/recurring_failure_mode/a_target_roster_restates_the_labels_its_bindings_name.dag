@@ -25,6 +25,7 @@ data a_target_roster_restates_the_labels_its_bindings_name: RecurringFailureMode
     "OBSERVED, 2026-10-25, THREE INSTANCES IN ONE DAY, each landed green because no required check runs a witness (gunbc.rung_drop v1_required_lanes_withdrawn): gunbc.instrument_targets member_home_cost_binding (gunbc#15044), last_use_move_binding (gunbc#15041) and cons_tail_recursion_binding (gunbc#15098) each added a binding whose label instrument_targets did not list. test.claim.target_invocation_witness, whose registry_and_bindings_are_one_population joins the two populations by identity in both directions, went from 67 of 67 to 44 of 67 (bisected by stern-bat-401 and royal-bee-327: 67 at 2c04ce474b, 44 at 57a14a90). Adding only one of the missing labels left it at 44, because the registry refuses on the next missing one. Repaired by gunbc#15142 (610e399f1ab): main at 66 targets and 66 bindings, the witness 68 of 68 on srv1 at the PR head.",
     "WHY IT RECURS: the omission is invisible at authoring time. The new binding type-checks, its own claims pass, and v2-bootstrap is green; only test.claim.target_invocation_witness registry_and_bindings_are_one_population, which nothing required runs, sees the disagreement. A contributor copying the nearest binding in gunbc.instrument_targets instrument_bindings has no reason to also edit gunbc.instrument_targets instrument_targets.",
     "NEXT RUNG: derive the roster from the bindings so the second list does not exist (structural impossibility). An interim mechanical prevention would be a required control that joins the two lists by identity, but that keeps the second authority alive; the derivation is the climb.",
+    "FOURTH INSTANCE, AND THE CLIMB'S CHANGE (wise-moth-707, 2026-11-02, branch fix/roster-rehome-target-row): gunbc.instrument_targets roster_rehome_controls_binding (gunbc#14553, cb97d81c) was added without its label, and main sat red for days. At 4314d320e07d, test.claim.target_invocation_witness gave 46 PASS / 24 FAIL: every row that routes or joins the registry (snappy-carp-24, arm64, gunbc b0b864ac0e0f, gunbc run --claim-run). The same change derives gunbc.instrument_targets instrument_targets from instrument_bindings (each binding's target), which is this row's trigger. The rung stays Mitigatable until the witness executes at that head with the omitted state unconstructible; the climb is recorded once that run is observed.",
   ],
 
   evidence: [
@@ -35,6 +36,7 @@ data a_target_roster_restates_the_labels_its_bindings_name: RecurringFailureMode
     decl_ref(module_path: "gunbc.instrument_targets", decl_name: "member_home_cost_binding"),
     decl_ref(module_path: "gunbc.instrument_targets", decl_name: "last_use_move_binding"),
     decl_ref(module_path: "gunbc.instrument_targets", decl_name: "cons_tail_recursion_binding"),
+    decl_ref(module_path: "gunbc.instrument_targets", decl_name: "roster_rehome_controls_binding"),
     decl_ref(module_path: "test.claim.target_invocation_witness", decl_name: "registry_and_bindings_are_one_population"),
   ],
 }
