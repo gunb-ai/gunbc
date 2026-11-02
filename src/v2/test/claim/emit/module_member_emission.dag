@@ -21,6 +21,13 @@ import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_sy
 import std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { bind_outcome, outcome_accepted }
+import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredResource }
+import std.algebra { fold_list }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -308,4 +315,44 @@ test fn a_where_refinement_is_not_refused_for_missing_facts_holds() -> Bool {
     MemberRefused { reason: r } => r != ^partition_facts_miss
     MemberClosureRefused { reason: r } => r != ^partition_facts_miss
   }
+}
+
+// PROBE ONLY (branch probe/keen-koi-376-kinds, never for landing): the declaration kinds the production
+// normalize captures for a source, as text.
+fn ce_probe_kind_text_of(k: v2.compiler.body_lowering_fold.DeclaredTypeKind) -> String {
+  match k {
+    DeclaredRecord { name: n } => concat("Record:", symbol_lexeme(sym: n))
+    DeclaredRefinement { name: n } => concat("Refinement:", symbol_lexeme(sym: n))
+    DeclaredResource { name: n } => concat("Resource:", symbol_lexeme(sym: n))
+  }
+}
+
+fn ce_probe_kinds_of(source: String) -> String {
+  let lm = dag_language_model()
+  match bind_outcome(
+    o: tokenize(text: source, file: ^member_emission_read, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: normalize(parse_tree: artifact.tree),
+            f: fn(normalized) {
+              outcome_accepted(value: fold_list(xs: normalized.type_declaration_kinds, empty: "KINDS:", cons: fn(acc, k) { concat(concat(acc, " "), ce_probe_kind_text_of(k: k)) }))
+            }
+          )
+        }
+      )
+    }
+  ) {
+    Accepted { value: t, diagnostics: _ } => t
+    Rejected { diagnostics: d } => concat("REJECTED:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+  }
+}
+
+fn ce_probe_kinds_text() -> String {
+  concat(
+    concat("REFINEMENT> ", ce_probe_kinds_of(source: "module v2.test.member_emission\n\ntype Pos = Int where positive\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n")),
+    concat("\nALIAS> ", ce_probe_kinds_of(source: "module v2.test.member_emission\n\ntype Id = Int\n\nfn f(x: Int) -> Int { x as Int }\n"))
+  )
 }
