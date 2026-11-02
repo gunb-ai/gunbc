@@ -121,6 +121,22 @@ data ctee_nullary_source: String = "module v2.test.ctee.nullary\n\nimport v2.tes
 
 data ctee_type_param_source: String = "module v2.test.ctee.type_param\n\nimport v2.test.ctee.types { Tree }\nfn pass_through<T>(v: T) -> T { Leaf }\n"
 
+// THE PAYLOAD-ABSENT PATTERN ATOM, five shapes of one rule (the joint rule with jolly-cat-271: the
+// visible-value gate first, then the constructor reading by the expected type's declared arm set, then
+// the binder). `atom_field` is the corpus's dominant shape: a NULLARY arm spelled bare inside a field
+// pattern, reached through the scrutinee's declared type and the arm's payload field, with the arm
+// spelling NOT imported. `atom_binder` keeps a fresh lowercase binder a binder. `atom_misspelled` is the
+// misspelling guard jolly-cat-271 asked to be pinned: an atom outside the set is still a binder, and the
+// unread-binder gate is what refuses it. `atom_unresolved` is the fail-closed half: no readable expected
+// type AND a nullary constructor visible in scope -- read as a binder it would silently swallow every
+// scrutinee value, so it refuses. `atom_unresolved_binder` is its pair: the same unreadable expectation
+// with a spelling that names no constructor, which binds exactly as today.
+data ctee_atom_field_source: String = "module v2.test.ctee.atom_field\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: Value } => 0\n    Box { behavior: Call { name: n } } => n\n  }\n}\n"
+data ctee_atom_binder_source: String = "module v2.test.ctee.atom_binder\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: picked } => 0\n  }\n}\n"
+data ctee_atom_misspelled_source: String = "module v2.test.ctee.atom_misspelled\n\nimport v2.test.ctee.types { Box }\nfn rank(b: Box) -> Int {\n  match b {\n    Box { behavior: Absnet } => 0\n  }\n}\n"
+data ctee_atom_unresolved_source: String = "module v2.test.ctee.atom_unresolved\n\nimport v2.test.ctee.types { Leaf, Tree }\nfn pick<T>(t: T) -> Int {\n  match t {\n    Leaf => 0\n  }\n}\n"
+data ctee_atom_unresolved_binder_source: String = "module v2.test.ctee.atom_unresolved_binder\n\nimport v2.test.ctee.types { Tree }\nfn pick<T>(t: T) -> Int {\n  match t {\n    picked => 0\n  }\n}\n"
+
 fn ctee_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -151,7 +167,12 @@ fn ctee_context() -> Outcome<NativeTestContext> {
     ctee_read(text: ctee_scrutinee_param_source, id: ^ctee_scrutinee_param, path: "src/v2/test/fixture/ctee/scrutinee_param.dag"),
     ctee_read(text: ctee_coinciding_unimported_source, id: ^ctee_coinciding_unimported, path: "src/v2/test/fixture/ctee/coinciding_unimported.dag"),
     ctee_read(text: ctee_type_param_source, id: ^ctee_type_param, path: "src/v2/test/fixture/ctee/type_param.dag"),
-    ctee_read(text: ctee_nullary_source, id: ^ctee_nullary, path: "src/v2/test/fixture/ctee/nullary.dag")
+    ctee_read(text: ctee_nullary_source, id: ^ctee_nullary, path: "src/v2/test/fixture/ctee/nullary.dag"),
+    ctee_read(text: ctee_atom_field_source, id: ^ctee_atom_field, path: "src/v2/test/fixture/ctee/atom_field.dag"),
+    ctee_read(text: ctee_atom_binder_source, id: ^ctee_atom_binder, path: "src/v2/test/fixture/ctee/atom_binder.dag"),
+    ctee_read(text: ctee_atom_misspelled_source, id: ^ctee_atom_misspelled, path: "src/v2/test/fixture/ctee/atom_misspelled.dag"),
+    ctee_read(text: ctee_atom_unresolved_source, id: ^ctee_atom_unresolved, path: "src/v2/test/fixture/ctee/atom_unresolved.dag"),
+    ctee_read(text: ctee_atom_unresolved_binder_source, id: ^ctee_atom_unresolved_binder, path: "src/v2/test/fixture/ctee/atom_unresolved_binder.dag")
   ])
 }
 
@@ -174,6 +195,11 @@ type CteeVerdicts {
   coinciding_unimported: NativeModuleResolveVerdict
   type_param: NativeModuleResolveVerdict
   nullary: NativeModuleResolveVerdict
+  atom_field: NativeModuleResolveVerdict
+  atom_binder: NativeModuleResolveVerdict
+  atom_misspelled: NativeModuleResolveVerdict
+  atom_unresolved: NativeModuleResolveVerdict
+  atom_unresolved_binder: NativeModuleResolveVerdict
 }
 
 fn ctee_verdicts() -> Optional<CteeVerdicts> {
@@ -200,6 +226,11 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
         let coinciding_unimported = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.coinciding_unimported", path: ^ctee_coinciding_unimported)
         let type_param = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.type_param", path: ^ctee_type_param)
         let nullary = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.nullary", path: ^ctee_nullary)
+        let atom_field = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.atom_field", path: ^ctee_atom_field)
+        let atom_binder = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.atom_binder", path: ^ctee_atom_binder)
+        let atom_misspelled = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.atom_misspelled", path: ^ctee_atom_misspelled)
+        let atom_unresolved = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.atom_unresolved", path: ^ctee_atom_unresolved)
+        let atom_unresolved_binder = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.atom_unresolved_binder", path: ^ctee_atom_unresolved_binder)
         optional_present(value: CteeVerdicts {
           declared_types: declared_types.verdict,
           return_user: return_user.verdict,
@@ -491,3 +522,26 @@ test fn probe_optional_position_fatal_is_new_cause() -> Bool {
   match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.optional_position, reason: ^resolve_construct_tag_not_in_expected_type) }
 }
 
+// THE PAYLOAD-ABSENT PATTERN ATOM. Each arm names the ruling it pins; the two paired arms say the rule
+// does NOT fire where it is not allowed to.
+test fn a_nullary_arm_inside_a_field_pattern_binds_the_expected_type_arm() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.atom_field) }
+}
+
+test fn a_fresh_lowercase_binder_in_a_field_pattern_stays_a_binder() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.atom_binder) }
+}
+
+test fn an_atom_outside_the_expected_set_is_a_binder_and_the_unread_gate_refuses_it() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } =>
+    ctee_refuses_with(v: vs.atom_misspelled, reason: ^resolve_reason_catch_all_binder_unread) }
+}
+
+test fn an_atom_naming_a_visible_nullary_constructor_under_an_unreadable_expectation_refuses() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } =>
+    ctee_refuses_with(v: vs.atom_unresolved, reason: ^resolve_reason_pattern_atom_constructor_type_unresolved) }
+}
+
+test fn an_atom_naming_no_constructor_under_an_unreadable_expectation_binds_as_today() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.atom_unresolved_binder) }
+}
