@@ -52,10 +52,10 @@ pub use crate::std_types::{
 };
 use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable;
 pub use crate::v1_compiler_infer_env::{
-    alias_names_settled_agree, alias_settled_agree, is_where_refinement_node, kernel_settled_name,
-    settled_type, text_crossing_by_identity, text_representation_by_identity,
-    type_reference_declaration_reading, type_reference_declaration_ref, TypeBinding, TypeEnv,
-    TypeReferenceDeclarationReading,
+    alias_names_settled_agree, alias_rhs_of_declaration, alias_settled_agree,
+    is_where_refinement_node, kernel_settled_name, refinement_rhs_of_declaration, settled_type,
+    text_crossing_by_identity, text_representation_by_identity, type_reference_declaration_reading,
+    type_reference_declaration_ref, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
@@ -3988,9 +3988,18 @@ pub fn carrier_defines_field(carrier: Rc<DeclarationRef>, field: String) -> bool
 }
 
 pub fn operand_carrier_ref(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    operand_carrier_ref_settled(n, source_indices, env, 16)
+}
+
+pub fn operand_carrier_ref_settled(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_fuel: i64,
 ) -> Option<Rc<DeclarationRef>> {
     {
         loop {
@@ -4000,11 +4009,19 @@ pub fn operand_carrier_ref(
             let mut source_indices = __tco_loop_source_indices;
             #[allow(unused_mut)]
             let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
+                return std::option::Option::None;
+            }
             if crate::v1_compiler_infer_env::is_where_refinement_node(n.clone()) {
                 return match n.children.clone().first().cloned() {
-                    Some(base) => {
-                        operand_carrier_ref(base.clone(), source_indices.clone(), env.clone())
-                    }
+                    Some(base) => operand_carrier_ref_settled(
+                        base.clone(),
+                        source_indices.clone(),
+                        env.clone(),
+                        v1_rt::int_sub(fuel.clone(), 1),
+                    ),
                     std::option::Option::None => std::option::Option::None,
                 };
             }
@@ -4014,7 +4031,43 @@ pub fn operand_carrier_ref(
                 env.clone(),
             ) {
                 Some(d) => {
-                    break Some(d.clone());
+                    match crate::v1_compiler_infer_env::alias_rhs_of_declaration(
+                        d.clone(),
+                        env.clone(),
+                    ) {
+                        Some(rhs) => {
+                            let __tco_0 = rhs.clone();
+                            let __tco_1 = source_indices;
+                            let __tco_2 = env;
+                            let __tco_3 = v1_rt::int_sub(fuel, 1);
+                            __tco_loop_n = __tco_0;
+                            __tco_loop_source_indices = __tco_1;
+                            __tco_loop_env = __tco_2;
+                            __tco_loop_fuel = __tco_3;
+                            continue;
+                        }
+                        std::option::Option::None => {
+                            match crate::v1_compiler_infer_env::refinement_rhs_of_declaration(
+                                d.clone(),
+                                env.clone(),
+                            ) {
+                                Some(refined) => {
+                                    let __tco_0 = refined.clone();
+                                    let __tco_1 = source_indices;
+                                    let __tco_2 = env;
+                                    let __tco_3 = v1_rt::int_sub(fuel, 1);
+                                    __tco_loop_n = __tco_0;
+                                    __tco_loop_source_indices = __tco_1;
+                                    __tco_loop_env = __tco_2;
+                                    __tco_loop_fuel = __tco_3;
+                                    continue;
+                                }
+                                std::option::Option::None => {
+                                    break Some(d.clone());
+                                }
+                            }
+                        }
+                    }
                 }
                 std::option::Option::None => {
                     match crate::v1_compiler_infer_env::kernel_settled_name(
