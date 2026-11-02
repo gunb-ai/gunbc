@@ -16,7 +16,7 @@ module std.durable_compare_and_set
 // half: the store-side check itself, whose refusal arm belongs to the store
 // rather than to a lock the caller happens to hold.
 
-import std.types { NonEmptyStr, Int, String }
+import std.types { NonEmptyStr, Int, String, range, brand }
 import std.optional { Present, Absent }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.checked_arithmetic { int_inclusive_max }
