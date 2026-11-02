@@ -1007,7 +1007,7 @@ fn router_dev_retention_members(r: RouterDevRetention) -> List<JsonKeyValue> {
   }
 }
 
-// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-85 is bus c5), so the bus the
+// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-88 is bus c8), so the bus the
 // row's engine is bound to is a separate argument, and the retention is derived from the layout group of that
 // bus (serving_layout's h11-strata@<bus>), never typed. The port follows the engine, not the name.
 fn router_dev_h11_row(name: String, bus: String, port: Port, retiring: List<String>) -> RouterDevUpstream {
@@ -1020,21 +1020,51 @@ fn router_dev_h11_row(name: String, bus: String, port: Port, retiring: List<Stri
   }
 }
 
+// THE h11 ROWS FOLLOW THE LAYOUT'S REPLICA SET (operator ruling 2026-11-01, A-prime; live parity, #15622 applied
+// 21:11-21:13Z). An engine's NAME, port and retired names are a naming fact; its EXISTENCE and its retention are
+// the layout's: a bus the layout does not grant yields no row, so a router roster cannot outlive the grant. An
+// engine whose bus IS granted keeps its row and a retention the layout cannot derive is still refused.
+type RouterDevH11Engine { name: String, bus: String, port: Port, retiring: List<String> }
+
+fn router_dev_h11_engines() -> List<RouterDevH11Engine> {
+  [
+    RouterDevH11Engine { name: "h11-05", bus: "85", port: 18081 as Port, retiring: ["h11-a16-0"] },
+    RouterDevH11Engine { name: "h11-07", bus: "87", port: 18083 as Port, retiring: ["h11-a16-2"] },
+    RouterDevH11Engine { name: "h11-08", bus: "88", port: 18084 as Port, retiring: ["h11-a16-3"] },
+    RouterDevH11Engine { name: "h11-88", bus: "c8", port: 18088 as Port, retiring: [] },
+  ]
+}
+
+fn router_dev_layout_grants(group: String) -> Bool {
+  match host_6ce85c_layout {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } => any(rs, c => (c.group as String) == group)
+    ServingLayoutRefused { refusal: _ } => false
+  }
+}
+
+fn router_dev_h11_rows() -> List<RouterDevUpstream> {
+  map(filter(router_dev_h11_engines(), e => router_dev_layout_grants(group: concat("h11-strata@", e.bus))),
+      e => router_dev_h11_row(name: e.name, bus: e.bus, port: e.port, retiring: e.retiring))
+}
+
 // THE LIVE ROW SET (read from srv1's upstreams.json field names and values, 2026-10-31; keys are joined at
-// deploy and are in no row). Six h11 engines on ports 18081-18088 (86 and c6 are disabled, c1 was removed),
+// deploy and are in no row). The h11 engines follow the layout grant (four since A-prime),
 // srv1's vLLM, srv3's Strata and the ctrl rented pool. A single 16 GB engine serves ~10-13 warm tok/s at 200k,
 // so cap 2. Retiring names count old-worker turns during a graceful rename.
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
+  concat(router_dev_first_party_head(), concat(router_dev_h11_rows(), router_dev_first_party_tail()))
+}
+
+fn router_dev_first_party_head() -> List<RouterDevUpstream> {
   [
     // Retention is a declared frontier for srv1-vllm and srv3-strata: no layout models their replicas yet.
     RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: RetentionFrontier, effort_effects: qwen3_effort_rules() },
     RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: RetentionFrontier, effort_effects: iq3_s_effort_rules() },
-    router_dev_h11_row(name: "h11-05", bus: "85", port: 18081 as Port, retiring: ["h11-a16-0"]),
-    router_dev_h11_row(name: "h11-07", bus: "87", port: 18083 as Port, retiring: ["h11-a16-2"]),
-    router_dev_h11_row(name: "h11-08", bus: "88", port: 18084 as Port, retiring: ["h11-a16-3"]),
-    router_dev_h11_row(name: "h11-85", bus: "c5", port: 18085 as Port, retiring: ["h11-a16-4"]),
-    router_dev_h11_row(name: "h11-87", bus: "c7", port: 18087 as Port, retiring: []),
-    router_dev_h11_row(name: "h11-88", bus: "c8", port: 18088 as Port, retiring: []),
+  ]
+}
+
+fn router_dev_first_party_tail() -> List<RouterDevUpstream> {
+  [
     // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router. The pool is
     // capped at 4 turns (live; the figure the scaler reads as rented.cap), and renders as RentedCapped.
     RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", capacity: RentedCapped { turns: 4 }, max_model_len: 229376, path_prefix: "/rented-pool", retiring_names: [], in_service: true, retention: NoRetention, effort_effects: qwen3_effort_rules() },
