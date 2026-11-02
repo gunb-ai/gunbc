@@ -1,0 +1,25 @@
+module gunbc.guarantee_stall.division_and_remainder_typed_from_left_operand_stall
+
+import std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Q1e covers Add, Mul, Sub and unary Neg (v1.compiler.types arithmetic_requirement). Div and Mod are not in that
+// roster, so a mixed-carrier quotient or remainder (a: Nat / b: Int) is still typed from the LEFT operand by
+// infer_arithmetic_binop_type_node. That is the pre-Q1e behaviour, kept rather than extended: the quotient's
+// carrier needs its own requirement (the field Div reads and what an injection must preserve for it) and a RED,
+// which this change does not execute.
+data division_and_remainder_typed_from_left_operand_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v1 Div and Mod over operands of different carriers are typed from the left operand, not from a derived carrier",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: Cons {
+      head: "v1.compiler.types arithmetic_requirement arms Div and Mod (the _ => none arm)",
+      tail: Empty {}
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "arithmetic_requirement declares the Div and Mod fields and preserved operations, and a RED (a / b) as Nat for a: Nat, b: Int refuses on the real acceptance path")
+}

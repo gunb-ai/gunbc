@@ -1,0 +1,166 @@
+module test.claim.arithmetic_carrier_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import gunbc.structural_realization_bindings { conversion_plan_rows }
+import std.coercion {
+  ArithmeticCarrierSelected,
+  ArithmeticNoCarrier,
+  ArithmeticCarrierAmbiguous,
+  select_arithmetic_carrier,
+  ConversionPlan,
+  ConversionPhase,
+  ArithmeticCarrierSelection,
+  injection_is_implicit_safe,
+  InjectionPhase,
+  InjectionSafety
+}
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.types { String, Bool, Int, List }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EVIDENCE (executed on srv1 before this PR leaves review; results on the PR) THAT AN ARITHMETIC RESULT IS TYPED FROM BOTH OPERANDS' CARRIERS (Q1e), on the
+// source -> .dag-acceptance path. Before, the binop fold typed at the LEFT operand: `Nat + Int` was a Nat while
+// `Int + Nat` was an Int, and unary `-Nat` was a Nat (a negative natural). Result types are observed through
+// `(expr) as Nat`: an Int as Nat refinement cast refuses (refinement_cast_wall_witness), a Nat as Nat is the
+// identity. So a REDs' source is `Nat + Int` cast to Nat (refuses once the sum is an Int; accepted before).
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data nat_plus_int_source: String = "module probe_arith_nat_plus_int\nimport std.types { Int }\nimport std.nat { Nat }\nfn f(a: Nat, b: Int) -> Nat { (a + b) as Nat }\n"
+
+data int_plus_nat_source: String = "module probe_arith_int_plus_nat\nimport std.types { Int }\nimport std.nat { Nat }\nfn f(a: Int, b: Nat) -> Nat { (a + b) as Nat }\n"
+
+data neg_nat_source: String = "module probe_arith_neg_nat\nimport std.nat { Nat }\nfn f(a: Nat) -> Nat { (-a) as Nat }\n"
+
+data nat_plus_nat_source: String = "module probe_arith_nat_plus_nat\nimport std.nat { Nat }\nfn f(a: Nat, b: Nat) -> Nat { (a + b) as Nat }\n"
+
+data int_plus_int_source: String = "module probe_arith_int_plus_int\nimport std.types { Int }\nfn f(a: Int, b: Int) -> Int { a + b }\n"
+
+data nat_minus_nat_is_int_source: String = "module probe_arith_nat_minus_nat\nimport std.types { Int }\nimport std.nat { Nat }\nfn f(a: Nat, b: Nat) -> Int { a - b }\n"
+
+// A Nat beside a declaration with no algebra row has no carrier: it refuses (ArithmeticNoCarrier) rather than
+// taking the left operand's typing. Observed through the result's Nat return, which would hold under the old fallback.
+data nat_plus_unmodeled_source: String = "module probe_arith_nat_plus_unmodeled\nimport std.nat { Nat }\ntype Tag = TagA | TagB\nfn f(a: Nat, t: Tag) -> Nat { a + t }\n"
+
+// A Nat beside a kernel Float names no common carrier either (the operand has no declaration and is not a type
+// variable): it refuses rather than taking the left operand's typing (review 89308).
+data nat_plus_float_source: String = "module probe_arith_nat_plus_float\nimport std.nat { Nat }\nimport std.types { Float }\nfn f(a: Nat, x: Float) -> Nat { a + x }\n"
+
+test fn w_nat_plus_kernel_float_refuses() -> Bool {
+  blocking_count(source: nat_plus_float_source) >= 1
+}
+
+test fn w_nat_plus_unmodeled_carrier_refuses() -> Bool {
+  blocking_count(source: nat_plus_unmodeled_source) >= 1
+}
+
+// The same RED with the DECLARED Int (std.integer), which names a declaration; the kernel Int above is read through
+// kernel_grounding_rows to the same carrier (v1.compiler.types operand_carrier_ref).
+data nat_plus_declared_int_source: String = "module probe_arith_nat_plus_declared_int\nimport std.integer { Int }\nimport std.nat { Nat }\nfn f(a: Nat, b: Int) -> Nat { (a + b) as Nat }\n"
+
+test fn w_nat_plus_declared_int_is_not_nat() -> Bool {
+  blocking_count(source: nat_plus_declared_int_source) >= 1
+}
+
+test fn w_nat_plus_int_is_not_nat() -> Bool {
+  blocking_count(source: nat_plus_int_source) >= 1
+}
+
+test fn w_int_plus_nat_is_not_nat() -> Bool {
+  blocking_count(source: int_plus_nat_source) >= 1
+}
+
+test fn w_negated_nat_is_not_nat() -> Bool {
+  blocking_count(source: neg_nat_source) >= 1
+}
+
+test fn w_nat_plus_nat_stays_nat() -> Bool {
+  blocking_count(source: nat_plus_nat_source) == 0
+}
+
+test fn w_int_plus_int_stays_int() -> Bool {
+  blocking_count(source: int_plus_int_source) == 0
+}
+
+test fn w_nat_difference_is_int() -> Bool {
+  blocking_count(source: nat_minus_nat_is_int_source) == 0
+}
+
+// THE FOLD ITSELF, on the declared rows and on SUPPLIED rows. The ambiguity RED needs two incomparable minimal
+// carriers, which the one declared row cannot produce, so the rows are supplied (DESIGN section 3, a witness
+// discriminates at one interface); the declared row's own route is the source cells above.
+data nat_ref: DeclarationRef = decl_ref(module_path: "std.nat", decl_name: "Nat")
+data int_ref: DeclarationRef = decl_ref(module_path: "std.integer", decl_name: "Int")
+data other_ref: DeclarationRef = decl_ref(module_path: "std.integer", decl_name: "Other")
+
+fn selected_is(s: ArithmeticCarrierSelection, want: DeclarationRef) -> Bool {
+  match s {
+    ArithmeticCarrierSelected { carrier: c } => declaration_ref_eq(a: c, b: want)
+    ArithmeticNoCarrier => false
+    ArithmeticCarrierAmbiguous { candidates: _ } => false
+  }
+}
+
+test fn w_fold_selects_int_for_nat_and_int() -> Bool {
+  selected_is(s: select_arithmetic_carrier(rows: conversion_plan_rows, left: nat_ref, right: Present { value: int_ref }, definers: [nat_ref, int_ref], preserved: ["add"]), want: int_ref)
+}
+
+test fn w_fold_is_commutative_in_the_operands() -> Bool {
+  selected_is(s: select_arithmetic_carrier(rows: conversion_plan_rows, left: int_ref, right: Present { value: nat_ref }, definers: [nat_ref, int_ref], preserved: ["add"]), want: int_ref)
+}
+
+test fn w_fold_keeps_nat_for_nat_and_nat() -> Bool {
+  selected_is(s: select_arithmetic_carrier(rows: conversion_plan_rows, left: nat_ref, right: Present { value: nat_ref }, definers: [nat_ref, int_ref], preserved: ["add"]), want: nat_ref)
+}
+
+test fn w_unary_negate_selects_int_for_nat() -> Bool {
+  selected_is(s: select_arithmetic_carrier(rows: conversion_plan_rows, left: nat_ref, right: Absent, definers: [int_ref], preserved: ["add"]), want: int_ref)
+}
+
+data two_minimal_rows: List<ConversionPlan> = [
+  ConversionPlan { route: decl_ref(module_path: "test.probe", decl_name: "to_int"), phase: InjectionPhase { source: nat_ref, target: int_ref, safety: InjectionSafety { total: true, exact: true, preserves: ["add"], pure: true, consent_free: true } } },
+  ConversionPlan { route: decl_ref(module_path: "test.probe", decl_name: "to_other"), phase: InjectionPhase { source: nat_ref, target: other_ref, safety: InjectionSafety { total: true, exact: true, preserves: ["add"], pure: true, consent_free: true } } }
+]
+
+test fn w_incomparable_carriers_refuse_as_ambiguous() -> Bool {
+  match select_arithmetic_carrier(rows: two_minimal_rows, left: nat_ref, right: Present { value: nat_ref }, definers: [int_ref, other_ref], preserved: ["add"]) {
+    ArithmeticCarrierAmbiguous { candidates: _ } => true
+    ArithmeticCarrierSelected { carrier: _ } => false
+    ArithmeticNoCarrier => false
+  }
+}
+
+test fn w_injection_not_preserving_the_operator_is_not_a_route() -> Bool {
+  match select_arithmetic_carrier(rows: conversion_plan_rows, left: nat_ref, right: Present { value: int_ref }, definers: [nat_ref, int_ref], preserved: ["unlisted"]) {
+    ArithmeticNoCarrier => true
+    ArithmeticCarrierSelected { carrier: _ } => false
+    ArithmeticCarrierAmbiguous { candidates: _ } => false
+  }
+}
+
+// The declared injection claims implicit safety; a row that claims it is not total is not implicit-safe.
+data lossy_row: ConversionPlan = ConversionPlan { route: decl_ref(module_path: "test.probe", decl_name: "lossy"), phase: InjectionPhase { source: nat_ref, target: int_ref, safety: InjectionSafety { total: false, exact: true, preserves: ["add"], pure: true, consent_free: true } } }
+
+test fn w_declared_injection_is_implicit_safe() -> Bool {
+  conversion_plan_rows |> any(r => injection_is_implicit_safe(plan: r))
+}
+
+test fn w_partial_injection_is_not_implicit_safe() -> Bool {
+  !injection_is_implicit_safe(plan: lossy_row)
+}
+
+// DECLARED FRONTIER: the ten std.integer width rows resolve to the base carrier until widths are modeled
+// (gunbc.guarantee_stall arithmetic_over_machine_widths_stall).

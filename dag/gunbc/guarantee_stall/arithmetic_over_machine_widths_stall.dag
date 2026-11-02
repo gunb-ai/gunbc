@@ -1,0 +1,23 @@
+module gunbc.guarantee_stall.arithmetic_over_machine_widths_stall
+
+import std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Q1e frontier: the ten std.integer machine-width rows are Compose<Int|UInt, MachineWidth<N>>, transparent to
+// the base carrier at a formal, so an operator over them is typed as the base carrier's operation. Nothing
+// models a result's width or an overflow outcome, so an overflow past the width is not a typed refusal.
+data arithmetic_over_machine_widths_stall: GuaranteeStall = GuaranteeStall {
+  subject: "std.integer machine-width arithmetic: the result width and overflow outcome of an operator over a width-composed carrier",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: Cons {
+      head: "std.integer Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128",
+      tail: Empty {}
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "width-parameterized carriers whose algebra profile declares, per operator, the result width and a typed overflow outcome, so an operation over any of the ten std.integer width rows is typed and its overflow refused by the fold rather than resolved to the base carrier")
+}

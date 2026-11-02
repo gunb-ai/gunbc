@@ -28,7 +28,7 @@ import std.literal_elaboration {
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
-import std.coercion { select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import std.coercion { ArithmeticCarrierAmbiguous, ArithmeticNoCarrier, select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -66,6 +66,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ParsedModuleItemKind, 
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOnInadmissibleType, EqualityOptionalityMismatch,
   TypeArgumentArityMismatch,
+  ArithmeticWithoutCarrier, ArithmeticAmbiguousCarrier,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -119,7 +120,7 @@ import v1.compiler.infer_types {
   is_product_type,
   node_type_deps,
   method_receiver_element_node,
-  infer_literal_node, infer_binop_type_node, subtraction_refinement_of,
+  infer_literal_node, infer_binop_type_node, infer_arithmetic_binop_type_node, infer_neg_type_node, arithmetic_requirement, operand_carrier_ref, arithmetic_carrier_selection, ArithmeticRequirement,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node, is_type_expr_annotation,
   emit_map_has,
@@ -1164,6 +1165,18 @@ fn relocated_algebra_evidence_diags(diags: List<ErrorNode>, span: SourceSpan, mo
       make_error_node(diagnostic: AlgebraApplicationEvidenceUnavailable { receiver_type: rt, argument_index: ai, span: span }, module_name: module_name)
     _ => d
   })
+}
+
+// THE OPERAND AS THE CARRIER SELECTION SAW IT: its rendered type and the carrier declaration
+// operand_carrier_ref resolved for it (or that it resolved none), so a no-carrier refusal names what it
+// refused rather than only the operation.
+fn arithmetic_operand_label(n: Node, scope: InferScope) -> String {
+  let t = resolved_type(n: n)
+  let shape = node_type_shape(n: t, source_indices: scope.type_env.source_indices)
+  match operand_carrier_ref(n: t, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+    Present { value: d } => concat(shape, " @ ", d.module_path as String, ".", d.decl_name as String)
+    Absent => concat(shape, " @ no carrier")
+  }
 }
 
 fn inference_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
@@ -11214,18 +11227,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let right_result = operands.right
       let right_typed = right_result.typed
       let right_emissions = right_result.emissions
-      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env)
+      let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), right_type: Present { value: resolved_type(n: right_typed) }, source_indices: scope.type_env.source_indices, env: scope.type_env)
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
-      let refinement_diags = match op {
-        Sub =>
-          match subtraction_refinement_of(left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env) {
-            SubtractionRefinementAmbiguous { from_types: fts } =>
-              [inference_error(
-                message: concat("subtraction refinement is ambiguous: std.coercion refinement_cast_rules has ", to_string(fts |> count), " rows for this operand's declaration (source types ", join(fts, ", "), "); the difference's type would depend on row order"),
-                span: span, module_name: scope.module_name)]
+      let refinement_diags = match arithmetic_requirement(op: op) {
+        Absent => []
+        Present { value: req } =>
+          match arithmetic_carrier_selection(requirement: req, left_type: resolved_type(n: left_typed), right_type: Present { value: resolved_type(n: right_typed) }, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+            Present { value: ArithmeticCarrierAmbiguous { candidates: cs } } =>
+              [make_error_node(
+                diagnostic: ArithmeticAmbiguousCarrier { operation: req.field, candidates: cs |> map(c => c.decl_name), span: span },
+                module_name: scope.module_name)]
+            Present { value: ArithmeticNoCarrier } =>
+              [make_error_node(
+                diagnostic: ArithmeticWithoutCarrier { operation: req.field, operands: [arithmetic_operand_label(n: left_typed, scope: scope), arithmetic_operand_label(n: right_typed, scope: scope)], span: span },
+                module_name: scope.module_name)]
             _ => []
           }
-        _ => []
       }
       let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
@@ -11241,12 +11258,21 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let operand_emissions = operand_result.emissions
       let result_type = match op {
         Not => bool_type
-        Neg => resolved_type(n: operand_typed)
+        Neg => infer_neg_type_node(operand_type: resolved_type(n: operand_typed), source_indices: scope.type_env.source_indices, env: scope.type_env)
+      }
+      let neg_diags = match op {
+        Not => []
+        Neg =>
+          match arithmetic_carrier_selection(requirement: ArithmeticRequirement { field: "negate", preserved: [] }, left_type: resolved_type(n: operand_typed), right_type: none, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+            Present { value: ArithmeticNoCarrier } => [make_error_node(diagnostic: ArithmeticWithoutCarrier { operation: "negate", operands: [arithmetic_operand_label(n: operand_typed, scope: scope)], span: span }, module_name: scope.module_name)]
+            Present { value: ArithmeticCarrierAmbiguous { candidates: cs } } => [make_error_node(diagnostic: ArithmeticAmbiguousCarrier { operation: "negate", candidates: cs |> map(c => c.decl_name), span: span }, module_name: scope.module_name)]
+            _ => []
+          }
       }
       let uo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprUnaryOp { op: op }, children: [operand_typed], inferred: Present { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: uo_texpr,
-        emissions: operand_emissions
+        emissions: infer_emissions_concat(left: operand_emissions, right: infer_emissions_of_diagnostics(diagnostics: neg_diags))
       }
 
     ExprLambda =>
@@ -18911,14 +18937,14 @@ fn grounded_int_literal(k: Int, occurrence_identity: NodeOccurrenceIdentity, spa
 }
 
 // The operator node inference would have built for the same authored expression: the algebra
-// field comes from the one judgment inference asks (infer_binop_type_node), and the operand
+// field is the OPERAND CARRIER'S OWN (infer_arithmetic_binop_type_node, the one-carrier reading: these nodes are synthesized against a carrier already fixed, so no carrier selection applies), and the operand
 // declaration is the grounded carrier's, so emission decides the host operator from the same
 // fact it decides an authored `a + 1` on. result_type overrides the judgment's answer only for
 // the predecessor, where a difference of naturals leaves the naturals in general
-// (std.coercion dag_subtraction_refinement) and stays inside them here because the branch is
+// (std.coercion select_arithmetic_carrier) and stays inside them here because the branch is
 // taken only when the subject is at least k.
 fn grounded_binop(op: BinOp, left: Node, k: Int, result_type: Node?, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
-  let info = infer_binop_type_node(op: op, left_type: resolved_type(n: left), source_indices: ctx.env.source_indices, env: ctx.env)
+  let info = infer_arithmetic_binop_type_node(op: op, left_type: resolved_type(n: left), source_indices: ctx.env.source_indices)
   let rt = match result_type {
     Present { value: t } => t
     Absent => info.result_type
@@ -18936,7 +18962,7 @@ fn grounded_binop(op: BinOp, left: Node, k: Int, result_type: Node?, occurrence_
 // subtraction (its algebra field and its operand declaration), whatever the subject's own type, and
 // result_type is the value's -- the carrier when encoding a payload, the natural when decoding one.
 fn grounded_reflect(c: Int, subject: Node, carrier_type: Node, result_type: Node, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
-  let info = infer_binop_type_node(op: Sub, left_type: carrier_type, source_indices: ctx.env.source_indices, env: ctx.env)
+  let info = infer_arithmetic_binop_type_node(op: Sub, left_type: carrier_type, source_indices: ctx.env.source_indices)
   make_expr_node(
     occurrence_identity: occurrence_identity,
     expr_data: ExprBinOp { op: Sub, algebra_field: info.algebra_field, operand: Present { value: view.operand } },

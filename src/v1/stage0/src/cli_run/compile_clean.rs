@@ -945,6 +945,8 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         DeclaredTypeNotInhabited { position: s(), expected: s(), got: s(), span: no_span() },
         DeclaredTypeInhabitanceUndecided { position: s(), reason: s(), span: no_span() },
         DeclaredTypeInhabitanceUnmodeled { position: s(), span: no_span() },
+        ArithmeticWithoutCarrier { operation: s(), operands: istrings(), span: no_span() },
+        ArithmeticAmbiguousCarrier { operation: s(), candidates: istrings(), span: no_span() },
         UnlistedImportUse { name: s(), span: no_span() },
         ReferenceDerivedImportProviderUnknown { name: s(), referencing_module: s(), span: no_span() },
         ReferenceDerivedImportExportUnproven { name: s(), referencing_module: s(), provider_module: s(), span: no_span() },
@@ -1415,6 +1417,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => {
             "DeclaredTypeInhabitanceUnmodeled"
         }
+        CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => "ArithmeticWithoutCarrier",
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => "ArithmeticAmbiguousCarrier",
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => {
             "DeclaredTypeInhabitanceUndecided"
         }
@@ -1544,6 +1548,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position, .. } => position.clone(),
+        CompilerDiagnostic::ArithmeticWithoutCarrier { operation, .. } => operation.clone(),
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { operation, .. } => operation.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
@@ -1660,6 +1666,8 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => None,
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => None,
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => None,
+        CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => None,
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => None,
         CompilerDiagnostic::DeclaredTypeNotInhabited { expected, got, .. } => {
             Some((expected.clone(), got.clone()))
         }
