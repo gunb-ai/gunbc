@@ -1,0 +1,251 @@
+module v2.test.claim.name_resolve.construct_tag_expected_type
+
+import v2.compiler.source_root_eval {
+  native_test_context_from_ingest,
+  native_lane_file_refusal_index,
+  native_module_resolve_verdict,
+  NativeTestContext,
+  NativeModuleResolveVerdict,
+  NativeModuleResolveAccepted,
+  NativeModuleResolveRefused
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.types { Bool }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN AUTHORED CONSTRUCT TAG IS READ FROM THE EXPECTED TYPE'S DECLARED CONSTRUCTOR SET (ruling on
+// docs/plans/native-construct-tag-expected-type-arm.md, tidy-ant-251, 2026-11-02; the producer is
+// v2.compiler.resolve resolve_construct_tag_under_expected_constructor_set, fed by
+// resolve_expected_authored_construct_edge in value position and resolve_pattern_field_edge in
+// pattern position). These claims run the native prepare/resolve route, so each reports the FATAL
+// reason of one module: a shape that refuses for a different reason than its claim states turns that
+// claim red rather than passing over the wrong cause.
+//
+// WHY THE FIXTURES LOOK LIKE THIS. An arm of a coproduct gets a module-level alias row ONLY when its
+// name is unique among that module's coproducts, and that row lives in the DECLARING module's scope
+// (v2.compiler.symbol_index_fill symbol_index_fill_containment_node, disj_variant_count_of). So in an
+// importer the bare spelling of an arm has nothing to hit, while the expected type the site already
+// names DOES name the arm -- which is the A2 census class in
+// docs/plans/t4-a2a4-unbound-name-attribution.md (Value, None, Equal, Accepted; 417 dag modules and
+// their v2 counterparts import a type and never spell its arms). Each pair below therefore declares
+// the type in one module and uses it in another that imports only the type.
+
+data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\n"
+
+data ctee_other_source: String = "module v2.test.ctee.other\n\ntype Other = Value | Else\n"
+
+// A CONSTRUCTOR IN RETURN POSITION, spelled bare, with the expected type imported and the arm not.
+// Before the arm of this change: resolve_reason_unbound_symbol. After: accepted, bound by expected
+// type (v2.compiler.resolve ExpectedTypeConstructorRoute).
+data ctee_return_source: String = "module v2.test.ctee.return_user\n\nimport v2.test.ctee.types { Behavior }\nfn f() -> Behavior { Value }\n"
+
+// THE NESTED PATTERN ARM: the tag sits under a pattern field, and the field's declared type is what
+// the constructor must be read from. Before: resolve_reason_unbound_symbol at `Value`.
+data ctee_pattern_source: String = "module v2.test.ctee.pattern_user\n\nimport v2.test.ctee.types { Box }\nfn f(x: Box) -> Int {\n  match x {\n    Box { behavior: Value } => 0\n    Box { behavior: Call { name: n } } => n\n  }\n}\n"
+
+// THE RECORD-FIELD ARM: a value under a record field whose authored field type is the expected type.
+// This is the position rule that already existed (resolve_record_field_edge); what is new is that the
+// construct under it is gated by the field type's constructor set rather than by its spelling.
+data ctee_field_source: String = "module v2.test.ctee.field_user\n\nimport v2.test.ctee.types { Box, Behavior }\nfn f() -> Box { Box { behavior: Value } }\n"
+
+// THE MISMATCH: the spelling binds a declaration -- an arm of a DIFFERENT coproduct -- and the expected
+// type does not declare it. That is the case the ruling named, and it refuses with the new cause
+// without consulting any other door.
+data ctee_wrong_tag_source: String = "module v2.test.ctee.wrong_tag\n\nimport v2.test.ctee.types { Behavior }\nimport v2.test.ctee.other { Value }\nfn f() -> Behavior { Value }\n"
+
+// GENUINE AMBIGUITY IS PRESERVED, not resolved by the expected type: two imported arms spelled alike
+// stay many, and the door refuses as ambiguous rather than picking the arm that happens to match.
+data ctee_ambiguous_source: String = "module v2.test.ctee.ambiguous\n\nimport v2.test.ctee.types { Behavior }\nimport v2.test.ctee.other { Value }\nimport v2.test.ctee.types { Value }\nfn f() -> Behavior { Value }\n"
+
+// THE SET THAT CANNOT BE READ: the expected type is a kernel integer, which has no constructor set.
+// The name door answers exactly as it did before, so this stays unbound and is NOT relabelled.
+data ctee_no_set_source: String = "module v2.test.ctee.no_set\n\nfn f(x: Int) -> Int { Value }\n"
+
+// THE CONTROL THAT MUST NOT MOVE: an importer that already imports the arm binds it today, and keeps
+// the same declaring identity after the change -- the bounded-diff rule says nothing goes from bound
+// to bound with a different identity.
+data ctee_imported_arm_source: String = "module v2.test.ctee.imported_arm\n\nimport v2.test.ctee.types { Behavior, Value }\nfn f() -> Behavior { Value }\n"
+
+// THE QUALIFIED TAG KEEPS ITS DOTTED DOOR: it already names its owner, and the set governs the bare
+// spelling. Verdict unchanged by this change.
+data ctee_qualified_source: String = "module v2.test.ctee.qualified\n\nimport v2.test.ctee.types { Behavior }\nfn f() -> Behavior { v2.test.ctee.types.Behavior.Value }\n"
+
+fn ctee_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+fn ctee_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(ingest: [
+    ctee_read(text: ctee_types_source, id: ^ctee_types, path: "src/v2/test/fixture/ctee/types.dag"),
+    ctee_read(text: ctee_other_source, id: ^ctee_other, path: "src/v2/test/fixture/ctee/other.dag"),
+    ctee_read(text: ctee_return_source, id: ^ctee_return_user, path: "src/v2/test/fixture/ctee/return_user.dag"),
+    ctee_read(text: ctee_pattern_source, id: ^ctee_pattern_user, path: "src/v2/test/fixture/ctee/pattern_user.dag"),
+    ctee_read(text: ctee_field_source, id: ^ctee_field_user, path: "src/v2/test/fixture/ctee/field_user.dag"),
+    ctee_read(text: ctee_wrong_tag_source, id: ^ctee_wrong_tag, path: "src/v2/test/fixture/ctee/wrong_tag.dag"),
+    ctee_read(text: ctee_ambiguous_source, id: ^ctee_ambiguous, path: "src/v2/test/fixture/ctee/ambiguous.dag"),
+    ctee_read(text: ctee_no_set_source, id: ^ctee_no_set, path: "src/v2/test/fixture/ctee/no_set.dag"),
+    ctee_read(text: ctee_imported_arm_source, id: ^ctee_imported_arm, path: "src/v2/test/fixture/ctee/imported_arm.dag"),
+    ctee_read(text: ctee_qualified_source, id: ^ctee_qualified, path: "src/v2/test/fixture/ctee/qualified.dag")
+  ])
+}
+
+type CteeVerdicts {
+  declared_types: NativeModuleResolveVerdict
+  return_user: NativeModuleResolveVerdict
+  pattern_user: NativeModuleResolveVerdict
+  field_user: NativeModuleResolveVerdict
+  wrong_tag: NativeModuleResolveVerdict
+  ambiguous: NativeModuleResolveVerdict
+  no_set: NativeModuleResolveVerdict
+  imported_arm: NativeModuleResolveVerdict
+  qualified: NativeModuleResolveVerdict
+}
+
+fn ctee_verdicts() -> Optional<CteeVerdicts> {
+  match ctee_context() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        let declared_types = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.types", path: ^ctee_types)
+        let return_user = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.return_user", path: ^ctee_return_user)
+        let pattern_user = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.pattern_user", path: ^ctee_pattern_user)
+        let field_user = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.field_user", path: ^ctee_field_user)
+        let wrong_tag = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.wrong_tag", path: ^ctee_wrong_tag)
+        let ambiguous = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.ambiguous", path: ^ctee_ambiguous)
+        let no_set = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.no_set", path: ^ctee_no_set)
+        let imported_arm = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.imported_arm", path: ^ctee_imported_arm)
+        let qualified = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.qualified", path: ^ctee_qualified)
+        optional_present(value: CteeVerdicts {
+          declared_types: declared_types.verdict,
+          return_user: return_user.verdict,
+          pattern_user: pattern_user.verdict,
+          field_user: field_user.verdict,
+          wrong_tag: wrong_tag.verdict,
+          ambiguous: ambiguous.verdict,
+          no_set: no_set.verdict,
+          imported_arm: imported_arm.verdict,
+          qualified: qualified.verdict,
+        })
+      }
+  }
+}
+
+fn ctee_accepted(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveAccepted { resolved: _ } => true
+    _ => false
+  }
+}
+
+fn ctee_fatal(v: NativeModuleResolveVerdict) -> Optional<Symbol> {
+  match v {
+    NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      optional_present(value: diagnostics_fatal_reason(d: d))
+    _ => optional_absent()
+  }
+}
+
+fn ctee_refuses_with(v: NativeModuleResolveVerdict, reason: Symbol) -> Bool {
+  match ctee_fatal(v: v) {
+    Present { value: r } => r == reason
+    Absent => false
+  }
+}
+
+// The fixture pair itself resolves; a red here means the fixture drifted, not that the door moved.
+test fn the_declaring_module_resolves() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.declared_types)
+  }
+}
+
+// RED BEFORE, GREEN AFTER: a bare arm spelling in return position, under an imported expected type.
+test fn an_arm_of_the_expected_type_resolves_in_return_position() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.return_user)
+  }
+}
+
+// RED BEFORE, GREEN AFTER: the same spelling nested in a pattern, read from the pattern field's
+// declared type. The pattern field rule used to drop the resolved tag path, which is why this site had
+// no expected type to be read against.
+test fn an_arm_of_the_expected_type_resolves_in_a_nested_pattern() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.pattern_user)
+  }
+}
+
+// RED BEFORE, GREEN AFTER: the same spelling under a record field whose authored field type names the
+// expected type.
+test fn an_arm_of_the_expected_type_resolves_under_a_record_field() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.field_user)
+  }
+}
+
+// THE NEW CAUSE, located: the spelling binds an arm of a DIFFERENT coproduct, and the expected type
+// does not declare it. Refusing it by name alone would have accepted a tag the expected type has no
+// such constructor for.
+test fn an_arm_the_expected_type_does_not_declare_refuses_with_the_new_cause() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      ctee_refuses_with(v: vs.wrong_tag, reason: ^resolve_construct_tag_not_in_expected_type)
+  }
+}
+
+// CONTROL, unchanged by this change: two arms spelled alike stay many. The expected type does not get
+// to pick one.
+test fn two_imported_arms_spelled_alike_stay_ambiguous() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_refuses_with(v: vs.ambiguous, reason: ^resolve_reason_ambiguous_symbol)
+  }
+}
+
+// CONTROL, unchanged by this change: a site whose expected type has no readable constructor set keeps
+// the name door's cause. It is not relabelled as a constructor-set refusal, and the wave lane keeps
+// counting it where it belongs.
+test fn a_site_with_no_readable_constructor_set_keeps_the_unbound_cause() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_refuses_with(v: vs.no_set, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+// CONTROL, unchanged by this change: an importer that already imports the arm still resolves. Its
+// identity is asserted not to move by the bounded identity diff over the A2 tag sites, not here --
+// this claim only says the site does not start refusing.
+test fn an_imported_arm_still_resolves() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.imported_arm)
+  }
+}
+
+// CONTROL, unchanged by this change: a qualified tag carries its own owner and keeps its dotted door.
+test fn a_qualified_tag_keeps_its_dotted_door() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.qualified)
+  }
+}
