@@ -56,6 +56,10 @@ import gunbc.action_use_admission {
   CommitOutputProducer, checkout_ref_admitted_with_producers, checkout_ref_value_refusals,
 }
 import gunbc.ci.repository_seed_steps {
+  seed_pin_proofs, seed_pin_fetch_url,
+  seed_lane_steps,
+  seed_pin_consumer_guard_step_name, seed_pin_consumer_guard_var_name,
+  seed_pin_consumer_guard_statements,
   seed_pin_verifier_output_path, seed_pin_verifier_step_id, seed_pin_checkout_ref_expression,
   seed_pin_verification_statements,
 }
@@ -1906,4 +1910,141 @@ test fn the_publisher_refusal_names_the_diagnostic_that_refused_it() -> Bool {
           }
       }
   }
+}
+
+// ─── THE PRODUCER CANNOT SILENTLY PRODUCE NOTHING ───────────────────────────────
+// `needs` orders jobs and requires success; it does not require an OUTPUT. GitHub can suppress a job
+// output without failing its producer, an absent output reaches the consumer as the empty string, and
+// actions/checkout resolves an empty ref with no commit against the repository's DEFAULT BRANCH -- so a
+// verifier that succeeded while proving nothing would send the lane to `main` through a path nobody
+// typed. These controls are the discriminating ones: each deletes a distinct protection in the mutation
+// runs and says which control notices.
+
+fn lane_step_name(step: Step) -> String {
+  match step {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n { Present { value: v } => v  Absent => "" }
+  }
+}
+
+type SeedLaneOrder {
+  guard_seen: Bool
+  checkout_seen: Bool
+  violated: Bool
+}
+
+fn seed_lane_order_step(state: SeedLaneOrder, name: String, checkout_name: String) -> SeedLaneOrder {
+  let is_guard = name == seed_pin_consumer_guard_step_name()
+  let is_checkout = name == checkout_name
+  SeedLaneOrder {
+    guard_seen: state.guard_seen || is_guard,
+    checkout_seen: state.checkout_seen || is_checkout,
+    violated: state.violated || (is_checkout && !state.guard_seen),
+  }
+}
+
+// THE GUARD AND THE CHECKOUT ARE ONE LANE, AND THE GUARD IS FIRST. They are returned as a pair by
+// seed_lane_steps, so a lane cannot carry the checkout and drop the guard; this checks the pair is real
+// and that nothing in the publisher's seed route reaches the checkout -- or the build that publishes from
+// it -- before the guard has run.
+test fn the_guard_runs_before_the_checkout_it_protects() -> Bool {
+  let seed = fixture_seed()
+  let checkout_name = join(["Checkout ", seed.repository as String], "")
+  let pair_ok = match seed_lane_steps(seed: seed, pin: fixture_seed_pin) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: lane, diagnostics: _ } =>
+      lane_step_name(step: lane.guard) == seed_pin_consumer_guard_step_name()
+        && lane_step_name(step: lane.checkout) == checkout_name
+  }
+  let order = match heal_publisher_seed_route_steps(seed: seed) {
+    Rejected { diagnostics: _ } => SeedLaneOrder { guard_seen: false, checkout_seen: false, violated: true }
+    Accepted { value: steps, diagnostics: _ } =>
+      fold(
+        steps,
+        init: SeedLaneOrder { guard_seen: false, checkout_seen: false, violated: false },
+        f: fn(acc, bound) {
+          seed_lane_order_step(state: acc, name: lane_step_name(step: bound.step), checkout_name: checkout_name)
+        }
+      )
+  }
+  pair_ok && order.guard_seen && order.checkout_seen && order.violated == false
+}
+
+// THE PROOFS ARE DATA, AND THERE ARE EXACTLY TWO OF THOSE THINGS. A tag object, a blob, a tree, an object
+// from another repository and an absent object are refused by this list; a verifier whose guards were
+// deleted is a verifier with an empty list, and this control is what notices.
+test fn the_verifier_declares_exactly_the_two_proofs_that_make_a_pin_a_commit() -> Bool {
+  let seed = fixture_seed()
+  let proofs = seed_pin_proofs(seed: seed, pin: fixture_seed_pin)
+  count(proofs) == 2
+    && count(filter(proofs, p => p.expected == "commit")) == 1
+    && count(filter(proofs, p => p.expected == fixture_seed_pin)) == 1
+    && count(filter(proofs, p =>
+         fold(p.query, init: false, f: fn(acc, q) { acc || string_contains(s: q, pattern: "cat-file") })
+       )) == 1
+    && count(filter(proofs, p =>
+         fold(p.query, init: false, f: fn(acc, q) { acc || string_contains(s: q, pattern: "rev-parse") })
+       )) == 1
+    && for_all(xs: proofs, predicate: fn(p) { p.refusal != "" && p.variable != "" && !string_contains(s: p.variable, pattern: " ") })
+}
+
+// EVERY PROOF REFUSES, IN THE SCRIPT THAT RUNS, AND ONLY ONE PLACE IS FETCHED FROM. The unavailable pin,
+// the non-commit object and the wrong repository are three runtime outcomes; the model meets all three
+// with a named refusal in the emitted body and a single derived remote. The repository the verifier
+// fetches is the repository the checkout checks out, because both read the row's one `repository` field.
+test fn each_proof_refuses_in_the_emitted_verifier_and_only_the_rows_repository_is_fetched() -> Bool {
+  let seed = fixture_seed()
+  let proofs = seed_pin_proofs(seed: seed, pin: fixture_seed_pin)
+  let script = join(verifier_statement_texts(seed: seed, pin: fixture_seed_pin), "\n")
+  for_all(xs: proofs, predicate: fn(p) { string_contains(s: script, pattern: p.name) })
+    && string_contains(s: script, pattern: seed_pin_fetch_url(seed: seed))
+    && string_contains(s: script, pattern: seed.repository as String)
+    && string_contains(s: script, pattern: "git")
+    && !string_contains(s: script, pattern: "ls-remote")
+    && !string_contains(s: script, pattern: "refs/heads")
+    && !string_contains(s: script, pattern: "git@")
+}
+
+// A SUCCESSFUL PRODUCER WITH NO OUTPUT IS REFUSED AT THE CONSUMER, IN THE WORKFLOW THAT RUNS. Both the
+// absent case and the merely-different case refuse by name, and the value compared against is the row's
+// pin -- not the producer's word, and not `github.sha`.
+test fn a_successful_producer_without_its_output_is_refused_at_the_consumer() -> Bool {
+  let seed = fixture_seed()
+  let rendered = match bash_emit_stmts(
+    statements: seed_pin_consumer_guard_statements(seed: seed, pin: fixture_seed_pin),
+    set_e: true
+  ) {
+    Accepted { value: script, diagnostics: _ } => script
+    Rejected { diagnostics: _ } => ""
+  }
+  rendered != ""
+    && string_contains(s: rendered, pattern: "SeedPinOutputAbsent")
+    && string_contains(s: rendered, pattern: "SeedPinOutputIsNotThePin")
+    && string_contains(s: rendered, pattern: fixture_seed_pin)
+    && string_contains(s: rendered, pattern: seed_pin_consumer_guard_var_name())
+    // ...and the guard survives into the workflow that actually runs, not only into the model: the gate's
+    // emitted YAML carries the step by name and carries both refusals by name.
+    && string_contains(
+         s: expected_repository_witnesses_yml(
+           profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+           program: fixture_program()
+         ),
+         pattern: seed_pin_consumer_guard_step_name()
+       )
+    && string_contains(
+         s: expected_repository_witnesses_yml(
+           profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+           program: fixture_program()
+         ),
+         pattern: "SeedPinOutputIsNotThePin"
+       )
+    && string_contains(
+         s: expected_repository_witnesses_yml(
+           profile: mirror_profile_with_seed_pin(pin: fixture_seed_pin),
+           program: fixture_program()
+         ),
+         pattern: "SeedPinOutputAbsent"
+       )
 }

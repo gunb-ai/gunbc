@@ -288,7 +288,86 @@ fn seed_pin_fetch_url(seed: PublicSeed) -> String {
   join(["https://github.com/", seed.repository as String, ".git"], "")
 }
 
-// THE FETCH AND ITS TWO PROOFS, as typed shell nodes. `set -e` comes from the fold; strict mode is
+// WHAT MAKES A PIN A COMMIT: the facts a verifier must establish, as DATA. Two hand-written `if`s would
+// make "the verifier checks the two things" a fact only the shell knows; a control cannot notice one being
+// deleted, and a verifier that checks nothing still prints its output. Here each proof carries its own
+// query, the value the query must equal, and the refusal that fires when it does not, and the emitted
+// script is a fold over this list -- so removing a guard removes a row, which is something the model's
+// controls can and do see. The two together are what a pin means: the object exists AND is a commit AND
+// carries the id the row declared. A tag object peeled to a commit is refused by the first (its type is
+// `tag`), an object borrowed from another repository by the second.
+type SeedPinProof {
+  name: String
+  variable: String
+  query: List<String>
+  expected: String
+  refusal: String
+}
+
+fn seed_pin_proofs(seed: PublicSeed, pin: String) -> List<SeedPinProof> {
+  let remote = seed_pin_fetch_url(seed: seed)
+  [
+    SeedPinProof {
+      name: "SeedPinIsNotACommit",
+      variable: "GUNBC_SEED_PIN_TYPE",
+      query: ["cat-file", "-t", pin],
+      expected: "commit",
+      refusal: join(
+        [
+          remote, " does not have a commit object at ", pin,
+          " (it resolved to ", seed_pin_var_or_nothing(variable: "GUNBC_SEED_PIN_TYPE"),
+          "); the pin names something else, or nothing",
+        ],
+        ""
+      ),
+    },
+    SeedPinProof {
+      name: "SeedPinObjectIdDiffers",
+      variable: "GUNBC_SEED_PIN_OBJECT",
+      query: ["rev-parse", pin],
+      expected: pin,
+      refusal: join(
+        [
+          "git rev-parse of ", pin, " answered ", seed_pin_var_or_nothing(variable: "GUNBC_SEED_PIN_OBJECT"),
+          ", which is not the pin; refusing to check out a tree by an identity it does not carry",
+        ],
+        ""
+      ),
+    },
+  ]
+}
+
+// ONE PROOF, AS TWO STATEMENTS: read the query into a variable, then refuse unless it equals what the row
+// commits to. The query is assigned through a command substitution guarded by `|| true` and the equality
+// is tested separately, because a substitution argument is rendered unquoted by v2.workflow.bash_emit and
+// a failure inside a substitution is invisible to the statement that contains it.
+fn seed_pin_proof_statements(proof: SeedPinProof, store: Node, git: Node) -> List<Node> {
+  let query_words = concat(
+    [git, word(text: "-C"), store],
+    map(proof.query, q => word(text: q))
+  )
+  [
+    bash_build_assign(
+      name: proof.variable,
+      value: bash_build_word_cmdsubst(
+        body: bash_build_or_else(
+          left: command(words: query_words),
+          right: command_words(rest: ["true"])
+        )
+      )
+    ),
+    bash_build_or_else(
+      left: bash_build_test_bracket(words: [
+        var_word(name: proof.variable),
+        word(text: "="),
+        word(text: proof.expected),
+      ]),
+      right: seed_pin_refusal(name: proof.name, message: proof.refusal)
+    ),
+  ]
+}
+
+// THE FETCH AND ITS PROOFS, as typed shell nodes. `set -e` comes from the fold; strict mode is
 // imposed here because a fetch that silently produced nothing must fail rather than leave an empty
 // store for the next statement to mistake for success.
 fn seed_pin_verification_statements(seed: PublicSeed, pin: String) -> List<Node> {
@@ -297,81 +376,49 @@ fn seed_pin_verification_statements(seed: PublicSeed, pin: String) -> List<Node>
   let pin_word = word(text: pin)
   let git = word(text: "git")
   let job_id = seed.verifier.producer.job_id as String
-  [
-    set_strict_stmt(),
-    bash_build_assign(
-      name: store_name,
-      value: path_under(name: "RUNNER_TEMP", tail: join(["gunbc-seed-pin/", job_id], ""))
-    ),
-    command(words: [word(text: "rm"), word(text: "-rf"), word(text: "--"), store]),
-    command(words: [word(text: "mkdir"), word(text: "-p"), word(text: "--"), store]),
-    command(words: [git, word(text: "init"), word(text: "--bare"), word(text: "--quiet"), word(text: "--"), store]),
-    command(words: [
-      git, word(text: "-C"), store, word(text: "fetch"), word(text: "--quiet"), word(text: "--no-tags"),
-      word(text: "--depth"), word(text: "1"), word(text: seed_pin_fetch_url(seed: seed)), pin_word,
-    ]),
-    // A command substitution is assigned and read back, never used as a bare argument (v2.workflow.bash_emit
-    // renders a substitution argument unquoted, so the value would be word-split).
-    bash_build_assign(
-      name: "GUNBC_SEED_PIN_TYPE",
-      value: bash_build_word_cmdsubst(
-        body: bash_build_or_else(
-          left: command(words: [git, word(text: "-C"), store, word(text: "cat-file"), word(text: "-t"), pin_word]),
-          right: command_words(rest: ["true"])
-        )
-      )
-    ),
-    bash_build_or_else(
-      left: bash_build_test_bracket(words: [var_word(name: "GUNBC_SEED_PIN_TYPE"), word(text: "="), word(text: "commit")]),
-      right: seed_pin_refusal(
-        name: "SeedPinIsNotACommit",
-        message: join(
-          [
-            seed_pin_fetch_url(seed: seed), " does not have a commit object at ", pin,
-            " (it resolved to ", seed_pin_type_or_nothing(), "); the pin names something else, or nothing",
-          ],
-          ""
-        )
-      )
-    ),
-    bash_build_assign(
-      name: "GUNBC_SEED_PIN_OBJECT",
-      value: bash_build_word_cmdsubst(
-        body: bash_build_or_else(
-          left: command(words: [git, word(text: "-C"), store, word(text: "rev-parse"), pin_word]),
-          right: command_words(rest: ["true"])
-        )
-      )
-    ),
-    bash_build_or_else(
-      left: bash_build_test_bracket(words: [var_word(name: "GUNBC_SEED_PIN_OBJECT"), word(text: "="), pin_word]),
-      right: seed_pin_refusal(
-        name: "SeedPinObjectIdDiffers",
-        message: join(
-          ["git rev-parse of ", pin, " answered ", seed_pin_object_or_nothing(), ", which is not the pin; refusing to check out a tree by an identity it does not carry"],
-          ""
-        )
-      )
-    ),
-    // LAST, AND ONLY LAST: the job's output exists exactly when both proofs passed.
-    bash_build_with_redir_to_file(
-      inner: bash_build_pipe(
-        left: command(words: [word(text: "echo"), word(text: join([seed.verifier.producer.output_name as String, "=", pin], ""))]),
-        right: command(words: [word(text: "tee"), word(text: "-a"), var_word(name: "GITHUB_OUTPUT")])
+  let proof_statements = fold(
+    seed_pin_proofs(seed: seed, pin: pin),
+    init: [],
+    f: fn(acc, proof) { concat(acc, seed_pin_proof_statements(proof: proof, store: store, git: git)) }
+  )
+  concat(
+    [
+      set_strict_stmt(),
+      bash_build_assign(
+        name: store_name,
+        value: path_under(name: "RUNNER_TEMP", tail: join(["gunbc-seed-pin/", job_id], ""))
       ),
-      path: word(text: "/dev/null")
-    ),
-  ]
+      command(words: [word(text: "rm"), word(text: "-rf"), word(text: "--"), store]),
+      command(words: [word(text: "mkdir"), word(text: "-p"), word(text: "--"), store]),
+      command(words: [git, word(text: "init"), word(text: "--bare"), word(text: "--quiet"), word(text: "--"), store]),
+      // The pin is fetched BY SHA, from the derived remote and nowhere else: an unavailable pin, or one
+      // that exists only in someone's fork, dies here with the remote named in the diagnostic.
+      command(words: [
+        git, word(text: "-C"), store, word(text: "fetch"), word(text: "--quiet"), word(text: "--no-tags"),
+        word(text: "--depth"), word(text: "1"), word(text: seed_pin_fetch_url(seed: seed)), pin_word,
+      ]),
+    ],
+    concat(
+      proof_statements,
+      [
+        // LAST, AND ONLY LAST: the job's output exists exactly when every proof passed.
+        bash_build_with_redir_to_file(
+          inner: bash_build_pipe(
+            left: command(words: [word(text: "echo"), word(text: join([seed.verifier.producer.output_name as String, "=", pin], ""))]),
+            right: command(words: [word(text: "tee"), word(text: "-a"), var_word(name: "GITHUB_OUTPUT")])
+          ),
+          path: word(text: "/dev/null")
+        ),
+      ]
+    )
+  )
 }
 
-// A REFUSAL THAT SAYS WHAT IT FOUND. The two `or_nothing` readers exist because `set -u` makes an unset
-// variable an error, and a diagnostic that errors while explaining an absence is worse than the absence.
-fn seed_pin_type_or_nothing() -> Node {
-  bash_build_word_concat_from_nodes(parts: [word(text: "<"), var_word(name: "GUNBC_SEED_PIN_TYPE"), word(text: ">")])
-}
-
-fn seed_pin_object_or_nothing() -> Node {
-  bash_build_word_concat_from_nodes(parts: [word(text: "<"), var_word(name: "GUNBC_SEED_PIN_OBJECT"), word(text: ">")])
+// WHAT THE REFUSAL SAYS ABOUT AN ABSENT ANSWER. `set -u` makes an unset variable an error, and a
+// diagnostic that errors while explaining an absence is worse than the absence; the variable is named by
+// the proof, so the message and the guard cannot name different things.
+fn seed_pin_var_or_nothing(variable: String) -> String {
+  join(["<", variable, ">"], "")
 }
 
 fn seed_pin_refusal(name: String, message: String) -> Node {
@@ -450,6 +497,123 @@ fn seed_pin_verifier_job(seed: PublicSeed, pin: String, runner: RunnerSpec) -> O
               id_token: none,
             }
           }
+        }
+      )
+    }
+  )
+}
+
+// THE CONSUMER DOES NOT TAKE THE PRODUCER'S WORD FOR IT. `needs` guarantees that the verifier job RAN and
+// succeeded; it does not guarantee that it PRODUCED the output. GitHub can suppress an output without
+// failing its job, an unset output renders as the empty string to the consumer, and actions/checkout --
+// the release this repository pins -- resolves an empty `ref` with no `commit` against the repository's
+// DEFAULT BRANCH. So a producer that succeeded silently would send the lane to `main`, which is the exact
+// hazard this row exists to make unwritable, arriving through a path nobody hand-typed. The consuming job
+// therefore compares the value it actually received against the pin the row admitted, and fails before
+// the checkout runs: an absent value, an empty one, or one that is merely some other commit is refused.
+// It is a guard, not a checkout -- the checkout stays an action step under the ref wall.
+fn seed_pin_consumer_guard_step_name() -> String {
+  "Refuse the seed checkout unless the verifier reported the pinned commit"
+}
+
+fn seed_pin_consumer_guard_step_id(seed: PublicSeed) -> String {
+  join([seed.verifier.producer.job_id as String, "-guard"], "")
+}
+
+fn seed_pin_consumer_guard_var_name() -> String {
+  "GUNBC_SEED_PIN_RECEIVED"
+}
+
+// THE ONE EXPRESSION THE GUARD READS, which is the same Expression the checkout's ref is rendered from --
+// one producer, one path, read at both ends by name rather than by two spellings.
+fn seed_pin_consumer_guard_env(seed: PublicSeed) -> List<YamlKeyValue> {
+  match seed_pin_checkout_ref_expression(seed: seed) {
+    Present { value: e } => [
+      kv(key: seed_pin_consumer_guard_var_name(), value: yaml_string(s: interpolate(expression: e))),
+    ]
+    Absent {  } => []
+  }
+}
+
+fn seed_pin_consumer_guard_statements(seed: PublicSeed, pin: String) -> List<Node> {
+  let received = var_word(name: seed_pin_consumer_guard_var_name())
+  let producer = seed.verifier.producer
+  [
+    set_strict_stmt(),
+    // Absent and empty are one case in shell terms: both are an unset value at the consumer's edge.
+    bash_build_or_else(
+      left: bash_build_test_bracket(words: [word(text: "-n"), received]),
+      right: seed_pin_refusal(
+        name: "SeedPinOutputAbsent",
+        message: join(
+          [
+            "job ", producer.job_id as String, " succeeded without producing ", producer.output_name as String,
+            "; refusing to check out ", seed.repository as String, " at ", pin,
+            " on a producer that proved nothing",
+          ],
+          ""
+        )
+      )
+    ),
+    // Equality against the ROW's pin: a producer that answered with some other existing commit is refused
+    // too, because the row -- not the run -- says which commit this mirror's claims are judged against.
+    bash_build_or_else(
+      left: bash_build_test_bracket(words: [received, word(text: "="), word(text: pin)]),
+      right: seed_pin_refusal(
+        name: "SeedPinOutputIsNotThePin",
+        message: join(
+          [
+            "the seed verifier reported ", seed_pin_received_or_nothing(), ", not the pinned commit ", pin,
+            "; refusing to judge this repository against a tree its row did not commit to",
+          ],
+          ""
+        )
+      )
+    ),
+  ]
+}
+
+fn seed_pin_received_or_nothing() -> String {
+  join(["<", seed_pin_consumer_guard_var_name(), ">"], "")
+}
+
+fn seed_pin_consumer_guard_step(seed: PublicSeed, pin: String) -> Outcome<Step> {
+  bind_outcome(
+    o: bash_emit_stmts(statements: seed_pin_consumer_guard_statements(seed: seed, pin: pin), set_e: true),
+    f: fn(script) {
+      outcome_accepted(
+        value: RunStep {
+          name: Present { value: seed_pin_consumer_guard_step_name() },
+          id: Present { value: seed_pin_consumer_guard_step_id(seed: seed) },
+          run: script,
+          shell: none,
+          env: Present { value: seed_pin_consumer_guard_env(seed: seed) },
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: none,
+          timeout_minutes: none
+        }
+      )
+    }
+  )
+}
+
+// WHAT A LANE THAT JUDGES CLAIMS BY THE SEED CARRIES: the guard, then the checkout, in that order and as
+// one value. Passing the two separately is how a lane ends up with the checkout and not the guard -- a
+// pair that arrives as a pair cannot be half-emitted.
+type SeedLaneSteps {
+  guard: Step
+  checkout: Step
+}
+
+fn seed_lane_steps(seed: PublicSeed, pin: String) -> Outcome<SeedLaneSteps> {
+  bind_outcome(
+    o: seed_pin_consumer_guard_step(seed: seed, pin: pin),
+    f: fn(guard) {
+      bind_outcome(
+        o: seed_checkout_step(seed: seed),
+        f: fn(checkout) {
+          outcome_accepted(value: SeedLaneSteps { guard: guard, checkout: checkout })
         }
       )
     }

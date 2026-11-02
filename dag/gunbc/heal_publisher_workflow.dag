@@ -61,7 +61,7 @@ import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
 // that built its seed differently from the job that sealed the candidate would publish against a compiler
 // nothing verified.
 import gunbc.ci.repository_seed_steps {
-  seed_checkout_step, seed_build_step, toolchain_install_step,
+  SeedLaneSteps, seed_lane_steps, seed_build_step, toolchain_install_step,
   seed_pin_verifier_job, seed_pin_verifier_declared_expressions, seed_pin_verifier_producers,
   seed_pin_checkout_ref_expression,
 }
@@ -479,16 +479,33 @@ fn heal_publisher_route_steps(source: PublisherCompilerSource) -> Outcome<List<H
 // grammar's own refusal travels outward, and a caller that reconstructed a cause from a field would report a
 // failure that did not happen.
 fn heal_publisher_seed_route_steps(seed: PublicSeed) -> Outcome<List<HealPublisherBoundStep>> {
+  // The pin is read from the ROW here, not passed in beside it: the guard below compares what the
+  // verifier answered against the same value the row declares, and a pin threaded in from a caller would
+  // be a second authority over which commit the publisher is allowed to build.
+  match seed_source_pin(source: seed.source) {
+    Absent {  } => outcome_rejected(
+      d: module_unavailable_diagnostic(
+        reason: seed_source_refusal_reason(source: seed.source),
+        module_file: "gunbc.heal_publisher_workflow"
+      )
+    )
+    Present { value: pin } =>
   match seed_build_step(seed: seed) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: build_step, diagnostics: _ } =>
-      match seed_checkout_step(seed: seed) {
+      match seed_lane_steps(seed: seed, pin: pin) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: seed_checkout, diagnostics: _ } =>
+        Accepted { value: seed_lane, diagnostics: _ } =>
       outcome_accepted(
         value: [
+          // THE GUARD BEFORE THE CHECKOUT, gated on the same condition the checkout is: a lane that
+          // checks out the seed at all is a lane that has to have been told which commit it checked out.
           HealPublisherBoundStep {
-            step: heal_publisher_only_when_repair_owed(step: seed_checkout),
+            step: heal_publisher_only_when_repair_owed(step: seed_lane.guard),
+            role: capability_neutral,
+          },
+          HealPublisherBoundStep {
+            step: heal_publisher_only_when_repair_owed(step: seed_lane.checkout),
             role: capability_neutral,
           },
           HealPublisherBoundStep {
@@ -502,6 +519,7 @@ fn heal_publisher_seed_route_steps(seed: PublicSeed) -> Outcome<List<HealPublish
         ]
       )
       }
+    }
   }
 }
 

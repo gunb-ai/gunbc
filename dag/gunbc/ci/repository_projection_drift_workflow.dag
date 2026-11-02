@@ -65,7 +65,8 @@ import gunbc.ci.repository_compose_overlay {
 import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
   seed_build_step,
-  seed_checkout_step,
+  SeedLaneSteps,
+  seed_lane_steps,
   seed_pin_verifier_declared_expressions,
   seed_pin_verifier_job,
   seed_pin_verifier_producers,
@@ -256,7 +257,7 @@ fn projection_drift_steps(
   seal_body: String,
   record_step: Step,
   build_step: Step,
-  seed_checkout: Step
+  seed_lane: SeedLaneSteps
 ) -> List<Step> {
   let budget = memory_budget_rows(profile: profile)
   let check_step = RunStep {
@@ -310,7 +311,8 @@ fn projection_drift_steps(
         concat(
           [
           repository_checkout_step(step_name: program.checkout_step_name),
-          seed_checkout,
+          seed_lane.guard,
+          seed_lane.checkout,
           record_step,
           toolchain_install_step(step_name: program.toolchain_step_name),
           build_step,
@@ -341,7 +343,7 @@ fn projection_drift_job(
   seal_body: String,
   record_step: Step,
   build_step: Step,
-  seed_checkout: Step,
+  seed_lane: SeedLaneSteps,
   verifier_job_id: String
 ) -> Job {
   Job {
@@ -359,11 +361,16 @@ fn projection_drift_job(
       seal_body: seal_body,
       record_step: record_step,
       build_step: build_step,
-      seed_checkout: seed_checkout
+      seed_lane: seed_lane
     ),
     // The seed checkout's ref is the verifier's declared output, so the job cannot start until the pin
-    // has been proven in the intended repository. needs is the fence: an empty output is not what stops
-    // the checkout, the failed verifier job is.
+    // The seed checkout's ref is the verifier's declared output, so this job cannot start until the pin
+    // has been proven in the intended repository. needs is NOT the whole fence: it orders the jobs and
+    // requires the verifier to have succeeded, and neither of those requires the output to EXIST -- an
+    // absent output reaches this job as the empty string, which actions/checkout resolves against the
+    // default branch. The guard step inside this job (gunbc.ci.repository_seed_steps
+    // seed_pin_consumer_guard_step) compares the value actually received against the row's pin and fails
+    // before the checkout runs.
     needs: [verifier_job_id],
     env: none,
     outputs: none,
@@ -416,7 +423,7 @@ fn projection_drift_workflow(
   seal_body: String,
   record_step: Step,
   build_step: Step,
-  seed_checkout: Step,
+  seed_lane: SeedLaneSteps,
   verifier_job: Job
 ) -> Workflow {
   Workflow {
@@ -438,7 +445,7 @@ fn projection_drift_workflow(
         seal_body: seal_body,
         record_step: record_step,
         build_step: build_step,
-        seed_checkout: seed_checkout,
+        seed_lane: seed_lane,
         verifier_job_id: verifier_job.id
       )
     ]
@@ -519,11 +526,11 @@ fn expected_projection_drift_workflow_yml(
               reason: "gunbc.ci.repository_projection_drift_workflow: the seed-pin verifier could not be built from this row, so the seed checkout has no provenance and no workflow is emitted"
             }
             Accepted { value: verifier_job, diagnostics: _ } =>
-          match seed_checkout_step(seed: seed) {
+          match seed_lane_steps(seed: seed, pin: pin) {
             Rejected { diagnostics: _ } => ProjectionDriftWorkflowGenerationRefused {
-              reason: "gunbc.ci.repository_projection_drift_workflow: the seed checkout refused, so no workflow is emitted whose drift check judges a compiler it did not pin"
+              reason: "gunbc.ci.repository_projection_drift_workflow: the seed lane refused, so no workflow is emitted whose drift check judges a compiler it did not pin"
             }
-            Accepted { value: seed_checkout, diagnostics: _ } =>
+            Accepted { value: seed_lane, diagnostics: _ } =>
           let drift_workflow = projection_drift_workflow(
             profile: profile,
             seed: seed,
@@ -534,7 +541,7 @@ fn expected_projection_drift_workflow_yml(
             seal_body: seal_body,
             record_step: record_step,
             build_step: build_step,
-            seed_checkout: seed_checkout,
+            seed_lane: seed_lane,
             verifier_job: verifier_job
           )
           // THE SAME WALL THE PUBLISHER CALLS. It gets the declared ref expressions and the producer
