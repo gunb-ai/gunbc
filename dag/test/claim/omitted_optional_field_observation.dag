@@ -6,9 +6,11 @@ import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimR
 
 // Probe only: this omission is the specimen, not an admitted authoring policy.
 // Observe acceptance, interpreted read and native read separately.
+// This spelling matches v1.std.core.Node.ident; the Optional<Int> spelling
+// at parent e1e9b8d was refused before any function executed.
 type OptionalFieldProbe {
   required: Int
-  optional_value: Optional<Int>
+  optional_value: Int?
 }
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
