@@ -1,10 +1,49 @@
 module product.p4261.evidence
 
-import std.types { Bool }
+import std.types { Bool, List, String }
 import std.decl_ref { decl_ref }
 import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, observed_receipt }
-import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1 }
-import product.p4261.carrier { CarrierLayoutObservation }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1, p4261_revision_eq }
+import extdeps.nvidia.p4261.population {
+  P4261DesignPosition,
+  PopulatedPart,
+  PartRow,
+  PartConstrainedToRows,
+  PrintedRatedPart,
+  PopulationClaim,
+  p4261_e1_positions,
+  p4261_k1_positions,
+}
+import extdeps.electronic_component.types { ElectronicComponentRow, electronic_component_row_eq }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.electrical.connectivity { component_identity_eq }
+import product.electrical.continuity { EvidenceRef, OperatorStatement, OperatorPhotograph, SellerListingPhotograph }
+import product.electrical.bench_session {
+  BenchRecord,
+  FittedAtObservation,
+  FittedOrderUnknown,
+  SeenAcrossRemovalAndRefit,
+  SeenAfterRemoval,
+  SeenFitted,
+  fitted_at_observation,
+  no_bench_record,
+  removals_of,
+  seen_after,
+}
+import product.electrical.identification {
+  ComponentIdentification,
+  FootprintUnpopulated,
+  IdentifiedByMarking,
+  InstalledComponent,
+  MarkingCandidate,
+  MarkingSharedByMakers,
+  MarkingUnresolved,
+  RatingPrintedOnBody,
+  ResistanceCodeRead,
+  PrintedRating,
+  printed_rating_eq,
+}
+import product.p4261.carrier { CarrierLayoutObservation, SpecimenPosition, admit_correspondence }
 import product.p4261.findings { assembly_revision_standing, RevisionReadOnBoard }
 import product.p4261.e1_b { p4261_e1_layout }
 import product.p4261.k1_a { p4261_k1_layout }
@@ -36,14 +75,10 @@ import product.p4261.k1_a { p4261_k1_layout }
 // guarantee). NEXT-RUNG TRIGGER, as the capability: a photograph store whose content identity the
 // specimen records cite, so a marking row is checkable against the image it was read from.
 
-fn same_revision(a: P4261AssemblyRevision, b: P4261AssemblyRevision) -> Bool {
-  a.model == b.model && a.assembly_part_number == b.assembly_part_number && a.revision_code == b.revision_code && a.pcb_code == b.pcb_code
-}
-
 // Whether a specimen's own records support a revision row: recorded against it, and its label and PCB
 // print both read and agree with it.
 fn revision_supported(revision: P4261AssemblyRevision, specimen: CarrierLayoutObservation) -> Bool {
-  same_revision(a: specimen.revision, b: revision) && match assembly_revision_standing(layout: specimen) {
+  p4261_revision_eq(a: specimen.revision, b: revision) && match assembly_revision_standing(layout: specimen) {
     RevisionReadOnBoard { revision: _ } => true
     _ => false
   }
@@ -63,4 +98,264 @@ fn p4261_k1_revision_standing() -> CitedFigureStanding {
   } else {
     p4261_k1.standing
   }
+}
+
+// ── POPULATION: WHAT ONE BOARD'S OWN READINGS SAY OF A RECONSTRUCTED POPULATION CLAIM ─────────────
+//
+// A claim is NVIDIA's (extdeps.nvidia.p4261.population); what one held board's readings say of it is
+// this assessment, scoped to that board. Its inputs are the board's admitted correspondence (which of
+// our components sit at the claim's position, product.p4261.carrier admit_correspondence), every
+// observation of those components, and whether each part was fitted when it was seen
+// (product.electrical.bench_session fitted_at_observation). Nothing is inferred from a designator's
+// spelling, a revision's name, or another board.
+//
+// EACH OBSERVATION BEARS ON THE CLAIM BY WHAT IT ESTABLISHES, NOT BY WHETHER IT IS "IDENTIFIED".
+// A marking matched to one row establishes that row; a marking shared by makers establishes only that
+// the part is one of its rows; a candidate, an unresolved marking, a printed rating or a resistance code
+// establishes no row. A printed rating bears only on a rating claim. An empty footprint contradicts any
+// population claim -- unless the board's own ledger records that we emptied it (a removal of another
+// component admitted at the same position, the footprint seen after it). A part seen after its own
+// removal, or with its order against that removal unstated, bears on nothing. A marking read only off
+// the seller's listing photograph can contradict a claim but never supports one: the photograph is not
+// ours, and its attribution to the unit we received is the seller's.
+//
+// ANY APPLICABLE CONTRADICTION DECIDES, WHATEVER THE ORDER: an agreeing observation never hides a
+// disagreeing one, and both are returned. Support is ON THIS BOARD: the outcome names the asset, and
+// another board of the same revision with no observation of its own is assessed as missing evidence.
+type ObservationBearing
+  = Supports
+  | Undecided
+  | Contradicts
+  | NotApplicable
+
+type ObservationVerdict {
+  observation: InstalledComponent
+  fitted: FittedAtObservation
+  bearing: ObservationBearing
+}
+
+type AttributionGap
+  = PositionOfAnotherRevision
+  | NoPopulationClaim
+  | NoAdmittedReading
+
+type PopulationOutcome
+  = SupportedOnSpecimen { supporting: List<InstalledComponent> }
+  | EvidenceMissing { undecided: List<InstalledComponent> }
+  | Contradicted { contradicting: List<InstalledComponent>, supporting: List<InstalledComponent> }
+  | NotAttributable { gap: AttributionGap }
+
+type PopulationAssessment {
+  position: P4261DesignPosition
+  asset: PhysicalAssetIdentity
+  bindings: List<SpecimenPosition>
+  verdicts: List<ObservationVerdict>
+  outcome: PopulationOutcome
+}
+
+fn row_in(rows: List<ElectronicComponentRow>, r: ElectronicComponentRow) -> Bool {
+  any(rows, x => electronic_component_row_eq(a: x, b: r))
+}
+
+fn rows_equal(a: List<ElectronicComponentRow>, b: List<ElectronicComponentRow>) -> Bool {
+  all(a, x => row_in(rows: b, r: x)) && all(b, x => row_in(rows: a, r: x))
+}
+
+fn rows_disjoint(a: List<ElectronicComponentRow>, b: List<ElectronicComponentRow>) -> Bool {
+  !any(a, x => row_in(rows: b, r: x))
+}
+
+fn row_bearing(claim: ElectronicComponentRow, i: ComponentIdentification) -> ObservationBearing {
+  match i {
+    IdentifiedByMarking { row, marking: _ } => if electronic_component_row_eq(a: row, b: claim) { Supports } else { Contradicts }
+    MarkingSharedByMakers { rows, marking: _ } => if row_in(rows: rows, r: claim) { Undecided } else { Contradicts }
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => Undecided
+    RatingPrintedOnBody { rating: _, marking: _ } => Undecided
+    ResistanceCodeRead { milliohms: _, marking: _ } => Undecided
+    MarkingUnresolved { marking: _, discriminator: _ } => Undecided
+    FootprintUnpopulated { evidence: _ } => Contradicts
+  }
+}
+
+fn rows_bearing(claim: List<ElectronicComponentRow>, i: ComponentIdentification) -> ObservationBearing {
+  match i {
+    IdentifiedByMarking { row, marking: _ } => if row_in(rows: claim, r: row) { Supports } else { Contradicts }
+    MarkingSharedByMakers { rows, marking: _ } => if rows_equal(a: rows, b: claim) { Supports } else { if rows_disjoint(a: rows, b: claim) { Contradicts } else { Undecided } }
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => Undecided
+    RatingPrintedOnBody { rating: _, marking: _ } => Undecided
+    ResistanceCodeRead { milliohms: _, marking: _ } => Undecided
+    MarkingUnresolved { marking: _, discriminator: _ } => Undecided
+    FootprintUnpopulated { evidence: _ } => Contradicts
+  }
+}
+
+fn rating_bearing(claim: PrintedRating, i: ComponentIdentification) -> ObservationBearing {
+  match i {
+    RatingPrintedOnBody { rating, marking: _ } => if printed_rating_eq(a: rating, b: claim) { Supports } else { Contradicts }
+    FootprintUnpopulated { evidence: _ } => Contradicts
+    IdentifiedByMarking { row: _, marking: _ } => Undecided
+    MarkingSharedByMakers { rows: _, marking: _ } => Undecided
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => Undecided
+    ResistanceCodeRead { milliohms: _, marking: _ } => Undecided
+    MarkingUnresolved { marking: _, discriminator: _ } => Undecided
+  }
+}
+
+fn part_bearing(claim: PopulatedPart, i: ComponentIdentification) -> ObservationBearing {
+  match claim {
+    PartRow { row } => row_bearing(claim: row, i: i)
+    PartConstrainedToRows { rows } => rows_bearing(claim: rows, i: i)
+    PrintedRatedPart { rating } => rating_bearing(claim: rating, i: i)
+  }
+}
+
+fn read_off_listing(i: ComponentIdentification) -> Bool {
+  match identification_evidence(i: i) {
+    Present { value: e } => match e {
+      SellerListingPhotograph { listing: _, read_on: _ } => true
+      OperatorPhotograph { taken_on: _, locator: _ } => false
+      OperatorStatement { stated_on: _, verbatim: _ } => false
+    }
+    Absent => false
+  }
+}
+
+fn identification_evidence(i: ComponentIdentification) -> EvidenceRef? {
+  match i {
+    IdentifiedByMarking { row: _, marking } => Present { value: marking.evidence }
+    MarkingSharedByMakers { rows: _, marking } => Present { value: marking.evidence }
+    MarkingCandidate { row: _, marking, discriminator: _ } => Present { value: marking.evidence }
+    RatingPrintedOnBody { rating: _, marking } => Present { value: marking.evidence }
+    ResistanceCodeRead { milliohms: _, marking } => Present { value: marking.evidence }
+    MarkingUnresolved { marking, discriminator: _ } => match marking { Absent => Absent, Present { value: m } => Present { value: m.evidence } }
+    FootprintUnpopulated { evidence } => Present { value: evidence }
+  }
+}
+
+fn is_footprint(i: ComponentIdentification) -> Bool {
+  match i {
+    FootprintUnpopulated { evidence: _ } => true
+    _ => false
+  }
+}
+
+fn layout_record(layout: CarrierLayoutObservation) -> BenchRecord {
+  match layout.measured {
+    Absent => no_bench_record
+    Present { value: b } => b.bench
+  }
+}
+
+// An empty footprint we emptied: another component admitted at the same position was removed by a
+// recorded alteration, and the footprint was seen after that removal.
+fn emptied_by_us(layout: CarrierLayoutObservation, bindings: List<SpecimenPosition>, o: InstalledComponent) -> Bool {
+  any(bindings, s => !component_identity_eq(a: s.specimen, b: o.component) && any(removals_of(r: layout_record(layout: layout), asset: layout.asset, c: s.specimen), a => seen_after(o: o.seen, k: a.key)))
+}
+
+fn fitted_bearing(f: FittedAtObservation, b: ObservationBearing) -> ObservationBearing {
+  match f {
+    SeenFitted => b
+    SeenAfterRemoval { key: _ } => NotApplicable
+    FittedOrderUnknown => NotApplicable
+    SeenAcrossRemovalAndRefit => NotApplicable
+  }
+}
+
+fn observation_verdict(layout: CarrierLayoutObservation, bindings: List<SpecimenPosition>, claim: PopulationClaim, o: InstalledComponent) -> ObservationVerdict {
+  let fitted = fitted_at_observation(r: layout_record(layout: layout), asset: layout.asset, c: o.component, seen: o.seen)
+  let raw = part_bearing(claim: claim.part, i: o.identification)
+  let bearing = if is_footprint(i: o.identification) { if emptied_by_us(layout: layout, bindings: bindings, o: o) { NotApplicable } else { Contradicts } } else { if read_off_listing(i: o.identification) && is_bearing(b: raw, want: Supports) { Undecided } else { fitted_bearing(f: fitted, b: raw) } }
+  ObservationVerdict { observation: o, fitted: fitted, bearing: bearing }
+}
+
+fn is_bearing(b: ObservationBearing, want: ObservationBearing) -> Bool {
+  match b {
+    Supports => match want { Supports => true, _ => false }
+    Undecided => match want { Undecided => true, _ => false }
+    Contradicts => match want { Contradicts => true, _ => false }
+    NotApplicable => match want { NotApplicable => true, _ => false }
+  }
+}
+
+fn bearing_of(vs: List<ObservationVerdict>, want: ObservationBearing) -> List<InstalledComponent> {
+  map(filter(vs, v => is_bearing(b: v.bearing, want: want)), v => v.observation)
+}
+
+fn same_position(a: P4261DesignPosition, b: P4261DesignPosition) -> Bool {
+  p4261_revision_eq(a: a.position.revision, b: b.position.revision) && (a.position.designator as String) == (b.position.designator as String)
+}
+
+fn verdicts_at(layout: CarrierLayoutObservation, bindings: List<SpecimenPosition>, claim: PopulationClaim) -> List<ObservationVerdict> {
+  map(filter(layout.components, c => any(bindings, s => component_identity_eq(a: s.specimen, b: c.component))), o => observation_verdict(layout: layout, bindings: bindings, claim: claim, o: o))
+}
+
+fn outcome_of(vs: List<ObservationVerdict>) -> PopulationOutcome {
+  let contradicting = bearing_of(vs: vs, want: Contradicts)
+  let supporting = bearing_of(vs: vs, want: Supports)
+  if count(contradicting) > 0 { Contradicted { contradicting: contradicting, supporting: supporting } }
+  else if count(supporting) > 0 { SupportedOnSpecimen { supporting: supporting } }
+  else { EvidenceMissing { undecided: bearing_of(vs: vs, want: Undecided) } }
+}
+
+fn no_verdicts() -> List<ObservationVerdict> {
+  []
+}
+
+// One board's assessment of one position, over the board's admitted correspondence (computed once per
+// board by the caller, admit_correspondence).
+fn assess_population(position: P4261DesignPosition, layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>) -> PopulationAssessment {
+  let bindings = filter(admitted, s => same_position(a: s.position, b: position))
+  let unattributed = if !p4261_revision_eq(a: position.position.revision, b: layout.revision) { Present { value: PositionOfAnotherRevision } } else { if count(bindings) == 0 { Present { value: NoAdmittedReading } } else { Absent } }
+  match position.population {
+    Absent => PopulationAssessment { position: position, asset: layout.asset, bindings: bindings, verdicts: no_verdicts(), outcome: NotAttributable { gap: NoPopulationClaim } }
+    Present { value: claim } => match unattributed {
+      Present { value: gap } => PopulationAssessment { position: position, asset: layout.asset, bindings: bindings, verdicts: no_verdicts(), outcome: NotAttributable { gap: gap } }
+      Absent => {
+        let vs = verdicts_at(layout: layout, bindings: bindings, claim: claim)
+        PopulationAssessment { position: position, asset: layout.asset, bindings: bindings, verdicts: vs, outcome: outcome_of(vs: vs) }
+      }
+    }
+  }
+}
+
+fn is_supported(o: PopulationOutcome) -> Bool {
+  match o {
+    SupportedOnSpecimen { supporting: _ } => true
+    _ => false
+  }
+}
+
+// One claimed position's assessment on its board, and the standing the claim then carries: a receipt
+// naming the board's record only where the board's own readings support it, the claim's authored
+// standing otherwise -- beside, never instead of, the outcome that says why.
+type PositionStanding {
+  assessment: PopulationAssessment
+  standing: CitedFigureStanding
+}
+
+type ClaimedAssessment {
+  assessment: PopulationAssessment
+  claim: PopulationClaim
+}
+
+fn claimed_assessments(positions: List<P4261DesignPosition>, layout: CarrierLayoutObservation) -> List<ClaimedAssessment> {
+  let admitted = admit_correspondence(layout: layout).admitted
+  flat_map(positions, d => match d.population {
+    Absent => []
+    Present { value: c } => [ClaimedAssessment { assessment: assess_population(position: d, layout: layout, admitted: admitted), claim: c }]
+  })
+}
+
+fn p4261_e1_population_standings() -> List<PositionStanding> {
+  map(claimed_assessments(positions: p4261_e1_positions, layout: p4261_e1_layout), x => PositionStanding {
+    assessment: x.assessment,
+    standing: if is_supported(o: x.assessment.outcome) { ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "product.p4261.e1_b", decl_name: "p4261_e1_layout")) } } else { x.claim.standing },
+  })
+}
+
+fn p4261_k1_population_standings() -> List<PositionStanding> {
+  map(claimed_assessments(positions: p4261_k1_positions, layout: p4261_k1_layout), x => PositionStanding {
+    assessment: x.assessment,
+    standing: if is_supported(o: x.assessment.outcome) { ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "product.p4261.k1_a", decl_name: "p4261_k1_layout")) } } else { x.claim.standing },
+  })
 }

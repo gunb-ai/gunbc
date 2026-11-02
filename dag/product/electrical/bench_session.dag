@@ -5,7 +5,7 @@ import std.types { String, NonEmptyStr, List }
 import std.nat { Nat, nat_min, nat_max }
 import std.measure { Millivolt, Volt, millivolt_count, volt_count }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
-import product.electrical.connectivity { ElectricalTerminalRef, ComponentInstanceIdentity, terminal_ref_equal }
+import product.electrical.connectivity { ElectricalTerminalRef, ComponentInstanceIdentity, component_identity_eq, terminal_ref_equal }
 import product.electrical.continuity {
   AfterIncidents,
   BeforeIncidents,
@@ -279,11 +279,9 @@ type SpecimenState sole_constructor {
   module: ModuleState
 }
 
+// Of the recorded alterations, a removal divides states; a thermal-interface change touches no terminal.
 fn alteration_divides_state(a: AssetAlteration) -> Bool {
-  match a.change {
-    ThermalInterfaceChanged { removed: _, applied: _ } => false
-    PartRemoved { refitted: _ } => true
-  }
+  removal_of(a: a)
 }
 
 fn alteration_refitted(a: AssetAlteration) -> Bool {
@@ -400,6 +398,82 @@ fn is_disposition(d: ReadingDisposition, want: ReadingDisposition) -> Bool {
     OfAnotherConfiguration => match want { OfAnotherConfiguration => true, _ => false }
     Uncovered => match want { Uncovered => true, _ => false }
     Unresolved => match want { Unresolved => true, _ => false }
+  }
+}
+
+// ── INSTALLATION: WHETHER A PART WAS FITTED, DERIVED FROM THE ALTERATION LEDGER ──────────────────
+//
+// Whether a part is on the board is never authored beside the part: the ledger's removals (AssetAlteration
+// PartRemoved, whose part names the component) are the one record of it. Two questions are asked of it.
+//
+// WAS IT FITTED WHEN IT WAS SEEN? A component observation states its order against the board's dividing
+// events (product.electrical.identification InstalledComponent seen). With no recorded removal of the
+// part, an observation of it on the board saw it fitted. With one, only an order stated against that
+// removal places the observation: before it, the part was seen fitted; after it, the part had been
+// removed; otherwise the order is unknown and the observation supplies no fitted-state evidence. A
+// removal recorded as refitted is one event for two changes, so which side an observation fell on is
+// not distinguishable (Stage A's refusal, kept).
+type FittedAtObservation
+  = SeenFitted
+  | SeenAfterRemoval { key: NonEmptyStr }
+  | FittedOrderUnknown
+  | SeenAcrossRemovalAndRefit
+
+// IS IT REMOVED NOW? After every event the board's record holds, the part is removed when the ledger
+// records its removal. NotRemovedByRecord says only that no recorded removal names this component --
+// for an empty footprint that is not "fitted", and for any part it is not a reading of the board today.
+type InstallationAfterRecord
+  = NotRemovedByRecord
+  | RemovedBy { key: NonEmptyStr }
+  | RemovalRefitIndistinguishable
+
+fn removal_of(a: AssetAlteration) -> Bool {
+  match a.change {
+    ThermalInterfaceChanged { removed: _, applied: _ } => false
+    PartRemoved { refitted: _ } => true
+  }
+}
+
+fn removals_of(r: BenchRecord, asset: PhysicalAssetIdentity, c: ComponentInstanceIdentity) -> List<AssetAlteration> {
+  filter(alterations_of(r: r, asset: asset), a => removal_of(a: a) && component_identity_eq(a: a.part, b: c))
+}
+
+fn seen_before(o: ReadingOrder, k: NonEmptyStr) -> Bool {
+  match o {
+    BeforeIncidents { keys } => key_listed(keys: keys, k: k)
+    AfterIncidents { keys: _ } => false
+    BetweenIncidents { after: _, before } => key_listed(keys: before, k: k)
+    OrderUnrecorded { relative_to: _ } => false
+  }
+}
+
+fn seen_after(o: ReadingOrder, k: NonEmptyStr) -> Bool {
+  match o {
+    BeforeIncidents { keys: _ } => false
+    AfterIncidents { keys } => key_listed(keys: keys, k: k)
+    BetweenIncidents { after, before: _ } => key_listed(keys: after, k: k)
+    OrderUnrecorded { relative_to: _ } => false
+  }
+}
+
+fn fitted_at_observation(r: BenchRecord, asset: PhysicalAssetIdentity, c: ComponentInstanceIdentity, seen: ReadingOrder) -> FittedAtObservation {
+  let rs = removals_of(r: r, asset: asset, c: c)
+  let after = filter(rs, a => seen_after(o: seen, k: a.key))
+  if any(rs, a => alteration_refitted(a: a)) { SeenAcrossRemovalAndRefit } else {
+    match after.first() {
+      Present { value: a } => SeenAfterRemoval { key: a.key }
+      Absent => if all(rs, a => seen_before(o: seen, k: a.key)) { SeenFitted } else { FittedOrderUnknown }
+    }
+  }
+}
+
+fn installation_after_record(r: BenchRecord, asset: PhysicalAssetIdentity, c: ComponentInstanceIdentity) -> InstallationAfterRecord {
+  let rs = removals_of(r: r, asset: asset, c: c)
+  if any(rs, a => alteration_refitted(a: a)) { RemovalRefitIndistinguishable } else {
+    match rs.first() {
+      Present { value: a } => RemovedBy { key: a.key }
+      Absent => NotRemovedByRecord
+    }
   }
 }
 

@@ -1,0 +1,251 @@
+module product.p4261.comparison
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.placement_supply { PhysicalAssetIdentity }
+import extdeps.electronic_component.types { ElectronicComponentRow }
+import extdeps.nvidia.p4261.population { P4261DesignPosition, p4261_e1_positions, p4261_k1_positions }
+import product.electrical.connectivity { component_identity_eq }
+import product.electrical.continuity { OperatorPhotograph, OperatorStatement, SellerListingPhotograph }
+import product.electrical.bench_session {
+  FittedAtObservation,
+  InstallationAfterRecord,
+  SeenFitted,
+  fitted_at_observation,
+  installation_after_record,
+}
+import product.electrical.identification {
+  ComponentIdentification,
+  IdentifiedByMarking,
+  InstalledComponent,
+  MarkingSharedByMakers,
+}
+import product.p4261.carrier { CarrierLayoutObservation, CorrespondenceAdmission, CorrespondenceRefusal, SpecimenPosition, admit_correspondence }
+import product.p4261.evidence {
+  PositionStanding,
+  identification_evidence,
+  layout_record,
+  p4261_e1_population_standings,
+  p4261_k1_population_standings,
+  rows_disjoint,
+  rows_equal,
+  same_position,
+}
+import product.p4261.e1_b { p4261_e1_layout }
+import product.p4261.k1_a { p4261_k1_layout }
+
+// THE E1 AGAINST THE K1, POSITION BY POSITION. The first consumer of the moved population facts and of
+// their assessments.
+//
+// LABEL-ALIGNED, AND SAYS SO. Two positions are put side by side when the two revisions' catalogues
+// list the same silkscreen designator (extdeps.nvidia.p4261.population). A shared label on two
+// revisions of one design is a reason to compare the populations read there; it does not establish
+// that the positions are the same circuit position, so no electrical reading is compared across them
+// here, and a terminal of one is never taken for a terminal of the other.
+//
+// EACH SIDE IS ONE PHYSICAL BOARD. A side names the board, its admitted correspondence at that position
+// (product.p4261.carrier admit_correspondence), every observation of the components bound there with
+// whether the part was fitted when seen and whether the ledger records its removal since, and the
+// revision's claim with its assessment on that board (product.p4261.evidence). The claims are
+// reconstructions, TranscribedUncited unless the board's own readings support them: never a
+// manufacturer's expected population.
+//
+// THE CONCLUSION COMES FROM WHAT EACH BOARD'S READINGS ESTABLISH, conservatively. A side establishes a
+// row set only from markings read on its own board while the part was fitted: one matched row gives
+// that row, a code shared by makers gives the set of its makers' rows, and nothing else (a candidate, an
+// unresolved marking, a rating, a footprint, a marking read only on the seller's listing) gives a set.
+//   {A} / {A}           the same identified part
+//   disjoint sets       different parts
+//   equal shared sets   the same candidate constraint -- not proof the fitted parts are the same
+//   overlapping sets    the difference is undetermined (both could be the shared row)
+//   a side with none    incomplete, never "unpopulated" and never "different"
+// Two observations on one board that establish different sets are that board's own disagreement, and
+// the comparison stops there for that position.
+type ObservedAtPosition {
+  observation: InstalledComponent
+  fitted: FittedAtObservation
+  now: InstallationAfterRecord
+}
+
+type ComparedSide {
+  asset: PhysicalAssetIdentity
+  position: P4261DesignPosition
+  bindings: List<SpecimenPosition>
+  observed: List<ObservedAtPosition>
+  claim: PositionStanding?
+}
+
+type SideRows
+  = RowsEstablished { rows: List<ElectronicComponentRow> }
+  | NoRowsEstablished
+  | BoardDisagrees { observations: List<InstalledComponent> }
+
+type PositionConclusion
+  = SameIdentifiedPart { row: ElectronicComponentRow }
+  | DifferentParts { e1: List<ElectronicComponentRow>, k1: List<ElectronicComponentRow> }
+  | SameCandidateConstraint { rows: List<ElectronicComponentRow> }
+  | DifferenceUndetermined { e1: List<ElectronicComponentRow>, k1: List<ElectronicComponentRow> }
+  | ComparisonIncomplete { boards: List<PhysicalAssetIdentity> }
+  | BoardReadingsDisagree { asset: PhysicalAssetIdentity, observations: List<InstalledComponent> }
+
+type PositionComparison {
+  designator: NonEmptyStr
+  e1: ComparedSide
+  k1: ComparedSide
+  conclusion: PositionConclusion
+}
+
+// What a board's admitted correspondence does not cover: readings refused, with their causes, and the
+// components observed on the board that no admitted reading places. A comparison over the covered
+// positions is not a census of the board.
+type BoardCoverage {
+  asset: PhysicalAssetIdentity
+  admitted: Nat
+  refused: List<CorrespondenceRefusal>
+  uncovered: List<InstalledComponent>
+}
+
+type P4261Comparison {
+  e1: BoardCoverage
+  k1: BoardCoverage
+  positions: List<PositionComparison>
+}
+
+fn coverage(layout: CarrierLayoutObservation, a: CorrespondenceAdmission) -> BoardCoverage {
+  BoardCoverage {
+    asset: layout.asset,
+    admitted: count(a.admitted),
+    refused: a.refused,
+    uncovered: filter(layout.components, c => !any(a.admitted, s => component_identity_eq(a: s.specimen, b: c.component))),
+  }
+}
+
+fn observed_at(layout: CarrierLayoutObservation, bindings: List<SpecimenPosition>) -> List<ObservedAtPosition> {
+  map(filter(layout.components, c => any(bindings, s => component_identity_eq(a: s.specimen, b: c.component))), o => ObservedAtPosition {
+    observation: o,
+    fitted: fitted_at_observation(r: layout_record(layout: layout), asset: layout.asset, c: o.component, seen: o.seen),
+    now: installation_after_record(r: layout_record(layout: layout), asset: layout.asset, c: o.component),
+  })
+}
+
+fn claim_at(standings: List<PositionStanding>, position: P4261DesignPosition) -> PositionStanding? {
+  (filter(standings, s => same_position(a: s.assessment.position, b: position))).first()
+}
+
+fn side(layout: CarrierLayoutObservation, admitted: List<SpecimenPosition>, standings: List<PositionStanding>, position: P4261DesignPosition) -> ComparedSide {
+  let bindings = filter(admitted, s => same_position(a: s.position, b: position))
+  ComparedSide {
+    asset: layout.asset,
+    position: position,
+    bindings: bindings,
+    observed: observed_at(layout: layout, bindings: bindings),
+    claim: claim_at(standings: standings, position: position),
+  }
+}
+
+fn on_our_board(i: ComponentIdentification) -> Bool {
+  match identification_evidence(i: i) {
+    Absent => false
+    Present { value: e } => match e {
+      OperatorPhotograph { taken_on: _, locator: _ } => true
+      OperatorStatement { stated_on: _, verbatim: _ } => true
+      SellerListingPhotograph { listing: _, read_on: _ } => false
+    }
+  }
+}
+
+fn fitted_when_seen(f: FittedAtObservation) -> Bool {
+  match f {
+    SeenFitted => true
+    _ => false
+  }
+}
+
+// The rows one observation establishes, or none.
+fn no_row_sets() -> List<List<ElectronicComponentRow>> {
+  []
+}
+
+fn no_boards() -> List<PhysicalAssetIdentity> {
+  []
+}
+
+fn established_rows(o: ObservedAtPosition) -> List<List<ElectronicComponentRow>> {
+  if !fitted_when_seen(f: o.fitted) || !on_our_board(i: o.observation.identification) { no_row_sets() } else {
+    match o.observation.identification {
+      IdentifiedByMarking { row, marking: _ } => [[row]]
+      MarkingSharedByMakers { rows, marking: _ } => [rows]
+      _ => no_row_sets()
+    }
+  }
+}
+
+fn side_rows(s: ComparedSide) -> SideRows {
+  let sets = flat_map(s.observed, o => established_rows(o: o))
+  let setting = filter(s.observed, o => count(established_rows(o: o)) > 0)
+  match sets.first() {
+    Absent => NoRowsEstablished
+    Present { value: first } => if all(sets, x => rows_equal(a: x, b: first)) { RowsEstablished { rows: first } } else { BoardDisagrees { observations: map(setting, o => o.observation) } }
+  }
+}
+
+fn incomplete(e1: ComparedSide, k1: ComparedSide, e1_rows: SideRows, k1_rows: SideRows) -> PositionConclusion {
+  ComparisonIncomplete { boards: concat(match e1_rows { NoRowsEstablished => [e1.asset], _ => no_boards() }, match k1_rows { NoRowsEstablished => [k1.asset], _ => no_boards() }) }
+}
+
+fn single_row(rows: List<ElectronicComponentRow>) -> ElectronicComponentRow? {
+  if count(rows) == 1 { rows.first() } else { Absent }
+}
+
+fn rows_conclusion(a: List<ElectronicComponentRow>, b: List<ElectronicComponentRow>) -> PositionConclusion {
+  if rows_disjoint(a: a, b: b) { DifferentParts { e1: a, k1: b } }
+  else if rows_equal(a: a, b: b) {
+    match single_row(rows: a) {
+      Present { value: r } => SameIdentifiedPart { row: r }
+      Absent => SameCandidateConstraint { rows: a }
+    }
+  }
+  else { DifferenceUndetermined { e1: a, k1: b } }
+}
+
+fn conclude(e1: ComparedSide, k1: ComparedSide) -> PositionConclusion {
+  let e1_rows = side_rows(s: e1)
+  let k1_rows = side_rows(s: k1)
+  match e1_rows {
+    BoardDisagrees { observations } => BoardReadingsDisagree { asset: e1.asset, observations: observations }
+    NoRowsEstablished => match k1_rows {
+      BoardDisagrees { observations } => BoardReadingsDisagree { asset: k1.asset, observations: observations }
+      _ => incomplete(e1: e1, k1: k1, e1_rows: e1_rows, k1_rows: k1_rows)
+    }
+    RowsEstablished { rows: a } => match k1_rows {
+      BoardDisagrees { observations } => BoardReadingsDisagree { asset: k1.asset, observations: observations }
+      NoRowsEstablished => incomplete(e1: e1, k1: k1, e1_rows: e1_rows, k1_rows: k1_rows)
+      RowsEstablished { rows: b } => rows_conclusion(a: a, b: b)
+    }
+  }
+}
+
+fn labelled_on(positions: List<P4261DesignPosition>, d: NonEmptyStr) -> P4261DesignPosition? {
+  (filter(positions, p => (p.position.designator as String) == (d as String))).first()
+}
+
+fn compare_boards(e1_layout: CarrierLayoutObservation, k1_layout: CarrierLayoutObservation, e1_standings: List<PositionStanding>, k1_standings: List<PositionStanding>) -> P4261Comparison {
+  let e1_admission = admit_correspondence(layout: e1_layout)
+  let k1_admission = admit_correspondence(layout: k1_layout)
+  P4261Comparison {
+    e1: coverage(layout: e1_layout, a: e1_admission),
+    k1: coverage(layout: k1_layout, a: k1_admission),
+    positions: flat_map(p4261_e1_positions, p => match labelled_on(positions: p4261_k1_positions, d: p.position.designator) {
+      Absent => []
+      Present { value: q } => {
+        let e1 = side(layout: e1_layout, admitted: e1_admission.admitted, standings: e1_standings, position: p)
+        let k1 = side(layout: k1_layout, admitted: k1_admission.admitted, standings: k1_standings, position: q)
+        [PositionComparison { designator: p.position.designator, e1: e1, k1: k1, conclusion: conclude(e1: e1, k1: k1) }]
+      }
+    }),
+  }
+}
+
+fn p4261_comparison() -> P4261Comparison {
+  compare_boards(e1_layout: p4261_e1_layout, k1_layout: p4261_k1_layout, e1_standings: p4261_e1_population_standings(), k1_standings: p4261_k1_population_standings())
+}

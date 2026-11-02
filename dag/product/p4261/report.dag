@@ -122,6 +122,24 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.electrical.investigation_hypothesis { hypothesis_text }
+import product.p4261.comparison {
+  P4261Comparison,
+  ComparedSide,
+  PositionConclusion,
+  SameIdentifiedPart,
+  DifferentParts,
+  SameCandidateConstraint,
+  DifferenceUndetermined,
+  ComparisonIncomplete,
+  BoardReadingsDisagree,
+}
+import product.p4261.evidence {
+  PopulationOutcome,
+  SupportedOnSpecimen,
+  EvidenceMissing,
+  Contradicted,
+  NotAttributable,
+}
 import product.p4261.carrier {
   AssemblyLabel,
   AwayFromLatch,
@@ -1256,4 +1274,47 @@ fn edge_connector_text(layout: CarrierLayoutObservation) -> String {
       },
     ], "")
   }
+}
+
+// ── THE E1 AGAINST THE K1 (product.p4261.comparison), RENDERED ──────────────────────────────────
+// Rendering only: every word below is read off the comparison's typed result, and no finding reads it.
+
+fn comparison_rows_text(rows: List<ElectronicComponentRow>) -> String {
+  join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or ")
+}
+
+fn comparison_conclusion_text(c: PositionConclusion) -> String {
+  match c {
+    SameIdentifiedPart { row } => join(["both read ", comparison_rows_text(rows: [row])], "")
+    DifferentParts { e1, k1 } => join(["different parts: the E1 reads ", comparison_rows_text(rows: e1), ", the K1 ", comparison_rows_text(rows: k1)], "")
+    SameCandidateConstraint { rows } => join(["both read a code shared by ", comparison_rows_text(rows: rows), ", which does not make the fitted parts the same"], "")
+    DifferenceUndetermined { e1, k1 } => join(["undetermined: the E1 reads ", comparison_rows_text(rows: e1), ", the K1 ", comparison_rows_text(rows: k1)], "")
+    ComparisonIncomplete { boards } => join(["incomplete: no part row read on ", join(map(boards, b => b as String), " or ")], "")
+    BoardReadingsDisagree { asset, observations } => join([asset as String, "'s own ", to_string(count(observations)), " readings there disagree"], "")
+  }
+}
+
+fn population_outcome_text(o: PopulationOutcome) -> String {
+  match o {
+    SupportedOnSpecimen { supporting: _ } => "supported on this board"
+    EvidenceMissing { undecided: _ } => "not established by this board's readings"
+    Contradicted { contradicting: _, supporting: _ } => "contradicted by this board's readings"
+    NotAttributable { gap: _ } => "not attributable to this board"
+  }
+}
+
+fn compared_side_text(s: ComparedSide) -> String {
+  match s.claim {
+    Absent => join([s.asset as String, ": no population claim"], "")
+    Present { value: c } => join([s.asset as String, ": reconstructed claim ", population_outcome_text(o: c.assessment.outcome)], "")
+  }
+}
+
+fn population_comparison_text(c: P4261Comparison) -> String {
+  join([
+    "at the designators both revisions' silkscreens carry (a shared label, not an established circuit correspondence): ",
+    join(map(c.positions, p => join([p.designator as String, " ", comparison_conclusion_text(c: p.conclusion), " (", compared_side_text(s: p.e1), "; ", compared_side_text(s: p.k1), ")"], "")), "; "),
+    ". Not covered: ", to_string(count(c.e1.uncovered)), " components observed on ", c.e1.asset as String, " and ", to_string(count(c.k1.uncovered)), " on ", c.k1.asset as String,
+    " have no admitted designator reading, and ", to_string(count(c.e1.refused) + count(c.k1.refused)), " readings were refused",
+  ], "")
 }
