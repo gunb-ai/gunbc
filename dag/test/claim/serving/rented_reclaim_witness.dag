@@ -1,0 +1,78 @@
+module test.claim.serving.rented_reclaim_witness
+
+import std.types { Bool, NonEmptyStr, Nat, EpochSecs, List }
+import std.decl_ref { decl_ref }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.harness.harness_seat { HarnessSeatReference, harness_seat_reference_record }
+import gunbc.serving.rented_allocation { RentedAllocationIdentity, rented_allocation_identity }
+import gunbc.serving.rented_reclaim {
+  RentedReclaimLoss, RentedReclaimSeat, RentedReclaimHandoff, RentedEndpointsLost, RentedNothingEnrolled,
+  rented_reclaim_loss, rented_reclaim_orphaned_seats, rented_reclaim_handoffs, rented_reclaim_replacement_obligation,
+}
+import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The reclaimed card and a SURVIVING one: same host node, a different device index, and a different replica on
+// the same device (different served name). Every case below is built so that a cohort sweep, a device mix-up,
+// or a served-name mix-up would change the answer.
+data reclaimed_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "reclaim-node" as NonEmptyStr, device_index: 0, served_name: "reclaim-model" as NonEmptyStr }
+data surviving_device_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "reclaim-node" as NonEmptyStr, device_index: 1, served_name: "reclaim-model" as NonEmptyStr }
+data same_device_other_model: RentedReplicaIdentity = RentedReplicaIdentity { node: "reclaim-node" as NonEmptyStr, device_index: 0, served_name: "other-model" as NonEmptyStr }
+
+data reclaimed_allocation: RentedAllocationIdentity = rented_allocation_identity(provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"), contract: "reclaim-contract" as NonEmptyStr)
+
+fn r_seat(replica: RentedReplicaIdentity, attempt: NonEmptyStr) -> RentedReclaimSeat {
+  RentedReclaimSeat { replica: replica, seat: harness_seat_reference_record(attempt: attempt, offer_key: "offer-1" as NonEmptyStr, now: 1700000000 as EpochSecs, round: 0 as Nat, head: "head-1" as NonEmptyStr) }
+}
+
+data lost_loss: RentedReclaimLoss = RentedEndpointsLost { allocation: reclaimed_allocation, replica: reclaimed_replica }
+data nothing_enrolled_loss: RentedReclaimLoss = RentedNothingEnrolled { allocation: reclaimed_allocation, obligation: "route landed off the engine port" as NonEmptyStr }
+
+// THE LOSS OF A REAL ALLOCATION IS THE ENDPOINT ITS OWN ENROLLMENT IMPLIED. This is the one row that goes
+// through the derivation rather than constructing a loss, and it is what keeps the other four honest: the
+// endpoint a reclaim takes away is the endpoint the enrollment roster would have carried.
+test fn a_reclaimed_allocation_loses_the_endpoint_it_enrolled() -> Bool {
+  match rented_reclaim_loss(allocation: a_allocation(route: a_tunnel(target_port: 8000))) {
+    RentedEndpointsLost { allocation: id, replica: replica } => (id.contract as String) == "1001" && replica.device_index == 0
+    RentedNothingEnrolled { allocation: _, obligation: _ } => false
+  }
+}
+
+// THE SEATS ON THE RECLAIMED REPLICA ORPHAN; THE OTHERS DO NOT. Two survivors are checked at once: another
+// device on the same host node, and a different served name on the SAME device. A pass that keyed on the host
+// node alone, or on the model name alone, strands cards that are still running and still paid for.
+test fn only_the_seats_on_the_reclaimed_replica_are_orphaned() -> Bool {
+  let held = [r_seat(replica: reclaimed_replica, attempt: "seat-on-reclaimed-card" as NonEmptyStr), r_seat(replica: surviving_device_replica, attempt: "seat-on-another-device" as NonEmptyStr), r_seat(replica: same_device_other_model, attempt: "seat-other-model-same-device" as NonEmptyStr)]
+  let orphaned = rented_reclaim_orphaned_seats(loss: lost_loss, held: held)
+  count(orphaned) == 1 && any(orphaned, s => (s.seat.attempt as String) == "seat-on-reclaimed-card" && s.replica.device_index == 0 && (s.replica.served_name as String) == "reclaim-model")
+}
+
+// THE HAND-OFF NAMES NO DESTINATION. It carries the seat, the replica that was lost and the obligation -- and
+// the type has no field a chosen card could go in, which is why there is nothing here for a failover decision
+// to hide in. The assertion is that the only replica mentioned is the one that was lost: the surviving device
+// and the other model on the reclaimed device appear nowhere in what is handed off.
+test fn the_reclaim_names_no_destination_for_an_orphaned_seat() -> Bool {
+  let held = [r_seat(replica: reclaimed_replica, attempt: "seat-on-reclaimed-card" as NonEmptyStr), r_seat(replica: surviving_device_replica, attempt: "seat-on-another-device" as NonEmptyStr)]
+  let handoffs = rented_reclaim_handoffs(loss: lost_loss, held: held)
+  count(handoffs) == 1
+    && all(handoffs, h => (h.seat.attempt as String) == "seat-on-reclaimed-card" && h.replica.device_index == 0 && (h.replica.served_name as String) == "reclaim-model")
+    && !any(handoffs, h => h.replica.device_index == 1 || (h.replica.served_name as String) == "other-model")
+    && all(handoffs, h => (h.obligation as String) == (rented_reclaim_replacement_obligation as String))
+}
+
+// AN ALLOCATION THAT NEVER ENROLLED AN ENDPOINT ORPHANS NO SEAT. 'Nothing was ever standing here' is a
+// different fact from 'nothing was lost', and the coproduct is what keeps it different: the arm carries the
+// obligation, and no seat can be matched against an endpoint that never existed.
+test fn an_allocation_that_enrolled_nothing_orphans_no_seat() -> Bool {
+  let held = [r_seat(replica: reclaimed_replica, attempt: "seat-on-a-running-card" as NonEmptyStr)]
+  count(rented_reclaim_orphaned_seats(loss: nothing_enrolled_loss, held: held)) == 0
+    && count(rented_reclaim_handoffs(loss: nothing_enrolled_loss, held: held)) == 0
+}
+
+// THE PRODUCTION READING, PINNED: nobody feeds this a seat population yet, and an empty one hands off nothing.
+// The frontier row, not this case, is what says the pass is unwired.
+test fn an_empty_seat_population_hands_off_nothing() -> Bool {
+  count(rented_reclaim_handoffs(loss: lost_loss, held: [] as List<RentedReclaimSeat>)) == 0
+}
