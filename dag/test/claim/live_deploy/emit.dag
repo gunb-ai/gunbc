@@ -323,12 +323,15 @@ fn later_segments_contain_third_after_second(segments: List<String>, second: Str
   if segments.count() == 0 {
     false
   } else {
-    let segment = segments.first()
-    if string_contains(s: segment, pattern: second) {
-      any(split(s: segment, sep: second).skip(n: 1), part => string_contains(s: part, pattern: third))
-        || any(segments.skip(n: 1), part => string_contains(s: part, pattern: third))
-    } else {
-      later_segments_contain_third_after_second(segments: segments.skip(n: 1), second: second, third: third)
+    match segments.first() {
+      Absent => false
+      Present { value: segment } =>
+        if string_contains(s: segment, pattern: second) {
+          any(split(s: segment, sep: second).skip(n: 1), part => string_contains(s: part, pattern: third))
+            || any(segments.skip(n: 1), part => string_contains(s: part, pattern: third))
+        } else {
+          later_segments_contain_third_after_second(segments: segments.skip(n: 1), second: second, third: third)
+        }
     }
   }
 }
