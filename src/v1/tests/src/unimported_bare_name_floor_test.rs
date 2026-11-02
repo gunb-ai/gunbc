@@ -173,3 +173,54 @@ fn qualified_call_returning_unimported_type_compiles_clean() {
         "a qualified call's signature types resolve from the callee's module; got {diags:?}"
     );
 }
+
+// ── the CONSTRUCTOR channel: a coproduct arm named without an import ─────────────────────
+
+/// probe.ctor.a declares a coproduct whose unit arms are corpus-unique.
+fn ctor_a() -> Rc<SourceFile> {
+    src(
+        "probe_ctor_a.dag",
+        "module probe.ctor.a\ntype FloorCtorKind = FloorCtorAlpha | FloorCtorBeta\n",
+    )
+}
+
+fn ctor_b(with_import: bool) -> Rc<SourceFile> {
+    let header = if with_import {
+        "module probe.ctor.b\nimport probe.ctor.a { FloorCtorKind }\n"
+    } else {
+        "module probe.ctor.b\n"
+    };
+    src(
+        "probe_ctor_b.dag",
+        &format!("{header}fn ctor_probe_pick() -> Int {{\n  let k = FloorCtorAlpha\n  1\n}}\n"),
+    )
+}
+
+fn ctor_c() -> Rc<SourceFile> {
+    src(
+        "probe_ctor_c.dag",
+        "module probe.ctor.c\nimport probe.ctor.a { FloorCtorKind }\nimport probe.ctor.b { ctor_probe_pick }\nfn ctor_probe_go() -> Int { ctor_probe_pick() }\n",
+    )
+}
+
+/// RED: the arm `FloorCtorAlpha` is declared only in probe.ctor.a; probe.ctor.b never imports
+/// it. The constructor tier (`merge_global_bare_variant_locals`) must be scoped by declarer like
+/// the name tier, so this REFUSES with an error naming the arm.
+#[test]
+fn unimported_bare_constructor_refuses() {
+    let diags = error_diag_messages(vec![ctor_a(), ctor_b(false), ctor_c()]);
+    assert!(
+        diags.iter().any(|m| m.contains("FloorCtorAlpha")),
+        "an unimported coproduct arm must not bind through the closure-wide constructor base; got {diags:?}"
+    );
+}
+
+/// Positive control: the same files with the import compile clean.
+#[test]
+fn imported_bare_constructor_compiles_clean() {
+    let diags = error_diag_messages(vec![ctor_a(), ctor_b(true), ctor_c()]);
+    assert!(
+        diags.is_empty(),
+        "with the import the arm binds; got {diags:?}"
+    );
+}

@@ -32460,9 +32460,45 @@ pub fn build_local_variants(
 pub fn merge_global_bare_variant_locals(
     state: Rc<VariantFoldState>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    env: Rc<TypeEnv>,
 ) -> Rc<VariantFoldState> {
     {
-        let __rb_0_0 = v1_rt::rc_map_merge(global_variant_base.clone(), state.locals.clone());
+        let in_scope = Rc::new(v1_rt::map_keys(&global_variant_base))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+                    &env.symbol_index.global_bare,
+                    name.clone(),
+                )
+                .as_deref()
+                .cloned()
+                {
+                    Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                        module_path: declarer,
+                        ..
+                    }) => {
+                        if crate::v1_compiler_infer_env::global_bare_declarer_in_scope(
+                            env.clone(),
+                            name.clone(),
+                            declarer.clone(),
+                        ) {
+                            match v1_rt::map_get(&global_variant_base, name.clone())
+                                .as_deref()
+                                .cloned()
+                            {
+                                Some(b) => v1_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(b)),
+                                None => acc.clone(),
+                            }
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                    _ => acc.clone(),
+                },
+            );
+        let __rb_0_0 = v1_rt::rc_map_merge(in_scope, state.locals.clone());
         let __rb_1_0 = state.collision_errors.clone();
         let mut __rb_h = state;
         match Rc::get_mut(&mut __rb_h) {
@@ -33011,6 +33047,7 @@ pub fn build_module_context(
                 local_variant_fold,
             ),
             global_variant_base,
+            env.clone(),
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
