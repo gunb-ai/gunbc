@@ -11,7 +11,9 @@ import extdeps.uri { Uri, Https, Tftp }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaLocator, TransferHttps, UnderManager }
 import extdeps.bmc.virtual_media { RedfishVirtualMediaParams }
-import extdeps.bmc.access_profile { SurfaceRedfishVirtualMedia }
+import extdeps.bmc.access_profile { SurfaceRedfishVirtualMedia, RedfishRoute, BmcBootControlRouteObservation, ProfileFromExternalAuthority }
+import extdeps.uri { uri_https }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.network.mac { mac_address }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake.subject {
@@ -50,6 +52,7 @@ import gunbc.network_boot_delivery {
 import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
 import gunbc.boot_artifact_delivery {
   BootControlByFirmwareBootOrder,
+  BootControlRouteOnController,
   BootDeliveryRefused,
   DeliveryAccessUnbound,
   BootDeliveryEligibilityProvenance,
@@ -235,9 +238,15 @@ data removable_media_plan: BootDeliveryPlan = BootDeliveryPlan {
     },
   },
   boot_control: BootFromRemovableMedia,
-  boot_control_route: BootControlByFirmwareBootOrder,
+  boot_control_route: BootControlRouteOnController {
+    observation: BmcBootControlRouteObservation {
+      route: RedfishRoute { system_locator: "/redfish/v1/Systems/1", chassis_locator: "/redfish/v1/Chassis/1", manager_locator: "/redfish/v1/Managers/1" },
+      raw_response: content_hash_of_value(value: "boot-control-redfish-fixture"),
+      observed_at: 1788000000000,
+    },
+  },
   eligibility: BootDeliveryEligibilityProvenance {
-    profile_provenance: none,
+    profile_provenance: Present { value: ProfileFromExternalAuthority { authority: ExternalAuthority { uri: uri_https(locator: "example.invalid/witness-fixture-not-fleet-fact") } } },
     evidence_manifest: [],
     selected: SelectedFromProfileIntersection { surface: SurfaceRedfishVirtualMedia },
     considered: [],
