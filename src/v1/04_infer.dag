@@ -9751,11 +9751,25 @@ fn expected_type_is_keyed_collection(exp: Node, scope: InferScope) -> Bool {
     true
   } else {
     let si = scope.type_env.source_indices
-    let last = qualified_last_segment(name: expected_type_spelling(exp: core, scope: scope))
+    // Decide on the RESOLVED core (core.name), never the authored leaf spelling. For a module-local or
+    // imported alias (e.g. `type DecodePositions = Map<String, ScmObjectRef>`) the surface node's
+    // authored name is the alias but its RESOLVED core head is the carrier (`Map` / `Set`). #15539 had
+    // substituted the authored `expected_type_spelling` leaf for core.name, so an alias whose written
+    // name is not a roster spelling was refused at empty_map()/empty_set() even though its resolved core
+    // is the carrier. The roster decides on the resolved core — and the arity is taken from the roster
+    // too (container_expected_arity), NOT a literal count, exactly as the pre-#15539 disjunct required
+    // (Map = 2 arguments, Set = 1). So a module-local record or a zero-argument type merely NAMED `Map`
+    // has the wrong child count and stays refused, as do a List (FreeMonoid carrier) and a Map-at-
+    // empty_set (different algebra). No literal carrier name, no per-alias allow row, no written-leaf read.
+    let resolved_core = qualified_last_segment(name: core.name)
+    let core_arity_ok = match container_expected_arity(name: resolved_core) {
+      Present { value: ar } => (core.children |> count) == ar
+      Absent => false
+    }
     if node_is_keyed_collection(n: core, source_indices: si) {
       true
     } else {
-      container_spelling_is_algebra(name: last, algebra: "FinitelySupportedFunction")
+      container_spelling_is_algebra(name: resolved_core, algebra: "FinitelySupportedFunction") && core_arity_ok
     }
   }
 }
@@ -9766,11 +9780,18 @@ fn expected_type_is_set_collection(exp: Node, scope: InferScope) -> Bool {
     true
   } else {
     let si = scope.type_env.source_indices
-    let last = qualified_last_segment(name: expected_type_spelling(exp: core, scope: scope))
+    // Mirror the keyed arm above: decide on the RESOLVED core head (core.name), not the authored leaf,
+    // with the arity taken from the roster (container_expected_arity), so a zero-argument type merely
+    // NAMED `Set` (wrong child count) and a Map (different algebra) stay refused.
+    let resolved_core = qualified_last_segment(name: core.name)
+    let core_arity_ok = match container_expected_arity(name: resolved_core) {
+      Present { value: ar } => (core.children |> count) == ar
+      Absent => false
+    }
     if node_is_set_collection(n: core, source_indices: si) {
       true
     } else {
-      container_spelling_is_algebra(name: last, algebra: "FinitePowerSet")
+      container_spelling_is_algebra(name: resolved_core, algebra: "FinitePowerSet") && core_arity_ok
     }
   }
 }
