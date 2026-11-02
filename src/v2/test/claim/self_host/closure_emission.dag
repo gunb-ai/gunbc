@@ -14,7 +14,7 @@ import extdeps.languages.json.parse {
   json_field_string_list,
   parse_json_document
 }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_find_first }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_find_first, list_map, string_concat_join }
 import std.optional { Absent, Optional, Present }
 import v2.compiler.self_host.closure_emission {
   ClosureEmission,
@@ -34,9 +34,11 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text_in_spans }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol, node_synthetic }
+import v2.std.node { Node, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.text { String }
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, first_key_class, production_first_row_lookup, symbol_list_contains }
+import v2.compiler.program_assembly { dag_prepared_grammar }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -702,5 +704,27 @@ fn ce_probe_elseelse_text() -> String {
       concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
     Accepted { value: e, diagnostics: _ } =>
       concat("ACCEPTED: ", closure_emission_json(emission: e))
+  }
+}
+
+// ---- node adhoc-56744ea7 analysis-dump probe (PROBE, not for landing) ----
+// Renders the PREPARED grammar's FIRST/nullable analysis for EVERY production, one per line. The analysis is
+// TEXT-INDEPENDENT (prepare_grammar is a pure fn of the grammar -- parse.dag prepared_grammar_carrier_note),
+// so this output is identical for every input text; its ONLY purpose is to run on BOTH executors (interpreter
+// and emitted gen-1) and diff. The combinator code AND the analysis code are read-faithful (fragments 1-9); so
+// if interpreter and emitted gen-1 disagree on any production's first-row class set / nullable membership, the
+// emitted GRAMMAR TREE fed to prepare_grammar differs from the .dag -- the parse-path divergence, localized to
+// a mis-emitted dag_grammar_* row. Mirrors the proven access in test/claim/body_lowering/arrow_lambda_block_body.dag.
+fn ce_probe_stmt_first_analysis() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "PREPARE-REFUSED"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => "PREPARED-VOID"
+        PreparedModeled { modeled: modeled } =>
+          string_concat_join(fields: list_map(xs: modeled.validated.root.productions, f: fn(p) {
+            concat(concat(concat(concat(symbol_lexeme(sym: p.name), if symbol_list_contains(xs: modeled.analysis.nullable_set, item: p.name) { " NULL" } else { " -" }), " ["), string_concat_join(fields: list_map(xs: production_first_row_lookup(rows: modeled.analysis.first_rows, name: p.name), f: fn(k) { symbol_lexeme(sym: first_key_class(key: k)) }), separator: ",")), "]")
+          }), separator: "\n")
+      }
   }
 }
