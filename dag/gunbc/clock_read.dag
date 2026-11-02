@@ -127,3 +127,28 @@ fn observer_instant_millis(instant: ObserverClockInstant) -> EpochMs {
 fn observer_instant_precedes(earlier: ObserverClockInstant, later: ObserverClockInstant) -> Bool {
   earlier.millis < later.millis
 }
+
+// WHICH CLOCK AN INSTANT CAME FROM, as one canonical key. Two instants can be put in order only when their
+// keys are equal: the millis of one dry realization's schedule and the millis of another realization's, or of
+// a measured run read, are numbers on one scale but not facts on one clock, and ordering across them is not a
+// wrong answer, it is no answer. The key lives HERE because ObserverInstantSource is declared here (§3: each
+// fact lives in exactly one place); a consumer that patched agreement locally would leave this module free to
+// order two clocks for the next consumer that mixes them (§6b: patching c when the fault is upstream).
+//
+// observer_instant_precedes is deliberately NOT widened to refuse across clocks: its existing consumers in
+// gunbc.machine_intake.bmc_secure build both sides from one realization by construction, and changing its
+// return type would rewrite that module, which this change does not own. So the shared fact is DECLARED here
+// and every consumer that can mix clocks asks it before ordering. Consumers:
+// gunbc.machine_intake.prior_life_boundary forced_write_instants_share_clock (the forced-write window and the
+// two archive reads of one arrival run).
+fn observer_instant_source_key(source: ObserverInstantSource) -> String {
+  match source {
+    ObserverClockReadAtRun => "observer-clock-read-at-run"
+    ObserverClockModeled { realization: r } => "observer-clock-modeled:" + (r as String)
+  }
+}
+
+// The declared equality over ObserverInstantSource: one clock, or not.
+fn observer_instants_on_one_clock(left: ObserverClockInstant, right: ObserverClockInstant) -> Bool {
+  observer_instant_source_key(source: left.source) == observer_instant_source_key(source: right.source)
+}

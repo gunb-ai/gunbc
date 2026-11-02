@@ -78,6 +78,7 @@ import gunbc.clock_read {
   observer_clock_modeled,
   observer_instant_millis,
   observer_instant_precedes,
+  observer_instants_on_one_clock,
 }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
 import gunbc.fleet.convergence_fold {
@@ -1085,32 +1086,24 @@ fn forced_first_rotation_write_leg(write: AdmittedForcedFirstRotation, began_mil
   }
 }
 
-// TWO OBSERVER INSTANTS ARE ON ONE CLOCK when their sources are the same clock: two reads of the run's own
-// observer clock, or two modeled instants of the SAME realization. gunbc.clock_read observer_instant_precedes
-// compares millis and ignores source, so this check is what keeps a modeled instant from one realization (or
-// a measured read, or another realization's dry clock) from being ordered against this run's. Consumers:
-// dry_archive_prior_life_across_forced_write and the RED that mixes a foreign realization's instant.
-fn observer_instant_sources_agree(a: ObserverClockInstant, b: ObserverClockInstant) -> Bool
-  admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_write_instants_share_clock"),
-  ]
-{
-  match a.source {
-    ObserverClockReadAtRun => match b.source { ObserverClockReadAtRun => true  _ => false }
-    ObserverClockModeled { realization: r } => match b.source {
-      ObserverClockModeled { realization: r2 } => (r as String) == (r2 as String)
-      _ => false
-    }
-  }
-}
-
+// ONE CLOCK FOR THE WHOLE FORCED-WRITE WINDOW: two reads of the run's own observer clock, or modeled instants
+// of the SAME realization -- never a measured read against a dry schedule, or one realization's clock against
+// another's. The clock fact itself is DECLARED in gunbc.clock_read (observer_instants_on_one_clock), because
+// ObserverInstantSource is declared there: keeping a copy here would leave the next consumer of the same fact
+// free to order two clocks (§3, §6b). gunbc.clock_read observer_instant_precedes still compares millis only,
+// so every consumer that can mix clocks asks this one first -- here, the write window and both archive reads.
+// Consumers: dry_archive_prior_life_across_forced_write, and the RED that mixes a foreign realization's
+// instant into the same window.
+//
+// Linear, not quadratic: source agreement is an equality, so each instant need only agree with the first.
+// An empty list is refused rather than passed -- with no instant to name, nothing can be shown to share a
+// clock (§5, fail closed).
 fn forced_write_instants_share_clock(instants: List<ObserverClockInstant>) -> Bool {
-  let every_pair_agrees = fold(
-    instants,
-    init: true,
-    f: (acc, x) => acc && fold(instants, init: true, f: (inner, y) => inner && observer_instant_sources_agree(a: x, b: y)),
-  )
-  length(xs: instants) > 0 && every_pair_agrees
+  match instants.first() {
+    Absent => false
+    Present { value: head } =>
+      fold(instants, init: true, f: (acc, x) => acc && observer_instants_on_one_clock(left: head, right: x))
+  }
 }
 
 // THE WRITE TRANSITION THIS RUN PERFORMED, sealed and minted only below: the write's effect leg (begin and
