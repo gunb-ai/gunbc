@@ -13,6 +13,7 @@ import extdeps.fans.types {
   FanSoundPressureUnderdetermined,
   FanBearingUnpublished,
   FanCatalogRow,
+  FreeAirFlowUnread,
   FanStopBehaviorUnpublished,
   FanStopsBelowPwm,
   FluidDynamicBearing,
@@ -58,6 +59,7 @@ data speedless_fixture_catalog: FanCatalogRow = FanCatalogRow {
   published_points: [],
   published_speed_range: FanSpeedRangeUnpublished,
   published_stop_behavior: FanStopBehaviorUnpublished,
+  free_air_flow: FreeAirFlowUnread { read_obligation: "fixture: no published flow" },
 }
 
 fn fan_acoustic_evidence_witness() -> ProcessExit {

@@ -1138,9 +1138,11 @@ fn side_display(s: BlockedSide) -> String {
 //
 // Two things this leaves OUT, both honest rather than convenient: it assumes all the board's heat goes into
 // the air this duct moves, which ignores the conduction into the board and the radiation off the fins that
-// exhaust_thermal lists as unmodelled couplings, and it is free-air flow at the fan's inlet, which is not
-// the flow the scroll will actually deliver against the scroll's own pressure drop. Both push the required
-// free-air figure UP, never down, so reading these numbers as a minimum is the safe direction to read them.
+// exhaust_thermal lists as unmodelled couplings, and the answer is the THROUGH-FLOW the fins must carry, not a
+// fan's catalog free-air rating: a fan delivers less than its free-air figure against the duct's and fins'
+// pressure drop, so a fan whose free-air rating merely equals this number is short. Both push the fan rating
+// needed UP, never down, so reading these numbers as a minimum is the safe direction to read them
+// (product.printed_chassis.group_cooling_plan states the assumed delivered fraction beside every screen).
 
 // Volume flow needed to carry `heat` away at a rise of `rise`, using only cited properties:
 // rho [g/m3] * V [mL/s] / 1000 = m_dot [mg/s], and Q [W] = m_dot [mg/s] * 1e-6 [kg/mg] * cp * dT. Inverted

@@ -137,9 +137,9 @@ fn millilitre_per_second_fixture() -> MillilitrePerSecond { millilitre_per_secon
 // reads it, with no other change.
 test fn w_the_catalog_joins_rows_to_read_faces() -> Bool {
   length(list: duct_cards) == 4
-    && end_face_is_read(card: a16_duct_card) && !end_face_is_read(card: t10_duct_card)
-    && length(list: filter(duct_cards, c => end_face_is_read(card: c))) == 1
-    && length(list: duct_card_bench_list()) == 4 + 2 + (9 + 1) + (1 + 1) + (1 + 1)
+    && end_face_is_read(card: a16_duct_card) && end_face_is_read(card: a2_duct_card) && !end_face_is_read(card: t10_duct_card)
+    && length(list: filter(duct_cards, c => end_face_is_read(card: c))) == 2
+    && length(list: duct_card_bench_list()) == 4 + 2 + (9 + 1) + (1 + 1) + (1 + 2)
     && match duct_card(id: "t4") { Present { value: c } => c.row.id == "t4" Absent => false }
     && match duct_card(id: "a100") { Present { value: _ } => false Absent => true }
 }
