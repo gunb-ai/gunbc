@@ -62,3 +62,18 @@ test fn rung_full_shape_over_variant() -> Bool {
   rung_full_shape_over_variant_emits_without_error_cascade()
 }
 
+
+// CROSS-MODULE RUNG: the declarations are the REAL std.generated_provider ones (imported, resolved against the live tree by the
+// helper), the projecting function lives in this fixture module. Rung 4 is the same-module control of the same shape.
+fn rung_cross_module_real_types_emit_without_error_cascade() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_ladder_cross_module_real_types\n\nimport std.types { NonEmptyStr }\nimport std.algebra { FreeSemigroup }\nimport std.generated_provider { ProviderAcquisitionStep, ProviderAcquisitionRefused, AcquisitionComplete, UnavailableProviderDemand, GeneratedProviderSite }\n\nfn probe_f5(s: ProviderAcquisitionStep) -> List<Int> {\n  match s {\n    ProviderAcquisitionRefused { refusals: rs } =>\n      ([rs.head] |> concat(rs.tail)) |> flat_map(r =>\n        ([r.demand.sites.head] |> concat(r.demand.sites.tail)) |> map(site => 1)\n      )\n    _ => []\n  }\n}\n",
+    "src/probe_ladder_cross_module_real_types.rs",
+    ["pub fn probe_f"],
+    ["error type cascade", "compile_error"]
+  )
+}
+
+test fn rung_cross_module_real_types() -> Bool {
+  rung_cross_module_real_types_emit_without_error_cascade()
+}
