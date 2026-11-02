@@ -39,7 +39,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // their v2 counterparts import a type and never spell its arms). Each pair below therefore declares
 // the type in one module and uses it in another that imports only the type.
 
-data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\ntype Tree = Node { child: Int } | Leaf\n"
+data ctee_types_source: String = "module v2.test.ctee.types\n\ntype Behavior = Value | Call { name: Int }\ntype Box = Box { behavior: Behavior }\ntype Tree = Node { child: Int } | Leaf\ntype Wrapper = Wrapper { inner: Cell }\ntype Cell = CellA { a: Int } | CellB { b: Int }\n"
 
 // A record whose NAME coincides with an arm of Tree above. The spelling has two declarations, one of
 // them a record type in a different module: the expected type's set holds the ARM, and the name door
@@ -97,6 +97,15 @@ data ctee_optional_position_source: String = "module v2.test.ctee.optional_posit
 
 // THE COINCIDING LABEL: the spelling resolves to a record type in another module, while the expected
 // type's set holds an ARM of that name. The set is the authority, so the record does not bind here.
+// THE SCRUTINEE'S DECLARED TYPE, carried into the arm patterns. Three shapes, one per rung:
+// `w.inner` where w is a formal of the enclosing declaration (the field's declared type at Wrapper's
+// payload, then Cell's arm set); the same scrutinee with an arm the set does NOT declare, which is a
+// bound-to-refused move and is claimed as such; and a scrutinee typed by a type parameter, where no
+// constructor set is readable and the arm keeps the name door.
+data ctee_scrutinee_field_source: String = "module v2.test.ctee.scrutinee_field\n\nimport v2.test.ctee.types { Cell, Wrapper }\nfn read(w: Wrapper) -> Int {\n  match w.inner {\n    CellA { a: n } => n\n    CellB { b: m } => m\n  }\n}\n"
+data ctee_scrutinee_wrong_source: String = "module v2.test.ctee.scrutinee_wrong\n\nimport v2.test.ctee.types { Box, Cell, Wrapper }\nfn read(w: Wrapper) -> Int {\n  match w.inner {\n    Box { behavior: b } => 0\n  }\n}\n"
+data ctee_scrutinee_param_source: String = "module v2.test.ctee.scrutinee_param\n\nimport v2.test.ctee.types { Cell }\nfn read<T>(v: T) -> Int {\n  match v {\n    CellA { a: n } => n\n    CellB { b: m } => m\n  }\n}\n"
+
 data ctee_coinciding_source: String = "module v2.test.ctee.coinciding\n\nimport v2.test.ctee.types { Tree }\nimport v2.test.ctee.node_record { Node }\nfn make() -> Tree { Node { child: 1 } }\n"
 
 // The pair's other half: nothing named Node is visible, so the expected type's own arm answers.
@@ -137,6 +146,9 @@ fn ctee_context() -> Outcome<NativeTestContext> {
     ctee_read(text: ctee_alias_source, id: ^ctee_alias_user, path: "src/v2/test/fixture/ctee/alias_user.dag"),
     ctee_read(text: ctee_optional_position_source, id: ^ctee_optional_position, path: "src/v2/test/fixture/ctee/optional_position.dag"),
     ctee_read(text: ctee_coinciding_source, id: ^ctee_coinciding, path: "src/v2/test/fixture/ctee/coinciding.dag"),
+    ctee_read(text: ctee_scrutinee_field_source, id: ^ctee_scrutinee_field, path: "src/v2/test/fixture/ctee/scrutinee_field.dag"),
+    ctee_read(text: ctee_scrutinee_wrong_source, id: ^ctee_scrutinee_wrong, path: "src/v2/test/fixture/ctee/scrutinee_wrong.dag"),
+    ctee_read(text: ctee_scrutinee_param_source, id: ^ctee_scrutinee_param, path: "src/v2/test/fixture/ctee/scrutinee_param.dag"),
     ctee_read(text: ctee_coinciding_unimported_source, id: ^ctee_coinciding_unimported, path: "src/v2/test/fixture/ctee/coinciding_unimported.dag"),
     ctee_read(text: ctee_type_param_source, id: ^ctee_type_param, path: "src/v2/test/fixture/ctee/type_param.dag"),
     ctee_read(text: ctee_nullary_source, id: ^ctee_nullary, path: "src/v2/test/fixture/ctee/nullary.dag")
@@ -156,6 +168,9 @@ type CteeVerdicts {
   alias_user: NativeModuleResolveVerdict
   optional_position: NativeModuleResolveVerdict
   coinciding: NativeModuleResolveVerdict
+  scrutinee_field: NativeModuleResolveVerdict
+  scrutinee_wrong: NativeModuleResolveVerdict
+  scrutinee_param: NativeModuleResolveVerdict
   coinciding_unimported: NativeModuleResolveVerdict
   type_param: NativeModuleResolveVerdict
   nullary: NativeModuleResolveVerdict
@@ -179,6 +194,9 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
         let alias_user = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.alias_user", path: ^ctee_alias_user)
         let optional_position = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.optional_position", path: ^ctee_optional_position)
         let coinciding = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.coinciding", path: ^ctee_coinciding)
+        let scrutinee_field = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.scrutinee_field", path: ^ctee_scrutinee_field)
+        let scrutinee_wrong = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.scrutinee_wrong", path: ^ctee_scrutinee_wrong)
+        let scrutinee_param = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.scrutinee_param", path: ^ctee_scrutinee_param)
         let coinciding_unimported = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.coinciding_unimported", path: ^ctee_coinciding_unimported)
         let type_param = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.type_param", path: ^ctee_type_param)
         let nullary = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.nullary", path: ^ctee_nullary)
@@ -195,6 +213,9 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
           alias_user: alias_user.verdict,
           optional_position: optional_position.verdict,
           coinciding: coinciding.verdict,
+          scrutinee_field: scrutinee_field.verdict,
+          scrutinee_wrong: scrutinee_wrong.verdict,
+          scrutinee_param: scrutinee_param.verdict,
           coinciding_unimported: coinciding_unimported.verdict,
           type_param: type_param.verdict,
           nullary: nullary.verdict,
@@ -340,6 +361,44 @@ test fn an_imported_label_that_coincides_with_an_arm_refuses_with_the_new_cause(
     Absent => false
     Present { value: vs } =>
       ctee_refuses_with(v: vs.coinciding, reason: ^resolve_construct_tag_not_in_expected_type)
+  }
+}
+
+// THE SCRUTINEE'S DECLARED TYPE IS WHAT AN ARM PATTERN IS READ AGAINST. `w.inner` has no annotation of
+// its own to read: the type comes from the declared type of the field `inner` at the declared type of
+// the formal `w`, and the arms' expected set is then Cell's. CellA and CellB are NOT imported, so the
+// name door cannot reach them at all -- an arm's alias row lives only in the declaring module's scope --
+// which makes acceptance evidence that the scrutinee's type arrived at the pattern and the arm bound
+// from the expected type, not from a name.
+test fn an_arm_pattern_tag_of_the_scrutinee_type_resolves() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.scrutinee_field)
+  }
+}
+
+// THE SAME MATCH WITH AN ARM THE SCRUTINEE'S TYPE DOES NOT DECLARE. `Box` is imported, so the name door
+// answers; the expected set (Cell's arms) does not declare it, so the site refuses with the
+// constructor-set cause instead of keeping the name door's binding. Today's verdict at such a site is
+// ACCEPTED on the name door, so every occurrence of this shape is a bound-to-refused move and is
+// reported per site in the bounded diff -- not a new deny invented here.
+test fn an_arm_pattern_tag_the_scrutinee_type_does_not_declare_refuses_with_the_new_cause() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      ctee_refuses_with(v: vs.scrutinee_wrong, reason: ^resolve_construct_tag_not_in_expected_type)
+  }
+}
+
+// A CONTROL AT THE RUNG THAT STOPS. A scrutinee typed by a type parameter has no readable constructor
+// set: the parameter's declared type is the parameter itself, and a parameter is not a declaration in
+// the index. The arm keeps the name door exactly as today, which for these unimported arm spellings is
+// resolve_reason_unbound_symbol. No rank is invented to make the arm readable.
+test fn a_scrutinee_typed_by_a_type_parameter_keeps_the_name_door() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      ctee_refuses_with(v: vs.scrutinee_param, reason: ^resolve_reason_unbound_symbol)
   }
 }
 
