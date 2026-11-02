@@ -186,13 +186,17 @@ fn side_mount_presentation_members(f: EndFaceMeasurement, d: GpuDuctDesign, b: B
   ]
 }
 
-fn side_mount_readme(side: CardFaceSide) -> String {
+fn mm_one_decimal(m: Micrometer) -> String {
+  join([to_string(value: um(m: m) / 1000), ".", to_string(value: (um(m: m) % 1000) / 100), " mm"], "")
+}
+
+fn side_mount_readme(d: GpuDuctDesign, b: BlowerDuctDesign, side: CardFaceSide) -> String {
   join([
     "A16 inlet duct for a Delta BFB1012M radial blower mounted against the card's ", card_face_side_wire(side: side), " face. Generated from product.printed_chassis.side_mount_duct.\n",
     "Two printed parts: DUCT (socket beside the card, chamber behind the end, plug lip and screw flange) and LID (the chamber's back plate). The other face's version is the root ending in -", match side { BackFaceSide => "front" FrontFaceSide => "back" }, "-duct; nothing else differs.\n",
     "Assembly, power OFF: plug the 8-pin in; seat the DUCT's plug lip in the fin window; drive both M3 x 4 screws into the end cap's inserts", match side { BackFaceSide => " (reach them through the two holes in the chamber's crossing, from the open side)" FrontFaceSide => "" }, "; tape the LID over the chamber; push the blower's outlet edge into the socket with its intake facing away from the card, and tape or tie it.\n",
     "The blower is modelled by its bounding rectangle; the real housing is a rounded scroll inside it, so the socket is loose where the scroll curves away from the rectangle -- the outlet frame and the thickness are what locate it.\n",
-    "Spends about 40 mm beside the card (the operator's 2026-11-02 allowance is 50 mm) and about 35 mm behind the end. Check at the fit: the blower's intake has free air beyond the part; the 8-pin cable has room where it turns; the plug lip seats; the blower sits in the socket without rocking.\n",
+    "Spends ", mm_one_decimal(m: side_mount_side_spend(d: d, b: b)), " beside the card (product.printed_chassis.chassis_clearances single_card_side_allowance_2026_11_02 is the allowance) and ", mm_one_decimal(m: side_mount_rear_spend(d: d)), " behind the end. Check at the fit: the blower's intake has free air beyond the part; the 8-pin cable has room where it turns; the plug lip seats; the blower sits in the socket without rocking.\n",
     "Print each part flat on the bed as exported (DUCT chamber-side down). PLA for an unpowered fit prototype only.\n",
   ], "")
 }

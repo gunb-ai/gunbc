@@ -148,7 +148,7 @@ fn side_mount_ready(root: PrintedAssemblyRoot, dims: DuctCardDims, side: CardFac
       assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
       package: printed_assembly_root_wire(root: root),
       schema: duct_review_schema as String,
-      readme: side_mount_readme(side: side),
+      readme: side_mount_readme(d: dims.wall, b: dims.fan, side: side),
       presentation: side_mount_presentation_members(f: dims.face, d: dims.wall, b: dims.fan, side: side),
     }
   }
