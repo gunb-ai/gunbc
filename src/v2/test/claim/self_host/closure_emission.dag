@@ -574,29 +574,3 @@ test fn an_emitted_row_carries_no_diagnostic_holds() -> Bool {
           _ => false })
   }
 }
-
-// PROBE ONLY (branch probe/keen-koi-376-generic, never for landing): does a generic coproduct member
-// reach the closure emitter, and what does it refuse with today.
-data ce_generic_box_source: String = "module v2.test.ce_generic_box\n\ntype CeBox<T> = CeNone | CeSome { value: T }\n"
-
-data ce_generic_user_source: String = "module v2.test.ce_generic_user\n\nimport v2.test.ce_generic_box { CeBox }\n\nfn ce_generic_user_fn(p: CeBox<Int>) -> CeBox<Int> { p }\n"
-
-fn ce_emission_generic() -> ClosureEmissionLocated {
-  ce_emit(
-    ingest: [
-      ce_read(source: ce_generic_box_source, id: ^ce_generic_box_read, path: "src/v2/test/ce_generic_box.dag"),
-      ce_read(source: ce_generic_user_source, id: ^ce_generic_user_read, path: "src/v2/test/ce_generic_user.dag")
-    ],
-    entry: "v2.test.ce_generic_user"
-  )
-}
-
-fn ce_probe_generic_text() -> String {
-  let located = ce_emission_generic()
-  match located.outcome {
-    Rejected { diagnostics: d } =>
-      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
-    Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
-  }
-}
