@@ -26,7 +26,7 @@ import gunbc.machine_intake.subject {
   qualification_subject_of,
 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import gunbc.machine_intake.access { AccessContextProfileLookupNotRun, BootDeliveryTarget, NetworkAddressedTarget, boot_delivery_target_subject }
+import gunbc.machine_intake.access { AccessContextProfileLookupNotRun, BootDeliveryTarget, NetworkAddressedTarget, ControllerAddressedTarget, boot_delivery_target_subject }
 import gunbc.network_boot_delivery {
   ArchitectureChainloader,
   BootBundleAvailabilityReceipt,
@@ -211,8 +211,15 @@ data pxe_plan: BootDeliveryPlan = BootDeliveryPlan {
 
 data pxe_establishment: NetworkBootDeliveryEstablishment = network_boot_establishment_for(t: network_target, digest: intake_artifact.digest)
 
+// The controller-addressed target a media plan is solved for: a network-addressed target has no controller, so
+// the solver cannot reach a BMC delivery for it.
+data controller_target: BootDeliveryTarget = ControllerAddressedTarget {
+  subject: intake_subject,
+  endpoint: BmcControllerEndpoint { host: "192.168.1.60" },
+}
+
 data removable_media_plan: BootDeliveryPlan = BootDeliveryPlan {
-  target: network_target,
+  target: controller_target,
   artifact: intake_artifact,
   delivery: RedfishVirtualMediaPull {
     params: RedfishVirtualMediaParams {

@@ -1358,3 +1358,17 @@ test fn a_network_addressed_target_plans_pxe_without_a_controller_and_refuses_ty
   }
   pxe_planned && refused_typed && other_target_refused && bmc_context_not_consumed
 }
+
+// THE INHABITANCE SOURCES for consumers that are handed a solved plan (provisioning_arm_witness feeds these
+// through provisioning_arm_derive): the REAL solver's output, never a designed value.
+fn solver_emitted_pxe_solution() -> BootDeliverySolution {
+  solve_boot_artifact_delivery(
+    request: network_request(),
+    ev: evidence_of(access: AccessContextProfileLookupNotRun { endpoint: other_controller }, configfs: configfs_unestablished, network_boot: established_network_boot_for(t: network_target, digest: intake_artifact.digest)),
+    policy: policy,
+  )
+}
+
+fn solver_emitted_media_solution() -> BootDeliverySolution {
+  solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia], probe: Present { value: probe_https }), staging: staging_all)
+}
