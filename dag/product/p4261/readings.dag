@@ -3,6 +3,8 @@ module product.p4261.readings
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat, nat_min }
 import std.measure {
+  Ohm,
+  ohm,
   Micrometer,
   micrometer,
   micrometer_count,
@@ -881,8 +883,17 @@ fn j68_plain_volts(phases: List<CarrierPhaseObservation>) -> List<PhaseNodeVolta
   filter(flat_map(phases, p => p.node_voltages), v => any(e1_j68_points, n => terminal_ref_equal(a: v.at, b: e1_terminal(c: e1_j68, name: n))) && match v.certainty { StatedPlainly => true, StatedHedged { verbatim: _ } => false })
 }
 
-fn nat_min_of(vs: List<Nat>) -> Nat {
-  fold(vs, init: 0, f: (acc, v) => if acc == 0 { v } else { nat_min(a: acc, b: v) })
+// The least of a list, or none when the list is empty: never a 0 standing for "nothing to compare".
+fn least_of(vs: List<Nat>) -> Nat? {
+  fold(vs, init: no_least(), f: (acc, v) => match acc { Absent => Present { value: v }, Present { value: a } => Present { value: nat_min(a: a, b: v) } })
+}
+
+fn no_least() -> Nat? {
+  Absent
+}
+
+fn no_ohm_values() -> List<Nat> {
+  []
 }
 
 fn root_of_trust_of(c: InstalledComponent) -> RootOfTrustSpecification? {
@@ -1382,14 +1393,15 @@ fn no_pitch_fits() -> List<PitchFit> {
 }
 
 // J24 READ TO THE RETURN. Its positions' unpowered readings to J20's black lead: how many were read, how
-// many gave a value, the least positive value, and how many reported zero without a baseline. A
+// many gave a value, the least positive value (none when no reading gave one), and how many reported
+// zero without a baseline. A
 // position joins the return only through a baselined zero, which none has. (Correction in B4: the
 // report stated "none near zero" unconditionally; the count of reported zeros now decides it.)
 type J24Reading {
   positions: Nat
   read_to_return: Nat
   valued: Nat
-  least_positive_ohms: Nat
+  least_positive: Ohm?
   reported_zero: Nat
 }
 
@@ -1410,7 +1422,7 @@ fn j24_reading(layout: CarrierLayoutObservation) -> J24Standing {
           positions: count(x.terminals),
           read_to_return: count(rs),
           valued: count(valued),
-          least_positive_ohms: nat_min_of(filter(map(valued, o => match valued_ohms(o: o) { Present { value: v } => v, Absent => 0 }), v => v > 0)),
+          least_positive: match least_of(vs: filter(flat_map(valued, o => match valued_ohms(o: o) { Present { value: v } => [v], Absent => no_ohm_values() }), v => v > 0)) { Absent => Absent, Present { value: n } => Present { value: ohm(count: n) } },
           reported_zero: count(filter(rs, o => is_reported_zero(o: o))),
         } }
       }

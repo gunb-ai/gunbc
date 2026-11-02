@@ -3,6 +3,7 @@ module product.p4261.report
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
+  ohm_count,
   ampere_count,
   Micrometer,
   micrometer,
@@ -360,7 +361,6 @@ import product.p4261.readings {
   JtagHeaderStanding,
   logic_of,
   mosfet_of,
-  nat_min_of,
   neighbour_terminals,
   NoEnergizedInputReading,
   NoInputBound,
@@ -1265,7 +1265,7 @@ fn j24_text(layout: CarrierLayoutObservation) -> String {
 fn j24_text_of(r: J24Reading) -> String {
   join([
       "J24 has ", to_string(r.positions), " positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about ", to_string(e1_j24_pitch.along_row_tenths_mm), "/10 mm along a row and ", to_string(e1_j24_pitch.between_rows_tenths_mm), "/10 mm between rows, within ", to_string(e1_j24_pitch.tolerance_tenths_mm), "/10 mm, by a photograph against a tape aligned to neither axis; ",
-      to_string(r.read_to_return), " read to J20's black lead, ", to_string(r.valued), " with a value (", to_string(r.least_positive_ohms), " ohm the least), ",
+      to_string(r.read_to_return), " read to J20's black lead, ", to_string(r.valued), " with a value (", match r.least_positive { Absent => "none above zero", Present { value: o } => join([to_string(ohm_count(r: o)), " ohm the least"], "") }, "), ",
       if r.reported_zero == 0 { "none near zero, so no position is read as the return" } else { join([to_string(r.reported_zero), " reporting zero without a baseline, which joins no position to the return"], "") },
     ], "")
 }

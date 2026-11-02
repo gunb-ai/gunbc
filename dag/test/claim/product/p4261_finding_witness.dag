@@ -1,6 +1,7 @@
 module test.claim.product.p4261_finding_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { ohm }
 import product.p4261.carrier { CarrierLayoutObservation }
 import product.p4261.findings {
   CarrierFinding,
@@ -26,7 +27,7 @@ import product.p4261.findings {
   finding_established,
   judge_finding,
 }
-import product.p4261.readings { J24Reading, PolarityEstablished, PolarityGap, PolarityUnestablished, installed }
+import product.p4261.readings { least_of, J24Reading, PolarityEstablished, PolarityGap, PolarityUnestablished, installed }
 import product.p4261.report { FindingEstablished, FindingNotEstablished, FindingStanding, carrier_finding, j24_text, j24_text_of, render_finding }
 import product.p4261.e1_b { p4261_e1_layout, e1_d2, e1_d5, e1_c10, e1_f300, e1_u1_p5, e1_converter_near, e1_third_can, e1_q21, e1_q22 }
 import product.p4261.k1_a { p4261_k1_layout, k1_u1_p5, k1_converter_near }
@@ -132,9 +133,19 @@ test fn the_real_path_produces_the_typed_result() -> Bool {
 
 // THE J24 CORRECTION (Stage B4). The report used to say "none near zero" whatever was read; the
 // reading now counts the reported zeros and the words follow the count. The E1, with none, reads as
-// before; a supplied reading with two reported zeros says so instead.
+// before; a supplied reading with two reported zeros says so instead. With no positive value at all,
+// the least value is absent and said to be absent -- never "0 ohm the least".
 test fn j24_words_follow_the_count_of_reported_zeros() -> Bool {
   j24_text(layout: p4261_e1_layout).contains("none near zero, so no position is read as the return")
-    && j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 8, least_positive_ohms: 400, reported_zero: 2 }).contains("2 reporting zero without a baseline")
-    && !j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 8, least_positive_ohms: 400, reported_zero: 2 }).contains("none near zero")
+    && j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 8, least_positive: Present { value: ohm(count: 400) }, reported_zero: 2 }).contains("2 reporting zero without a baseline")
+    && !j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 8, least_positive: Present { value: ohm(count: 400) }, reported_zero: 2 }).contains("none near zero")
+    && j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 0, least_positive: Absent, reported_zero: 10 }).contains("(none above zero)")
+    && !j24_text_of(r: J24Reading { positions: 10, read_to_return: 10, valued: 0, least_positive: Absent, reported_zero: 10 }).contains("0 ohm the least")
+}
+
+// THE LEAST OF NOTHING IS NOTHING. An empty list has no least value -- not 0 -- and a list's least is its
+// smallest member.
+test fn the_least_of_nothing_is_nothing() -> Bool {
+  match least_of(vs: []) { Absent => true, Present { value: _ } => false }
+    && match least_of(vs: [500, 300, 400]) { Present { value: v } => v == 300, Absent => false }
 }
