@@ -80,6 +80,10 @@ import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
+import gunbc.roadmap.roadmap_metering_closing_cutover {
+  MeteringClosingWriterObservation, MeteringClosingNoop, MeteringClosingActivationRequired, MeteringClosingCutoverRefused,
+  metering_closing_cutover_disposition, metering_closing_legacy_marker_name,
+}
 import gunbc.roadmap.roadmap_dashboard_instance {
   prod_role_realization,
   dashboard_instance_health_identity_prefix,
@@ -921,6 +925,35 @@ fn dashboard_apply_provision_op(
         dashboard_exec_ok(stdout: "every declared legacy writer is stopped and masked at activation")
       }
     }
+    // THE CLOSING-MARKER CUTOVER GATE. The roster closing marker changed shape in C-roadmap-2 (a plain
+    // metering-roster-closing entry became the hold slot <key>.<generation>), and the hold fences only writers
+    // that TAKE it -- so across the deploy the unit that runs the old writer has to be observed stopped AND
+    // masked, and no plain marker may be left on the host. This route reads the states and censuses the bytes;
+    // the ANSWER is the cutover module's (metering_closing_cutover_disposition), not a rule spelled here:
+    // Noop proceeds, ActivationRequired refuses naming the units and the step that excludes them, Refused
+    // refuses with its cause (an undeclared or conflicted fence, or old bytes an operator has to decide about).
+    DashboardAssertMeteringClosingWriterExcluded { fence: fence, attempt_state_root: root } => {
+      let observed = match fence {
+        LegacyWriterUnits { systemctl: ctl, units: units } =>
+          map(units, unit => {
+            let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-active", unit as String])
+            let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-enabled", unit as String])
+            MeteringClosingWriterObservation { unit: unit, active_state: trim(s: active.stdout), enabled_state: trim(s: enabled.stdout) }
+          })
+        _ => []
+      }
+      match metering_closing_cutover_disposition(
+        fence: fence,
+        instance_id: instance.instance_id,
+        observed: observed,
+        legacy_markers_observed: dashboard_metering_closing_marker_census(instance: instance, root: root),
+      ) {
+        MeteringClosingNoop { reason: why } => dashboard_exec_ok(stdout: why)
+        MeteringClosingActivationRequired { units: units, step: step } =>
+          dashboard_exec_refused(detail: join(["the closing-marker writer is not excluded (", join(map(units, u => u as String), ", "), "); ", step], ""))
+        MeteringClosingCutoverRefused { cause: why } => dashboard_exec_refused(detail: why)
+      }
+    }
     DashboardMoveAttemptStateEntries { row: row, fence: fence } => {
       let parent = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
       let member = join([parent, "/", row.member as String], "")
@@ -1113,6 +1146,20 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
         LegacyWriterNotExcluded { reason: why } => why
         LegacyWriterExcluded => ""
       }
+  }
+}
+
+// HOW MANY PLAIN CLOSING MARKERS the instance's attempt-state tree still carries. A missing tree is zero (there
+// is nothing there to migrate); otherwise every exact-name entry under the root counts, directory headers and
+// blank separators failing the equality test. This is the census the cutover's disposition asks for -- the
+// difference between "the writer is excluded and nothing old is left" (Noop) and "the writer is excluded but
+// the old bytes are still here" (Refused, an operator decides).
+fn dashboard_metering_closing_marker_census(instance: HostDashboardInstance, root: FilePath) -> Int {
+  if !dashboard_target_directory_present(instance: instance, path: root) {
+    0
+  } else {
+    let listing = dashboard_target_exec(instance: instance, program: "/bin/ls", args: ["-1R", root as String])
+    length(xs: split(s: trim(s: listing.stdout), delimiter: "\n").filter(line => line == (metering_closing_legacy_marker_name as String)))
   }
 }
 
@@ -2455,6 +2502,7 @@ fn dashboard_bootstrap_only_ops(
       DashboardMigrateGitWorkerSubtree { repo: _ } => false
       DashboardMoveAttemptStateEntries { row: _, fence: _ } => false
       DashboardAssertLegacyWriterExcluded { fence: _ } => false
+      DashboardAssertMeteringClosingWriterExcluded { fence: _, attempt_state_root: _ } => false
     })
 }
 

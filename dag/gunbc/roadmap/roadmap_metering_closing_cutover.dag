@@ -3,12 +3,9 @@ module gunbc.roadmap.roadmap_metering_closing_cutover
 import std.types { String, Bool, NonEmptyStr, List, Int }
 import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
 import gunbc.roadmap.roadmap_attempt_state_layout_move {
-  LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, LegacyWriterExclusion, LegacyWriterNotExcluded,
+  LegacyWriterFence, LegacyWriterUnits, LegacyWriterExclusion, LegacyWriterNotExcluded,
   LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion, legacy_writer_exclusion_all,
-  legacy_writer_fence_for,
 }
-import gunbc.roadmap.roadmap_belt_obligation { BeltInstanceObligationKind, MeteringObligation, belt_instance_obligation_unit_name }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id }
 
 // THE CLOSING-MARKER MOVE, AND THE WRITER IT MUST EXCLUDE (stern-ram-763 on #15574, 2026-11-01).
 //
@@ -63,26 +60,14 @@ data metering_closing_legacy_marker_name: NonEmptyStr = attempt_metering_slots.r
 // family stem, not a unit that can be masked by name).
 data metering_closing_enqueue_unit_family_stem: NonEmptyStr = "gunbc-obligation-attempt-" as NonEmptyStr
 
-// THE FENCE, PER INSTANCE. Units whose ExecStart reaches the closing-marker writer, in the shape #15413's
-// identity-store cutover declared (roadmap_dashboard_instance.dag:3470). The first unit is the DIRECT writer,
-// spelled here as a literal and pinned in the witness against `belt_instance_obligation_unit_name` so the
-// spelling cannot drift from the derivation; the second is the belt service unit that enqueues the obligation.
-data metering_closing_writer_fence_rows: List<LegacyWriterFenceRow> = [
-  LegacyWriterFenceRow {
-    instance_id: srv1_dashboard_lab_id,
-    fence: LegacyWriterUnits {
-      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
-      units: [
-        "gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service" as NonEmptyStr,
-        "gunbc-srv1-lab-codex-feedback-v0-belt.service" as NonEmptyStr,
-      ],
-    },
-  },
-]
-
-fn metering_closing_writer_fence(instance_id: NonEmptyStr) -> LegacyWriterFence {
-  legacy_writer_fence_for(rows: metering_closing_writer_fence_rows, instance_id: instance_id)
-}
+// THE FENCE ITSELF IS DECLARED WHERE THE OTHER LEGACY-WRITER FENCES ARE --
+// `gunbc.roadmap.roadmap_dashboard_instance.metering_closing_writer_fences`, beside #15413's
+// `legacy_writer_fences` -- because the route that acts on a cutover is the instance's own apply route, and a
+// fence that lives anywhere else is a fact no route reads. What lives HERE is the answer the route asks that
+// fence for: given the units the fence names, what states were observed for them, and what plain markers are on
+// the host, what does the cutover do. The unit names are not spelled here at all: the rows are built from
+// `belt_instance_obligation_unit_name`, the same call the belt's obligation enqueue passes as the unit it
+// starts (roadmap_belt_actuate:14910), so the fence and the launched unit cannot drift apart.
 
 // WHAT WAS OBSERVED ABOUT ONE WRITER UNIT, as systemctl reads it: is-active and is-enabled words.
 type MeteringClosingWriterObservation { unit: NonEmptyStr, active_state: String, enabled_state: String }
@@ -139,11 +124,12 @@ fn metering_closing_answer(
 }
 
 fn metering_closing_cutover_disposition(
+  fence: LegacyWriterFence,
   instance_id: NonEmptyStr,
   observed: List<MeteringClosingWriterObservation>,
   legacy_markers_observed: Int,
 ) -> MeteringClosingCutover {
-  match metering_closing_writer_fence(instance_id: instance_id) {
+  match fence {
     LegacyWriterUndeclared => MeteringClosingCutoverRefused { cause: join(["no closing-marker writer fence is declared for instance ", instance_id as String, "; the cutover refuses rather than assuming nothing on this host still writes ", metering_closing_legacy_marker_name as String], "") }
     LegacyWriterFenceConflict { instance_id: i, rows: n } => MeteringClosingCutoverRefused { cause: join(["the closing-marker writer fence for instance ", i as String, " is declared ", to_string(value: n), " times; one row per instance is what the cutover can act on"], "") }
     LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_answer(instance_id: instance_id, declared: declared, observed: observed, legacy_markers_observed: legacy_markers_observed)
