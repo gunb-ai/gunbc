@@ -962,7 +962,7 @@ fn project_branch_from_inferred_facts(
     Absent =>
       outcome_rejected(
         d: target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^probe_ts_line_965,
           node: body
         )
       )
@@ -971,7 +971,7 @@ fn project_branch_from_inferred_facts(
         Absent =>
           outcome_rejected(
             d: target_value_expr_diagnostic(
-              reason: ^target_value_expr_reason_transform_shape_invalid,
+              reason: ^probe_ts_line_974,
               node: body
             )
           )
@@ -980,7 +980,7 @@ fn project_branch_from_inferred_facts(
             Absent =>
               outcome_rejected(
                 d: target_value_expr_diagnostic(
-                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  reason: ^probe_ts_line_983,
                   node: body
                 )
               )

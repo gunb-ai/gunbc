@@ -15113,7 +15113,7 @@ fn target_transform_positional_operand_binding(node: Node, index: Int) -> Outcom
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^probe_tm_line_15116,
           node: node
         )
       )
@@ -15126,7 +15126,7 @@ fn target_bind_binder_binding(bind: Node) -> Outcome<Symbol> {
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^probe_tm_line_15129,
           node: bind
         )
       )
@@ -15143,7 +15143,7 @@ fn target_transform_operator_child(node: Node) -> Outcome<Node> {
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^probe_tm_line_15146,
           node: node
         )
       )
@@ -15371,7 +15371,7 @@ fn target_arrow_scope_positional_operand_binding(
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^probe_tm_line_15374,
           node: body
         )
       )
@@ -15393,7 +15393,7 @@ fn target_project_cast_primitive_apply_in_arrow_scope(
   }
   if !shape_ok {
     outcome_rejected(
-      target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: body)
+      target_value_expr_diagnostic(reason: ^probe_tm_line_15396, node: body)
     )
   } else {
     bind_outcome(
@@ -15440,7 +15440,7 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
     || length(xs: positional_child_target_nodes(node: body)) != 3 {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: ^target_value_expr_reason_transform_shape_invalid,
+        reason: ^probe_tm_line_15443,
         node: body
       )
     )
@@ -15542,7 +15542,7 @@ fn target_project_transform_callable_apply_in_arrow_scope(
         Absent =>
           outcome_rejected(
             target_value_expr_diagnostic(
-              reason: ^target_value_expr_reason_transform_shape_invalid,
+              reason: ^probe_tm_line_15545,
               node: body
             )
           )
@@ -15655,7 +15655,7 @@ fn target_value_expr_project_int_literal_atom(node: Node) -> Outcome<TargetValue
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^probe_tm_line_15658,
           node: node
         )
       )
@@ -15762,7 +15762,7 @@ fn target_value_expr_project_atom_in_arrow_scope(
 fn target_value_expr_transform_shape_invalid(node: Node) -> Outcome<TargetValueExpression> {
   outcome_rejected(
     target_value_expr_diagnostic(
-      reason: ^target_value_expr_reason_transform_shape_invalid,
+      reason: ^probe_tm_line_15765,
       node: node
     )
   )
@@ -15881,14 +15881,14 @@ fn target_value_expr_record_construct_field_slots_from_edges(
             StructuralLabel { label: _ } =>
               outcome_rejected(
                 target_value_expr_diagnostic(
-                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  reason: ^probe_tm_line_15884,
                   node: edge.target
                 )
               )
             Positional =>
               outcome_rejected(
                 target_value_expr_diagnostic(
-                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  reason: ^probe_tm_line_15891,
                   node: edge.target
                 )
               )
@@ -15911,7 +15911,7 @@ fn target_project_record_construct(
   if !target_value_expr_record_construct_gate(node: body) {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: ^target_value_expr_reason_transform_shape_invalid,
+        reason: ^probe_tm_line_15914,
         node: body
       )
     )
@@ -15938,7 +15938,7 @@ fn target_project_record_construct(
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_transform_shape_invalid,
+            reason: ^probe_tm_line_15941,
             node: body
           )
         )
@@ -16024,7 +16024,7 @@ fn target_project_field_access(
   if !target_value_expr_field_access_gate(node: body) {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: ^target_value_expr_reason_transform_shape_invalid,
+        reason: ^probe_tm_line_16027,
         node: body
       )
     )
@@ -16033,7 +16033,7 @@ fn target_project_field_access(
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_transform_shape_invalid,
+            reason: ^probe_tm_line_16036,
             node: body
           )
         )
@@ -16042,7 +16042,7 @@ fn target_project_field_access(
           Absent =>
             outcome_rejected(
               target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_transform_shape_invalid,
+                reason: ^probe_tm_line_16045,
                 node: body
               )
             )
@@ -16185,7 +16185,7 @@ fn target_project_match(
   if !target_value_expr_match_gate(node: body) {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: ^target_value_expr_reason_transform_shape_invalid,
+        reason: ^probe_tm_line_16188,
         node: body
       )
     )
@@ -16194,7 +16194,7 @@ fn target_project_match(
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_transform_shape_invalid,
+            reason: ^probe_tm_line_16197,
             node: body
           )
         )
@@ -16244,7 +16244,7 @@ fn target_project_branch_bool_if_else(
       if !target_value_expr_branch_bool_gate(node: body, source_bool_form: source_bool_form) {
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_transform_shape_invalid,
+            reason: ^probe_tm_line_16247,
             node: body
           )
         )
@@ -16253,7 +16253,7 @@ fn target_project_branch_bool_if_else(
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_transform_shape_invalid,
+            reason: ^probe_tm_line_16256,
             node: body
           )
         )
@@ -16262,7 +16262,7 @@ fn target_project_branch_bool_if_else(
           Absent =>
             outcome_rejected(
               target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_transform_shape_invalid,
+                reason: ^probe_tm_line_16265,
                 node: body
               )
             )
@@ -16271,7 +16271,7 @@ fn target_project_branch_bool_if_else(
               Absent =>
                 outcome_rejected(
                   target_value_expr_diagnostic(
-                    reason: ^target_value_expr_reason_transform_shape_invalid,
+                    reason: ^probe_tm_line_16274,
                     node: body
                   )
                 )
@@ -16389,7 +16389,7 @@ fn target_project_bind_let(
   if !target_value_expr_bind_let_gate(node: body) {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: ^target_value_expr_reason_transform_shape_invalid,
+        reason: ^probe_tm_line_16392,
         node: body
       )
     )
@@ -16420,7 +16420,7 @@ fn target_project_bind_let(
                   Absent =>
                     outcome_rejected(
                       target_value_expr_diagnostic(
-                        reason: ^target_value_expr_reason_transform_shape_invalid,
+                        reason: ^probe_tm_line_16423,
                         node: body
                       )
                     )
@@ -16464,7 +16464,7 @@ fn target_project_bind_tail(
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
+          reason: ^probe_tm_line_16467,
           node: bind
         )
       )
@@ -16523,7 +16523,7 @@ fn target_project_loop(
   if !target_value_expr_loop_gate(node: body) {
     outcome_rejected(
       target_value_expr_diagnostic(
-        reason: ^target_value_expr_reason_transform_shape_invalid,
+        reason: ^probe_tm_line_16526,
         node: body
       )
     )
@@ -16532,7 +16532,7 @@ fn target_project_loop(
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_transform_shape_invalid,
+            reason: ^probe_tm_line_16535,
             node: body
           )
         )
@@ -16633,7 +16633,7 @@ fn target_value_expr_project_body_subexpression(
       } else {
         outcome_rejected(
           target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_transform_shape_invalid,
+            reason: ^probe_tm_line_16636,
             node: node
           )
         )
@@ -17028,7 +17028,7 @@ fn target_project_arrow_body_by_kind(
         } else {
           outcome_rejected(
             target_value_expr_diagnostic(
-              reason: ^target_value_expr_reason_transform_shape_invalid,
+              reason: ^probe_tm_line_17031,
               node: body
             )
           )
