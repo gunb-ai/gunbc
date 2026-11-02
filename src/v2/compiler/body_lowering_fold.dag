@@ -95,7 +95,7 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
-import v2.std.node { node_same_occurrence, positional_child_target_nodes, content_hash, symbol_lexeme, NotADeclaration }
+import v2.std.node { node_same_occurrence, positional_child_target_nodes, content_hash, symbol_lexeme, NotADeclaration, DeclaresAt }
 
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
@@ -10642,7 +10642,14 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<BodyLow
   }
 }
 
-fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
+// THE FOLDED-TREE READ OF THE SAME RULE body_lower_declared_refinement_clause_optional STATES ON THE PARSE
+// TREE: the where clause that refines the DECLARATION, never one inside a member. On the folded tree the
+// field block and variant payload are no longer productions (they lowered to a payload Conj), and a
+// field's own where is the same labelled clause edge (body_lower_binder_type_carrying_optional_where) as
+// the declaration's. What survives is the member boundary: every field and variant is a DECLARED edge
+// (edge_declared, DeclaresAt), so the search does not descend through one. A declaration's carrier and
+// clause sit beside each other under non-declared structure, so they are still found.
+fn body_lower_declared_where_host_optional(root: Node) -> Optional<Node> {
   match fold(root.children, init: false, f: fn(found, e) {
     found || dag_surface_where_refinement_clause_edge(e: e)
   }) {
@@ -10651,7 +10658,11 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
-          Absent => body_lower_find_where_host_conj(root: e.target)
+          Absent =>
+            match e.declaration {
+              DeclaresAt { occurrence: _ } => Absent
+              NotADeclaration => body_lower_declared_where_host_optional(root: e.target)
+            }
         }
       })
   }
@@ -10939,7 +10950,7 @@ fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
 // a refinement; anything else carries no kind, and a plain Conj member without one is undecided
 // downstream, never inferred. THE CLAUSE IS FOUND AS A PRODUCTION SHELL, because this runs on the PARSE
 // tree (normalize type_declaration_kind_capture), where the clause is a node whose production identity is
-// where_refinement_clause. The labelled where_refinement_clause EDGE that body_lower_find_where_host_conj
+// where_refinement_clause. The labelled where_refinement_clause EDGE that body_lower_declared_where_host_optional
 // looks for is minted by lowering (body_lower_type_variant_suffix_pair_optional rehome), so it exists only
 // on the folded tree body_lower_type_decl_by_body reads; asked of the parse tree it answered Absent and
 // every refinement went kindless (probe ce_probe_pin_text: where_host=ABSENT, name=Pos). The clause is read
@@ -11252,7 +11263,7 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Declared
     Present { value: block_shell } =>
       body_lower_record_type_decl(shell: shell, type_name: type_name, block_shell: block_shell, type_params: type_params)
     Absent =>
-      match body_lower_find_where_host_conj(root: captured) {
+      match body_lower_declared_where_host_optional(root: captured) {
         Present { value: host } =>
           outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: host, type_params: type_params))
         Absent => body_lower_eq_type_decl(shell: shell, captured: captured, type_name: type_name, type_params: type_params)

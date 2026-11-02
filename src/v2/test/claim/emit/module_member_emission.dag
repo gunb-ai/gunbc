@@ -373,6 +373,27 @@ test fn a_field_refinement_inside_a_variant_payload_does_not_refine_the_declarat
   kind_capture_of(source: "module v2.test.member_emission\n\ntype Bag = A { n: Int where positive } | B\n\nfn positive(x: Int) -> Bool { true }\n") == ""
 }
 
+// A FIELD'S where INSIDE A VARIANT PAYLOAD DOES NOT REFINE THE DECLARATION ON THE LOWERING ROUTE EITHER
+// (body_lower_declared_where_host_optional stops at declared member edges): it emits the coproduct, as the
+// plain control does. Probe cc2-nw at d834c395 read this source as REFUSED undecided before the fix.
+fn member_emission_nested_where_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Bag = A { n: Int where positive } | B\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+test fn a_field_where_inside_a_variant_payload_emits_the_coproduct_holds() -> Bool {
+  match member_emission_nested_where_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Bag")
+    _ => false
+  }
+}
+
+test fn a_plain_payload_coproduct_control_emits_its_enum_holds() -> Bool {
+  match member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Bag2 = A { n: Int } | B\n\nfn f(x: Int) -> Int { x as Int }\n") {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Bag2")
+    _ => false
+  }
+}
+
 // THE GENERIC RECORD ARM RUNS: a generic record is the plain record with its binders, rendered through the
 // same semantic-declaration route as the coproduct above.
 test fn a_generic_record_member_emits_a_generic_struct_holds() -> Bool {
