@@ -608,9 +608,16 @@ fn render_series(rounds: List<FanObservationRound>) -> String {
 // PR-B grounds the fan admission rule on BYTES, and a receipt holding only our parse would let the rule
 // be grounded on bytes nobody received (manager msg_abffa482). Parsing is a convenience here, never the
 // record of what the controller said.
+//
+// THE ARM IS NAMED FOR THE ATTEMPT, NOT FOR THE OUTCOME (review 89921, DESIGN §3: a materially different
+// contract needs a materially different name). RunVerboseAttempted means "the read was ISSUED"; whether
+// the records ARRIVED is a property of `readout`, and the rendered verbose_sdr= marker is derived from
+// it -- never asserted from the arm. An earlier draft named this arm ...Captured while emitting
+// `verbose_sdr=captured` unconditionally, which put "attempted" and "arrived" on one marker and made a
+// timed-out read greppable as a successful capture.
 type RunVerboseCapture
   = RunVerboseNotTaken
-  | RunVerboseCaptured { readout: SdrVerboseReadout, exit_code: Int, raw_stdout: String, raw_stderr: String }
+  | RunVerboseAttempted { readout: SdrVerboseReadout, exit_code: Int, raw_stdout: String, raw_stderr: String }
 
 // ONE READ, UNCONDITIONALLY, READ-ONLY (extdeps.bmc.ipmi SdrElistVerbose is readonly; it issues
 // `ipmitool sdr elist -v` and touches nothing). The deadline/kill-after bounds are the same pair every
@@ -630,7 +637,7 @@ fn observe_verbose_repository(
     kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
-  return RunVerboseCaptured {
+  return RunVerboseAttempted {
     readout: sdr_verbose_readout(success: verbose_read.success, stdout: verbose_read.stdout),
     exit_code: verbose_read.exit_code,
     raw_stdout: verbose_read.stdout,
@@ -654,7 +661,7 @@ fn render_run_verbose_block(capture: RunVerboseCapture) -> String {
 fn render_run_verbose_lines(capture: RunVerboseCapture) -> List<String> {
   match capture {
     RunVerboseNotTaken => [join(["run=0 verbose_sdr=not_taken"], "")]
-    RunVerboseCaptured { readout: readout, exit_code: exit_code, raw_stdout: raw_stdout, raw_stderr: raw_stderr } => {
+    RunVerboseAttempted { readout: readout, exit_code: exit_code, raw_stdout: raw_stdout, raw_stderr: raw_stderr } => {
       // THE STATE MARKER IS DERIVED FROM THE READOUT, never asserted by the arm (review 89921). The arm
       // means "the read was ATTEMPTED"; the marker must say whether the records ARRIVED. Emitting
       // `captured` unconditionally and `unread` afterwards put two contradictory markers in one receipt,

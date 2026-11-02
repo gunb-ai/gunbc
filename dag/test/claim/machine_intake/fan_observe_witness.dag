@@ -2,7 +2,7 @@ module test.claim.machine_intake.fan_observe_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.bmc.ipmi_sdr { SdrVerboseUnreadable, sdr_verbose_readout }
-import gunbc.machine_intake.bmc_fan_observation { RunVerboseCapture, RunVerboseCaptured, RunVerboseNotTaken, render_run_verbose_block }
+import gunbc.machine_intake.bmc_fan_observation { RunVerboseCapture, RunVerboseAttempted, RunVerboseNotTaken, render_run_verbose_block }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fan_observe_ipmi_series_step_name,
@@ -323,7 +323,7 @@ test fn fan_policy_phase_has_no_post_boot_gate() -> Bool {
 data run_verbose_off_run_stdout: String = "PSU2_Status      | EBh | ok  |  0.0 |\n   Sensor Type : Power Supply (08h)\n   Event/Reading Type Code   : 6Fh\nWatchdog2        | D7h | ok  | 33.0 |\n   Sensor Type : Watchdog2 (23h)\n   Event/Reading Type Code   : 6Fh\nEndOfPost        | E2h | ok  |  6.2 |\n   Sensor Type : Module / Board (09h)\n   Event/Reading Type Code   : 6Fh\nEvent_log        | D6h | ok  |  6.2 |\n   Sensor Type : Event Log (12h)\n   Event/Reading Type Code   : 6Fh\nFan1             | 00h | ns  | 29.1 |  0 RPM\n   Sensor Type : Fan (04h)\n   Event/Reading Type Code   : 01h"
 
 fn run_verbose_captured() -> RunVerboseCapture {
-  RunVerboseCaptured {
+  RunVerboseAttempted {
     readout: sdr_verbose_readout(success: true, stdout: run_verbose_off_run_stdout),
     exit_code: 0,
     raw_stdout: run_verbose_off_run_stdout,
@@ -373,7 +373,7 @@ test fn the_lane_that_never_read_the_repository_says_so_and_fakes_nothing() -> B
 // into not_taken either. #15562's lesson, and the reason the three states are spelled apart by type.
 test fn an_attempted_but_unreadable_capture_is_never_silence_and_never_not_taken() -> Bool {
   let block = render_run_verbose_block(
-    capture: RunVerboseCaptured {
+    capture: RunVerboseAttempted {
       readout: SdrVerboseUnreadable,
       exit_code: 2,
       raw_stdout: "",
