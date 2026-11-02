@@ -437,6 +437,38 @@ fn sdr_verbose_block_typing(record: SdrVerboseRecord) -> SdrBlockTyping {
   }
 }
 
+// WHETHER A CAPTURE EVER MET BOTH SIDES OF THE LINE THE RULE RESTS ON.
+//
+// ipmi_sdr.h:427 at be11d948 separates threshold from not-threshold; a repository that parses into
+// records of only ONE kind has not exercised that test, and minting an observation over it would say
+// "these bytes typed the rows" on bytes that type nothing. Computed FROM THE PARSE rather than compared
+// against a count written down beside the bytes, so no edit to a literal can satisfy it.
+fn sdr_record_is_threshold(record: SdrVerboseRecord) -> Bool {
+  match sdr_verbose_block_typing(record: record) {
+    SdrBlockThreshold => true
+    SdrBlockNotThreshold => false
+    SdrBlockUntyped => false
+  }
+}
+
+fn sdr_record_is_not_threshold(record: SdrVerboseRecord) -> Bool {
+  match sdr_verbose_block_typing(record: record) {
+    SdrBlockThreshold => false
+    SdrBlockNotThreshold => true
+    SdrBlockUntyped => false
+  }
+}
+
+fn sdr_repository_carries_both_kinds(records: List<SdrVerboseRecord>) -> Bool {
+  match list_find_first(xs: records, predicate: r => sdr_record_is_threshold(record: r)) {
+    Absent => false
+    Present { value: _ } => match list_find_first(xs: records, predicate: r => sdr_record_is_not_threshold(record: r)) {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
 // WHY A BLANK CELL IS NOT AN UNDECODABLE ROW, AND WHAT IT TAKES TO SAY SO.
 //
 // The row's reading cell has three print paths in ipmitool (lib/ipmi_sdr.c at be11d948): a discrete

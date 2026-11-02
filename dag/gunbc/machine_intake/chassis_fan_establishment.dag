@@ -214,8 +214,11 @@ fn thermal_refusal(thermal: ThermalObservation, typing: SdrVerboseReadout?) -> P
         if still_undecoded.length() > 0 {
           Present { value: PostPowerThermalRowsUndecoded { texts: still_undecoded } }
         } else if r.length() > 0 {
-        Present { value: PostPowerThermalReadingUnrecognised { texts: r } }
-      } else { Absent }
+          Present { value: PostPowerThermalReadingUnrecognised { texts: r } }
+        } else {
+          Absent
+        }
+      }
       TemperatureSensorsSilent => Present { value: PostPowerThermalNotPublished { publication: p } }
       TemperatureUndecodable => Present { value: PostPowerThermalNotPublished { publication: p } }
       TemperatureNoSensorRows => Present { value: PostPowerThermalNotPublished { publication: p } }

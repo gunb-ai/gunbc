@@ -26,7 +26,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
 import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, TranscribedUncited, observed_receipt }
-import extdeps.bmc.ipmi_sdr { SdrVerboseReadout, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrVerboseUnreadable, sdr_verbose_readout }
+import extdeps.bmc.ipmi_sdr { SdrVerboseReadout, SdrVerboseRead, SdrVerboseEmptyRepository, SdrVerboseRecord, SdrVerboseUnreadable, sdr_verbose_readout, sdr_repository_carries_both_kinds }
 
 data mtcollins1_fan_capture_run_id: String = "41406891344"
 data mtcollins1_fan_capture_dispatch: String = "fleet-converge.yml --ref main -f mode=mtcollins1_fan_observe -f host=srv1"
@@ -37,11 +37,10 @@ data mtcollins1_fan_capture_artifact_bytes: Int = 144775
 // The receipt's own run-scope marker line was `run=0 verbose_exit=0`; the parse below is allowed only
 // because the read itself succeeded, so the exit status is carried rather than assumed.
 data mtcollins1_fan_capture_exit_code: Int = 0
-// The four records the boot-5 gate refused, as the tool printed them, in repository order.
-// The four rows the boot-5 gate refused, PLUS one threshold record taken from the same read. The
+// The four records the boot-5 gate refused, as the tool printed them, in repository order, PLUS one
+// threshold record taken from the same read. The
 // threshold record is here so the REFUSAL direction of the classifier is grounded in real bytes too:
 // a rule that refused only invented rows and admitted invented ones would pass either way.
-data mtcollins1_fan_capture_expected_records: Int = 5
 data mtcollins1_fan_capture_repository_lines: List<String> = [
   // PSU2_Status -- verbatim from the committed artifact
   "Sensor ID              : PSU2_Status (0xeb)",
@@ -143,16 +142,38 @@ fn mtcollins1_fan_capture_records() -> List<SdrVerboseRecord> {
   }
 }
 
-// THE FOLD. Established only when the committed bytes parse to EXACTLY the four records they are said to
-// carry: a capture that lost a record, or gained one, is not this receipt and does not stand. The
-// fallback is TranscribedUncited with its obligation named, never a quiet default - a refusal to stand
-// must be readable as one.
-fn mtcollins1_fan_discrete_typing_standing() -> CitedFigureStanding {
-  if mtcollins1_fan_capture_records().length() == mtcollins1_fan_capture_expected_records {
-    ObservedByReceipt {
-      observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_capture_receipt", decl_name: "mtcollins1_fan_capture_records")),
+// THE FOLD, AND WHAT IT CANNOT CLAIM FROM IN HERE.
+//
+// The mint is the SHARED PARSER EXECUTING ON THE COMMITTED BYTES - the same sdr_verbose_readout the live
+// boot path runs on the tool's stdout, and the same classifier that will decide the rows. What that can
+// establish is only ever: these bytes PARSE, and what they parse into met BOTH sides of ipmi_sdr.h:427
+// (one threshold record, one not), so the test the rule rests on was actually exercised by them. What no
+// fold can establish from inside the substrate is that these are the bytes the BMC printed - that check
+// is the operator re-fetching the artifact named at the top of this file (THE SEAM, named per
+// extdeps/external_authority.dag:32-36, which is why the artifact path and run id are carried).
+//
+// So the mint is deliberately NOT a count of these lines compared against a number written down beside
+// them: a comparison between two literals in one file can only fail by someone editing a declaration,
+// which is the oracle rule (DESIGN.md §5), not an observation. The count (five: the four refused rows
+// plus the threshold control) lives in the witnesses, where a change detector belongs. A capture that
+// lost a record still parses and still stands, and the row it lost stays REFUSED by the rule itself -
+// which is the direction that has to be safe.
+fn mtcollins1_fan_typing_standing_for(readout: SdrVerboseReadout) -> CitedFigureStanding {
+  match readout {
+    SdrVerboseRead { records: recs } => if sdr_repository_carries_both_kinds(records: recs) {
+      ObservedByReceipt {
+        observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_capture_receipt", decl_name: "mtcollins1_fan_capture_records")),
+      }
+    } else {
+      TranscribedUncited { read_obligation: mtcollins1_fan_capture_read_obligation }
     }
-  } else {
-    TranscribedUncited { read_obligation: mtcollins1_fan_capture_read_obligation }
+    // An empty repository does not type these rows, and a FAILED read is not an empty repository: both
+    // fall back, and the fallback names the read that must happen rather than defaulting quietly.
+    SdrVerboseEmptyRepository => TranscribedUncited { read_obligation: mtcollins1_fan_capture_read_obligation }
+    SdrVerboseUnreadable => TranscribedUncited { read_obligation: mtcollins1_fan_capture_read_obligation }
   }
+}
+
+fn mtcollins1_fan_discrete_typing_standing() -> CitedFigureStanding {
+  mtcollins1_fan_typing_standing_for(readout: mtcollins1_fan_capture_readout())
 }

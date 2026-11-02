@@ -335,7 +335,6 @@ fn run_verbose_captured() -> RunVerboseCapture {
     raw_stderr: "",
   }
 }
-}
 
 // (1) THE READ IS UNCONDITIONAL AND IT KEEPS ITS BYTES: with the host OFF and zero undecoded rows -- the
 // exact shape of run 41389794851 -- the standalone capture renders the verbose records, AND the raw
