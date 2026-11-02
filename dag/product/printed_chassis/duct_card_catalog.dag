@@ -45,8 +45,9 @@ data t4_duct_card: DuctCard = DuctCard { row: t4_card_row, end_face: EndFaceNeed
 // opening 52.37 mm by 14.2 mm at its tightest, its top and bottom 4.9 mm tapered and fin-free; fins about
 // 1 mm behind the face; no threaded holes on that end (the only holes are on the bracket end); no power
 // header; the face's bottom edge about 10 mm above the motherboard; the opening's near edge 2 mm from the
-// face's PCB-side edge, which leaves 2.42 mm of border on the other side (18.62 - 14.2 - 2; that side was not
-// read on its own, so the three widths have no independent closure). One position is still unread, so the
+// face's PCB-side edge and 2 mm from the other edge. Those three widths sum to 18.2 mm against the 18.62 mm
+// face, 0.42 mm short -- the same shortfall the A16's readings showed across its thickness (0.43 mm), and for
+// the same reason: the opening's sides are pitched and it was read at its tightest. One position is still unread, so the
 // face is not yet a reading a duct can be fitted to, and the obligation names exactly that.
 data a2_duct_card: DuctCard = DuctCard { row: a2_card_row, end_face: EndFaceNeedsReading { read_obligation: "operator, on the held A2's intake end (opposite the bracket), with a caliper: where the 52.37 mm by 14.2 mm fin opening sits along the 55.6 mm face -- its top edge's distance from the face's top end (its edge is 2 mm from the PCB-side edge, read 2026-11-02) -- and which flat surfaces around it a duct may seat or seal against without loading the PCB or covering fins. The rest of the face was read on 2026-11-02 (product.printed_chassis.duct_card_catalog a2_duct_card)." } }
 
