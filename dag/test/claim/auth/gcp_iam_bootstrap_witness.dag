@@ -171,12 +171,12 @@ test fn cleanup_dependency_does_not_wait_for_successful_deny_installation() -> B
 
 
 test fn authority_beneficiary_requires_the_verified_stable_google_subject() -> Bool {
-  let claims = OidcStandardClaims { email: Present { value: "brian@gunb.ai" }, email_verified: Present { value: true }, name: none }
+  let claims = OidcStandardClaims { picture: Absent, email: Present { value: "brian@gunb.ai" }, email_verified: Present { value: true }, name: none }
   bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: claims)
     && !bootstrap_operator_matches(subject: "another-subject", claims: claims)
-    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: claims.email, email_verified: Present { value: false }, name: none })
-    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: none, email_verified: Present { value: true }, name: none })
-    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: Present { value: "briansrls@gunb.ai" }, email_verified: Present { value: true }, name: none })
+    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { picture: Absent, email: claims.email, email_verified: Present { value: false }, name: none })
+    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { picture: Absent, email: none, email_verified: Present { value: true }, name: none })
+    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { picture: Absent, email: Present { value: "briansrls@gunb.ai" }, email_verified: Present { value: true }, name: none })
 }
 
 

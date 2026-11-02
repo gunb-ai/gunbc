@@ -1429,7 +1429,7 @@ fn iam_bootstrap_operator_readback_standing(token: Secret) -> OperatorReadbackSt
   match google.OidcUserInfo.Get(access_token: token) {
     RestRefused { refusal } => OperatorReadbackRefused { reason: concat("bootstrap operator identity unreadable: ", rest_refusal_text(o: refusal)) }
     RestAnswered { answer: actor } =>
-      if bootstrap_operator_matches(subject: actor.subject, claims: OidcStandardClaims { email: actor.email, email_verified: actor.email_verified, name: none }) { OperatorReadbackAdmitted }
+      if bootstrap_operator_matches(subject: actor.subject, claims: OidcStandardClaims { picture: Absent, email: actor.email, email_verified: actor.email_verified, name: none }) { OperatorReadbackAdmitted }
       else { OperatorReadbackRefused { reason: "bootstrap credential is not the admitted Google subject with its pinned verified IAM email; no grant" } }
   }
 }

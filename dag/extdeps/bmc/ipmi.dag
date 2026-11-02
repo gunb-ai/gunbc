@@ -329,10 +329,19 @@ service diagnostic.ipmi.Tool {
   // when a thermal round leaves undecoded rows, so the bytes answer exactly the question the refusal
   // printed. Dry lane: NO realization from invented bytes - the reply exists only once a capture is
   // committed (bmc_dry_realization carries the refusal reason).
+  // M2a binds the transport's own exit status and stderr, the way ChassisStatus does: the standalone
+  // observe mode commits these bytes as the admission rule's ground, and a receipt that carried only our
+  // PARSE of the records would let the rule be grounded on bytes nobody received. stdout stays as it was
+  // so #15562's conditional reader is unaffected.
   operation SdrElistVerbose {
     requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
-    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
     readonly
     transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "sdr", "elist", "-v"] }
     exit {

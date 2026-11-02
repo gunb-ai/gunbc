@@ -77,13 +77,15 @@ import gunbc.generated_artifact {
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
 import gunbc.heal_workflow { heal_workflow_of }
-import gunbc.heal_publisher_workflow { heal_publisher_workflow_of }
+import gunbc.heal_publisher_workflow { heal_publisher_census_workflow }
 import gunbc.drift_watch_workflow { drift_watch_workflow_of }
 import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow_triggers }
 import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow_triggers }
 import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow }
 import gunbc.ci.ci_fleet { gunbc_ci_fleet_offer }
-import gunbc.ci.repository_ci_profile { gunbc_heal_job, gunbc_heal_publisher_job, gunbc_drift_watch_job }
+import gunbc.ci.repository_ci_profile {
+  gunbc_heal_job, gunbc_drift_watch_job, gunbc_repository_ci_profile
+}
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 
 // THE FLEET POOL IDENTITY, PROJECTED FROM THE OFFER, NOT RE-SPELLED. The spec the CI target seam
@@ -161,9 +163,13 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
           Absent => []
         },
         concat(
-          match gunbc_heal_publisher_job() {
-            Present { value: job } => [
-              FleetWorkflowCensusRow { artifact: HealPublisherWorkflowYamlArtifact, workflow: heal_publisher_workflow_of(job: job) }
+          // THE PUBLISHER ROW, HANDED OVER EXPLICITLY. This census enumerates this repository's own four
+          // committed workflows, so it names gunbc's row rather than having the emitter read a global on its
+          // behalf; a refused row yields no census row, and the claim that every committed artifact appears
+          // in this census is what makes that loud.
+          match heal_publisher_census_workflow(profile: gunbc_repository_ci_profile()) {
+            Present { value: workflow } => [
+              FleetWorkflowCensusRow { artifact: HealPublisherWorkflowYamlArtifact, workflow: workflow }
             ]
             Absent => []
           },
