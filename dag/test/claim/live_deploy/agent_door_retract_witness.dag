@@ -1,0 +1,70 @@
+// WITNESS FOR THE AGENT DOOR'S RETRACT LEG (gunbc.live_deploy.retract_legs
+// deploy_retract_artifact_plan, the ComposeOwned { AgentDoorServeUnit } arm).
+//
+// WHY THIS EXISTS: the door's lifecycle is MANAGED on both ends. dag/test/claim/live_deploy/
+// agent_door_witness.dag pins the EMIT end -- the lab derives one door unit, production derives none.
+// Nothing on this tree pinned the RETRACT end: the leg exists in product code
+// (retract_legs.dag:177 retract_unit_teardown(units: [deployment_agent_door_unit_name(...)])) and the
+// retract witness file (live_deploy_retract_run_witness.dag) never names the door, so a retract that
+// left the door's unit file and loaded unit behind would have gone unnoticed. This claim closes that
+// half. It is hermetic: it reads the typed plan, never a host.
+//
+// THE PAIRING CLAIM: the arm emits retract_unit_teardown, whose body is
+// concat(retract_disable_legs(units), [retract_remove_files(head, rest), RetractDaemonReload]) -- so
+// the door's plan is exactly one disable-if-loaded leg naming the door unit, one removal leg naming the
+// door's unit path, and one daemon-reload. The claim below asserts that WHOLE leg list by structural
+// equality, not containment, so it cannot be satisfied by an unrelated leg that happens to mention the
+// door.
+//
+// RED UNDER A NAMED MUTATION: drop deployment_agent_door_unit_name from the units list of
+// retract_unit_teardown in that arm (units: []). The disable leg disappears, the equality fails, and
+// this claim goes red. A second mutation the same claim catches: pointing the removal at another
+// artifact's path, or dropping RetractDaemonReload so the unit stays loaded after the file is gone.
+module test.claim.live_deploy.agent_door_retract_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.algebra { Cons, Empty }
+import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
+import gunbc.live_deploy.retract_legs {
+  deploy_retract_artifact_plan,
+  DeployRetractPlan, RetractPlanReady, RetractDisableIfLoaded, RetractDaemonReload,
+  retract_remove_files,
+}
+import gunbc.live_deploy.spec {
+  DeploymentSpec, deployment_agent_door_unit_name, deployment_agent_door_unit_path, deployment_agent_door_steps,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, srv1_live_dashboard_instance }
+
+// THE LAB DOOR IS TORN DOWN, NOT LEFT LOADED: the door artifact's retract plan is exactly the door
+// unit's disable-if-loaded leg, the door unit file's removal leg, and a daemon-reload. The unit named
+// is the same name the emit side writes (deployment_agent_door_unit_name), and the path removed is the
+// same path the emit side writes (deployment_agent_door_unit_path), so emit and retract name one unit.
+test fn the_lab_door_artifact_retract_disables_the_door_unit_then_removes_its_file() -> Bool {
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let door_unit = deployment_agent_door_unit_name(names: lab.names)
+  let door_path = deployment_agent_door_unit_path(names: lab.names)
+  match deployment_agent_door_steps(instance: srv1_lab_dashboard_instance(), names: lab.names) {
+    Cons { head: step, tail: Empty } =>
+      deploy_retract_artifact_plan(art: step, spec: lab) == RetractPlanReady {
+        legs: [
+          RetractDisableIfLoaded { unit: door_unit },
+          retract_remove_files(head: door_path, rest: []),
+          RetractDaemonReload,
+        ]
+      }
+    Empty => false
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+// CONTROL: PRODUCTION HAS NO DOOR TO RETRACT. The retract side is driven by the same roster the emit
+// side answers from -- the door step list is empty for the live instance -- so production's retract
+// universe contains no door teardown at all, and no second list of lab deployments can leak one in.
+// RED if the door arm is keyed on anything other than that roster answer.
+test fn the_production_retract_universe_has_no_door_step_to_teardown() -> Bool {
+  let prod = deployment_spec_srv1()
+  match deployment_agent_door_steps(instance: srv1_live_dashboard_instance(), names: prod.names) {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
