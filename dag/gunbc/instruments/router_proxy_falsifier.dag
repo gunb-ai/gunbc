@@ -387,8 +387,9 @@ fn dev_o1_row(cap: String) -> String {
   "\{\"name\":\"o1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"ko\",\"model\":\"m-o\",\"overflow\":true,\"cap\":" + cap + "},"
 }
 
+// u1 answers from the HOLDING fixture (19105), so a ?hold=1 turn on m-u stays in flight while stats are read.
 fn dev_u1_row(in_service: String) -> String {
-  "\{\"name\":\"u1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"ku\",\"model\":\"m-u\",\"overflow\":true,\"in_service\":" + in_service + "},"
+  "\{\"name\":\"u1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"ku\",\"model\":\"m-u\",\"overflow\":true,\"in_service\":" + in_service + "},"
 }
 
 fn dev_upstreams_json_rented(f1: String, r1: String, h1: String, o1: String, u1: String) -> String {
