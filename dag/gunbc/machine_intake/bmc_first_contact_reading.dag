@@ -1,0 +1,2558 @@
+module gunbc.machine_intake.bmc_first_contact_reading
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent, Optional, optional_is_absent }
+import std.algebra { trim, list_at_optional, list_snoc_item }
+import std.content_hash { sha256_hex_of_text }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.integer { int_to_decimal_string }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.external_authority {
+  CitedFigureStanding, ObservedReceipt, observed_receipt, CitedToAuthority, ObservedByReceipt, TranscribedUncited,
+}
+import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac, SupermicroAten }
+import extdeps.bmc.capability {
+  BmcCapability, CapabilityVirtualMedia, CapabilitySerialConsole,
+  BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq,
+  bmc_firmware_version_from_wire, BmcFirmwareVersionParsed, BmcFirmwareVersionRefused,
+  BmcFirmwareReleaseCapabilityRow,
+}
+import extdeps.bmc.ipmi { IpmiDeviceIdentity }
+import extdeps.bmc.ipmitool_mc_info {
+  IpmiMcInfoReading, IpmiMcInfoReport, IpmiMcInfoFields, ipmitool_mc_info_of, render_ipmitool_mc_info,
+  render_ipmitool_mc_info_fields, ipmitool_mc_info_firmware_text,
+  McInfoReported, McInfoUnreadable,
+}
+import extdeps.bmc.ipmitool_print_read { IpmiSolConfiguration, ipmi_sol_configuration_of_sol_info, render_ipmi_sol_info }
+import gunbc.bmc_model { BmcWorld }
+import extdeps.bmc.redfish_telemetry { redfish_member_ids, redfish_thermal_sensors_of }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string,
+}
+import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version_text }
+import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrTypeLine, sdr_decode_lines, SdrLineDecoded, SdrLineUnstructured }
+import extdeps.bmc.serial_console { SolConsoleTransport, IpmiSol, RedfishSerialInterface, ObmcConsoleCli }
+import extdeps.bmc.types {
+  RedfishThermalTelemetrySurface, RedfishThermalSubsystemSensorCollection, RedfishLegacyChassisThermal,
+}
+import extdeps.bmc.redfish_network_boot {
+  RedfishEthernetInterfaceRead, RedfishBootOptionRead, RedfishBootOptionsRead,
+  RedfishEthernetInterfaceCollectionRead, RedfishBootOverrideRead, BootOverrideReported, BootOverrideAbsent, BootOverrideUnreadable,
+  redfish_ethernet_interface_of, redfish_ethernet_interface_collection_of, redfish_boot_options_of, redfish_boot_override_of,
+  render_redfish_ethernet_interface, render_redfish_ethernet_interface_collection,
+  render_redfish_boot_options, render_redfish_boot_options_not_served,
+  BootOptionsListed, BootOptionsNotServed,
+}
+import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake.bmc_firmware_family_discriminator {
+  ManagerIdentityObservation, manager_identity_observation_of, discriminate_family, family_standing_from_discrimination,
+}
+import gunbc.bmc.supermicro_bmc_read {
+  SupermicroVersionReading, SupermicroVirtualMediaOffer, cgi_version, supermicro_virtual_media_offer,
+}
+
+// THE FIRST-CONTACT BMC READ BATTERY.
+//
+// WHAT THIS IS. One read-only pass over access the operator has ALREADY given us, producing five readings per
+// controller: (R1) firmware identity, (R2) capability bindings, (R3) the sensor-typing source, (R4) the console
+// route, (R5) the boot NIC. Nothing here powers, boots, writes, or logs into anything: every reading is the
+// decode of a body that a committed capture already holds, or of a body a dry world renders. The live transport
+// that would take the reads that have never been taken is the live reader's, and it is declared here as a frontier with a
+// named consumer and trigger — not implemented behind a fake.
+//
+// WHY THERE IS ONE BATTERY AND NOT TWO. gunbc.machine_intake.supermicro_bmc_reading already folded committed
+// captures into identity, boot flags, SDR, SOL config and a virtual-media offer — for one family, with leaves
+// that carried no standing and recorded a missing read as `none`/`[]`. A second, family-neutral battery beside
+// it would fork the authority over what a BMC read means, so the acquisition root and the decode readers are
+// generalized HERE and that module consumes them; its capture types are deleted in the same change rather than
+// left as a second dialect.
+//
+// WHAT A READING IS NOT. A reading that was not obtained is a COVERAGE OBLIGATION in this observing layer,
+// never a property of extdeps and never an absence in the world: `ReadingNotTaken { obligation }` names the read
+// that would ground the value. It never reads as "the controller has no such thing" — that is the distinction
+// gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked draws — DESIGN §5, never conceal the
+// deficit: a named refusal, never a silent empty — and the reason the carrier has three arms rather
+// than an Option: `none` cannot tell "we looked and it said no" from "nobody ever looked".
+//
+// THE FOUR OUTCOMES, AND WHICH ONE A FAILURE IS (the rule the folds implement):
+//   - the read is not in the source at all            -> ReadingNotTaken { obligation }
+//   - the read is scheduled but its capture is missing -> ReadingRefused { cause } naming the file
+//   - a capture's digest differs from the manifest     -> ReadingRefused { cause } naming the file and both digests
+//   - the controller SERVED a 403/404/an empty-or-disabled resource -> ReadingEstablished with the negative
+//     value: a controller that answers "no such resource" has answered, and recording that as a missing read
+//     would lose the only evidence that the feature is absent rather than unexamined.
+//   - a record whose controller or observed epoch is not the one asked for -> ReadingRefused: a reading copied
+//     from another board, or from another moment, is not this board's reading.
+//
+// PROVENANCE IS PART OF THE READ, NOT A COMMENT BESIDE IT. `CommittedCapture` is a file in the tree with a
+// manifest digest; `ModeledResponse` is a dry controller rendering its own state and carries NO hardware
+// standing — a model that answers `mc info` says something about the model. `RuntimeRead` is the live reader's, and is not realized here. Only the
+// zero-argument committed folds mint `ObservedByReceipt` (extdeps.external_authority's admit_callers gate); a
+// fold handed an arbitrary source cannot mint a receipt for files it did not name.
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE ACQUISITION ROOT — generalized from supermicro_bmc_reading's SupermicroCapture and CaptureFold, which
+// this replaces.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// THE OPERATION, IN ITS UPSTREAM'S TERMS. A Redfish GET is identified by its resource and an ipmitool
+// invocation by its subcommand: those are the two dialects the captures exist in, and a read identity that
+// invented a third would be a key nothing can check a manifest against.
+// HOW THE READ WAS ASKED FOR, in the upstream's own terms: a Redfish GET, an ipmitool invocation, or a request
+// on a vendor's own HTTP surface (Supermicro's /cgi/ipmi.cgi pages, MegaRAC's own endpoints). The third arm
+// exists so a family's private endpoint is still recorded as A REQUEST with a method and a target rather than
+// smuggled into the ipmitool arm; the battery reads no semantics from it, and no reading depends on it.
+type BmcReadOperation
+  = RedfishGet { uri: NonEmptyStr }
+  | IpmiToolCommand { command: NonEmptyStr }
+  | VendorHttpRequest { method: NonEmptyStr, target: NonEmptyStr }
+
+// WHAT THE TRANSPORT RECORDED ABOUT THE ATTEMPT, or nothing. `OutcomeNotRecorded` is honest for captures whose
+// transport did not write a status down; it is NOT a synonym for success, and no reading may be established
+// from an outcome it cannot name (the folds ask for the outcome where one matters).
+type BmcReadOutcome
+  = HttpStatusRecorded { code: Int }
+  | CommandExitRecorded { code: Int }
+  | OutcomeNotRecorded
+
+// WHERE THE BYTES CAME FROM. Read this arm before trusting any standing beside it.
+type BmcReadProvenance
+  = CommittedCapture { manifest: NonEmptyStr }
+  | ModeledResponse { realization: NonEmptyStr }
+  | RuntimeRead { session: NonEmptyStr }
+
+// ONE READ, CARRIED AS A RECORD. `read` is the read identity (one of the `bmc_*_read` names below);
+// `controller` is which BMC the read is ABOUT (its MAC text, or the endpoint that answered) and `observed_at`
+// is when; the two are what make a body attributable, and the fold refuses a record that does not match the
+// board and the epoch it was asked for rather than quietly folding in a neighbour's answer.
+type BmcReadRecord {
+  controller: NonEmptyStr
+  read: NonEmptyStr
+  observed_at: NonEmptyStr
+  operation: BmcReadOperation
+  outcome: BmcReadOutcome
+  digest: NonEmptyStr
+  body: String
+  provenance: BmcReadProvenance
+}
+
+// THE MANIFEST ROW: what a committed capture set DECLARES before any file is opened — path and the digest the
+// capture was taken with. The digest is checked against the bytes read, never assumed.
+type BmcCaptureManifestRow {
+  controller: NonEmptyStr
+  read: NonEmptyStr
+  observed_at: NonEmptyStr
+  operation: BmcReadOperation
+  outcome: BmcReadOutcome
+  path: NonEmptyStr
+  digest: NonEmptyStr
+  // WHICH OBSERVATION OF A BUNDLE. Some captures were written by the intake script as one JSON bundle holding
+  // several command outputs under `observations`; a row that names a key is read as that observation, and the
+  // digest still pins the WHOLE bundle. A row that names none is read as the file's own bytes — the ordinary
+  // case, and the one where the capture really is one response.
+  intake_key: NonEmptyStr?
+}
+
+// A DRY CONTROLLER'S ANSWER, rendered from world state by the realization that owns it
+// (gunbc.bmc_dry_realization). There is no digest to check against an external manifest, so the digest is the
+// rendering's own — and `provenance` says `ModeledResponse`, which is what stops a model answer being spent as
+// hardware standing.
+type BmcModeledResponse {
+  read: NonEmptyStr
+  operation: BmcReadOperation
+  outcome: BmcReadOutcome
+  body: String
+}
+
+// THE SOURCE: one interface, two realizations here and a third in the live reader. Parsing always happens in the extdeps
+// wire readers; no structure crosses this boundary unparsed.
+type BmcReadSource
+  = CommittedCaptureSet { controller: NonEmptyStr, manifest: List<BmcCaptureManifestRow> }
+  | ModeledController { controller: NonEmptyStr, observed_at: NonEmptyStr, realization: NonEmptyStr, responses: List<BmcModeledResponse> }
+
+// WHAT A SOURCE ANSWERS FOR ONE REQUESTED READ. Note the two failure arms are different facts: a scheduled
+// capture that cannot be fetched is a REFUSAL (something was promised and broke), while a read that is not in
+// the source at all is a coverage obligation (nobody ever promised it) — collapsing them is how a missing
+// capture starts reporting as "the controller does not have that".
+type BmcReadAttempt
+  = ReadRecorded { record: BmcReadRecord }
+  | ReadRefusedToFetch { cause: NonEmptyStr }
+  | ReadNotScheduled { obligation: NonEmptyStr }
+
+// THE READS THE BATTERY TAKES, by name. These are the read identities the manifests are written against; a
+// manifest row naming something else is a mistake that shows up as ReadNotScheduled, not as a silent hole.
+data bmc_mc_info_read: NonEmptyStr = "ipmitool mc info"
+data bmc_redfish_manager_read: NonEmptyStr = "GET /redfish/v1/Managers/<id>"
+data bmc_supermicro_cgi_generic_info_read: NonEmptyStr = "POST /cgi/ipmi.cgi GENERIC_INFO"
+data bmc_ipmi_sdr_elist_read: NonEmptyStr = "ipmitool sdr elist"
+data bmc_redfish_thermal_read: NonEmptyStr = "GET /redfish/v1/Chassis/<id>/Thermal"
+data bmc_ipmi_sol_info_read: NonEmptyStr = "ipmitool sol info <channel>"
+data bmc_redfish_boot_options_read: NonEmptyStr = "GET /redfish/v1/Systems/<id>/BootOptions"
+data bmc_redfish_ethernet_interface_read: NonEmptyStr = "GET /redfish/v1/Systems/<id>/EthernetInterfaces/<member>"
+data bmc_redfish_ethernet_interfaces_collection_read: NonEmptyStr = "GET /redfish/v1/Systems/<id>/EthernetInterfaces"
+data bmc_redfish_sensors_read: NonEmptyStr = "GET /redfish/v1/Chassis/<id>/Sensors"
+data bmc_redfish_serial_interfaces_read: NonEmptyStr = "GET /redfish/v1/Managers/<id>/SerialInterfaces"
+data bmc_redfish_virtual_media_read: NonEmptyStr = "GET /redfish/v1/Managers/<id>/VirtualMedia/<member>"
+
+// The ComputerSystem resource: its `Boot` object states the boot SOURCE the firmware was told to use. It is
+// consumed only to report what the controller itself says about boot selection — it names no interface and no
+// MAC, so it never yields a boot NIC and mints no capability (DESIGN).
+data bmc_redfish_systems_read: NonEmptyStr = "GET /redfish/v1/Systems/<id>"
+
+// THE DECLARED FRONTIER. Each read the battery asks for carries the obligation that is owed when it has never
+// been taken — who needs it and what would take it. This is the live reader's contract in data form: the runtime reader
+// has a named consumer (this battery) and a named trigger (a controller whose reading reports these
+// obligations), and until it exists the readings stay NotTaken rather than becoming zeroes.
+type BmcReadRequest { read: NonEmptyStr, obligation: NonEmptyStr }
+
+data bmc_first_contact_read_plan: List<BmcReadRequest> = [
+  BmcReadRequest {
+    read: bmc_mc_info_read,
+    obligation: "the family-neutral Get Device ID report has never been taken for this controller; the live reader frontier takes `ipmitool mc info` on first contact" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_redfish_manager_read,
+    obligation: "the Redfish manager resource has never been read for this controller; the live reader frontier reads Managers/<id> for FirmwareVersion and the OEM keys the family gate consumes" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_ipmi_sdr_elist_read,
+    obligation: "the SDR repository has never been listed for this controller; the live reader frontier takes `ipmitool sdr elist` to establish what types the sensors" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_redfish_thermal_read,
+    obligation: "the Redfish thermal telemetry surface has never been read for this controller; the live reader frontier reads Chassis/<id>/Thermal" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_ipmi_sol_info_read,
+    obligation: "the SOL configuration has never been read for this controller; the live reader frontier takes `ipmitool sol info <channel>`" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_redfish_boot_options_read,
+    obligation: "the boot option collection has never been read for this controller; the live reader frontier reads Systems/<id>/BootOptions" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_redfish_systems_read,
+    obligation: "the ComputerSystem resource has never been read for this controller; the live reader frontier reads Systems/<id> for the Boot object whose override state R5 reports alongside the NIC question" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_redfish_ethernet_interface_read,
+    obligation: "the EthernetInterface resources have never been read for this controller; the live reader frontier reads Systems/<id>/EthernetInterfaces and each member" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_redfish_sensors_read,
+    obligation: "the Redfish sensor collection has never been read for this controller; the live reader frontier reads Chassis/<id>/Sensors" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_redfish_serial_interfaces_read,
+    obligation: "the Redfish serial-interface service has never been read for this controller; the live reader frontier reads Managers/<id>/SerialInterfaces" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_redfish_virtual_media_read,
+    obligation: "the virtual-media service has never been probed for this controller; the live reader frontier reads Managers/<id>/VirtualMedia/<member> — the only admissible evidence that virtual media exists on a board" as NonEmptyStr,
+  },
+  BmcReadRequest {
+    read: bmc_supermicro_cgi_generic_info_read,
+    obligation: "the Supermicro generic-info page has never been read for this controller; the live reader frontier posts /cgi/ipmi.cgi GENERIC_INFO" as NonEmptyStr,
+  },
+]
+
+// THE STANDING POLICY, SUPPLIED BY THE CALLER. Standing is not derived from bytes alone: a committed capture
+// read from the tree by a fold that NAMED the file is what may carry an observation receipt, and a fold handed
+// an arbitrary source must be handed the standing rather than minting one. A modeled controller can never
+// carry hardware standing, so the caller that renders a world passes TranscribedUncited with the read
+// obligation that still lies ahead of it.
+type BmcReadingStandings {
+  committed: CitedFigureStanding
+  modeled: CitedFigureStanding
+  runtime: CitedFigureStanding
+}
+
+fn bmc_read_standing_for(provenance: BmcReadProvenance, standings: BmcReadingStandings) -> CitedFigureStanding {
+  match provenance {
+    CommittedCapture { manifest: m } => standings.committed
+    ModeledResponse { realization: r } => standings.modeled
+    RuntimeRead { session: s } => standings.runtime
+  }
+}
+
+// THE PROBE'S OWN FRAMING, STRIPPED IN THE OBSERVING LAYER. Some captures in this tree were written by the
+// operator's own probe script, which appended the transport's verdict as a final `HTTP_CODE:<n>` line after the
+// service's bytes. That line belongs to the probe, not to the controller: it is read here, becomes the record's
+// OUTCOME, and is removed before any extdeps wire reader sees the body — a Redfish body with a status line glued
+// on is not a Manager document, and refusing it would blame the controller for its recorder's format. A body
+// with no such line is passed through untouched and gets no status: nothing here invents one.
+type BmcProbeFraming { body: String, status: Int? }
+
+fn bmc_probe_framing(text: String) -> BmcProbeFraming {
+  let lines = filter(split(s: text, delimiter: "\n"), line => trim(s: line) != "")
+  match list_at_optional(xs: lines, index: count(lines) - 1) {
+    Absent => BmcProbeFraming { body: text, status: none }
+    Present { value: last } => match bmc_probe_status(text: trim(s: last)) {
+      Present { value: status } => BmcProbeFraming { body: join(bmc_all_but_last(lines: lines), "\n"), status: Present { value: status } }
+      Absent => BmcProbeFraming { body: text, status: none }
+    }
+  }
+}
+
+// THE MARKER, OR NOTHING. A line that begins with the marker but does not carry a number is left in the body:
+// the framing is a convention, and text this layer cannot account for is passed to the wire readers rather than
+// quietly deleted.
+fn bmc_probe_status(text: String) -> Int? {
+  if starts_with(s: text, prefix: "HTTP_CODE:") == false {
+    none
+  } else {
+    match list_at_optional(xs: split(s: text, delimiter: ":"), index: 1) {
+      Present { value: digits } => parse_int(s: trim(s: digits))
+      Absent => none
+    }
+  }
+}
+
+fn bmc_all_but_last(lines: List<String>) -> List<String> {
+  let head: List<String> = []
+  fold(lines, init: head, f: (acc, line) =>
+    if count(acc) < count(lines) - 1 { concat(acc, [line]) } else { acc }
+  )
+}
+
+// ONE FILE OF A COMMITTED MANIFEST, read and digest-checked. Three named refusals, never an empty body: the
+// file would not open, or it is not the bytes the manifest promised. A digest mismatch REFUSES the reading
+// (witness: the same fold over a capture whose bytes were edited reports ReadingRefused, not an established
+// value computed from the edited text).
+fn bmc_read_committed_row(row: BmcCaptureManifestRow) -> BmcReadAttempt uses fs: std.resources.Filesystem {
+  match bmc_read_row(row: row) {
+    RowRecorded { record: record } => ReadRecorded { record: record }
+    RowFailed { failure: failure } => ReadRefusedToFetch {
+      cause: concat("the capture ", failure.path as String, " was refused: ", failure.cause) as NonEmptyStr
+    }
+  }
+}
+
+// THE ONE LOOKUP, over either realization. A requested read that no row answers is `ReadNotScheduled` carrying
+// the plan's obligation text; a row that exists but cannot be fetched or is not this board's is a refusal.
+fn bmc_read_of(source: BmcReadSource, request: BmcReadRequest) -> BmcReadAttempt uses fs: std.resources.Filesystem {
+  match source {
+    CommittedCaptureSet { controller: controller, manifest: manifest } =>
+      match bmc_manifest_row_for(manifest: manifest, controller: controller, read: request.read) {
+        Absent => ReadNotScheduled { obligation: request.obligation }
+        Present { value: row } => bmc_read_committed_row(row: row)
+      }
+    ModeledController { controller: controller, observed_at: epoch, realization: realization, responses: responses } =>
+      match bmc_modeled_response_for(responses: responses, read: request.read) {
+        Absent => ReadNotScheduled { obligation: request.obligation }
+        Present { value: response } => ReadRecorded { record: BmcReadRecord {
+          controller: controller,
+          read: response.read,
+          observed_at: epoch,
+          operation: response.operation,
+          outcome: response.outcome,
+          digest: sha256_hex_of_text(text: response.body),
+          body: response.body,
+          provenance: ModeledResponse { realization: realization },
+        } }
+      }
+  }
+}
+
+fn bmc_manifest_row_for(manifest: List<BmcCaptureManifestRow>, controller: NonEmptyStr, read: NonEmptyStr) -> BmcCaptureManifestRow? {
+  let rows = filter(manifest, row => row.read == read && row.controller == controller)
+  match rows.first() {
+    Present { value: row } => Present { value: row }
+    Absent => none
+  }
+}
+
+fn bmc_modeled_response_for(responses: List<BmcModeledResponse>, read: NonEmptyStr) -> BmcModeledResponse? {
+  let rows = filter(responses, response => response.read == read)
+  match rows.first() {
+    Present { value: response } => Present { value: response }
+    Absent => none
+  }
+}
+
+// THE ATTRIBUTION GATE. A record is usable only if it is about the controller being read and was taken at the
+// epoch the fold was asked about. Wrong-board and wrong-epoch are REDs with positive controls in the witness:
+// the same body filed under another controller refuses, and filed under the right one establishes.
+fn bmc_record_is_for(record: BmcReadRecord, controller: NonEmptyStr, observed_at: NonEmptyStr) -> Bool {
+  record.controller == controller && record.observed_at == observed_at
+}
+
+fn bmc_usable_record(
+  source: BmcReadSource,
+  request: BmcReadRequest,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+) -> BmcReadAttempt uses fs: std.resources.Filesystem {
+  match bmc_read_of(source: source, request: request) {
+    ReadRecorded { record: record } =>
+      if bmc_record_is_for(record: record, controller: controller, observed_at: observed_at) {
+        ReadRecorded { record: record }
+      } else {
+        ReadRefusedToFetch {
+          cause: concat(
+            "the record for ", request.read as String, " is filed under controller ", record.controller as String,
+            " observed ", record.observed_at as String, ", not this board at ", observed_at as String,
+          ) as NonEmptyStr
+        }
+      }
+    ReadRefusedToFetch { cause: cause } => ReadRefusedToFetch { cause: cause }
+    ReadNotScheduled { obligation: obligation } => ReadNotScheduled { obligation: obligation }
+  }
+}
+
+// THE BODY, OR WHY THERE IS NONE. Every reading starts here, so the three arms below map one-to-one onto the
+// three arms of the carrier — a reading cannot invent a value that this function did not hand it.
+type BmcBodyAttempt
+  = BodyAvailable { body: String, standing: CitedFigureStanding, provenance: BmcReadProvenance }
+  | BodyRefused { cause: NonEmptyStr }
+  | BodyOwed { obligation: NonEmptyStr }
+
+fn bmc_body_of(
+  source: BmcReadSource,
+  request: BmcReadRequest,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+) -> BmcBodyAttempt uses fs: std.resources.Filesystem {
+  match bmc_usable_record(source: source, request: request, controller: controller, observed_at: observed_at) {
+    ReadRecorded { record: record } => BodyAvailable {
+      body: record.body,
+      standing: bmc_read_standing_for(provenance: record.provenance, standings: standings),
+      provenance: record.provenance,
+    }
+    ReadRefusedToFetch { cause: cause } => BodyRefused { cause: cause }
+    ReadNotScheduled { obligation: obligation } => BodyOwed { obligation: obligation }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CARRIER.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ONE READING, THREE ARMS. `ReadingEstablished` carries the value WITH the standing that licenses it — a
+// value and its evidence travel together or not at all (DESIGN §3: extdeps decides what the wire says, this
+// layer decides what may be believed of it). `ReadingRefused` is a read that was attempted and came back a
+// typed refusal. `ReadingNotTaken` is the coverage obligation, and it never reads as absence.
+type FirstContactReading<T>
+  = ReadingEstablished { value: T, standing: CitedFigureStanding }
+  | ReadingRefused { cause: NonEmptyStr }
+  | ReadingNotTaken { obligation: NonEmptyStr }
+
+fn reading_refused<T>(cause: NonEmptyStr) -> FirstContactReading<T> {
+  ReadingRefused { cause: cause }
+}
+
+fn reading_not_taken<T>(obligation: NonEmptyStr) -> FirstContactReading<T> {
+  ReadingNotTaken { obligation: obligation }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R1 — FIRMWARE IDENTITY: ONE READING PER SOURCE, RECONCILED ON THE DERIVED IDENTITY.
+//
+// The three sources that can answer for a board are kept APART until they are compared, and the comparison is
+// on the release identity each upstream's own reader derived — never on a normalized version string. That is
+// the generalization of supermicro_bmc_read.supermicro_identity_agrees_with_catalog: agreement is a fact about
+// what the sources derived, and disagreement REFUSES rather than picking a winner. A fold that normalized
+// `1.52` and `01.52.25` into the same key would report agreement for reasons that have nothing to do with the
+// board, which is the failure this section exists to make unreachable.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// THE SOURCES, in the dialects they answer in. `mc info` is the FAMILY-NEUTRAL one: every family answers Get
+// Device ID, so it is the identity source for a board whose management service is absent, refused, or not yet
+// written a reader for.
+type FirmwareIdentitySourceName
+  = McInfoSource
+  | RedfishManagerSource
+  | SupermicroCgiGenericInfoSource
+
+// WHAT ONE SOURCE SAID, with the standing that source's read carries. `source` is the read identity, so every
+// evidence row traces back to a manifest row (or to a dry controller's rendering) rather than floating free.
+// `device_available` is kept only where the source is `mc info`, because only that report claims the controller
+// is ready to answer: an identity taken while the controller says it is mid-initialization is not an identity
+// to store.
+type FirmwareIdentityEvidence {
+  source: NonEmptyStr
+  named: FirmwareIdentitySourceName
+  identified: BmcFirmwareReleaseIdentity
+  components: List<BmcVersionComponent>
+  standing: CitedFigureStanding
+  device_available: Bool?
+}
+
+// THE NUMBERS A SOURCE ACTUALLY NAMED. `ipmitool mc info` reports the firmware revision as two integers; a
+// Redfish manager prints a vendor string that the upstream's own parser reads into three. Comparing those two
+// claims as STRINGS would either refuse every board that has both sources (ipmitool's `1.52` is not the text
+// `01.52.25`) or quietly normalize one into the other — and normalizing is how `01.52.25` and `1.52.25` become
+// "the same firmware" for reasons nobody checked. So the comparison is on the components each source named,
+// taken from the upstream's own parse: two sources concur when every component BOTH of them names is equal, and
+// a component only one of them names says nothing either way.
+type BmcVersionComponent { part: NonEmptyStr, value: Int }
+
+fn bmc_component(part: String, value: Int) -> BmcVersionComponent {
+  BmcVersionComponent { part: part as NonEmptyStr, value: value }
+}
+
+fn bmc_semantic_components(version: FirmwareSemanticVersion) -> List<BmcVersionComponent> {
+  [
+    bmc_component(part: "major", value: version.major),
+    bmc_component(part: "minor", value: version.minor),
+    bmc_component(part: "patch", value: version.patch),
+  ]
+}
+
+fn bmc_components_concur(a: List<BmcVersionComponent>, b: List<BmcVersionComponent>) -> Bool {
+  count(filter(a, left => bmc_component_conflicts(left: left, others: b))) == 0
+}
+
+fn bmc_component_conflicts(left: BmcVersionComponent, others: List<BmcVersionComponent>) -> Bool {
+  count(filter(others, right => right.part == left.part && right.value != left.value)) > 0
+}
+
+// THE R1 VALUE: what agreed, what refused, what is owed. All three lists are carried so a consumer can tell
+// "one source, corroborated by nobody" from "three sources, all agreeing" without re-running the fold, and so a
+// failed source is visible instead of silently shrinking the list.
+type FirmwareIdentityReading {
+  agreed: List<FirmwareIdentityEvidence>
+  refused: List<NonEmptyStr>
+  owed: List<NonEmptyStr>
+}
+
+// `mc info` → a release identity, spelled as ipmitool spells it. The identity is the report's Firmware Revision
+// through the upstream's own rendering, so the comparison key is the tool's output and not a re-derivation.
+fn bmc_mc_info_evidence(
+  read: NonEmptyStr,
+  report: IpmiMcInfoReport,
+  family: BmcFirmwareFamily,
+  standing: CitedFigureStanding,
+) -> FirmwareIdentityEvidence {
+  FirmwareIdentityEvidence {
+    source: read,
+    named: McInfoSource,
+    identified: bmc_firmware_release_identity_of_wire(family: family, wire: ipmitool_mc_info_firmware_text(report: report)),
+    components: [
+      bmc_component(part: "major", value: report.identity.firmware_revision_major),
+      bmc_component(part: "minor", value: report.identity.firmware_revision_minor),
+    ],
+    standing: standing,
+    device_available: Present { value: report.device_available },
+  }
+}
+
+// THE RECONCILIATION. Any two sources that derived different release identities refuse the whole reading,
+// naming both sources and both spellings so the operator knows which read to re-take. With no disagreement and
+// at least one source the reading is established, carrying the WEAKEST standing among the sources that agreed:
+// a hardware capture corroborated by a dry rendering is only as good as the rendering, because a rendering
+// says nothing about hardware. With no source at all, the reading is the coverage obligation.
+type FirmwareIdentityDisagreement { left: FirmwareIdentityEvidence, right: FirmwareIdentityEvidence }
+
+fn bmc_first_disagreement(evidences: List<FirmwareIdentityEvidence>) -> FirmwareIdentityDisagreement? {
+  match evidences.first() {
+    Absent => none
+    Present { value: head } => match bmc_disagreeing_with(head: head, others: evidences) {
+      Absent => none
+      Present { value: other } => Present { value: FirmwareIdentityDisagreement { left: head, right: other } }
+    }
+  }
+}
+
+fn bmc_disagreeing_with(head: FirmwareIdentityEvidence, others: List<FirmwareIdentityEvidence>) -> FirmwareIdentityEvidence? {
+  let differing = filter(others, other => bmc_evidence_disagrees(a: head, b: other))
+  match differing.first() {
+    Present { value: other } => Present { value: other }
+    Absent => none
+  }
+}
+
+fn bmc_evidence_disagrees(a: FirmwareIdentityEvidence, b: FirmwareIdentityEvidence) -> Bool {
+  if a.source == b.source {
+    false
+  } else {
+    bmc_components_concur(a: a.components, b: b.components) == false
+  }
+}
+
+fn bmc_firmware_identity_of(
+  evidences: List<FirmwareIdentityEvidence>,
+  refused: List<NonEmptyStr>,
+  owed: List<NonEmptyStr>,
+) -> FirstContactReading<FirmwareIdentityReading> {
+  match bmc_first_disagreement(evidences: evidences) {
+    Present { value: pair } => reading_refused(concat(
+      "the firmware sources disagree: ", pair.left.source as String, " says ",
+      pair.left.identified.raw_version as String, " while ", pair.right.source as String, " says ",
+      pair.right.identified.raw_version as String,
+    ) as NonEmptyStr)
+    Absent =>
+      if count(evidences) > 0 {
+        ReadingEstablished {
+          value: FirmwareIdentityReading { agreed: evidences, refused: refused, owed: owed },
+          standing: bmc_evidences_standing(evidences: evidences),
+        }
+      } else {
+        if count(refused) > 0 {
+          reading_refused(join(map(refused, cause => cause as String), "; ") as NonEmptyStr)
+        } else {
+          reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+        }
+      }
+  }
+}
+
+// THE STANDING LATTICE, ordered by what a standing licenses: an observation receipt licenses a statement about
+// hardware, a citation licenses a transcription of an upstream document, and `TranscribedUncited` licenses
+// neither — it is the arm that says nobody has read the thing yet. The weakest standing is the minimum rank.
+fn bmc_standing_rank(standing: CitedFigureStanding) -> Int {
+  match standing {
+    ObservedByReceipt { observed: observed } => 3
+    CitedToAuthority { authority: authority } => 2
+    TranscribedUncited { read_obligation: obligation } => 1
+  }
+}
+
+fn bmc_weaker_standing(a: CitedFigureStanding, b: CitedFigureStanding) -> CitedFigureStanding {
+  if bmc_standing_rank(standing: a) <= bmc_standing_rank(standing: b) { a } else { b }
+}
+
+// The identity is as well-grounded as its WORST agreeing source — but it starts from a source that WAS read,
+// not from a floor that would flatten an ObservedByReceipt into a transcription. Folding from an obligation
+// constant would make a committed capture indistinguishable from a typed-up note.
+fn bmc_evidences_standing(evidences: List<FirmwareIdentityEvidence>) -> CitedFigureStanding {
+  match evidences.first() {
+    Present { value: first } =>
+      fold(
+        evidences,
+        init: first.standing,
+        f: (acc, evidence) => bmc_weaker_standing(a: acc, b: evidence.standing),
+      )
+    Absent => TranscribedUncited { read_obligation: "no source has been read for this controller" as NonEmptyStr }
+  }
+}
+
+// THE THREE R1 SOURCES, FOLDED. Each source's read is requested independently; a source whose read is owed
+// lands in `owed`, one whose body cannot be fetched or whose reader refuses lands in `refused`, and a source
+// that answered lands in `agreed` — subject to the reconciliation above, which is where a disagreement becomes
+// visible instead of becoming a value.
+//
+// ONE BODY, ONE CLASSIFICATION. Each source's body is parsed ONCE and lands in exactly one arm. These used to be
+// three functions per source (evidence / refusal / obligation) that each re-parsed the same body and re-matched
+// the same arms: three chances for one body's classification to disagree with itself, and three parses of the
+// same bytes. The arm is decided where the body is read.
+type BmcSourceAttempt
+  = SourceAnswered { evidence: FirmwareIdentityEvidence }
+  | SourceRefused { cause: NonEmptyStr }
+  | SourceOwed { obligation: NonEmptyStr }
+
+// One body → evidence, refusal, or obligation. `mc info` is the interesting case: a report that decodes but says
+// `Device Available : no` is kept (the claim is part of the evidence) rather than discarded, because the report
+// is what the controller said and the consumer decides what to do with a mid-initialization answer.
+fn bmc_mc_info_body_attempt(body: BmcBodyAttempt, family: BmcFirmwareFamily) -> BmcSourceAttempt {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match ipmitool_mc_info_of(stdout: text) {
+        McInfoReported { report: report } => SourceAnswered { evidence: bmc_mc_info_evidence(read: bmc_mc_info_read, report: report, family: family, standing: standing) }
+        McInfoUnreadable { cause: cause } => SourceRefused { cause: concat("mc info: ", cause as String) as NonEmptyStr }
+      }
+    BodyRefused { cause: cause } => SourceRefused { cause: concat("mc info: ", cause as String) as NonEmptyStr }
+    BodyOwed { obligation: obligation } => SourceOwed { obligation: obligation }
+  }
+}
+
+fn bmc_manager_body_attempt(body: BmcBodyAttempt, family: BmcFirmwareFamily) -> BmcSourceAttempt {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match manager_identity_observation_of(body: text) {
+        ObservationEstablished { observed: observation } =>
+          if observation.firmware_version == "" {
+            SourceRefused { cause: "Redfish Manager: the manager resource publishes no FirmwareVersion" as NonEmptyStr }
+          } else {
+            SourceAnswered { evidence: FirmwareIdentityEvidence {
+              source: bmc_redfish_manager_read,
+              named: RedfishManagerSource,
+              identified: bmc_firmware_release_identity_of_wire(family: family, wire: observation.firmware_version as NonEmptyStr),
+              components: bmc_identity_components(wire: observation.firmware_version),
+              standing: standing,
+              device_available: none,
+            } }
+          }
+        ObservationRefused { cause: cause } => SourceRefused { cause: concat("Redfish Manager: ", cause as String) as NonEmptyStr }
+      }
+    BodyRefused { cause: cause } => SourceRefused { cause: concat("Redfish Manager: ", cause as String) as NonEmptyStr }
+    BodyOwed { obligation: obligation } => SourceOwed { obligation: obligation }
+  }
+}
+
+// The Supermicro CGI arm. `genericinfo` prints its own firmware version, which the Supermicro reader parses into
+// a semantic version; the release identity is then spelled by that reader's own renderer. This is the one source
+// whose raw wire spelling the upstream reader does not retain, so the comparison key is its rendering — and
+// that is why a CGI-only board is never R1-established against a second source it does not have.
+fn bmc_cgi_body_attempt(body: BmcBodyAttempt, family: BmcFirmwareFamily) -> BmcSourceAttempt {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match cgi_version(body: text) {
+        ObservationEstablished { observed: reading } => SourceAnswered { evidence: FirmwareIdentityEvidence {
+          source: bmc_supermicro_cgi_generic_info_read,
+          named: SupermicroCgiGenericInfoSource,
+          identified: BmcFirmwareReleaseIdentity {
+            family: family,
+            raw_version: firmware_semantic_version_text(version: reading.version) as NonEmptyStr,
+            semantic_version: Present { value: reading.version },
+          },
+          components: bmc_semantic_components(version: reading.version),
+          standing: standing,
+          device_available: none,
+        } }
+        ObservationRefused { cause: cause } => SourceRefused { cause: concat("Supermicro CGI genericinfo: ", cause as String) as NonEmptyStr }
+      }
+    BodyRefused { cause: cause } => SourceRefused { cause: concat("Supermicro CGI genericinfo: ", cause as String) as NonEmptyStr }
+    BodyOwed { obligation: obligation } => SourceOwed { obligation: obligation }
+  }
+}
+
+// THE TALLY. The arms of the three sources collected in one pass: what answered, what refused and why, and what
+// was never read.
+type BmcSourceTally {
+  evidences: List<FirmwareIdentityEvidence>
+  refused: List<NonEmptyStr>
+  owed: List<NonEmptyStr>
+}
+
+fn bmc_tally_of(attempts: List<BmcSourceAttempt>) -> BmcSourceTally {
+  fold(
+    attempts,
+    init: BmcSourceTally { evidences: [], refused: [], owed: [] },
+    f: (acc, attempt) => match attempt {
+      SourceAnswered { evidence: evidence } => BmcSourceTally { evidences: concat(acc.evidences, [evidence]), refused: acc.refused, owed: acc.owed }
+      SourceRefused { cause: cause } => BmcSourceTally { evidences: acc.evidences, refused: concat(acc.refused, [cause]), owed: acc.owed }
+      SourceOwed { obligation: obligation } => BmcSourceTally { evidences: acc.evidences, refused: acc.refused, owed: concat(acc.owed, [obligation]) }
+    },
+  )
+}
+
+// THE READING OVER THE THREE SOURCES: ask each source for its read, classify each body once, reconcile what
+// answered. The three bodies are requested independently so one missing capture never suppresses another
+// source's answer; the reconciliation in `bmc_firmware_identity_of` is what turns two answers into one identity,
+// or into a refusal that names both.
+fn bmc_firmware_identity_reading(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  family: BmcFirmwareFamily,
+  standings: BmcReadingStandings,
+) -> FirstContactReading<FirmwareIdentityReading> uses fs: std.resources.Filesystem {
+  let mc = bmc_body_of(source: source, request: bmc_request_for(read: bmc_mc_info_read), controller: controller, observed_at: observed_at, standings: standings)
+  let manager = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_manager_read), controller: controller, observed_at: observed_at, standings: standings)
+  let cgi = bmc_body_of(source: source, request: bmc_request_for(read: bmc_supermicro_cgi_generic_info_read), controller: controller, observed_at: observed_at, standings: standings)
+  let tally = bmc_tally_of(attempts: [
+    bmc_mc_info_body_attempt(body: mc, family: family),
+    bmc_manager_body_attempt(body: manager, family: family),
+    bmc_cgi_body_attempt(body: cgi, family: family),
+  ])
+  bmc_firmware_identity_of(evidences: tally.evidences, refused: tally.refused, owed: tally.owed)
+}
+
+
+// THE COMPONENTS A SOURCE NAMES. Each source spells its version in its own arity — ipmitool's `mc info` gives
+// major.minor, a Redfish manager gives major.minor.patch, the Supermicro CGI page gives all three — so agreement
+// is decided component by component over what each source actually NAMED, never by normalizing one dialect into
+// another's spelling. A component a source does not name can never conflict; a component both name must match.
+fn bmc_identity_components(wire: NonEmptyStr) -> List<BmcVersionComponent> {
+  let parts = split(s: wire as String, delimiter: ".")
+  concat(
+    concat(bmc_named_component(parts: parts, at: 0, name: "major"), bmc_named_component(parts: parts, at: 1, name: "minor")),
+    bmc_named_component(parts: parts, at: 2, name: "patch"),
+  )
+}
+
+fn bmc_named_component(parts: List<String>, at: Int, name: String) -> List<BmcVersionComponent> {
+  match list_at_optional(xs: parts, index: at) {
+    Absent => []
+    Present { value: text } => match parse_int(s: trim(s: text)) {
+      Absent => []
+      Present { value: number } => [bmc_component(part: name, value: number)]
+    }
+  }
+}
+
+
+
+
+
+
+
+// THE PLAN LOOKUP. A read the battery asks for that is not in the plan has no obligation text, which would make
+// its NotTaken arm an empty string — so the read names and their obligations live in one table and are looked
+// up rather than invented at the call site.
+fn bmc_request_for(read: NonEmptyStr) -> BmcReadRequest {
+  let rows = filter(bmc_first_contact_read_plan, row => row.read == read)
+  match rows.first() {
+    Present { value: row } => row
+    Absent => BmcReadRequest { read: read, obligation: concat("the read ", read as String, " has never been taken for this controller") as NonEmptyStr }
+  }
+}
+
+fn bmc_filter_some(values: List<NonEmptyStr?>) -> List<NonEmptyStr> {
+  let kept: List<NonEmptyStr> = []
+  fold(values, init: kept, f: (acc, value) => match value {
+    Present { value: v } => concat(acc, [v])
+    Absent => acc
+  })
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R2 — CAPABILITY BINDINGS, PER CAPABILITY, EACH WITH ITS OWN EVIDENCE.
+//
+// There is deliberately NO outer standing on R2 and no `capabilities: List<BmcCapability>` field. A list of
+// capabilities with one standing beside it is how a board ends up "supporting" virtual media because its
+// release is in a catalogue that was cited for a different capability. Each capability therefore carries the
+// basis on which THIS board is believed to have it: a catalogue row, a surface the controller itself offered
+// in a read, or an operation with an observation receipt behind it. A capability with none of those is not in
+// the list — and is not recorded as absent either, unless a read actually said it is not served.
+//
+// TWO THINGS R2 CANNOT MINT (both operator rulings, both REDs with positive controls in the witness):
+//   - VIRTUAL MEDIA is never inferred from a host-side NIC, from `cdc_ether`, or from any indirect sign. The
+//     only admissible evidence is a read of the controller's own virtual-media service (or a catalogue row for
+//     the release, or an exercised operation). A dry world whose host NIC inventory is full of gadget NICs and
+//     whose VirtualMedia read was never taken establishes nothing.
+//   - PXE IS NOT A BMC CAPABILITY, and neither is a boot NIC. An established R5 boot NIC, or a PXE line on a
+//     console, mints no BmcCapability of any kind: R2's bases are catalogue rows and management-service reads,
+//     and a network fact about the host is neither.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type CapabilityEvidenceBasis
+  = Catalogued { catalogued_in: NonEmptyStr }
+  | SurfaceOffered { read: NonEmptyStr }
+  | OperationExercised { receipt: ObservedReceipt }
+
+type BmcCapabilityEvidence {
+  capability: BmcCapability
+  basis: CapabilityEvidenceBasis
+}
+
+// THE CATALOGUE BINDING, supplied by the consumer that owns the catalogue (MegaRAC rows come from
+// gunbc.host.bmc_release_capability_catalog, ASRock rows from extdeps.boards.asrock_rack). It is handed in
+// rather than looked up here so that the battery's closure does not decide which board's catalogue is
+// authoritative, and so a release that is simply NOT in any catalogue says so as an obligation.
+type BmcCapabilityBinding
+  = BindingCatalogued { rows: List<BmcFirmwareReleaseCapabilityRow>, catalogued_in: NonEmptyStr }
+  | BindingAbsent { obligation: NonEmptyStr }
+
+// WHAT A CONTROLLER WITH NO CATALOGUE ROW OWES. Stated once, because every committed fold that has no row for
+// the release it reads owes exactly this obligation; a fold that typed its own version could quietly owe less.
+data bmc_capability_binding_absent_obligation: NonEmptyStr =
+  "no capability row names this release: the catalogue carries no row for the firmware this controller runs, and the battery mints no capability of its own" as NonEmptyStr
+
+fn bmc_capability_evidence_of(
+  from_release: FirstContactReading<FirmwareIdentityReading>,
+  binding: BmcCapabilityBinding,
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+) -> FirstContactReading<List<BmcCapabilityEvidence>> uses fs: std.resources.Filesystem {
+  match from_release {
+    ReadingRefused { cause: cause } => reading_not_taken(concat("capabilities: no established release identity to bind a capability row against (", concat(cause as String, "); no catalogue row names this release until an identity is agreed")) as NonEmptyStr)
+    ReadingNotTaken { obligation: obligation } => reading_not_taken(concat("capabilities: ", obligation as String) as NonEmptyStr)
+    ReadingEstablished { value: reading, standing: standing } =>
+      match bmc_release_row_for(rows: bmc_binding_rows(binding: binding), wanted: bmc_first_agreed_release(reading: reading)) {
+        Absent =>
+          match binding {
+            BindingAbsent { obligation: obligation } => reading_not_taken(obligation)
+            BindingCatalogued { rows: rows, catalogued_in: catalogue } => reading_not_taken(
+              concat("no capability row in ", catalogue as String, " names release ", bmc_first_release_text(reading: reading), "; the release is uncatalogued") as NonEmptyStr
+            )
+          }
+        Present { value: row } => ReadingEstablished {
+          value: concat(
+            bmc_catalogued_evidence_of(row: row, binding: binding),
+            bmc_offered_evidence_of(source: source, controller: controller, observed_at: observed_at, standings: standings),
+          ),
+          standing: standing,
+        }
+      }
+  }
+}
+
+fn bmc_binding_rows(binding: BmcCapabilityBinding) -> List<BmcFirmwareReleaseCapabilityRow> {
+  match binding {
+    BindingCatalogued { rows: rows, catalogued_in: catalogue } => rows
+    BindingAbsent { obligation: obligation } => []
+  }
+}
+
+fn bmc_first_agreed_release(reading: FirmwareIdentityReading) -> BmcFirmwareReleaseIdentity? {
+  match reading.agreed.first() {
+    Present { value: evidence } => Present { value: evidence.identified }
+    Absent => none
+  }
+}
+
+fn bmc_first_release_text(reading: FirmwareIdentityReading) -> String {
+  match bmc_first_agreed_release(reading: reading) {
+    Present { value: identified } => identified.raw_version as String
+    Absent => "(no agreed release)"
+  }
+}
+
+fn bmc_release_row_for(rows: List<BmcFirmwareReleaseCapabilityRow>, wanted: BmcFirmwareReleaseIdentity?) -> BmcFirmwareReleaseCapabilityRow? {
+  match wanted {
+    Absent => none
+    Present { value: identity } => {
+      let hits = filter(rows, row => bmc_firmware_release_identity_eq(a: row.firmware, b: identity))
+      match hits.first() {
+        Present { value: row } => Present { value: row }
+        Absent => none
+      }
+    }
+  }
+}
+
+// EVERY CAPABILITY IN THE ROW, each with the catalogue as its own basis. The row's `catalogued_in` is kept
+// because "which catalogue, and where is its citation" is the question a reviewer asks of a capability list.
+fn bmc_catalogued_evidence_of(row: BmcFirmwareReleaseCapabilityRow, binding: BmcCapabilityBinding) -> List<BmcCapabilityEvidence> {
+  let catalogue = match binding {
+    BindingCatalogued { rows: rows, catalogued_in: catalogued_in } => catalogued_in
+    BindingAbsent { obligation: obligation } => "an unknown catalogue" as NonEmptyStr
+  }
+  map(row.capabilities, capability => BmcCapabilityEvidence {
+    capability: capability,
+    basis: Catalogued { catalogued_in: catalogue },
+  })
+}
+
+// THE SURFACES THE CONTROLLER ITSELF OFFERED. Two reads can offer a surface: the virtual-media service (the
+// only admissible route to CapabilityVirtualMedia on a board that is not in a catalogue) and the SOL
+// configuration (Enabled: yes is the controller advertising its own serial-over-LAN service). Anything else a
+// caller believes it can infer is not consulted here — that is the operator ruling, written as code.
+fn bmc_offered_evidence_of(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+) -> List<BmcCapabilityEvidence> uses fs: std.resources.Filesystem {
+  let virtual_media = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_virtual_media_read), controller: controller, observed_at: observed_at, standings: standings)
+  let sol = bmc_body_of(source: source, request: bmc_request_for(read: bmc_ipmi_sol_info_read), controller: controller, observed_at: observed_at, standings: standings)
+  bmc_capability_some([
+    bmc_virtual_media_surface(body: virtual_media),
+    bmc_sol_surface(body: sol),
+  ])
+}
+
+fn bmc_virtual_media_surface(body: BmcBodyAttempt) -> BmcCapabilityEvidence? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match supermicro_virtual_media_offer(body: text) {
+        ObservationEstablished { observed: offer } => Present { value: BmcCapabilityEvidence {
+          capability: CapabilityVirtualMedia,
+          basis: SurfaceOffered { read: bmc_redfish_virtual_media_read },
+        } }
+        ObservationRefused { cause: cause } => none
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_sol_surface(body: BmcBodyAttempt) -> BmcCapabilityEvidence? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match ipmi_sol_configuration_of_sol_info(stdout: text) {
+        Present { value: configuration } =>
+          if configuration.enabled {
+            Present { value: BmcCapabilityEvidence {
+              capability: CapabilitySerialConsole,
+              basis: SurfaceOffered { read: bmc_ipmi_sol_info_read },
+            } }
+          } else {
+            none
+          }
+        Absent => none
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_capability_some(values: List<BmcCapabilityEvidence?>) -> List<BmcCapabilityEvidence> {
+  let kept: List<BmcCapabilityEvidence> = []
+  fold(values, init: kept, f: (acc, value) => match value {
+    Present { value: v } => concat(acc, [v])
+    Absent => acc
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R3 — WHICH SOURCE TYPES THE SENSORS, AND OVER WHAT.
+//
+// No type in the tree said "which source is typing this board's sensors", so this is the one new sum the
+// battery adds (v1's gap table named it). It is a LIST, one observation per read, and there is no selection:
+// a board that has both an SDR repository and a Redfish thermal surface reports both, because choosing one
+// silently is how a board ends up monitored through the surface that answers least. Each observation carries
+// the population it covers and the rows it read UNINTERPRETED — a decoded line is decoded, a line that did not
+// decode is carried as refusal text rather than dropped, so a truncated listing cannot masquerade as a board
+// with no sensors — the empty-observation narrow gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked
+// names).
+// ─────────────────────────────────────────────────────────────────────────────
+
+type SensorTypingObservation
+  = IpmiSdrTyping {
+      population: NonEmptyStr,
+      decoded: List<SdrTypeLine>,
+      unstructured: List<String>,
+    }
+  | RedfishThermalTyping {
+      surface: RedfishThermalTelemetrySurface,
+      population: NonEmptyStr,
+      members: List<NonEmptyStr>,
+    }
+
+fn bmc_sensor_typing_reading(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+) -> FirstContactReading<List<SensorTypingObservation>> uses fs: std.resources.Filesystem {
+  let sdr = bmc_body_of(source: source, request: bmc_request_for(read: bmc_ipmi_sdr_elist_read), controller: controller, observed_at: observed_at, standings: standings)
+  let thermal = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_thermal_read), controller: controller, observed_at: observed_at, standings: standings)
+  let sensors = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_sensors_read), controller: controller, observed_at: observed_at, standings: standings)
+  let observations = bmc_typing_some([
+    bmc_sdr_typing_of(body: sdr),
+    bmc_thermal_typing_of(body: thermal, surface: RedfishLegacyChassisThermal),
+    bmc_sensors_typing_of(body: sensors),
+  ])
+  let refused = bmc_filter_some([
+    bmc_sdr_typing_refusal(body: sdr),
+    bmc_thermal_typing_refusal(body: thermal, surface: RedfishLegacyChassisThermal),
+    bmc_sensors_typing_refusal(body: sensors),
+  ])
+  let owed = bmc_filter_some([
+    bmc_typing_owed(body: sdr),
+    bmc_typing_owed(body: thermal),
+    bmc_typing_owed(body: sensors),
+  ])
+  let standing = bmc_typing_standing(bodies: [sdr, thermal, sensors], observations: observations)
+  if count(observations) > 0 {
+    ReadingEstablished { value: observations, standing: standing }
+  } else {
+    if count(refused) > 0 {
+      reading_refused(join(map(refused, cause => cause as String), "; ") as NonEmptyStr)
+    } else {
+      reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+    }
+  }
+}
+
+// A listing that produced NOTHING — no decoded line and no unstructured line — is a refusal, not an empty
+// typing source. An empty body and a body of noise are different facts from "the controller has no sensors",
+// and only the third may be reported as a sensor inventory of zero.
+fn bmc_sdr_typing_of(body: BmcBodyAttempt) -> SensorTypingObservation? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } => {
+      let lines = sdr_decode_lines(stdout: text)
+      let decoded = bmc_decoded_sdr_lines(lines: lines)
+      let unstructured = bmc_unstructured_sdr_lines(lines: lines)
+      if count(decoded) == 0 && count(unstructured) == 0 {
+        none
+      } else {
+        Present { value: IpmiSdrTyping {
+          population: concat("the SDR repository, ", int_to_decimal_string(value: count(lines)), " line(s) listed") as NonEmptyStr,
+          decoded: decoded,
+          unstructured: unstructured,
+        } }
+      }
+    }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_decoded_sdr_lines(lines: List<SdrLineResult>) -> List<SdrTypeLine> {
+  let empty: List<SdrTypeLine> = []
+  fold(lines, init: empty, f: (acc, line) => match line {
+    SdrLineDecoded { line: decoded } => concat(acc, [decoded])
+    SdrLineUnstructured { text: text } => acc
+  })
+}
+
+fn bmc_unstructured_sdr_lines(lines: List<SdrLineResult>) -> List<String> {
+  let empty: List<String> = []
+  fold(lines, init: empty, f: (acc, line) => match line {
+    SdrLineDecoded { line: decoded } => acc
+    SdrLineUnstructured { text: text } => concat(acc, [text])
+  })
+}
+
+fn bmc_sdr_typing_refusal(body: BmcBodyAttempt) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      if count(sdr_decode_lines(stdout: text)) == 0 {
+        Present { value: "the SDR listing contained no lines at all" as NonEmptyStr }
+      } else {
+        none
+      }
+    BodyRefused { cause: cause } => Present { value: concat("SDR listing: ", cause as String) as NonEmptyStr }
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_thermal_typing_of(body: BmcBodyAttempt, surface: RedfishThermalTelemetrySurface) -> SensorTypingObservation? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_member_ids(body: text) {
+        ObservationEstablished { observed: ids } =>
+          if count(ids) == 0 {
+            none
+          } else {
+            Present { value: RedfishThermalTyping { surface: surface, population: "the chassis thermal collection" as NonEmptyStr, members: ids } }
+          }
+        ObservationRefused { cause: cause } => bmc_thermal_arrays_typing_of(text: text, surface: surface)
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+// No `Members` array: this is a Thermal RESOURCE, which types its sensors in inline `Temperatures`/`Fans`
+// arrays. A resource that names nothing is no typing source (the caller keeps the obligation); a resource that
+// names eleven temperatures is one, and is never reported as an inventory of zero.
+fn bmc_thermal_arrays_typing_of(text: String, surface: RedfishThermalTelemetrySurface) -> SensorTypingObservation? {
+  match redfish_thermal_sensors_of(body: text) {
+    ObservationRefused { cause: cause } => none
+    ObservationEstablished { observed: listing } =>
+      if count(listing.temperatures) + count(listing.fans) == 0 {
+        none
+      } else {
+        Present { value: RedfishThermalTyping {
+          surface: surface,
+          population: concat(
+            concat(concat("the chassis thermal resource: ", int_to_decimal_string(value: count(listing.temperatures))), " temperature(s), "),
+            concat(int_to_decimal_string(value: count(listing.fans)), " fan(s) named by the resource"),
+          ) as NonEmptyStr,
+          members: concat(listing.temperatures, listing.fans),
+        } }
+      }
+  }
+}
+
+fn bmc_sensors_typing_of(body: BmcBodyAttempt) -> SensorTypingObservation? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_member_ids(body: text) {
+        ObservationEstablished { observed: ids } =>
+          if count(ids) == 0 {
+            none
+          } else {
+            Present { value: RedfishThermalTyping { surface: RedfishThermalSubsystemSensorCollection, population: "the Redfish sensor collection" as NonEmptyStr, members: ids } }
+          }
+        ObservationRefused { cause: cause } => none
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_thermal_typing_refusal(body: BmcBodyAttempt, surface: RedfishThermalTelemetrySurface) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_member_ids(body: text) {
+        ObservationEstablished { observed: ids } => none
+        ObservationRefused { cause: cause } => Present { value: concat("Redfish telemetry: ", cause as String) as NonEmptyStr }
+      }
+    BodyRefused { cause: cause } => Present { value: concat("Redfish telemetry: ", cause as String) as NonEmptyStr }
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_sensors_typing_refusal(body: BmcBodyAttempt) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_member_ids(body: text) {
+        ObservationEstablished { observed: ids } => none
+        ObservationRefused { cause: cause } => Present { value: concat("Redfish sensors: ", cause as String) as NonEmptyStr }
+      }
+    BodyRefused { cause: cause } => Present { value: concat("Redfish sensors: ", cause as String) as NonEmptyStr }
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_typing_owed(body: BmcBodyAttempt) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } => none
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => Present { value: obligation }
+  }
+}
+
+fn bmc_typing_some(values: List<SensorTypingObservation?>) -> List<SensorTypingObservation> {
+  let kept: List<SensorTypingObservation> = []
+  fold(values, init: kept, f: (acc, value) => match value {
+    Present { value: v } => concat(acc, [v])
+    Absent => acc
+  })
+}
+
+fn bmc_typing_standing(bodies: List<BmcBodyAttempt>, observations: List<SensorTypingObservation>) -> CitedFigureStanding {
+  if count(observations) == 0 {
+    TranscribedUncited { read_obligation: "no sensor-typing source has been read for this controller" as NonEmptyStr }
+  } else {
+    fold(
+      bodies,
+      init: TranscribedUncited { read_obligation: "no sensor-typing source has been read for this controller" as NonEmptyStr },
+      f: (acc, body) => match body {
+        BodyAvailable { body: text, standing: standing, provenance: provenance } => bmc_weaker_standing(a: acc, b: standing)
+        BodyRefused { cause: cause } => acc
+        BodyOwed { obligation: obligation } => acc
+      },
+    )
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R4 — THE CONSOLE ROUTE, AND WHAT KIND OF CONSOLE EVIDENCE IT IS.
+//
+// Three kinds, and the difference between them is the whole reading. `ConsoleConfigured` is a CONFIGURATION
+// read — `ipmitool sol info` answered `Enabled: true` — which licenses saying the controller is set up to
+// expose a serial-over-LAN channel. It does NOT license saying a console worked, and a reading that was taken
+// this way can never be re-labelled a session. `ConsoleServiceAdvertised` is the Redfish service publishing
+// SerialInterface members. `ConsoleSessionObservedHistorically` is the operator's account of a session that
+// happened (the mtjade1 attestation, srv13's captured SOL logs); it is admitted only from a read that exists in
+// the source, it carries a transcription standing rather than an observation one, and pre-OS console evidence
+// is not admissible as any of the three (v1: a post-hoc firmware boot-selection line is not a first-contact
+// read, and here it is not admitted as a console reading either).
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ConsoleRouteReading
+  = ConsoleConfigured { transport: SolConsoleTransport, configuration: NonEmptyStr }
+  | ConsoleServiceAdvertised { transport: SolConsoleTransport, advertisement: NonEmptyStr }
+  | ConsoleSessionObservedHistorically { transport: SolConsoleTransport, evidence: NonEmptyStr }
+
+// THE HISTORICAL EVIDENCE, AS SUPPLIED BY ITS OWNER. `from_read` is the read identity it came from; the fold
+// admits it only if that read exists in the source for this controller, so an account cannot be attached to a
+// board nobody read. The standing it carries is supplied by its owner and stays TranscribedUncited for an
+// operator attestation — a person's account of a session is not an observation receipt.
+type ConsoleSessionEvidenceKind
+  = CapturedSessionLog
+  | OperatorSessionAttestation
+
+type ConsoleSessionEvidence {
+  transport: SolConsoleTransport
+  evidence: NonEmptyStr
+  kind: ConsoleSessionEvidenceKind
+  from_read: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+fn bmc_console_reading(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+  session: ConsoleSessionEvidence?,
+) -> FirstContactReading<ConsoleRouteReading> uses fs: std.resources.Filesystem {
+  match bmc_admitted_session(source: source, controller: controller, observed_at: observed_at, session: session) {
+    Present { value: admitted } => ReadingEstablished {
+      value: ConsoleSessionObservedHistorically { transport: admitted.transport, evidence: admitted.evidence },
+      standing: admitted.standing,
+    }
+    Absent => {
+      let sol = bmc_body_of(source: source, request: bmc_request_for(read: bmc_ipmi_sol_info_read), controller: controller, observed_at: observed_at, standings: standings)
+      let advertised = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_serial_interfaces_read), controller: controller, observed_at: observed_at, standings: standings)
+      match bmc_console_advertised(body: advertised) {
+        Present { value: advertisement } => ReadingEstablished {
+          value: ConsoleServiceAdvertised { transport: RedfishSerialInterface, advertisement: advertisement },
+          standing: bmc_body_standing(body: advertised),
+        }
+        Absent => match bmc_console_configured(body: sol) {
+          Present { value: configuration } => ReadingEstablished {
+            value: ConsoleConfigured { transport: IpmiSol, configuration: configuration },
+            standing: bmc_body_standing(body: sol),
+          }
+          Absent => bmc_console_missing(sol: sol, advertised: advertised)
+        }
+      }
+    }
+  }
+}
+
+// AN ACCOUNT IS ADMITTED ONLY AS ITSELF. A captured session log must name a read this source actually holds —
+// otherwise the "log" is attached to a board nobody read. An operator attestation is admitted as an attestation
+// (and keeps its transcription standing), which is the honest form of "the operator told us a session worked".
+// What is NOT admitted, at all: a post-hoc pre-OS console line. There is no arm to pass one in, because a
+// firmware boot-selection line on a console is not a first-contact reading of the controller (v1, and it stays
+// true: the only way to say it is to say it from the BMC's own bytes).
+fn bmc_source_holds_read(source: BmcReadSource, read: NonEmptyStr) -> Bool {
+  count(filter(bmc_source_read_names(source: source), name => name == read)) > 0
+}
+
+// A citation that NAMES a read (a GET, a POST, an ipmitool command, a Redfish path) is a claim about bytes: it
+// is admitted only when this very source holds that read — otherwise a post-hoc pre-OS console line would be
+// laundered into a first-contact console session. A plain-language citation ("the operator, via the intake
+// record") is admitted as what it is: the operator's word, carrying `TranscribedUncited` and its read
+// obligation, never the receipt a committed capture alone may mint.
+fn bmc_session_citation_cites_a_read(citation: NonEmptyStr) -> Bool {
+  starts_with(s: citation as String, prefix: "GET ")
+    || starts_with(s: citation as String, prefix: "POST ")
+    || starts_with(s: citation as String, prefix: "ipmitool ")
+    || string_contains(s: citation as String, pattern: "/redfish/")
+}
+
+fn bmc_on_the_operators_word(supplied: ConsoleSessionEvidence) -> ConsoleSessionEvidence {
+  ConsoleSessionEvidence {
+    transport: supplied.transport,
+    evidence: supplied.evidence,
+    kind: supplied.kind,
+    from_read: supplied.from_read,
+    standing: TranscribedUncited { read_obligation: "no capture backs this console session; it stands on the operator's account and owes the log that would ground it" as NonEmptyStr },
+  }
+}
+
+fn bmc_admitted_session(source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, session: ConsoleSessionEvidence?) -> ConsoleSessionEvidence? {
+  match session {
+    Absent => none
+    Present { value: supplied } => match supplied.kind {
+      CapturedSessionLog =>
+        if bmc_source_holds_read(source: source, read: supplied.from_read) { Present { value: supplied } } else { none }
+      OperatorSessionAttestation =>
+        if bmc_session_citation_cites_a_read(citation: supplied.from_read) {
+          if bmc_source_holds_read(source: source, read: supplied.from_read) { Present { value: bmc_on_the_operators_word(supplied: supplied) } } else { none }
+        } else {
+          Present { value: bmc_on_the_operators_word(supplied: supplied) }
+        }
+    }
+  }
+}
+
+// WHAT THE SOURCE CAN ANSWER, read identities only — used to check an admitted historical claim really came from
+// a read this source holds.
+fn bmc_source_read_names(source: BmcReadSource) -> List<NonEmptyStr> {
+  match source {
+    CommittedCaptureSet { controller: controller, manifest: manifest } => map(manifest, row => row.read)
+    ModeledController { controller: controller, observed_at: epoch, realization: realization, responses: responses } => map(responses, response => response.read)
+  }
+}
+
+fn bmc_console_configured(body: BmcBodyAttempt) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match ipmi_sol_configuration_of_sol_info(stdout: text) {
+        Present { value: configuration } =>
+          Present { value: concat(
+            "ipmitool sol info: Enabled=", bmc_yes_no(value: configuration.enabled),
+            ", privilege ", configuration.privilege_level as String,
+            ", payload channel ", configuration.payload_channel as String,
+            " (a configuration read, not a host-payload capture)",
+          ) as NonEmptyStr }
+        Absent => none
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_console_advertised(body: BmcBodyAttempt) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_member_ids(body: text) {
+        ObservationEstablished { observed: ids } =>
+          if count(ids) == 0 {
+            none
+          } else {
+            Present { value: concat("the Redfish service publishes ", int_to_decimal_string(value: count(ids)), " SerialInterface member(s)") as NonEmptyStr }
+          }
+        ObservationRefused { cause: cause } => none
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_console_missing(sol: BmcBodyAttempt, advertised: BmcBodyAttempt) -> FirstContactReading<ConsoleRouteReading> {
+  let refused = bmc_filter_some([bmc_body_refusal_note(body: sol, prefix: "SOL configuration"), bmc_body_refusal_note(body: advertised, prefix: "Redfish SerialInterfaces")])
+  let owed = bmc_filter_some([bmc_body_owed_note(body: sol), bmc_body_owed_note(body: advertised)])
+  if count(refused) > 0 {
+    reading_refused(join(map(refused, cause => cause as String), "; ") as NonEmptyStr)
+  } else {
+    reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+  }
+}
+
+fn bmc_body_standing(body: BmcBodyAttempt) -> CitedFigureStanding {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } => standing
+    BodyRefused { cause: cause } => TranscribedUncited { read_obligation: "the read behind this reading was refused" as NonEmptyStr }
+    BodyOwed { obligation: obligation } => TranscribedUncited { read_obligation: obligation }
+  }
+}
+
+fn bmc_body_refusal_note(body: BmcBodyAttempt, prefix: String) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } => none
+    BodyRefused { cause: cause } => Present { value: concat(prefix, ": ", cause) as NonEmptyStr }
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_body_owed_note(body: BmcBodyAttempt) -> NonEmptyStr? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } => none
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => Present { value: obligation }
+  }
+}
+
+fn bmc_yes_no(value: Bool) -> String {
+  if value { "yes" } else { "no" }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R5 — THE BOOT NIC, WHICH THE BMC CAN ONLY BE ASKED ABOUT.
+//
+// There is no BMC-side "boot NIC" read: the IPMI boot parameters carry no NIC field, so the question is
+// answerable from the Redfish service — the EthernetInterface resources, and a BootOption whose UEFI device
+// path names a MAC — joined to whatever the host layer has observed. Three kinds of answer, in increasing
+// strength: a port the service INVENTORIES, a port the firmware is CONFIGURED to boot from (the join, and the
+// only one that means what people assume it means), and a port whose boot use was OBSERVED, historically, from
+// a BMC-side read.
+//
+// TWO RULES THIS SECTION EXISTS TO ENFORCE:
+//   - NEVER THE FIRST INTERFACE. A collection with two members is not evidence that the first is the boot
+//     port. If the join is ambiguous — two enabled boot options naming two different MACs, or no boot option at
+//     all while more than one candidate is inventoried — the reading REFUSES and names what it could not
+//     separate. The H11SSL capture set is exactly this case: its collection announces two members and only one
+//     member resource is committed.
+//   - A BOOT NIC IS A NETWORK FACT AND MINTS NO BMC CAPABILITY. Nothing here feeds R2, and the witness proves
+//     it: a world with an established boot NIC and a PXE line reports no capability that mentions media or PXE.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A PORT, as read. `source` is the read identity that published it, so a candidate is always traceable to the
+// member resource it came from.
+type BootNicCandidate {
+  name: NonEmptyStr
+  mac_address: NonEmptyStr
+  source: NonEmptyStr
+}
+
+type BootNicReading
+  = InventoriedCandidate { candidate: BootNicCandidate }
+  | ConfiguredBootSelection { candidate: BootNicCandidate, boot_option: NonEmptyStr, device_path: NonEmptyStr }
+  | ObservedBootUseHistorical { candidate: BootNicCandidate, evidence: NonEmptyStr }
+
+// THE HOST-SIDE JOIN, HANDED IN. gunbc.host.host_network_diagnosis owns InterfaceObservation/BootNicAssignment
+// and its `boot_nic_inventory`; a consumer that wants its rows reflected here projects them into this shape and
+// passes them in, carrying its standing with them. The battery does not import the host layer: the boot NIC is
+// a network fact whose authority stays where it was measured.
+type HostBootNicEvidence {
+  candidate: BootNicCandidate
+  evidence: NonEmptyStr
+  from_read: NonEmptyStr
+}
+
+fn bmc_boot_nic_reading(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+  interface_reads: List<NonEmptyStr>,
+  observed_boot_use: HostBootNicEvidence?,
+) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
+  let candidates = bmc_inventoried_candidates(source: source, controller: controller, observed_at: observed_at, standings: standings, interface_reads: interface_reads)
+  let options_body = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_boot_options_read), controller: controller, observed_at: observed_at, standings: standings)
+  let collection_body = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_ethernet_interfaces_collection_read), controller: controller, observed_at: observed_at, standings: standings)
+  let systems_body = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_systems_read), controller: controller, observed_at: observed_at, standings: standings)
+  match bmc_admitted_boot_use(source: source, controller: controller, observed_at: observed_at, observed: observed_boot_use) {
+    Present { value: historical } => ReadingEstablished {
+      value: ObservedBootUseHistorical { candidate: historical.candidate, evidence: historical.evidence },
+      standing: bmc_body_standing(body: bmc_body_of(source: source, request: bmc_request_for(read: historical.from_read), controller: controller, observed_at: observed_at, standings: standings)),
+    }
+    Absent => match bmc_configured_selection(options_body: options_body, candidates: candidates) {
+      Present { value: selection } => ReadingEstablished {
+        value: selection,
+        standing: bmc_body_standing(body: options_body),
+      }
+      Absent => bmc_boot_nic_without_selection(
+        candidates: candidates,
+        options_body: options_body,
+        collection: collection_body,
+        systems_body: systems_body,
+        source: source,
+        controller: controller,
+        observed_at: observed_at,
+        standings: standings,
+      )
+    }
+  }
+}
+
+// EVERY REQUESTED MEMBER RESOURCE, read and decoded. A member that publishes no MAC is not a candidate (a port
+// that cannot be named cannot be joined), and a member whose read is owed is not silently skipped — the
+// obligation is what makes the inventory honest.
+fn bmc_inventoried_candidates(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+  interface_reads: List<NonEmptyStr>,
+) -> List<BootNicCandidate> uses fs: std.resources.Filesystem {
+  let empty: List<BootNicCandidate> = []
+  fold(interface_reads, init: empty, f: (acc, read) => concat(acc, bmc_candidate_of(source: source, controller: controller, observed_at: observed_at, standings: standings, read: read)))
+}
+
+fn bmc_candidate_of(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+  read: NonEmptyStr,
+) -> List<BootNicCandidate> uses fs: std.resources.Filesystem {
+  match bmc_body_of(source: source, request: bmc_request_for(read: read), controller: controller, observed_at: observed_at, standings: standings) {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_ethernet_interface_of(body: text) {
+        ObservationEstablished { observed: interface } => match interface.mac_address {
+          Present { value: mac } => [BootNicCandidate {
+            name: match interface.name { Present { value: n } => n as NonEmptyStr Absent => interface.id },
+            mac_address: mac as NonEmptyStr,
+            source: read,
+          }]
+          Absent => []
+        }
+        ObservationRefused { cause: cause } => []
+      }
+    BodyRefused { cause: cause } => []
+    BodyOwed { obligation: obligation } => []
+  }
+}
+
+// THE JOIN. Only an ENABLED boot option whose device path names a MAC counts, and the MAC must match exactly
+// one inventoried candidate. Two enabled options naming different MACs, or one option naming a MAC nobody
+// inventories, refuses with the candidates and the paths in the cause: the reader can see what did not join,
+// which is the only way an operator can fix it.
+fn bmc_configured_selection(options_body: BmcBodyAttempt, candidates: List<BootNicCandidate>) -> BootNicReading? {
+  match options_body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_boot_options_of(body: text) {
+        ObservationEstablished { observed: BootOptionsListed { options: options } } =>
+          bmc_selection_from(options: bmc_enabled_options(options: options), candidates: candidates)
+        ObservationEstablished { observed: BootOptionsNotServed { message: message } } => none
+        ObservationRefused { cause: cause } => none
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+fn bmc_enabled_options(options: List<RedfishBootOptionRead>) -> List<RedfishBootOptionRead> {
+  filter(options, option => match option.enabled {
+    Present { value: true } => match option.uefi_device_path {
+      Present { value: path } => string_contains(s: path, pattern: "MAC(")
+      Absent => false
+    }
+    Present { value: false } => false
+    Absent => false
+  })
+}
+
+fn bmc_selection_from(options: List<RedfishBootOptionRead>, candidates: List<BootNicCandidate>) -> BootNicReading? {
+  let matches: List<BootOptionMatch> = []
+  let joined = fold(options, init: matches, f: (acc, option) => concat(acc, bmc_option_matches(option: option, candidates: candidates)))
+  if count(joined) == 1 {
+    match joined.first() {
+      Present { value: pair } => Present { value: ConfiguredBootSelection {
+        candidate: pair.candidate,
+        boot_option: pair.option.id,
+        device_path: match pair.option.uefi_device_path { Present { value: path } => path Absent => "the enabled BootOption names no UEFI device path" as NonEmptyStr },
+      } }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+type BootOptionMatch { option: RedfishBootOptionRead, candidate: BootNicCandidate }
+
+fn bmc_option_matches(option: RedfishBootOptionRead, candidates: List<BootNicCandidate>) -> List<BootOptionMatch> {
+  let matches: List<BootOptionMatch> = []
+  fold(candidates, init: matches, f: (acc, candidate) => match option.uefi_device_path {
+    Present { value: path } =>
+      if bmc_device_path_names_mac(path: path, mac: candidate.mac_address as String) {
+        concat(acc, [BootOptionMatch { option: option, candidate: candidate }])
+      } else {
+        acc
+      }
+    Absent => acc
+  })
+}
+
+// THE ONE NORMALIZATION, AND WHY IT IS ALLOWED. A DMTF UEFI device path spells a MAC as `MAC(ac1f6be3f6b0,0x0)`
+// while Redfish publishes `ac:1f:6b:e3:f6:b0`; those are the same address in two upstreams' spellings, and
+// joining them is the join this reading exists to perform. This is NOT version-string normalization: both sides
+// come from the same DMTF definitions, and nothing here compares a firmware version. The check is done by
+// removing the colons Redfish adds and asking whether the device path carries the remaining digits inside a
+// `MAC(` term.
+fn bmc_device_path_names_mac(path: String, mac: String) -> Bool {
+  let packed = bmc_remove_colons(text: mac)
+  if count(split(s: path, delimiter: "MAC(")) < 2 {
+    false
+  } else {
+    string_contains(s: path, pattern: packed)
+  }
+}
+
+fn bmc_remove_colons(text: String) -> String {
+  join(filter(split(s: text, delimiter: ":"), part => part != ""), "")
+}
+
+// A DECLARED BOOT USE, ADMITTED OR NOT AT ALL. The historical arm exists for a host-side account of ONE
+// board's boot, projected in by gunbc.host's consumer. It is admitted only when the read it cites is a read
+// THIS source holds: a post-hoc pre-OS console line naming a boot device is not a first-contact read, and
+// handing it to the battery does not make it one. A boot NIC is a network fact and mints no capability.
+fn bmc_admitted_boot_use(source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, observed: HostBootNicEvidence?) -> HostBootNicEvidence? {
+  match observed {
+    Absent => none
+    Present { value: account } =>
+      if bmc_source_holds_read(source: source, read: account.from_read) { Present { value: account } } else { none }
+  }
+}
+
+// THE CANDIDATES, AS A REFUSAL NAMES THEM. An ambiguous boot NIC refuses by listing every candidate it could
+// not choose between — the ambiguity is then on the record, in the form an operator can act on.
+fn bmc_candidate_text(candidates: List<BootNicCandidate>) -> NonEmptyStr {
+  let parts = map(candidates, candidate => concat(concat(candidate.name as String, " "), concat(candidate.mac_address as String, concat(" (read: ", concat(candidate.source as String, ")")))))
+  if count(parts) == 0 {
+    "no candidate was read" as NonEmptyStr
+  } else {
+    join(parts, "; ") as NonEmptyStr
+  }
+}
+
+// THE STANDING OF A CANDIDATE IS THE STANDING OF THE READ THAT TYPED IT. A candidate from a committed capture
+// carries the receipt that capture earned; a candidate rendered by a simulated controller carries the
+// transcription and its obligation. Nothing here upgrades one into the other.
+fn bmc_candidate_standing(candidate: BootNicCandidate, source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, standings: BmcReadingStandings) -> CitedFigureStanding uses fs: std.resources.Filesystem {
+  bmc_body_standing(body: bmc_body_of(source: source, request: bmc_request_for(read: candidate.source), controller: controller, observed_at: observed_at, standings: standings))
+}
+
+// THE COVERAGE CHECK, BEFORE ANY SINGLE-CANDIDATE CLAIM. A collection that announces more ports than were read
+// makes a one-candidate inventory claim false: the service said there are more, and one of them may be the boot
+// port. The reading refuses naming both numbers, so the gap in the capture set is the thing on the record.
+fn bmc_announced_ports(body: BmcBodyAttempt) -> Int? {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_ethernet_interface_collection_of(body: text) {
+        ObservationEstablished { observed: collection } => collection.announced_count
+        ObservationRefused { cause: cause } => none
+      }
+    BodyRefused { cause: cause } => none
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+// NO CONFIGURED SELECTION: either one inventoried candidate (an inventory claim, which is what the service
+// actually published), or a refusal naming every candidate so the ambiguity is on the record, or the coverage
+// obligation when nothing was ever read.
+fn bmc_boot_nic_without_selection(candidates: List<BootNicCandidate>, options_body: BmcBodyAttempt, collection: BmcBodyAttempt, systems_body: BmcBodyAttempt, source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, standings: BmcReadingStandings) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
+  if count(candidates) == 0 {
+    reading_not_taken(bmc_boot_nic_obligation(options_body: options_body, systems_body: systems_body))
+  } else {
+    match bmc_announced_ports(body: collection) {
+      Present { value: announced } =>
+        if announced > count(candidates) {
+          reading_refused(concat(
+            "the EthernetInterfaces collection announces ", int_to_decimal_string(value: announced),
+            " port(s) and only ", int_to_decimal_string(value: count(candidates)),
+            " member resource(s) with a published MAC have been read: ", bmc_candidate_text(candidates: candidates),
+          ) as NonEmptyStr)
+        } else {
+          bmc_boot_nic_from_candidates(candidates: candidates, options_body: options_body, systems_body: systems_body, source: source, controller: controller, observed_at: observed_at, standings: standings)
+        }
+      Absent => bmc_boot_nic_from_candidates(candidates: candidates, options_body: options_body, systems_body: systems_body, source: source, controller: controller, observed_at: observed_at, standings: standings)
+    }
+  }
+}
+
+fn bmc_boot_nic_from_candidates(candidates: List<BootNicCandidate>, options_body: BmcBodyAttempt, systems_body: BmcBodyAttempt, source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, standings: BmcReadingStandings) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
+  if count(candidates) == 1 {
+    match candidates.first() {
+      Present { value: candidate } => ReadingEstablished {
+        value: InventoriedCandidate { candidate: candidate },
+        standing: bmc_candidate_standing(candidate: candidate, source: source, controller: controller, observed_at: observed_at, standings: standings),
+      }
+      Absent => reading_not_taken("no EthernetInterface resource has been read for this controller" as NonEmptyStr)
+    }
+  } else {
+    if count(candidates) > 1 {
+      reading_refused(concat(
+        "the boot NIC is ambiguous: ", int_to_decimal_string(value: count(candidates)),
+        " interfaces are inventoried and no enabled BootOption joins one of them: ",
+        bmc_candidate_text(candidates: candidates),
+      ) as NonEmptyStr)
+    } else {
+      reading_not_taken(bmc_boot_nic_obligation(options_body: options_body, systems_body: systems_body))
+    }
+  }
+}
+
+// The obligation names what would close it, and — where the Systems resource WAS read — what the controller
+// itself already said about boot selection. The Boot object's override state is reported as the controller's
+// own fact; it is never promoted into a boot NIC, and an override target of "Pxe" stays a target, not a
+// capability (DESIGN: PXE is not a BmcCapability).
+fn bmc_boot_override_text(enabled: NonEmptyStr, target: NonEmptyStr) -> NonEmptyStr {
+  let head = concat("; the controller's own Boot object reports BootSourceOverrideEnabled=" as NonEmptyStr, enabled)
+  let middle = concat(head, concat(", BootSourceOverrideTarget=" as NonEmptyStr, target))
+  concat(middle, " (a boot source, not a network interface)" as NonEmptyStr)
+}
+
+fn bmc_boot_nic_override_note(systems_body: BmcBodyAttempt) -> NonEmptyStr? {
+  match systems_body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } => match redfish_boot_override_of(body: text) {
+      BootOverrideReported { enabled: enabled, target: target } => Present { value: bmc_boot_override_text(enabled: enabled, target: target) }
+      BootOverrideAbsent { message: message } => Present { value: concat("; the Systems resource carries no boot override: " as NonEmptyStr, message) }
+      BootOverrideUnreadable { cause: cause } => Present { value: concat("; the Systems Boot object could not be read: " as NonEmptyStr, cause) }
+    }
+    BodyRefused { cause: cause } => Present { value: concat("; the Systems resource could not be read: " as NonEmptyStr, cause) }
+    BodyOwed { obligation: obligation } => none
+  }
+}
+
+// The obligation names what would close it, and — where the Systems resource WAS read — what the controller
+// itself already said about boot selection. The Boot object's override state is reported as the controller's
+// own fact; it is never promoted into a boot NIC, and an override target stays a target, not a capability
+// (DESIGN: PXE is not a BmcCapability).
+fn bmc_boot_nic_obligation(options_body: BmcBodyAttempt, systems_body: BmcBodyAttempt) -> NonEmptyStr {
+  let no_nic = "no EthernetInterface resource with a published MAC has been read for this controller" as NonEmptyStr
+  match bmc_boot_nic_override_note(systems_body: systems_body) {
+    Present { value: note } => match options_body {
+      BodyOwed { obligation: obligation } => concat(obligation, note)
+      BodyAvailable { body: text, standing: standing, provenance: provenance } => concat(no_nic, note)
+      BodyRefused { cause: cause } => concat(no_nic, note)
+    }
+    Absent => match options_body {
+      BodyOwed { obligation: obligation } => obligation
+      BodyAvailable { body: text, standing: standing, provenance: provenance } => no_nic
+      BodyRefused { cause: cause } => no_nic
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE CARRIER: what one first-contact battery run produces for one controller.
+//
+// Five readings, each in the three-arm carrier. `controller` and `observed_at` are carried on the reading
+// itself, not only on its source: a reading that cannot say which board it is about and when it was taken is
+// not attributable, and the fold would have refused to build it. `family` is the gate the readings were
+// produced under — R1 is family-typed, so a run whose family was never observed says so here and R1 refuses.
+// ═══════════════════════════════════════════════════════════════════════════
+type BmcFirstContactReading {
+  controller: NonEmptyStr
+  observed_at: NonEmptyStr
+  source: BmcReadSource
+  family: BmcFirmwareFamilyStanding
+  firmware: FirstContactReading<FirmwareIdentityReading>
+  capabilities: FirstContactReading<List<BmcCapabilityEvidence>>
+  sensor_typing: FirstContactReading<List<SensorTypingObservation>>
+  console: FirstContactReading<ConsoleRouteReading>
+  boot_nic: FirstContactReading<BootNicReading>
+}
+
+// WHAT A RUN IS ASKED FOR. `source` is where bytes come from; `standings` is what each provenance is worth;
+// `binding` and `interface_reads` and `console_session` are SUPPLIED facts with their own standing — the
+// battery never invents a catalogue row, an interface, or a session. `observed_boot_use` is likewise only
+// admitted as a historical account of one board's boot, never promoted into a first-contact read.
+type BmcBatteryRequest {
+  source: BmcReadSource
+  controller: NonEmptyStr
+  observed_at: NonEmptyStr
+  family: BmcFirmwareFamilyStanding
+  standings: BmcReadingStandings
+  binding: BmcCapabilityBinding
+  interface_reads: List<NonEmptyStr>
+  console_session: ConsoleSessionEvidence?
+  observed_boot_use: HostBootNicEvidence?
+}
+
+// THE BATTERY. One pass, five readings, no effect: every body arrives through `bmc_body_of`, which goes
+// through `bmc_read_of`, which goes through the wire parsers in extdeps. Nothing here opens a socket, and
+// nothing here writes a value back to a controller.
+// R1 UNDER THE GATE. A release identity is family-typed, so an unobserved family refuses it by name rather
+// than letting some source's version stand unattributed; the refusal says which read would settle the gate.
+fn bmc_firmware_reading_under_gate(source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, gate: BmcFirmwareFamilyStanding, standings: BmcReadingStandings) -> FirstContactReading<FirmwareIdentityReading> {
+  match gate {
+    FamilyObserved { family: family } =>
+      bmc_firmware_identity_reading(source: source, controller: controller, observed_at: observed_at, family: family, standings: standings)
+    FamilyUnobserved { discriminator: discriminator } =>
+      reading_refused(concat("the firmware family is not observed for this controller (", concat(discriminator as String, "; a family-tagged release identity needs the Managers resource before any source can be agreed")) as NonEmptyStr)
+  }
+}
+
+fn bmc_first_contact_reading_of(request: BmcBatteryRequest) -> BmcFirstContactReading uses fs: std.resources.Filesystem {
+  let firmware = bmc_firmware_reading_under_gate(source: request.source, controller: request.controller, observed_at: request.observed_at, gate: request.family, standings: request.standings)
+  let capabilities = bmc_capability_evidence_of(from_release: firmware, binding: request.binding, source: request.source, controller: request.controller, observed_at: request.observed_at, standings: request.standings)
+  let sensor_typing = bmc_sensor_typing_reading(source: request.source, controller: request.controller, observed_at: request.observed_at, standings: request.standings)
+  let console = bmc_console_reading(source: request.source, controller: request.controller, observed_at: request.observed_at, standings: request.standings, session: request.console_session)
+  let boot_nic = bmc_boot_nic_reading(source: request.source, controller: request.controller, observed_at: request.observed_at, standings: request.standings, interface_reads: request.interface_reads, observed_boot_use: request.observed_boot_use)
+  BmcFirstContactReading {
+    controller: request.controller,
+    observed_at: request.observed_at,
+    source: request.source,
+    family: request.family,
+    firmware: firmware,
+    capabilities: capabilities,
+    sensor_typing: sensor_typing,
+    console: console,
+    boot_nic: boot_nic,
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WHAT EACH PROVENANCE IS WORTH. Supplied once per run, read per body.
+//
+// The committed arm is the ONLY one that may carry an observation receipt, and only a zero-argument committed
+// fold may mint it (`admit_callers` in extdeps.external_authority names those folds). A modeled response is a
+// simulation and says so on every reading it produces; a runtime read has no producer yet in this change.
+// ═══════════════════════════════════════════════════════════════════════════
+fn bmc_modeled_standings() -> BmcReadingStandings {
+  let simulated = TranscribedUncited { read_obligation: "a modeled response is a simulation of a controller, not a read of hardware; nothing about a real board follows from it" as NonEmptyStr }
+  BmcReadingStandings { committed: simulated, modeled: simulated, runtime: simulated }
+}
+
+fn bmc_modeled_standing() -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: "this body was rendered by a BmcWorld, not answered by a controller; the read it would need is named by the obligation" as NonEmptyStr }
+}
+
+fn bmc_runtime_standing() -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: "the live reader has not run for this read; a runtime read carries its session receipt when one exists" as NonEmptyStr }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACQUISITION: manifest row -> bytes -> record. One pass per row, fail closed.
+//
+// The order is the point: open the file, hash the bytes AS READ and compare to the pinned digest, unpack the
+// intake bundle if the row names an observation key, split the capture framing (a transport marker is stripped
+// and its status parsed, so a body never arrives with a status the parser has to guess), reconcile the status
+// the capture declares against the status the bytes show, and only then build the record. Any step that fails
+// produces a NAMED failure, and the manifest fold refuses the whole set — a half-read capture set is not a
+// battery, and a silently missing row is the failure mode this root exists to close.
+// ═══════════════════════════════════════════════════════════════════════════
+type BmcAcquisitionFold
+  = BmcRecordsRead { records: List<BmcReadRecord> }
+  | BmcAcquisitionRefused { path: NonEmptyStr, cause: String }
+
+type BmcRowReading
+  = RowRecorded { record: BmcReadRecord }
+  | RowFailed { failure: BmcAcquisitionFailure }
+
+type BmcAcquisitionFailure {
+  path: NonEmptyStr
+  cause: String
+}
+
+// THE MANIFEST FOLD. Reads each row exactly once, in order, and refuses the whole set on the first failure —
+// so a fold can never report an established reading that rests on a capture it did not actually verify.
+// The recursion is tail-recursive with the records threaded through: an effectful declaration that calls
+// itself outside tail position has no realization (the compile route refuses it), and threading the
+// accumulator keeps the order and the first-failure refusal exactly as they were.
+fn bmc_read_manifest(manifest: List<BmcCaptureManifestRow>) -> BmcAcquisitionFold uses fs: std.resources.Filesystem {
+  bmc_fold_row_readings(rows: manifest, index: 0, read: [])
+}
+
+fn bmc_fold_row_readings(rows: List<BmcCaptureManifestRow>, index: Int, read: List<BmcReadRecord>) -> BmcAcquisitionFold uses fs: std.resources.Filesystem {
+  match list_at_optional(xs: rows, index: index) {
+    Absent => BmcRecordsRead { records: read }
+    Present { value: row } =>
+      match bmc_read_row(row: row) {
+        RowFailed { failure: failure } => BmcAcquisitionRefused { path: failure.path, cause: failure.cause }
+        RowRecorded { record: record } => bmc_fold_row_readings(rows: rows, index: index + 1, read: list_snoc_item(xs: read, item: record))
+      }
+  }
+}
+
+// ONE ROW. Note what is NOT here: no defaulting, no "treat a missing file as an empty body", no permissive
+// decode. Each of those would turn a coverage hole into a value.
+fn bmc_read_row(row: BmcCaptureManifestRow) -> BmcRowReading uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: row.path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: error } => RowFailed { failure: BmcAcquisitionFailure { path: row.path, cause: concat("no file at the path this manifest row pins (", concat(error, "): the capture was never committed")) } }
+    FilesystemReadSucceeded { content: contents } =>
+      if sha256_hex_of_text(text: contents) == (row.digest as String) {
+        match bmc_intake_observation(body: contents, key: row.intake_key) {
+          ObservationRefused { cause: cause } => RowFailed { failure: BmcAcquisitionFailure { path: row.path, cause: concat("the capture bundle does not hold the observation this row names: ", cause as String) } }
+          ObservationEstablished { observed: body } => bmc_framed_row(row: row, body: body)
+        }
+      } else {
+        RowFailed { failure: BmcAcquisitionFailure { path: row.path, cause: "digest mismatch: the bytes on disk are not the bytes this row pinned, so the capture has moved under the manifest" } }
+      }
+  }
+}
+
+// THE FRAMING STEP, THEN THE RECORD. A declared status that contradicts the bytes is a refusal, not a
+// preference — the capture either says what it got or it does not get believed.
+fn bmc_framed_row(row: BmcCaptureManifestRow, body: String) -> BmcRowReading {
+  let framing = bmc_probe_framing(text: body)
+  match bmc_row_status_contradiction(row: row, framing: framing) {
+    Present { value: contradiction } => RowFailed { failure: BmcAcquisitionFailure { path: row.path, cause: contradiction } }
+    Absent => RowRecorded { record: bmc_record_of_framed_row(row: row, framing: framing, body: framing.body) }
+  }
+}
+
+// THE INTAKE BUNDLE. Some capture sets ship one JSON file holding several command outputs under
+// `observations`; a row that names a key is read as that observation and nothing else, and its digest still
+// pins the WHOLE file — so one row cannot be swapped without moving the digest every sibling row checks too.
+fn bmc_intake_observation(body: String, key: NonEmptyStr?) -> ObservationAttempt<String, NonEmptyStr> {
+  match key {
+    Absent => ObservationEstablished { observed: body }
+    Present { value: wanted } => match parse_json_document(s: body) {
+      JsonDocumentUnreadable { gap: gap } => ObservationRefused { cause: concat(concat(wanted as String, " (the bundle is not readable JSON: "), concat(json_document_gap_text(gap: gap), ")")) as NonEmptyStr }
+      JsonDocumentParsed { value: document } => match json_field(obj: document, key: "observations") {
+        FieldAbsent => ObservationRefused { cause: wanted }
+        FieldMalformed { cause: _ } => ObservationRefused { cause: wanted }
+        FieldRead { value: observations } => match json_field_string(obj: observations, key: wanted as String) {
+          FieldAbsent => ObservationRefused { cause: wanted }
+          FieldMalformed { cause: _ } => ObservationRefused { cause: wanted }
+          FieldRead { value: text } => ObservationEstablished { observed: text }
+        }
+      }
+    }
+  }
+}
+
+fn bmc_record_of_framed_row(row: BmcCaptureManifestRow, framing: BmcProbeFraming, body: String) -> BmcReadRecord {
+  BmcReadRecord {
+    controller: row.controller,
+    read: row.read,
+    observed_at: row.observed_at,
+    operation: row.operation,
+    outcome: bmc_row_outcome(row: row, framing: framing),
+    digest: row.digest,
+    body: body,
+    provenance: CommittedCapture { manifest: row.path },
+  }
+}
+
+// THE OBSERVED OUTCOME. A marker in the bytes outranks what the row declared; with no marker the declared
+// outcome stands (that is what the capture script recorded). A row that declared an HTTP status the bytes do
+// not show never gets here — `bmc_row_status_contradiction` refused it.
+fn bmc_row_outcome(row: BmcCaptureManifestRow, framing: BmcProbeFraming) -> BmcReadOutcome {
+  match framing.status {
+    Present { value: code } => HttpStatusRecorded { code: code }
+    Absent => row.outcome
+  }
+}
+
+fn bmc_row_status_contradiction(row: BmcCaptureManifestRow, framing: BmcProbeFraming) -> String? {
+  match framing.status {
+    Absent => none
+    Present { value: observed } => match row.outcome {
+      HttpStatusRecorded { code: declared } =>
+        if declared == observed {
+          none
+        } else {
+          Present { value: concat(concat("the manifest row declares HTTP ", int_to_decimal_string(value: declared)), concat(" but the capture's own framing says ", concat(int_to_decimal_string(value: observed), "; a capture that disagrees with itself is not evidence"))) }
+        }
+      CommandExitRecorded { code: _ } => Present { value: "the manifest row declares a command exit for a capture whose bytes carry an HTTP status marker; the row and the bytes are from different reads" }
+      OutcomeNotRecorded => none
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOOKUPS. Records are asked for by read identity, or by the capture path they came from; the attribution
+// gate (`bmc_record_is_for`) is applied by the readers that take a controller and an epoch, never skipped.
+// ═══════════════════════════════════════════════════════════════════════════
+fn bmc_record_for(records: List<BmcReadRecord>, read: NonEmptyStr) -> BmcReadRecord? {
+  let matched = filter(records, record => record.read == read)
+  if count(matched) == 0 { none } else { matched.first() }
+}
+
+// The path a committed record came from, when it came from a committed capture: the manifest names it, and a
+// reader that wants "the file with this name in it" asks through here rather than inventing a path.
+fn bmc_record_path(record: BmcReadRecord) -> String {
+  match record.provenance {
+    CommittedCapture { manifest: manifest } => manifest as String
+    ModeledResponse { realization: realization } => concat("modeled:", realization as String)
+    RuntimeRead { session: session } => concat("runtime:", session as String)
+  }
+}
+
+fn bmc_record_by_suffix(records: List<BmcReadRecord>, suffix: String) -> BmcReadRecord? {
+  let matched = filter(records, record => string_contains(s: bmc_record_path(record: record), pattern: suffix))
+  if count(matched) == 0 { none } else { matched.first() }
+}
+
+fn bmc_body_by_suffix(records: List<BmcReadRecord>, suffix: String) -> String? {
+  match bmc_record_by_suffix(records: records, suffix: suffix) {
+    Absent => none
+    Present { value: record } => Present { value: record.body }
+  }
+}
+
+fn bmc_records_matching(records: List<BmcReadRecord>, infix: String) -> List<BmcReadRecord> {
+  filter(records, record => string_contains(s: bmc_record_path(record: record), pattern: infix))
+}
+
+// THE REQUEST TEXT, AS THE UPSTREAM NAMES IT. A Redfish read is named by its method and URI, an IPMI read by
+// the command line, a vendor read by method and target — the shape the upstream's own documentation uses, so a
+// citation into this tree reads the same as a citation out of it.
+fn bmc_request_text(operation: BmcReadOperation) -> NonEmptyStr {
+  match operation {
+    RedfishGet { uri: uri } => concat("GET ", uri as String) as NonEmptyStr
+    IpmiToolCommand { command: command } => command
+    VendorHttpRequest { method: method, target: target } => concat(method as String, " ", target as String) as NonEmptyStr
+  }
+}
+
+fn bmc_record_request(record: BmcReadRecord) -> NonEmptyStr {
+  bmc_request_text(operation: record.operation)
+}
+
+// The status a committed record carries, if its capture recorded one. `none` means "the capture did not say",
+// never "it was fine" — consumers that branch on this must handle the silence.
+fn bmc_record_http_status(record: BmcReadRecord) -> Int? {
+  match record.outcome {
+    HttpStatusRecorded { code: code } => Present { value: code }
+    CommandExitRecorded { code: _ } => none
+    OutcomeNotRecorded => none
+  }
+}
+
+// THE FAMILY GATE, FROM THE CAPTURE SET ITSELF. No Managers resource in the set is not "some family we could
+// not pin down" — it is an unobserved family, and the discriminator names the read that would settle it.
+fn bmc_family_gate_of(records: List<BmcReadRecord>) -> BmcFirmwareFamilyStanding {
+  match bmc_record_for(records: records, read: bmc_redfish_manager_read) {
+    Absent => FamilyUnobserved { discriminator: "no Managers resource is in this capture set (GET /redfish/v1/Managers/<id>): the firmware family is unobserved until one is read" as NonEmptyStr }
+    Present { value: record } => match manager_identity_observation_of(body: record.body) {
+      ObservationRefused { cause: _ } => FamilyUnobserved { discriminator: "the Managers capture does not decode as a manager identity: the family gate needs a Managers resource that parses" as NonEmptyStr }
+      ObservationEstablished { observed: observation } => family_standing_from_discrimination(discrimination: discriminate_family(observation: observation))
+    }
+  }
+}
+
+// The SOL session log read: a CAPTURED session log, not a configuration read, and the only console arm it can
+// ground is the historical one. It is named here because a fold that claims a session must cite a read its own
+// capture set holds.
+data bmc_sol_session_log_read: NonEmptyStr = "captured SOL session log"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE COMMITTED CAPTURE SETS. Each is one controller, one moment, one directory: the manifest pins the
+// bytes and the fold is the only declaration allowed to mint an observation receipt for them
+// (`admit_callers` in extdeps.external_authority names exactly these five). What a fold says is what its
+// directory holds — a read the directory does not contain stays an obligation, and nothing here upgrades a
+// bare, prose, or operator-attested row into an observation by consuming it.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// SRV13, first contact 2026-10-07 (ALTRAD8UD 1L2T, OpenBMC 3.22.00-altraded). The Managers resource is the
+// family gate; the Sensors collection, SDR list, Systems resource, BootOptions list and captured SOL session
+// log are what the directory actually holds. There is no `mc info` capture here, so R1 has one source and
+// owes the second; there is no EthernetInterfaces capture, so R5 stays an obligation.
+data srv13_first_contact_manifest: List<BmcCaptureManifestRow> = [
+  BmcCaptureManifestRow {
+    controller: "srv13-bmc" as NonEmptyStr,
+    read: bmc_redfish_manager_read,
+    observed_at: "2026-10-07T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Managers/bmc" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00/root_Managers_bmc.json" as NonEmptyStr,
+    digest: "a2a538b9ac8be12980983f7ad968b10a0d95aac7e62de0acdb9d123b2123ae26" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "srv13-bmc" as NonEmptyStr,
+    read: bmc_redfish_sensors_read,
+    observed_at: "2026-10-07T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00/root_Chassis_ALTRAD8UD_1L2T_Sensors.json" as NonEmptyStr,
+    digest: "356def19a6b04d4ee038ea2f246f5ba404681bd35486fb9137df20ce27b6a20f" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "srv13-bmc" as NonEmptyStr,
+    read: bmc_redfish_systems_read,
+    observed_at: "2026-10-07T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Systems/system" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/srv13-first-contact-2026-10-07/Systems_system.json" as NonEmptyStr,
+    digest: "b99147a727c4467d9a6ded317e7781d0440b545f495f28460378bcb69a2bdc3b" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "srv13-bmc" as NonEmptyStr,
+    read: bmc_redfish_boot_options_read,
+    observed_at: "2026-10-07T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Systems/system/BootOptions" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/srv13-first-contact-2026-10-07/Systems_system_BootOptions.json" as NonEmptyStr,
+    digest: "edec8647dc4670711fb5d6eb71f174a16bc0f045cf6bc522719f25a339cf0b42" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "srv13-bmc" as NonEmptyStr,
+    read: bmc_ipmi_sdr_elist_read,
+    observed_at: "2026-10-07T00:00:00Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "ipmitool sdr elist" as NonEmptyStr },
+    outcome: OutcomeNotRecorded,
+    path: "artifacts/bmc/srv13-first-contact-2026-10-07/sdr-elist-host-dark.txt" as NonEmptyStr,
+    digest: "66ec2013bbb722e232b1ccb8101a9e4096a46490b360fe7650a8cf24c46e35e0" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "srv13-bmc" as NonEmptyStr,
+    read: bmc_sol_session_log_read,
+    observed_at: "2026-10-07T00:00:00Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "ipmitool sol activate" as NonEmptyStr },
+    outcome: OutcomeNotRecorded,
+    path: "artifacts/bmc/srv13-first-contact-2026-10-07/sol-pxe-override.log" as NonEmptyStr,
+    digest: "65e15c97b39d300cf90d90f1cc57195efa635483974cf7b486724a5797349626" as NonEmptyStr,
+    intake_key: none,
+  }
+]
+
+
+// // THE SRV13 FOLD. A captured SOL session log is in the set, so the console reading may take its historical
+// arm — and only because this fold cites a read it actually holds; the receipt names this declaration.
+fn srv13_first_contact_reading_2026_10_07() -> BmcFirstContactReading uses fs: std.resources.Filesystem {
+  match bmc_read_manifest(manifest: srv13_first_contact_manifest) {
+    BmcAcquisitionRefused { path: path, cause: cause } =>
+      bmc_reading_acquisition_refused(controller: "srv13-bmc" as NonEmptyStr, observed_at: "2026-10-07T00:00:00Z" as NonEmptyStr, path: path, cause: cause)
+    BmcRecordsRead { records: records } => bmc_first_contact_reading_of(request: BmcBatteryRequest {
+      source: CommittedCaptureSet { controller: "srv13-bmc" as NonEmptyStr, manifest: srv13_first_contact_manifest },
+      controller: "srv13-bmc" as NonEmptyStr,
+      observed_at: "2026-10-07T00:00:00Z" as NonEmptyStr,
+      family: bmc_family_gate_of(records: records),
+      standings: BmcReadingStandings {
+        committed: ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "srv13_first_contact_reading_2026_10_07")) },
+        modeled: bmc_modeled_standing(),
+        runtime: bmc_runtime_standing(),
+      },
+      binding: BindingAbsent { obligation: bmc_capability_binding_absent_obligation },
+      interface_reads: [],
+      console_session: Present { value: ConsoleSessionEvidence {
+        transport: IpmiSol,
+        evidence: "the captured SOL session log in this set: the session was operational and typed checkpoints reached the host console",
+        kind: CapturedSessionLog,
+        from_read: bmc_sol_session_log_read,
+        standing: ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "srv13_first_contact_reading_2026_10_07")) },
+      } },
+      observed_boot_use: none,
+    })
+  }
+}
+
+// MT JADE 1, read-only probe 2026-10-06T18:46:26Z (MegaRAC 2.11.104000). The probe wrote one file per read,
+// each ending with its own `HTTP_CODE:` marker; the framing step reads that marker and refuses if it ever
+// disagrees with the row. No EthernetInterfaces capture: R5 is an obligation, and the Systems capture's boot
+// statement is reported inside it.
+data mtjade1_first_contact_manifest: List<BmcCaptureManifestRow> = [
+  BmcCaptureManifestRow {
+    controller: "192.168.1.246" as NonEmptyStr,
+    read: bmc_mc_info_read,
+    observed_at: "2026-10-06T18:46:26Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "ipmitool -I lanplus -H 192.168.1.246 -U admin -P <redacted:published-factory-default> mc info" as NonEmptyStr },
+    outcome: OutcomeNotRecorded,
+    path: "artifacts/bmc/mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/mc_info.txt" as NonEmptyStr,
+    digest: "9fb9f57685f51b951e3f148412ed15c83280d8c8fc68225514b7b84e052aba1a" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "192.168.1.246" as NonEmptyStr,
+    read: bmc_redfish_manager_read,
+    observed_at: "2026-10-06T18:46:26Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Managers/Self" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/redfish_Managers_Self.json" as NonEmptyStr,
+    digest: "2fd48c28709e2675985694d5b979d1f187343a831fed00ee79e242f9300c6810" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "192.168.1.246" as NonEmptyStr,
+    read: bmc_redfish_thermal_read,
+    observed_at: "2026-10-06T18:46:26Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Chassis/Self/Thermal" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/redfish_Chassis_Self_Thermal.json" as NonEmptyStr,
+    digest: "b2239af2736724e9836004f1c01bc479c97a93fe2a0d6cec9888d0e3b78a586f" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "192.168.1.246" as NonEmptyStr,
+    read: bmc_redfish_systems_read,
+    observed_at: "2026-10-06T18:46:26Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Systems/Self" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/redfish_Systems_Self.json" as NonEmptyStr,
+    digest: "f5db6498fb76d0ec32ed7e9fc21ab6a91a8c8834fc4c4e7429fde17148fa4025" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "192.168.1.246" as NonEmptyStr,
+    read: bmc_ipmi_sdr_elist_read,
+    observed_at: "2026-10-06T18:46:26Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "ipmitool ... sdr elist" as NonEmptyStr },
+    outcome: OutcomeNotRecorded,
+    path: "artifacts/bmc/mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/sdr_elist.txt" as NonEmptyStr,
+    digest: "0c943933de6978f923f9badf90eaadc96dd3f9ece7160f2777437640c12d7a0a" as NonEmptyStr,
+    intake_key: none,
+  }
+]
+
+
+// // THE MT JADE 1 FOLD. Its console session is the operator's account, not a capture: `bmc_admitted_session`
+// admits it as a historical reading and re-stamps it TranscribedUncited, never the receipt this fold holds.
+fn mtjade1_first_contact_reading_2026_10_06() -> BmcFirstContactReading uses fs: std.resources.Filesystem {
+  match bmc_read_manifest(manifest: mtjade1_first_contact_manifest) {
+    BmcAcquisitionRefused { path: path, cause: cause } =>
+      bmc_reading_acquisition_refused(controller: "192.168.1.246" as NonEmptyStr, observed_at: "2026-10-06T18:46:26Z" as NonEmptyStr, path: path, cause: cause)
+    BmcRecordsRead { records: records } => bmc_first_contact_reading_of(request: BmcBatteryRequest {
+      source: CommittedCaptureSet { controller: "192.168.1.246" as NonEmptyStr, manifest: mtjade1_first_contact_manifest },
+      controller: "192.168.1.246" as NonEmptyStr,
+      observed_at: "2026-10-06T18:46:26Z" as NonEmptyStr,
+      family: bmc_family_gate_of(records: records),
+      standings: BmcReadingStandings {
+        committed: ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "mtjade1_first_contact_reading_2026_10_06")) },
+        modeled: bmc_modeled_standing(),
+        runtime: bmc_runtime_standing(),
+      },
+      binding: BindingAbsent { obligation: bmc_capability_binding_absent_obligation },
+      interface_reads: [],
+      console_session: Present { value: ConsoleSessionEvidence {
+        transport: IpmiSol,
+        evidence: "the operator's account of an SOL session on this controller, carried by the intake note",
+        kind: OperatorSessionAttestation,
+        from_read: "the intake note's account of the SOL session" as NonEmptyStr,
+        standing: TranscribedUncited { read_obligation: "the session itself was never captured; only the operator's account stands behind it" as NonEmptyStr },
+      } },
+      observed_boot_use: none,
+    })
+  }
+}
+
+// H11SSL-i UNIT 1, first contact 2026-10-27 (ATEN firmware on a Supermicro H11SSL-i). The EthernetInterfaces
+// collection announces more members than this set commits bodies for, so R5 refuses rather than presenting the
+// one interface it has as the machine's inventory — the counts both appear in the refusal.
+data h11ssl_unit1_first_contact_manifest: List<BmcCaptureManifestRow> = [
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit1" as NonEmptyStr,
+    read: bmc_redfish_manager_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Managers/1" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Managers_1.json" as NonEmptyStr,
+    digest: "4f4b39ccecdf396a4c68437aeffa3272914c6bf91e690acedfc5c303ede6df63" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit1" as NonEmptyStr,
+    read: bmc_redfish_thermal_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Chassis/1/Thermal" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Chassis_1_Thermal.json" as NonEmptyStr,
+    digest: "85b3d32070bc8ea308760412817e5d2a514ebb9b242a414456d605c1f298f766" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit1" as NonEmptyStr,
+    read: bmc_redfish_systems_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Systems/1" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1.json" as NonEmptyStr,
+    digest: "d593c132a7e7f21744fa9005445ae74533b0e8672630d3e05bcdbc030d45367e" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit1" as NonEmptyStr,
+    read: bmc_redfish_ethernet_interfaces_collection_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Systems/1/EthernetInterfaces" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_EthernetInterfaces.json" as NonEmptyStr,
+    digest: "e5bc6a3ad1508569b50a4978e0fceb162859a2d602a847df0e18a4351ea4ed60" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit1" as NonEmptyStr,
+    read: bmc_redfish_ethernet_interface_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Systems/1/EthernetInterfaces/1" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_EthernetInterfaces_1.json" as NonEmptyStr,
+    digest: "8048968edd235ad9842d7e6d5ae8d8d58954a9867bb2ab9582d10156b4c9106e" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit1" as NonEmptyStr,
+    read: bmc_redfish_virtual_media_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: RedfishGet { uri: "/redfish/v1/Managers/1/VirtualMedia" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Managers_1_VirtualMedia.json" as NonEmptyStr,
+    digest: "8ce14b95debb681d2b28eb9e62a814515d2ce179497798ad0619fc29e66d2ac3" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit1" as NonEmptyStr,
+    read: bmc_mc_info_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "ipmitool -I lanplus -C 3 mc info" as NonEmptyStr },
+    outcome: OutcomeNotRecorded,
+    path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/mc-info.txt" as NonEmptyStr,
+    digest: "dd6dfa0c1dc81600e56ad81d0b812616983cccb6e47931dcedaa1a88b22d3c6e" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit1" as NonEmptyStr,
+    read: bmc_ipmi_sol_info_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "ipmitool -I lanplus -C 3 sol info 1" as NonEmptyStr },
+    outcome: OutcomeNotRecorded,
+    path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/sol-info-1.txt" as NonEmptyStr,
+    digest: "be55fc7e3a44ced5e72b4e9402d6164441fdc8193cad57c12392c2f562317a92" as NonEmptyStr,
+    intake_key: none,
+  },
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit1" as NonEmptyStr,
+    read: bmc_ipmi_sdr_elist_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "ipmitool -I lanplus -C 3 sdr elist" as NonEmptyStr },
+    outcome: OutcomeNotRecorded,
+    path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/sdr-elist.txt" as NonEmptyStr,
+    digest: "0a0aaa5f5702f087458af33d2f51ded9bc75fe9b32f91c84bfff55147d8a7c6d" as NonEmptyStr,
+    intake_key: none,
+  }
+]
+
+
+// // THE UNIT 1 FOLD. `sol info` is a configuration read, so the console reading is ConsoleConfigured — the
+// reading says which kind of console evidence it is, and never claims a session it did not see.
+fn h11ssl_unit1_first_contact_reading_2026_10_27() -> BmcFirstContactReading uses fs: std.resources.Filesystem {
+  match bmc_read_manifest(manifest: h11ssl_unit1_first_contact_manifest) {
+    BmcAcquisitionRefused { path: path, cause: cause } =>
+      bmc_reading_acquisition_refused(controller: "h11ssl-unit1" as NonEmptyStr, observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr, path: path, cause: cause)
+    BmcRecordsRead { records: records } => bmc_first_contact_reading_of(request: BmcBatteryRequest {
+      source: CommittedCaptureSet { controller: "h11ssl-unit1" as NonEmptyStr, manifest: h11ssl_unit1_first_contact_manifest },
+      controller: "h11ssl-unit1" as NonEmptyStr,
+      observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+      family: bmc_family_gate_of(records: records),
+      standings: BmcReadingStandings {
+        committed: ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "h11ssl_unit1_first_contact_reading_2026_10_27")) },
+        modeled: bmc_modeled_standing(),
+        runtime: bmc_runtime_standing(),
+      },
+      binding: BindingAbsent { obligation: bmc_capability_binding_absent_obligation },
+      interface_reads: [bmc_redfish_ethernet_interface_read],
+      console_session: none,
+      observed_boot_use: none,
+    })
+  }
+}
+
+// H11SSL-i UNIT 2, first contact 2026-10-27. This directory holds the CGI generic-info page only: no Managers
+// resource, no SDR, no Thermal, no `sol info`, no EthernetInterfaces. The fold therefore gates no family and
+// takes no sensor, console or boot-NIC reading — every one of those is an obligation naming its missing read.
+data h11ssl_unit2_first_contact_manifest: List<BmcCaptureManifestRow> = [
+  BmcCaptureManifestRow {
+    controller: "h11ssl-unit2" as NonEmptyStr,
+    read: bmc_supermicro_cgi_generic_info_read,
+    observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "curl -d action=GENERIC_INFO http://192.168.1.199/cgi/ipmi.cgi" as NonEmptyStr },
+    outcome: HttpStatusRecorded { code: 200 },
+    path: "artifacts/bmc/h11ssl-unit2-first-contact-generic-info.xml" as NonEmptyStr,
+    digest: "cc235f24b518607107d54145517f20a43af2c6773c3c9379a428f1fc3e56cbd7" as NonEmptyStr,
+    intake_key: none,
+  }
+]
+
+
+// // THE UNIT 2 FOLD. Reported as it stands: one read, a refused family gate, and four obligations.
+fn h11ssl_unit2_first_contact_reading() -> BmcFirstContactReading uses fs: std.resources.Filesystem {
+  match bmc_read_manifest(manifest: h11ssl_unit2_first_contact_manifest) {
+    BmcAcquisitionRefused { path: path, cause: cause } =>
+      bmc_reading_acquisition_refused(controller: "h11ssl-unit2" as NonEmptyStr, observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr, path: path, cause: cause)
+    BmcRecordsRead { records: records } => bmc_first_contact_reading_of(request: BmcBatteryRequest {
+      source: CommittedCaptureSet { controller: "h11ssl-unit2" as NonEmptyStr, manifest: h11ssl_unit2_first_contact_manifest },
+      controller: "h11ssl-unit2" as NonEmptyStr,
+      observed_at: "2026-10-27T00:00:00Z" as NonEmptyStr,
+      family: bmc_family_gate_of(records: records),
+      standings: BmcReadingStandings {
+        committed: ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "h11ssl_unit2_first_contact_reading")) },
+        modeled: bmc_modeled_standing(),
+        runtime: bmc_runtime_standing(),
+      },
+      binding: BindingAbsent { obligation: bmc_capability_binding_absent_obligation },
+      interface_reads: [],
+      console_session: none,
+      observed_boot_use: none,
+    })
+  }
+}
+
+// MT COLLINS 1, the intake bundle. The capture script wrote several IPMI observations into one JSON file under
+// `observations`; this row names the `ipmi_mc_info` key, and its digest still pins the WHOLE bundle — so no
+// sibling observation can be swapped without every digest in the set moving too. The bundle holds no Managers
+// resource (its Redfish path probe came back unreadable), so the family is unobserved and R1 refuses.
+data mtcollins1_first_contact_manifest: List<BmcCaptureManifestRow> = [
+  BmcCaptureManifestRow {
+    controller: "bmc-mtcollins1" as NonEmptyStr,
+    read: bmc_mc_info_read,
+    observed_at: "2026-10-15T00:00:00Z" as NonEmptyStr,
+    operation: IpmiToolCommand { command: "ipmitool mc info" as NonEmptyStr },
+    outcome: OutcomeNotRecorded,
+    path: "artifacts/bmc/mtcollins1-intake-ipmi.json" as NonEmptyStr,
+    digest: "3c358eb4110742287a5adce6fd772fe85ab08e9357e6edef629745bce07eaaa5" as NonEmptyStr,
+    intake_key: "ipmi_mc_info" as NonEmptyStr,
+  }
+]
+
+
+// // THE MT COLLINS 1 FOLD. One `mc info` observation: enough to report what was read, never enough to mint a
+// firmware identity, an identity fact, or a capability.
+fn mtcollins1_first_contact_reading() -> BmcFirstContactReading uses fs: std.resources.Filesystem {
+  match bmc_read_manifest(manifest: mtcollins1_first_contact_manifest) {
+    BmcAcquisitionRefused { path: path, cause: cause } =>
+      bmc_reading_acquisition_refused(controller: "bmc-mtcollins1" as NonEmptyStr, observed_at: "2026-10-15T00:00:00Z" as NonEmptyStr, path: path, cause: cause)
+    BmcRecordsRead { records: records } => bmc_first_contact_reading_of(request: BmcBatteryRequest {
+      source: CommittedCaptureSet { controller: "bmc-mtcollins1" as NonEmptyStr, manifest: mtcollins1_first_contact_manifest },
+      controller: "bmc-mtcollins1" as NonEmptyStr,
+      observed_at: "2026-10-15T00:00:00Z" as NonEmptyStr,
+      family: bmc_family_gate_of(records: records),
+      standings: BmcReadingStandings {
+        committed: ObservedByReceipt { observed: observed_receipt(receipt: decl_ref(module_path: "gunbc.machine_intake.bmc_first_contact_reading", decl_name: "mtcollins1_first_contact_reading")) },
+        modeled: bmc_modeled_standing(),
+        runtime: bmc_runtime_standing(),
+      },
+      binding: BindingAbsent { obligation: bmc_capability_binding_absent_obligation },
+      interface_reads: [],
+      console_session: none,
+      observed_boot_use: none,
+    })
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE MODELED REALIZATION. A BmcWorld is a SIMULATED controller: nothing it says may stand as an observation
+// of hardware, so `bmc_modeled_standings` stamps every reading it produces as a transcription with its
+// obligation. The responses are rendered FROM the world through the upstream's own spelling — `mc info`
+// stdout is printed by the ipmitool renderer and read back by the ipmitool parser, `sol info` likewise — so a
+// dry controller answers as the tool would, and no real board's stored transcript is ever replayed here.
+//
+// What the world models and this renders: the `mc info` and `sol info` answers, and the network-boot state --
+// the EthernetInterface collection and its member, and the BootOptions collection including the arm where the
+// service says it is not served. Those go through extdeps.bmc.redfish_network_boot's renderers and come back
+// through its readers, so R5's dry arm runs the same render-then-parse route a committed capture runs.
+//
+// What the world models but this does not yet render is coverage, not silence: a surface with no upstream-shaped
+// renderer in extdeps (Managers, Thermal, Sensors, the SDR repository, SerialInterfaces, VirtualMedia, Systems'
+// boot override, the Supermicro CGI) stays a read the modeled source does not answer, and the battery reports it
+// as an obligation naming the read.
+// ═══════════════════════════════════════════════════════════════════════════
+fn bmc_modeled_responses_of_world(world: BmcWorld) -> List<BmcModeledResponse> {
+  let surfaces = world.record_surfaces
+  let answered = []
+  let with_mc_info = match surfaces.mc_info {
+    Absent => answered
+    Present { value: fields } => list_snoc_item(xs: answered, item: BmcModeledResponse {
+      read: bmc_mc_info_read,
+      operation: IpmiToolCommand { command: "ipmitool mc info" as NonEmptyStr },
+      outcome: CommandExitRecorded { code: 0 },
+      body: render_ipmitool_mc_info_fields(fields: fields),
+    })
+  }
+  let with_sol = match surfaces.sol_configuration {
+    Absent => with_mc_info
+    Present { value: configuration } => list_snoc_item(xs: with_mc_info, item: BmcModeledResponse {
+      read: bmc_ipmi_sol_info_read,
+      operation: IpmiToolCommand { command: "ipmitool sol info 1" as NonEmptyStr },
+      outcome: CommandExitRecorded { code: 0 },
+      body: render_ipmi_sol_info(configuration: configuration),
+    })
+  }
+  let with_port = match surfaces.ethernet_interface {
+    Absent => with_sol
+    Present { value: port } => concat(with_sol, bmc_modeled_port_responses(port: port))
+  }
+  match surfaces.boot_options {
+    Absent => with_port
+    Present { value: options } => list_snoc_item(xs: with_port, item: BmcModeledResponse {
+      read: bmc_redfish_boot_options_read,
+      operation: RedfishGet { uri: "/redfish/v1/Systems/1/BootOptions" as NonEmptyStr },
+      outcome: HttpStatusRecorded { code: 200 },
+      body: bmc_modeled_boot_options_body(options: options),
+    })
+  }
+}
+
+// THE MODELED CONTROLLER'S TWO EthernetInterface ANSWERS, printed by the upstream's renderers: the collection
+// it serves, naming the port it models, and that port's member resource. The collection's announced count is
+// the number of ports modeled, so a modeled controller cannot announce a port it does not serve; a run that
+// asks for the member read gets the body, and a run that does not gets the plan's obligation. The URIs are
+// concrete because a modeled controller serves a system the way a real one does; the read NAMES are the plan's,
+// which spell the same resources with `<id>` and `<member>` standing for whichever resource a run names.
+fn bmc_modeled_port_responses(port: RedfishEthernetInterfaceRead) -> List<BmcModeledResponse> {
+  let collection = RedfishEthernetInterfaceCollectionRead {
+    member_ids: [port.id],
+    announced_count: Present { value: 1 },
+  }
+  [
+    BmcModeledResponse {
+      read: bmc_redfish_ethernet_interfaces_collection_read,
+      operation: RedfishGet { uri: "/redfish/v1/Systems/1/EthernetInterfaces" as NonEmptyStr },
+      outcome: HttpStatusRecorded { code: 200 },
+      body: render_redfish_ethernet_interface_collection(read: collection),
+    },
+    BmcModeledResponse {
+      read: bmc_redfish_ethernet_interface_read,
+      operation: RedfishGet {
+        uri: concat("/redfish/v1/Systems/1/EthernetInterfaces/" as NonEmptyStr, port.id as String) as NonEmptyStr,
+      },
+      outcome: HttpStatusRecorded { code: 200 },
+      body: render_redfish_ethernet_interface(read: port),
+    },
+  ]
+}
+
+// The BootOptions body the modeled controller answers with: the options it lists, or its own refusal envelope.
+// A modeled controller is allowed to not serve a resource, and the refusal is part of what the reader reads --
+// srv13's committed capture is the same arm, so the dry route exercises the shape the capture route found.
+fn bmc_modeled_boot_options_body(options: RedfishBootOptionsRead) -> String {
+  match options {
+    BootOptionsListed { options: entries } => render_redfish_boot_options(options: entries)
+    BootOptionsNotServed { message: message } => render_redfish_boot_options_not_served(code: message as String)
+  }
+}
+
+// THE SIMULATED CONTROLLER AS A SOURCE. Same interface as a committed capture set, one field more: it must
+// say WHEN, because a reading that cannot name its moment cannot be attributed to a board at a moment. Its
+// consumers today are the battery witness's dry claims (dry_controller_is_read_end_to_end_with_no_hardware_standing,
+// the_dry_battery_reads_the_world_model_and_a_model_never_observes,
+// a_world_that_models_no_mc_info_mints_no_firmware_identity); the live reader frontier is the named consumer
+// that will build a simulated controller the way it builds a live one, and nothing else is claimed for it.
+fn bmc_modeled_controller_of_world(controller: NonEmptyStr, observed_at: NonEmptyStr, realization: NonEmptyStr, world: BmcWorld) -> BmcReadSource {
+  ModeledController {
+    controller: controller,
+    observed_at: observed_at,
+    realization: realization,
+    responses: bmc_modeled_responses_of_world(world: world),
+  }
+}
+
+// AN ACQUISITION REFUSAL, AS A WHOLE READING. When the capture set cannot be trusted there is no battery to
+// run: every reading refuses with the same named failure, and the family gate names the path so the operator
+// can see which capture moved.
+fn bmc_reading_acquisition_refused(controller: NonEmptyStr, observed_at: NonEmptyStr, path: NonEmptyStr, cause: String) -> BmcFirstContactReading {
+  let named = concat("acquisition of the capture set for ", concat(controller as String, concat(" (", concat(path as String, concat("): ", cause))))) as NonEmptyStr
+  BmcFirstContactReading {
+    controller: controller,
+    observed_at: observed_at,
+    source: CommittedCaptureSet { controller: controller, manifest: [] },
+    family: FamilyUnobserved { discriminator: concat("the capture set could not be acquired, so the Managers resource that gates the family was never read (", concat(path as String, ")")) as NonEmptyStr },
+    firmware: reading_refused(named),
+    capabilities: reading_refused(named),
+    sensor_typing: reading_refused(named),
+    console: reading_refused(named),
+    boot_nic: reading_refused(named),
+  }
+}

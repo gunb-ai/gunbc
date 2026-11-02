@@ -4,6 +4,7 @@ import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { exit_failure }
 import std.algebra { list_snoc_item }
+import std.list { first_where }
 import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
@@ -15,13 +16,14 @@ import v2.std.witness_evaluation {
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, BmcReplied, BmcReplyFault }
-import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
+import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_with_mc_info, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
 import gunbc.host.boot_attempt { BootOverrideClear, StaleOverrideClearance, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideNoneFound, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, stale_override_clearance_text, boot_override_clear_text }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, ModeledPathStat, fs_refusing_reads_of, fs_with_file }
 import gunbc.process_environment_model { ModeledVariable }
 import extdeps.access.posix { FileMode, PermissionBits }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_mc_info_mt_collins_transcribed_fields }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
 import gunbc.wall_clock_model { ModeledWallClock, ModeledClockStep }
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd_at_the_current_build }
@@ -396,6 +398,11 @@ data fan_records_first_fitted_header_stopped: List<BmcSdrRecord> = [
 
 fn bmc_publishing(bmc: BmcWorld, fans: List<BmcSdrRecord>) -> BmcWorld {
   bmc_with_record_surfaces(world: bmc, surfaces: BmcRecordSurfaces {
+    // Publishing the SDR repository adds it; it does not un-model what the world already answered.
+    mc_info: bmc.record_surfaces.mc_info,
+    sol_configuration: bmc.record_surfaces.sol_configuration,
+    ethernet_interface: bmc.record_surfaces.ethernet_interface,
+    boot_options: bmc.record_surfaces.boot_options,
     manager_date_time: bmc.record_surfaces.manager_date_time,
     log_services: bmc.record_surfaces.log_services,
     account_events: bmc.record_surfaces.account_events,
@@ -467,7 +474,12 @@ fn worker_filesystem() -> ModeledFilesystem {
 
 fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
   with_notice_watcher(capture_path: sol_capture_path, token: "matrix-notice-token", w: MtCollins1BootWorld {
-    bmc: bmc_publishing(bmc: bmc_world(power: BmcPowerOff), fans: healthy_fan_records),
+    bmc: bmc_with_mc_info(
+      world: bmc_publishing(bmc: bmc_world(power: BmcPowerOff), fans: healthy_fan_records),
+      // This scenario's controller IS the Mt. Collins MegaRAC, so the world models the one `mc info` fact the
+      // corpus has on it (transcribed, never retained as stdout) and the dry realization renders THAT when the
+      // boot asks -- rather than the handler reciting a stored transcript to every dry controller (DESIGN §2: model a concept once and derive every use).
+      fields: Present { value: ipmitool_mc_info_mt_collins_transcribed_fields }),
     fs: worker_filesystem(),
     environment: [
       ModeledVariable { name: "RUNNER_TEMP", value: runner_temp },

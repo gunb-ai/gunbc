@@ -1,0 +1,177 @@
+module test.claim.bmc.redfish_network_boot_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { list_at_optional }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.bmc.redfish_network_boot {
+  RedfishEthernetInterfaceRead,
+  RedfishBootOptionRead,
+  RedfishBootOptionsRead, RedfishEthernetInterfaceCollectionRead,
+  redfish_ethernet_interface_of,
+  redfish_boot_options_of,
+  redfish_ethernet_interface_collection_of,
+  render_redfish_ethernet_interface,
+  render_redfish_boot_options,
+  render_redfish_boot_options_not_served,
+  render_redfish_ethernet_interface_collection,
+}
+
+// THE NIC AND BOOT-OPTION READERS: WHAT A MEMBER IS, AND WHAT "NOT SERVED" IS.
+//
+// The bodies below are transcribed from the committed captures (the H11SSL unit-1 EthernetInterfaces resource
+// and srv13's Systems_system_BootOptions.json, which is an error envelope). The bounded inhabitance claim that
+// reads the files themselves is carried by the battery fold's witness, which owns the filesystem reads.
+//
+// REDS, each with its positive control on the same probe: a resource with no Id refuses rather than becoming
+// anonymous (control: the same probe with the Id reads); a BootOptions body with no Members array refuses as
+// unreadable rather than becoming the empty collection (control: an authored empty Members array reads as the
+// empty collection, which IS a claim the service made).
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn h11ssl_ethernet_interface_body() -> String {
+  join([
+    "{",
+    "\"@odata.id\": \"/redfish/v1/Systems/1/EthernetInterfaces/1\",",
+    "\"Id\": \"1\",",
+    "\"Name\": \"OnBoard LAN 1\",",
+    "\"InterfaceEnabled\": true,",
+    "\"PermanentMACAddress\": \"AC:1F:6B:E3:F6:B0\",",
+    "\"MACAddress\": \"ac:1f:6b:e3:f6:b0\",",
+    "\"LinkStatus\": \"LinkUp\"",
+    "}",
+  ], "")
+}
+
+fn srv13_boot_options_not_served_body() -> String {
+  "{\"error\": {\"code\": \"Base.1.16.0.ResourceNotFound\", \"message\": \"The requested resource BootOptions is not available\"}}"
+}
+
+fn boot_options_body(options: List<RedfishBootOptionRead>) -> String {
+  render_redfish_boot_options(options: options)
+}
+
+fn pxe_boot_option() -> RedfishBootOptionRead {
+  RedfishBootOptionRead {
+    id: "Boot0001" as NonEmptyStr,
+    display_name: Present { value: "UEFI: PXE IPv4 Realtek" },
+    uefi_device_path: Present { value: "PciRoot(0x0)/Pci(0x1C,0x4)/Pci(0x0,0x0)/MAC(ac1f6be3f6b0,0x0)" },
+    enabled: Present { value: true },
+  }
+}
+
+test fn ethernet_interface_resource_reads_its_published_members() -> Bool {
+  match redfish_ethernet_interface_of(body: h11ssl_ethernet_interface_body()) {
+    ObservationEstablished { observed: read } =>
+      read.id == "1" as NonEmptyStr
+        && read.name == Present { value: "OnBoard LAN 1" }
+        && read.mac_address == Present { value: "ac:1f:6b:e3:f6:b0" }
+        && read.link_status == Present { value: "LinkUp" }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// RED + POSITIVE CONTROL: a resource that does not name itself is refused; the same body carrying an Id reads.
+test fn ethernet_interface_without_id_refuses_rather_than_becoming_anonymous() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Name\": \"OnBoard LAN 1\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "no Id")
+        && match redfish_ethernet_interface_of(body: h11ssl_ethernet_interface_body()) {
+             ObservationEstablished { observed: read } => read.id == "1" as NonEmptyStr
+             ObservationRefused { cause: other } => false
+           }
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+// An omitted MAC is absent, not zeroed and not the PermanentMACAddress: the reader reads what the named member
+// says and does not substitute a neighbour's value for it.
+test fn ethernet_interface_without_a_published_mac_leaves_it_absent() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"2\", \"PermanentMACAddress\": \"AC:1F:6B:E3:F6:B1\"}") {
+    ObservationEstablished { observed: read } =>
+      read.id == "2" as NonEmptyStr && read.mac_address == none && read.name == none
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// srv13's committed BootOptions body is the service saying the resource is not there. That is an answer.
+test fn boot_options_error_envelope_is_an_answer_not_a_failure() -> Bool {
+  match redfish_boot_options_of(body: srv13_boot_options_not_served_body()) {
+    ObservationEstablished { observed: BootOptionsNotServed { message: m } } =>
+      string_contains(s: m as String, pattern: "ResourceNotFound")
+    ObservationEstablished { observed: BootOptionsListed { options: listed } } => false
+    ObservationRefused { cause: c } => false
+  }
+}
+
+test fn boot_options_collection_reads_every_member_it_publishes() -> Bool {
+  match redfish_boot_options_of(body: boot_options_body(options: [pxe_boot_option()])) {
+    ObservationEstablished { observed: BootOptionsListed { options: listed } } =>
+      count(listed) == 1
+        && match list_at_optional(xs: listed, index: 0) {
+             Present { value: option } =>
+               option.id == "Boot0001" as NonEmptyStr
+                 && option.enabled == Present { value: true }
+                 && match option.uefi_device_path {
+                      Present { value: path } => string_contains(s: path, pattern: "MAC(ac1f6be3f6b0")
+                      Absent => false
+                    }
+             Absent => false
+           }
+    ObservationEstablished { observed: BootOptionsNotServed { message: m } } => false
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// RED + POSITIVE CONTROL: no Members array is unreadable; an empty Members array is the empty collection.
+test fn boot_options_body_without_members_array_is_unreadable_not_empty() -> Bool {
+  match redfish_boot_options_of(body: "{\"@odata.type\": \"#BootOptionCollection.BootOptionCollection\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "no Members array")
+        && match redfish_boot_options_of(body: boot_options_body(options: [])) {
+             ObservationEstablished { observed: BootOptionsListed { options: listed } } => count(listed) == 0
+             ObservationEstablished { observed: BootOptionsNotServed { message: m } } => false
+             ObservationRefused { cause: other } => false
+           }
+    ObservationEstablished { observed: answer } => false
+  }
+}
+
+// THE RENDER SIDE, BESIDE THE PARSE SIDE: what the renderer writes is what the reader reads back.
+test fn rendered_ethernet_interface_reads_back_as_the_same_resource() -> Bool {
+  match redfish_ethernet_interface_of(body: h11ssl_ethernet_interface_body()) {
+    ObservationEstablished { observed: original } =>
+      match redfish_ethernet_interface_of(body: render_redfish_ethernet_interface(read: original)) {
+        ObservationEstablished { observed: again } => again == original
+        ObservationRefused { cause: c } => false
+      }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// THE COLLECTION ENVELOPE, PRINTED AND READ BACK. This is the envelope the modeled arm of the first-contact
+// battery prints a simulated controller's ports through, so the pairing of writer and reader is pinned here:
+// the members it names and the count it announces come back as the same collection. The count is the part that
+// matters — a collection that announces more ports than were read is what makes the battery refuse rather than
+// report a short list — so it has to survive the trip through the renderer.
+test fn rendered_collection_reads_back_as_the_same_collection() -> Bool {
+  let wanted = RedfishEthernetInterfaceCollectionRead {
+    member_ids: ["PCIe1" as NonEmptyStr, "PCIe2" as NonEmptyStr],
+    announced_count: Present { value: 2 },
+  }
+  match redfish_ethernet_interface_collection_of(body: render_redfish_ethernet_interface_collection(read: wanted)) {
+    ObservationEstablished { observed: again } => again == wanted
+    ObservationRefused { cause: c } => false
+  }
+}
+
+test fn rendered_not_served_envelope_reads_back_as_not_served() -> Bool {
+  match redfish_boot_options_of(body: render_redfish_boot_options_not_served(code: "Base.1.16.0.ResourceNotFound")) {
+    ObservationEstablished { observed: BootOptionsNotServed { message: m } } =>
+      m == "Base.1.16.0.ResourceNotFound" as NonEmptyStr
+    ObservationEstablished { observed: BootOptionsListed { options: listed } } => false
+    ObservationRefused { cause: c } => false
+  }
+}
