@@ -25,6 +25,12 @@ import extdeps.rust.cargo_build_service {
 }
 import extdeps.tools.gnu_coreutils { cat_program }
 import gunbc.instruments.multi_module_compile_fixture { fixture_source }
+import gunbc.compile_diagnostic_census {
+  compile_dag_diagnostic_census,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class
+}
 import test.claim.native_effect_realization_admission_witness { fx_run, refused_naming, admitted }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -56,14 +62,23 @@ data fx_cli_spawn_source: String = "module nefx.cli\nimport nefx.entry_driver { 
 // through the sealed word, its argv fixed. The fixture declares the vocabulary it needs, including a
 // minimal extdeps.exec.program -- the fixture has no module index, so the identity module comes along as
 // a peer source rather than as the corpus file.
-data fx_exec_program_source: String = "module extdeps.exec.program\ntype ProgramCatalogStanding = CatalogCarried | UncatalogedDebt\ntype ProgramIdentity sole_constructor { invocation: String, catalog: ProgramCatalogStanding }\nfn uncataloged_program(invocation: String) -> ProgramIdentity = ProgramIdentity { invocation: invocation, catalog: UncatalogedDebt }\n"
+// THE POSITIVE CONTROL READS THE REAL MODULE. These two sources are SYNTHETIC ENTRIES, not service copies:
+// each declares the compiler-route entry (a `data compiler_pipeline_entry: CompilerEntryDriver =
+// NativeCliDriver` row plus an entry function named v2_cli_main) and reaches its service THROUGH THE REAL
+// MODULE PATH, which gunbc.compile_diagnostic_census resolves against the live checkout -- unlike the
+// multi-module fixture, which has no module index and therefore judges a hand copy of the service. A change
+// that breaks the real CargoBuild lowering cannot leave the control below green (review 89867). The clock
+// subject is the calibration: extdeps.clock Clock sits outside BOTH the NativeAdmitOnly set this PR installs
+// and the excluded list it replaces, so it refuses at any mirror, and a zero count above is then evidence
+// rather than an instrument that never speaks. Measured 2026-11-02: the clock subject carries one refusal row
+// naming extdeps.clock Clock; the CargoBuild subject carried exactly one, naming 'shell transport output key
+// outcome has no modeled channel', which is the wall that made this PR drop that output field (the service
+// module and gunbc.recurring_failure_mode transport_output_field_without_a_native_realization_channel both
+// record the sentence).
+data fx_cli_real_cargo_source: String = "module nefx.cli\nimport std.types { Bool, List, String }\nimport std.compiler_entry { CompilerEntryDriver, NativeCliDriver }\nimport extdeps.rust.cargo_build_service { CargoBuild, CargoProgramWord, CargoProgramWordResolution, CargoProgramWordResolved, CargoProgramWordRefused, CargoBuildProfile, ProfileRelease, cargo_build_program, cargo_build_program_word }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn run_build(word: CargoProgramWord) -> Bool {\n  let r = CargoBuild.Build(program: word, manifest_path: \"m/Cargo.toml\", profile: ProfileRelease, target_dir: \"target\", package: \"p\", bin: \"b\")\n  r.exit_code == 0\n}\nfn v2_cli_main(argv: List<String>) -> Bool {\n  let w = cargo_build_program_word(program: cargo_build_program())\n  match w {\n    CargoProgramWordResolved { word: word } => run_build(word: word)\n    CargoProgramWordRefused { program: program, cause: cause } => false\n  }\n}\n"
 
-data fx_cargo_build_service_source: String = "module extdeps.rust.cargo_build_service\nimport extdeps.exec.program { ProgramIdentity, uncataloged_program }\ntype CargoProgramWord sole_constructor { word: String }\ntype CargoBuildProfile = ProfileRelease | ProfileDev\nfn cargo_build_program() -> ProgramIdentity = uncataloged_program(invocation: \"cargo\")\ntype CargoProgramWordResolution = CargoProgramWordResolved { word: CargoProgramWord } | CargoProgramWordRefused { program: ProgramIdentity, cause: String }\nfn cargo_build_program_word(program: ProgramIdentity) -> CargoProgramWordResolution {\n  if program.invocation == cargo_build_program().invocation {\n    CargoProgramWordResolved { word: CargoProgramWord { word: program.invocation } }\n  } else {\n    CargoProgramWordRefused { program: program, cause: \"not the declared cargo identity\" }\n  }\n}\nfn cargo_program_word_text(word: CargoProgramWord) -> String = word.word\nfn cargo_build_profile_word(profile: CargoBuildProfile) -> String {\n  match profile {\n    ProfileRelease => \"release\"\n    ProfileDev => \"dev\"\n  }\n}\nservice CargoBuild {\n  operation Build {\n    requires opaque\n    input {\n      program: CargoProgramWord\n      manifest_path: String\n      profile: CargoBuildProfile\n      target_dir: String\n      package: String\n      bin: String\n    }\n    output {\n      exit_code: Int from \"exit_code\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    transport shell {\n      argv: [cargo_program_word_text(word: program), \"build\", \"--manifest-path\", manifest_path, \"--target-dir\", target_dir, \"--profile\", cargo_build_profile_word(profile: profile), \"--package\", package, \"--bin\", bin]\n    }\n    exit {\n      0 => Unit\n      nonzero => Unit\n    }\n  }\n}\n"
+data fx_cli_real_clock_source: String = "module nefx.cli\nimport std.types { Bool, List, String }\nimport std.compiler_entry { CompilerEntryDriver, NativeCliDriver }\nimport extdeps.clock { Clock }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn v2_cli_main(argv: List<String>) -> Bool {\n  let r = Clock.UnixSecs()\n  r.unix_secs != \"\"\n}\n"
 
-data fx_cli_cargo_build_source: String = "module nefx.cli\nimport nefx.entry_driver { CompilerEntryDriver, NativeCliDriver }\nimport extdeps.rust.cargo_build_service { CargoBuild, CargoBuildProfile, CargoProgramWord, CargoProgramWordResolved, CargoProgramWordRefused, ProfileRelease, cargo_build_program, cargo_build_program_word }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn v2_cli_main(argv: List<String>) -> Bool {\n  let w = cargo_build_program_word(program: cargo_build_program())\n  match w {\n    CargoProgramWordResolved { word: word } => run_build(word: word)\n    CargoProgramWordRefused { program: program, cause: cause } => false\n  }\n}\nfn run_build(word: CargoProgramWord) -> Bool {\n  let r = CargoBuild.Build(program: word, manifest_path: \"m/Cargo.toml\", profile: ProfileRelease, target_dir: \"target\", package: \"p\", bin: \"b\")\n  r.exit_code == 0\n}\n"
-
-// A HOMONYM of an admitted effect: spelled CargoBuild, in a module the set does not name. Identity, not
-// spelling, decides -- which is what the same fixture pair shows from both sides.
 data fx_homonym_cargo_build_source: String = "module nefx.other\nservice CargoBuild {\n  operation Build {\n    requires opaque\n    input {}\n    output { exit_code: Int from \"exit_code\" }\n    transport shell { argv: [\"true\"] }\n    exit {\n      0 => Unit\n      nonzero => Unit\n    }\n  }\n}\n"
 
 data fx_cli_homonym_cargo_build_source: String = "module nefx.cli\nimport nefx.entry_driver { CompilerEntryDriver, NativeCliDriver }\nimport nefx.other { CargoBuild }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn v2_cli_main(argv: List<String>) -> Bool {\n  let r = CargoBuild.Build()\n  r.exit_code == 0\n}\n"
@@ -153,12 +168,27 @@ test fn a_compiler_route_entry_reaching_an_unlisted_shell_service_refuses() -> B
     marker: concat("service nefx.spawn Spawner ", fx_declared_set_ruling_marker))
 }
 
-// THE POSITIVE CONTROL FOR THE NEW MEMBER: the declared Cargo build effect is admitted on the compiler
-// route, so its lowering is emitted and the refusal rows are empty. Dropping CargoBuild from the set, or
-// refusing shell transports on this route generally, is red here.
-test fn the_declared_cargo_build_effect_is_admitted_on_the_compiler_route() -> Bool {
-  admitted(o: fx_run(entry_path: "nefx/cli.dag", entry_source: fx_cli_cargo_build_source,
-    peers: [fixture_source("extdeps/exec/program.dag", fx_exec_program_source), fixture_source("extdeps/rust/cargo_build_service.dag", fx_cargo_build_service_source)]))
+// THE POSITIVE CONTROL, AGAINST THE REAL MODULE: no row of the refusal class may appear for a compiler-route
+// entry that reaches extdeps.rust.cargo_build_service CargoBuild as the tree carries it. Measured at
+// 69293db53131 after the output-field fix: zero rows of that class for this subject.
+test fn the_real_cargo_build_service_lowers_on_the_compiler_route() -> Bool {
+  let c = compile_dag_diagnostic_census(source: fx_cli_real_cargo_source)
+  match c {
+    CensusObserved { rows: rows } => (census_rows_of_class(rows: rows, wanted: "NativeEffectRealizationRefused") |> count) == 0
+    CensusNotRunnable { cause: cause } => false
+  }
+}
+
+// CALIBRATION FOR THE CLAIM ABOVE: the same path and the same class DO fire for a real service the set
+// excludes, so the zero above is a measurement and not silence.
+test fn the_census_path_observes_a_real_excluded_service() -> Bool {
+  let c = compile_dag_diagnostic_census(source: fx_cli_real_clock_source)
+  match c {
+    CensusObserved { rows: rows } =>
+      (census_rows_of_class(rows: rows, wanted: "NativeEffectRealizationRefused")
+        |> filter(r => string_contains(s: r.subject_name, pattern: "extdeps.clock Clock")) |> count) > 0
+    CensusNotRunnable { cause: cause } => false
+  }
 }
 
 // IDENTITY, BOTH SIDES: the admitted spelling is refused when it is only a SPELLING of the name. Pairs with
