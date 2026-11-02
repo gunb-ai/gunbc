@@ -19,7 +19,7 @@ import std.primitive_identity {
 //
 // FILESYSTEM.READ AND FILESYSTEM.LIST ARE TWO IDENTITIES. The interpreter roster carries the
 // checkout carve-out as one row spelled "Filesystem.Read|List"; the census splits that spelling
-// at `|` into one surface fact per operation (gunbc.primitive_egress.census interpreter_arm_facts),
+// at `|` into one surface fact per operation (the retired primitive-egress census),
 // because D13 chose operation-plus-logical-subject grain and Read and List differ in arguments,
 // result shape, ordering question and refusals. No alias row may collapse them.
 //
