@@ -396,3 +396,26 @@ test fn an_attempted_but_unreadable_capture_is_never_silence_and_never_not_taken
     && !string_contains(s: block, pattern: "verbose_sdr=not_taken")
     && !string_contains(s: block, pattern: "verbose_record=")
 }
+
+// ==== BISECTION SCAFFOLDING (temporary; delete in the next push) ================================
+// Parent's sweep (msg_4d1bf900) reported two FAILs with no reason line, and both are the only claims
+// that execute the captured arm of the two verbose renderers. A hand-execution of the committed parser
+// and renderer over the committed bytes satisfies every assertion those claims make, so the fault is
+// either the sweep binary or something inside those arms. These four claims assert ONLY the segment
+// prefixes of the same render, so the first red one names the segment that is not being produced.
+// They restate assertions the real claims already carry (DESIGN.md §5) and are not meant to merge.
+test fn bisect_a_run_state_marker_line_present() -> Bool {
+  string_contains(s: render_run_verbose_block(capture: run_verbose_captured()), pattern: "run=0 verbose_sdr=")
+}
+
+test fn bisect_b_run_record_segment_present() -> Bool {
+  string_contains(s: render_run_verbose_block(capture: run_verbose_captured()), pattern: "run=0 verbose_record=[")
+}
+
+test fn bisect_c_run_detail_segment_present() -> Bool {
+  string_contains(s: render_run_verbose_block(capture: run_verbose_captured()), pattern: "run=0 verbose_detail=[")
+}
+
+test fn bisect_d_run_raw_segment_present() -> Bool {
+  string_contains(s: render_run_verbose_block(capture: run_verbose_captured()), pattern: "run=0 verbose_raw=[Sensor ID")
+}
