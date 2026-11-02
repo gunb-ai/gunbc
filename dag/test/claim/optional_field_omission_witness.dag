@@ -1,0 +1,79 @@
+module test.claim.optional_field_omission_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_rows_of_class,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// One type, one obligation (gunbc#14087): `T?` denotes the canonical Optional application
+// (optional_sugar_is_declaration_bound) and Optional values are never implicitly wrapped
+// (explicit_present_is_the_authoring_policy), so a record literal that OMITS an optional field
+// refuses for BOTH spellings; only a declared default exempts. Every arm hands source to the real
+// v1 checker through compile_fixture, as required_record_field_omission_witness does, and the
+// refusals assert the class (MissingField) and the field, never only "refused".
+
+fn optional_field_fixture(source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("optional_field/entry.dag", source)],
+    entry: "optional_field/entry.dag",
+  })
+}
+
+fn optional_field_source(field_type: String, literal_fields: String) -> String {
+  "module optional_field.entry\nimport std.optional { Optional, Absent, Present }\ntype Row { label: String, width: " + field_type + " }\ndata row: Row = Row { " + literal_fields + " }\n"
+}
+
+fn refuses_with_missing_width(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
+  match outcome {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      match first(fixture_rows_of_class(rows, "MissingField")) {
+        Present { value: row } => row.subject_name == "width" && count(fixture_blocking_rows(rows)) == 1
+        Absent => false
+      }
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+fn accepts_clean(outcome: MultiModuleCompileFixtureOutcome) -> Bool {
+  match outcome {
+    FixtureCompileCompleted { module_count: _, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(rows) == 0 && count(files) > 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+// RED: refused after the fix, accepted before it (the `?` sugar carried CardOptional, which the
+// predicate exempted).
+test fn an_omitted_sugar_optional_field_refuses() -> Bool {
+  refuses_with_missing_width(optional_field_fixture(source: optional_field_source(field_type: "Int?", literal_fields: "label: \"a\"")))
+}
+
+// CONTROL (refused before and after): the nominal spelling of the same type.
+test fn an_omitted_nominal_optional_field_refuses() -> Bool {
+  refuses_with_missing_width(optional_field_fixture(source: optional_field_source(field_type: "Optional<Int>", literal_fields: "label: \"a\"")))
+}
+
+// CONTROLS (accepted before and after): explicit Absent and Present, both spellings.
+test fn explicit_absent_and_present_are_accepted_for_both_spellings() -> Bool {
+  accepts_clean(optional_field_fixture(source: optional_field_source(field_type: "Int?", literal_fields: "label: \"a\", width: Absent")))
+    && accepts_clean(optional_field_fixture(source: optional_field_source(field_type: "Int?", literal_fields: "label: \"a\", width: Present { value: 1 }")))
+    && accepts_clean(optional_field_fixture(source: optional_field_source(field_type: "Optional<Int>", literal_fields: "label: \"a\", width: Absent")))
+    && accepts_clean(optional_field_fixture(source: optional_field_source(field_type: "Optional<Int>", literal_fields: "label: \"a\", width: Present { value: 1 }")))
+}
+
+// CONTROL (accepted before and after): a declared default is the only exemption.
+test fn an_omitted_optional_field_with_a_declared_default_is_accepted() -> Bool {
+  accepts_clean(optional_field_fixture(source: optional_field_source(field_type: "Int? = none", literal_fields: "label: \"a\"")))
+}
