@@ -905,8 +905,23 @@ fn seat_stop_record_end_wire(end: AttemptProcessEnd) -> String {
   }
 }
 
+// THE PROVIDER'S OWN WAIT ON THE UNIT IT STARTED, AS THE CALLER THAT RAN IT RECORDS IT.
+//
+// ONE FACT, TWO POSSIBLE KNOWERS. The provider that ran `systemd-run --wait` holds the answer: its
+// summary is what compute_attempt_completed reads, and it is the only reading that ever licensed a
+// release without the stop hook. Recovery is NOT a knower -- it reads the attempt slot, which records
+// the launch, the grant and the owner, and no wait -- so the answer here is a coproduct rather than a
+// Bool. A Bool would have to be invented by whoever cannot answer, and an invented `true` is the leak
+// this file exists to close while an invented `false` is a seat nobody will ever free.
+type AttemptCompletion
+  = AttemptWaitRecorded { completed: Bool }
+  | AttemptWaitUnrecorded { cause: String }
+
 type UnitObservations {
-  attempt_completed: Bool
+  // THE SEAT'S OWN WAIT, as the provider that ran it records it (see AttemptCompletion). A coproduct
+  // rather than a Bool because the route that never ran one must be able to say so; the field below it
+  // travels for the same reason the fold is pure and is called by tests with the readings it decides on.
+  attempt: AttemptCompletion
   // THE SEAT'S OWN RECORD, read before the fold decides. It is a field rather than something the fold
   // reads itself because the fold is pure and is called by tests with the readings it is deciding on:
   // what the door saw has to travel with the decision it informs.
@@ -928,11 +943,13 @@ type UnitPopulation
   | PopulationUnknown { detail: String }
 
 // IT TAKES THE TWO READINGS IT USES AND NOT THE PRODUCER'S WHOLE OBSERVATION RECORD, and that is
-// a structural fact rather than tidiness. UnitObservations carries `attempt_completed` -- the
-// first-hand fact that only the process which ran `systemd-run --wait` can have. If this fold took
+// a structural fact rather than tidiness. UnitObservations carries `attempt` -- the first-hand fact
+// that only the process which ran `systemd-run --wait` can have (AttemptCompletion, whose Unrecorded
+// arm exists so a route that never ran one can say so instead of answering `false`). If this fold took
 // that record, RECOVERY WOULD HAVE TO CONSTRUCT ONE, and a caller that must supply a field it
 // cannot observe supplies a fabricated value; the honest-looking `false` is still a value recovery
-// invented. Narrowing the parameters means recovery has no carrier for first-hand completion
+// invented. That is why the recovery mapping below calls the shared rule with AttemptWaitUnrecorded
+// ITSELF: one rule, and the carrier still belongs to the provider alone. Narrowing the parameters means recovery has no carrier for first-hand completion
 // anywhere in its route -- the distinction is unwritable rather than merely unwritten
 // (ruling, loyal-swift-608, 2026-09-22: make the difference structural or the two folds can come
 // to disagree about the same facts, which is the moment they become two authorities for one
@@ -979,6 +996,79 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
 
 // The cgroup is not confirmed-occupied: the termination is decided from the manager's record and
 // the attempt's completion, with the population's own reading as the located detail.
+// WHEN THE STOP HOOK CANNOT SPEAK, THIS IS THE ONE RULE THAT ANSWERS WHETHER THE SEAT IS OVER. Both
+// folds ask it and neither answers it themselves, because the answer is one fact and the folds differ
+// only in which arm of their own type it becomes -- so the rule is written once (section 3) and cannot
+// drift between settlement and recovery.
+//
+// Its premise: the manager that ran the unit reports no unit of that name (or still lists it) AND the
+// hook left nothing to read. The only admissible account of the end then is the seat's OWN WAIT, and it
+// is admissible exactly where it always was -- beside a cgroup the kernel confirms empty. A population
+// that is not confirmed empty establishes nothing; a wait that did not complete establishes nothing; a
+// route that never held a wait establishes nothing. Each answers NotEstablished CARRYING WHY AND WHAT
+// WOULD CHANGE IT, so the seat stays charged and the outcome says so out loud: section 5's budget-bounded
+// interim fallback, with its dissolution trigger named rather than a silence that keeps a seat until a
+// human notices.
+//
+// THIS IS THE RELEASE ROUTE FOR EVERY SEAT THAT HAS NO RECORD: one launched before the stop hook
+// existed, one whose ExecStopPost write failed, and one whose provider cannot name the uid whose exit
+// spool it would read. Before this rule those groups could not be released at all, which is the shape
+// srv1's two 22 GiB seats are in -- and shipping it as the permanent outcome for the whole fleet is what
+// the review of #15640 caught (artifact 89894).
+type SeatEndWithoutRecord
+  = EstablishedByWait { detail: String }
+  | NotEstablished { reason: String }
+
+fn seat_end_without_record(attempt: AttemptCompletion, population: UnitPopulation, missing: String) -> SeatEndWithoutRecord {
+  match attempt {
+    AttemptWaitUnrecorded { cause } =>
+      NotEstablished { reason: join([missing, ", and no wait was ever recorded for this seat (", cause, ") -- the seat releases when the stop hook's record appears, or when a provider that ran the wait records its success with the cgroup confirmed empty"], "") }
+    AttemptWaitRecorded { completed: false } =>
+      NotEstablished { reason: join([
+        missing,
+        ", the attempt did not complete, so its end is not established -- ",
+        match population { PopulationEmpty { detail: pd } => join([pd, ", but a realized cgroup can be empty between execs and emptiness does not cover a pending job"], "")  PopulationUnknown { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
+      ], "") }
+    AttemptWaitRecorded { completed: true } =>
+      match population {
+        PopulationEmpty { detail: pd } =>
+          EstablishedByWait { detail: join([pd, " and the provider's own systemd-run --wait returned success under ", systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value() as String, "; ", missing], "") }
+        PopulationUnknown { detail: pd } =>
+          NotEstablished { reason: join([missing, ", the wait says success but the population could not be read (", pd, ") -- a bound KillMode says what systemd WILL do, not what is true, so an unreadable cgroup establishes nothing even beside a completed wait"], "") }
+        PopulationOccupied { detail: pd } =>
+          NotEstablished { reason: join([missing, ", the wait says success but the cgroup is STILL POPULATED (", pd, ") -- the kernel outranks every bookkeeping about the end"], "") }
+      }
+  }
+}
+
+// THE SHARED RULE, IN THE SETTLEMENT FOLD'S ARMS.
+fn unit_termination_by_wait(attempt: AttemptCompletion, population: UnitPopulation, missing: String) -> UnitTermination {
+  match seat_end_without_record(attempt: attempt, population: population, missing: missing) {
+    EstablishedByWait { detail } => UnitAttemptCompleted { detail: detail }
+    NotEstablished { reason } => UnitTerminationUnavailable { detail: reason }
+  }
+}
+
+// THE SHARED RULE, IN THE RECOVERY FOLD'S ARMS -- AND RECOVERY BRINGS NO WAIT, SO THE FOLD IS THE ONE
+// THAT SAYS SO. Ruling loyal-swift-608 (2026-09-22) forbids giving recovery a carrier for the provider's
+// first-hand completion: a caller forced to supply a reading it cannot observe supplies a plausible
+// fabrication, and the honest-looking `false` is still a fabrication. So no parameter here is a
+// completion; the fold answers the shared rule with AttemptWaitUnrecorded out of its own knowledge of
+// what its route can observe. Today's behaviour is kept exactly -- an absent seat with no record stays
+// Unknown to recovery -- while the RULE remains written once. The single case where the two folds can
+// now differ is a recorded wait beside a cgroup confirmed empty, and that difference IS the asymmetry the
+// ruling asked for: it is the provider's fact alone, and manager_unaskable_wet_witness names it as a
+// designed divergence rather than letting it look like an accident.
+fn unit_lifecycle_by_wait(population: UnitPopulation, missing: String) -> UnitLifecycle {
+  match seat_end_without_record(
+    attempt: AttemptWaitUnrecorded { cause: "recovery reads the attempt slot and the manager, and carries no first-hand completion by ruling" },
+    population: population,
+    missing: missing) {
+    EstablishedByWait { detail } => UnitTerminatedSuccess { detail: join([detail, " -- ended on the provider's own wait, with no stop-hook record to bind"], "") }
+    NotEstablished { reason } => UnitLifecycleUnknown { detail: reason }
+  }
+}
+
 fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
       // THE MANAGER'S ABSENCE IS ADMISSIBLE ONLY BESIDE THE HOOK'S RECORD OF THE END IT WAS ASKED TO
       // REPORT. "not-found" from the user manager says only that THIS manager does not currently list a
@@ -986,51 +1076,32 @@ fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation)
       // 22 GiB seats on while its ledger kept charging them. Where the stop hook -- run by that same
       // manager, as the unit's own last act -- wrote the end, absence and record together are the
       // observation, and the detail names both. Where they do not agree, nothing is freed.
+      // WHEN THE HOOK CANNOT SPEAK THE SEAT'S OWN WAIT IS THE OTHER ADMISSIBLE ACCOUNT, and it is
+      // consulted HERE rather than after this branch: a seat launched before the hook existed has no
+      // record and never will, so deciding an absent seat's end only from the record would make its
+      // charge permanent -- the outcome the reviewer of #15640 caught this fold shipping.
       if o.load_state.queried && trim(s: o.load_state.value) == unit_load_state_absent_wire {
         match o.stop_record {
           SeatStopRecordFound { invocation_id, end } =>
             UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id], "") }
           SeatStopRecordNone =>
-            UnitTerminationUnavailable { detail: join(["the user manager lists no unit of this name and the seat's stop hook left no record -- an absence this provider did not observe an end through (", seat_stop_record_wire(r: o.stop_record), ")"], "") }
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: "the user manager lists no unit of this name and the seat's stop hook left no record")
           SeatStopRecordUnreadable { cause } =>
-            UnitTerminationUnavailable { detail: join(["the user manager lists no unit of this name and the seat's exit spool could not be read, so no end is observed: ", cause], "") }
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and the seat's exit spool could not be read, so the hook says nothing: ", cause], ""))
           SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
-            UnitTerminationUnavailable { detail: join(["the user manager lists no unit of this name and the only entry for this seat names its own writer as broken, which is evidence about the writer and not about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], "") }
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and the only entry for this seat names its own writer as broken, which is evidence about the writer and not about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], ""))
           SeatStopRecordNoUid { cause } =>
-            UnitTerminationUnavailable { detail: join(["the user manager lists no unit of this name and this provider cannot name the uid whose exit spool it would read, so no end is observed: ", cause], "") }
-        }
-      } else if !o.attempt_completed {
-        UnitTerminationUnavailable {
-          detail: join([
-            "the attempt did not complete, so its end is not established -- ",
-            match population { PopulationEmpty { detail: pd } => join([pd, ", but a realized cgroup can be empty between execs and emptiness does not cover a pending job"], "")  PopulationUnknown { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
-          ], ""),
+            unit_termination_by_wait(attempt: o.attempt, population: population, missing: join(["the user manager lists no unit of this name and this provider cannot name the uid whose exit spool it would read: ", cause], ""))
         }
       } else {
-        match population {
-          PopulationEmpty { detail: pd } =>
-            UnitAttemptCompleted {
-              detail: join([
-                "systemd-run --wait returned success under ", systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value() as String,
-                " and ", pd,
-              ], ""),
-            }
-          PopulationUnknown { detail: _ } => unit_termination_completed_unread(population: population)
-          PopulationOccupied { detail: _ } => unit_termination_completed_unread(population: population)
-        }
+        // The manager still lists the unit, or its load state could not be read at all: no absence is
+        // claimed, so nothing about the end can come from the manager and the wait is the only account
+        // there is -- with the same demand for a cgroup the kernel confirms empty.
+        unit_termination_by_wait(attempt: o.attempt, population: population, missing: "the unit is still listed by the manager that ran it")
       }
 }
 
-// A completed wait whose population is not a confirmed-empty cgroup: the termination is not established.
-fn unit_termination_completed_unread(population: UnitPopulation) -> UnitTermination {
-  UnitTerminationUnavailable {
-    detail: join([
-      "the attempt completed, but the population could not be read (",
-      match population { PopulationUnknown { detail: pd } => pd  PopulationEmpty { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
-      ") -- a bound KillMode says what systemd WILL do, not what is true, so an unreadable cgroup establishes nothing even beside a completed wait",
-    ], ""),
-  }
-}
+
 
 // ── THE LIFECYCLE VERDICT, WHICH IS WHAT RECOVERY ASKS AND SETTLEMENT DOES NOT ────────────────
 //
@@ -1096,13 +1167,13 @@ fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
           SeatStopRecordFound { invocation_id, end } =>
             UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, " in the manager that ran it, and its stop hook recorded ", end, " under invocation ", invocation_id, " -- a transient --collect unit that ran has been removed, and its cause went with it"], "") }
           SeatStopRecordNone =>
-            UnitLifecycleUnknown { detail: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], "") }
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and no stop-hook record of its end (", seat_stop_record_wire(r: o.stop_record), "), so whether it ever ran is not established"], ""))
           SeatStopRecordUnreadable { cause } =>
-            UnitLifecycleUnknown { detail: join(["the manager has no unit by this name and its exit spool could not be read: ", cause], "") }
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and its exit spool could not be read, so the hook says nothing: ", cause], ""))
           SeatStopRecordWriterUnsubstituted { entries: _, variables: _ } =>
-            UnitLifecycleUnknown { detail: join(["the manager has no unit by this name and the only entry for this seat names its own writer as broken, which says nothing about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], "") }
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and the only entry for this seat names its own writer as broken, which is evidence about the writer and not about the seat (", seat_stop_record_wire(r: o.stop_record), ")"], ""))
           SeatStopRecordNoUid { cause } =>
-            UnitLifecycleUnknown { detail: join(["the manager has no unit by this name and this provider cannot name the uid whose exit spool it would read: ", cause], "") }
+            unit_lifecycle_by_wait(population: o.population, missing: join(["the manager has no unit by this name and this provider cannot name the uid whose exit spool it would read: ", cause], ""))
         }
       } else if !o.active_state.queried {
         UnitLifecycleUnknown { detail: "the unit is known to the manager but its active state could not be read" }
@@ -1190,11 +1261,11 @@ fn read_cgroup_events(control_group: UnitPropertyReading) -> UnitPropertyReading
 // THE READS ARE TAKEN UNCONDITIONALLY AND THE FOLD DECIDES. Short-circuiting them here would put
 // half the decision in this function and half in the fold, which is the split that let an empty
 // property become a conclusion in the first place.
-fn observe_unit_termination(identity_hex: String, attempt_completed: Bool, stop_record: SeatStopRecord) -> UnitTermination {
+fn observe_unit_termination(identity_hex: String, attempt: AttemptCompletion, stop_record: SeatStopRecord) -> UnitTermination {
   let unit = compute_unit_name(identity_hex: identity_hex)
   let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_termination_decide(o: UnitObservations {
-    attempt_completed: attempt_completed,
+    attempt: attempt,
     stop_record: stop_record,
     load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
     control_group: cg,
@@ -1693,7 +1764,7 @@ fn compute_run_opened(
       CreateOnceRefused { path: _, cause: _ } => false
     }
     let termination = observe_unit_termination(
-      identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: attempt.outcome),
+      identity_hex: identity, attempt: AttemptWaitRecorded { completed: compute_attempt_completed(outcome: attempt.outcome) },
       stop_record: compute_seat_stop_record(instance: instance, identity_hex: identity))
     let returned = if counted && unit_termination_frees_capacity(t: termination) {
       compute_release(reservation: reservation, reason: join(["grant of ", to_string(value: kibibyte_count(k: granted)), " KiB exceeded (oom-kill); retrying this attempt at the ceiling"], "") as NonEmptyStr)
@@ -1888,7 +1959,7 @@ fn compute_run_and_settle(
   let outcome = attempt.outcome
   let launched = attempt.gate
   let standing = compute_capacity_standing(instance: instance)
-  let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: outcome), stop_record: compute_seat_stop_record(instance: instance, identity_hex: identity))
+  let termination = observe_unit_termination(identity_hex: identity, attempt: AttemptWaitRecorded { completed: compute_attempt_completed(outcome: outcome) }, stop_record: compute_seat_stop_record(instance: instance, identity_hex: identity))
   let returned = if unit_termination_frees_capacity(t: termination) {
     compute_release(reservation: reservation, reason: join(["work ", work_outcome_ending(o: outcome), ", unit ", unit_termination_wire(t: termination)], "") as NonEmptyStr)
   } else {

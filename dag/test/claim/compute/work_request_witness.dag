@@ -8,6 +8,7 @@ import gunbc.compute.work_provider_local {
   NoPathVirtualization, UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
   UnitPropertyReading, UnitObservations, unit_termination_decide,
   SeatStopRecord, SeatStopRecordNone, SeatStopRecordFound, SeatStopRecordUnreadable, SeatStopRecordWriterUnsubstituted, SeatStopRecordNoUid,
+  AttemptWaitRecorded, AttemptWaitUnrecorded, seat_end_without_record,
   unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
   ProvideResult, ProvideFresh, ProvideAttached, HostRecordStatus, HostRecordWritten, HostRecordLost,
   provide_result_host_record, provide_result_ending, provide_result_document, host_record_was_written, host_record_wire,
@@ -340,7 +341,21 @@ fn decided(done: Bool, load: UnitPropertyReading, cg: UnitPropertyReading, ev: U
 // THE SAME FOLD, DECIDING ON A SEAT'S OWN STOP-HOOK RECORD. The record travels in, exactly as the manager
 // readings do, so a row says what the door saw rather than what it hoped.
 fn decided_with(done: Bool, record: SeatStopRecord, load: UnitPropertyReading, cg: UnitPropertyReading, ev: UnitPropertyReading) -> UnitTermination {
-  unit_termination_decide(o: UnitObservations { attempt_completed: done, stop_record: record, load_state: load, control_group: cg, events: ev })
+  unit_termination_decide(o: UnitObservations { attempt: AttemptWaitRecorded { completed: done }, stop_record: record, load_state: load, control_group: cg, events: ev })
+}
+
+// THE FOLD WITH NO WAIT AT ALL -- the reading a route that never ran `systemd-run --wait` brings, and the
+// reading the reviewer of #15640 (artifact 89894) asked to see decided explicitly: a seat launched before
+// the stop hook existed has no record and never will, so this is the only pair of readings it can ever
+// present. Answering "no record, therefore kept forever" is the defect; answering "kept, and here is what
+// would release it" is the section 5 fallback.
+fn decided_no_wait(load: UnitPropertyReading, cg: UnitPropertyReading, ev: UnitPropertyReading) -> UnitTermination {
+  unit_termination_decide(o: UnitObservations {
+    attempt: AttemptWaitUnrecorded { cause: "witness: no provider recorded a wait for this seat" },
+    stop_record: SeatStopRecordNone,
+    load_state: load,
+    control_group: cg,
+    events: ev })
 }
 
 test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
@@ -380,6 +395,66 @@ test fn only_proven_absence_or_an_ended_cgroup_frees_a_seat() -> Bool {
     && string_contains(s: unit_termination_wire(t: misleading), pattern: "UNESTABLISHED")
     && string_contains(s: unit_termination_wire(t: absent), pattern: "left no record")
     && string_contains(s: unit_termination_wire(t: absent_recorded), pattern: "its stop hook recorded")
+  // THE GROUP THE REVIEW OF #15640 FOUND PERMANENTLY CHARGED: no record, and no prospect of one -- a seat
+  // launched before the stop hook existed, a seat whose ExecStopPost write failed, a seat whose provider
+  // cannot name its uid. Their end comes from the seat's own wait, on the same demand the completion route
+  // always made: a cgroup the kernel confirms empty.
+  && unit_termination_frees_capacity(t: decided_with(done: true, record: SeatStopRecordNone, load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n")))
+  // ... and it stays charged while the wait is not admissible: an unreadable cgroup, an occupied cgroup,
+  // and a wait that did not complete each refuse, with the reason naming what would change the answer.
+  && !unit_termination_frees_capacity(t: decided_with(done: true, record: SeatStopRecordNone, load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: ""), ev: no_events))
+  && !unit_termination_frees_capacity(t: decided_with(done: true, record: SeatStopRecordNone, load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 1\n")))
+  && !unit_termination_frees_capacity(t: decided_with(done: false, record: SeatStopRecordNone, load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n")))
+  && string_contains(s: unit_termination_wire(t: decided_with(done: false, record: SeatStopRecordNone, load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))), pattern: "did not complete")
+  // NO WAIT EVER RECORDED: kept, and the refusal carries its own dissolution trigger rather than leaving
+  // an operator to guess what would free the seat.
+  && !unit_termination_frees_capacity(t: decided_no_wait(load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n")))
+  && string_contains(s: unit_termination_wire(t: decided_no_wait(load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))), pattern: "no wait was ever recorded")
+  && string_contains(s: unit_termination_wire(t: decided_no_wait(load: reading(queried: true, value: "not-found"), cg: reading(queried: true, value: "/x"), ev: reading(queried: true, value: "populated 0\n"))), pattern: "the seat releases when")
+}
+
+// THE ONE PLACE THE TWO FOLDS ARE ALLOWED TO DISAGREE, NAMED SO THE AGREEMENT DOES NOT LOOK BROKEN. On
+// the same manager absence, the same confirmed-empty cgroup and NO stop-hook record, settlement may
+// release on the provider's own wait while recovery may not: the wait is first-hand only to the process
+// that ran `systemd-run --wait`, and ruling loyal-swift-608 keeps it out of recovery's route because a
+// caller forced to supply a reading it cannot observe supplies a plausible fabrication -- the
+// honest-looking `false` included. So recovery asks the SAME shared rule and answers it with
+// AttemptWaitUnrecorded itself. A fold that starts agreeing with the other one HERE has either leaked the
+// provider's fact into recovery or stopped trusting the wait; either way this row goes red.
+test fn only_the_provider_holds_the_wait_and_the_folds_diverge_there() -> Bool {
+  let not_found = reading(queried: true, value: "not-found")
+  let settled = decided_with(
+    done: true,
+    record: SeatStopRecordNone,
+    load: not_found,
+    cg: reading(queried: true, value: "/x"),
+    ev: reading(queried: true, value: "populated 0\n"))
+  let recovered = lifecycle_of(
+    load: not_found,
+    active: unqueried,
+    result: unqueried,
+    pop: PopulationEmpty { detail: "cgroup /x reports populated 0" })
+  unit_termination_frees_capacity(t: settled)
+  && !unit_lifecycle_ended(u: recovered)
+  && lifecycle_word(u: recovered) == "unknown"
+  && string_contains(s: unit_lifecycle_wire(u: recovered), pattern: "no stop-hook record")
+  && string_contains(s: unit_lifecycle_wire(u: recovered), pattern: "no wait was ever recorded")
+  // THE RULE ITSELF IS ONE: the same three readings asked of the shared rule answer the same way whether a
+  // fold is asking, and the arms are chosen by the caller rather than by each fold re-deciding.
+  && (match seat_end_without_record(
+        attempt: AttemptWaitRecorded { completed: true },
+        population: PopulationEmpty { detail: "cgroup /x reports populated 0" },
+        missing: "the manager lists no unit") {
+        EstablishedByWait { detail } => string_contains(s: detail, pattern: "populated 0")
+        NotEstablished { reason } => false
+      })
+  && (match seat_end_without_record(
+        attempt: AttemptWaitUnrecorded { cause: "witness" },
+        population: PopulationEmpty { detail: "cgroup /x reports populated 0" },
+        missing: "the manager lists no unit") {
+        EstablishedByWait { detail } => false
+        NotEstablished { reason } => string_contains(s: reason, pattern: "the seat releases when")
+      })
 }
 
 // A COMPLETED ATTEMPT RELEASES, AND AN ATTEMPT THAT DID NOT COMPLETE DOES NOT RELEASE ON ITS OWN.

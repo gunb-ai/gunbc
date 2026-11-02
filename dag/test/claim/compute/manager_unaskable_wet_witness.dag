@@ -8,6 +8,7 @@ import gunbc.compute.work_provider_local {
   observe_unit_termination, observe_unit_lifecycle, unit_termination_frees_capacity,
   SeatStopRecordNone, 
   UnitPropertyReading, unit_property_from_shell,
+  AttemptCompletion, AttemptWaitRecorded,
 }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.systemd_unit_names { compute_unit_name }
@@ -100,7 +101,7 @@ test fn a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_abo
   // on a bare not-found while its unit's own end was never observed, and the pair below is red the moment
   // either fold goes back to minting an ending from an absence.
   let no_record = SeatStopRecordNone
-  let termination = observe_unit_termination(identity_hex: unaskable_identity, attempt_completed: false, stop_record: no_record)
+  let termination = observe_unit_termination(identity_hex: unaskable_identity, attempt: AttemptWaitRecorded { completed: false }, stop_record: no_record)
   let lifecycle = observe_unit_lifecycle(unit: compute_unit_name(identity_hex: unaskable_identity), stop_record: no_record)
   if present {
     unit_termination_frees_capacity(t: termination) == unit_lifecycle_ended(u: lifecycle)
