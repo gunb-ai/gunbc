@@ -490,6 +490,23 @@ fn profile_overlay(profile: RepositoryCiProfile) -> Optional<OverlayIngest> {
   }
 }
 
+// AN OVERLAY HAS TO COMPOSE INTO A DECLARED SEED. The overlay is copied into a detached tree checked out
+// from the profile's public seed, and the roster and the publisher's phases run inside that composed root.
+// A row that declares the overlay without a seed has no tree to compose into, and the publisher would then
+// admit and publish candidates in its own checkout - sealing from one composition and admitting against
+// another, which is the drift the publisher exists to prevent. Refused at the row, so no caller can render
+// the silent downgrade and none has to.
+fn profile_overlay_has_a_declared_seed(profile: RepositoryCiProfile) -> Bool {
+  match profile_overlay(profile: profile) {
+    Absent => true
+    Present { value: _ } =>
+      match profile_public_seed(profile: profile) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
 // THE DISPATCHER RUNS IN THE CHECKOUT THAT ALREADY HOLDS THE COMPILER UNDER TEST. A row that routes its
 // roster through it AND declares a seed to build (or an overlay to compose, which only the composed route
 // carries) is describing two repositories at once: the gate would report on a binary none of its rows ever
@@ -518,6 +535,8 @@ fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEm
     Present { value: "REFUSE: the publisher is triggered by the completion of a workflow this profile does not declare, so it can never run with anything to publish. Name the heal or drift workflow that seals the candidate (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared)." }
   } else if profile_publisher_build_route_is_coherent(profile: profile) == false {
     Present { value: "REFUSE: the publisher says it builds its compiler from the profile's public seed, and the profile declares no seed to build - a step that would check out nothing and compile nothing. Name the seed, or select Own_checkout_under_witness_floor and build from this checkout (gunbc.ci.repository_ci_profile profile_publisher_build_route_is_coherent)." }
+  } else if profile_overlay_has_a_declared_seed(profile: profile) == false {
+    Present { value: "REFUSE: this profile composes an overlay into a detached tree, and declares no public seed to check that tree out. The copy has nowhere to land, and a publisher over such a row would seal a candidate from one composition and admit it against another - the drift the publisher exists to prevent. Name the seed, or route the roster through the instrument dispatcher with no overlay (gunbc.ci.repository_ci_profile profile_overlay_has_a_declared_seed)." }
   } else if profile_optional_job_timeouts_are_positive(profile: profile) == false {
     Present { value: "REFUSE: a declared job carries a timeout that is not positive, so it would be killed before it could report a reason. The gate's timeout is refused at zero; heal, drift and publisher timeouts are held to the same bound (gunbc.ci.repository_ci_profile profile_optional_job_timeouts_are_positive)." }
   } else if minute_count(m: profile.roster.timeout) == 0 {
