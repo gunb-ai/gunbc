@@ -23,9 +23,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_attempt_state_store {
   AttemptStateProvision, AttemptDirectoryRoot, AttemptDirectoryWorker, AttemptDirectoryReview, AttemptDirectorySupervisor,
-  AttemptWorkerEvents, AttemptSupervisorEvents,
+  AttemptWorkerEvents, AttemptSupervisorEvents, AttemptAuditEvents, AttemptSupervisorLog,
   attempt_state_provision, attempt_state_provision_directory, attempt_log_provision_path,
-  attempt_append_log_store_open, attempt_append_log_census_row, AttemptAppendLogReading, AttemptAppendLogReady, AttemptAppendLogUnready, AttemptAppendLogLegacyRefused,
+  attempt_append_log_store_open, attempt_append_log_census_slot, AttemptAppendLogReading, AttemptAppendLogReady, AttemptAppendLogUnready, AttemptAppendLogLegacyRefused,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -122,15 +122,15 @@ test fn an_absent_member_directory_is_typed_absent_ready_not_unready() -> Bool {
 // diverged. These look up a MIDDLE member and the LAST member; red on the old recursion (call-depth-exceeded),
 // green on the fixed recursion over rest.
 test fn a_middle_census_member_is_found_not_only_the_first() -> Bool {
-  match attempt_append_log_census_row(name: "AttemptAuditEvents") {
-    Present { value: r } => r.member == ("AttemptAuditEvents" as NonEmptyStr)
+  match attempt_append_log_census_slot(member: AttemptAuditEvents { head_sha: "test" }) {
+    Present { value: slot } => slot.member == ("AttemptAuditEvents" as NonEmptyStr)
     Absent => false
   }
 }
 
 test fn the_last_census_member_is_found_not_only_the_first() -> Bool {
-  match attempt_append_log_census_row(name: "AttemptSupervisorLog") {
-    Present { value: r } => r.member == ("AttemptSupervisorLog" as NonEmptyStr)
+  match attempt_append_log_census_slot(member: AttemptSupervisorLog) {
+    Present { value: slot } => slot.member == ("AttemptSupervisorLog" as NonEmptyStr)
     Absent => false
   }
 }

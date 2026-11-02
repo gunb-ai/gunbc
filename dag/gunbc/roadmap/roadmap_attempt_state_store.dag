@@ -174,10 +174,6 @@ fn attempt_log_current_text(instance: HostDashboardInstance, node_id: RoadmapNod
   attempt_log_provision_path(provision: attempt_state_provision_current(instance: instance, node: node_id as String), member: member)
 }
 
-fn attempt_log_external_path(store: AttemptState, member: AttemptLogMember) -> String {
-  attempt_log_member_path(store: store, member: member)
-}
-
 // The directory each member lives in and the file name it carries: ONE row each, read by every operation.
 fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDirectory {
   match member {
@@ -683,19 +679,6 @@ fn attempt_append_log_census_slot(member: AttemptLogMember) -> AppendLogSlot? {
   attempt_append_log_census_slot_from(rows: append_log_member_census, key: attempt_append_log_member_census_key(member: member))
 }
 
-// Thin accessor for witnesses that inspect census rows by name (test-only, not on the mint path).
-fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
-  attempt_append_log_census_row_walk(rows: append_log_member_census, name: name)
-}
-
-fn attempt_append_log_census_row_walk(rows: List<MemberCensusRow>, name: String) -> MemberCensusRow? {
-  match rows {
-    Empty {} => Absent
-    Cons { head: r, tail: rest } =>
-      if r.member == (name as NonEmptyStr) { Present { value: r } }
-      else { attempt_append_log_census_row_walk(rows: rest, name: name) }
-  }
-}
 
 // Mints the sealed store over a listing that was OBTAINED (never fabricated). An empty list here means the
 // directory was positively listed as having no relevant entries -- the caller never projects a refused listing
