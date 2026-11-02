@@ -416,3 +416,74 @@ test fn a_generic_refinement_member_refuses_under_the_generic_reason_holds() -> 
     MemberClosureRefused { reason: _ } => false
   }
 }
+
+// PROBE (never for landing): the shape of the lowered member for a coproduct with a field where vs the
+// plain control, plus the classification dispatch inputs (kinds), so the producer that decides
+// coproduct-or-conj for a payload-bearing variant can be read off.
+fn ce_probe_label_text(e: Edge) -> String {
+  match e.label {
+    Authored { name: n } => symbol_lexeme(sym: n)
+    _ => "~"
+  }
+}
+
+fn ce_probe_shape_text(n: Node, depth: Int) -> String {
+  let head = match n.kind {
+    TypeNode { connective: Conj } => "Conj"
+    TypeNode { connective: Disj } => "Disj"
+    TypeNode { connective: Atom { identity: i } } => concat("Atom:", symbol_lexeme(sym: i))
+    _ => "Other"
+  }
+  if depth <= 0 {
+    head
+  } else {
+    concat(head, concat("[", concat(fold_list(xs: n.children, empty: "", cons: fn(acc, e) {
+      concat(acc, concat(ce_probe_label_text(e: e), concat("=", concat(ce_probe_shape_text(n: e.target, depth: depth - 1), ";"))))
+    }), "]")))
+  }
+}
+
+fn ce_probe_member_shape_of(source: String, name: String) -> String {
+  let lm = dag_language_model()
+  match bind_outcome(
+    o: tokenize(text: source, file: ^member_emission_read, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: normalize(parse_tree: artifact.tree),
+            f: fn(normalized) {
+              outcome_accepted(value: fold_list(xs: normalized.root.children, empty: "", cons: fn(acc, e) {
+                if ce_probe_label_text(e: e) == name {
+                  concat(acc, concat(name, concat(": ", ce_probe_shape_text(n: e.target, depth: 4))))
+                } else {
+                  acc
+                }
+              }))
+            }
+          )
+        }
+      )
+    }
+  ) {
+    Accepted { value: t, diagnostics: _ } => t
+    Rejected { diagnostics: _ } => "REJECTED"
+  }
+}
+
+fn ce_probe_nested_where2_text() -> String {
+  let nested = "module v2.test.member_emission\n\ntype Bag = A { n: Int where positive } | B\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n"
+  let plain = "module v2.test.member_emission\n\ntype Bag2 = A { n: Int } | B\n\nfn f(x: Int) -> Int { x as Int }\n"
+  concat(
+    concat("NESTED kinds=[", concat(kind_capture_of(source: nested), concat("] ", concat(ce_probe_verdict_text(v: member_emission_verdict_of(source: nested)), concat("\n  ", ce_probe_member_shape_of(source: nested, name: "Bag")))))),
+    concat("\nPLAIN kinds=[", concat(kind_capture_of(source: plain), concat("] ", concat(ce_probe_verdict_text(v: member_emission_verdict_of(source: plain)), concat("\n  ", ce_probe_member_shape_of(source: plain, name: "Bag2"))))))
+  )
+}
+fn ce_probe_verdict_text(v: MemberEmissionVerdict) -> String {
+  match v {
+    MemberEmitted { text: t } => concat("EMITTED<<", concat(t, ">>"))
+    MemberRefused { reason: r } => concat("REFUSED:", symbol_lexeme(sym: r))
+    MemberClosureRefused { reason: r } => concat("CLOSURE_REFUSED:", symbol_lexeme(sym: r))
+  }
+}
