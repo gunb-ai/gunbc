@@ -9,7 +9,7 @@ data a_type_parameter_solved_through_an_optional_formal_keeps_the_optional_layer
 
   rung: RungRead {
     found_at: FoundBelowTheLadder,
-    standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "the substitution itself is constructed correctly: v1.compiler.infer unify_generics binds through generic_binding_through_formal_cardinality, which removes the formal's own optional layer from an optional actual, so no Accepted program carries a type parameter bound to `T?` through a `P?` formal; executed by test.claim.generic_optional_formal_binding_witness (four REDs, three controls)" as NonEmptyStr },
+    standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "the substitution itself is constructed correctly: v1.compiler.infer unify_generics binds through generic_binding_through_formal_cardinality, which removes the formal's own optional layer from an optional actual, so no Accepted program carries a type parameter bound to `T?` through a `P?` formal; the evidence is test.claim.generic_optional_formal_binding_witness (four REDs, three controls), NOT YET EXECUTED at this head (srv2 kh-arm3 pending), so this standing is a claim until that receipt is recorded here" as NonEmptyStr },
   },
 
   receipts: [
