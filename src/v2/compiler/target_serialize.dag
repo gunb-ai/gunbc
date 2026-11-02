@@ -75,6 +75,13 @@ import v2.std.node { positional_child_target_nodes,
   TypeNode,
   declaration_reference_body_marked,
   node_subtree_count,
+  node_subtree_nodes,
+  node_same_occurrence,
+  Match,
+  MatchArmSlot,
+  MatchArmPatternEdge,
+  match_role_slots,
+  child_slot_target,
   Arrow,
   Branch,
   ComputationNode,
@@ -92,7 +99,7 @@ import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.type_binder {
   type_param_names
 }
-import v2.std.node_query { find_arrow_body_child, find_named_child, find_labeled_child }
+import v2.std.node_query { find_core_child, find_arrow_body_child, find_named_child, find_labeled_child }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
   ConcreteSyntaxLayoutItem,
@@ -166,7 +173,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import std.algebra { Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional, collection_concat_shape, collection_count_shape }
+import std.algebra { list_map, list_find_first, Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional, collection_concat_shape, collection_count_shape }
 import v2.std.text {
   String
 }
@@ -880,6 +887,39 @@ fn project_nullary_arm_binding(node: Node) -> Outcome<TargetValueExpression> {
   }
 }
 
+// WHERE A FACT IS ABSENT BY CONSTRUCTION. Inference types values, not patterns, so the only position
+// whose reference legitimately carries no facts is a match-arm pattern; anywhere else an absent fact is an
+// inference gap and stays the facts_absent refusal. Read from the arrow's own structure, not threaded.
+fn node_is_match_arm_pattern(arrow: Node, node: Node) -> Bool {
+  match list_find_first(
+    xs: node_subtree_nodes(root: arrow),
+    predicate: fn(candidate) { match_node_has_arm_pattern(candidate: candidate, node: node) }
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn match_node_has_arm_pattern(candidate: Node, node: Node) -> Bool {
+  match candidate.kind {
+    ComputationNode { behavior: Match } =>
+      match list_find_first(
+        xs: list_map(xs: match_role_slots(n: candidate, role: MatchArmSlot), f: fn(slot) { child_slot_target(slot: slot) }),
+        predicate: fn(arm) {
+          match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+            Accepted { value: pattern, diagnostics: _ } => node_same_occurrence(a: pattern, b: node)
+            Rejected { diagnostics: _ } => false
+          }
+        }
+      ) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: _ } => false
+  }
+}
+
 // A NESTED VALUE REUSES THE FACTS-AWARE RULE. A marked declaration reference reached through a record
 // field or a match arm is projected by project_value_node_from_inferred_facts, the one place that
 // knows a reference is a nullary coproduct arm; every other node stays the transform projection.
@@ -896,7 +936,8 @@ fn project_nested_node_with_facts(
     TypeNode { connective: Conj } =>
       match inferred_facts_for_projected_node(tree: tree, node: node) {
         Absent =>
-          if declaration_reference_body_marked(target: node)
+          if node_is_match_arm_pattern(arrow: arrow, node: node)
+            && declaration_reference_body_marked(target: node)
             && infer_nullary_zero_param_coproduct_arm_declared(node: node, index: declarations) {
             project_nullary_arm_binding(node: node)
           } else {
