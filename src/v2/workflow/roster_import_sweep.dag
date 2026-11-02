@@ -498,6 +498,8 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     // ambient `append_contract` row of std.primitives (dag/std/primitives.dag), the interpreter arm, the emitter's concat-form predicate and the
     // dag/ population stay on the ambient spelling until v1's own list heads are rehomed (tidy-ant-251's F6 batch A).
     RosterHeadRow { call: "append", key: "append/list", import_name: "list_append", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [RosterLabelRename { from: "items", to: "right" }], head: RenameHead { to: "list_append", positional: ["left", "right"], appended: [] }, site_gated: true },
+// `last` had no body; std.algebra list_last is list_head's mirror (Empty => Absent).
+    RosterHeadRow { call: "last", key: "last", import_name: "list_last", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_last", positional: ["xs"], appended: [] }, site_gated: false },
   ]
 }
 
@@ -3103,6 +3105,7 @@ fn roster_rename_control_names() -> List<String> {
     "collection-head-first", "collection-head-reverse", "collection-head-take", "collection-head-flat_map",
     "collection-head-append", "collection-head-append-pipe", "collection-head-append-foreign-label", "collection-head-append-reordered", "collection-head-append-arity",
     "collection-head-append-site-gated", "collection-head-append-whole-row-set-refuses",
+    "collection-head-last",
     "appended-callee-uncovered-refuses",
     "appended-callee-covered-admitted",
     "occurrences-byte-column-after-multibyte-text",
@@ -3172,7 +3175,8 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     roster_control_verdict(name: "collection-head-append-pipe", fail: roster_append_expect_text(name: "collection-head-append-pipe", before: append_fn_head + "  xs |> append(items: ys)" + append_fn_tail, keys: append_key, after: append_fn_head_moved + "  list_append(left: xs, right: ys)" + append_fn_tail, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-append-foreign-label", fail: roster_append_expect_refusal(name: "collection-head-append-foreign-label", text: append_fn_head + "  append(xs, parts: ys)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-append-reordered", fail: roster_append_expect_refusal(name: "collection-head-append-reordered", text: append_fn_head + "  append(items: ys, xs)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "collection-head-append-arity", fail: roster_append_expect_refusal(name: "collection-head-append-arity", text: append_fn_head + "  append(xs)" + append_fn_tail, keys: append_key, want: "rename-call-arity call=append", prepared: prepared, lex: lex))
+    roster_control_verdict(name: "collection-head-append-arity", fail: roster_append_expect_refusal(name: "collection-head-append-arity", text: append_fn_head + "  append(xs)" + append_fn_tail, keys: append_key, want: "rename-call-arity call=append", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-last", fail: roster_head_expect(name: "collection-head-last", row: "last", call: "last", sig: "xs: List<Int>", arg: "xs", to: "list_last", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex))
   ]
 }
 

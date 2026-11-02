@@ -1,0 +1,24 @@
+module test.claim.list_last_optional_witness
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List }
+import std.algebra { list_last }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data empty_ints: List<Int> = []
+data some_ints: List<Int> = [7, 8]
+
+test fn empty_list_last_is_absent() -> Bool {
+  match list_last(xs: empty_ints) {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn nonempty_list_last_is_present_last_element() -> Bool {
+  match list_last(xs: some_ints) {
+    Present { value: v } => v == 8
+    _ => false
+  }
+}

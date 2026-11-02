@@ -1,0 +1,45 @@
+module gunbc.host.host_primary_network_desired
+
+import std.types { List }
+import std.nat { Nat }
+import std.optional { Present }
+import std.measure { ByteSize }
+import product.host_identity { HostIdentity }
+import extdeps.network.mac { Eui48Address }
+import extdeps.netplan.netplan { NetplanRenderer }
+import gunbc.host.host_primary_network_observed { OperatorHandNetworkChange, srv1_primary_network_receipt_2026_10_25, srv1_hand_move_to_1g }
+
+// THE PRIMARY-NETWORK ROWS, AS A LEAF. They were authored in gunbc.host.host_primary_network beside the
+// plan, render and apply machinery that consumes them; they moved here so a module that only needs to
+// know which NIC carries a host's network -- the board-function admission of an Ethernet port,
+// gunbc.fleet.board_function_admission -- does not import that machinery (its closure went from 135
+// modules to 2,979 when it did). gunbc.host.host_primary_network remains the authority that renders,
+// plans and applies them; the rows' notes there still describe them.
+
+// DHCP addressing carries its resolver: netplan's default for a dhcp4 definition takes the lease's
+// DNS servers, which is where srv1's resolver comes from today. A static arm, with its own servers,
+// lands with the first row that needs one.
+type PrimaryAddressing = PrimaryDhcp4 { route_metric: Nat? }
+
+type HostPrimaryNetworkDesired {
+  host: HostIdentity
+  nic: Eui48Address
+  renderer: NetplanRenderer
+  addressing: PrimaryAddressing
+  mtu: ByteSize
+  adopted: OperatorHandNetworkChange
+}
+
+// srv1's row is its 2026-10-25 read: the NIC holding the lease, the renderer that rendered it, the
+// route metric the hand file set (200, chosen beside a 10G default route that no longer exists, kept
+// so the first apply changes no route) and the link's MTU.
+data srv1_primary_network_desired: HostPrimaryNetworkDesired = HostPrimaryNetworkDesired {
+  host: srv1_primary_network_receipt_2026_10_25.host,
+  nic: srv1_primary_network_receipt_2026_10_25.lease.holder,
+  renderer: srv1_primary_network_receipt_2026_10_25.renderer,
+  addressing: PrimaryDhcp4 { route_metric: Present { value: srv1_primary_network_receipt_2026_10_25.lease.route_metric } },
+  mtu: srv1_primary_network_receipt_2026_10_25.mtu,
+  adopted: srv1_hand_move_to_1g,
+}
+
+data host_primary_network_rows: List<HostPrimaryNetworkDesired> = [srv1_primary_network_desired]
