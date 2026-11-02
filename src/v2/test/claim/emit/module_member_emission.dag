@@ -395,3 +395,22 @@ test fn a_generic_refinement_member_refuses_under_the_generic_reason_holds() -> 
     MemberClosureRefused { reason: _ } => false
   }
 }
+
+// PROBE (never for landing): the production-route verdict plus the captured kind for a coproduct whose
+// variant field carries a where, beside a plain coproduct control.
+fn ce_probe_verdict_text(v: MemberEmissionVerdict) -> String {
+  match v {
+    MemberEmitted { text: t } => concat("EMITTED<<", concat(t, ">>"))
+    MemberRefused { reason: r } => concat("REFUSED:", symbol_lexeme(sym: r))
+    MemberClosureRefused { reason: r } => concat("CLOSURE_REFUSED:", symbol_lexeme(sym: r))
+  }
+}
+
+fn ce_probe_nested_where_text() -> String {
+  let nested = "module v2.test.member_emission\n\ntype Bag = A { n: Int where positive } | B\n\nfn positive(x: Int) -> Bool { true }\n\nfn f(x: Int) -> Int { x as Int }\n"
+  let plain = "module v2.test.member_emission\n\ntype Bag2 = A { n: Int } | B\n\nfn f(x: Int) -> Int { x as Int }\n"
+  concat(
+    concat("NESTED kinds=[", concat(kind_capture_of(source: nested), concat("] ", ce_probe_verdict_text(v: member_emission_verdict_of(source: nested))))),
+    concat("\nPLAIN kinds=[", concat(kind_capture_of(source: plain), concat("] ", ce_probe_verdict_text(v: member_emission_verdict_of(source: plain)))))
+  )
+}
