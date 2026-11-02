@@ -992,3 +992,59 @@ test fn mbt_r_an_intended_catch_all_over_a_singleton_or_payload_remainder_infers
   mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_one_left, arms: mbt_r_intended_arms)))
     && mbp_infers(reading: mbp_reading(src: mbt_r_src(decl: mbt_r_payload_left, arms: mbt_r_intended_arms)))
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// APPENDED FOR gunb-ai/gunbc#15671 (v2.construct-tag-expected-type), at keen-heron-809's ruling and in
+// this module because it is the claim route that runs INFERENCE (assemble -> resolve -> infer). A copy of
+// that pipeline in another claim module would have been a second route for the same subject. Appended as a
+// separate block at the end of the file: gunb-ai/gunbc#15380 (jolly-cat-271) adds claims here too, and
+// whichever lands second keeps both blocks.
+//
+// WHAT MOVED. An arm pattern's constructor-or-binder shape used to be re-derived here from the pattern's
+// SYNTAX: an atom with no payload was a catch-all binder (`covers: CoversAll`), and only a tag carrying
+// payload fields was a variant -- the scrutinee's variant list was consulted by SPELLING, never by what
+// resolve bound. So a nullary arm that resolve binds to a declaration was a catch-all binder to inference,
+// and infer_coproduct_arm_after_catch_all refused the arm AFTER it (^infer_match_arm_unreachable). #15671
+// makes the classifier read resolve's recorded binding (by either route -- keying on the route would be
+// provenance, not meaning), so the site gets the cause that names the fact that is wrong
+// (^infer_match_pattern_variant_not_declared) and the following arm stays reachable. A spelling with NO
+// recorded declaration is still today's binder, which the control below keeps on fire: without it the
+// absence claims above would be green by construction.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+// THE SITE'S OWN CAUSE, NOT ITS NEIGHBOUR'S. The scrutinee's set is readable and does NOT declare `DA`, so
+// resolve leaves the name door to bind it (a foreign coproduct's arm, visible in this module). Inference must
+// refuse THIS arm for a tag the scrutinee does not declare, and must not refuse the arm after it as
+// unreachable. Before the classifier change both halves fail: the spelling is not a variant, so the atom was
+// a catch-all, so `CA` -- a real arm -- was reported unreachable and the site itself passed.
+data mbt_foreign_coproduct_arm_src: String = "module p\n\ntype C\n  = CA\n  | CB\n\ntype D\n  = DA\n  | DB\n\nfn f(c: C) -> Int {\n  match c {\n    DA => 0\n    CA => 1\n    CB => 2\n  }\n}\n"
+
+test fn mbt_an_arm_spelled_as_a_foreign_coproduct_s_arm_refuses_the_site_not_the_next_arm_holds() -> Bool {
+  let r = mbp_reading(src: mbt_foreign_coproduct_arm_src)
+  mbp_reports(reading: r, reason: ^infer_match_pattern_variant_not_declared)
+    && (!mbp_reports(reading: r, reason: ^infer_match_arm_unreachable))
+}
+
+// THE POSITIVE CONTROL, so the absence above is a measurement and not a construction. A lowercase binder
+// names no declaration at all, so it stays today's catch-all, and the arm after it IS unreachable -- at this
+// head and at main. If the classifier were merely disabling the catch-all reading, this claim would go red.
+data mbt_lowercase_binder_before_an_arm_src: String = "module p\n\ntype C\n  = CA\n  | CB\n\nfn f(c: C) -> Int {\n  match c {\n    other => 0\n    CA => 1\n    CB => 2\n  }\n}\n"
+
+test fn mbt_a_lowercase_binder_before_a_real_arm_is_still_a_catch_all_and_the_later_arm_refuses_holds() -> Bool {
+  mbp_reports(reading: mbp_reading(src: mbt_lowercase_binder_before_an_arm_src), reason: ^infer_match_arm_unreachable)
+}
+
+// A PATTERN POSITION THAT NAMES A MODULE-LEVEL DATA VALUE. tidy-ant-251's ruling: the visible-value gate runs
+// BEFORE any constructor reading, so a spelling that shadows a value stays the loud refusal it is today and
+// inference never sees the atom. What this claim pins is the route -- the program stops before inference and
+// neither of the two arm-shape diagnostics fires on `CA`/`CB`. It deliberately does NOT name the resolve
+// reason: the run reports it, and the reason goes into this arm from the receipt rather than from my reading
+// of the code (keen-heron-809: do not guess a diagnostic ahead of the run).
+data mbt_data_value_in_arm_pattern_src: String = "module p\n\ntype C\n  = CA\n  | CB\n\ntype D\n  = DA\n  | DB\n\ndata cz: Int = 0\n\nfn f(c: C) -> Int {\n  match c {\n    cz => 0\n    CA => 1\n    CB => 2\n  }\n}\n"
+
+test fn mbt_a_module_level_data_name_in_an_arm_pattern_stops_before_inference_reads_the_arm_holds() -> Bool {
+  let r = mbp_reading(src: mbt_data_value_in_arm_pattern_src)
+  (!mbp_infers(reading: r))
+    && (!mbp_reports(reading: r, reason: ^infer_match_arm_unreachable))
+    && (!mbp_reports(reading: r, reason: ^infer_match_pattern_variant_not_declared))
+}
