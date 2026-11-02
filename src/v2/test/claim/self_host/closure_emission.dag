@@ -672,3 +672,35 @@ fn ce_probe_sameline_text() -> String {
       concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
   }
 }
+
+// ---- node adhoc-56744ea7 fourth probe: isolate optional ABSENT vs any-block-close-then-statement ----
+// Member body `if c { i } else { i }\n  i` : the if HAS an else, so optional(if_else_tail) takes its
+// PRESENT branch (consumes `else { i }`), then the tail statement `i` follows on a new line -- the exact
+// complement of ce_probe_elseless_text (which exercises the absent branch). Discriminator:
+//  - elseelse ACCEPTED + elseless REJECTED on the emitted side => the defect is in optional's ABSENT
+//    branch specifically (the rejected-else table it returns to the repeat), family O.
+//  - elseelse ALSO REJECTED => any block-close followed by a line-break-gated statement drops its tail,
+//    a more general block/repeat/layout issue independent of optional-absence.
+// Member bytes for the emitted fixture: elseelse member sha256 68012d82bfd906bcfb78ea0fe4058a7037551104e1e5fd50b3cda45a4ff73b8f.
+data ce_refusing_elseelse_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if c { i } else { i }\n  i\n}\n"
+
+fn ce_emission_elseelse() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_read(source: ce_refusing_elseelse_member_source, id: ^ce_refusing_elseelse_member_read, path: "src/v2/test/ce_refusing_member.dag"),
+      ce_read(source: ce_refusing_int_entry_source, id: ^ce_refusing_int_entry_read, path: "src/v2/test/ce_refusing_entry.dag")
+    ],
+    entry: "v2.test.ce_refusing_entry"
+  )
+}
+
+// PROBE (not for landing): if WITH else + tail on next line -> isolates optional-absent vs any block-close.
+fn ce_probe_elseelse_text() -> String {
+  let located = ce_emission_elseelse()
+  match located.outcome {
+    Rejected { diagnostics: d } =>
+      concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
+    Accepted { value: e, diagnostics: _ } =>
+      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+  }
+}
