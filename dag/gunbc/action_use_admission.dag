@@ -379,9 +379,6 @@ fn checkout_commit_job_outputs_from_producers(producers: List<CommitOutputProduc
 // only admissible source is the row that also causes the job to be emitted. A caller that passes a
 // producer it invented gains nothing: the emitter that turns a row into a verifier job and the row are
 // one record, and the seed checkout refuses to render without a job that earned the output.
-data checkout_commit_job_outputs: List<String> =
-  checkout_commit_job_outputs_from_producers(producers: commit_output_producers)
-
 fn checkout_commit_job_outputs_with_extra_producers(extra: List<CommitOutputProducer>) -> List<String> {
   checkout_commit_job_outputs_from_producers(
     producers: concat(commit_output_producers, extra)

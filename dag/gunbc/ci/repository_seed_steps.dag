@@ -216,7 +216,8 @@ fn seed_build_step(seed: PublicSeed) -> Outcome<Step> {
 // here, once; and the allowlist entry the wall admits is commit_output_producer_path of the same record.
 // Renaming the output therefore means editing the row, and the checkout's ref and the wall's allowlist
 // move together because they are the same fold -- not two strings that a hand-edit can pull apart, which
-// is the ruling the reviewer left on #15631 about checkout_commit_job_outputs.
+// is the ruling the reviewer left on #15631 about the checkout allowlist: an entry is earned by a
+// producer record, never hand-written.
 
 fn seed_pin_verifier_step_id(seed: PublicSeed) -> String {
   join([seed.verifier.producer.job_id as String, "-check"], "")

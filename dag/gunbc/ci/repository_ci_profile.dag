@@ -108,7 +108,7 @@ type SeedSource
 // THE VERIFIER PRODUCER, as the wall knows it. This ONE record names both the job that proves the pin
 // exists and the output the seed checkout may consume: the step that earns the output and the allowlist
 // entry that admits consuming it are the same projection of it (gunbc.action_use_admission
-// checkout_commit_job_outputs is a fold over these records, so an entry cannot be added, renamed or
+// checkout_commit_job_outputs_from_producers is a fold over these records, so an entry cannot be added, renamed or
 // dropped without touching the job that earned it -- the manager's ruling on #15631 that a hand-added
 // allowlist entry is a second authority). There is deliberately NO url field here: where the seed comes
 // from is derived from the row's own `repository` (gunbc.ci.repository_seed_steps seed_pin_fetch_url), so
@@ -131,18 +131,6 @@ type PublicSeed {
   build_step_name: NonEmptyStr
 }
 
-// IS THE SEED CHECKOUT A COMMIT THE VERIFIER CAN PROVE? The three consumers (the required witness gate,
-// the drift watch, the heal publisher) ask this once, before a byte is emitted, and refuse the workflow
-// with the row's own reason when it is not. A branch or an owed pin is not a defect in the model -- it
-// is a requirement the operator has not filled -- so the refusal names the missing fact and the act that
-// fills it, and no consumer may downgrade to a branch instead.
-fn seed_source_is_a_provable_commit(source: SeedSource) -> Bool {
-  match source {
-    Seed_commit_pin { sha: s } => commit_sha_text_holds(head: s)
-    Seed_pin_owed { owed_because: _ } => false
-  }
-}
-
 // THE PIN ITSELF, for the emitter that has to PUT it in a step. There is one way to read a pin out of a
 // row and it is this: an owed pin is a refusal, never an empty string, so no consumer can render a
 // workflow whose ref is "" (which GitHub reads as "the default branch", the very fallback being removed).
@@ -160,10 +148,10 @@ fn seed_source_pin(source: SeedSource) -> Optional<String> {
 fn seed_source_refusal_reason(source: SeedSource) -> String {
   match source {
     Seed_commit_pin { sha: s } =>
-      if commit_sha_text_holds(head: s) {
-        ""
-      } else {
-        join(["Seed_commit_pin carries ", s, ", which std.types commit_sha_text_holds refuses: a seed pin is forty lowercase hexadecimal characters and nothing else"], "")
+      match seed_source_pin(source: source) {
+        Present { value: _ } => ""
+        Absent {  } =>
+          join(["Seed_commit_pin carries ", s, ", which std.types commit_sha_text_holds refuses: a seed pin is forty lowercase hexadecimal characters and nothing else"], "")
       }
     Seed_pin_owed { owed_because: b } =>
       join(["Seed_pin_owed: this seed has no approved commit yet (", b, "). Until the intended source commit is recorded as Seed_commit_pin, no workflow may check out the seed: a branch or a branch tip names a different tree on every run, and a placeholder sha would claim a commit nobody approved."], "")
@@ -684,11 +672,17 @@ fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEm
 fn profile_seed_pin_is_a_commit_or_is_owed(profile: RepositoryCiProfile) -> Bool {
   match profile_public_seed(profile: profile) {
     Absent {  } => true
-    Present { value: seed } =>
-      match seed.source {
-        Seed_commit_pin { sha: sha } => commit_sha_text_holds(head: sha)
-        Seed_pin_owed { owed_because: _ } => true
-      }
+    Present { value: seed } => match seed.source {
+      // An owed pin is the operator's unfinished requirement, not a malformed row: it is admitted here,
+      // and every seed-consuming emitter refuses it by name. A declared pin is admitted only as the one
+      // reading of it admits -- there is no second sha check here to fall out of step with.
+      Seed_pin_owed { owed_because: _ } => true
+      Seed_commit_pin { sha: _ } =>
+        match seed_source_pin(source: seed.source) {
+          Present { value: _ } => true
+          Absent {  } => false
+        }
+    }
   }
 }
 
