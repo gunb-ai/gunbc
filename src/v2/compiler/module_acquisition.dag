@@ -1735,13 +1735,22 @@ fn acquisition_reach_go(members: Map<String, AcquiredModule>, reach: Acquisition
 
 // Every name the entries reach through the members' requests. A name that is not a member is reached and
 // expands to nothing; whether an exact request owed it a read is acquisition_exactness_requests' question.
-fn acquisition_reached(entries: List<String>, modules: List<AcquiredModule>) -> Map<String, Bool> {
+fn acquisition_members_of(modules: List<AcquiredModule>) -> Map<String, AcquiredModule> {
+  fold_list(xs: modules, empty: empty_map(), cons: fn(acc, member) { map_insert(m: acc, key: member.name, value: member) })
+}
+
+// The reach over a member table built once: a caller asking many entries' reaches builds the table once and reads it per entry.
+fn acquisition_reached_in(members: Map<String, AcquiredModule>, entries: List<String>) -> Map<String, Bool> {
   acquisition_reach_go(
-    members: fold_list(xs: modules, empty: empty_map(), cons: fn(acc, member) { map_insert(m: acc, key: member.name, value: member) }),
+    members: members,
     reach: fold_list(xs: entries, empty: AcquisitionReach { reached: empty_map(), pending: [] }, cons: fn(acc, entry) {
       acquisition_reach_visit(reach: acc, name: entry)
     })
   )
+}
+
+fn acquisition_reached(entries: List<String>, modules: List<AcquiredModule>) -> Map<String, Bool> {
+  acquisition_reached_in(members: acquisition_members_of(modules: modules), entries: entries)
 }
 
 fn acquisition_first_duplicate(pending: List<String>, seen: Map<String, Bool>) -> Optional<String> {
