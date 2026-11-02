@@ -37,7 +37,11 @@ import product.capacity.pool_events { SeatRequest }
 import product.capacity.lease { LeasePolicy, LeaseGrant }
 import std.resource_release_law { QuiescenceRequired }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
+}
 import gunbc.fabric.fabric_event_log { SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, fabric_seat_release, seat_release_wire }
 import gunbc.harness.harness_seat {
   harness_settle_caller_turn, PlacementRound, HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, HarnessSeatReference, HarnessCallerHold, HarnessCallerTurn, harness_complete_with_grant, HarnessCallerTurnCompleted, HarnessCallerCompletionRefused, harness_now_epoch, harness_seat_pool_root, harness_claim_seat, HarnessSeatClaimed, HarnessSeatClaimRefused,
@@ -806,12 +810,12 @@ fn claim_taken(c: HarnessSeatClaim) -> Bool {
 // The mutation that skips the predecessor proof lets B claim, and this reads RED.
 test fn only_one_of_two_retries_claims_the_seat_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let fabric_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir.path))
   let work = "logical-work-claim" as LogicalWorkId
   let root = dir.path as NonEmptyStr
-  let ok = if !dir.success { false } else { match fabric_storage_file_root_ensure(root: fabric) {
-    FabricStorageRootReady => {
-      let store = FabricStorageLocalFiles { root: fabric }
+  let ok = if !dir.success { false } else { match fabric_wet {
+    FabricWetStoreReady { store: ops } => {
+      let store = FabricStorageLocalFiles { operations: ops }
       let partition = "claim-partition" as PartitionId
       let hold = HarnessCallerHold { work: work, root: root }
       let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
@@ -842,16 +846,16 @@ test fn only_one_of_two_retries_claims_the_seat_by_real_execution() -> Bool {
 
 fn completion_fixture(ordinal: Nat, acquired_at_offset: Int, release_before: Bool) -> String {
   let dir = shell.Mktemp.Dir()
-  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let fabric_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir.path))
   let state_root = dir.path as NonEmptyStr
   let turn = HarnessCallerTurn { dispatch_node: "completion-node" as NonEmptyStr, ordinal: ordinal, state_root: state_root }
-  let observed = if !dir.success { "setup: no temp dir" } else { match fabric_storage_file_root_ensure(root: fabric) {
-    FabricStorageRootReady => match logical_work_id_of(key: DispatchTurnKey { dispatch_node: turn.dispatch_node, ordinal: turn.ordinal }) {
+  let observed = if !dir.success { "setup: no temp dir" } else { match fabric_wet {
+    FabricWetStoreReady { store: ops } => match logical_work_id_of(key: DispatchTurnKey { dispatch_node: turn.dispatch_node, ordinal: turn.ordinal }) {
       WorkIdKeyNotOctets { observed: _ } => "setup: work id"
       WorkIdDerived { work: work } => match harness_now_epoch() {
         Absent => "setup: clock"
         Present { value: now } => {
-          let store = FabricStorageLocalFiles { root: fabric }
+          let store = FabricStorageLocalFiles { operations: ops }
           let partition = "claim-partition" as PartitionId
           let hold = HarnessCallerHold { work: work, root: state_root }
           let persisted = persist_waiting_durable(root: state_root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
@@ -904,12 +908,12 @@ test fn completion_refuses_a_grant_the_partition_has_released_by_real_execution(
 // the predecessor (the former behaviour) cannot see A's acquisition and so refuses B in scenario 2.
 fn failover_fixture(scenario: Int) -> String {
   let dir = shell.Mktemp.Dir()
-  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let fabric_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir.path))
   let work = "logical-work-failover" as LogicalWorkId
   let root = dir.path as NonEmptyStr
-  let observed = if !dir.success { "setup: no temp dir" } else { match fabric_storage_file_root_ensure(root: fabric) {
-    FabricStorageRootReady => {
-      let store = FabricStorageLocalFiles { root: fabric }
+  let observed = if !dir.success { "setup: no temp dir" } else { match fabric_wet {
+    FabricWetStoreReady { store: ops } => {
+      let store = FabricStorageLocalFiles { operations: ops }
       let card_a = "card-a" as PartitionId
       let card_b = "card-b" as PartitionId
       let hold = HarnessCallerHold { work: work, root: root }
@@ -982,12 +986,12 @@ fn settle_bound(grant: LeaseGrant, store: FabricStorageBinding, partition: Parti
 // would reach the worker turn and this reads RED.
 test fn only_one_of_two_acquired_seats_for_one_hold_leaves_settle_bound_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let fabric_wet = fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: dir.path))
   let work = "logical-work-settle" as LogicalWorkId
   let root = dir.path as NonEmptyStr
-  let ok = if !dir.success { false } else { match fabric_storage_file_root_ensure(root: fabric) {
-    FabricStorageRootReady => {
-      let store = FabricStorageLocalFiles { root: fabric }
+  let ok = if !dir.success { false } else { match fabric_wet {
+    FabricWetStoreReady { store: ops } => {
+      let store = FabricStorageLocalFiles { operations: ops }
       let partition = "claim-partition" as PartitionId
       let hold = HarnessCallerHold { work: work, root: root }
       let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)

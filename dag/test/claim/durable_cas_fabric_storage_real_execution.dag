@@ -12,7 +12,11 @@ import std.durable_compare_and_set {
 }
 import gunbc.durable_cas_file_store { CasAttemptAdmitted, admit_cas_attempt, VerifiedCasAttempt }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
+}
 import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot, cas_slot_head }
 import gunbc.fabric.fabric_storage_client { fabric_storage_head, fabric_storage_put, fabric_storage_advance }
 import std.fabric_storage { FabricObject, FabricObjectRef, fabric_object_ref_eq, FabricHeadObserved, FabricHeadAt, ExpectHeadAt, FabricObjectStored, FabricHeadMoved }
@@ -29,19 +33,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // generation 1; an update expecting generation 1 commits generation 2; an update expecting the
 // stale generation 1 after that fails naming generation 2.
 
-fn dcel_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let observed = scenario(dir.path)
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && observed && cleaned.success
+// THE SCENARIO IS A HOST, NOT A DIRECTORY. An isolated instance root, the declared member stood up
+// from the same declaration, and the store opened through the one mint -- which is how production
+// opens it, so a scenario cannot hand the store a directory to sit at. A scenario or mint that
+// refuses fails the claim; it is never turned into a store.
+fn dcel_two_bindings(body: fn(FabricStorageBinding, FabricStorageBinding) -> Bool) -> Bool {
+  match fabric_wet_scenario(template: "/tmp/gunbc_dcel_wet.XXXXXX" as NonEmptyStr) {
+    FabricWetScenarioUnready { detail: _ } => false
+    FabricWetScenarioReady { instance: instance, root: _ } =>
+      match fabric_wet_store(members: fabric_storage_slots, instance: instance) {
+        FabricWetStoreUnready { area: _, detail: _ } => false
+        FabricWetStoreReady { store: ops } =>
+          body(FabricStorageLocalFiles { operations: ops }, FabricStorageLocalFiles { operations: ops })
+      }
+  }
 }
 
-fn dcel_store(dir: FilePath) -> FabricStorageBinding {
-  FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr) }
-}
-
-fn dcel_store_ready(dir: FilePath) -> Bool {
-  match fabric_storage_file_root_ensure(root: fabric_storage_file_root(root: join([dir as String, "/fabric-storage"], "") as NonEmptyStr)) { FabricStorageRootReady => true  _ => false }
+fn dcel_one_binding(body: fn(FabricStorageBinding) -> Bool) -> Bool {
+  dcel_two_bindings(body: fn(first, _second) { body(first) })
 }
 
 fn dcel_verified(key: NonEmptyStr, expected_generation: Int, value: NonEmptyStr) -> VerifiedCasAttempt? {
@@ -89,12 +98,9 @@ fn dcel_reads_absent(store: FabricStorageBinding, key: NonEmptyStr) -> Bool {
 }
 
 test fn one_slot_is_one_head_and_two_bindings_see_one_generation_by_real_execution() -> Bool {
-  dcel_with_temp_dir(scenario: fn(dir) {
-    let e1 = dcel_store(dir: dir)
-    let e2 = dcel_store(dir: dir)
+  dcel_two_bindings(body: fn(e1, e2) {
     let key = "witness-slot" as NonEmptyStr
-    dcel_store_ready(dir: dir)
-      && dcel_reads_absent(store: e1, key: key)
+    dcel_reads_absent(store: e1, key: key)
       && dcel_reads_absent(store: e2, key: key)
       && dcel_commits_at(store: e1, key: key, expected_generation: 0, value: "first" as NonEmptyStr, generation: 1)
       && dcel_reads(store: e2, key: key, generation: 1, value: "first")
@@ -115,11 +121,9 @@ test fn one_slot_is_one_head_and_two_bindings_see_one_generation_by_real_executi
 // compare-and-set after the cycle would refuse on either implementation (it re-observes
 // generation 3), so this drives fabric_storage_advance directly with W1's stale expectation.
 test fn a_cycled_value_does_not_let_a_stale_writer_advance_by_real_execution() -> Bool {
-  dcel_with_temp_dir(scenario: fn(dir) {
-    let store = dcel_store(dir: dir)
+  dcel_one_binding(body: fn(store) {
     let key = "cycling-slot" as NonEmptyStr
-    dcel_store_ready(dir: dir)
-      && dcel_commits_at(store: store, key: key, expected_generation: 0, value: "first" as NonEmptyStr, generation: 1)
+    dcel_commits_at(store: store, key: key, expected_generation: 0, value: "first" as NonEmptyStr, generation: 1)
       && (match dcel_head_object(store: store, key: key) {
             Absent => false
             Present { value: o1 } =>

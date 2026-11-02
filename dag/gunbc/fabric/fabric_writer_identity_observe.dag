@@ -50,7 +50,7 @@ type FabricWriterIdentityReceipt {
 
 fn binding_words(binding: FabricStorageBinding) -> String {
   match binding {
-    FabricStorageLocalFiles { root: _ } => "local"
+    FabricStorageLocalFiles { operations: _ } => "local"
     FabricStorageDoorSocket { socket: k, route_prefix: route } => join(["door ", k as String, " ", route as String], "")
     FabricStorageServed { endpoint: e } => join(["served ", e as String], "")
     FabricStorageBindingUnplaced => "unplaced"

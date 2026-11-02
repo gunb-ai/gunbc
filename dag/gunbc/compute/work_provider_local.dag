@@ -86,6 +86,7 @@ import gunbc.compute.host_capacity {
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
+  ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
 }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
 import gunbc.compute.compute_producer_lease {
@@ -3241,12 +3242,17 @@ fn compute_recovery_after_settlement(reference: String, verdict: String, returne
 // request is the seat the attempt record says it was granted -- the release fold consults no
 // request, but the subject names the hold it is about rather than a figure invented for it.
 fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyStr, reason: String) -> ComputeRelease {
-  compute_release_on(
-    store: compute_capacity_store(subject: subject),
+  // THE LEDGER IS OPENED, AND A LEDGER THAT DOES NOT STAND IS A REFUSED RELEASE, not a release that
+  // reports nothing held: the caller's exit code 2 exit is the honest answer, and the seat stays held.
+  match compute_capacity_store(subject: subject) {
+    ComputeCapacityStoreUnready { area: area, detail: detail } => ComputeReleaseRefused { detail: join(["the capacity ledger is not standing at ", area, ", so no seat can be released: ", detail], "") }
+    ComputeCapacityStoreReady { store: store } => compute_release_on(
+    store: store,
     partition: subject.partition,
     appropriation: kibibyte(count: 0),
     reference: reference,
     reason: join(["recovered: ", reason], "") as NonEmptyStr)
+  }
 }
 
 // THE DOOR A WORKER OR AN OPERATOR ACTUALLY OPENS. Three exits and they are the three the rest of

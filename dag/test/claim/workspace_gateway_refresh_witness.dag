@@ -1,6 +1,6 @@
 module test.claim.workspace_gateway_refresh_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, FilePath }
 import extdeps.shell
 import extdeps.shell.exec { process_observation }
 import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
@@ -8,7 +8,11 @@ import gunbc.workspace_gateway { workspace_fleet_gateway }
 import gunbc.workspace_gateway_admission { workspace_gateway_subject, workspace_gateway_evidence }
 import gunbc.workspace_gateway_store { workspace_publish_gateway_evidence, workspace_publish_gateway_refusal, workspace_current_gateway_connection, WorkspaceGatewayReady, WorkspaceGatewayUnavailable, workspace_gateway_store }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready,
+}
 
 // Synthetic SSH observations exercise the actual durable publication/read path, not live access.
 fn gateway_refresh_cycle(store: FabricStorageBinding) -> Bool {
@@ -50,12 +54,19 @@ fn gateway_refresh_cycle(store: FabricStorageBinding) -> Bool {
 }
 
 test fn refresh_failure_withdraws_success_delayed_success_cannot_revive_and_new_refresh_recovers() -> Bool {
-  let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: directory.path)
-  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => gateway_refresh_cycle(store: FabricStorageLocalFiles { root: root })
-    _ => false
-  } }
-  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
-  passed && cleaned.success
+  // THE STORE IS OPENED THROUGH THE ONE MINT over the declared chain and an isolated instance of a
+  // temporary directory -- the recorded witness route, not a store directory this claim picks.
+  let scenario = fabric_wet_scenario(template: "/tmp/gunbc_gateway_refresh.XXXXXX" as NonEmptyStr)
+  let passed = match scenario {
+    FabricWetScenarioUnready { detail: _ } => false
+    FabricWetScenarioReady { instance: inst, root: _ } => match fabric_wet_store(members: fabric_storage_slots, instance: inst) {
+      FabricWetStoreUnready { area: _, detail: _ } => false
+      FabricWetStoreReady { store: ops } => gateway_refresh_cycle(store: FabricStorageLocalFiles { operations: ops })
+    }
+  }
+  let cleaned = match scenario {
+    FabricWetScenarioUnready { detail: _ } => true
+    FabricWetScenarioReady { instance: _, root: r } => shell.Remove.RecursiveForce(path: r as FilePath).success
+  }
+  passed && cleaned
 }

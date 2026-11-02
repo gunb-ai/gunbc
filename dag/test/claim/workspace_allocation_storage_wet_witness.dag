@@ -3,7 +3,11 @@ module test.claim.workspace_allocation_storage_wet_witness
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.shell
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBinding }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready, fabric_fixture_instance,
+}
 import gunbc.workspace_allocation_store {
   workspace_record_request, workspace_read_owner, workspace_request_release, workspace_settle_unplanned_retirement,
   WorkspaceStoreWritten, WorkspaceStoreWriteRefused, WorkspaceStoreReadOk, WorkspaceReleased, workspace_allocation_store }
@@ -13,11 +17,10 @@ import test.claim.workspace_allocation_lifecycle_witness { allocation_test_reque
 test fn workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head() -> Bool {
   let directory = shell.Mktemp.Dir()
   let path = join([directory.path as String, "/fabric"], "") as NonEmptyStr
-  let root = fabric_storage_file_root(root: path)
-  let observed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => workspace_storage_admission_cycle(
-      first: FabricStorageLocalFiles { root: root },
-      second: FabricStorageLocalFiles { root: fabric_storage_file_root(root: path) },
+  let observed = if !directory.success { false } else { match fabric_wet_store(members: fabric_storage_slots, instance: fabric_fixture_instance(root: directory.path as String)) {
+    FabricWetStoreReady { store: ops } => workspace_storage_admission_cycle(
+      first: FabricStorageLocalFiles { operations: ops },
+      second: FabricStorageLocalFiles { operations: ops },
     )
     other => false
   } }

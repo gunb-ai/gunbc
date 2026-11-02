@@ -6,7 +6,8 @@ import std.fabric_storage { fabric_object_ref_of_wire, FabricObjectFetched, Fabr
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, pool_event_wire_text }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_ensure, fabric_storage_file_get }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_get, fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture { fabric_wet_run, fabric_fixture_instance }
 import gunbc.fabric.fabric_event_log {
   event_log_append, EventAppended, EventAppendStale, EventAppendRefused,
   event_log_read_partition, PartitionReadOk, PartitionReadRefused,
@@ -19,10 +20,11 @@ import gunbc.fabric.fabric_event_log {
 
 fn witness_partition() -> PartitionId { "witness-seats" as PartitionId }
 
-fn fresh_files() -> FabricStorageFileRoot {
-  let files = fabric_storage_file_root(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_log.XXXXXX").path as NonEmptyStr)
-  let _ready = fabric_storage_file_root_ensure(root: files)
-  files
+// THE SCENARIO IS AN ISOLATED INSTANCE OVER A TEMPORARY DIRECTORY, and every store below is obtained from
+// the ONE mint over the declared chain (test.claim.fabric.fabric_storage_fixture fabric_wet_run): a store
+// that is not standing fails the claim, and no scenario names a store directory.
+fn fresh_instance() -> HostDashboardInstance {
+  fabric_fixture_instance(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_log.XXXXXX").path as String)
 }
 
 fn event(parent: HeadExpectation, at: EpochSecs, payload: PoolEvent) -> ChainEvent<PoolEvent> {
@@ -50,17 +52,18 @@ fn append_id(store: FabricStorageBinding, parent: HeadExpectation, at: EpochSecs
 // THE INHABITANCE CLAIM: three chained appends, then one partition read walks all three, oldest
 // first, with ids equal to what each append was answered.
 test fn three_chained_appends_read_back_whole_oldest_first_by_real_execution() -> Bool {
-  let store = FabricStorageLocalFiles { root: fresh_files() }
-  match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "a")) {
+  fabric_wet_run(members: fabric_storage_slots, instance: fresh_instance(), body: fn(ops) {
+    let store = FabricStorageLocalFiles { operations: ops }
+    match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "a")) {
     Absent => false
     Present { value: a } =>
-      match append_id(store: store, parent: HeadAt { id: a }, at: 1001, payload: acquired(reference: "b")) {
+          match append_id(store: store, parent: HeadAt { id: a }, at: 1001, payload: acquired(reference: "b")) {
         Absent => false
         Present { value: b } =>
-          match append_id(store: store, parent: HeadAt { id: b }, at: 1002, payload: PoolReleased { reference: "a" as NonEmptyStr, reason: "done" as NonEmptyStr }) {
+              match append_id(store: store, parent: HeadAt { id: b }, at: 1002, payload: PoolReleased { reference: "a" as NonEmptyStr, reason: "done" as NonEmptyStr }) {
             Absent => false
             Present { value: c } =>
-              match event_log_read_partition(store: store, partition: witness_partition(), budget: 16) {
+                match event_log_read_partition(store: store, partition: witness_partition(), budget: 16) {
                 PartitionReadRefused { cause: _ } => false
                 PartitionReadOk { head: _, walk: w } =>
                   match w {
@@ -72,40 +75,41 @@ test fn three_chained_appends_read_back_whole_oldest_first_by_real_execution() -
           }
       }
   }
+  })
 }
 
-// A LOST RACE IS STALE, NEVER A REFUSAL: a second writer that also observed the empty partition is
-// answered with the first writer's event as the observed head.
 test fn a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real_execution() -> Bool {
-  let store = FabricStorageLocalFiles { root: fresh_files() }
-  match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "first")) {
+  fabric_wet_run(members: fabric_storage_slots, instance: fresh_instance(), body: fn(ops) {
+    let store = FabricStorageLocalFiles { operations: ops }
+    match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "first")) {
     Absent => false
     Present { value: first } =>
-      match event_log_append(store: store, partition: witness_partition(), event: event(parent: HeadAbsent, at: 1001, payload: acquired(reference: "racer")), expected: HeadAbsent) {
+        match event_log_append(store: store, partition: witness_partition(), event: event(parent: HeadAbsent, at: 1001, payload: acquired(reference: "racer")), expected: HeadAbsent) {
         EventAppendStale { expected: _, observed: o } => match o { HeadAt { id: h } => (h as String) == (first as String)  HeadAbsent => false }
         EventAppended { id: _ } => false
         EventAppendRefused { cause: _ } => false
       }
   }
+  })
 }
 
-// THE BYTES PUBLISHED ARE THE BYTES SERIALIZED: the stored object under an admitted event's id holds
-// exactly the event's wire text. The git realization once published its empty blob as a head; here
-// the object is built from the event value, and this reads it back from the file the store wrote.
 test fn an_admitted_event_is_stored_as_exactly_its_wire_text_by_real_execution() -> Bool {
-  let files = fresh_files()
-  let e = event(parent: HeadAbsent, at: 1000, payload: acquired(reference: "exact"))
-  match event_log_append(store: FabricStorageLocalFiles { root: files }, partition: witness_partition(), event: e, expected: HeadAbsent) {
+  fabric_wet_run(members: fabric_storage_slots, instance: fresh_instance(), body: fn(ops) {
+    let store = FabricStorageLocalFiles { operations: ops }
+    let recorded = event(parent: HeadAbsent, at: 1000, payload: acquired(reference: "wire-text"))
+    match event_log_append(store: store, partition: witness_partition(), event: recorded, expected: HeadAbsent) {
     EventAppended { id: i } =>
       match fabric_object_ref_of_wire(wire: i as String) {
         Absent => false
         Present { value: r } =>
-          match fabric_storage_file_get(root: files, object: r) {
-            FabricObjectFetched { stored: s } => (s.content.body as String) == pool_event_wire_text(event: e)
+          match fabric_storage_file_get(root: ops, object: r) {
+            FabricObjectFetched { stored: s } => (s.content.body as String) == pool_event_wire_text(event: recorded)
             FabricObjectGetRefused { fault: _ } => false
           }
       }
     EventAppendStale { expected: _, observed: _ } => false
     EventAppendRefused { cause: _ } => false
   }
+  })
 }
+

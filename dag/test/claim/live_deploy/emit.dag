@@ -13,7 +13,7 @@ import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt, Winget, HomebrewDeFacto }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_store_root, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_file_store { fabric_store_area_paths, fabric_storage_slots }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import std.optional { Present, Absent }
 import gunbc.live_deploy.spec {
@@ -855,7 +855,10 @@ test fn the_fabric_storage_store_root_reaches_the_srv1_apply_path() -> Bool {
 // the deployment ensures the root alone, which is the state that refused fleet-converge run
 // 35818578751's host-effect claim with `object publication refused: not_found`.
 test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
-  let files = fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance()))
+  // THE AREAS THE DECLARATION IMPLIES, from the same rows the mint reads: this claim asserts the substrate
+  // demands THOSE paths, and it spells them through fabric_store_area_paths so a change to the declaration
+  // moves the demand and the assertion together.
+  let files = fabric_store_area_paths(members: fabric_storage_slots, instance: srv1_live_dashboard_instance())
   srv1_demands_directory(path: files.objects as String) && srv1_demands_directory(path: files.heads as String)
 }
 
