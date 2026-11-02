@@ -116,7 +116,8 @@ import gunbc.provisioning.public_nocloud_seed {
   seed_credential_keys,
 }
 import extdeps.bmc.endpoint { AmiMegaRac, SupermicroAten }
-import gunbc.boot_artifact_delivery { BootControlTarget, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
+import test.fixture.boot_delivery_plans { removable_media_solution, pxe_solution, refused_solution, solution_selecting_control }
+import gunbc.boot_artifact_delivery { BootDeliverySolution, BootControlTarget, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, BiosX86, UefiArm64, HttpBootArm64 }
 import extdeps.uri { Https, Uri }
 import extdeps.os.ubuntu_kernel_nic_coverage { Noble2404GaLinux68 }
@@ -1190,7 +1191,7 @@ test fn the_h11ssl_amd64_seed_renders_from_its_rows() -> Bool {
             credential: PasswordUnset,
             password_read: password_read_for(credential: PasswordUnset),
             locale: EnUsUtf8,
-            delivery: BootFromRemovableMedia, client_arch: none,
+            solution: removable_media_solution, client_arch: none,
             keyboard: UsLayout,
           ) {
             Absent => false
@@ -2319,7 +2320,7 @@ fn build_seed_fixture_with_modules(
         credential: credential,
         password_read: password_read_for(credential: credential),
         locale: EnUsUtf8,
-        delivery: delivery,
+        solution: solution_selecting_control(control: delivery),
         client_arch: client_arch,
         keyboard: UsLayout,
       )
@@ -2364,7 +2365,7 @@ fn build_seed_fixture_under_rule(
         credential: credential,
         password_read: password_read_for(credential: credential),
         locale: EnUsUtf8,
-        delivery: delivery,
+        solution: solution_selecting_control(control: delivery),
         client_arch: client_arch,
         keyboard: UsLayout,
       )
@@ -2419,7 +2420,7 @@ fn build_seed_fixture_with_read(
         credential: credential,
         password_read: read,
         locale: EnUsUtf8,
-        delivery: BootFromRemovableMedia, client_arch: none,
+        solution: removable_media_solution, client_arch: none,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -4187,7 +4188,7 @@ fn build_seed_with_late(late: List<PackageIntent>) -> Optional<UbuntuAutoinstall
         credential: seeded_handle,
         password_read: password_read_for(credential: seeded_handle),
         locale: EnUsUtf8,
-        delivery: BootFromRemovableMedia, client_arch: none,
+        solution: removable_media_solution, client_arch: none,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -6020,5 +6021,50 @@ test fn pxe_with_no_observed_client_architecture_is_refused() -> Bool {
         _ => false
       }
     Absent => false
+  }
+}
+
+fn build_seed_for_solution(solution: BootDeliverySolution) -> Optional<UbuntuAutoinstallSeed> {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      build_ubuntu_autoinstall_seed(
+        target: target_altra,
+        network: network_posture,
+        install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
+        loadable_modules: [AhciPlatformModule, NvmeBlockModule],
+        late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
+        install_packages: clean_packages,
+        late_packages: board_required_late_package_rows(),
+        disk: serial_selector,
+        entry: entry,
+        credential: seeded_handle,
+        password_read: password_read_for(credential: seeded_handle),
+        locale: EnUsUtf8,
+        solution: solution,
+        client_arch: Present { value: UefiArm64 },
+        keyboard: UsLayout,
+      )
+    Absent => Absent
+  }
+}
+
+// RED: a refused delivery solution yields no seed — the route is the solver's, never a caller's choice.
+test fn a_refused_delivery_solution_yields_no_seed() -> Bool {
+  match build_seed_for_solution(solution: refused_solution) {
+    Absent => True
+    Present { value: _ } => False
+  }
+}
+
+// RED: a plan that selected PXE cannot produce a removable-media seed; the seed's route is the plan's.
+test fn the_seed_route_is_the_selected_plans_control_target() -> Bool {
+  match build_seed_for_solution(solution: pxe_solution) {
+    Absent => False
+    Present { value: s } =>
+      match s.delivery {
+        BootFromNetworkPxe => True
+        BootFromRemovableMedia => False
+        BootFromUefiHttp => False
+      }
   }
 }

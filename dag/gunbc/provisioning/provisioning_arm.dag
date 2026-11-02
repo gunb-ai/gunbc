@@ -1,6 +1,15 @@
 module gunbc.provisioning.provisioning_arm
 
-import gunbc.boot_artifact_delivery { BootControlTarget, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
+import gunbc.boot_artifact_delivery {
+  BootControlTarget,
+  BootDeliveryPlanned,
+  BootDeliveryRefusalCause,
+  BootDeliveryRefused,
+  BootDeliverySolution,
+  BootFromNetworkPxe,
+  BootFromRemovableMedia,
+  BootFromUefiHttp,
+}
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
@@ -85,6 +94,7 @@ type ArmRefusalCause
   | SecureBootStandingRefused { why: NonEmptyStr }
   | VirtualMediaNotAvailable { cause: NonEmptyStr }
   | SeedBindingRefused { blocker: BindingBlocker }
+  | BootDeliveryNotPlanned { cause: BootDeliveryRefusalCause }
 
 // THE SHAPE OF AN ARM: ONE strategy, fully bound, or a terminal Unobserved/Refused. It is derived from
 // (strategy, evidence) and from nothing else; no attempt or unit identity exists at this type, so the
@@ -115,14 +125,25 @@ type ProvisioningArm {
   shape: ArmShape
 }
 
-// THE STRATEGY IS gunbc.boot_artifact_delivery BootControlTarget, the one authority for what the firmware is told to boot
-// from (replacing the retired DeliveryStrategy). Network boot (PXE or UEFI HTTP, one family: the firmware picks the
+// THE STRATEGY IS the BootControlTarget of the admitted gunbc.boot_artifact_delivery plan, the one authority for what the firmware is told to boot
+// from (replacing the retired DeliveryStrategy); it is read off the solver's plan, never passed free. Network boot (PXE or UEFI HTTP, one family: the firmware picks the
 // transport) and BMC removable media; there is deliberately no USB arm (operator ruling).
 // THE DERIVATION. Total over (strategy, evidence). The attempt is bound to the result and is not an
 // argument of any deriving fn. Evidence is checked in a fixed order so the same evidence always yields
 // the same missing/refused cause. No attempt-time fallback: a Refused or Unobserved shape ends the attempt.
-fn provisioning_arm_derive(strategy: BootControlTarget, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
-  ProvisioningArm { attempt: attempt, shape: arm_shape_derive(strategy: strategy, evidence: evidence) }
+fn provisioning_arm_derive(solution: BootDeliverySolution, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+  ProvisioningArm { attempt: attempt, shape: arm_shape_of_solution(solution: solution, evidence: evidence) }
+}
+
+// The route is the solver's choice and nothing here picks one: an admitted plan names its boot-control
+// target, and the evidence can only arm or withhold that target, never re-select it (a PXE plan cannot come
+// out as removable media however much virtual-media evidence exists). A solution that planned nothing is a
+// terminal refusal carrying the solver's own cause.
+fn arm_shape_of_solution(solution: BootDeliverySolution, evidence: DeliveryEvidence) -> ArmShape {
+  match solution {
+    BootDeliveryPlanned { plan: p } => arm_shape_derive(strategy: p.boot_control, evidence: evidence)
+    BootDeliveryRefused { cause: c } => ArmRefused { cause: BootDeliveryNotPlanned { cause: c } }
+  }
 }
 
 fn arm_shape_derive(strategy: BootControlTarget, evidence: DeliveryEvidence) -> ArmShape {
