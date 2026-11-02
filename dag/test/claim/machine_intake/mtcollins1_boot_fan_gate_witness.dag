@@ -694,22 +694,3 @@ test fn the_admitted_judgement_names_the_row_it_excused() -> Bool {
     _ => false
   }
 }
-
-// ==== BISECTION SCAFFOLDING (temporary; delete in the next push) ================================
-// Same probes for the per-round renderer, whose captured arm is the other FAIL. A witness-local helper
-// so the round literal is written once; §3 allows a projection in a witness. Not meant to merge.
-fn bisect_captured_round() -> FanObservationRound {
-  FanObservationRound { observed_at: "2026-11-02T04:40:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: true }, chassis_raw: "", thermal: published(), fans: FanSensorsRead { lines: [], undecoded_lines: [], failure_rows: [] }, verbose: SdrVerboseCaptured { readout: mtcollins1_fan_capture_readout() } }
-}
-
-test fn bisect_e_round_state_marker_present() -> Bool {
-  string_contains(s: render_round_block(round: bisect_captured_round()), pattern: "verbose_sdr=captured(")
-}
-
-test fn bisect_f_round_record_segment_present() -> Bool {
-  string_contains(s: render_round_block(round: bisect_captured_round()), pattern: "verbose_record=[")
-}
-
-test fn bisect_g_round_detail_segment_present() -> Bool {
-  string_contains(s: render_round_block(round: bisect_captured_round()), pattern: "verbose_detail=[")
-}

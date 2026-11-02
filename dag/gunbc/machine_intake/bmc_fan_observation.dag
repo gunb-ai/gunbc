@@ -592,7 +592,7 @@ fn round_verbose_render_lines(round: FanObservationRound) -> List<String> {
       SdrVerboseEmptyRepository => [join(["  round=", to_string(round.round_index), " verbose_sdr=empty"], "")]
       SdrVerboseRead { records: recs } => [join(["  round=", to_string(round.round_index), " verbose_sdr=captured(", to_string(recs.length()), ")"], "")]
         .concat(flat_map(recs, rec =>
-          [join(["  round=", to_string(round.round_index), " verbose_record=[", rec.name, " (", rec.number_hex, ")"], "")]
+          [join(["  round=", to_string(round.round_index), " verbose_record=[", rec.name, " (", rec.number_hex, ")]"], "")]
             .concat(map(rec.detail_lines, d => join(["  round=", to_string(round.round_index), " verbose_detail=[", d, "]"], "")))))
     }
   }
@@ -696,7 +696,7 @@ fn render_run_verbose_lines(capture: RunVerboseCapture) -> List<String> {
         SdrVerboseUnreadable => []
         SdrVerboseEmptyRepository => []
         SdrVerboseRead { records: records } => flat_map(records, rec =>
-          [join(["run=0 verbose_record=[", rec.name, " (", rec.number_hex, ")"], "")]
+          [join(["run=0 verbose_record=[", rec.name, " (", rec.number_hex, ")]"], "")]
             .concat(map(rec.detail_lines, d => join(["run=0 verbose_detail=[", d, "]"], ""))))
       })
     }
