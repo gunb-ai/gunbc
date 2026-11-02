@@ -62,33 +62,20 @@ type SetupVarstoreCheckbox {
 
 // One octet: 0 is unchecked (Disabled), 1 is checked (Enabled). Offsets are into the variable's data, after the
 // four attribute octets of the efivarfs file.
+// The one spelling of the RAS page's menu and its AER item; the board catalog (extdeps.boards.asrock_rack) cites these.
+data ras_menu: NonEmptyStr = "Advanced > RAS Configuration"
+data ras_pcie_aer_firmware_first_item: NonEmptyStr = "PCIe AER Firmware First"
+
 data ras_setup_checkbox_rows: List<SetupVarstoreCheckbox> = [
-  SetupVarstoreCheckbox { menu: "Advanced > RAS Configuration", item: "Hardware EINJ", offset: 0, default_checked: false },
-  SetupVarstoreCheckbox { menu: "Advanced > RAS Configuration", item: "DRAM EINJ No Trigger", offset: 1, default_checked: false },
-  SetupVarstoreCheckbox { menu: "Advanced > RAS Configuration", item: "Enable BERT", offset: 2, default_checked: true },
-  SetupVarstoreCheckbox { menu: "Advanced > RAS Configuration", item: "Enable SDEI", offset: 3, default_checked: true },
-  SetupVarstoreCheckbox { menu: "Advanced > RAS Configuration", item: "Enable AGDI", offset: 4, default_checked: false },
-  SetupVarstoreCheckbox { menu: "Advanced > RAS Configuration", item: "PCIe AER Firmware First", offset: 5, default_checked: false },
-  SetupVarstoreCheckbox { menu: "Advanced > RAS Configuration", item: "Processor OS-first", offset: 6, default_checked: false }
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Hardware EINJ", offset: 0, default_checked: false },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "DRAM EINJ No Trigger", offset: 1, default_checked: false },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Enable BERT", offset: 2, default_checked: true },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Enable SDEI", offset: 3, default_checked: true },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Enable AGDI", offset: 4, default_checked: false },
+  SetupVarstoreCheckbox { menu: ras_menu, item: ras_pcie_aer_firmware_first_item, offset: 5, default_checked: false },
+  SetupVarstoreCheckbox { menu: ras_menu, item: "Processor OS-first", offset: 6, default_checked: false }
 ]
 
 fn ras_setup_checkbox_row(menu: String, item: String) -> Optional<SetupVarstoreCheckbox> {
   list_find_first(ras_setup_checkbox_rows, r => (r.menu as String) == menu && (r.item as String) == item)
-}
-
-// The items the board-function plans treat as a removal switch, with the octet that means "switched off".
-// "PCIe AER Firmware First" unchecked (0) is Disabled, which is the state the board manual's off_meaning
-// "Otherwise OS detects AER" describes.
-type SetupSwitchRoute {
-  menu: NonEmptyStr
-  item: NonEmptyStr
-  switched_off_octet: Int
-}
-
-data ras_setup_switch_routes: List<SetupSwitchRoute> = [
-  SetupSwitchRoute { menu: "Advanced > RAS Configuration", item: "PCIe AER Firmware First", switched_off_octet: 0 }
-]
-
-fn ras_setup_switch_route(menu: String, item: String) -> Optional<SetupSwitchRoute> {
-  list_find_first(ras_setup_switch_routes, r => (r.menu as String) == menu && (r.item as String) == item)
 }
