@@ -889,34 +889,36 @@ fn project_nullary_arm_binding(node: Node) -> Outcome<TargetValueExpression> {
 
 // WHERE A FACT IS ABSENT BY CONSTRUCTION. Inference types values, not patterns, so the only position
 // whose reference legitimately carries no facts is a match-arm pattern; anywhere else an absent fact is an
-// inference gap and stays the facts_absent refusal. Read from the arrow's own structure, not threaded.
-fn node_is_match_arm_pattern(arrow: Node, node: Node) -> Bool {
-  match list_find_first(
-    xs: node_subtree_nodes(root: arrow),
-    predicate: fn(candidate) { match_node_has_arm_pattern(candidate: candidate, node: node) }
-  ) {
-    Present { value: _ } => true
-    Absent => false
-  }
+// inference gap and stays the facts_absent refusal. The pattern occurrences of one arrow are read ONCE
+// (match_arm_pattern_nodes) and carried down the recursion, so the guard is a membership test, not a rescan.
+fn match_arm_pattern_nodes(arrow: Node) -> List<Node> {
+  fold(
+    node_subtree_nodes(root: arrow),
+    init: Empty,
+    f: fn(acc, candidate) {
+      match candidate.kind {
+        ComputationNode { behavior: Match } =>
+          fold(
+            match_role_slots(n: candidate, role: MatchArmSlot),
+            init: acc,
+            f: fn(inner, slot) {
+              match find_core_child(root: child_slot_target(slot: slot), marker: MatchArmPatternEdge) {
+                Accepted { value: pattern, diagnostics: _ } => list_snoc_item(xs: inner, item: pattern)
+                Rejected { diagnostics: _ } => inner
+              }
+            }
+          )
+        ComputationNode { behavior: _ } => acc
+        TypeNode { connective: _ } => acc
+      }
+    }
+  )
 }
 
-fn match_node_has_arm_pattern(candidate: Node, node: Node) -> Bool {
-  match candidate.kind {
-    ComputationNode { behavior: Match } =>
-      match list_find_first(
-        xs: list_map(xs: match_role_slots(n: candidate, role: MatchArmSlot), f: fn(slot) { child_slot_target(slot: slot) }),
-        predicate: fn(arm) {
-          match find_core_child(root: arm, marker: MatchArmPatternEdge) {
-            Accepted { value: pattern, diagnostics: _ } => node_same_occurrence(a: pattern, b: node)
-            Rejected { diagnostics: _ } => false
-          }
-        }
-      ) {
-        Present { value: _ } => true
-        Absent => false
-      }
-    ComputationNode { behavior: _ } => false
-    TypeNode { connective: _ } => false
+fn node_is_match_arm_pattern(patterns: List<Node>, node: Node) -> Bool {
+  match list_find_first(xs: patterns, predicate: fn(pattern) { node_same_occurrence(a: pattern, b: node) }) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -924,51 +926,51 @@ fn match_node_has_arm_pattern(candidate: Node, node: Node) -> Bool {
 // field or a match arm is projected by project_value_node_from_inferred_facts, the one place that
 // knows a reference is a nullary coproduct arm; every other node stays the transform projection.
 // A match-arm PATTERN has no inferred facts (inference does not type patterns), so a marked reference
-// with no facts asks the declaration directly -- the same predicate, minus the facts hop.
+// there with no facts asks the declaration directly -- the same predicate, minus the facts hop.
 fn project_nested_node_with_facts(
   arrow: Node,
   node: Node,
   target: TargetModel,
   tree: InferredTree,
-  declarations: SymbolIndex
+  declarations: SymbolIndex,
+  patterns: List<Node>
 ) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Conj } =>
-      match inferred_facts_for_projected_node(tree: tree, node: node) {
-        Absent =>
-          if node_is_match_arm_pattern(arrow: arrow, node: node)
-            && declaration_reference_body_marked(target: node)
-            && infer_nullary_zero_param_coproduct_arm_declared(node: node, index: declarations) {
-            project_nullary_arm_binding(node: node)
-          } else {
-            project_value_node_from_inferred_facts(
-              arrow: arrow,
-              node: node,
-              target: target,
-              tree: tree,
-              declarations: declarations,
-              handle_transform: fn(a, b, t) {
-                project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations)
-              }
-            )
+      if project_nested_pattern_without_facts(node: node, tree: tree, declarations: declarations, patterns: patterns) {
+        project_nullary_arm_binding(node: node)
+      } else {
+        project_value_node_from_inferred_facts(
+          arrow: arrow,
+          node: node,
+          target: target,
+          tree: tree,
+          declarations: declarations,
+          handle_transform: fn(a, b, t) {
+            project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations, patterns: patterns)
           }
-        Present { value: _ } =>
-          project_value_node_from_inferred_facts(
-            arrow: arrow,
-            node: node,
-            target: target,
-            tree: tree,
-            declarations: declarations,
-            handle_transform: fn(a, b, t) {
-              project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations)
-            }
-          )
+        )
       }
     ComputationNode { behavior: _ } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
     TypeNode { connective: Atom { identity: _ } } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
     TypeNode { connective: Disj } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
     TypeNode { connective: Arrow } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
     TypeNode { connective: Instantiation } => translate_project_transform_in_arrow_scope(arrow: arrow, body: node, target: target)
+  }
+}
+
+fn project_nested_pattern_without_facts(
+  node: Node,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  patterns: List<Node>
+) -> Bool {
+  match inferred_facts_for_projected_node(tree: tree, node: node) {
+    Present { value: _ } => false
+    Absent =>
+      node_is_match_arm_pattern(patterns: patterns, node: node)
+        && declaration_reference_body_marked(target: node)
+        && infer_nullary_zero_param_coproduct_arm_declared(node: node, index: declarations)
   }
 }
 
@@ -1257,6 +1259,7 @@ fn target_serialize_bodied_arrow_with_scaffolded_header(
           bind_outcome(
             o: target_value_expression_projection_from_target(target: target),
             f: fn(projection) {
+              let arm_patterns = match_arm_pattern_nodes(arrow: emitted)
               bind_outcome(
                 o: project_arrow_body_from_inferred_facts(
                   arrow: emitted,
@@ -1264,7 +1267,7 @@ fn target_serialize_bodied_arrow_with_scaffolded_header(
                   tree: tree,
                   declarations: declarations,
                   handle_transform: fn(a, b, t) {
-                    project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations)
+                    project_nested_node_with_facts(arrow: a, node: b, target: t, tree: tree, declarations: declarations, patterns: arm_patterns)
                   }
                 ),
                 f: fn(expr) {

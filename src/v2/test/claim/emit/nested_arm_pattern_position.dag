@@ -1,6 +1,6 @@
 module v2.test.claim.emit.nested_arm_pattern_position
 
-import v2.compiler.target_serialize { node_is_match_arm_pattern }
+import v2.compiler.target_serialize { match_arm_pattern_nodes, node_is_match_arm_pattern }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
@@ -86,7 +86,7 @@ fn nap_verdict(pattern_expected: Bool, probe_pattern: Bool) -> Bool {
       match nap_first_arm_child(root: tree.root, pattern: probe_pattern) {
         Absent => false
         Present { value: node } =>
-          node_is_match_arm_pattern(arrow: tree.root, node: node) == pattern_expected
+          node_is_match_arm_pattern(patterns: match_arm_pattern_nodes(arrow: tree.root), node: node) == pattern_expected
       }
   }
 }
