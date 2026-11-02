@@ -34,7 +34,7 @@ import gunbc.heal_publication_boundary {
   heal_repair_candidate_manifest_file_name, candidate_blob_file_name, candidate_file_path,
   heal_publication_refusal_token, heal_publication_refusal_detail, HealPublicationRefusal,
   HeadRefNotAddressable, BranchRefUnreadable, ExpectedHeadUnreadable, BaseTreeUnreadable, head_ref_is_addressable,
-  PullRequestNotOpen,
+  PullRequestNotOpen, PullRequestNumberDisagreed, PullRequestHeadRefDisagreed,
   publisher_path_policy, TriggeringRunFacts, PullRequestFacts,
   ProposedBlobObservation, ProposedBlobComputed, ProposedBlobReadRefused,
   PublisherObservations, AdmittedHealPublication, AdmittedEntry,
@@ -222,22 +222,13 @@ fn rest_refusal_text(o: RestRefusal) -> String {
 }
 
 // CREDENTIAL-FREE ADMIT OBSERVATION (heal publisher admit fix). Admit reaches NO auth-declaring
-// operation: a step with no publication credential must still be able to admit. Four facts, four
-// credential-free sources, no token:
-//   * the run facts come from the workflow_run event payload the fold already parses (parameter `run`);
-//   * the pull-request IDENTITY (number, head/base refs) comes from the SEALED candidate, cross-checked
-//     against that payload and the live ref name inside admit_heal_publication;
-//   * the head LIVENESS is a live, credential-free `git ls-remote` of refs/pull/<n>/head against the
-//     PUBLIC repository, compared three ways (live ref sha == payload head_sha == sealed expected_head_sha);
-//   * the BASE TREE (the file set policy checks committed entries against) is one `git fetch` of that
-//     single ref into an isolated, freshly allocated object store, then read with local git plumbing.
-// Whether the pull request is still OPEN is NOT derivable from any git transport (it is not a ref); that
-// one fact moved to the publish step, which holds the job token, and is checked there BEFORE any write.
-// CREDENTIAL-FREE ADMIT OBSERVATION (heal publisher admit fix). Admit reaches NO auth-declaring
 // operation, so a step that holds no publication credential can still admit. Four facts, four
 // credential-free sources, no token anywhere:
 //   * the run facts are the workflow_run event payload the fold already parsed (parameter `run`);
-//   * the pull-request IDENTITY (number, head/base refs) is taken from the SEALED candidate;
+//   * the pull-request IDENTITY (number, head/base refs) is the SEALED CANDIDATE'S OWN -- credential-free
+//     admit has no transport that answers number/head/base independently, so it does NOT claim to verify
+//     them here; the LIVE cross-check (github.Pulls.Get number + head.ref vs the sealed candidate) runs at
+//     PUBLISH, at the credential site next to the write (see classify_publish_pull_request);
 //   * head LIVENESS is a live, credential-free `git ls-remote` of refs/pull/<n>/head against the
 //     PUBLIC repository, whose sha lands in observations.branch_head_sha -- the boundary then refuses
 //     with HeadMoved if it disagrees with the sealed expected_head_sha, and with
@@ -607,7 +598,7 @@ fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
     PublisherRunRefused { cause } => exit_failure(reason: cause)
     PublisherRunNothingToPublish => ExitSuccess
     PublisherRunAdmitted { admitted, blobs, pull_number } =>
-      match ensure_pull_request_open_wet(subject: subject, pull_number: pull_number) {
+      match ensure_pull_request_open_wet(subject: subject, pull_number: pull_number, expected_head_ref: admitted.head_ref as String) {
         PullRequestOpenCheckRefused { reason } => exit_failure(reason: reason)
         PullRequestOpenCheckPassed =>
           match env_value(name: heal_publisher_wif_access_token_env_name) {
@@ -642,36 +633,46 @@ fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
 // candidate for a closed PR never reaches mint_publisher_installation_token.
 type PullRequestOpenCheck = PullRequestOpenCheckPassed | PullRequestOpenCheckRefused { reason: String }
 
-// The pull-request state exactly as the publish step OBSERVES it, held separate from the decision that
-// consumes it. Splitting the two lets the refusal be checked by a hermetic claim on supplied values
-// (no network, no token) -- heal_publication_boundary_witness's publish arms -- rather than only by the
-// networked publish inhabitance. The wet reader below produces one of these; classify decides on it.
+// The pull request exactly as the publish step OBSERVES it from the LIVE github.Pulls.Get read (made under
+// the job token), held separate from the decision so every arm is checkable hermetically on supplied values.
 type PublishPullRequestState =
-    PublishPrOpen
-  | PublishPrClosed
+    PublishPrObserved { number: Int, head_ref: String, open: Bool }
   | PublishPrStateUnreadable { detail: String }
   | PublishPrCredentialAbsent
 
-// THE DECISION, pure. Open admits; closed refuses with the canonical PullRequestNotOpen spelling; an
-// unreadable state (rate-limited, unreachable) or an absent credential refuses too and NEVER passes --
-// failing closed, because a publish that cannot confirm the pull request is open must not write.
-fn classify_pull_request_openness(state: PublishPullRequestState, pull_number: Int) -> PullRequestOpenCheck {
-  match state {
-    PublishPrOpen => PullRequestOpenCheckPassed
-    PublishPrClosed => PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNotOpen { pull_number: pull_number }) }
-    PublishPrStateUnreadable { detail } => PullRequestOpenCheckRefused { reason: join(["HealPublishPreconditionUnmet: the pull request's state could not be read; refusing to publish: ", detail], "") }
-    PublishPrCredentialAbsent => PullRequestOpenCheckRefused { reason: "HealPublishPreconditionUnmet: the publish step's own token is absent, so the pull request's openness cannot be verified; refusing to publish" }
+// THE DECISION, pure and offline-testable. Fail-closed first: an absent credential or an unreadable state
+// refuses, because a publish that cannot READ the pull request must not write. Then the identity cross-check
+// the credential-free admit cannot perform: the LIVE pull request must be the very one the sealed candidate
+// describes (its number, and its head ref), or a different pull request would be fast-forwarded. Then the
+// OPEN check. Any failure refuses BEFORE the App token is minted and before any write.
+fn classify_publish_pull_request(obs: PublishPullRequestState, pull_number: Int, expected_head_ref: String) -> PullRequestOpenCheck {
+  match obs {
+    PublishPrCredentialAbsent =>
+      PullRequestOpenCheckRefused { reason: "HealPublishPreconditionUnmet: the publish step's own token is absent, so the pull request cannot be verified; refusing to publish" }
+    PublishPrStateUnreadable { detail } =>
+      PullRequestOpenCheckRefused { reason: join(["HealPublishPreconditionUnmet: the pull request could not be read; refusing to publish: ", detail], "") }
+    PublishPrObserved { number, head_ref, open } =>
+      if number != pull_number {
+        PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNumberDisagreed { candidate: pull_number, observed: number }) }
+      } else if head_ref != expected_head_ref {
+        PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestHeadRefDisagreed { candidate: expected_head_ref, observed: head_ref }) }
+      } else if !open {
+        PullRequestOpenCheckRefused { reason: refusal_line(refusal: PullRequestNotOpen { pull_number: pull_number }) }
+      } else {
+        PullRequestOpenCheckPassed
+      }
   }
 }
 
-fn ensure_pull_request_open_wet(subject: HealPublicationSubject, pull_number: Int) -> PullRequestOpenCheck {
-  let state = match env_value(name: github_token_env_name) {
+fn ensure_pull_request_open_wet(subject: HealPublicationSubject, pull_number: Int, expected_head_ref: String) -> PullRequestOpenCheck {
+  let obs = match env_value(name: github_token_env_name) {
     Absent => PublishPrCredentialAbsent
     Present { value: job_token } =>
       match github.Pulls.Get(auth_token: job_token as Secret, owner: subject.repository.owner, repo: subject.repository.name, pull_number: pull_number) {
         RestRefused { refusal } => PublishPrStateUnreadable { detail: rest_refusal_text(o: refusal) }
-        RestAnswered { answer: pr } => match pr.pr.state { Open => PublishPrOpen  Closed => PublishPrClosed }
+        RestAnswered { answer: pr } =>
+          PublishPrObserved { number: pr.pr.number, head_ref: pr.pr.head.ref as String, open: match pr.pr.state { Open => true  Closed => false } }
       }
   }
-  classify_pull_request_openness(state: state, pull_number: pull_number)
+  classify_publish_pull_request(obs: obs, pull_number: pull_number, expected_head_ref: expected_head_ref)
 }

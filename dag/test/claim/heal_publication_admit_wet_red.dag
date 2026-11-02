@@ -81,7 +81,10 @@ fn driver_candidate() -> HealRepairCandidate {
 fn driver_run() -> TriggeringRunFacts {
   TriggeringRunFacts {
     workflow_path: ".github/workflows/heal.yml",
-    originating_event: "workflow_run",
+    // admit_heal_publication refuses unless the triggering run's originating event is "pull_request"
+    // (heal_publication_boundary.dag:832). A heal candidate's workflow_run originates from a pull_request
+    // event, so this is the value the real flow carries -- not "workflow_run".
+    originating_event: "pull_request",
     conclusion: Success,
     head_sha: driver_sealed_head_hex,
     head_branch: driver_head_ref,
@@ -106,17 +109,20 @@ fn admit_did_not_reach_auth_guard() -> ProcessExit {
     PublisherRunRefused { cause } =>
       if contains(haystack: cause, needle: "AuthDeclaredButUnwired") {
         exit_failure(reason: "admit still reaches an auth-declaring read at head: AuthDeclaredButUnwired")
-      } else if contains(haystack: cause, needle: "ProposedBlobUnreadable") {
-        // The expected refusal, and the point of the whole control. ProposedBlobUnreadable can be produced
-        // ONLY after observe_candidate_world_wet fetched the sealed tree ANONYMOUSLY, enumerated the entry
-        // (read-tree/write-tree/ls-files/decode), and attempted the proposed-blob read -- i.e. the real
-        // credential-free route ran end to end and reached admit_heal_publication. Asserting THIS token, not
-        // merely "not the auth guard", means a degenerate early `return PublisherRunRefused { HeadRefNotAddressable }`
-        // at the top of the observation would FAIL this control. This is the DESIGN section 3 "the ROUTE, not
-        // only the answer" requirement on the one control that reaches the real public repository.
+      } else if contains(haystack: cause, needle: "BaseBlobDisagreed") {
+        // The expected refusal, and the point of the whole control. BaseBlobDisagreed is produced ONLY after
+        // observe_candidate_world_wet fetched the sealed tree ANONYMOUSLY (ls-remote + fetch), enumerated it
+        // with local plumbing (read-tree/write-tree/ls-files/decode), and compared the candidate's base blob
+        // against the LIVE tree -- i.e. the real credential-free route ran end to end, used the fetched tree,
+        // and reached admit_heal_publication. The candidate's base blob (2222...) is deliberately not the
+        // real blob of DESIGN.md in frozen #500, so the comparison refuses here. Asserting THIS token, not
+        // merely "not the auth refusal", means a degenerate early `return PublisherRunRefused { ... }` at
+        // the top of the observation, or one that never consults the fetched tree, would FAIL this control.
+        // This is the DESIGN section 3 "the ROUTE, not only the answer" requirement on the one control that
+        // reaches the real public repository.
         ExitSuccess
       } else {
-        exit_failure(reason: concat("admit did not reach the proposed-blob stage of the credential-free route; got: ", cause))
+        exit_failure(reason: concat("admit did not reach the base-blob compare of the credential-free route against the live tree; got: ", cause))
       }
   }
 }

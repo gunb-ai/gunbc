@@ -26,8 +26,8 @@ import gunbc.heal_publication_boundary {
   publication_readback_verdict, heal_publication_is_published
 }
 import gunbc.heal_publication {
-  classify_pull_request_openness, PublishPullRequestState,
-  PublishPrOpen, PublishPrClosed, PublishPrStateUnreadable, PublishPrCredentialAbsent,
+  classify_publish_pull_request, PublishPullRequestState,
+  PublishPrObserved, PublishPrStateUnreadable, PublishPrCredentialAbsent,
   PullRequestOpenCheck, PullRequestOpenCheckPassed, PullRequestOpenCheckRefused,
   refusal_line
 }
@@ -326,7 +326,7 @@ test fn witness_a_run_from_another_head_repository_is_refused() -> Bool {
 
 // "The pull request is still OPEN" no longer lives at admit: it is not a ref, so no git transport
 // can answer it credential-free. It is checked at PUBLISH (which holds the job token and sits closer
-// to the write) by gunbc.heal_publication's classify_pull_request_openness -- and the closed case is
+// to the write) by gunbc.heal_publication's classify_publish_pull_request -- and the closed case is
 // covered HERE, offline, by the publish arms in the "publish openness decision" section at the foot
 // of this module (a supplied PublishPrClosed refuses with the canonical PullRequestNotOpen spelling,
 // on values, no network/token), with the live-route pairing in
@@ -497,40 +497,64 @@ test fn witness_a_published_path_holding_another_blob_is_unverified() -> Bool {
     head_tree: [GitTreeItemWire { path: "DESIGN.md", mode: "100644", type: "blob", sha: other_hex, size: Present { value: 12 } }])) == "unverified"
 }
 
-// ── publish openness decision (offline) ───────────────────────────────────────────────────────
+// ── publish pull-request decision (offline): closed RED, identity cross-check, fail-closed ─────
 //
-// The closed-pull RED that the admit-side witness used to carry, re-homed to where the check now
-// lives (publish, Option D) and made HERMETIC: classify_pull_request_openness is the pure decision
-// the wet reader feeds, so each arm below is checked on a supplied PublishPullRequestState -- no
-// network, no token, no live PR number. Deleting the publish-side closed arm, or letting an
-// unreadable state pass, breaks one of these. The live route (that the reader really produces these
-// states, and the job token really authenticates the read) is paired once in
-// test.claim.heal_publication_publish_open_check_inhabitance, per DESIGN section 3's pairing rule.
+// Where the closed-pull RED now lives (publish, Option D) plus the LIVE identity cross-check that the
+// credential-free admit cannot perform. classify_publish_pull_request is the pure decision the wet reader
+// (which feeds it from a real github.Pulls.Get answer made under the job token) reduces to, so every arm is
+// checked on supplied PublishPullRequestState values -- no network, no token, no live PR number. It asserts
+// the ROUTE: the observed number and head ref must equal the sealed candidate's, else a DIFFERENT pull
+// request would be fast-forwarded. The live-route pairing (the job token really authenticates the read; the
+// reader really produces these states) is test.claim.heal_publication_publish_open_check_inhabitance.
 
 test fn witness_a_closed_pull_request_is_refused_at_publish() -> Bool {
-  match classify_pull_request_openness(state: PublishPrClosed, pull_number: 11493) {
+  match classify_publish_pull_request(
+    obs: PublishPrObserved { number: 11493, head_ref: branch, open: false }, pull_number: 11493, expected_head_ref: branch
+  ) {
     PullRequestOpenCheckRefused { reason } => reason == refusal_line(refusal: PullRequestNotOpen { pull_number: 11493 })
     PullRequestOpenCheckPassed => false
   }
 }
 
-test fn witness_an_open_pull_request_is_admitted_at_publish() -> Bool {
-  // The positive control: the closed arm above must not be satisfied by a predicate that always
-  // refuses. An open pull request passes.
-  classify_pull_request_openness(state: PublishPrOpen, pull_number: 11493) == PullRequestOpenCheckPassed
+test fn witness_an_open_matching_pull_request_is_admitted_at_publish() -> Bool {
+  // The positive control: the arms below must not be satisfied by a predicate that always refuses.
+  classify_publish_pull_request(
+    obs: PublishPrObserved { number: 11493, head_ref: branch, open: true }, pull_number: 11493, expected_head_ref: branch
+  ) == PullRequestOpenCheckPassed
 }
 
-test fn witness_an_unreadable_pull_request_state_refuses_rather_than_passes() -> Bool {
-  // Rate-limited / unreachable is NOT a pass. Failing closed is the point: a publish that cannot
-  // confirm openness must not write.
-  match classify_pull_request_openness(state: PublishPrStateUnreadable { detail: "403 rate limit" }, pull_number: 11493) {
+test fn witness_a_pull_request_whose_number_is_not_the_candidate_is_refused_at_publish() -> Bool {
+  // The live read answered a DIFFERENT pull request than the sealed candidate -> refuse (identity).
+  match classify_publish_pull_request(
+    obs: PublishPrObserved { number: 999, head_ref: branch, open: true }, pull_number: 11493, expected_head_ref: branch
+  ) {
+    PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "PullRequestNumberDisagreed")
+    PullRequestOpenCheckPassed => false
+  }
+}
+
+test fn witness_a_pull_request_whose_head_ref_is_not_the_candidate_is_refused_at_publish() -> Bool {
+  // The live read answered the right number but a different head ref -> refuse (identity).
+  match classify_publish_pull_request(
+    obs: PublishPrObserved { number: 11493, head_ref: "someone-elses-lane", open: true }, pull_number: 11493, expected_head_ref: branch
+  ) {
+    PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "PullRequestHeadRefDisagreed")
+    PullRequestOpenCheckPassed => false
+  }
+}
+
+test fn witness_an_unreadable_pull_request_refuses_rather_than_passes() -> Bool {
+  // Rate-limited / unreachable is NOT a pass. Fail-closed: a publish that cannot read the pull request must not write.
+  match classify_publish_pull_request(
+    obs: PublishPrStateUnreadable { detail: "403 rate limit" }, pull_number: 11493, expected_head_ref: branch
+  ) {
     PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "could not be read")
     PullRequestOpenCheckPassed => false
   }
 }
 
 test fn witness_an_absent_publish_credential_refuses_rather_than_passes() -> Bool {
-  match classify_pull_request_openness(state: PublishPrCredentialAbsent, pull_number: 11493) {
+  match classify_publish_pull_request(obs: PublishPrCredentialAbsent, pull_number: 11493, expected_head_ref: branch) {
     PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "token is absent")
     PullRequestOpenCheckPassed => false
   }
