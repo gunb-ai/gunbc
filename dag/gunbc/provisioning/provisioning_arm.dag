@@ -67,7 +67,7 @@ type VirtualMediaStanding
 // field a host name could hide in.
 type AttemptBinding {
   unit: UnitKey
-  attempt: NonEmptyStr
+  attempt: IntakeAttemptId
 }
 
 // Everything the derivation may consult. Each field is an observation or an admitted sibling record;
@@ -112,9 +112,7 @@ type ArmRefusalCause
 // so each observation that names a unit, an attempt or an architecture is compared with the plan's own
 // target and artifact; a mismatch withholds the arm, it is never reconciled in the evidence's favour.
 type PlanEvidenceAxis
-  = AttemptUnitNotThePlansSubject
-  | AttemptIdNotThePlansSubject
-  | SeedBoundForOtherUnit
+  = SeedBoundForOtherUnit
   | SeedBoundForOtherAttempt
   | ChainForOtherArchitecture { chain: Architecture, artifact: Architecture }
 
@@ -139,11 +137,10 @@ type ArmShape
   | ArmUnobserved { missing: ArmMissingEvidence }
   | ArmRefused { cause: ArmRefusalCause }
 
-// THE ARM = WHOM IT COVERS (data) + THE ADMITTED PLAN IT WAS DERIVED FROM + WHAT WAS DERIVED. `plan` carries
-// the solver's delivery parameters, target and artifact to the consumer (Absent exactly when no coherent plan
-// existed); `attempt` is the caller's claim of whom the arm covers and is checked against that plan's subject.
+// THE ARM = THE ADMITTED PLAN IT WAS DERIVED FROM + WHAT WAS DERIVED. `plan` carries the solver's delivery
+// parameters, target and artifact to the consumer (Absent exactly when no coherent plan existed). Whom the
+// arm covers is the plan's own subject (`plan_attempt`), never a second field that could disagree with it.
 type ProvisioningArm {
-  attempt: AttemptBinding
   plan: BootDeliveryPlan?
   shape: ArmShape
 }
@@ -157,32 +154,28 @@ type ProvisioningArm {
 // attempt's claim or another architecture's chain withholds the arm. A solution that planned nothing is a
 // terminal refusal carrying the solver's own cause. The attempt is read only to be compared with the plan's
 // subject, never to select a strategy. No attempt-time fallback: a Refused or Unobserved shape ends the attempt.
-fn provisioning_arm_derive(solution: BootDeliverySolution, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+fn provisioning_arm_derive(solution: BootDeliverySolution, evidence: DeliveryEvidence) -> ProvisioningArm {
   match solution {
-    BootDeliveryRefused { cause: c } => ProvisioningArm { attempt: attempt, plan: none, shape: ArmRefused { cause: BootDeliveryNotPlanned { cause: c } } }
+    BootDeliveryRefused { cause: c } => ProvisioningArm { plan: none, shape: ArmRefused { cause: BootDeliveryNotPlanned { cause: c } } }
     BootDeliveryPlanned { plan: p } => match admit_boot_delivery_plan(plan: p) {
-      BootDeliveryPlanIncoherent { cause: c } => ProvisioningArm { attempt: attempt, plan: none, shape: ArmRefused { cause: BootDeliveryPlanNotCoherent { cause: c } } }
+      BootDeliveryPlanIncoherent { cause: c } => ProvisioningArm { plan: none, shape: ArmRefused { cause: BootDeliveryPlanNotCoherent { cause: c } } }
       BootDeliveryPlanAdmitted { plan: admitted } =>
-        ProvisioningArm { attempt: attempt, plan: Present { value: admitted }, shape: arm_shape_of_plan(plan: admitted, evidence: evidence, attempt: attempt) }
+        ProvisioningArm { plan: Present { value: admitted }, shape: arm_shape_derive(plan: admitted, evidence: evidence) }
     }
   }
 }
 
-fn attempt_axis_mismatch(plan: BootDeliveryPlan, attempt: AttemptBinding) -> PlanEvidenceAxis? {
+// WHOM THE ATTEMPT COVERS IS THE PLAN'S OWN SUBJECT, read from its target and never supplied beside it, so an
+// attempt cannot disagree with the plan it is derived from.
+fn plan_attempt(plan: BootDeliveryPlan) -> AttemptBinding {
   let subject = boot_delivery_target_subject(target: plan.target)
-  if attempt.unit != subject.subject.unit_key {
-    Present { value: AttemptUnitNotThePlansSubject }
-  } else if attempt.attempt != (subject.attempt_id as NonEmptyStr) {
-    Present { value: AttemptIdNotThePlansSubject }
-  } else {
-    none
-  }
+  AttemptBinding { unit: subject.subject.unit_key, attempt: subject.attempt_id }
 }
 
-fn arm_shape_of_plan(plan: BootDeliveryPlan, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ArmShape {
-  match attempt_axis_mismatch(plan: plan, attempt: attempt) {
-    Present { value: axis } => ArmRefused { cause: EvidenceNotForThisPlan { axis: axis } }
-    Absent => arm_shape_derive(plan: plan, evidence: evidence)
+fn solution_attempt(solution: BootDeliverySolution) -> AttemptBinding? {
+  match solution {
+    BootDeliveryPlanned { plan: p } => Present { value: plan_attempt(plan: p) }
+    BootDeliveryRefused { cause: _ } => none
   }
 }
 
@@ -263,8 +256,11 @@ fn derive_virtual_media(plan: BootDeliveryPlan, evidence: DeliveryEvidence) -> A
   }
 }
 
-fn provisioning_arm_attempt(arm: ProvisioningArm) -> AttemptBinding {
-  arm.attempt
+fn provisioning_arm_attempt(arm: ProvisioningArm) -> AttemptBinding? {
+  match arm.plan {
+    Present { value: p } => Present { value: plan_attempt(plan: p) }
+    Absent => none
+  }
 }
 
 // THE CONSUMER THAT MUST EXIST. An arm is only a statement of what one boot attempt WOULD do; nothing
