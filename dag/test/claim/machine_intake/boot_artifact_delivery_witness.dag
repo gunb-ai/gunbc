@@ -1381,6 +1381,7 @@ test fn a_solved_plans_boot_control_and_observed_arch_reach_the_seed_console_sta
       }
     BootDeliveryRefused { cause: _ } => false
   }
+}
 
 // THE INHABITANCE SOURCES for consumers that are handed a solved plan (provisioning_arm_witness feeds these
 // through provisioning_arm_derive): the REAL solver's output, never a designed value.
