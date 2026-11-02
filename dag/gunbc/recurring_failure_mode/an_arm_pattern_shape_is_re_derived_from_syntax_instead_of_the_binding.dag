@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.an_arm_pattern_shape_is_re_derived_from_syntax_instead_of_the_binding
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+
+data an_arm_pattern_shape_is_re_derived_from_syntax_instead_of_the_binding: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_arm_pattern_shape_is_re_derived_from_syntax_instead_of_the_binding" as NonEmptyStr,
+
+  // FOUND BELOW THE LADDER: the machine accepted the source and returned a coverage verdict the source
+  // does not state, and nothing anywhere refused or named the atom. CEILING: structurally guaranteed --
+  // once the shape is read from the declaration the front end recorded, there is no second derivation
+  // left to disagree with it, so the class has no place to occur. #15671 is the repair.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: AtCeiling {
+      rung: StructurallyGuaranteed,
+      ceiling_reason: "one classifier reads one recorded fact: an arm atom is a constructor because the resolved occurrence names a declaration, and infer consumes that record instead of re-deriving the shape from the pattern's syntax. With a single authority there is no pair of readings to diverge, so the misclassification is not refused -- it is unrepresentable."
+    }
+  },
+
+  receipts: [
+    "**an arm pattern's shape is re-derived from syntax instead of taken from the binding** (inference decides whether a match arm is a constructor arm or a catch-all binder by looking at the PATTERN -- an atom with no braces -- plus a SPELLING test against the scrutinee's coproduct, rather than by looking at what the front end bound that atom to. The two derivations are independent, so they agree only when the source happens to make them agree.)",
+
+    "THE TWO READINGS, AT THE HEAD #15671 branched from. v2.compiler.infer infer_coproduct_arm_row (:3339) calls infer_coproduct_arm_pattern (:12229), which on that head matched the scrutinee's coproduct: with a READABLE variant list, an atom whose lexeme equalled some variant's name was a variant arm and any other atom was a catch-all binder; with an UNREADABLE list (`Absent`), EVERY bare atom was a catch-all binder -- including a spelling that names a nullary constructor the author wrote as an arm. Downstream, infer_coproduct_arm_after_catch_all (:3690) refuses every arm AFTER a catch-all as unreachable, and the exhaustiveness row records `covers: CoversAll`, so a constructor arm read as a binder silently claims the whole domain. gunbc#15380's Rule R (infer_coproduct_catch_all_binder_widening_over_a_nullary, :3624+) reads the same row field, so it inherits whichever answer the classifier gives.",
+
+    "WHERE IT BIT #15671, WHICH IS HOW IT WAS FOUND. The PR teaches resolve to bind a bare arm atom to an arm of the EXPECTED TYPE's declared constructor set -- a nullary arm like `Absent =>` that the name door never resolved. jolly-cat-271 read the pair of readers and reported the disagreement before any code shipped: resolve would record the atom as bound to a declaration while infer, reading the syntax, would still record `catch_all_binder: true` for the same arm -- one source text, constructor to one reader and binder to the other (DESIGN section 3's meaning fork, inside one compilation). tidy-ant-251 ruled the infer leg into the PR (option (i): infer classifies from resolve's recorded binding), and keen-heron-809 required one further check before writing it: how a nullary atom bound through the NAME door -- an imported `Absent`, no expected type carried -- is classified on main today. That is the check that exposes this class, and the honest answer is SPLIT: when the scrutinee's coproduct is readable and the spelling equals a variant name, the coincidence lands on constructor; when the coproduct is unreadable, or the spelling does not equal a variant lexeme, the same imported constructor arm is a catch-all binder, and every later arm is refused as unreachable while the arm itself counts as covering everything. Nothing in the corpus or in the compiler records that the agreement was a coincidence, which is why the class reads as absent until a change to either side turns it on.",
+
+    "THE HARM, NAMED. A coverage verdict that is not the source's. A module matching a nullary arm first either loses its later arms -- refused as unreachable, with the correction pointing at the arm that was meant as a case -- or gets an exhaustiveness discharge from an arm the author never intended to be a catch-all. Both directions are silent at the point of the error, and the exhaustiveness direction is the dangerous one: a missing case is reported as covered.",
+
+    "NOT TO BE MERGED WITH a_bare_type_name_binds_the_wrong_declaration, which is about a NAME binding the wrong DECLARATION across modules. Here the binding is correct or absent; the defect is that a SECOND reader ignores it and re-derives the shape from syntax. The two share only the symptom 'the machine and the author disagree', which does not discriminate.",
+
+    "THE REPAIR, AND WHAT IT DOES NOT CLOSE. #15671 replaces the classifier with one that reads the ResolvedTree through resolved_tree_occurrence_resolution: no recorded declaration means today's binder; a recorded declaration -- reached by the name door or by the expected-type door, classified by WHAT it is bound to and not by which route found it -- means a constructor arm, which the existing infer_match_variant_payload membership check then accepts or refuses as a normal variant with no widening to a catch-all. Claimed by v2.test.claim.name_resolve.construct_tag_expected_type's the_imported_nullary_arm_is_counted_as_an_arm_not_a_catch_all. Residual, stated rather than hidden: an atom with NO recorded declaration and NO visible nullary constructor keeps today's binder reading, and an atom whose spelling names a visible nullary constructor under an unreadable expected type now refuses with resolve_reason_pattern_atom_constructor_type_unresolved instead of being read either way -- the hole is narrowed to 'a spelling that names no constructor in scope', not closed."
+  ],
+
+  evidence: [],
+}
