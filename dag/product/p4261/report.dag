@@ -122,6 +122,7 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.electrical.investigation_hypothesis { hypothesis_text }
+import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
 import product.p4261.comparison {
   P4261Comparison,
   ComparedSide,
@@ -140,6 +141,25 @@ import product.p4261.comparison {
   BoardReadingsDisagree,
 }
 import product.p4261.evidence {
+  InventoryAssessment,
+  InventorySupportedOnSpecimen,
+  InventoryMissing,
+  InventoryContradicted,
+  InventoryNotAttributable,
+  RowSplitUnread,
+  CoverageIncomplete,
+  MappingRefused,
+  ReadOnlyOffListing,
+  j20_inventory_assessment,
+  j20_recount,
+  RecountEstablished,
+  RecountNotEstablished,
+  RecountNotAMapping,
+  RecountNotAtAdmittedJ20,
+  RecountReadOffListing,
+  RecountInPart,
+  RecountSidesUnread,
+  RecountRefused,
   PopulationOutcome,
   SupportedOnSpecimen,
   EvidenceMissing,
@@ -149,7 +169,6 @@ import product.p4261.evidence {
 }
 import product.p4261.carrier {
   AssemblyLabel,
-  AwayFromLatch,
   CaliperSpan,
   CarrierLayoutObservation,
   CensusComplete,
@@ -157,10 +176,19 @@ import product.p4261.carrier {
   CountedFromPhotograph,
   EdgeReceptacle,
   FlatCableConnectors,
-  LatchSide,
+  RowRead,
   ManagementIoObservation,
+  InventoryByRow,
+  InventoryInPart,
+  InventoryRefused,
+  InventorySidesUnread,
+  InventoryTotalOnly,
   MappedOnHousing,
   MicroUsbPlugFits,
+  ObservedInventory,
+  TerminalAtTwoCoordinates,
+  TwoTerminalsAtOneCoordinate,
+  observed_inventory,
   p4261_grey_path_hypothesis,
   p4261_j20_main_input_hypothesis,
   p4261_local_control_hypothesis,
@@ -792,15 +820,15 @@ fn withstand_kind_text(k: VoltageWithstandKind) -> String {
 
 fn row_side_text(s: RowSide) -> String {
   match s {
-    LatchSide => "on the latch side"
-    AwayFromLatch => "away from the latch"
     SideUnrecorded => "side unrecorded"
+    RowRead { row } => match row { LatchRow => "on the latch side", AwayFromLatchRow => "away from the latch" }
   }
 }
 
 fn polarity_gap_text(g: PolarityGap) -> String {
   match g {
     SidesUnrecorded => "a contact's side is unrecorded"
+    HousingNotMappedWhole => "the housing is not mapped whole and consistently"
     NoMeasuredBoard => "no measured board"
     InputUnmapped => "J20's contacts are not mapped on this board"
     BeepsNotOfOneState => "the board's beeps are not all of one physical state and module configuration"
@@ -857,10 +885,15 @@ fn bound_text(b: InputBoundStanding) -> String {
   }
 }
 
-fn j20_position_count(layout: CarrierLayoutObservation) -> Nat {
-  match layout.j20 {
-    CountedFromPhotograph { positions: n, evidence: _ } => n
-    MappedOnHousing { housing } => count(housing.positions)
+// The J20 positions the board's census establishes, from its observed inventory (product.p4261.carrier
+// observed_inventory): a count only where the census gives one; a partial or refused mapping gives none.
+fn j20_position_count(layout: CarrierLayoutObservation) -> Nat? {
+  match observed_inventory(census: layout.j20) {
+    InventoryByRow { latch_row, away_row } => Present { value: latch_row + away_row }
+    InventoryTotalOnly { total } => Present { value: total }
+    InventorySidesUnread { latch_row_known, away_row_known, side_unread } => Present { value: latch_row_known + away_row_known + side_unread }
+    InventoryInPart { latch_row_at_least: _, away_row_at_least: _, side_unread: _ } => Absent
+    InventoryRefused { defect: _ } => Absent
   }
 }
 
@@ -889,10 +922,44 @@ fn caliper_text(spans: List<CaliperSpan>) -> String {
   }
 }
 
+fn observed_inventory_text(i: ObservedInventory) -> String {
+  match i {
+    InventoryByRow { latch_row, away_row } => join([to_string(latch_row + away_row), " positions mapped, ", to_string(latch_row), " in the latch-side row and ", to_string(away_row), " in the row away from the latch"], "")
+    InventoryTotalOnly { total } => join([to_string(total), " positions counted, no row read"], "")
+    InventorySidesUnread { latch_row_known, away_row_known, side_unread } => join([to_string(latch_row_known + away_row_known + side_unread), " positions mapped: ", to_string(latch_row_known), " latch-side, ", to_string(away_row_known), " away from the latch, ", to_string(side_unread), " of unread side"], "")
+    InventoryInPart { latch_row_at_least, away_row_at_least, side_unread } => join(["mapped in part: at least ", to_string(latch_row_at_least), " latch-side and ", to_string(away_row_at_least), " away from the latch, ", to_string(side_unread), " of unread side"], "")
+    InventoryRefused { defect } => match defect {
+      TerminalAtTwoCoordinates { terminal } => join(["mapping refused: ", terminal as String, " is placed at two positions"], "")
+      TwoTerminalsAtOneCoordinate { side, index } => join(["mapping refused: two terminals at position ", to_string(index), " ", row_side_text(s: side)], "")
+    }
+  }
+}
+
 fn j20_text(layout: CarrierLayoutObservation) -> String {
   match layout.j20 {
-    CountedFromPhotograph { positions: n, evidence: _ } => join([to_string(n), " positions counted from a photograph; pin continuity unread", caliper_text(spans: layout.j20_calipers)], "")
-    MappedOnHousing { housing } => join([to_string(count(housing.positions)), " positions mapped on the housing", caliper_text(spans: layout.j20_calipers)], "")
+    CountedFromPhotograph { component: _, positions: n, evidence: _ } => join([to_string(n), " positions counted from a photograph; pin continuity unread", caliper_text(spans: layout.j20_calipers)], "")
+    MappedOnHousing { housing: _ } => join([observed_inventory_text(i: observed_inventory(census: layout.j20)), caliper_text(spans: layout.j20_calipers)], "")
+  }
+}
+
+// What the board's census says of its revision's reconstructed J20 inventory (product.p4261.evidence).
+fn j20_agreement_text(a: InventoryAssessment?) -> String {
+  match a {
+    Absent => "no reconstructed J20 inventory for this revision"
+    Present { value: x } => {
+      let claimed = join([to_string(x.claim.latch_row_positions), " and ", to_string(x.claim.away_row_positions)], "")
+      match x.outcome {
+        InventorySupportedOnSpecimen => join(["this supports the reconstructed ", x.claim.position.revision.revision_code as String, " inventory of ", claimed, " on ", x.asset as String], "")
+        InventoryContradicted { observed: _ } => join(["this contradicts the reconstructed ", x.claim.position.revision.revision_code as String, " inventory of ", claimed], "")
+        InventoryMissing { gap } => join(["the reconstructed ", x.claim.position.revision.revision_code as String, " inventory of ", claimed, " is not established by it: ", match gap {
+          RowSplitUnread => "the rows' split is unread"
+          CoverageIncomplete => "the mapping is partial"
+          MappingRefused { defect: _ } => "the mapping is refused"
+          ReadOnlyOffListing => "it was read only off the seller's listing"
+        }], "")
+        InventoryNotAttributable { gap: _ } => join(["the reconstructed ", x.claim.position.revision.revision_code as String, " inventory is not attributable to this board's census"], "")
+      }
+    }
   }
 }
 
@@ -903,6 +970,7 @@ fn j20_text(layout: CarrierLayoutObservation) -> String {
 // finding's standing is derived here from the typed model; its text is this module's own rendering.
 type CarrierFinding
   = J20ContactInventory
+  | J20InventoryMatchesRevision
   | J20Polarity
   | ComponentAcrossInput { component: ComponentInstanceIdentity }
   | ComponentIdentified { component: ComponentInstanceIdentity }
@@ -958,9 +1026,23 @@ fn identified_finding(layout: CarrierLayoutObservation, c: ComponentInstanceIden
 
 fn carrier_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> FindingStanding {
   match f {
-    J20ContactInventory => match layout.j20 {
-      MappedOnHousing { housing: _ } => FindingEstablished { text: join(["J20: ", j20_text(layout: layout)], "") }
-      CountedFromPhotograph { positions: _, evidence: _ } => FindingNotEstablished { reason: join(["J20 is only counted from a photograph: ", j20_text(layout: layout)], "") }
+    J20ContactInventory => match j20_recount(layout: layout) {
+      RecountEstablished { latch_row: _, away_row: _ } => FindingEstablished { text: join(["J20: ", j20_text(layout: layout), ". ", j20_agreement_text(a: j20_inventory_assessment(layout: layout))], "") }
+      RecountNotEstablished { gap, observed: _ } => FindingNotEstablished { reason: join([match gap {
+        RecountNotAMapping => "J20 is only counted, its rows unmapped"
+        RecountNotAtAdmittedJ20 => "the mapping is not of a component admitted at this board's J20"
+        RecountReadOffListing => "the mapping was read only off the seller's listing"
+        RecountInPart => "J20 is mapped only in part"
+        RecountSidesUnread => "a mapped position's row is unread"
+        RecountRefused { defect: _ } => "J20's mapping is refused"
+      }, ": ", j20_text(layout: layout)], "") }
+    }
+    J20InventoryMatchesRevision => match j20_inventory_assessment(layout: layout) {
+      Absent => FindingNotEstablished { reason: join([j20_agreement_text(a: Absent), "; J20: ", j20_text(layout: layout)], "") }
+      Present { value: a } => match a.outcome {
+        InventorySupportedOnSpecimen => FindingEstablished { text: join(["J20: ", j20_text(layout: layout), "; ", j20_agreement_text(a: Present { value: a })], "") }
+        _ => FindingNotEstablished { reason: join(["J20: ", j20_text(layout: layout), "; ", j20_agreement_text(a: Present { value: a })], "") }
+      }
     }
     J20Polarity => match input_polarity(layout: layout) {
       PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => FindingEstablished { text: join(["J20 ", polarity_text(p: input_polarity(layout: layout))], "") }

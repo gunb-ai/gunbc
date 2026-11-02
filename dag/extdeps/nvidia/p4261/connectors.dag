@@ -1,0 +1,61 @@
+module extdeps.nvidia.p4261.connectors
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1 }
+import extdeps.nvidia.p4261.population { P4261Position, p4261_position }
+
+// HOW MANY POSITIONS EACH ROW OF A P4261 CONNECTOR HOUSING HAS, PER ASSEMBLY REVISION. A housing's rows
+// and how many positions each holds are NVIDIA's layout (and the connector maker's), whoever counts
+// them. No NVIDIA assembly drawing for the P4261 has been found, so every claim here is RECONSTRUCTED
+// from a housing this repository mapped on a board it holds, and is TranscribedUncited. A connector
+// maker's drawing grounds a claim only once the housing's identity and its installation at this
+// revision's position are established too; a drawing of a similar connector grounds nothing.
+//
+// COUNTS ONLY. A claim says how many positions each row holds. It names no contact, no pin number and
+// no direction of numbering: the maker's pin 1 has not been read on any held board, and the order in
+// which a bench session counted positions is that session's coordinate, not the connector's. A row is
+// named by its place relative to the housing's latch, which anyone can find on the housing; neither row
+// means supply, return, positive or negative. Counting positions is not a claim that every position
+// holds a populated contact.
+//
+// One count per row, as fields: a row cannot be listed twice, so a total cannot be inflated by a repeat.
+// Whether a held board's own mapping supports a claim, and on which board, is the observing layer's
+// assessment (product.p4261.evidence), never a property authored here.
+type HousingRow
+  = LatchRow
+  | AwayFromLatchRow
+
+type P4261ContactInventory {
+  position: P4261Position
+  latch_row_positions: Nat
+  away_row_positions: Nat
+  standing: CitedFigureStanding
+}
+
+fn inventory_total(i: P4261ContactInventory) -> Nat {
+  i.latch_row_positions + i.away_row_positions
+}
+
+fn inventory_row(i: P4261ContactInventory, row: HousingRow) -> Nat {
+  match row {
+    LatchRow => i.latch_row_positions
+    AwayFromLatchRow => i.away_row_positions
+  }
+}
+
+fn reconstructed_inventory(revision: P4261AssemblyRevision, designator: NonEmptyStr, latch: Nat, away: Nat) -> P4261ContactInventory {
+  P4261ContactInventory {
+    position: p4261_position(revision: revision, designator: designator),
+    latch_row_positions: latch,
+    away_row_positions: away,
+    standing: TranscribedUncited { read_obligation: join(["an NVIDIA assembly drawing for P4261 assembly ", revision.assembly_part_number as String, " revision ", revision.revision_code as String, ", or the maker's drawing of the housing established as the one installed at ", designator as String, ", giving its rows' position counts"], "") as NonEmptyStr },
+  }
+}
+
+// Reconstructed from the E1's J20, mapped as two rows of nine. The K1 has no claim: its only record
+// is a count off the seller's listing.
+data p4261_contact_inventories: List<P4261ContactInventory> = [
+  reconstructed_inventory(revision: p4261_e1, designator: "J20", latch: 9, away: 9),
+]
