@@ -294,6 +294,21 @@ pub fn write_emitted_workspace(
     root: &Path,
     bin_name: &str,
 ) -> Result<EmittedWorkspace, String> {
+    // ONE-OFF DIAGNOSTIC PROBE ONLY: capture the actual input before the unchanged
+    // realization can refuse. This probe is not intended for main or a permanent label.
+    if let Some(path) = std::env::var_os("BD_READER_EDGE_INPUT") {
+        let output = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|e| format!("one-off input capture open: {e}"))?;
+        let mut output = std::io::BufWriter::new(output);
+        serde_json::to_writer(&mut output, &(bin_name, files, edges, rust_crates))
+            .map_err(|e| format!("one-off input capture serialize: {e}"))?;
+        std::io::Write::flush(&mut output)
+            .map_err(|e| format!("one-off input capture flush: {e}"))?;
+        eprintln!("one-off emitted workspace input retained at {:?}", path);
+    }
     let realized = realize(files, edges, rust_crates, bin_name)?;
     write_files(root, &realized.files)?;
     let top_package = realized.build.top_package.to_string();
