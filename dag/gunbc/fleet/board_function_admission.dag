@@ -5,15 +5,19 @@ import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.network.mac { mac_addresses_are_equal }
 import extdeps.boards.types {
   BaseboardCatalogRow,
-  BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling,
+  BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort,
   BoardFunctionSwitch, JumperSwitch, FirmwareSetupSwitch, SwitchNotStated,
+  OnboardEthernetPortRow, BmcSharingStated, BmcSharingNotStated,
 }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog, asrock_altrad8ud_function_switch }
-import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog, supermicro_h11ssl_function_switch }
-import gunbc.fleet.fleet_intent { ComputeHost, fleet_intent_known_hosts }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog, asrock_altrad8ud_function_switch, asrock_altrad8ud_1l2t_onboard_ethernet_ports }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog, supermicro_h11ssl_function_switch, supermicro_h11ssl_onboard_ethernet_ports }
+import gunbc.fleet.machine_board { MachineBoardRow, MachineBoardCatalogued, MachineBoardUncatalogued, MachineBoardProviderOwned, machine_board_rows }
+import gunbc.host.host_primary_network_desired { host_primary_network_rows }
+import gunbc.host.host_primary_network_observed { host_onboard_port_bindings }
 
 // WHICH BOARD FUNCTIONS THE FLEET ADMITS, AND HOW EACH ONE IT DOES NOT IS SWITCHED OFF.
 //
@@ -23,14 +27,16 @@ import gunbc.fleet.fleet_intent { ComputeHost, fleet_intent_known_hosts }
 // BMC graphics link served nothing, and the host hung while the board's firmware-first PCIe error
 // handler was taking that link's errors. So admission is a match with no default arm: a new
 // BoardFunction does not compile until it is stated here, and the admitted arm cannot be written
-// without the declaration that consumes it. Admission is held board-wide here; a function only one
-// host uses (srv4's X550 port, say) is that host's exception, recorded with its consumer when the
-// per-host bring-up reads it, never by widening this default.
+// without the declaration that consumes it. Admission is held at the grain where the consumer is:
+// board-wide for the BMC and the firmware behaviours, per host for an Ethernet port, whose consumer is
+// that host's primary network row. A port whose consumer has not been read is AdmissionUnread, never
+// a removal: switching off the port a host's network runs on would cut the host off.
 type BoardFunctionAdmission
   = FunctionAdmitted { consumer: DeclarationRef }
   | FunctionNotAdmitted { reason: NonEmptyStr }
+  | AdmissionUnread { obligation: NonEmptyStr }
 
-fn board_function_admission(f: BoardFunction) -> BoardFunctionAdmission {
+fn board_function_admission(host: HostIdentity, catalog: BaseboardCatalogRow, f: BoardFunction) -> BoardFunctionAdmission {
   match f {
     BmcManagementFunction => FunctionAdmitted {
       consumer: decl_ref(module_path: "gunbc.host.host_reset_subject_roster", decl_name: "reset_subject_roster"),
@@ -41,12 +47,61 @@ fn board_function_admission(f: BoardFunction) -> BoardFunctionAdmission {
     PcieErrorFirmwareFirstHandling => FunctionNotAdmitted {
       reason: "No fleet consumer needs the firmware to take PCIe errors before the OS. The OS's own AER reports them where the fleet can count and alert on them; firmware-first adds a handler the fleet cannot observe. srv1's hangs occurred while that handler was taking link errors; whether the handler itself stalled is not established, and the reason to switch it off does not depend on it.",
     }
+    OnboardEthernetPort { designator: d } => onboard_port_admission(host: host, catalog: catalog, designator: d)
   }
 }
 
-// THE ROSTER the per-host plan walks, with its completeness walled by an exhaustive match: a new
-// function does not compile until it is stated here, and the witness reds if it is stated but left
-// out of the list.
+// The board's own port rows, dispatched here in the consuming layer like the switches below.
+fn onboard_ethernet_ports(catalog: BaseboardCatalogRow) -> List<OnboardEthernetPortRow> {
+  if catalog == asrock_altrad8ud_1l2t_catalog {
+    asrock_altrad8ud_1l2t_onboard_ethernet_ports
+  } else {
+    if catalog == supermicro_h11ssl_catalog {
+      supermicro_h11ssl_onboard_ethernet_ports
+    } else {
+      []
+    }
+  }
+}
+
+fn port_shared_with_bmc(row: OnboardEthernetPortRow) -> Bool {
+  match row.bmc_sharing {
+    BmcSharingStated => true
+    BmcSharingNotStated => false
+  }
+}
+
+// AN ETHERNET PORT'S CONSUMER IS THE HOST'S PRIMARY NETWORK. The port is admitted when the host's
+// primary NIC is bound to it; when the NIC is bound to another port, this one is not admitted unless
+// its manual marks it shared with the BMC, whose reach through it has not been read. Every other case
+// is unread.
+fn onboard_port_admission(host: HostIdentity, catalog: BaseboardCatalogRow, designator: NonEmptyStr) -> BoardFunctionAdmission {
+  let primary_nics = map(filter(host_primary_network_rows, d => host_identity_eq(a: d.host, b: host)), d => d.nic)
+  let bound = filter(host_onboard_port_bindings, b => host_identity_eq(a: b.host, b: host) && any(primary_nics, m => mac_addresses_are_equal(left: m, right: b.mac)))
+  let port = filter(onboard_ethernet_ports(catalog: catalog), p => (p.designator as String) == (designator as String))
+  let shared = any(port, p => port_shared_with_bmc(row: p))
+  if length(primary_nics) == 0 {
+    AdmissionUnread { obligation: concat("no primary network row names this host's NIC, so which port carries its network is unread; switching off ", concat(designator as String, " could cut the host off")) as NonEmptyStr }
+  } else {
+    if length(bound) == 0 {
+      AdmissionUnread { obligation: "the host's primary NIC is not bound to a rear port (gunbc.host.host_primary_network_observed host_onboard_port_bindings)" }
+    } else {
+      if any(bound, b => (b.designator as String) == (designator as String)) {
+        FunctionAdmitted { consumer: decl_ref(module_path: "gunbc.host.host_primary_network_desired", decl_name: "host_primary_network_rows") }
+      } else {
+        if shared {
+          AdmissionUnread { obligation: concat("the manual marks ", concat(designator as String, " as shared with the BMC, and which port the BMC reaches the network through is not read")) as NonEmptyStr }
+        } else {
+          FunctionNotAdmitted { reason: concat("the host's primary network runs on another port, and no other fleet consumer uses ", designator as String) as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+// THE FUNCTIONS EVERY BOARD IS ASKED ABOUT, with completeness walled by an exhaustive match: a new
+// function does not compile until it is stated here, and the witness reds if it is stated but left out
+// of the list. Ethernet ports are not in it: each board's own port rows list them.
 data board_functions: List<BoardFunction> = [
   BmcManagementFunction,
   BmcGraphicsController,
@@ -58,7 +113,12 @@ fn board_function_listed(f: BoardFunction) -> Bool {
     BmcManagementFunction => any(board_functions, g => g == BmcManagementFunction)
     BmcGraphicsController => any(board_functions, g => g == BmcGraphicsController)
     PcieErrorFirmwareFirstHandling => any(board_functions, g => g == PcieErrorFirmwareFirstHandling)
+    OnboardEthernetPort { designator: _ } => false
   }
+}
+
+fn functions_of_board(catalog: BaseboardCatalogRow) -> List<BoardFunction> {
+  concat(board_functions, map(onboard_ethernet_ports(catalog: catalog), p => OnboardEthernetPort { designator: p.designator }))
 }
 
 // HOW A FUNCTION THE FLEET DOES NOT ADMIT IS REMOVED ON ONE BOARD. RemovedAtBoard is the board's own
@@ -98,15 +158,19 @@ fn host_side_removal(f: BoardFunction) -> BoardFunctionRemoval {
     BmcGraphicsController => RemovedByHostAfterBoot {
       residue: "the firmware brings the controller's PCIe link up on every boot before the host removes the function and disables its root port's link, so the link is exposed until the OS acts",
     }
+    OnboardEthernetPort { designator: _ } => RemovedByHostAfterBoot {
+      residue: "the firmware brings the port's controller up on every boot; the host identifies the port's PCI function by reading it and removes that function, so the controller stays powered and its link is exposed until the OS acts. Where one controller carries two ports, disabling its root port's link would take both, so it is not used for one",
+    }
     PcieErrorFirmwareFirstHandling => RemovalUnmodeled {
       cause: "the board states no setup item for firmware-first PCIe error handling, and no host-side reading is grounded as proof that it is off: the ACPI _OSC grant establishes that the OS owns the AER registers, while whether firmware handles an error source first is a separate fact (the ACPI HEST FIRMWARE_FIRST flag, which the specification says neither grants nor denies AER register access)",
     }
   }
 }
 
-fn board_function_removal(catalog: BaseboardCatalogRow, f: BoardFunction) -> BoardFunctionRemoval {
-  match board_function_admission(f: f) {
+fn board_function_removal(host: HostIdentity, catalog: BaseboardCatalogRow, f: BoardFunction) -> BoardFunctionRemoval {
+  match board_function_admission(host: host, catalog: catalog, f: f) {
     FunctionAdmitted { consumer } => NothingToRemove { consumer: consumer }
+    AdmissionUnread { obligation } => RemovalUnmodeled { cause: obligation }
     FunctionNotAdmitted { reason: _ } =>
       match board_function_switch(catalog: catalog, f: f) {
         Absent => RemovalUnmodeled {
@@ -128,19 +192,27 @@ type HostBoardFunctionPlan {
   removal: BoardFunctionRemoval
 }
 
-fn host_board_function_plans(host: ComputeHost) -> List<HostBoardFunctionPlan> {
-  map(board_functions, f => HostBoardFunctionPlan {
-    host: host.identity,
-    board_function: f,
-    removal: match host.baseboard {
-      Absent => RemovalUnmodeled { cause: concat("host ", concat(host.identity as String, " declares no baseboard")) as NonEmptyStr }
-      Present { value: b } => board_function_removal(catalog: b.catalog, f: f)
-    },
-  })
+// One plan per function a machine's board carries. A board with no catalog row still gets one plan per
+// common function, each refusing with the obligation, so an unconverged machine shows up as work rather
+// than as nothing; a provider-owned board gets none, because none of its functions are the fleet's.
+fn machine_board_function_plans(row: MachineBoardRow) -> List<HostBoardFunctionPlan> {
+  match row.board {
+    MachineBoardCatalogued { catalog, source: _ } => map(functions_of_board(catalog: catalog), f => HostBoardFunctionPlan {
+      host: row.host,
+      board_function: f,
+      removal: board_function_removal(host: row.host, catalog: catalog, f: f),
+    })
+    MachineBoardUncatalogued { board, obligation } => map(board_functions, f => HostBoardFunctionPlan {
+      host: row.host,
+      board_function: f,
+      removal: RemovalUnmodeled { cause: concat(board as String, concat(" has no board catalog row: ", obligation as String)) as NonEmptyStr },
+    })
+    MachineBoardProviderOwned { provider: _ } => []
+  }
 }
 
 fn fleet_board_function_plans() -> List<HostBoardFunctionPlan> {
-  flat_map(fleet_intent_known_hosts, h => host_board_function_plans(host: h))
+  flat_map(machine_board_rows, r => machine_board_function_plans(row: r))
 }
 
 // THE CONSUMER THESE PLANS ARE OWED, declared rather than implied. Nothing realizes them yet: srv1's

@@ -1,13 +1,13 @@
 module extdeps.boards.supermicro_h11ssl
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
   Bandwidth, bandwidth, Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
 }
-import extdeps.boards.types { BaseboardCatalogRow, HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population, BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, BoardFunctionSwitch, JumperSwitch, SwitchNotStated }
+import extdeps.boards.types { BaseboardCatalogRow, HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population, BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort, BoardFunctionSwitch, JumperSwitch, SwitchNotStated, OnboardEthernetPortRow, BmcSharingNotStated }
 import extdeps.vendor.supermicro { supermicro }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -441,8 +441,25 @@ fn supermicro_h11ssl_function_switch(f: BoardFunction) -> BoardFunctionSwitch {
     BmcManagementFunction => JumperSwitch { designator: "JPB1", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual pp.13,46-48" }
     BmcGraphicsController => JumperSwitch { designator: "JPG1", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual pp.13,46-48" }
     PcieErrorFirmwareFirstHandling => SwitchNotStated { coarser: Absent }
+    OnboardEthernetPort { designator: d } =>
+      if (d as String) == "LAN1" {
+        JumperSwitch { designator: "JPL1", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual p.13 jumper table (JPL1, JPL2 LAN1, LAN2 Enable/Disable, Pins 1-2 (Enabled)) and layout legend (JPL1:LAN1 2-3 DISABLE)" }
+      } else {
+        if (d as String) == "LAN2" {
+          JumperSwitch { designator: "JPL2", off_position: "pins 2-3 (pins 1-2, enabled, is the default)", citation: "manual p.13 jumper table (JPL1, JPL2 LAN1, LAN2 Enable/Disable, Pins 1-2 (Enabled)) and layout legend (JPL2:LAN2 2-3 DISABLE)" }
+        } else {
+          SwitchNotStated { coarser: Absent }
+        }
+      }
   }
 }
+
+// The two rear LAN ports (pp.15,17: two Intel i210 gigabit RJ45). The manual lists an NC-SI header
+// (JNCSI1) but states no port the BMC shares, beside its dedicated IPMI_LAN.
+data supermicro_h11ssl_onboard_ethernet_ports: List<OnboardEthernetPortRow> = [
+  OnboardEthernetPortRow { designator: "LAN1", controller: "Intel i210", bmc_sharing: BmcSharingNotStated, citation: "manual pp.15,17" },
+  OnboardEthernetPortRow { designator: "LAN2", controller: "Intel i210", bmc_sharing: BmcSharingNotStated, citation: "manual pp.15,17" },
+]
 
 // ---- LEDs (pp.13,49-50).
 type H11sslLed = UidLed | Ledm1BmcHeartbeat | Le1PowerOk | Le3M2Active | Joh1OverheatFan

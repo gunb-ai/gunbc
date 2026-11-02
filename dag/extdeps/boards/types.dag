@@ -154,6 +154,21 @@ type BoardFunction
   = BmcManagementFunction
   | BmcGraphicsController
   | PcieErrorFirmwareFirstHandling
+  | OnboardEthernetPort { designator: NonEmptyStr }
+
+// AN ONBOARD ETHERNET PORT AS ITS BOARD'S MANUAL NAMES IT: the rear-panel designator, the controller
+// behind it, and whether the manual states that the BMC may share the port. A shared port is one
+// function serving two consumers (the host's network and the BMC's sideband), so a consumer may not
+// switch it off on the host's account alone. Silence about sharing is BmcSharingNotStated, a fact
+// about the manual.
+type OnboardEthernetBmcSharing = BmcSharingStated | BmcSharingNotStated
+
+type OnboardEthernetPortRow {
+  designator: NonEmptyStr
+  controller: NonEmptyStr
+  bmc_sharing: OnboardEthernetBmcSharing
+  citation: NonEmptyStr
+}
 
 // HOW A BOARD'S HELD MANUAL SAYS A FUNCTION IS SWITCHED OFF. Silence is SwitchNotStated, a fact about
 // the manual, not a claim that the board has no switch; `coarser` names a stated switch that removes
