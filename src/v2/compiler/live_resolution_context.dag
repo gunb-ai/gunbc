@@ -36,9 +36,6 @@ import v2.std.resolution_policy { NameResolutionPolicy }
 // is loaded too, once and not transitively: a chain
 // of relays longer than one hop is a module absent from the roots, which the resolver already
 // answers as ModuleAbsent rather than a wrong resolution.
-//
-// Extracted from from the decl-ref-census (v2.compiler.source_root_eval
-// native_decl_ref_census_output), its first consumer.
 
 type LiveContextLoad {
   roots: FreeMonoid<NormalizedTree>

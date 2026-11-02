@@ -5720,7 +5720,7 @@ pub fn run_self_host_frontier(
     })
 }
 
-/// A CENSUS RUN BY THE EMITTED COMPILER (`demand-census`, `decl-ref-census`: one relay, the verb is
+/// A CENSUS RUN BY THE EMITTED COMPILER (`demand-census`: one relay, the verb is
 /// the parameter). The seed's whole job is the preparation it shares with every native instrument;
 /// the census is the emitted binary's, which prints its own lines and decides its own exit. The
 /// child's stdout is relayed line for line and its status is returned unjudged.

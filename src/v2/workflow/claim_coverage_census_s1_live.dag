@@ -324,7 +324,6 @@ fn producer_named_identities(producer: TargetProducer, index: Map<String, String
     RequiredLaneResolutionCensusProducer {} => []
     BareReferenceChannelOutcomeProducer {} => []
     SelfHostBehavioralEquivalenceProducer {} => []
-    NativeCensusVerbProducer { verb: _ } => []
     GenericIdentityCensusProducer {} => []
     InterpolationHoleCensusProducer {} => []
     SharedTypeLeafCollisionCensusProducer {} => []
