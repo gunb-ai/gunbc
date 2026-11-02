@@ -590,7 +590,12 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the
           ).outcome {
             PriorLifeArchiveIndeterminateAcrossForcedWrite { verdict: v } =>
               length(xs: v.options) == 2
-                && (match first(xs: v.options) { ConfirmFactoryFresh {} => true  _ => false })
+                // first(xs:) hands back the declared Optional (#15501): the decision arrives wrapped in
+                // Present, so the arm must unwrap it rather than name the carrier directly.
+                && (match first(xs: v.options) {
+                      Present { value: d } => match d { ConfirmFactoryFresh {} => true  _ => false }
+                      Absent => false
+                    })
                 && (match v.standing { NoPriorLifeEntries {} => true  _ => false })
                 // The ordered pre-capture grounded nothing, because the post-write archive holds no entry at
                 // all -- and the verdict names the write's own begin/completion, taken from the sealed leg.
