@@ -634,3 +634,15 @@ test fn a_nested_reference_to_a_nullary_arrow_constant_is_not_spelled_as_an_arm_
       }
   }
 }
+
+// PROBE ONLY (never for landing): the emitted text of the match fixture.
+fn ce_probe_match_text() -> String {
+  let located = ce_emit(
+    ingest: [ce_read(source: ce_nested_arm_match_source, id: ^ce_nested_arm_match_read, path: "src/v2/test/ce_nested_arm_match.dag")],
+    entry: "v2.test.ce_nested_arm_match"
+  )
+  match located.outcome {
+    Rejected { diagnostics: d } => concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
+    Accepted { value: e, diagnostics: _ } => concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
+  }
+}
