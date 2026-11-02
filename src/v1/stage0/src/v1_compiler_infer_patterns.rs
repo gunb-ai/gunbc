@@ -369,6 +369,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = crate::v1_compiler_infer_types::extract_optional_inner_node(scrut.clone());
         let value_field = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "value".to_string(),
             span: scrut.span.clone(),
@@ -392,9 +393,9 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         let present_node = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Present".to_string(),
             span: scrut.span.clone(),
@@ -416,7 +417,6 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         present_node
     }
@@ -429,6 +429,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             std::option::Option::None => error_type(),
         };
         let value_field = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "value".to_string(),
             span: scrut.span.clone(),
@@ -452,9 +453,9 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Holds".to_string(),
             span: scrut.span.clone(),
@@ -476,7 +477,6 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -484,6 +484,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
 pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let diagnostic_type = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Diagnostic".to_string(),
             span: scrut.span.clone(),
@@ -505,9 +506,9 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         let diagnostic_field = Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "diagnostic".to_string(),
             span: scrut.span.clone(),
@@ -531,9 +532,9 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         Rc::new(Node {
+            ident: std::option::Option::None,
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Violates".to_string(),
             span: scrut.span.clone(),
@@ -555,7 +556,6 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
