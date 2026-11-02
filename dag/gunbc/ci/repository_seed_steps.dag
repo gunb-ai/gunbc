@@ -8,7 +8,7 @@ import extdeps.github.actions {
 }
 import extdeps.github.expressions { ContextAccess, Expression, Needs, Steps, interpolate }
 import gunbc.action_use_admission {
-  checkout_action, setup_rust_action, checkout_ref_entry, CommitOutputProducer, commit_output_producer_path,
+  checkout_action, setup_rust_action, checkout_ref_entry, commit_output_producer_path,
 }
 import gunbc.ci.repository_ci_profile { PublicSeed, seed_source_pin, seed_source_refusal_reason }
 import gunbc.ci.repository_compose_overlay { command, command_words, word, var_word, path_under, set_strict_stmt }
@@ -260,19 +260,14 @@ fn seed_pin_checkout_ref_entry(seed: PublicSeed) -> Optional<YamlKeyValue> {
   }
 }
 
-// THE TWO LISTS A CONSUMER MUST PASS TO THE WALL, both projections of the row. Passing one and not the
-// other is refused by the consumer's own admission call: a ref that is not the rendering of a declared
-// Expression refuses, and a declared Needs ref whose producer is not named is not in the allowlist.
+// THE LIST A CONSUMER MUST DECLARE TO THE WALL: the ref expression the seed checkout will render, for the
+// identity join that refuses a `ref:` which is not the rendering of a declared Expression. The producer is
+// NOT passed to the wall -- the wall reads the workflow it is admitting, and the verifier job below is what
+// makes the ref admissible, by declaring its own output. A seedless or owed-pin row declares nothing,
+// because it emits no checkout and no verifier.
 fn seed_pin_verifier_declared_expressions(seed: PublicSeed) -> List<Expression> {
   match seed_pin_checkout_ref_expression(seed: seed) {
     Present { value: e } => [e]
-    Absent {  } => []
-  }
-}
-
-fn seed_pin_verifier_producers(seed: PublicSeed) -> List<CommitOutputProducer> {
-  match seed_source_pin(source: seed.source) {
-    Present { value: _ } => [seed.verifier.producer]
     Absent {  } => []
   }
 }
@@ -294,9 +289,18 @@ fn seed_pin_fetch_url(seed: PublicSeed) -> String {
 // deleted, and a verifier that checks nothing still prints its output. Here each proof carries its own
 // query, the value the query must equal, and the refusal that fires when it does not, and the emitted
 // script is a fold over this list -- so removing a guard removes a row, which is something the model's
-// controls can and do see. The two together are what a pin means: the object exists AND is a commit AND
-// carries the id the row declared. A tag object peeled to a commit is refused by the first (its type is
-// `tag`), an object borrowed from another repository by the second.
+// controls can and do see.
+//
+// The two rows ask different questions, and neither is answerable from the other. `cat-file -t` asks what
+// the object named by the pin IS: nothing there, a tag, a tree or a blob all refuse, because only a commit
+// may be built. `rev-parse --verify FETCH_HEAD` asks what the FETCH actually BROUGHT: the store was created
+// empty seconds earlier and the only thing in it should be what the fetch from the URL this row's
+// `repository` field names delivered, so if the last fetch left FETCH_HEAD naming some other object -- a
+// substitute, a ref that resolved elsewhere -- the pin names a commit the lane never received. A proof that
+// asked the second question of the pin itself (`rev-parse <pin>`) could not fail: given a full sha, git
+// prints that sha back whether or not anything was fetched, which is a check that reads as coverage and is
+// decoration (DESIGN 4b). The wrong-repository case is not a proof here at all: it is structural, because
+// the fetch URL and the checkout's `repository:` are the same field of this row.
 type SeedPinProof {
   name: String
   variable: String
@@ -323,14 +327,14 @@ fn seed_pin_proofs(seed: PublicSeed, pin: String) -> List<SeedPinProof> {
       ),
     },
     SeedPinProof {
-      name: "SeedPinObjectIdDiffers",
-      variable: "GUNBC_SEED_PIN_OBJECT",
-      query: ["rev-parse", pin],
+      name: "SeedPinFetchedObjectIsNotThePin",
+      variable: "GUNBC_SEED_PIN_FETCHED",
+      query: ["rev-parse", "--verify", "--quiet", "FETCH_HEAD"],
       expected: pin,
       refusal: join(
         [
-          "git rev-parse of ", pin, " answered ", seed_pin_var_or_nothing(variable: "GUNBC_SEED_PIN_OBJECT"),
-          ", which is not the pin; refusing to check out a tree by an identity it does not carry",
+          remote, " @ ", pin, " left FETCH_HEAD at ", seed_pin_var_or_nothing(variable: "GUNBC_SEED_PIN_FETCHED"),
+          "; the fetch delivered a different object than the commit this row pins",
         ],
         ""
       ),

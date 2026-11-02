@@ -62,7 +62,7 @@ import gunbc.ci.repository_ci_profile {
   seed_source_refusal_reason,
 }
 import gunbc.action_use_admission {
-  admit_workflow_checkout_refs_with_producers, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
   workflow_checkout_refs_refusal_reason,
 }
 import gunbc.ci.repository_compose_overlay {
@@ -123,7 +123,7 @@ import gunbc.ci.repository_seed_steps {
   seed_lane_steps,
   seed_pin_verifier_declared_expressions,
   seed_pin_verifier_job,
-  seed_pin_verifier_producers,
+
   record_seed_revision_step,
   toolchain_install_step,
   seed_build_step,
@@ -909,10 +909,9 @@ fn repository_witnesses_yml_emission(profile: RepositoryCiProfile, program: Rost
         verifier_job: verifier_job
       ) {
         Accepted { value: workflow, diagnostics: _ } =>
-          match admit_workflow_checkout_refs_with_producers(
+          match admit_workflow_checkout_refs(
             workflow: workflow,
-            declared: seed_pin_verifier_declared_expressions(seed: seed),
-            extra_producers: seed_pin_verifier_producers(seed: seed)
+            declared: seed_pin_verifier_declared_expressions(seed: seed)
           ) {
             WorkflowCheckoutRefsRefused { refusals: crs } => YamlEmitRefused {
               path: profile.roster.workflow_file as String,

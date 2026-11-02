@@ -22,7 +22,7 @@ import extdeps.github.actions {
   RunnerSpec, HostedRunner, RunnerLabel, Ubuntu2404Arm
 }
 import gunbc.action_use_admission {
-  admit_workflow_checkout_refs_with_producers, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action, download_artifact_action, google_auth_action }
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action, download_artifact_action, google_auth_action }
 import extdeps.github.action_release { ActionRelease, action_release_same_producer }
 import gunbc.roadmap.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
@@ -37,7 +37,6 @@ import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witn
 import gunbc.ci.ci_materialization { step_display_name }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import extdeps.github.expressions { Expression, interpolate }
-import gunbc.action_use_admission { CommitOutputProducer }
 import gunbc.ci.repository_ci_profile {
   DagInvocation, HealPublisherPolicy, OverlayIngest, PublicSeed, PublisherCompilerSource, RepositoryCiProfile,
   profile_overlay, profile_public_seed, profile_publisher_compiler_source, repository_ci_profile_refusal,
@@ -62,8 +61,7 @@ import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
 // nothing verified.
 import gunbc.ci.repository_seed_steps {
   SeedLaneSteps, seed_lane_steps, seed_build_step, toolchain_install_step,
-  seed_pin_verifier_job, seed_pin_verifier_declared_expressions, seed_pin_verifier_producers,
-  seed_pin_checkout_ref_expression,
+  seed_pin_verifier_job, seed_pin_verifier_declared_expressions,   seed_pin_checkout_ref_expression,
 }
 import gunbc.ci.repository_compose_overlay {
   ComposeSpec, composed_source_roots, compose_gunbc_run_statements, compose_preamble_statements,
@@ -545,13 +543,6 @@ fn heal_publisher_declared_ref_expressions(source: PublisherCompilerSource) -> L
   }
 }
 
-fn heal_publisher_verifier_producers(source: PublisherCompilerSource) -> List<CommitOutputProducer> {
-  match source {
-    PublisherBuildsItsOwnCheckout { required_bins: _ } => []
-    PublisherRunsUnderComposedSeed { seed: seed, overlay: _ } => seed_pin_verifier_producers(seed: seed)
-  }
-}
-
 // THE VERIFIER JOB THE SEED ROUTE CANNOT RUN WITHOUT, or its absence for the route that needs none. One
 // function answers both arms so the publisher cannot emit a seed checkout whose job was forgotten: the
 // own-checkout route gets Absent and keeps `needs: []`, the seed route gets the job its checkout names.
@@ -971,10 +962,9 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
         Rejected { diagnostics: d } => HealPublisherWorkflowGenerationRefused { reason: heal_publisher_steps_refusal_reason(diagnostics: d) }
         Accepted { value: verifier_job, diagnostics: _ } =>
       let publisher_workflow = heal_publisher_workflow_of(profile: profile, job: job, steps: steps, verifier_job: verifier_job)
-      match admit_workflow_checkout_refs_with_producers(
+      match admit_workflow_checkout_refs(
         workflow: publisher_workflow,
-        declared: heal_publisher_declared_ref_expressions(source: source),
-        extra_producers: heal_publisher_verifier_producers(source: source)
+        declared: heal_publisher_declared_ref_expressions(source: source)
       ) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       HealPublisherWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.heal_publisher_workflow", refusals: crs) }

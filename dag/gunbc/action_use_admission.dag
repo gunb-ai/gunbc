@@ -1,7 +1,10 @@
 module gunbc.action_use_admission
 
 import std.types { Bool, Int, List, NonEmptyStr, String, commit_sha_text_holds }
-import extdeps.github.expressions { Expression, ExpressionContext, Github, Inputs, ContextAccess, LogicalOr, LogicalAnd, interpolate, serialize_expression }
+import extdeps.github.expressions {
+  Expression, ExpressionContext, Github, Inputs, Needs, Steps, ContextAccess, LogicalOr, LogicalAnd,
+  interpolate, serialize_expression,
+}
 import extdeps.external_authority { ExternalAuthority }
 import std.optional { Present, Absent }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
@@ -372,16 +375,61 @@ fn checkout_commit_job_outputs_from_producers(producers: List<CommitOutputProduc
   fold(producers, init: [], f: fn(acc, p) { concat(acc, [commit_output_producer_path(producer: p)]) })
 }
 
-// THE ALLOWLIST AS THE WALL SEES IT: the corpus-declared producers, plus any producer a profile row
-// declares for itself. The second half arrives as an ARGUMENT rather than an import, because this module
-// sits below gunbc.ci.repository_ci_profile (the profile row imports the checkout action and the ref wall
-// from here) and an import back would be a cycle -- so the fold is parameterized, and the parameter's
-// only admissible source is the row that also causes the job to be emitted. A caller that passes a
-// producer it invented gains nothing: the emitter that turns a row into a verifier job and the row are
-// one record, and the seed checkout refuses to render without a job that earned the output.
-fn checkout_commit_job_outputs_with_extra_producers(extra: List<CommitOutputProducer>) -> List<String> {
-  checkout_commit_job_outputs_from_producers(
-    producers: concat(commit_output_producers, extra)
+// WHAT A JOB ACTUALLY DECLARES AS ITS OUTPUT. GitHub's job-level `outputs:` map is where a job says
+// "consumers may read this"; a `run:` step writing to $GITHUB_OUTPUT is not something the wall can see,
+// so a name counts here only when its declared value is the rendering of `steps.<X>.outputs.<name>` for a
+// step X that EXISTS IN THAT SAME JOB. The declaration cannot point at a step that is not there, and the
+// spelling of the value is `interpolate` -- the same renderer the consumer's ref is built with -- rather
+// than a `${{ ... }}` this file re-types and lets drift.
+fn job_output_declaration_text(step_id: String, output_name: String) -> String {
+  interpolate(
+    expression: ContextAccess { context: Steps, path: [step_id, "outputs", output_name] }
+  )
+}
+
+fn job_step_ids(job: Job) -> List<String> {
+  fold(job.steps, init: [], f: fn(acc, step) {
+    match step {
+      RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        match i { Present { value: v } => concat(acc, [v]) _ => acc }
+      UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        match i { Present { value: v } => concat(acc, [v]) _ => acc }
+    }
+  })
+}
+
+fn job_honestly_declared_output_names(job: Job) -> List<String> {
+  match job.outputs {
+    Present { value: entries } =>
+      fold(entries, init: [], f: fn(acc, entry) {
+        match entry {
+          YamlKeyValue { key: k, value: v } =>
+            match v {
+              YamlString { value: s } =>
+                if any(job_step_ids(job: job), step_id => s == job_output_declaration_text(step_id: step_id, output_name: k)) {
+                  concat(acc, [k])
+                } else {
+                  acc
+                }
+              _ => acc
+            }
+        }
+      })
+    _ => []
+  }
+}
+
+// THE NEEDS ARM HAS TWO ANSWERS AND NO PARAMETER. Either the corpus names the producer, or THE WORKFLOW
+// UNDER ADMISSION CARRIES THE PRODUCER ITSELF: a job with that id declaring that output, honestly, from a
+// step that exists. There is no third answer because there is nothing a caller can fill in -- the inputs
+// are the corpus rows and the workflow being admitted, and the check reads the very workflow it is about
+// to refuse. An emitter that invents a job/output pair gains nothing: inventing the pair does not put a
+// declaring job in the workflow. What the wall cannot see from here is whether the declaring step earns
+// what it writes; that is the proof data's job (gunbc.ci.repository_seed_steps) and the consumer guard's,
+// and it is stated here rather than implied by a trust in caller discipline that no code enforced.
+fn workflow_declares_job_output(jobs: List<Job>, dotted: String) -> Bool {
+  any(jobs, job =>
+    any(job_honestly_declared_output_names(job: job), name => dotted == join([job.id, ".outputs.", name], ""))
   )
 }
 
@@ -389,22 +437,16 @@ fn checkout_names_a_revision_input(name: String) -> Bool {
   fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || n == name })
 }
 
-fn checkout_context_names_a_commit_with_producers(
-  context: ExpressionContext,
-  path: List<String>,
-  extra_producers: List<CommitOutputProducer>
-) -> Bool {
+fn checkout_context_names_a_commit(context: ExpressionContext, path: List<String>, jobs: List<Job>) -> Bool {
   let dotted = join(path, ".")
   match context {
     Github =>
       dotted == "sha" || dotted == "event.pull_request.head.sha"
         || fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || dotted == concat("event.inputs.", n) })
     Inputs => checkout_names_a_revision_input(name: dotted)
-    Needs => fold(
-      checkout_commit_job_outputs_with_extra_producers(extra: extra_producers),
-      init: false,
-      f: fn(acc, n) { acc || dotted == n }
-    )
+    Needs =>
+      fold(checkout_commit_job_outputs_from_producers(producers: commit_output_producers), init: false, f: fn(acc, n) { acc || dotted == n })
+        || workflow_declares_job_output(jobs: jobs, dotted: dotted)
     Env => false
     Vars => false
     Job => false
@@ -418,22 +460,22 @@ fn checkout_context_names_a_commit_with_producers(
 }
 
 // The value terms of `ref` that do not name a commit, each rendered for the refusal reason.
-fn checkout_ref_value_refusals_with_producers(
+fn checkout_ref_value_refusals_in_jobs(
   ref_expression: Expression,
   falls_through: Bool,
-  extra_producers: List<CommitOutputProducer>
+  jobs: List<Job>
 ) -> List<String> {
   match ref_expression {
     LogicalOr { left: l, right: r } =>
       concat(
-        checkout_ref_value_refusals_with_producers(ref_expression: l, falls_through: true, extra_producers: extra_producers),
-        checkout_ref_value_refusals_with_producers(ref_expression: r, falls_through: falls_through, extra_producers: extra_producers)
+        checkout_ref_value_refusals_in_jobs(ref_expression: l, falls_through: true, jobs: jobs),
+        checkout_ref_value_refusals_in_jobs(ref_expression: r, falls_through: falls_through, jobs: jobs)
       )
     LogicalAnd { left: _, right: r } =>
-      if falls_through { checkout_ref_value_refusals_with_producers(ref_expression: r, falls_through: falls_through, extra_producers: extra_producers) }
+      if falls_through { checkout_ref_value_refusals_in_jobs(ref_expression: r, falls_through: falls_through, jobs: jobs) }
       else { [concat(serialize_expression(expression: ref_expression), " (a condition with no fallback yields a non-commit value)")] }
     ContextAccess { context: c, path: p } =>
-      if checkout_context_names_a_commit_with_producers(context: c, path: p, extra_producers: extra_producers) { [] }
+      if checkout_context_names_a_commit(context: c, path: p, jobs: jobs) { [] }
       else { [serialize_expression(expression: ref_expression)] }
     FunctionCall { function: _, args: _ } => [serialize_expression(expression: ref_expression)]
     StringLiteral { value: _ } => [serialize_expression(expression: ref_expression)]
@@ -443,27 +485,20 @@ fn checkout_ref_value_refusals_with_producers(
   }
 }
 
-// THE PRODUCER-FREE PROJECTION, for a caller with no profile row to consult (a realized-file check, a
-// claim about the corpus-declared producers alone). It is the same fold with an empty extra list, not a
-// second implementation, so nothing an emitter can build escapes the allowlist by taking this path.
+// THE JOB-FREE PROJECTION, for a caller with no workflow to consult (a realized-file check, a claim
+// about the corpus-declared producers alone). It is the same fold with an empty job list, not a second
+// implementation, so nothing escapes the allowlist by taking this path -- and a Needs ref is refused here
+// precisely because there is no workflow in front of the wall to carry its producer.
 fn checkout_ref_value_refusals(ref_expression: Expression, falls_through: Bool) -> List<String> {
-  checkout_ref_value_refusals_with_producers(
-    ref_expression: ref_expression,
-    falls_through: falls_through,
-    extra_producers: []
-  )
+  checkout_ref_value_refusals_in_jobs(ref_expression: ref_expression, falls_through: falls_through, jobs: [])
 }
 
-fn checkout_ref_admitted_with_producers(ref_expression: Expression, extra_producers: List<CommitOutputProducer>) -> Bool {
-  (checkout_ref_value_refusals_with_producers(
-    ref_expression: ref_expression,
-    falls_through: false,
-    extra_producers: extra_producers
-  ) |> count) == 0
+fn checkout_ref_admitted_in_jobs(ref_expression: Expression, jobs: List<Job>) -> Bool {
+  (checkout_ref_value_refusals_in_jobs(ref_expression: ref_expression, falls_through: false, jobs: jobs) |> count) == 0
 }
 
 fn checkout_ref_admitted(ref_expression: Expression) -> Bool {
-  checkout_ref_admitted_with_producers(ref_expression: ref_expression, extra_producers: [])
+  checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: [])
 }
 
 // THE ONE SPELLING OF A CHECKOUT's `ref`. Emitters build the with-entry here from their Expression,
@@ -512,13 +547,12 @@ fn step_checkout_ref_refusals(job_id: String, step: Step, declared: List<Express
 // Two walls, one admission: every declared ref Expression names a commit (the fold above), and every
 // checkout `ref` in the workflow is the rendering of a declared one (an identity join on the rendered
 // text -- no text is parsed). A checkout with no `ref` fetches the event sha and is admitted.
-fn admit_workflow_checkout_refs_with_producers(
+fn admit_workflow_checkout_refs(
   workflow: Workflow,
-  declared: List<Expression>,
-  extra_producers: List<CommitOutputProducer>
+  declared: List<Expression>
 ) -> WorkflowCheckoutRefsAdmission {
   let declared_refusals = fold(declared, init: [], f: fn(acc, e) {
-    concat(acc, map(checkout_ref_value_refusals_with_producers(ref_expression: e, falls_through: false, extra_producers: extra_producers), t => WorkflowCheckoutRefRefusal {
+    concat(acc, map(checkout_ref_value_refusals_in_jobs(ref_expression: e, falls_through: false, jobs: workflow.jobs), t => WorkflowCheckoutRefRefusal {
       job_id: "<declared>", ref_text: interpolate(expression: e), cause: concat("a value term does not name a commit: ", t),
     }))
   })
@@ -527,13 +561,6 @@ fn admit_workflow_checkout_refs_with_producers(
   })
   let refusals = concat(declared_refusals, step_refusals)
   if (refusals |> count) == 0 { WorkflowCheckoutRefsAdmitted } else { WorkflowCheckoutRefsRefused { refusals: refusals } }
-}
-
-// THE WALL AS ITS EXISTING CALLERS KNOW IT: the corpus-declared producers only. A workflow that wants a
-// checkout ref to read a job output it emits itself must pass the record of the job that earns it --
-// admit_workflow_checkout_refs_with_producers -- because a job named nowhere is not a producer.
-fn admit_workflow_checkout_refs(workflow: Workflow, declared: List<Expression>) -> WorkflowCheckoutRefsAdmission {
-  admit_workflow_checkout_refs_with_producers(workflow: workflow, declared: declared, extra_producers: [])
 }
 
 fn workflow_checkout_refs_refusal_reason(workflow_module: String, refusals: List<WorkflowCheckoutRefRefusal>) -> String {
@@ -812,8 +839,8 @@ fn admit_realized_action_use(u: RealizedActionUse) -> ActionUseAdmission {
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "checkout_context_names_a_commit_with_producers" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "checkout_ref_value_refusals_with_producers" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "checkout_context_names_a_commit" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "checkout_ref_value_refusals_in_jobs" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "checkout_with_ref_refusals" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "step_checkout_ref_refusals" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

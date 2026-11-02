@@ -39,7 +39,8 @@ import gunbc.ci.repository_ci_profile {
   profile_with_publisher_runner, profile_with_required_context,
 }
 import gunbc.auth.heal_publisher_federation { public_heal_publisher_federation }
-import extdeps.github.actions { PermWrite, Step, RunStep, UsesStep }
+import extdeps.github.actions { PermWrite, Step, RunStep, UsesStep, Job, RunnerSpec, HostedRunner, UbuntuLatest }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
 import gunbc.witness.witness_roster {
@@ -53,7 +54,7 @@ import gunbc.ci.repository_compose_overlay {
   command,
   word, heal_seal_env }
 import gunbc.action_use_admission {
-  CommitOutputProducer, checkout_ref_admitted_with_producers, checkout_ref_value_refusals,
+  checkout_ref_admitted_in_jobs, checkout_ref_value_refusals, job_step_ids,
 }
 import gunbc.ci.repository_seed_steps {
   seed_pin_proofs, seed_pin_fetch_url,
@@ -61,10 +62,10 @@ import gunbc.ci.repository_seed_steps {
   seed_pin_consumer_guard_step_name, seed_pin_consumer_guard_var_name,
   seed_pin_consumer_guard_statements,
   seed_pin_verifier_output_path, seed_pin_verifier_step_id, seed_pin_checkout_ref_expression,
-  seed_pin_verification_statements,
+  seed_pin_verification_statements, seed_pin_verifier_job,
 }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import extdeps.github.expressions { ContextAccess, Expression, ExpressionContext, Needs, interpolate }
+import extdeps.github.expressions { ContextAccess, Expression, ExpressionContext, Needs, Steps, interpolate }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
   ProjectionDriftWorkflowGenerated, ProjectionDriftWorkflowGenerationRefused,
@@ -727,6 +728,41 @@ fn fixture_seed() -> PublicSeed {
   }
 }
 
+// THE WET FIXTURE'S SEED ROW: the shape of fixture_seed pointed at the repository the seed lane really
+// fetches from, at a commit that really exists there. The two shas are `origin/main` and its parent as of
+// authoring (both ancestors of a branch that never rewrites, so they stay reachable); the verifier is
+// fetched BY SHA, which is exactly the path the poison scenario needs to differ on. If the pin ever stops
+// being fetchable the honest scenario goes red loudly rather than quietly admitting -- that is the point
+// of running the emitted script rather than reasoning about it.
+data wet_seed_repository: String = "gunb-ai/gunbc"
+data wet_seed_pin: String = "fe5d4d46331bcef8044ed3b2e2db78966546f0c3"
+data wet_seed_pin_parent: String = "4000ff2c5dcd20aa6b76a81c1c1edc71d7c138d1"
+
+fn wet_seed() -> PublicSeed {
+  PublicSeed {
+    repository: wet_seed_repository,
+    checkout_path: "seed_repo",
+    source: Seed_commit_pin { sha: wet_seed_pin },
+    verifier: fixture_seed_verifier(),
+    build_command: [
+      command(
+        words: [
+          word(text: "cargo"),
+          word(text: "build"),
+          word(text: "--release"),
+          word(text: "-p"),
+          word(text: "example"),
+          word(text: "--bin"),
+          word(text: "example")
+        ]
+      )
+    ],
+    seed_binary_relative_path: "target/release/example",
+    record_step_name: "Record the seed revision",
+    build_step_name: "Build the seed compiler"
+  }
+}
+
 fn fixture_overlay() -> OverlayIngest {
   OverlayIngest {
     overlay_dir_name: "overlay",
@@ -1338,22 +1374,136 @@ test fn a_seed_pin_that_is_not_a_commit_sha_is_refused_by_the_row() -> Bool {
        }
 }
 
-// THE ALLOWLIST ENTRY AND THE JOB THAT EARNS IT ARE ONE RECORD. The row's producer path is admitted by
-// the wall only while the same record is passed to it: strip the record and the same ref is refused,
-// which is what makes a hand-added allowlist string -- an entry with no job behind it -- unable to be
-// added at all.
-test fn the_seed_ref_is_admitted_only_by_the_record_that_earns_it() -> Bool {
+// THE NEEDS REF IS ADMITTED BY THE WORKFLOW THAT CARRIES ITS PRODUCER, not by anything a caller hands the
+// wall. Three readings of one ref: with the emitted verifier job in front of the wall it is admitted,
+// because that job declares the output at job level from a step the job contains; with no job in front of
+// it the same ref is refused, because a Needs ref names a producer nobody has shown the wall; and a ref
+// naming a job that is not there is refused. An invented producer therefore gains nothing, because
+// inventing a name does not put a declaring job in the workflow -- which is the guarantee the previous
+// shape left to caller discipline rather than to code.
+test fn the_seed_ref_is_admitted_by_the_job_that_declares_its_output() -> Bool {
   let seed = fixture_seed()
   let ref_expression = match seed_pin_checkout_ref_expression(seed: seed) {
     Present { value: e } => e
     Absent {  } => ContextAccess { context: Needs, path: ["impossible", "outputs", "nothing"] }
   }
-  checkout_ref_admitted_with_producers(ref_expression: ref_expression, extra_producers: [seed.verifier.producer])
-    && !checkout_ref_admitted_with_producers(ref_expression: ref_expression, extra_producers: [])
-    && !checkout_ref_admitted_with_producers(
+  let verifier_jobs = match seed_pin_verifier_job(
+    seed: seed, pin: fixture_seed_pin, runner: HostedRunner { label: UbuntuLatest }
+  ) {
+    Accepted { value: j, diagnostics: _ } => [j]
+    Rejected { diagnostics: _ } => []
+  }
+  (verifier_jobs |> count) == 1
+    && checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: verifier_jobs)
+    && !checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: [])
+    && !checkout_ref_admitted_in_jobs(
          ref_expression: ContextAccess { context: Needs, path: ["some-other-job", "outputs", "committed_sha"] },
-         extra_producers: [seed.verifier.producer]
+         jobs: verifier_jobs
        )
+}
+
+// One job-level output declaration, read as the fact it states: does this entry name `output_name` and
+// carry exactly the value the consumer's ref will be rendered from?
+fn declared_output_entry_matches(entry: YamlKeyValue, output_name: String, expected_value: String) -> Bool {
+  match entry {
+    YamlKeyValue { key: k, value: v } =>
+      k == output_name
+        && match v { YamlString { value: s } => s == expected_value  _ => false }
+  }
+}
+
+// THE JOB DECLARES, AT JOB LEVEL, THE OUTPUT ITS CONSUMER READS. GitHub lets a consumer read a job output
+// only if the job says so, and a `run:` step writing to $GITHUB_OUTPUT is not that statement; this is the
+// fact that makes the seed checkout admissible, so it is asserted here rather than inferred from the YAML
+// happening to work. The declared value is spelled by `interpolate` from the same step id the verifier
+// step carries, so the declaration and the step that writes the value cannot name different things, and
+// the control builds the expected text with its own `interpolate` rather than the wall's helper.
+test fn the_verifier_job_declares_the_output_its_consumer_reads() -> Bool {
+  let seed = fixture_seed()
+  let step_id = seed_pin_verifier_step_id(seed: seed)
+  let output_name = seed.verifier.producer.output_name as String
+  let expected_declaration = interpolate(
+    expression: ContextAccess { context: Steps, path: [step_id, "outputs", output_name] }
+  )
+  match seed_pin_verifier_job(
+    seed: seed, pin: fixture_seed_pin, runner: HostedRunner { label: UbuntuLatest }
+  ) {
+    Accepted { value: j, diagnostics: _ } =>
+      match j.outputs {
+        Present { value: entries } =>
+          (entries |> count) == 1
+            && (filter(
+                 entries,
+                 e => declared_output_entry_matches(entry: e, output_name: output_name, expected_value: expected_declaration)
+               ) |> count) == 1
+            && any(job_step_ids(job: j), s => s == step_id)
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The emitted verifier with its steps removed and its own declaration kept: everything the name claims,
+// with nothing behind it. A `Job` has no update syntax, so the fields are copied one by one and only
+// `steps` differs -- a reviewer can check the single difference by reading the literal.
+fn hollow_verifier_job(job: Job) -> Optional<Job> {
+  match job.outputs {
+    Present { value: es } =>
+      if (es |> count) > 0 {
+        Present {
+          value: Job {
+            id: job.id,
+            name: job.name,
+            runner: job.runner,
+            environment: job.environment,
+            steps: [],
+            needs: job.needs,
+            env: job.env,
+            outputs: Present { value: es },
+            if_condition: job.if_condition,
+            timeout_minutes: job.timeout_minutes,
+            continue_on_error: job.continue_on_error,
+            concurrency: job.concurrency,
+            permissions: job.permissions,
+          }
+        }
+      } else {
+        Absent {  }
+      }
+    _ => Absent {  }
+  }
+}
+
+// A DECLARATION THAT POINTS AT A STEP ITS OWN JOB DOES NOT CONTAIN IS REFUSED. This is the invention case
+// the wall used to leave to caller discipline: the job id, the output name and the declared value are all
+// spelled correctly -- only the step that is supposed to earn the value is missing from the job. The
+// hollow job below is the emitted verifier with its steps removed and its own declaration kept, so the
+// difference the wall sees is exactly the producer being absent behind the name. Admitted with the real
+// job, refused with the hollow one: a name is not a producer.
+test fn a_declaration_with_no_step_behind_it_is_refused() -> Bool {
+  let seed = fixture_seed()
+  let ref_expression = match seed_pin_checkout_ref_expression(seed: seed) {
+    Present { value: e } => e
+    Absent {  } => ContextAccess { context: Needs, path: ["impossible", "outputs", "nothing"] }
+  }
+  match seed_pin_verifier_job(
+    seed: seed, pin: fixture_seed_pin, runner: HostedRunner { label: UbuntuLatest }
+  ) {
+    Accepted { value: honest, diagnostics: _ } =>
+      (honest.steps |> count) > 0
+        && match hollow_verifier_job(job: honest) {
+             Present { value: hollow } =>
+               match hollow.outputs {
+                 Present { value: es } =>
+                   (es |> count) > 0
+                     && checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: [honest])
+                     && !checkout_ref_admitted_in_jobs(ref_expression: ref_expression, jobs: [hollow])
+                 _ => false
+               }
+             Absent {  } => false
+           }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // THE VERIFIER OUTPUT THE CHECKOUT READS IS THE PRODUCER'S PATH, spelled in one place. A second spelling
@@ -1972,9 +2122,11 @@ test fn the_guard_runs_before_the_checkout_it_protects() -> Bool {
   pair_ok && order.guard_seen && order.checkout_seen && order.violated == false
 }
 
-// THE PROOFS ARE DATA, AND THERE ARE EXACTLY TWO OF THOSE THINGS. A tag object, a blob, a tree, an object
-// from another repository and an absent object are refused by this list; a verifier whose guards were
-// deleted is a verifier with an empty list, and this control is what notices.
+// THE PROOFS ARE DATA, AND THERE ARE EXACTLY TWO OF THOSE THINGS. An absent object, a tag, a blob and a
+// tree are refused by the first row; a fetch that delivered some other object is refused by the second;
+// and a verifier whose guards were deleted is a verifier with an empty list, which is what this control
+// notices. Each row's `expected` is what makes it a check rather than a command: one compares against
+// `commit`, the other against the pin the row itself carries.
 test fn the_verifier_declares_exactly_the_two_proofs_that_make_a_pin_a_commit() -> Bool {
   let seed = fixture_seed()
   let proofs = seed_pin_proofs(seed: seed, pin: fixture_seed_pin)

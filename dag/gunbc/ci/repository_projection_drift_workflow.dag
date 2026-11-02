@@ -31,7 +31,7 @@ import extdeps.github.actions {
   WorkflowTrigger
 }
 import gunbc.action_use_admission {
-  admit_workflow_checkout_refs_with_producers, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
   workflow_checkout_refs_refusal_reason, upload_artifact_action,
 }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
@@ -69,7 +69,7 @@ import gunbc.ci.repository_seed_steps {
   seed_lane_steps,
   seed_pin_verifier_declared_expressions,
   seed_pin_verifier_job,
-  seed_pin_verifier_producers,
+
   record_seed_revision_step,
   toolchain_install_step
 }
@@ -544,13 +544,13 @@ fn expected_projection_drift_workflow_yml(
             seed_lane: seed_lane,
             verifier_job: verifier_job
           )
-          // THE SAME WALL THE PUBLISHER CALLS. It gets the declared ref expressions and the producer
-          // records from the row, so the ref the checkout renders and the allowlist that admits it are
-          // one fold; a mismatch between them is refused here rather than shipped.
-          match admit_workflow_checkout_refs_with_producers(
+          // THE SAME WALL THE PUBLISHER CALLS, with nothing supplied by this caller: it reads the
+          // workflow it is about to emit, so the seed checkout is admitted only because the verifier job
+          // in this same workflow declares the output its ref reads. A ref whose producer is not in the
+          // workflow is refused here rather than shipped.
+          match admit_workflow_checkout_refs(
             workflow: drift_workflow,
-            declared: seed_pin_verifier_declared_expressions(seed: seed),
-            extra_producers: seed_pin_verifier_producers(seed: seed)
+            declared: seed_pin_verifier_declared_expressions(seed: seed)
           ) {
             WorkflowCheckoutRefsRefused { refusals: crs } => ProjectionDriftWorkflowGenerationRefused {
               reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.ci.repository_projection_drift_workflow", refusals: crs)
