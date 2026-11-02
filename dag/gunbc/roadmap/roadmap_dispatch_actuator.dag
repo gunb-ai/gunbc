@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptAuditVerdict, AttemptDirectoryAudit, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectoryRoot, AttemptDirectorySupervisor, AttemptDirectoryVerification, AttemptDirectoryWire, AttemptDirectoryWorker, AttemptReviewEvents, AttemptReviewLog, AttemptReviewRequestScratch, AttemptReviewVerdict, AttemptSupervisorEvents, AttemptWorkerEvents, AttemptWorkerLog, AttemptWorkerRequestScratch, attempt_state_current_directory_text, attempt_state_current_text, attempt_state_directory_text, attempt_state_member_name, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptAuditLog, AttemptAuditVerdict, AttemptDirectoryAudit, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectoryRoot, AttemptDirectorySupervisor, AttemptDirectoryVerification, AttemptDirectoryWire, AttemptDirectoryWorker, AttemptReviewEvents, AttemptReviewLog, AttemptReviewRequestScratch, AttemptReviewVerdict, AttemptSupervisorEvents, AttemptSupervisorLog, AttemptWorkerEvents, AttemptWorkerLog, AttemptWorkerRequestScratch, attempt_state_current_directory_text, attempt_state_current_text, attempt_state_directory_text, attempt_state_member_name, attempt_state_text, attempt_log_member_text, attempt_log_current_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_unit_stem, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, GunbcHarnessProvider }
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_argv_command }
 import gunbc.managed_directory { declared_directory_mode, DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
@@ -1426,7 +1426,7 @@ fn dispatch_review_unit_command(
     properties: dispatch_review_unit_properties(
       instance: instance,
       working_directory: instance.repo_root as String,
-      log_path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewLog { criterion_key: criterion_key }),
+      log_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewLog { criterion_key: criterion_key }),
       review_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview),
       exit_hook: exit_hook,
     ),
@@ -1438,7 +1438,7 @@ fn dispatch_review_unit_command(
       brief: brief,
       timeout_program: instance.toolchain.timeout as String,
       request_scratch_path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewRequestScratch { criterion_key: criterion_key }),
-      events_path: attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewEvents { criterion_key: criterion_key, head_sha: head_sha }),
+      events_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewEvents { criterion_key: criterion_key, head_sha: head_sha }),
       verdict_dir: attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryReview),
       verdict_name: attempt_state_member_name(member: AttemptReviewVerdict { head_sha: head_sha, criterion_key: criterion_key }),
       attempt_identity: dispatch_reviewer_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
@@ -1474,7 +1474,7 @@ fn dispatch_audit_unit_command(
     properties: dispatch_review_unit_properties(
       instance: instance,
       working_directory: instance.repo_root as String,
-      log_path: join([dir, "/auditor-stdout.log"], ""),
+      log_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditLog),
       review_dir: dir,
       exit_hook: exit_hook,
     ),
@@ -1490,7 +1490,7 @@ fn dispatch_audit_unit_command(
       "--arg", join(["brief=", brief], ""),
       "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
       "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-      "--arg", join(["events_path=", attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditEvents { head_sha: head_sha })], ""),
+      "--arg", join(["events_path=", attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditEvents { head_sha: head_sha })], ""),
       "--arg", join(["verdict_dir=", dir], ""),
       "--arg", join(["verdict_name=", attempt_state_member_name(member: AttemptAuditVerdict { head_sha: head_sha })], ""),
       "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha)], ""),
@@ -1533,7 +1533,7 @@ fn dispatch_supervisor_unit_command(
     properties: dispatch_review_unit_properties(
       instance: instance,
       working_directory: instance.repo_root as String,
-      log_path: join([dir, "/supervisor-stdout.log"], ""),
+      log_path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSupervisorLog),
       review_dir: dir,
       exit_hook: exit_hook,
     ),
@@ -1549,7 +1549,7 @@ fn dispatch_supervisor_unit_command(
       "--arg", join(["brief=", brief], ""),
       "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
       "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-      "--arg", join(["events_path=", attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSupervisorEvents { turn: turn })], ""),
+      "--arg", join(["events_path=", attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSupervisorEvents { turn: turn })], ""),
       "--arg", join(["verdict_dir=", dir], ""),
       "--arg", join(["verdict_name=", supervisor_verdict_basename as String], ""),
       "--arg", join(["attempt_identity=", dispatch_supervisor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, turn: turn)], ""),
@@ -1579,7 +1579,7 @@ fn dispatch_current_attempt_events_projection_argv_for_instance(
 ) -> HostExecArgv {
   dispatch_events_projection_argv_at(
     instance: instance,
-    events_path: attempt_state_current_text(instance: instance, node_id: node_id, member: AttemptWorkerEvents),
+    events_path: attempt_log_current_text(instance: instance, node_id: node_id, member: AttemptWorkerEvents),
   )
 }
 
@@ -2112,7 +2112,7 @@ fn dispatch_provider_inner_argv_for_launch(
               brief: brief,
               timeout_program: instance.toolchain.timeout as String,
               request_scratch_path: attempt_state_text(instance: instance, node_id: attempt.node.node, attempt_key: attempt.attempt_key, member: AttemptWorkerRequestScratch),
-              events_path: attempt_state_text(instance: instance, node_id: attempt.node.node, attempt_key: attempt.attempt_key, member: AttemptWorkerEvents),
+              events_path: attempt_log_member_text(instance: instance, node_id: attempt.node.node, attempt_key: attempt.attempt_key, member: AttemptWorkerEvents),
               attempt_identity: dispatch_worker_attempt_identity(node_id: attempt.node.node as String, attempt_key: attempt.attempt_key),
               alignment_chain_fingerprint: alignment_chain_fingerprint,
             ),
@@ -2266,24 +2266,6 @@ data dispatch_attempt_events_group_writable_mode: FileMode = FileMode {
 type DispatchAttemptEventsInitialization
   = DispatchAttemptEventsInitialized
   | DispatchAttemptEventsInitializationFailed { detail: String }
-
-fn dispatch_attempt_events_initialize_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> DispatchAttemptEventsInitialization {
-  let path = attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
-  match instance.worker {
-    WorkerIsServiceUser => {
-      let written = Filesystem.Write(path: path, content: "")
-      if written.success { DispatchAttemptEventsInitialized } else { DispatchAttemptEventsInitializationFailed { detail: written.error } }
-    }
-    WorkerDedicatedAccount => {
-      let created = Filesystem.WriteCreateNewWithMode(path: path, content: "", mode: file_mode_bits(mode: dispatch_attempt_events_group_writable_mode))
-      if created.success { DispatchAttemptEventsInitialized } else { DispatchAttemptEventsInitializationFailed { detail: created.error } }
-    }
-  }
-}
 
 fn attempt_current_pointer_argv_for_instance(
   instance: HostDashboardInstance,
@@ -3121,7 +3103,7 @@ fn dispatch_spawn_commands_for_launch(
     node_id: node.node,
     attempt_key: attempt_key,
   )
-  let events_path = attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptWorkerEvents)
+  let events_path = attempt_log_member_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptWorkerEvents)
   match dispatch_session_container_for_provider(
     provider: provider,
     instance: instance,
@@ -3129,7 +3111,7 @@ fn dispatch_spawn_commands_for_launch(
     attempt_key: attempt_key,
     session_name: session_name,
     events_path: events_path,
-    worker_log_path: attempt_state_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptWorkerLog),
+    worker_log_path: attempt_log_member_text(instance: instance, node_id: node.node, attempt_key: attempt_key, member: AttemptWorkerLog),
     pane_working_directory: dispatch_pane_working_directory(
       provider: provider,
       instance: instance,

@@ -17,7 +17,16 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, FilesystemFileAbsent, FilesystemFileRead,
 }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { FilesystemDirectoryListing, filesystem_listing_entry_names, filesystem_listing_observation, FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import gunbc.durable_append_log_store {
+  AppendLogParent, AppendLogStore, AppendLogSlot, AppendLogMinting, AppendLogReady, AppendLogUnready,
+  AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, append_log_member_census,
+  append_log_census_slot, MemberCensusRow, MigrateToLogStore,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, WorkerIsServiceUser, WorkerDedicatedAccount }
+import std.durable_append_log { MemberWriterPolicy, HostCreatesThenSandboxWrites, AppendWriter, HostWriter, AppendWriteIntent, IntentCreateEmpty, AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused, AppendWriteRefusal, AppendWriterStanding, WriterWindowReleased, append_write_admission }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_verification_receipt {
   verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename,
@@ -88,47 +97,99 @@ type AttemptStateMember
   | AttemptOracleRevision
   | AttemptOraclePinRefused
   | AttemptValidationReceipt
-  | AttemptWorkerLog
   | AttemptWorkerRequestScratch
-  | AttemptWorkerEvents
   | AttemptPublicationReceipt { head_sha: String }
   | AttemptVerificationReceipt { head_sha: String, window_identity_hex: String }
   | AttemptDiffWindow { head_sha: String, window_identity_hex: String }
   | AttemptVerificationSelection { head_sha: String }
   | AttemptReviewVerdict { head_sha: String, criterion_key: String }
-  | AttemptReviewEvents { criterion_key: String, head_sha: String }
   | AttemptReviewRequestScratch { criterion_key: String }
-  | AttemptReviewLog { criterion_key: String }
   | AttemptAuditVerdict { head_sha: String }
-  | AttemptAuditEvents { head_sha: String }
   | AttemptAuditRequestScratch
+  | AttemptSupervisorRequestScratch
+  | AttemptSupervisorVerdict
+
+// THE ATTEMPT-LOG MEMBERS ARE THEIR OWN CLOSED SET (decision A, #15471 seal move): the four `*Events` streams,
+// the four `*Log` stdout streams (the in-place `attempt-wire` record is a directory member reached through the
+// wire lane, not an AttemptStateMember). They are NOT values of AttemptStateMember, so the generic
+// single-shot attempt_state_write -- which takes AttemptStateMember -- can never be handed one: a caller that
+// tries is refused by the type checker on the real acceptance path (the claim), while plain members stay
+// accepted. They are reached only through gunbc.durable_append_log_store, whose owning store mints each
+// member's writer window and the sandboxed worker appends under it. The census in that store is the single
+// authority for the split. Where a site genuinely needs either set, wrap both in
+// gunbc.durable_append_log_store.AttemptStateOrLogMember.
+type AttemptLogMember
+  = AttemptWorkerLog
+  | AttemptWorkerEvents
+  | AttemptReviewEvents { criterion_key: String, head_sha: String }
+  | AttemptReviewLog { criterion_key: String }
+  | AttemptAuditEvents { head_sha: String }
   | AttemptAuditLog
   | AttemptSupervisorEvents { turn: Int }
-  | AttemptSupervisorRequestScratch
   | AttemptSupervisorLog
-  | AttemptSupervisorVerdict
+
+// The log lane's OWN directory/name/path over AttemptLogMember, mirroring the plain helpers one row each.
+fn attempt_log_member_directory(member: AttemptLogMember) -> AttemptStateDirectory {
+  match member {
+    AttemptWorkerLog => AttemptDirectoryWorker
+    AttemptWorkerEvents => AttemptDirectoryWorker
+    AttemptReviewEvents { criterion_key: _, head_sha: _ } => AttemptDirectoryReview
+    AttemptReviewLog { criterion_key: _ } => AttemptDirectoryReview
+    AttemptAuditEvents { head_sha: _ } => AttemptDirectoryAudit
+    AttemptAuditLog => AttemptDirectoryAudit
+    AttemptSupervisorEvents { turn: _ } => AttemptDirectorySupervisor
+    AttemptSupervisorLog => AttemptDirectorySupervisor
+  }
+}
+
+fn attempt_log_member_name(member: AttemptLogMember) -> String {
+  match member {
+    AttemptWorkerLog => "worker-stdout.log"
+    AttemptWorkerEvents => "provider-events.jsonl"
+    AttemptReviewEvents { criterion_key: c, head_sha: h } => join([c, "@", h, ".provider-events.jsonl"], "")
+    AttemptReviewLog { criterion_key: c } => join([c, ".reviewer-stdout.log"], "")
+    AttemptAuditEvents { head_sha: h } => join([h, ".provider-events.jsonl"], "")
+    AttemptAuditLog => "auditor-stdout.log"
+    AttemptSupervisorEvents { turn: t } => join(["t", to_string(value: t), ".provider-events.jsonl"], "")
+    AttemptSupervisorLog => "supervisor-stdout.log"
+  }
+}
+
+fn attempt_log_member_path(store: AttemptState, member: AttemptLogMember) -> String {
+  join([attempt_state_directory_path(store: store, directory: attempt_log_member_directory(member: member)), "/", attempt_log_member_name(member: member)], "")
+}
+
+// Log-lane mirrors of the top-level path helpers, so consumers that read a log member's path (metering, unit
+// launch, the belt's external events read) address it through the log lane instead of the plain write type.
+fn attempt_log_provision_path(provision: AttemptStateProvision, member: AttemptLogMember) -> String {
+  join([attempt_state_provision_directory(provision: provision, directory: attempt_log_member_directory(member: member)), "/", attempt_log_member_name(member: member)], "")
+}
+
+fn attempt_log_member_text(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, member: AttemptLogMember) -> String {
+  attempt_log_provision_path(provision: attempt_state_provision(instance: instance, node: node_id as String, attempt_key: attempt_key), member: member)
+}
+
+fn attempt_log_current_text(instance: HostDashboardInstance, node_id: RoadmapNodeId, member: AttemptLogMember) -> String {
+  attempt_log_provision_path(provision: attempt_state_provision_current(instance: instance, node: node_id as String), member: member)
+}
+
+fn attempt_log_external_path(store: AttemptState, member: AttemptLogMember) -> String {
+  attempt_log_member_path(store: store, member: member)
+}
 
 // The directory each member lives in and the file name it carries: ONE row each, read by every operation.
 fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDirectory {
   match member {
-    AttemptWorkerLog => AttemptDirectoryWorker
     AttemptWorkerRequestScratch => AttemptDirectoryWorker
-    AttemptWorkerEvents => AttemptDirectoryWorker
     AttemptPublicationReceipt { head_sha: _ } => AttemptDirectoryPublication
     AttemptVerificationReceipt { head_sha: _, window_identity_hex: _ } => AttemptDirectoryVerification
     AttemptDiffWindow { head_sha: _, window_identity_hex: _ } => AttemptDirectoryVerification
     AttemptVerificationSelection { head_sha: _ } => AttemptDirectoryVerification
     AttemptReviewVerdict { head_sha: _, criterion_key: _ } => AttemptDirectoryReview
-    AttemptReviewEvents { criterion_key: _, head_sha: _ } => AttemptDirectoryReview
     AttemptReviewRequestScratch { criterion_key: _ } => AttemptDirectoryReview
-    AttemptReviewLog { criterion_key: _ } => AttemptDirectoryReview
     AttemptAuditVerdict { head_sha: _ } => AttemptDirectoryAudit
-    AttemptAuditEvents { head_sha: _ } => AttemptDirectoryAudit
     AttemptAuditRequestScratch => AttemptDirectoryAudit
-    AttemptAuditLog => AttemptDirectoryAudit
-    AttemptSupervisorEvents { turn: _ } => AttemptDirectorySupervisor
     AttemptSupervisorRequestScratch => AttemptDirectorySupervisor
-    AttemptSupervisorLog => AttemptDirectorySupervisor
     AttemptSupervisorVerdict => AttemptDirectorySupervisor
     AttemptKeyRecord => AttemptDirectoryRoot
     AttemptProcessFingerprint => AttemptDirectoryRoot
@@ -165,24 +226,16 @@ fn attempt_state_member_name(member: AttemptStateMember) -> String {
     AttemptOracleRevision => "validation-oracle-revision"
     AttemptOraclePinRefused => "validation-oracle-pin-refused"
     AttemptValidationReceipt => "validation-receipt.json"
-    AttemptWorkerLog => "worker-stdout.log"
     AttemptWorkerRequestScratch => "harness-request.json"
-    AttemptWorkerEvents => "provider-events.jsonl"
     AttemptPublicationReceipt { head_sha: h } => join([h, ".json"], "")
     AttemptVerificationReceipt { head_sha: h, window_identity_hex: w } => exact_verification_receipt_basename(head_sha: h, window_identity_hex: w)
     AttemptDiffWindow { head_sha: h, window_identity_hex: w } => join([h, ".", w, ".diff-window.json"], "")
     AttemptVerificationSelection { head_sha: h } => current_verification_selection_basename(head_sha: h)
     AttemptReviewVerdict { head_sha: h, criterion_key: c } => join([h, ".", c, ".json"], "")
-    AttemptReviewEvents { criterion_key: c, head_sha: h } => join([c, "@", h, ".provider-events.jsonl"], "")
     AttemptReviewRequestScratch { criterion_key: c } => join([c, ".harness-request.json"], "")
-    AttemptReviewLog { criterion_key: c } => join([c, ".reviewer-stdout.log"], "")
     AttemptAuditVerdict { head_sha: h } => join([h, ".json"], "")
-    AttemptAuditEvents { head_sha: h } => join([h, ".provider-events.jsonl"], "")
     AttemptAuditRequestScratch => "harness-request.json"
-    AttemptAuditLog => "auditor-stdout.log"
-    AttemptSupervisorEvents { turn: t } => join(["t", to_string(value: t), ".provider-events.jsonl"], "")
     AttemptSupervisorRequestScratch => "harness-request.json"
-    AttemptSupervisorLog => "supervisor-stdout.log"
     AttemptSupervisorVerdict => supervisor_verdict_basename as String
   }
 }
@@ -500,6 +553,48 @@ fn attempt_state_verification_receipt_read_at(instance: HostDashboardInstance, n
   }
 }
 
+// THE APPEND-LOG SEAL (decision B; amends #15471 about where the seal sits). The generic durable layer
+// (gunbc.durable_append_log_store) is data-only -- the unsealed carrier + contract types + pure operations.
+// The SEAL (AttemptAppendLogStore sole_constructor) and its ONE business-key mint live HERE, in the module that
+// DECLARES the members, mirroring roadmap_attempt_worktree_claim_root. The mint takes the business key
+// (instance, node, attempt key) and the member -- NEVER a path -- and uses only the path derived from the sealed
+// attempt-state record, whose directory it reads once for the real listing the mint must be bound to. No
+// exported fn here takes a path or a NonEmptyStr and returns a sealed store: the only inputs are the sealed
+// HostDashboardInstance and the business keys. Land order (with #15413): until #15413 lands and its cutover runs
+// on a host, that host's shared attempt-state root still holds the flat entries #15413 relocates; a member whose
+// real read finds a foreign/un-moved entry is refused with the typed AppendLogLegacyRefused, never treated as
+// absent and never dual-read.
+type AttemptAppendLogStore sole_constructor {
+  instance: NonEmptyStr
+  node: String
+  attempt_key: String
+  member_name: NonEmptyStr
+  directory: NonEmptyStr
+  slot: AppendLogSlot
+}
+
+type AttemptAppendLogReading
+  = AttemptAppendLogReady { store: AttemptAppendLogStore }
+  | AttemptAppendLogUnready { detail: String }
+  | AttemptAppendLogLegacyRefused { cause: AppendLogLegacyCause }
+
+// The census log members that are AttemptStateMember values. AttemptDirectoryWire is an in-place record in the
+// wire directory written by the worker lane (roadmap_attempt_directory_wire), NOT an AttemptStateMember, so it is
+// minted through that lane's own directory read, not here; every other census member is not a log member.
+fn attempt_append_log_member_name(member: AttemptLogMember) -> String {
+  match member {
+    AttemptWorkerEvents => "AttemptWorkerEvents"
+    AttemptWorkerLog => "AttemptWorkerLog"
+    AttemptReviewEvents { criterion_key: _, head_sha: _ } => "AttemptReviewEvents"
+    AttemptReviewLog { criterion_key: _ } => "AttemptReviewLog"
+    AttemptAuditEvents { head_sha: _ } => "AttemptAuditEvents"
+    AttemptAuditLog => "AttemptAuditLog"
+    AttemptSupervisorEvents { turn: _ } => "AttemptSupervisorEvents"
+    AttemptSupervisorLog => "AttemptSupervisorLog"
+    _ => ""
+  }
+}
+
 // The AttemptDirectoryWire census member (row Seeadecb2) is NOT yet sealed: it is still written by the harness
 // through harness_turn.harness_wire_log_path (its two writers) and read by harness_conversation_fork,
 // roadmap_dispatch_actuator and roadmap_authority. Declared as frontier (lane standard for unfinished work), so the
@@ -510,3 +605,211 @@ data attempt_directory_wire_frontier_rows: List<FrontierRow> = [frontier_row_dec
   reason: "census member Seeadecb2 (AttemptDirectoryWire) is not sealed; written by harness_turn through harness_wire_log_path; its two writers write through harness_wire_log_path, read by harness_conversation_fork, roadmap_dispatch_actuator and roadmap_authority",
   dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.harness.harness_turn", decl_name: "harness_wire_log_path")),
 )]
+
+// Unowned durable entries observed on the live host (srv1) under the dispatch attempt-state root that no
+// store claims and no reader retains. They are NOT log members and NOT plain attempt-state members: they have
+// no writer in this repository (the external srv1 lab harness / dispatcher-installed exec wrapper and the codex
+// provider harness drop them beneath the root), and the only codex extdeps model (extdeps.llm.codex_app_server)
+// models the app-server protocol lines, not these on-disk files -- so there is no extdeps declaration to ref and
+// the root declaration is the honest subject. None may be silently ignored and none may brick the 16 live attempts.
+// DISSOLUTION is unbound: a class is resolved by getting an owner store or an M1 NotAStore ruling from a reader
+// census, NOT by its (external) writer disappearing -- retiring a writer would close the row falsely.
+data attempt_state_unowned_entries_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root"),
+    reason: "unowned durable class job-<pid>.out (worker/, ~1456 observed on srv1, no retention): stdout of a worker job, redirected to a per-pid file by the external srv1 lab harness exec wrapper that launches the gunbc-worker unit; no repository writer, no extdeps model names the file; needs an owner store or an M1 NotAStore ruling from a reader census.",
+    dissolution: unbound_dissolution(description: "class job-<pid>.out is given an owner store, or ruled NotAStore under ruling M1 by a reader census showing nothing reads it after the run."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root"),
+    reason: "unowned durable class job-<pid>.err (worker/, observed alongside .out on srv1, no retention): stderr of a worker job, redirected by the external srv1 lab harness exec wrapper; no repository writer, no extdeps model names the file; needs an owner store or an M1 NotAStore ruling from a reader census.",
+    dissolution: unbound_dissolution(description: "class job-<pid>.err is given an owner store, or ruled NotAStore under ruling M1 by a reader census showing nothing reads it after the run."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root"),
+    reason: "unowned durable class <stem>.harness-request.json.response.json (worker/ and review/, observed on srv1): the RESPONSE side of a harness request, written by the codex provider harness; the request side is the plain AttemptStateMember scratch, but the response side has no member, no repository writer, and extdeps.llm.codex_app_server models only the app-server protocol lines, not this file; needs an owner store or an M1 ruling.",
+    dissolution: unbound_dissolution(description: "class harness-request.json.response.json is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root"),
+    reason: "unowned durable class <stem>.harness-request.json.response.headers (worker/ and review/, observed on srv1): the RESPONSE HEADERS side of a harness request, written by the codex provider harness; no member, no repository writer, no extdeps model names the file; needs an owner store or an M1 ruling.",
+    dissolution: unbound_dissolution(description: "class harness-request.json.response.headers is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root"),
+    reason: "unowned durable class handin (worker/, ~11 observed on srv1): hand-in artifacts written by an external handin step beneath the attempt-state root; no repository writer, no extdeps model names them; needs an owner store or an M1 ruling.",
+    dissolution: unbound_dissolution(description: "class handin is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root"),
+    reason: "unowned durable class supervision-observation-after-turn-<N> (worker/, observed on srv1): a supervision-loop observation written by the external supervision loop beneath the attempt-state root; no repository writer, no extdeps model; needs an owner store or an M1 ruling.",
+    dissolution: unbound_dissolution(description: "class supervision-observation-after-turn-N is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root"),
+    reason: "unowned durable class supervision-check-verdict-after-turn-<N> (worker/, observed on srv1): a supervision-loop check verdict written by the external supervision loop; no repository writer, no extdeps model; needs an owner store or an M1 ruling.",
+    dissolution: unbound_dissolution(description: "class supervision-check-verdict-after-turn-N is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root"),
+    reason: "unowned durable class supervision-check-request-after-turn-<N> (worker/, with .response.json and .response.headers siblings, observed on srv1): a supervision-loop check request/response written by the external supervision loop; no repository writer, no extdeps model; needs an owner store or an M1 ruling.",
+    dissolution: unbound_dissolution(description: "class supervision-check-request-after-turn-N is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root"),
+    reason: "unowned durable class supervision-check-events-after-turn-<N> (worker/, observed on srv1): a supervision-loop check event log written by the external supervision loop; no repository writer, no extdeps model; needs an owner store or an M1 ruling.",
+    dissolution: unbound_dissolution(description: "class supervision-check-events-after-turn-N is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
+  ),
+]
+
+fn attempt_append_log_census_row_from(rows: List<MemberCensusRow>, name: String) -> MemberCensusRow? {
+  match rows {
+    Empty {} => Absent
+    Cons { head: r, tail: rest } => match r.disposition {
+      MigrateToLogStore { framing: _, principal: _ } => if r.member == (name as NonEmptyStr) { Present { value: r } } else { attempt_append_log_census_row_from(rows: rest, name: name) }
+      _ => attempt_append_log_census_row_from(rows: rest, name: name)
+    }
+  }
+}
+
+fn attempt_append_log_census_row(name: String) -> MemberCensusRow? {
+  attempt_append_log_census_row_from(rows: append_log_member_census, name: name)
+}
+
+fn attempt_log_names_contain(names: List<String>, target: String) -> Bool {
+  match names {
+    Empty {} => false
+    Cons { head: h, tail: rest } => if h == target { true } else { attempt_log_names_contain(names: rest, target: target) }
+  }
+}
+
+// Mints the sealed store over a listing that was OBTAINED (never fabricated). An empty list here means the
+// directory was positively listed as having no relevant entries -- the caller never projects a refused listing
+// into an empty list (no-refusal-projected-to-empty is upheld by the caller's use of FilesystemDirectoryListed).
+fn attempt_append_log_mint_listing(store: AttemptState, node: String, attempt_key: String, name: String, member_dir: String, names: List<String>) -> AttemptAppendLogReading {
+  match attempt_append_log_census_row(name: name) {
+    Absent => AttemptAppendLogUnready { detail: join(["no census row for ", name], "") }
+    Present { value: row } => match append_log_census_slot(row: row) {
+      Absent => AttemptAppendLogUnready { detail: join(["census row is not a log row: ", name], "") }
+      Present { value: slot } => {
+        match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
+          AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: name as NonEmptyStr, directory: s.parent, slot: slot } }
+          AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
+          AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
+        }
+      }
+    }
+  }
+}
+
+// THE ONE SEAL MINT. Business key only; the path is derived from the sealed attempt-state record and read once.
+// The member directory is a SHARED PARENT (the attempt root also holds plain members and other stores' files),
+// so its presence is decided by a positive observation of the PARENT (the attempt root), never by reading the
+// member file: if the member directory is not an entry of the attempt-root listing, it is TYPED ABSENT and the
+// store mints Ready over a proven-empty listing (a directory that does not exist cannot hold a foreign
+// generation file). If the member directory IS present but its own listing is refused, the store is Unready
+// (a member is never treated as absent from a failed read). Shared-parent scoping means a plain member's file
+// in the member directory never makes the store Unready: append_log_listed_verdict judges only the member's own
+// namespace (a <member>.<digits> generation file, or the member name), ignoring all other entries.
+fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptLogMember) -> AttemptAppendLogReading {
+  let name = attempt_append_log_member_name(member: member)
+  if name == "" {
+    AttemptAppendLogUnready { detail: "not an append-log member" }
+  } else {
+    match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+      AttemptStateUnready { detail } => AttemptAppendLogUnready { detail: detail }
+      AttemptStateReady { store } => {
+        let member_directory = attempt_log_member_directory(member: member)
+        let dir_segment = attempt_state_directory_segment(directory: member_directory)
+        let member_dir = attempt_state_directory_path(store: store, directory: member_directory)
+        let root_dir = store.directory as String
+        let root_listed = Filesystem.List(path: root_dir)
+        match filesystem_listing_observation(directory: root_dir, success: root_listed.success, entries: root_listed.entries, error: root_listed.error) {
+          FilesystemDirectorySubjectRefused { directory: _, cause: _ } => AttemptAppendLogUnready { detail: "the attempt root subject was refused; the listing is never treated as empty" }
+          FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptAppendLogUnready { detail: join(["the attempt root could not be listed; a member directory is never treated as absent from a failed read -- ", e], "") }
+          FilesystemDirectoryListed(root_lic) => {
+            let root_names = filesystem_listing_entry_names(listing: root_lic)
+            if attempt_log_names_contain(names: root_names, target: dir_segment) {
+              let listed = Filesystem.List(path: member_dir)
+              match filesystem_listing_observation(directory: member_dir, success: listed.success, entries: listed.entries, error: listed.error) {
+                FilesystemDirectorySubjectRefused { directory: _, cause: _ } => AttemptAppendLogUnready { detail: "the member directory subject was refused; the listing is never treated as empty" }
+                FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptAppendLogUnready { detail: join(["the member directory could not be listed; a member is never treated as absent from a failed read -- ", e], "") }
+                FilesystemDirectoryListed(lic) => attempt_append_log_mint_listing(store: store, node: node, attempt_key: attempt_key, name: name, member_dir: member_dir, names: filesystem_listing_entry_names(listing: lic))
+              }
+            } else {
+              attempt_append_log_mint_listing(store: store, node: node, attempt_key: attempt_key, name: name, member_dir: member_dir, names: [])
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE HOST-SIDE CREATE, through the SEALED store, for the HostCreatesThenSandboxWrites window. The host's only
+// write under that window is this create, admitted only while the member does not exist; the window then passes
+// to the sandbox by the member's existence (contract: std.durable_append_log append_write_admission, standing
+// WriterWindowReleased -- NO hold to acquire or release). The dedicated-account branch keeps the old
+// group-writable mode at creation; the service-user branch was historically an overwrite-capable Write, but the
+// store op is CREATE-NEW on BOTH branches so an existing member is a typed outcome (AlreadyExists), never an
+// overwrite. Business key only; the path is derived from the sealed attempt-state record, never supplied.
+// The dedicated-account events member is group-writable AT CREATION (owner rw, group rw, other none), never
+// widened afterwards -- the same FileMode value dispatch_attempt_events_initialize_for_instance created it with
+// (declared there as dispatch_attempt_events_group_writable_mode). Declared here as a local copy because the
+// seal module must not import the dispatch actuator (it would cycle: the actuator already imports this module).
+// PR body notes the single-source intent.
+data attempt_append_log_events_group_writable_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: false },
+  group: PermissionBits { read: true, write: true, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false, setgid: false, sticky: false,
+}
+
+type AttemptAppendLogHostCreate
+  = AttemptAppendLogCreated { path: String, created_mode: FileMode? }
+  | AttemptAppendLogAlreadyExists { path: String }
+  | AttemptAppendLogCreateRefused { detail: String }
+  | AttemptAppendLogHostUnready { detail: String }
+  | AttemptAppendLogHostLegacyRefused { cause: AppendLogLegacyCause }
+
+fn attempt_append_log_refusal_detail(refusal: AppendWriteRefusal) -> String {
+  match refusal {
+    WriterNotAuthorizedByPolicy => "the host is not the authorized writer for this member"
+    WriterWindowHeldByAnother { holder: _ } => "the writer window is held by another principal"
+    WriterWindowNotOpen => "the writer window is not open"
+    HostWriteDuringSandboxWindow { holder: _ } => "a host write was attempted during the sandbox window"
+    WriterStandingUnknown { cause: c } => join(["the writer standing is unobserved: ", c], "")
+    CreateOverExistingMember => "the member already exists; create-new will not overwrite it"
+  }
+}
+
+fn attempt_append_log_host_create(instance: HostDashboardInstance, node: String, attempt_key: String, member: AttemptLogMember) -> AttemptAppendLogHostCreate {
+  match attempt_append_log_store_open(instance: instance, node: node, attempt_key: attempt_key, member: member) {
+    AttemptAppendLogUnready { detail } => AttemptAppendLogHostUnready { detail: detail }
+    AttemptAppendLogLegacyRefused { cause } => AttemptAppendLogHostLegacyRefused { cause: cause }
+    AttemptAppendLogReady { store: sealed } => match attempt_state_open(instance: instance, node: node, attempt_key: attempt_key) {
+      AttemptStateUnready { detail } => AttemptAppendLogHostUnready { detail: detail }
+      AttemptStateReady { store: as_store } => {
+        let member_path = attempt_log_member_path(store: as_store, member: member)
+        let exists_read = Filesystem.Read(path: member_path)
+        let member_exists = exists_read.success
+        match append_write_admission(policy: sealed.slot.writers, writer: HostWriter, intent: IntentCreateEmpty, standing: WriterWindowReleased, member_exists: member_exists) {
+          AppendWriteAdmitted => match instance.worker {
+            WorkerDedicatedAccount => {
+              let created = Filesystem.WriteCreateNewWithMode(path: member_path, content: "", mode: file_mode_bits(mode: attempt_append_log_events_group_writable_mode))
+              if created.success { AttemptAppendLogCreated { path: member_path, created_mode: Present { value: attempt_append_log_events_group_writable_mode } } } else { AttemptAppendLogCreateRefused { detail: created.error } }
+            }
+            WorkerIsServiceUser => {
+              let created = Filesystem.WriteCreateNew(path: member_path, content: "")
+              if created.success { AttemptAppendLogCreated { path: member_path, created_mode: Absent } } else { AttemptAppendLogCreateRefused { detail: created.error } }
+            }
+          }
+          AppendWriteRefused { refusal: r } => match r {
+            CreateOverExistingMember => AttemptAppendLogAlreadyExists { path: member_path }
+            _ => AttemptAppendLogCreateRefused { detail: attempt_append_log_refusal_detail(refusal: r) }
+          }
+        }
+      }
+    }
+  }
+}

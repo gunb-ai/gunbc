@@ -1,0 +1,162 @@
+module test.claim.roadmap.attempt_append_log_srv1_host_shape_witness
+
+// A WET FIXTURE SHAPED LIKE THE REAL srv1 ATTEMPT-STATE HOST (stern, srv1 read-only): 16 attempts share a root
+// whose per-attempt directory is a SHARED PARENT -- worker/, review/, audit/ sit beside a large population of
+// entries that are NOT log members (job-<pid>.out/.err, harness-request*, handin, *-stdout.log, the
+// provider-events.jsonl.wire/ directory, and *-current symlinks). This witness proves the sealed append-log store
+// opens over that real shape: (a) a foreign non-member file never makes the store Unready, (b) a present member
+// mints Ready and its old bytes read back regardless of mode, (c) a member missing from a POSITIVELY-LISTED
+// directory is typed ABSENT (the store is Ready, the member is simply not there -- never a refusal), and (d) a
+// member directory that is absent from the attempt-root listing (there is no supervisor/ anywhere on srv1) is a
+// typed Absent whose store mints Ready, NOT Unready. Names-only scoping means the store judges only its own
+// member namespace; it never counts a plain member's file, or another store's file, as foreign.
+
+import std.types { Bool, Int, NonEmptyStr, String, FilePath }
+import std.optional { Present, Absent }
+import extdeps.shell
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance,
+  DashboardActuating, DashboardLocalProvision, dashboard_home_provision_parent_root,
+  fleet_admitted_revision_source, WorkerIsServiceUser,
+}
+import gunbc.roadmap.roadmap_attempt_state_store {
+  AttemptStateProvision, AttemptDirectoryRoot, AttemptDirectoryWorker, AttemptDirectoryReview, AttemptDirectorySupervisor,
+  AttemptWorkerEvents, AttemptSupervisorEvents,
+  attempt_state_provision, attempt_state_provision_directory, attempt_log_provision_path,
+  attempt_append_log_store_open, attempt_append_log_census_row, AttemptAppendLogReading, AttemptAppendLogReady, AttemptAppendLogUnready, AttemptAppendLogLegacyRefused,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_srv1shape.XXXXXX").path
+}
+
+fn instance_service_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "srv1shape-wet" as NonEmptyStr),
+    instance_id: "srv1shape-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18121,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+// Build a per-attempt directory the way srv1 has one: worker/ and review/ present, supervisor/ NOT present, with
+// the worker events member plus foreign non-member files. `with_events` selects whether the worker member exists.
+fn build_attempt_tree(instance: HostDashboardInstance, with_events: Bool) -> Bool {
+  let prov = attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key")
+  let rootp = attempt_state_provision_directory(provision: prov, directory: AttemptDirectoryRoot)
+  let workerp = attempt_state_provision_directory(provision: prov, directory: AttemptDirectoryWorker)
+  let reviewp = attempt_state_provision_directory(provision: prov, directory: AttemptDirectoryReview)
+  let made_root = shell.Mkdir.Parents(path: rootp as FilePath).success
+  let made_worker = shell.Mkdir.Parents(path: workerp as FilePath).success
+  let made_review = shell.Mkdir.Parents(path: reviewp as FilePath).success
+  let foreign_out = Filesystem.Write(path: join([workerp, "/job-123.out"], ""), content: "job stdout bytes")
+  let foreign_err = Filesystem.Write(path: join([workerp, "/job-123.err"], ""), content: "job stderr bytes")
+  let events = if with_events {
+    Filesystem.Write(path: attempt_log_provision_path(provision: prov, member: AttemptWorkerEvents), content: "{\"srv1\":1}\n").success
+  } else {
+    true
+  }
+  made_root && made_worker && made_review && foreign_out.success && foreign_err.success && events
+}
+
+// (a) + (b): worker events member present, foreign job-*.out/.err in the shared dir -> store Ready, foreign files
+// ignored (NOT Unready), and the member's old bytes read back (mode is never a read gate).
+test fn the_worker_events_store_is_ready_over_the_shared_parent_with_foreign_files() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let built = build_attempt_tree(instance: inst, with_events: true)
+  let prov = attempt_state_provision(instance: inst, node: "wet-node", attempt_key: "wet-key")
+  let mpath = attempt_log_provision_path(provision: prov, member: AttemptWorkerEvents)
+  let ok = match attempt_append_log_store_open(instance: inst, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogReady { store: _ } => built && Filesystem.Read(path: mpath).success && Filesystem.Read(path: mpath).content == "{\"srv1\":1}\n"
+    AttemptAppendLogUnready { detail: _ } => false
+    AttemptAppendLogLegacyRefused { cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+// (c): a member missing from a POSITIVELY-LISTED directory is typed ABSENT -- the store mints Ready (the directory
+// was listed and the member is simply not among its entries), never a refusal, and the member file is absent.
+test fn a_missing_member_in_a_listed_directory_is_typed_absent_not_refused() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let built = build_attempt_tree(instance: inst, with_events: false)
+  let prov = attempt_state_provision(instance: inst, node: "wet-node", attempt_key: "wet-key")
+  let mpath = attempt_log_provision_path(provision: prov, member: AttemptWorkerEvents)
+  let ok = match attempt_append_log_store_open(instance: inst, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogReady { store: _ } => built && !(Filesystem.Read(path: mpath).success)
+    AttemptAppendLogUnready { detail: _ } => false
+    AttemptAppendLogLegacyRefused { cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+// (d): a member directory absent from the attempt-root listing (there is NO supervisor/ anywhere on srv1) is a
+// typed Absent whose store mints Ready, NOT Unready -- presence decided by the positive parent listing, never by a
+// failed member-directory read. This is the (A) shared-parent gate.
+test fn an_absent_member_directory_is_typed_absent_ready_not_unready() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let built = build_attempt_tree(instance: inst, with_events: true)
+  let ok = match attempt_append_log_store_open(instance: inst, node: "wet-node", attempt_key: "wet-key", member: AttemptSupervisorEvents { turn: 100 }) {
+    AttemptAppendLogReady { store: _ } => built
+    AttemptAppendLogUnready { detail: _ } => false
+    AttemptAppendLogLegacyRefused { cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+// REGRESSION CONTROL for the landed #15471 census_row defect: the old lookup recursed on the whole census instead
+// of advancing over its tail, so only the FIRST member (AttemptWorkerEvents) was ever found and any other lookup
+// diverged. These look up a MIDDLE member and the LAST member; red on the old recursion (call-depth-exceeded),
+// green on the fixed recursion over rest.
+test fn a_middle_census_member_is_found_not_only_the_first() -> Bool {
+  match attempt_append_log_census_row(name: "AttemptAuditEvents") {
+    Present { value: r } => r.member == ("AttemptAuditEvents" as NonEmptyStr)
+    Absent => false
+  }
+}
+
+test fn the_last_census_member_is_found_not_only_the_first() -> Bool {
+  match attempt_append_log_census_row(name: "AttemptSupervisorLog") {
+    Present { value: r } => r.member == ("AttemptSupervisorLog" as NonEmptyStr)
+    Absent => false
+  }
+}
+
+// OLD-BYTES READBACK (Done item): a provider-events.jsonl that ALREADY EXISTS on the host (written by the
+// dispatcher (codex provider) under the pre-migration layout, here the REAL captured bytes from
+// test/fixture/codex_provider_events/agent_message_turn_2026-07-29.jsonl (the old code wrote them) must read back BYTE-INTACT through the store.
+// The bytes are written before the store is ever opened; the store mints Ready over the pre-existing member (mode
+// is never a read gate) and the exact bytes return. A refusal or a reformat here would silently lose live-host
+// history, so the assertion is byte equality, not "some records".
+test fn an_existing_multirecord_worker_log_reads_back_its_bytes_intact() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let prov = attempt_state_provision(instance: inst, node: "wet-node", attempt_key: "wet-key")
+  let worker_dir = attempt_state_provision_directory(provision: prov, directory: AttemptDirectoryWorker)
+  let mpath = attempt_log_provision_path(provision: prov, member: AttemptWorkerEvents)
+  let legacy = "{\"type\":\"thread.started\",\"thread_id\":\"00000000-0000-0000-0000-000000000000\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"ok\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":15923,\"cached_input_tokens\":13056,\"cache_write_input_tokens\":0,\"output_tokens\":5,\"reasoning_output_tokens\":0}}\n"
+  let made_dir = shell.Mkdir.Parents(path: worker_dir as FilePath).success
+  let wrote = Filesystem.Write(path: mpath, content: legacy).success
+  let opened = match attempt_append_log_store_open(instance: inst, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogReady { store: _ } => true
+    AttemptAppendLogUnready { detail: _ } => false
+    AttemptAppendLogLegacyRefused { cause: _ } => false
+  }
+  let back = Filesystem.Read(path: mpath)
+  let ok = made_dir && wrote && opened && back.success && back.content == legacy
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}

@@ -1,6 +1,6 @@
 module test.claim.roadmap.worker_dedicated_account_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text , attempt_log_member_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_unit_stem, dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list, dispatch_attempt_private_git_dir, session_process_bounds }
 import std.types { Bool, NonEmptyStr, List, String, Int, FilePath }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
@@ -1197,7 +1197,7 @@ test fn the_confined_git_interior_and_sibling_isolation_survive_the_subtree_gran
       instance: lab,
       working_directory: mine,
       attempt_worktree: mine,
-      worker_log_path: attempt_state_text(instance: lab, node_id: node, attempt_key: "dispatch-attempt-claim-mine", member: AttemptWorkerLog),
+      worker_log_path: attempt_log_member_text(instance: lab, node_id: node, attempt_key: "dispatch-attempt-claim-mine", member: AttemptWorkerLog),
       granted: kibibyte(count: 1048576),
       process_bounds: session_process_bounds,
       exit_hook: "mkdir -- /spool/inbox/claim-3+n+x" as NonEmptyStr,

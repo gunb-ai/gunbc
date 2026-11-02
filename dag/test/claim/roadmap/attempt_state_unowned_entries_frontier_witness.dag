@@ -1,0 +1,33 @@
+module test.claim.roadmap.attempt_state_unowned_entries_frontier_witness
+
+import std.types { Bool, String, List, Int }
+import std.roster_frontier { FrontierSubject, FrontierRow, DeclSubject, frontier_subject_eq }
+import std.decl_ref { decl_ref }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+
+// KEYED PRESENCE CONTROL (the lane standard, mirroring test.claim.roadmap.attempt_directory_wire_frontier_witness
+// and test.claim.prepared_bundle_store_witness for the prepared-bundle retirement frontier): the unowned srv1
+// attempt-state entry classes are all dispositioned in the census aggregate, keyed by their SUBJECT DECLARATION
+// (host_layout.srv1_dispatch_attempt_state_root -- the root the external writers drop files beneath) and NOT by a
+// bare count of the whole aggregate. Two arms:
+//   (1) presence-by-subject: at least one dispositioned row carries the root as its subject, so deleting the whole
+//       group from gunbc.census_closure_frontier.census_closure_frontier_row_groups makes this claim fail.
+//   (2) all-classes guard: exactly the nine unowned classes are present under that subject, so no class may be
+//       silently dropped from the group (nothing unowned is silently ignored).
+
+fn count_rows_with_subject(rows: List<FrontierRow>, want: FrontierSubject) -> Int {
+  match rows {
+    Empty {} => 0
+    Cons { head: r, tail: rest } => if frontier_subject_eq(a: r.subject, b: want) { 1 + count_rows_with_subject(rows: rest, want: want) } else { count_rows_with_subject(rows: rest, want: want) }
+  }
+}
+
+test fn the_unowned_entries_frontier_group_is_in_the_census_aggregate() -> Bool {
+  let want: FrontierSubject = DeclSubject { ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}
+
+test fn every_unowned_entry_class_is_dispositioned() -> Bool {
+  let want: FrontierSubject = DeclSubject { ref: decl_ref(module_path: "gunbc.host.host_layout", decl_name: "srv1_dispatch_attempt_state_root") }
+  count_rows_with_subject(rows: census_closure_frontier_rows(), want: want) == 9
+}

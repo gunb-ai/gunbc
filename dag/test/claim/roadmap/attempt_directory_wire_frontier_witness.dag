@@ -1,0 +1,15 @@
+module test.claim.roadmap.attempt_directory_wire_frontier_witness
+
+import std.types { Bool, String }
+import std.roster_frontier { FrontierSubject, DeclSubject, frontier_subject_eq }
+import std.decl_ref { decl_ref }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+
+// KEYED PRESENCE CONTROL (the lane standard, mirroring test.claim.prepared_bundle_store_witness for the prepared-
+// bundle retirement frontier): the attempt-directory-wire frontier row is present in the census aggregate, keyed by
+// its SUBJECT DECLARATION (harness_turn.harness_wire_log_path) and NOT by a count. Deleting the row from
+// gunbc.census_closure_frontier.census_closure_frontier_row_groups makes this claim fail.
+test fn the_attempt_directory_wire_frontier_row_is_in_the_census_aggregate() -> Bool {
+  let want: FrontierSubject = DeclSubject { ref: decl_ref(module_path: "gunbc.harness.harness_turn", decl_name: "harness_wire_log_path") }
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: want))
+}

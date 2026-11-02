@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_belt_actuate
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectorySupervisor, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptSupervisorVerdict, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_state_external_path, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectorySupervisor, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptSupervisorVerdict, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_log_external_path, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at, attempt_append_log_host_create, AttemptAppendLogCreateRefused, AttemptAppendLogHostUnready, AttemptAppendLogHostLegacyRefused }
 import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
@@ -150,7 +150,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane }
 import extdeps.tmux {
   classify_tmux_session_list,
   TmuxSessionsListed,
@@ -907,17 +907,28 @@ fn belt_attempt_state_initialize_for_instance(
                             FilesystemWriteRefused { path: _, error: e } =>
                               AttemptStateInitializationFailed { step: "attempt-launch-write", detail: e }
                             FilesystemWritten { path: _ } =>
-                              match dispatch_attempt_events_initialize_for_instance(
+                              match attempt_append_log_host_create(
                                 instance: instance,
-                                node_id: node.node,
+                                node: node.node as String,
                                 attempt_key: attempt_key,
+                                member: AttemptWorkerEvents,
                               ) {
-                                DispatchAttemptEventsInitializationFailed { detail: events_detail } =>
+                                AttemptAppendLogHostUnready { detail: events_detail } =>
                                   AttemptStateInitializationFailed {
                                     step: "attempt-events-initialize",
                                     detail: events_detail,
                                   }
-                                DispatchAttemptEventsInitialized =>
+                                AttemptAppendLogCreateRefused { detail: events_detail } =>
+                                  AttemptStateInitializationFailed {
+                                    step: "attempt-events-initialize",
+                                    detail: events_detail,
+                                  }
+                                AttemptAppendLogHostLegacyRefused { cause: _ } =>
+                                  AttemptStateInitializationFailed {
+                                    step: "attempt-events-initialize",
+                                    detail: "the events member was refused as legacy or unreadable by the append-log store",
+                                  }
+                                _ =>
                                   match attempt_state_write(
                                     store: store,
                                     member: AttemptValidationReceipt,
@@ -5844,7 +5855,7 @@ fn belt_provider_event_projection_observe_for_instance(
     AttemptStateReady { store } =>
       belt_provider_event_projection_observe_at(
         instance: instance,
-        events_path: attempt_state_external_path(store: store, member: AttemptWorkerEvents),
+        events_path: attempt_log_external_path(store: store, member: AttemptWorkerEvents),
       )
   }
 }
@@ -6357,7 +6368,7 @@ fn belt_workflow_attempt_evidence_for_key(
     AttemptStateReady { store } =>
       belt_provider_event_projection_observe_at(
         instance: instance,
-        events_path: attempt_state_external_path(store: store, member: AttemptWorkerEvents),
+        events_path: attempt_log_external_path(store: store, member: AttemptWorkerEvents),
       )
   }
   let spawn_failure = attempt_state_read_at(instance: instance, node: attempt.node_id, attempt_key: current_key, member: AttemptSpawnFailure)

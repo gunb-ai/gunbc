@@ -1,6 +1,6 @@
 module test.claim.roadmap.attempt_system_unit_launch_witness
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text , attempt_log_member_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_pane_working_directory, dispatch_worktree_path_for_instance }
 import std.types { Bool, NonEmptyStr, List, String, FilePath, Int }
 import std.optional { Present, Absent }
@@ -440,7 +440,7 @@ test fn the_launcher_derives_the_user_and_paths_from_the_attempt_identity() -> B
     AttemptSystemUnitStartDerived { facts } =>
       (facts.user as String) == (dashboard_instance_worker_user(instance: inst) as String)
         && facts.attempt_worktree == dispatch_worktree_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
-        && facts.stdout_path == attempt_state_text(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key, member: AttemptWorkerLog)
+        && facts.stdout_path == attempt_log_member_text(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key, member: AttemptWorkerLog)
         && facts.working_directory == dispatch_pane_working_directory(provider: GunbcHarnessProvider, instance: inst, worktree_path: facts.attempt_worktree)
   }
 }

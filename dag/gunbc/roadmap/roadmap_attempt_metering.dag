@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_metering
 
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents, attempt_state_directory_text, attempt_state_text }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents, attempt_state_directory_text, attempt_log_member_text }
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
 import std.algebra { trim }
 import std.types { path_segment_is_safe }
@@ -140,13 +140,13 @@ fn metered_role_decode(v: JsonValue) -> RowDecode<MeteredRole> {
 // same functions gunbc.roadmap.roadmap_dispatch_actuator mints them with -- never from a file the launch wrote.
 fn metered_role_events_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> String {
   match role {
-    MeteredWorker => attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
+    MeteredWorker => attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
     MeteredReviewer { criterion_key: c, head: h } =>
-      attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewEvents { criterion_key: c as String, head_sha: h as String })
+      attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewEvents { criterion_key: c as String, head_sha: h as String })
     MeteredAuditor { head: h } =>
-      attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditEvents { head_sha: h as String })
+      attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditEvents { head_sha: h as String })
     MeteredSupervisor { turn: t } =>
-      attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSupervisorEvents { turn: t })
+      attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSupervisorEvents { turn: t })
   }
 }
 
