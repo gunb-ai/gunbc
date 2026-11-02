@@ -106,7 +106,7 @@ fn router_dev_comparison_row_line(q: RouterDevComparisonQuote) -> String {
 // million, `as_of`, `estimated`). The row above is the only stored shape: micro integers and `read_on`. The wire
 // table is derived from it here, once at init, and read by the response headers, /v1/models and the stats
 // documents; the meter reads the row. Header figures are Lua tostring of the derived float, the live rule
-// (nginx.conf 375-376), applied at this one place; a price with more than 14 significant digits would round,
+// (the live router's price-header formatting in its header_filter phase), applied at this one place; a price with more than 14 significant digits would round,
 // and the cited quotes carry at most 6. End condition: this boundary and the wire names are deleted when the
 // dashboard and ctrl pool router read the row's own names (their readers are unverified from this session,
 // so the live names stay until the cutover confirms them).
@@ -264,6 +264,9 @@ fn router_dev_access_lines() -> List<String> {
     "  session = 'prefix:' .. ngx.md5((sys .. '\\0' .. first):sub(1, 4096))",
     "end",
     "local state = ngx.shared.router_state",
+    // BINDINGS LIVE IN THEIR OWN DICT (router_bindings: session id -> row name), so the retention scan below
+    // is bounded by the live bindings and never walks the seen:/active:/pending:/meter keys of router_state.
+    "local bindings = ngx.shared.router_bindings",
     // STRANDED DEMAND: one record per refused conversation, keyed by the REQUESTED model, holding the time of
     // the FIRST refusal across retries so its age is how long the conversation has waited. The autoscaler reads
     // the count and oldest age from /router/stats; the record expires on its own after the span.
@@ -345,7 +348,7 @@ fn router_dev_access_lines() -> List<String> {
     "  ngx.req.set_header('X-Pool-Session', session)",
     "  ngx.req.set_header('X-Session-Id', session)",
     "  if pick.path_prefix and pick.path_prefix ~= '' then ngx.req.set_uri(pick.path_prefix .. ngx.var.uri, false) end",
-    "  state:set('session:' .. session, pick.name, " + to_string(second_count(s: router_dev_binding_ttl())) + ")",
+    "  bindings:set(session, pick.name, " + to_string(second_count(s: router_dev_binding_ttl())) + ")",
     "  if effort ~= nil then ngx.ctx.effort = effort end",
     "  if out ~= raw then ngx.req.set_body_data(out) end",
     "  ngx.var.up = pick.host .. ':' .. tostring(pick.port)",
@@ -355,7 +358,7 @@ fn router_dev_access_lines() -> List<String> {
     "end",
     // An upstream is available when it answers this model AND the health guard has not ejected it
     // (unavailable:<name> is set in the log phase on a 5xx or a 401, for the ejection span).
-    "local stuck = state:get('session:' .. session)",
+    "local stuck = bindings:get(session)",
     // A binding to a RETIRED name belongs to the row that retires it: the engine was renamed, not lost, so its
     // session keeps its placement and its cache.
     "if stuck then stuck = owner_of[stuck] or stuck end",
@@ -392,16 +395,16 @@ fn router_dev_access_lines() -> List<String> {
     // RETENTION ADMISSION: a NEW session binds to a row only while the sessions bound there are fewer than
     // the conversations it retains (the row's derived retain). A bound session always returns to its own row,
     // and a row without retain admits as before.
-    // One pass over the shared dict per request, built on first use: bindings expire by TTL, so a maintained
-    // per-row counter would drift on expiry; the scan is bounded by the live bindings and runs only for a new
-    // session facing a row that has a retain.
+    // One pass over the bindings dict per request, built on first use: bindings expire by TTL, so a maintained
+    // per-row counter would drift on expiry. The dict holds only bindings, so the scan is bounded by them, and
+    // it runs only for a new session facing a row that has a retain.
     "local bound_counts = nil",
     "local function bound_count(name)",
     "  if not bound_counts then",
     "    bound_counts = {}",
-    "    for _, k in ipairs(state:get_keys(0)) do",
-    "      if k:sub(1, 8) == 'session:' and k:sub(9) ~= session then",
-    "        local row = state:get(k)",
+    "    for _, k in ipairs(bindings:get_keys(0)) do",
+    "      if k ~= session then",
+    "        local row = bindings:get(k)",
     "        row = row and (owner_of[row] or row)",
     "        if row then bound_counts[row] = (bound_counts[row] or 0) + 1 end",
     "      end",
@@ -625,12 +628,13 @@ fn router_dev_trim_lines() -> List<String> {
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\"}}') return end",
     "if ngx.req.get_method() ~= 'POST' then ngx.status = 405 ngx.say('\{\"error\":\{\"message\":\"POST only\"}}') return end",
     "local state = ngx.shared.router_state",
+    "local bindings = ngx.shared.router_bindings",
     "local by = \{}",
-    "for _, k in ipairs(state:get_keys(0)) do",
-    "  if k:sub(1, 8) == 'session:' then",
-    "    local up = state:get(k)",
+    "for _, k in ipairs(bindings:get_keys(0)) do",
+    "  do",
+    "    local up = bindings:get(k)",
     "    up = up and (owner_of[up] or up)",
-    "    if up then by[up] = by[up] or \{} table.insert(by[up], \{key = k, seen = state:get('seen:' .. k:sub(9)) or 0}) end",
+    "    if up then by[up] = by[up] or \{} table.insert(by[up], \{key = k, seen = state:get('seen:' .. k) or 0}) end",
     "  end",
     "end",
     "local out = \{}",
@@ -639,7 +643,7 @@ fn router_dev_trim_lines() -> List<String> {
     "  if u.retain and l and #l > u.retain then",
     "    table.sort(l, function(a, b) return a.seen > b.seen end)",
     "    local n = 0",
-    "    for i = u.retain + 1, #l do state:delete(l[i].key) n = n + 1 end",
+    "    for i = u.retain + 1, #l do bindings:delete(l[i].key) n = n + 1 end",
     "    out[u.name] = \{bound = #l, kept = u.retain, unbound = n}",
     "  end",
     "end",
@@ -729,7 +733,7 @@ fn router_dev_stats_lines() -> List<String> {
     "ngx.header['Content-Type'] = 'application/json'",
     "if ngx.var.arg_sessions == '1' then",
     "  out.sessions = \{}",
-    "  for _, k in ipairs(state:get_keys(0)) do if k:find('^session:') then local id=k:sub(9) out.sessions[id]=\{upstream=state:get(k), last_seen=state:get('seen:' .. id)} end end",
+    "  for _, id in ipairs(ngx.shared.router_bindings:get_keys(0)) do out.sessions[id]=\{upstream=ngx.shared.router_bindings:get(id), last_seen=state:get('seen:' .. id)} end",
     "end",
     "ngx.say(cjson.encode(out))",
   ])
@@ -775,6 +779,8 @@ fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVaria
 // The state dictionary's capacity, as the std.measure memory carrier: 10 MiB. The directive's own
 // rendering (LuaSharedDict -> byte_size_count) already carries how a size is written; spelling "10m" here
 // would be a second, informal way of stating a size the model has as ByteSize (§3).
+fn router_bindings_dict_size() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(count: 10)) }
+
 fn router_state_dict_size() -> ByteSize { mebibyte_to_byte_size(m: mebibyte(count: 10)) }
 
 fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
@@ -785,6 +791,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   match tok(text: site.state_dir + "/tls/key.pem") { Absent => RouterDevConfigRefused { token: "certkey" } Present { value: certkey } =>
   match tok(text: site.state_dir + "/upstream_ca.pem") { Absent => RouterDevConfigRefused { token: "ca" } Present { value: ca } =>
   match tok(text: "router_state") { Absent => RouterDevConfigRefused { token: "dict" } Present { value: dict } =>
+  match tok(text: "router_bindings") { Absent => RouterDevConfigRefused { token: "bindings_dict" } Present { value: bindings_dict } =>
   match tok(text: "/router/stats") { Absent => RouterDevConfigRefused { token: "stats" } Present { value: stats } =>
   match tok(text: "/router/trim-bindings") { Absent => RouterDevConfigRefused { token: "trim" } Present { value: trim } =>
   match tok(text: "/v1/models") { Absent => RouterDevConfigRefused { token: "models" } Present { value: models } =>
@@ -805,6 +812,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
         ClientMaxBodySize { size: router_request_body_limit() },
         ClientBodyBufferSize { size: router_request_body_buffer() },
         LuaSharedDict { name: dict, size: router_state_dict_size() },
+        LuaSharedDict { name: bindings_dict, size: router_bindings_dict_size() },
         LuaPhaseBlock { phase: InitPhase, lines: router_dev_init_lines(state_dir: site.state_dir, model_alias: site.model_alias) },
         ServerBlock { body: [
           ListenTlsOn { address: addr, port: site.listen_port },
@@ -817,7 +825,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
         ] },
       ] },
     ]) }
-  } } } } } } } } } } } } } } } } } } }
+  } } } } } } } } } } } } } } } } } } } }
 }
 
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
