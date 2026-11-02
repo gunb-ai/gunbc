@@ -3,7 +3,7 @@ module v2.test.claim.parse.condition_position_record_parse
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 
@@ -103,6 +103,30 @@ fn record_let_head_still_parses() -> Bool { g_parse_accepted(text: record_let_he
 
 fn record_call_arg_still_parses() -> Bool { g_parse_accepted(text: record_call_arg_source, file: ^record_arg_probe) }
 
+// The T9 RED (pp7 dotcond row): 'if c.d { i }' + tail. The record arm is reachable AFTER a
+// dot-suffix (the ordinary dot-suffix ends in the ident-suffix, so `d { i }` reads as a pun and
+// starves the if of its block -- pp7 refused at PARSE, locus 153..154). The condition gate sits on
+// that same suffix, so the pun is refused and the block stands. Field access itself is unaffected.
+data dotcond_with_tail_source: String = "module probe.dotcond_tail\n\nfn probe_dot(c: Bool, i: Int) -> Int {\n  if c.d { i }\n  i\n}\n"
+
+fn dotcond_with_tail_parses() -> Bool { g_parse_accepted(text: dotcond_with_tail_source, file: ^dotcond_tail_probe) }
+
+// keen-heron-809's newline-minus review item: the peek must apply the SAME newline guard the infix
+// table applies (#12817): a `-` beginning a line after a complete operand never continues the
+// expression, so it must not admit a record either. The text refuses EITHER way (the table guard
+// refuses operand-newline-`-` by design) -- what this claim pins is WHICH refusal: the guard's
+// reason, proving the bare-head reading stood and the chain's own guard fired. Pre-fix the record
+// swallowed `c { x }` and the refusal carried a different reason, so this is RED at the reason
+// level against the peek fix, green after it.
+data newline_minus_after_if_source: String = "module probe.nl_minus\n\nfn probe_nl(c: Bool, x: Int, y: Int) -> Int {\n  if c { x }\n -y\n}\n"
+
+fn newline_minus_after_if_refuses_with_guard_reason() -> Bool {
+  match g_tokenize_parse(text: newline_minus_after_if_source, file: ^nl_minus_probe) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == "NewlineBeforeDualRoleOperator"
+  }
+}
+
 fn labeled_call_block_condition_still_parses() -> Bool { g_parse_accepted(text: labeled_call_block_condition_source, file: ^cond_labeled_call_probe) }
 
 fn paren_record_condition_still_parses() -> Bool { g_parse_accepted(text: paren_record_condition_source, file: ^paren_record_probe) }
@@ -122,6 +146,12 @@ test fn then_branch_record_parses_holds() -> Bool { then_branch_record_parses() 
 test fn record_let_head_still_parses_holds() -> Bool { record_let_head_still_parses() }
 
 test fn record_call_arg_still_parses_holds() -> Bool { record_call_arg_still_parses() }
+
+test fn dotcond_with_tail_parses_holds() -> Bool { dotcond_with_tail_parses() }
+
+test fn newline_minus_after_if_refuses_with_guard_reason_holds() -> Bool {
+  newline_minus_after_if_refuses_with_guard_reason()
+}
 
 test fn labeled_call_block_condition_still_parses_holds() -> Bool { labeled_call_block_condition_still_parses() }
 
