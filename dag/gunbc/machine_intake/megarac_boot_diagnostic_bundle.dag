@@ -3081,9 +3081,10 @@ fn megarac_boot_hpm_check(row: MegaRacBootRow, username: NonEmptyStr, password_f
 // artifacts/bmc/ and names in a MegaRacVersionFromFirmwareRead standing. This reads that file BACK and runs
 // the catalogue's one derivation over it (gunbc.host.bmc_release_capability_catalog
 // megarac_version_establishment, component APP), so what the receipt reports is what those bytes establish,
-// not a second reading of the tool. It is evidence for the restoration trigger of
-// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation and changes no
-// admission: production still admits operations through the observed build until that cutover lands.
+// not a second reading of the tool. It was the evidence for the restoration trigger of
+// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation, and it changes no
+// admission by itself: the readback grounds the build the ledger names, and the transition that switched
+// production onto it is the cutover in gunbc#15591, which moved the observation and every caller together.
 // THE FILE IS NAMED BY THE RUN THAT READ IT. The runner's work tree outlives a run, so a fixed name could
 // hand this run's readback a previous run's bytes after a failed read; keyed by GITHUB_RUN_ID (the
 // run_attempt the boot passes, and the attempt identity the conclusion reads), a run reads back only what
