@@ -1,6 +1,7 @@
 module gunbc.live_deploy.srv1_serving_engine_unit
 
 import std.types { List, NonEmptyStr, String }
+import std.measure { Second, second, second_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile,
@@ -44,7 +45,7 @@ data srv1_serving_engine_wrapper_path: NonEmptyStr = "/usr/local/libexec/gunbc/s
 
 // The wrapper's start: the docker removal wait (up to 120 s), the run, and its own readback; image pulls
 // never happen here because the image is a local build pinned by digest.
-data srv1_serving_engine_start_timeout_seconds: NonEmptyStr = "300"
+data srv1_serving_engine_start_timeout: Second = second(count: 300)
 
 fn srv1_serving_engine_wrapper_text() -> String {
   srv1_serving_wrapper.body
@@ -63,7 +64,7 @@ fn srv1_serving_engine_unit_file() -> SystemdUnitFile {
     service: [
       ServiceType { mode: OneshotMode },
       RemainAfterExit { active: true },
-      TimeoutStartSec { duration: srv1_serving_engine_start_timeout_seconds },
+      TimeoutStartSec { duration: to_string(second_count(s: srv1_serving_engine_start_timeout)) as NonEmptyStr },
       ServiceUser { name: gunbc_service_user },
       ServiceGroup { name: gunbc_service_user },
       Environment { assignment: join(["HOME=", operator_home_root as String], "") as NonEmptyStr },

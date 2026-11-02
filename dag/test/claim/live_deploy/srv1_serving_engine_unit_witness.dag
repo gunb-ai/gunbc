@@ -25,6 +25,7 @@ test fn the_engine_unit_starts_after_docker_and_has_no_stop() -> Bool {
     && contains(t, "User=briansrls")
     && contains(t, "Environment=HOME=/home/briansrls")
     && contains(t, concat("ExecStart=/bin/bash ", srv1_serving_engine_wrapper_path as String))
+    && contains(t, "TimeoutStartSec=300")
     && !contains(t, "ExecStop")
     && !contains(t, "Restart=")
     && contains(t, "WantedBy=multi-user.target")
