@@ -404,18 +404,18 @@ fn publish_admitted_wet(subject: HealPublicationSubject, publisher_token: Secret
                   auth_token: publisher_token, owner: owner, repo: repo,
                   ref: concat("heads/", admitted.head_ref as String), sha: commit.commit.sha
                 ) {
-                  RestAnswered { answer: _ } => readback_wet(subject: subject, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                  RestAnswered { answer: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                   RestRefused { refusal } => match refusal {
                     RestStatusRefused { status, body } =>
                       if (status as Int) == 422 {
                         refused_exit(refusal: ReferenceNotFastForward { detail: body })
                       } else if (status as Int) >= 500 {
-                        readback_wet(subject: subject, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                        readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                       } else {
                         refused_exit(refusal: ReferenceWriteRefused { detail: rest_refusal_text(o: refusal) })
                       }
-                    RestTransportRefused { cause: _ } => readback_wet(subject: subject, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
-                    RestBodyUndecodable { status: _, cause: _ } => readback_wet(subject: subject, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                    RestTransportRefused { cause: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                    RestBodyUndecodable { status: _, cause: _ } => readback_wet(subject: subject, publisher_token: publisher_token, pull_number: pull_number, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
                   }
                 }
               }
@@ -424,24 +424,32 @@ fn publish_admitted_wet(subject: HealPublicationSubject, publisher_token: Secret
   }
 }
 
-fn readback_wet(subject: HealPublicationSubject, pull_number: Int, admitted: AdmittedHealPublication, created_commit: String, created_tree: String) -> ProcessExit
+fn readback_wet(subject: HealPublicationSubject, publisher_token: Secret, pull_number: Int, admitted: AdmittedHealPublication, created_commit: String, created_tree: String) -> ProcessExit
 {
   let owner = subject.repository.owner
   let repo = subject.repository.name
-  match github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", admitted.head_ref as String)) {
+  // READBACK CREDENTIAL (heal-publisher admit fix, gunb-ai/gunbc#<this>). These four reads are CONTENTS
+  // reads (git refs/commits/trees and a comparison), reachable by the installation token that ALREADY
+  // performed the writes; they used to pass auth_token: "" and fall through to the service auth_source
+  // (GITHUB_TOKEN), which does not resolve in this publisher's wet run (that is the very defect that kept
+  // admit from observing). An auth-declaring op with no resolvable token refuses closed pre-send with
+  // AuthDeclaredButUnwired, so the read-back would fail AFTER the fast-forward had already moved the ref
+  // - a red job with a moved head and no receipt. Pass the publisher token explicitly, the same identity
+  // that owns the write, exactly as the writes above do.
+  match github.GitDatabase.GetRef(auth_token: publisher_token, owner: owner, repo: repo, ref: concat("heads/", admitted.head_ref as String)) {
     RestRefused { refusal } =>
       exit_failure(reason: concat("HealPublicationUnverified: the branch could not be read back: ", rest_refusal_text(o: refusal)))
     RestAnswered { answer: branch } =>
-      match github.GitDatabase.GetCommit(auth_token: "", owner: owner, repo: repo, commit_sha: branch.reference.object.sha) {
+      match github.GitDatabase.GetCommit(auth_token: publisher_token, owner: owner, repo: repo, commit_sha: branch.reference.object.sha) {
         RestRefused { refusal } =>
           exit_failure(reason: concat("HealPublicationUnverified: the branch head could not be read back: ", rest_refusal_text(o: refusal)))
         RestAnswered { answer: head } =>
-          match github.GitDatabase.GetTreeRecursive(auth_token: "", owner: owner, repo: repo, tree_sha: head.commit.tree.sha) {
+          match github.GitDatabase.GetTreeRecursive(auth_token: publisher_token, owner: owner, repo: repo, tree_sha: head.commit.tree.sha) {
             RestRefused { refusal } =>
               exit_failure(reason: concat("HealPublicationUnverified: the published tree could not be read back: ", rest_refusal_text(o: refusal)))
             RestAnswered { answer: head_tree } =>
               match github.Commits.Compare(
-                auth_token: "", owner: owner, repo: repo,
+                auth_token: publisher_token, owner: owner, repo: repo,
                 basehead: join([admitted.expected_head_sha as String, "...", branch.reference.object.sha], "")
               ) {
                 RestRefused { refusal } =>
