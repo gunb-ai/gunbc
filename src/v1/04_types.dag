@@ -5,7 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, kernel_settled_name, type_reference_declaration_reading, TypeReferenceIsTypeVariable, is_where_refinement_node, text_representation_by_identity, refinement_rhs_of_declaration }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, kernel_settled_name, type_reference_declaration_reading, TypeReferenceIsTypeVariable, is_where_refinement_node, text_representation_by_identity, alias_rhs_of_declaration, refinement_rhs_of_declaration }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_spelling_is_algebra, container_template_alias_algebra, container_template_alias_rows }
 
