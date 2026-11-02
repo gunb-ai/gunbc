@@ -3009,17 +3009,10 @@ fn walk_native_acquisition_projection_controls(
                  module, so the closure it reads is the entry alone"
             ));
         }
-        // A refused member's row carries its located diagnostic, whose file is the path under the
-        // root the tree was read from. The three trees sit at three scratch roots, so the carrier is
-        // compared with each root's own prefix replaced by one placeholder: the file's position inside
-        // its root stays compared, the scratch directory it was copied to does not.
-        let carrier = observation
-            .stdout
-            .replace(root.display().to_string().as_str(), "<root>");
         match &projected {
-            None => projected = Some((observation.status, carrier)),
+            None => projected = Some((observation.status, observation.stdout)),
             Some((status, stdout))
-                if *status == observation.status && *stdout == carrier => {}
+                if *status == observation.status && *stdout == observation.stdout => {}
             Some(_) => {
                 return Err(format!(
                     "V2-NATIVE REFUSAL cause=NativeProjectionVerdictDependsOnSameNamedModule — the \
