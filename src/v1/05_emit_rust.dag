@@ -11498,7 +11498,15 @@ fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, pa
           if fb_name == "0" { concat("ref ", bind_name) } else { concat(emit_ident(name: fb_name, target: Rust), ": ref ", bind_name) }
         } else {
           if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
-            concat("ref ", emit_ident(name: fb_name, target: Rust))
+            match fb_pat {
+              Bind { declaration: declaration } =>
+                if declaration.name == fb_name {
+                  concat("ref ", emit_ident(name: fb_name, target: Rust))
+                } else {
+                  concat(emit_ident(name: fb_name, target: Rust), ": ref ", emit_ident(name: declaration.name, target: Rust))
+                }
+              _ => concat("ref ", emit_ident(name: fb_name, target: Rust))
+            }
           } else {
             let is_shorthand = match fb_pat { Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
