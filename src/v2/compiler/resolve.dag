@@ -5743,7 +5743,15 @@ fn resolve_edge_is_arrow_body(e: Edge) -> Bool {
 fn resolve_node_consumes_expectation(n: Node) -> Bool {
   match construct_tag_reading(n: n) {
     ConstructTagElided => true
-    ConstructTagAuthored { reference: _ } => false
+    // AN AUTHORED TAG CONSUMES THE EXPECTATION TOO, and this is the gate that decides whether the
+    // expected type reaches the tag at all. Ruling on the construct-tag arm: where the expected type is
+    // resolved, its declared constructor set is the authority for an authored tag, so an authored
+    // construct standing in a declared-return or data-initializer position must be walked UNDER that
+    // expectation. What the expectation changes is which set the tag is read from and which rule walks
+    // its fields; the scope the construct is walked in is unchanged
+    // (resolve_expected_authored_construct_edge reads the plain door's own context pipeline), and a tag
+    // the set does not declare refuses with its own typed cause rather than silently binding elsewhere.
+    ConstructTagAuthored { reference: _ } => true
     NotAConstruct =>
       match list_introduction_elements_optional(node: n) {
         Present { value: _ } => true
