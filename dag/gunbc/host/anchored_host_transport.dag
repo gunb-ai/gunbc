@@ -393,35 +393,37 @@ fn anchored_host_transport_provisioned(
         AnchoredBindingNotTheAnchoredHost {
           cause: join(["the transport bound to ", bound.host as String, ", not to ", pin.host as String, "; a provisioned binding binds its host and nothing else"], ""),
         }
-      } else match pin.provenance {
-        ProvisionedInstall { install_attempt: pinned_attempt, authority: _ } => match current_install {
-          InstallNotEstablished { subject: subject, gaps: _ } =>
-            AnchoredBindingInstallNotAttested {
-              why: join(["no complete install record attests the installed system of attempt `", subject.attempt.attempt as String, "`; a provisioned pin vouches only against the complete record of the install that minted it; contacting NO host"], ""),
+      } else {
+          match pin.provenance {
+          ProvisionedInstall { install_attempt: pinned_attempt, authority: _ } => match current_install {
+            InstallNotEstablished { subject: subject, gaps: _ } =>
+              AnchoredBindingInstallNotAttested {
+                why: join(["no complete install record attests the installed system of attempt `", subject.attempt.attempt as String, "`; a provisioned pin vouches only against the complete record of the install that minted it; contacting NO host"], ""),
+              }
+            InstalledToDisk { subject: subject, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, installer_record_at: _, secure_boot: _, trust: _, observed_at: _ } =>
+              if subject.attempt.attempt != pinned_attempt {
+                AnchoredBindingInstallSuperseded {
+                  pinned_install: pinned_attempt as String,
+                  current_install: subject.attempt.attempt as String,
+                }
+              } else if known_hosts_line(k: pin) == presented_key_line {
+                AnchoredBindingBound { bound: bound }
+              } else {
+                AnchoredBindingPresentedKeyMismatch {
+                  expected_line: known_hosts_line(k: pin),
+                  observed_line: presented_key_line,
+                }
+              }
+          }
+          ScannedFirstContact { scanned_from: _ } =>
+            AnchoredBindingPinNotInstallRecord {
+              cause: join(["the pin for ", pin.host as String, " is a scanned first contact, not an install record; an installed-system contact is vouched only by its install's provisioning record"], ""),
             }
-          InstalledToDisk { subject: subject, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, installer_record_at: _, secure_boot: _, trust: _, observed_at: _ } =>
-            if subject.attempt.attempt != pinned_attempt {
-              AnchoredBindingInstallSuperseded {
-                pinned_install: pinned_attempt as String,
-                current_install: subject.attempt.attempt as String,
-              }
-            } else if known_hosts_line(k: pin) == presented_key_line {
-              AnchoredBindingBound { bound: bound }
-            } else {
-              AnchoredBindingPresentedKeyMismatch {
-                expected_line: known_hosts_line(k: pin),
-                observed_line: presented_key_line,
-              }
+          IndependentlyAnchored { authority: _ } =>
+            AnchoredBindingPinNotInstallRecord {
+              cause: join(["the pin for ", pin.host as String, " is an independently anchored transcription, not this installed system's install record"], ""),
             }
         }
-        ScannedFirstContact { scanned_from: _ } =>
-          AnchoredBindingPinNotInstallRecord {
-            cause: join(["the pin for ", pin.host as String, " is a scanned first contact, not an install record; an installed-system contact is vouched only by its install's provisioning record"], ""),
-          }
-        IndependentlyAnchored { authority: _ } =>
-          AnchoredBindingPinNotInstallRecord {
-            cause: join(["the pin for ", pin.host as String, " is an independently anchored transcription, not this installed system's install record"], ""),
-          }
       }
   }
 }
