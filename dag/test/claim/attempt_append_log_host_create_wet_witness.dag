@@ -26,7 +26,7 @@ import gunbc.roadmap.roadmap_attempt_state_store {
   attempt_append_log_host_create, AttemptAppendLogCreated, AttemptAppendLogAlreadyExists,
   AttemptAppendLogCreateRefused,
   attempt_state_provision, AttemptStateProvision, attempt_state_provision_directory,
-  attempt_log_member_directory,
+  attempt_log_member_directory, attempt_log_provision_path,
   attempt_append_log_events_group_writable_mode,
 }
 import std.durable_append_log {
@@ -91,8 +91,10 @@ test fn the_service_user_host_create_creates_the_member() -> Bool {
 
 fn service_user_create_cell(instance: HostDashboardInstance) -> Bool {
   let ensured = ensure_member_dir(instance: instance)
+  let prov = attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key")
+  let expected_path = attempt_log_provision_path(provision: prov, member: AttemptWorkerEvents)
   match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
-    AttemptAppendLogCreated { path: p, created_mode: _ } => ensured && Filesystem.Read(path: p).success && string_contains(s: p, pattern: "provider-events.jsonl")
+    AttemptAppendLogCreated { path: p, created_mode: _ } => ensured && p == expected_path && Filesystem.Read(path: p).success
     _ => false
   }
 }
