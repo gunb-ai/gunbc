@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import std.types { String, NonEmptyStr, Bool, Int, CommitSha, List }
 import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.github.effect { RepositoryPath }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import test.claim.heal_witness_fixture_paths { heal_fixture_committed_paths }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, Failure }
 import extdeps.github.git_database { GitTreeItemWire }
@@ -533,4 +534,28 @@ test fn witness_an_absent_publish_credential_refuses_rather_than_passes() -> Boo
     PullRequestOpenCheckRefused { reason } => contains(haystack: reason, needle: "token is absent")
     PullRequestOpenCheckPassed => false
   }
+}
+
+// ── gated structural guard for the credential-free admit route (DESIGN 3 pairing, gated half) ──
+//
+// The real-path EXECUTION of the credential-free ls-remote/fetch/read-tree route lives in the WET
+// controls -- test.claim.heal_publication_admit_wet_red's base-RED/head-GREEN driver (drives the real
+// observe_candidate_world_wet, base aborts on AuthDeclaredButUnwired, head reaches the decision) and the
+// admit inhabitance. Those run off-gate on the srv2 build because no merge gate on main executes wet
+// claims (the wet-claim executor run_required_floor is deleted; the brief freezes the job roster). This
+// claim is the GATED half: it reads this checkout's own source and refuses if the credential-free
+// observation is not wired in -- so DELETING the integration turns the required job red, and so does
+// re-introducing the empty-credential reads (the AuthDeclaredButUnwired defect class). It is a structural
+// claim about the source, not a claim the network works (that is the wet driver's job); the two together
+// are the pairing obligation, per DESIGN section 3.
+
+test fn the_admit_observation_is_wired_credential_free() -> Bool {
+  let src = Filesystem.Read(path: "dag/gunbc/heal_publication.dag")
+  if !src.success { return false }
+  let body = src.content
+  contains(haystack: body, needle: "git.Core.LsRemoteRefInRepo")
+    && contains(haystack: body, needle: "git.Core.FetchForcedRefInRepo")
+    && contains(haystack: body, needle: "git.Plumbing.ReadTreeIntoIndex")
+    && contains(haystack: body, needle: "git.Plumbing.WriteTreeFromIndex")
+    && !contains(haystack: body, needle: "auth_token: \"\"")
 }

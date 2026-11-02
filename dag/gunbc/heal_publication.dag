@@ -502,7 +502,7 @@ fn readback_wet(subject: HealPublicationSubject, publisher_token: Secret, pull_n
   let repo = subject.repository.name
   // READBACK CREDENTIAL (heal-publisher admit fix, gunb-ai/gunbc#<this>). These four reads are CONTENTS
   // reads (git refs/commits/trees and a comparison), reachable by the installation token that ALREADY
-  // performed the writes; they used to pass auth_token: "" and fall through to the service auth_source
+  // performed the writes; they used to pass an EMPTY auth_token and fall through to the service auth_source
   // (GITHUB_TOKEN), which does not resolve in this publisher's wet run (that is the very defect that kept
   // admit from observing). An auth-declaring op with no resolvable token refuses closed pre-send with
   // AuthDeclaredButUnwired, so the read-back would fail AFTER the fast-forward had already moved the ref

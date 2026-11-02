@@ -101,12 +101,22 @@ fn admit_did_not_reach_auth_guard() -> ProcessExit {
   )
   match result {
     PublisherRunAdmitted { admitted: _, blobs: _, pull_number: _ } => ExitSuccess
-    PublisherRunNothingToPublish => ExitSuccess
+    PublisherRunNothingToPublish =>
+      exit_failure(reason: "unexpected: no entries observed -- the credential-free route did not enumerate the sealed tree")
     PublisherRunRefused { cause } =>
       if contains(haystack: cause, needle: "AuthDeclaredButUnwired") {
         exit_failure(reason: "admit still reaches an auth-declaring read at head: AuthDeclaredButUnwired")
-      } else {
+      } else if contains(haystack: cause, needle: "ProposedBlobUnreadable") {
+        // The expected refusal, and the point of the whole control. ProposedBlobUnreadable can be produced
+        // ONLY after observe_candidate_world_wet fetched the sealed tree ANONYMOUSLY, enumerated the entry
+        // (read-tree/write-tree/ls-files/decode), and attempted the proposed-blob read -- i.e. the real
+        // credential-free route ran end to end and reached admit_heal_publication. Asserting THIS token, not
+        // merely "not the auth guard", means a degenerate early `return PublisherRunRefused { HeadRefNotAddressable }`
+        // at the top of the observation would FAIL this control. This is the DESIGN section 3 "the ROUTE, not
+        // only the answer" requirement on the one control that reaches the real public repository.
         ExitSuccess
+      } else {
+        exit_failure(reason: concat("admit did not reach the proposed-blob stage of the credential-free route; got: ", cause))
       }
   }
 }
