@@ -763,3 +763,10 @@ data ce_refusing_dotcond_member_source: String = "module v2.test.ce_refusing_mem
 fn ce_probe_callcond_text() -> String { ce_probe_verdict(member_source: ce_refusing_callcond_member_source) }
 
 fn ce_probe_dotcond_text() -> String { ce_probe_verdict(member_source: ce_refusing_dotcond_member_source) }
+// T10 (keen-heron-809 control list): parenthesised record construction in a condition position.
+// Inside parens the ident-suffix record arm is reachable without the if-block ambiguity, so the
+// record production itself stays exercised; expected PARSE at PARSE level (refusal, if any, moves
+// to lowering/type level, which still evidences PARSED per the keen-koi-376 rule).
+data ce_refusing_paren_record_cond_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn ce_refusing_fn(c: Bool, i: Int) -> Int {\n  if (p { x: 1 }) { i }\n  i\n}\n"
+
+fn ce_probe_paren_record_cond_text() -> String { ce_probe_verdict(member_source: ce_refusing_paren_record_cond_member_source) }
