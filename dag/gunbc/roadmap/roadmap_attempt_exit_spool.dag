@@ -1,4 +1,5 @@
 module gunbc.roadmap.roadmap_attempt_exit_spool
+import extdeps.systemd.service_exec { service_stop_variable_name }
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import extdeps.shell

@@ -1,4 +1,5 @@
 module extdeps.fans.arctic
+import std.measure { gram, milliampere, millilitre_per_second, milliwatt }
 
 import std.types { List }
 import std.measure {Celsius,celsius}
