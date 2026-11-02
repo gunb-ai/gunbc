@@ -30,6 +30,8 @@ import gunbc.compute.work_provider_local {
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.compute.host_capacity { ComputeReservationRefused }
+import gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_records, compute_work_dir, compute_work_log_path }
+import gunbc.compute.compute_producer_lease { compute_producer_leases }
 import std.materialization_provider { ComputeWorkRequest }
 import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolume }
 import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget }
@@ -101,6 +103,15 @@ fn held_record(r: AttemptSlotReading) -> AttemptRecord {
     AttemptSlotUnreadable { detail: _ } => record_for(reference: "<unreadable>")
   }
 }
+
+// THE WORK RECORDS UNDER A DIRECTORY THE TEST OWNS: the production mint over an instance rooted in the witness's own
+// directory, the per-identity directory created so the log a fixture writes lands where the provider reads it.
+fn fixture_records(root: String) -> ComputeWorkRecords {
+  let records = compute_work_records(instance: instance_at(root: root), identity: "fixture")
+  let made = shell.Mkdir.Parents(path: compute_work_dir(records: records) as FilePath)
+  records
+}
+
 
 // THE ATTEMPT STORE UNDER A DIRECTORY THE TEST OWNS: the production mint for the flat compute seat
 // (gunbc.compute.compute_attempt_slots_root compute_seat_store) over an instance rooted in the witness's own
@@ -497,8 +508,8 @@ fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped_cell(r
 fn layout_at(root: String) -> ComputeLayout {
   ComputeLayout {
     root: root, work_dir: root, checkout: root, out_dir: root,
-    leases_dir: root, lease_path: root, staging_dir: root, target_dir: root,
-    log_path: root, consumption_path: root,
+    leases: compute_producer_leases(instance: instance_at(root: root)), identity_hex: "fixture", staging_dir: root, target_dir: root,
+    records: fixture_records(root: root),
   }
 }
 
@@ -596,8 +607,8 @@ fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -
   Present { value: slots } => {
   let layout = ComputeLayout {
     root: root, work_dir: root, checkout: root, out_dir: root,
-    leases_dir: root, lease_path: join([root, "/lease"], ""), staging_dir: root, target_dir: root,
-    log_path: join([root, "/log"], ""), consumption_path: join([root, "/consumption"], ""),
+    leases: compute_producer_leases(instance: instance_at(root: root)), identity_hex: "fixture", staging_dir: root, target_dir: root,
+    records: fixture_records(root: root),
   }
   let reference = "attempt-refused" as NonEmptyStr
   let opened = compute_open_attempt(instance: instance_at(root: root), identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: reference, granted: kibibyte(count: 1048576))
@@ -634,10 +645,10 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
   let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
-    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
-    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path,
+    leases: compute_producer_leases(instance: instance_at(root: root_path)), identity_hex: "fixture", staging_dir: root_path, target_dir: root_path,
+    records: fixture_records(root: root_path),
   }
-  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let tree = match git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111") { Present { value: oid } => oid  Absent => "1111111111111111111111111111111111111111" }
@@ -645,7 +656,7 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
-  ], log_path: layout.log_path }
+  ], log_path: compute_work_log_path(records: layout.records) }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: root, request: request, plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
@@ -682,18 +693,18 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
 fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
-    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: owned_cargo_target_dir(base_root: root_path, owner: "owned"),
-    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path,
+    leases: compute_producer_leases(instance: instance_at(root: root_path)), identity_hex: "fixture", staging_dir: root_path, target_dir: owned_cargo_target_dir(base_root: root_path, owner: "owned"),
+    records: fixture_records(root: root_path),
   }
   let made = shell.Mkdir.Parents(path: layout.target_dir as FilePath)
   let built = Filesystem.Write(path: join([layout.target_dir, "/artifact"], ""), content: "bytes")
-  let log = if write_log { Filesystem.Write(path: layout.log_path, content: "built\n").success } else { true }
+  let log = if write_log { Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n").success } else { true }
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
-  ], log_path: layout.log_path }
+  ], log_path: compute_work_log_path(records: layout.records) }
   compute_settled_record(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }, plan: ComputeMemoized },
     layout: layout, identity: "fixture-identity", subject: ExactTree { tree: reuse_tree() }, op: work_default_build(), outcome: outcome)
@@ -757,17 +768,17 @@ fn reuse_commit(root_path: String) -> Bool {
 fn reuse_commit_detail(root_path: String) -> String {
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
-    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
-    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path,
+    leases: compute_producer_leases(instance: instance_at(root: root_path)), identity_hex: "fixture", staging_dir: root_path, target_dir: root_path,
+    records: fixture_records(root: root_path),
   }
-  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let request = ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
-  ], log_path: layout.log_path }
+  ], log_path: compute_work_log_path(records: layout.records) }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: request, plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
@@ -903,15 +914,15 @@ test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
-    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
-    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path,
+    leases: compute_producer_leases(instance: instance_at(root: root_path)), identity_hex: "fixture", staging_dir: root_path, target_dir: root_path,
+    records: fixture_records(root: root_path),
   }
-  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
-  ], log_path: layout.log_path }
+  ], log_path: compute_work_log_path(records: layout.records) }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,

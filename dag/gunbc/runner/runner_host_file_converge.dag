@@ -7,10 +7,10 @@ import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_si
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { parse_systemd_unit_load_state, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
+import extdeps.systemd { parse_systemd_unit_load_state, parse_systemd_unit_active_state, Active, Inactive, Activating, Deactivating, Reloading, Failed, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
 import extdeps.tools.grep { grep_fixed_string_in_tree_argv, grep_files_with_fixed_strings_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
-import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_units_properties_command, systemctl_list_all_service_units_command, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime, systemd_drop_in_applies_after }
 import extdeps.posix.getent { getent_passwd_command, getent_key_not_found_exit }
 import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
@@ -21,6 +21,8 @@ import std.types { EpochMs }
 import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
 import gunbc.host.host_axis_caps {
   cap_dropin_content,
+  control_shadow_residue_paths,
+  runner_slot_cap_properties,
   CapMember,
   derived_runner_slot_cap_members,
   cap_raise_standing,
@@ -59,8 +61,15 @@ import extdeps.needrestart {
 }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner.runner_slot_job_role { deploy_slot_identities, runner_host_has_deploy_slot, deploy_slot_account_operation, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers }
-import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
+import gunbc.runner.runner_slot_job_role { deploy_slot_identities, runner_host_has_deploy_slot, deploy_slot_account_operation, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers, runner_slot_job_role_tree_mode, DeployJobSlot }
+import gunbc.ci.deploy_slot_tenancy {
+  deploy_slot_job_user, DeploySlotHostReading, DeploySlotHostRead, DeploySlotHostUnread, deploy_slot_host_walls_hold, deploy_slot_host_reading_line,
+  DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread,
+  DeploySlotJobUserIdentity, DeploySlotJobUserRead, DeploySlotJobUserUnread, deploy_slot_privacy,
+}
+import extdeps.tools.ls { ls_long_numeric_entries_command, ls_long_numeric_listing_command, LsLongEntry, LsLongEntryRead, LsLongEntryRefused, ls_long_entry_of_line }
+import extdeps.tools.id { id_user_record_command, id_credentials_of_line, IdCredentialsObserved, IdCredentialsUnobserved }
+import extdeps.access.posix { file_mode_octal }
 import gunbc.executor_privileged_operation { executor_privileged_operation_argv, executor_privileged_operation_elevated_command, RemoveDirectoryTree, EnsureOwnedDirectory, executor_managed_directory_mode }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name }
@@ -70,7 +79,9 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
-import extdeps.exec.command { argv_words, ArgvCommand }
+import extdeps.exec.command { argv_words, ArgvCommand, LocalExec }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import extdeps.tools.stat { stat_default_report_command }
 import gunbc.host.host_effect { FleetSsh }
 import gunbc.live_deploy.member_observe {
@@ -113,6 +124,8 @@ import gunbc.runner.runner_unit {
   runner_unit_suffix,
   runner_unit_name_of_registration,
 }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import gunbc.runner.runner_unit_file {
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
@@ -135,9 +148,9 @@ import extdeps.docker.endpoint { docker_host_env_var }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, fleet_runner_slot_artifact }
 import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
 import gunbc.host.verified_archive_install { verified_archive_install, verified_archive_install_holds, verified_archive_install_text, ArchiveSha256 }
-import extdeps.github.actions_runner { actions_runner_download_url, actions_runner_release_digest, actions_runner_tarball_filename }
+import extdeps.github.actions_runner { actions_runner_download_url, actions_runner_release_digest, actions_runner_tarball_filename, actions_runner_state_paths }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarNoOverwriteDir }
 import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunning,
@@ -396,6 +409,34 @@ fn runner_host_superseded_dropin_paths(host: HostIdentity) -> List<String> {
   map(filter(deploy_slot_identities, s => (s.host as String) == (host as String)), s => runner_unit_slot_role_superseded_dropin_path(slot: s) as String)
 }
 
+// THE SET-PROPERTY SHADOWS OF THE CAPS THIS CONVERGE OWNS retire by the same rule. `systemctl set-property`
+// on a runner unit (the root-era caps of 2026-08-11) leaves 50-<Property>.conf under the unit's .d in
+// /etc/systemd/system.control or /run/systemd/system.control, and those directories outrank the
+// template's cap drop-ins, so a shadow of a cap property is a second writer of that cap. This converge is
+// the runner-unit drop-ins' one writer, so it removes exactly those files for its desired units and the
+// properties its cap members set (gunbc.host.host_axis_caps control_shadow_residue_paths,
+// runner_slot_cap_properties) -- never the unit's other drop-ins, which `systemctl revert` would take
+// (gunbc.recurring_failure_mode a_residue_teardown_removes_every_dropin_of_the_unit_it_names).
+fn runner_host_control_shadow_paths(subject: RunnerHostFileSubject) -> List<String> {
+  flat_map(subject.desired_units, u => map(control_shadow_residue_paths(unit: u, properties: runner_slot_cap_properties()), p => p as String))
+}
+
+// A SHADOW IS REMOVED ONLY OVER SETTLED CAPS. Removing a set-property shadow exposes the template's cap
+// drop-ins; while the cap phase has not settled them (reload_barred), that could raise a slot's effective
+// caps to bytes nobody admitted, so an apply refuses the path instead of removing it, and an observe-only
+// run reads it as usual.
+fn retire_control_shadow_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, caps_settled: Bool, path: String) -> SupersededDropinResult {
+  match mode {
+    FleetHostFilesObserveOnly => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: path)
+    FleetHostFilesApply =>
+      if caps_settled {
+        retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: path)
+      } else {
+        SupersededDropinRefused { path: path, reason: "not removed: the slot memory-cap phase has not settled the template cap drop-ins, so removing a set-property shadow could expose unadmitted caps" }
+      }
+  }
+}
+
 fn retire_superseded_dropin_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding, path: String) -> SupersededDropinResult {
   match retired_path_standing_over(subject: subject, context: context, path: path) {
     HostFilePathAbsent => SupersededDropinAbsent { path: path }
@@ -450,10 +491,10 @@ fn superseded_dropin_removed(r: SupersededDropinResult) -> Bool {
 
 fn superseded_dropin_line(r: SupersededDropinResult) -> String {
   match r {
-    SupersededDropinAbsent { path: p } => join(["superseded-dropin path=", p, " absent"], "")
-    SupersededDropinRemoved { path: p } => join(["superseded-dropin path=", p, " removed-and-read-back"], "")
-    SupersededDropinPresentObserved { path: p } => join(["superseded-dropin path=", p, " PRESENT (observe-only)"], "")
-    SupersededDropinRefused { path: p, reason: r } => join(["superseded-dropin path=", p, " REFUSED ", r], "")
+    SupersededDropinAbsent { path: p } => join(["retired-dropin path=", p, " absent"], "")
+    SupersededDropinRemoved { path: p } => join(["retired-dropin path=", p, " removed-and-read-back"], "")
+    SupersededDropinPresentObserved { path: p } => join(["retired-dropin path=", p, " PRESENT (observe-only)"], "")
+    SupersededDropinRefused { path: p, reason: r } => join(["retired-dropin path=", p, " REFUSED ", r], "")
   }
 }
 
@@ -545,8 +586,9 @@ fn runner_host_files_with_optional_depriv(
 fn runner_host_file_desired_population_from_uid_reading(
   host: HostIdentity,
   reading: RunnerJobUserUidReading,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerHostFileDesiredPopulation {
-  match runner_host_unit_files_desired(host: host, reading: reading) {
+  match runner_host_unit_files_desired(host: host, reading: reading, receipt: receipt) {
     RunnerHostFilesDesiredRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
     RunnerHostFilesDesired { files: fs, withheld: ws } =>
       match runner_slot_cpu_desired(host: host) {
@@ -578,6 +620,7 @@ fn runner_host_files_deliver_fragment(files: List<FleetHostFileDesired>) -> Bool
 fn runner_host_unit_files_desired(
   host: HostIdentity,
   reading: RunnerJobUserUidReading,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerHostFileDesiredPopulation {
   match needrestart_unit_name_prefix(raw: runner_unit_prefix) {
     NeedrestartUnitNamePrefixRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
@@ -592,7 +635,7 @@ fn runner_host_unit_files_desired(
             cause: join(["runner_host_file_converge: ", h as String, " has no runner deploy row because ", c, ", so there is no fragment or depriv drop-in to deliver"], "") as NonEmptyStr,
           }
         RunnerHostDeployFound { deploy: d } =>
-          match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host) {
+          match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host, receipt: receipt) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
             RunnerUnitText { text: fragment } =>
               match gunbc_runner_unit_depriv_dropin_text_from_reading(deploy: d, host: host, reading: reading) {
@@ -1264,8 +1307,26 @@ fn slot_load_state_has_no_unit_file(load: String) -> Bool {
   }
 }
 
-// NO UNIT FILE (LoadState Masked or NotFound only), INACTIVE, NO CGROUP -- all three read
-// from the unit's own block; any key missing is not inert.
+// NO UNIT FILE (LoadState Masked or NotFound only), STOPPED, NO CGROUP -- all three read
+// from the unit's own block; any key missing is not inert. Stopped is ActiveState inactive OR failed: a
+// unit whose last run failed has no process either, and with a blank ControlGroup a reload reaches nothing.
+// Inactive alone read srv1-02 (masked after crash-looping, ActiveState=failed, no cgroup) as reaching a
+// live cgroup, which withheld the cap phase, which barred the reload its own role drop-in needed (L2 run
+// 41154097819, 2026-10-31). Activating, deactivating and reloading are not stopped, whatever the cgroup.
+fn slot_active_state_is_stopped(active: String) -> Bool {
+  match parse_systemd_unit_active_state(raw: active) {
+    Absent => false
+    Present { value: st } => match st {
+      Inactive => true
+      Failed => true
+      Active => false
+      Activating => false
+      Deactivating => false
+      Reloading => false
+    }
+  }
+}
+
 fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
   fold(split(s: show_stdout, delimiter: "\n\n"), init: false, f: (acc, b) => {
     let lines = map(split(s: b, delimiter: "\n"), l => trim(s: l))
@@ -1283,7 +1344,7 @@ fn slot_unit_inert_in_show(unit: NonEmptyStr, show_stdout: String) -> Bool {
                 Present { value: act } =>
                   match show_block_value(lines: lines, property: ControlGroup) {
                     Absent => false
-                    Present { value: cg } => slot_load_state_has_no_unit_file(load: trim(s: load)) && trim(s: act) == "inactive" && trim(s: cg) == ""
+                    Present { value: cg } => slot_load_state_has_no_unit_file(load: trim(s: load)) && slot_active_state_is_stopped(active: trim(s: act)) && trim(s: cg) == ""
                   }
               }
           }
@@ -1483,6 +1544,7 @@ type FleetHostRemoteLeg
   | LegShowSlotProperties { units: List<NonEmptyStr> }
   | LegRetireeCgroupEvents { argv: List<String> }
   | LegJobUserPasswd { job_user: NonEmptyStr }
+  | LegJobUserIdentity { job_user: NonEmptyStr }
   | LegResidueLoadState { unit: NonEmptyStr }
   | LegElevated { command: List<String> }
 
@@ -1496,6 +1558,7 @@ fn fleet_host_leg_argv(leg: FleetHostRemoteLeg) -> List<String> {
     LegShowSlotProperties { units: us } => systemctl_show_properties_argv(units: us, properties: runner_slot_show_properties)
     LegRetireeCgroupEvents { argv: a } => a
     LegJobUserPasswd { job_user: u } => argv_words(command: getent_passwd_command(key: u))
+    LegJobUserIdentity { job_user: u } => argv_words(command: id_user_record_command(user: u))
     LegResidueLoadState { unit: u } => systemctl_show_load_state_argv(unit: u)
     LegElevated { command: c } => elevated_argv(command: c)
   }
@@ -1511,12 +1574,13 @@ fn runner_host_leg_kind(leg: FleetHostRemoteLeg) -> String {
     LegShowSlotProperties { units: _ } => "show-slot-properties"
     LegRetireeCgroupEvents { argv: _ } => "retiree-cgroup-events"
     LegJobUserPasswd { job_user: _ } => "job-user-passwd"
+    LegJobUserIdentity { job_user: _ } => "job-user-identity"
     LegResidueLoadState { unit: _ } => "residue-load-state"
     LegElevated { command: _ } => "elevated"
   }
 }
 
-data runner_host_leg_kinds: List<String> = ["privilege-probe", "root-only-find", "file-mode-find", "metadata-probe", "list-service-units", "show-slot-properties", "retiree-cgroup-events", "job-user-passwd", "residue-load-state", "elevated"]
+data runner_host_leg_kinds: List<String> = ["privilege-probe", "root-only-find", "file-mode-find", "metadata-probe", "list-service-units", "show-slot-properties", "retiree-cgroup-events", "job-user-passwd", "job-user-identity", "residue-load-state", "elevated"]
 
 fn run_fleet_host_leg(subject: FleetHostFileSubject, context: FleetSshExecutionContext, leg: FleetHostRemoteLeg) -> TypedArgvExecOutcome
 {
@@ -1530,7 +1594,8 @@ fn run_fleet_host_leg(subject: FleetHostFileSubject, context: FleetSshExecutionC
 fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFileDesired>, residue: RetiredHostResidue) -> List<FleetHostRemoteLeg> {
   let population = runner_slot_population_units(desired: subject.desired_units, retired: subject.retired_units, loaded: [])
   concat(
-    [LegAdministratorPrivilegeProbe, LegListServiceUnits, LegShowSlotProperties { units: population }, LegResidueLoadState { unit: residue.unit }, LegElevated { command: systemctl_daemon_reload_argv() }],
+    [LegAdministratorPrivilegeProbe, LegListServiceUnits, LegShowSlotProperties { units: population }, LegResidueLoadState { unit: residue.unit }, LegElevated { command: systemctl_daemon_reload_argv() }]
+      + list_flat_map(runner_host_control_shadow_paths(subject: subject), p => [LegMetadataProbe { path: p }, LegElevated { command: retired_file_removal_leg(path: p).argv }]),
     concat(
       list_flat_map(files, f => [
         LegMetadataProbe { path: f.path as String },
@@ -1551,7 +1616,18 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
               list_flat_map(runner_host_superseded_dropin_paths(host: subject.host), p => [LegMetadataProbe { path: p }, LegElevated { command: retired_file_removal_leg(path: p).argv }]) + [
                 LegJobUserPasswd { job_user: deploy_slot_job_user },
                 LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) },
-              ] + map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)), d => LegElevated { command: deploy_slot_tree_owned_find_argv(slot_dir: runner_slot_dir_path(slot: d) as String) })
+              ] + list_flat_map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)), d => {
+                let dir = runner_slot_dir_path(slot: d) as String
+                [
+                  LegElevated { command: deploy_slot_tree_owned_find_argv(slot_dir: dir) },
+                  LegElevated { command: argv_words(command: ls_long_numeric_entries_command(paths: concat(path_ancestor_prefixes(path: dir), [dir]))) },
+                  LegElevated { command: argv_words(command: ls_long_numeric_listing_command(directory: dir)) },
+                ]
+              }) + match runner_host_deploy_for(host: subject.host) {
+                RunnerHostDeployFound { deploy: d } => [LegJobUserIdentity { job_user: d.job_user }]
+                RunnerHostDeployRefused { host: _, cause: _ } => []
+                RunnerHostDeployUnmodeled { host: _ } => []
+              }
             } else { [] },
           ),
         ),
@@ -2104,8 +2180,15 @@ fn deploy_slot_account_is_held(standing: DeploySlotAccountStanding) -> Bool {
 // (runner_host_root_only_find_argv): the directory is printed exactly when it is a directory owned by
 // the account. A stat format would carry a percent sign the fleet transport refuses
 // (the_percent_format_stat_probe_is_refused_by_the_transport).
+// THE MODE IS PART OF HOLDING IT: an owned tree at any mode but the deploy role's owner-only one
+// (gunbc.runner.runner_slot_job_role runner_slot_job_role_tree_mode) is rebuilt like an unowned one, so a
+// tree created before the confidentiality wall, and the 0644 registration inside it, do not survive.
+fn deploy_slot_tree_mode_octal() -> String {
+  file_mode_octal(mode: runner_slot_job_role_tree_mode(role: DeployJobSlot))
+}
+
 fn deploy_slot_tree_owned_find_argv(slot_dir: String) -> List<String> {
-  ["find", slot_dir, "-maxdepth", "0", "-type", "d", "-user", deploy_slot_job_user as String]
+  ["find", slot_dir, "-maxdepth", "0", "-type", "d", "-user", deploy_slot_job_user as String, "-perm", deploy_slot_tree_mode_octal()]
 }
 
 // Printed: owned. Exit 0 and nothing printed: not owned. Anything else: not read.
@@ -2138,7 +2221,7 @@ fn deploy_slot_tree_step(unit: NonEmptyStr, account_held: Bool, owned: Bool?, mo
           if o { DeploySlotTreeSettled { standing: DeploySlotTreeHeld { unit: unit } } }
           else {
             match mode {
-              FleetHostFilesObserveOnly => DeploySlotTreeSettled { standing: DeploySlotTreePending { unit: unit, cause: join(["the tree is not owned by ", deploy_slot_job_user as String, "; an apply drains and rebuilds it"], "") as NonEmptyStr } }
+              FleetHostFilesObserveOnly => DeploySlotTreeSettled { standing: DeploySlotTreePending { unit: unit, cause: join(["the tree is not owned by ", deploy_slot_job_user as String, " at mode ", deploy_slot_tree_mode_octal(), "; an apply drains and rebuilds it"], "") as NonEmptyStr } }
               FleetHostFilesApply =>
                 match privilege {
                   AdministratorPrivilegeRefused { reason: r } => DeploySlotTreeSettled { standing: DeploySlotTreeRefused { unit: unit, cause: concat("the administrator holds no privilege to rebuild it: ", r) as NonEmptyStr } }
@@ -2177,13 +2260,16 @@ fn deploy_slot_runner_stage_fetch_commands(stage: String, url: String, tarball: 
   ]
 }
 
+// The extract leaves the tree's own mode alone (extdeps.tools.tar tar_extract_command):
+// the runner archive's `./` entry carries 0755, and a default extract re-applied it to the 0700 tree
+// (gunbc.recurring_failure_mode an_archive_extract_reapplies_its_directory_mode_to_the_destination).
 fn deploy_slot_tree_rebuild_commands(slot_dir: String, stage: String, tarball: String) -> List<ArgvCommand> {
   [
     executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: slot_dir as NonEmptyStr }),
     executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
-      path: slot_dir as NonEmptyStr, owner: deploy_slot_job_user, group: deploy_slot_job_user, mode: executor_managed_directory_mode,
+      path: slot_dir as NonEmptyStr, owner: deploy_slot_job_user, group: deploy_slot_job_user, mode: runner_slot_job_role_tree_mode(role: DeployJobSlot),
     }),
-    sudo_elevate_as_command(user: deploy_slot_job_user, command: argv_words(command: tar_extract_command(archive: tarball, into_directory: slot_dir, strip_components: 0))),
+    sudo_elevate_as_command(user: deploy_slot_job_user, command: argv_words(command: tar_extract_command(archive: tarball, into_directory: slot_dir, strip_components: 0, existing_directories: TarNoOverwriteDir))),
     executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: stage as NonEmptyStr }),
   ]
 }
@@ -2210,7 +2296,7 @@ fn rebuild_deploy_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExe
         match observe_deploy_slot_tree_owned(subject: subject, context: context, slot_dir: dir) {
           Present { value: owned_after } =>
             if owned_after { DeploySlotTreeRebuilt { unit: unit } }
-            else { DeploySlotTreeRefused { unit: unit, cause: join(["rebuilt, but the tree does not read back owned by ", deploy_slot_job_user as String], "") as NonEmptyStr } }
+            else { DeploySlotTreeRefused { unit: unit, cause: join(["rebuilt, but the tree does not read back owned by ", deploy_slot_job_user as String, " at mode ", deploy_slot_tree_mode_octal()], "") as NonEmptyStr } }
           Absent => DeploySlotTreeRefused { unit: unit, cause: "rebuilt, but the tree's owner could not be read back" as NonEmptyStr }
         }
       }
@@ -2257,6 +2343,239 @@ fn converge_deploy_slot_trees(
 {
   map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)),
     slot => converge_deploy_slot_tree(subject: subject, context: context, mode: mode, privilege: privilege, account: account, slot: slot))
+}
+
+// ── The deploy slot's host reading ───────────────────────────────────────────────────────────────
+// WHAT THE HOST HOLDS FOR THE DEPLOY ROUTE, read after the slots are, as the administrator: the job user
+// each slot's loaded Environment assigns, and, for the deploy slot's tree and every file the listener
+// keeps in it (extdeps.github.actions_runner actions_runner_state_paths), the owner, group and mode of
+// the path and of each ancestor, judged against every other runnable slot's account
+// (gunbc.ci.deploy_slot_tenancy deploy_slot_privacy). Paths are judged one by one, never from the tree's
+// mode alone (operator, 2026-10-30): a 0644 file inside a later-widened tree must fail on the file.
+fn deploy_slot_private_paths(slot: RunnerSlotIdentity) -> List<NonEmptyStr> {
+  let dir = runner_slot_dir_path(slot: slot)
+  concat([dir], map(actions_runner_state_paths(root: dir), p => p as NonEmptyStr))
+}
+
+// The value a loaded Environment assigns to one name: the word that starts with `NAME=`, to the next
+// blank. A job user carries no blank (extdeps.access.posix PosixLoginName).
+fn slot_environment_value(environment: String, name: String) -> String? {
+  let key = concat(name, "=")
+  match first(filter(split(s: environment, delimiter: " "), w => starts_with(s: w, prefix: key))) {
+    Absent => none
+    Present { value: w } => Present { value: substring(s: w, start: string_length(s: key), end: string_length(s: w)) }
+  }
+}
+
+// A SLOT CAN RUN unless the manager holds it masked or holds no unit for it; an inactive, loaded slot
+// can be started and is a tenant.
+fn slot_load_state_can_run(load_state: String) -> Bool {
+  let l = trim(s: load_state)
+  l != "masked" && l != "not-found"
+}
+
+fn deploy_slot_entry_readings(paths: List<String>, exit_code: Int, stdout: String) -> List<DeploySlotPathReading> {
+  let entries = map(filter(split(s: stdout, delimiter: "\n"), l => trim(s: l) != ""), l => ls_long_entry_of_line(line: l))
+  map(paths, p => fold(entries, init: DeploySlotPathUnread { path: p as NonEmptyStr, reason: join(["ls printed no entry for it (exit=", to_string(exit_code), ")"], "") }, f: (acc, e) =>
+    match e {
+      LsLongEntryRead { name: n, directory: d, ownership: o, mode: m } => if n == p { DeploySlotPathRead { path: p as NonEmptyStr, directory: d, ownership: o, mode: m } } else { acc }
+      LsLongEntryRefused { name: n, reason: why } => if n == p { DeploySlotPathUnread { path: p as NonEmptyStr, reason: why } } else { acc }
+    }))
+}
+
+// THE STATE PATHS FROM ONE LISTING OF THE TREE. A name the successful listing does not carry is absent;
+// a listing that failed reads nothing, so every state path is unread rather than absent.
+fn deploy_slot_listing_readings(directory: String, paths: List<String>, exit_code: Int, stdout: String) -> List<DeploySlotPathReading> {
+  if exit_code != 0 {
+    map(paths, p => DeploySlotPathUnread { path: p as NonEmptyStr, reason: join(["the tree's listing failed (exit=", to_string(exit_code), ")"], "") })
+  } else {
+    let entries = map(filter(split(s: stdout, delimiter: "\n"), l => trim(s: l) != "" && !starts_with(s: trim(s: l), prefix: "total ")), l => ls_long_entry_of_line(line: l))
+    map(paths, p => {
+      let name = substring(s: p, start: string_length(s: directory) + 1, end: string_length(s: p))
+      fold(entries, init: DeploySlotPathAbsent { path: p as NonEmptyStr }, f: (acc, e) =>
+        match e {
+          LsLongEntryRead { name: n, directory: d, ownership: o, mode: m } => if n == name { DeploySlotPathRead { path: p as NonEmptyStr, directory: d, ownership: o, mode: m } } else { acc }
+          LsLongEntryRefused { name: n, reason: why } => if n == name { DeploySlotPathUnread { path: p as NonEmptyStr, reason: why } } else { acc }
+        })
+    })
+  }
+}
+
+fn deploy_slot_job_user_identity(user: NonEmptyStr, exit_code: Int, stdout: String) -> DeploySlotJobUserIdentity {
+  if exit_code != 0 {
+    DeploySlotJobUserUnread { user: user, reason: join(["id exit=", to_string(exit_code)], "") }
+  } else {
+    match id_credentials_of_line(line: stdout) {
+      IdCredentialsUnobserved { reason: why } => DeploySlotJobUserUnread { user: user, reason: why }
+      IdCredentialsObserved { uid: u, primary_gid: g, supplementary_gids: gs } => DeploySlotJobUserRead { user: user, uid: u, gids: concat([g], gs) }
+    }
+  }
+}
+
+// WHERE THE DEPLOY SLOT'S HOST HALF IS READ FROM. The converge reads it over the administrator edge it
+// already holds. The controller install reads it ON THE SLOT, as the deploy slot's own user and before
+// the job's agent holds any key, because that reading is what decides whether the key may be loaded
+// at all: read over the edge, it would rest on the credential whose safety it establishes. Every read
+// below is one an unprivileged account can make of its own slot: systemctl show and list-units are the
+// manager's answer to anyone, id reads the account database, and the path listings name the slot
+// tree's ancestors and the tree the slot's user owns. On the edge the listings run elevated, as the
+// converge always ran them.
+type DeploySlotReadRoute
+  = DeploySlotReadOverFleetEdge { subject: RunnerHostFileSubject, context: FleetSshExecutionContext }
+  | DeploySlotReadOnTheSlot
+
+type DeploySlotReadLeg
+  = DeploySlotListUnits
+  | DeploySlotShowUnits { units: List<NonEmptyStr> }
+  | DeploySlotUserIdentity { user: NonEmptyStr }
+  | DeploySlotPathListing { command: ArgvCommand }
+
+type DeploySlotReadLegOutcome
+  = DeploySlotReadLegRan { exit_code: Int, stdout: String, stderr: String }
+  | DeploySlotReadLegRefused { reason: String }
+
+fn deploy_slot_read_leg_on_the_slot(leg: DeploySlotReadLeg) -> ArgvCommand {
+  match leg {
+    DeploySlotListUnits => systemctl_list_all_service_units_command()
+    DeploySlotShowUnits { units: us } => systemctl_show_units_properties_command(units: us, properties: runner_slot_show_properties)
+    DeploySlotUserIdentity { user: u } => id_user_record_command(user: u)
+    DeploySlotPathListing { command: c } => c
+  }
+}
+
+fn deploy_slot_read_leg_over_the_edge(leg: DeploySlotReadLeg) -> FleetHostRemoteLeg {
+  match leg {
+    DeploySlotListUnits => LegListServiceUnits
+    DeploySlotShowUnits { units: us } => LegShowSlotProperties { units: us }
+    DeploySlotUserIdentity { user: u } => LegJobUserIdentity { job_user: u }
+    DeploySlotPathListing { command: c } => LegElevated { command: argv_words(command: c) }
+  }
+}
+
+fn run_deploy_slot_read_leg(route: DeploySlotReadRoute, leg: DeploySlotReadLeg) -> DeploySlotReadLegOutcome {
+  match route {
+    DeploySlotReadOverFleetEdge { subject: subject, context: context } =>
+      match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: deploy_slot_read_leg_over_the_edge(leg: leg)) {
+        TypedArgvExecRefused { reason: why } => DeploySlotReadLegRefused { reason: why }
+        TypedArgvExecConverged { result: r } => DeploySlotReadLegRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+      }
+    DeploySlotReadOnTheSlot =>
+      match run_shell_command_observe_outcome(command: deploy_slot_read_leg_on_the_slot(leg: leg), transport: LocalExec) {
+        ProcessNotSpawned { program: p, cause: why } => DeploySlotReadLegRefused { reason: join([p as String, " was not spawned: ", why as String], "") }
+        ProcessRan { observation: o } => DeploySlotReadLegRan { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr }
+      }
+  }
+}
+
+fn observe_deploy_slot_job_user_identity(route: DeploySlotReadRoute, user: NonEmptyStr) -> DeploySlotJobUserIdentity {
+  match run_deploy_slot_read_leg(route: route, leg: DeploySlotUserIdentity { user: user }) {
+    DeploySlotReadLegRefused { reason: why } => DeploySlotJobUserUnread { user: user, reason: why }
+    DeploySlotReadLegRan { exit_code: c, stdout: out, stderr: _ } => deploy_slot_job_user_identity(user: user, exit_code: c, stdout: out)
+  }
+}
+
+fn observe_deploy_slot_path_readings(route: DeploySlotReadRoute, slot: RunnerSlotIdentity) -> List<DeploySlotPathReading> {
+  let dir = runner_slot_dir_path(slot: slot) as String
+  let chain = concat(path_ancestor_prefixes(path: dir), [dir])
+  let states = map(actions_runner_state_paths(root: dir as NonEmptyStr), p => p)
+  let chain_readings = match run_deploy_slot_read_leg(route: route, leg: DeploySlotPathListing { command: ls_long_numeric_entries_command(paths: chain) }) {
+    DeploySlotReadLegRefused { reason: why } => map(chain, p => DeploySlotPathUnread { path: p as NonEmptyStr, reason: why })
+    DeploySlotReadLegRan { exit_code: c, stdout: out, stderr: _ } => deploy_slot_entry_readings(paths: chain, exit_code: c, stdout: out)
+  }
+  let state_readings = match run_deploy_slot_read_leg(route: route, leg: DeploySlotPathListing { command: ls_long_numeric_listing_command(directory: dir) }) {
+    DeploySlotReadLegRefused { reason: why } => map(states, p => DeploySlotPathUnread { path: p as NonEmptyStr, reason: why })
+    DeploySlotReadLegRan { exit_code: c, stdout: out, stderr: _ } => deploy_slot_listing_readings(directory: dir, paths: states, exit_code: c, stdout: out)
+  }
+  concat(chain_readings, state_readings)
+}
+
+// ONE SHOW OF EVERY SLOT UNIT NAMED, then the deploy slot's user, every other runnable slot's user,
+// each of those users' identity, and the deploy slot's paths. The names are the converge's population
+// or the install's own listing (observe_deploy_slot_host_reading_on_the_slot); both derive them through
+// runner_slot_population_units, so the two reads cover one set of units.
+fn observe_deploy_slot_host_reading(route: DeploySlotReadRoute, names: List<NonEmptyStr>, slot: RunnerSlotIdentity) -> DeploySlotHostReading {
+  let unit = runner_slot_unit_name(slot: slot)
+  match run_deploy_slot_read_leg(route: route, leg: DeploySlotShowUnits { units: names }) {
+    DeploySlotReadLegRefused { reason: why } => DeploySlotHostUnread { unit: unit, cause: concat("systemctl show refused: ", why) }
+    DeploySlotReadLegRan { exit_code: _, stdout: show_stdout, stderr: _ } => {
+      let readings = flat_map(names, n => match parse_runner_slot_reading_for(unit: n, show_stdout: show_stdout) { Absent => [] Present { value: rd } => [rd] })
+      if count(readings) != count(names) {
+        DeploySlotHostUnread { unit: unit, cause: "systemctl show returned no block for some slot" }
+      } else {
+        match first(filter(readings, rd => (rd.unit as String) == (unit as String))) {
+          Absent => DeploySlotHostUnread { unit: unit, cause: "the deploy slot's unit was not read" }
+          Present { value: own } =>
+            match slot_environment_value(environment: trim(s: own.environment), name: runner_job_user_env_name) {
+              Absent => DeploySlotHostUnread { unit: unit, cause: concat("the deploy slot's Environment assigns no ", runner_job_user_env_name) }
+              Present { value: deploy_user } => {
+                let runnable = filter(readings, rd => (rd.unit as String) != (unit as String) && slot_load_state_can_run(load_state: rd.load_state))
+                let unassigned = filter(runnable, rd => match slot_environment_value(environment: trim(s: rd.environment), name: runner_job_user_env_name) { Absent => true Present { value: v } => v == "" })
+                match first(unassigned) {
+                  Present { value: bad } => DeploySlotHostUnread { unit: unit, cause: join(["slot ", bad.unit as String, " can run and its Environment assigns no ", runner_job_user_env_name], "") }
+                  Absent => {
+                    let others = fold(runnable, init: [], f: (acc, rd) => match slot_environment_value(environment: trim(s: rd.environment), name: runner_job_user_env_name) {
+                      Absent => acc
+                      Present { value: v } => if any(acc, a => (a as String) == v) { acc } else { concat(acc, [v as NonEmptyStr]) }
+                    })
+                    DeploySlotHostRead {
+                      unit: unit,
+                      deploy_slot_job_user: deploy_user as NonEmptyStr,
+                      other_slot_job_users: others,
+                      privacy: deploy_slot_privacy(
+                        private_paths: deploy_slot_private_paths(slot: slot),
+                        readings: observe_deploy_slot_path_readings(route: route, slot: slot),
+                        others: map(others, o => observe_deploy_slot_job_user_identity(route: route, user: o)),
+                      ),
+                    }
+                  }
+                }
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn observe_deploy_slot_host_readings(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, slots: RunnerSlotPopulation) -> List<DeploySlotHostReading> {
+  map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)),
+    slot => match slots {
+      SlotPopulationUnobservable { reason: r } => DeploySlotHostUnread { unit: runner_slot_unit_name(slot: slot), cause: concat("the slot population was not read: ", r) }
+      SlotPopulationObserved { units: us } => observe_deploy_slot_host_reading(route: DeploySlotReadOverFleetEdge { subject: subject, context: context }, names: map(us, r => r.unit), slot: slot)
+    })
+}
+
+// THE DEPLOY SLOT'S HOST HALF, READ ON THE SLOT by the job that runs there, before any key is loaded:
+// the slot units the host lists beside the ones its deploy row names, then the same reading the
+// converge prints. A host that is not a runner host, or whose units cannot be listed, is an unread
+// reading, never a private one. Run anywhere but the deploy slot's own host, the slot's unit is not
+// among the manager's and the reading is unread.
+fn observe_deploy_slot_host_reading_on_the_slot(slot: RunnerSlotIdentity) -> DeploySlotHostReading {
+  let unit = runner_slot_unit_name(slot: slot)
+  match runner_host_file_subject(host: slot.host) {
+    RunnerHostFileSubjectRefused { cause: c } => DeploySlotHostUnread { unit: unit, cause: c }
+    RunnerHostFileSubjectAdmitted { subject: subject } =>
+      match run_deploy_slot_read_leg(route: DeploySlotReadOnTheSlot, leg: DeploySlotListUnits) {
+        DeploySlotReadLegRefused { reason: why } => DeploySlotHostUnread { unit: unit, cause: concat("systemctl list-units refused: ", why) }
+        DeploySlotReadLegRan { exit_code: c, stdout: listed, stderr: err } =>
+          if c != 0 {
+            DeploySlotHostUnread { unit: unit, cause: join(["systemctl list-units exit=", to_string(c), " ", trim(s: err)], "") }
+          } else {
+            observe_deploy_slot_host_reading(
+              route: DeploySlotReadOnTheSlot,
+              names: runner_slot_population_units(desired: subject.desired_units, retired: subject.retired_units, loaded: runner_slot_units_from_list_units(stdout: listed)),
+              slot: slot,
+            )
+          }
+      }
+  }
+}
+
+fn deploy_slot_host_reading_observed(r: DeploySlotHostReading) -> Bool {
+  match r {
+    DeploySlotHostRead { unit: _, deploy_slot_job_user: _, other_slot_job_users: _, privacy: _ } => true
+    DeploySlotHostUnread { unit: _, cause: _ } => false
+  }
 }
 
 // WHY THE ROLE DROP-IN MAY NOT BE DELIVERED, if it may not: the account is not held, or a deploy
@@ -2752,6 +3071,7 @@ type RunnerHostFileRun {
   deploy_account: DeploySlotAccountStanding
   deploy_trees: List<DeploySlotTreeStanding>
   superseded: List<SupersededDropinResult>
+  deploy_readings: List<DeploySlotHostReading>
 }
 
 fn plan_fleet_host_file(
@@ -3626,7 +3946,10 @@ fn run_runner_host_files_admitted(
   let reload_barred = runner_host_cap_phase_bars_reload(phase: cap_phase)
   let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
   let unit_results = map(unit_files, f => runner_host_file_result_guarded(subject: subject, context: context, mode: mode, privilege: privilege, file: f, managed: files))
-  let superseded = map(runner_host_superseded_dropin_paths(host: subject.host), p => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: p))
+  let superseded = concat(
+    map(runner_host_superseded_dropin_paths(host: subject.host), p => retire_superseded_dropin_over(subject: subject, context: context, mode: mode, privilege: privilege, path: p)),
+    map(runner_host_control_shadow_paths(subject: subject), p => retire_control_shadow_over(subject: subject, context: context, mode: mode, privilege: privilege, caps_settled: !reload_barred, path: p)),
+  )
   let pre_reload = if reload_barred { ManagerReloadOwedNotAttempted { reason: "the slot memory-cap phase withheld the host (see caps WITHHELD); no daemon-reload may reach running slots" } } else { runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results, also_changed: any(superseded, r => superseded_dropin_removed(r: r))) }
   let admission = match mode {
     FleetHostFilesObserveOnly => ActuationAdmitted
@@ -3677,6 +4000,7 @@ fn run_runner_host_files_admitted(
     deploy_account: account,
     deploy_trees: trees,
     superseded: superseded,
+    deploy_readings: observe_deploy_slot_host_readings(subject: subject, context: context, slots: slots),
   }
 }
 
@@ -3722,6 +4046,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         // REFUSES -- it must not print OBSERVED-UNREAD and still exit success.
         && runner_host_cap_phase_observed_verdict(phase: run.cap_phase)
         && all(run.superseded, r => superseded_dropin_observed(r: r))
+        && all(run.deploy_readings, r => deploy_slot_host_reading_observed(r: r))
     FleetHostFilesApply =>
       all(run.results, r => fleet_host_file_outcome_settled(outcome: r.outcome))
         && length(run.withheld) == 0
@@ -3738,6 +4063,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && runner_slot_population_effective(population: run.slots)
         && runner_host_cap_phase_settled(phase: run.cap_phase)
         && all(run.superseded, r => superseded_dropin_settled(r: r))
+        && all(run.deploy_readings, r => deploy_slot_host_walls_hold(r: r))
   }
 }
 
@@ -3788,6 +4114,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     retired_residue_result_line(result: run.residue),
     "manager-reload=", runner_host_manager_reload_wire(reload: run.reload), "\n",
     runner_slot_population_text(population: run.slots),
+    join(map(run.deploy_readings, r => concat(deploy_slot_host_reading_line(r: r), "\n")), ""),
     "terminal=", if runner_host_file_run_succeeded(run: run) { "succeeded" } else { "REFUSED" }, "\n",
   ], "")
 }
@@ -3835,7 +4162,8 @@ fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?
             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
             FleetSshContextReady { context: context, receipt: context_receipt } => {
               let uid_reading = observe_runner_job_user_uid(subject: subject, context: context)
-              match runner_host_file_desired_population_from_uid_reading(host: raw_host as HostIdentity, reading: uid_reading) {
+              // THE CONVERGE'S OWN EFFECT EDGE reads the receipt, once, at this leg's read time.
+              match runner_host_file_desired_population_from_uid_reading(host: raw_host as HostIdentity, reading: uid_reading, receipt: runner_user_session_receipt_observed(host: raw_host as HostIdentity)) {
                 RunnerHostFilesDesiredRefused { cause: c } => exit_failure(reason: c as String)
                 RunnerHostFilesDesired { files: files, withheld: withheld } =>
                   match runner_slot_cpu_desired(host: raw_host as HostIdentity) {

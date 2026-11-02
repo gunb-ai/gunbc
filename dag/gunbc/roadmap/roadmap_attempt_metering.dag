@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_metering
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
+
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents, attempt_state_directory_text, attempt_state_text }
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
 import std.algebra { trim }
 import std.types { path_segment_is_safe }
@@ -47,7 +48,7 @@ import gunbc.harness.harness_seat_pointer {
   harness_seat_pointer_path, harness_seat_pointer_reference_names_owner,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_events_path_for_instance, dispatch_attempt_review_events_path_for_instance, dispatch_attempt_audit_events_path_for_instance, dispatch_attempt_supervisor_events_path_for_instance, dispatch_worker_attempt_identity, dispatch_reviewer_attempt_identity, dispatch_auditor_attempt_identity, dispatch_supervisor_attempt_identity }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_attempt_identity, dispatch_reviewer_attempt_identity, dispatch_auditor_attempt_identity, dispatch_supervisor_attempt_identity }
 
 // ONE PER-ATTEMPT METERING RECORD (dogfood stage G3). The usage receipt the corpus already carries,
 // gunbc.runner.runner_usage_receipt RunnerUsageReceipt, meters ONE microVM: configured vCPUs times
@@ -139,13 +140,13 @@ fn metered_role_decode(v: JsonValue) -> RowDecode<MeteredRole> {
 // same functions gunbc.roadmap.roadmap_dispatch_actuator mints them with -- never from a file the launch wrote.
 fn metered_role_events_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> String {
   match role {
-    MeteredWorker => dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+    MeteredWorker => attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
     MeteredReviewer { criterion_key: c, head: h } =>
-      dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: c as String, head_sha: h as String)
+      attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewEvents { criterion_key: c as String, head_sha: h as String })
     MeteredAuditor { head: h } =>
-      dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: h as String)
+      attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditEvents { head_sha: h as String })
     MeteredSupervisor { turn: t } =>
-      dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, turn: t)
+      attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSupervisorEvents { turn: t })
   }
 }
 
@@ -1138,7 +1139,7 @@ fn metering_list(dir: String) -> MeteringListing {
 }
 
 fn metering_attempt_dir(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
 }
 
 fn metering_open_roster_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {

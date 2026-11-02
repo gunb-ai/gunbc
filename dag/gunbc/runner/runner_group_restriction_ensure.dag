@@ -6,10 +6,12 @@ import gunbc.repository { gunbc_repository_numeric_identity }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name, deploy_slot_selected_workflow }
 import gunbc.fleet.org_actions_inspection { org_actions_organization, RunnerGroupListDecode }
+import gunbc.runner.runner_qualification_ref_pin { qualification_runner_group_name, qualification_selected_workflow_prefix }
 import gunbc.runner.runner_group_restriction_observation {
   RestrictedRunnerGroup, MicrovmRunnerGroupStanding,
   RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
-  RunnerGroupAbsent, observe_runner_group_restriction, microvm_shakedown_runner_group_name,
+  RunnerGroupAbsent, observe_runner_group_admission, microvm_shakedown_runner_group_name,
+  RunnerGroupWorkflowAdmission, AdmitsExactWorkflow, AdmitsOneBranchUnder,
   microvm_shakedown_selected_workflow, runner_group_restriction_refusal_text,
 }
 
@@ -38,12 +40,20 @@ type RunnerGroupCreateSubject {
   allows_public_repositories: Bool
   restricted_to_workflows: Bool
   selected_workflow: NonEmptyStr
+  admission: RunnerGroupWorkflowAdmission
 }
 
 // EVERY RESTRICTED GROUP IS THIS SHAPE: selected visibility with one repository, no public
-// repositories, restricted to exactly one workflow. Only the name, the repository and the workflow
-// differ, so they are the constructor's arguments and the three walls are not re-spelled per group.
+// repositories, restricted to exactly one workflow. Only the name, the repository, the workflow and what a
+// later read admits differ, so they are the constructor's arguments and the three walls are not re-spelled
+// per group.
 fn restricted_runner_group_subject(name: NonEmptyStr, repository_id: Int, selected_workflow: NonEmptyStr) -> RunnerGroupCreateSubject {
+  restricted_runner_group_subject_admitting(name: name, repository_id: repository_id, selected_workflow: selected_workflow, admission: AdmitsExactWorkflow { workflow: selected_workflow })
+}
+
+// The created workflow and what a later read admits are two facts only for a group whose workflow moves
+// (the qualification group below); every other group admits exactly the workflow it was created with.
+fn restricted_runner_group_subject_admitting(name: NonEmptyStr, repository_id: Int, selected_workflow: NonEmptyStr, admission: RunnerGroupWorkflowAdmission) -> RunnerGroupCreateSubject {
   RunnerGroupCreateSubject {
     organization: org_actions_organization,
     name: name,
@@ -52,7 +62,24 @@ fn restricted_runner_group_subject(name: NonEmptyStr, repository_id: Int, select
     allows_public_repositories: false,
     restricted_to_workflows: true,
     selected_workflow: selected_workflow,
+    admission: admission,
   }
+}
+
+// THE QUALIFICATION GROUP (operator decision A, 2026-10-30, merry-fox-82): one row here, so its creation stays in
+// this roster rather than on the attempt path. It is created restricted to the qualification workflow at the bare
+// prefix refs/heads/qualification/, which no branch can match, so the new group admits nothing; each attempt then
+// re-pins it to its own branch (gunbc.runner.runner_qualification_ref_pin ensure_qualification_ref_pin). Its
+// admission is therefore the class, one branch under that prefix, not the creation workflow -- a fixed workflow
+// would refuse the group after its first attempt.
+fn qualification_runner_group_subject() -> RunnerGroupCreateSubject {
+  let prefix = qualification_selected_workflow_prefix()
+  restricted_runner_group_subject_admitting(
+    name: qualification_runner_group_name,
+    repository_id: gunbc_repository_numeric_identity.repository_id,
+    selected_workflow: prefix,
+    admission: AdmitsOneBranchUnder { prefix: prefix },
+  )
 }
 
 fn microvm_runner_group_create_subject() -> RunnerGroupCreateSubject {
@@ -98,7 +125,7 @@ fn deploy_slot_runner_group_subject() -> RunnerGroupCreateSubject {
 // already restricted, created under its own approval when absent, and refused when it holds the
 // name with any other restriction.
 fn restricted_runner_groups() -> List<RunnerGroupCreateSubject> {
-  [microvm_runner_group_create_subject(), private_heal_publisher_runner_group_subject(), deploy_slot_runner_group_subject()]
+  [microvm_runner_group_create_subject(), private_heal_publisher_runner_group_subject(), deploy_slot_runner_group_subject(), qualification_runner_group_subject()]
 }
 
 // The subject as one line, the text the operator reads and the intent a request digests.
@@ -122,7 +149,7 @@ type RunnerGroupEnsurePlan
 // unreadable list, a duplicated name, a group holding the name with another restriction -- refuses
 // the ensure, because the update is a different effect nobody has modeled or approved.
 fn plan_runner_group_ensure(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> RunnerGroupEnsurePlan {
-  match observe_runner_group_restriction(name: subject.name, selected_workflow: subject.selected_workflow, listed: listed) {
+  match observe_runner_group_admission(name: subject.name, admission: subject.admission, listed: listed) {
     RunnerGroupRestrictedToWorkflow { restriction } => GroupAlreadyRestricted { restriction: restriction }
     RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupAbsent } => GroupCreateRequired { subject: subject }
     RunnerGroupRestrictionRefused { name, cause } =>

@@ -47,6 +47,9 @@ import gunbc.fabric.fabric_storage_file_store {
 // an HTTP status other than 200 means the endpoint answered something that is not this protocol's
 // outcome -- a version skew, an unknown operation -- and is FabricReplyUndecodable, never a store
 // arm. Only a 200 body is decoded, and decoding refuses anything that is not fabric_storage/1.
+// THE ONE SHAPE OF A SINGLE-MEMBER SLOT DECLARATION: each sealed store declares its member as `data <store>_slots` of this type.
+type FabricStorageSlotMember { member: NonEmptyStr }
+
 type FabricStorageBinding
   = FabricStorageLocalFiles { root: FabricStorageFileRoot }
   | FabricStorageDoorSocket { socket: NonEmptyStr, route_prefix: NonEmptyStr }

@@ -50,10 +50,11 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 // note says the other owned directories keep a shared constant until each one's dependents are
 // established by evidence rather than by assumption, and that a blanket re-derivation is a host
 // behaviour change disguised as a refactor. What it did not do is say WHERE the constant lives, so
-// each directory kept its own: gunbc.auth.approval_ntfy_converge declared the octal "0750" for the
-// ntfy state and config directories, and gunbc.fleet.host_credential_custody_converge declared "0750" and
-// "0700" again for the custody rows -- one of which ensures THE SAME DIRECTORY as the ntfy config
-// member. Two converges asserting a mode on one directory would flap it on every run, and the
+// each directory kept its own: the ntfy converge (gunbc.auth.approval_ntfy_converge, since retired
+// along with the server it converged) declared the octal "0750" for the ntfy state and config
+// directories, and gunbc.fleet.host_credential_custody_converge declared "0750" and "0700" again for
+// the custody rows -- one of which ensured THE SAME DIRECTORY as the ntfy config member, until the
+// retirement of 2026-10-30 removed that member (gunbc.fleet.approval_ntfy_retirement). Two converges asserting a mode on one directory would flap it on every run, and the
 // repair reached for was a witness holding the two strings equal, which is §5's validation standing
 // where construction was available.
 //
@@ -66,11 +67,11 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 //
 // DISSOLUTION: an arm-holding directory becomes a ManagedDirectory with its dependents declared,
 // at which point its consumers take managed_directory_mode_octal and the arm is deleted. That is
-// the same trigger the scope note already carries, and it is blocked for the ntfy directories by a
+// the same trigger the scope note already carries, and it was blocked for the ntfy directories by a
 // modelled gap worth naming rather than working around: ManagedDirectory derives owner/group/other
 // class membership from the OWNER's uid and gid (dependent_class_of), so it cannot yet express a
-// root-owned directory whose GROUP is another principal's -- root:gunbc-ntfy, which is exactly what
-// both ntfy directories are. Extending it to carry an owning group distinct from the owner's
+// root-owned directory whose GROUP is another principal's -- root:gunbc-ntfy, which is what both ntfy
+// directories were until the retirement took them. Extending it to carry an owning group distinct from the owner's
 // primary group is the capability that retires these arms.
 //
 // THE THIRD ARM IS THE SHARED 0755 ITSELF, given this home rather than left as

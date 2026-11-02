@@ -1,0 +1,303 @@
+module test.claim.runner.runner_machine_boot_teardown_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.decl_ref { decl_ref }
+import std.content_hash { Sha256Digest }
+import std.scoped_authorization { AttemptIdentity }
+import std.measure { ObservationInstant, SharedMonotonic, WallClock, nanosecond }
+import product.fabric.identity { FabricIdentity, WorkKey }
+import product.host_identity { HostIdentity }
+import extdeps.exec.command { argv_words }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
+import extdeps.filesystem.linux {
+  linux_proc_mounts_parse, linux_filesystem_kind_from_mount_type, linux_memory_only_filesystems, linux_memory_only_filesystem_row,
+  linux_filesystem_persistence, LinuxMemoryOnlyFs, LinuxFilesystemKeepsNothing,
+}
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
+import gunbc.runner.runner_job_initiator { RunnerEvidenceSource }
+import gunbc.runner.runner_usage_receipt { RunnerAttemptSubject }
+import gunbc.runner.runner_host_unit_slot {
+  service_boot_id_of, host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt, ListenerEndsTheBoot, ListenerOwnLifetime,
+}
+import gunbc.machine_intake.host_capture_envelope { KernelBootId }
+import extdeps.uuid { uuid_of }
+import gunbc.runner.runner_lost_boot_sweep_run { CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved, mint_current_boot_evidence }
+import gunbc.runner.runner_teardown_receipt {
+  MachineBootEnvironmentInventory, MachineBootInventory, mint_machine_boot_inventory, machine_boot_readback,
+  machine_boot_observation_producer,
+  RunnerResourceReading, RunnerResourcePresent, RunnerResourceAbsent, RunnerResourceUnreadable, RunnerMachineBoot,
+  RunnerEnvironmentObservation, RunnerEnvironmentObserved, RunnerTeardownRequest, produce_runner_teardown_receipt,
+  RunnerTeardownResult, RunnerTeardownProduced, RunnerTeardownRefused,
+  TeardownResourceSurvived, TeardownPositiveControlMissing, TeardownObserverInsideEnvironment,
+  TeardownInstrumentNotAdmitted, TeardownBootMismatch, TeardownResourceUnreadable,
+}
+import gunbc.runner.runner_machine_boot_teardown {
+  machine_boot_reading, machine_boot_volatility, admit_machine_boot_inventory,
+  MachineBootRamOnly, MachineBootHoldsWritablePersistence, MachineBootMountsUnread,
+  MachineBootAdmitted, MachineBootRefused,
+}
+
+// Controlled inputs only: no line below is a host capture, and no live receipt is minted. The boot ids are
+// well-formed kernel boot ids so the real boot-id type admits them.
+
+data subject_boot: String = "aaaaaaaa-0000-4000-8000-0000000000b1"
+data next_boot: String = "aaaaaaaa-0000-4000-8000-0000000000b2"
+data controller_boot: String = "cccccccc-0000-4000-8000-0000000000c1"
+
+fn observed_boot(host: String, id: String) -> CurrentBootObservation {
+  match uuid_of(text: id) {
+    Absent => CurrentBootUnobserved { cause: "unconstructible boot id" }
+    Present { value: u } =>
+      match service_boot_id_of(run: KernelBootId { boot_id: u }) {
+        Present { value: b } => CurrentBootObserved { evidence: mint_current_boot_evidence(host: host, boot: b) }
+        Absent => CurrentBootUnobserved { cause: "unconstructible boot id" }
+      }
+  }
+}
+
+fn fixture_machine_boot() -> MachineBootEnvironmentInventory {
+  mint_machine_boot_inventory(host: "mtcollins1", boot_id: subject_boot as NonEmptyStr)
+}
+
+// ── 1. which boots qualify ─────────────────────────────────────────────────────────────────────
+
+data ram_only_mounts: String = "rootfs / rootfs rw 0 0\nproc /proc proc rw,nosuid,nodev,noexec 0 0\nsysfs /sys sysfs rw,nosuid,nodev,noexec 0 0\ndevtmpfs /dev devtmpfs rw,nosuid,size=4096k 0 0\ntmpfs /run tmpfs rw,nosuid,nodev,mode=755 0 0\ncgroup2 /sys/fs/cgroup cgroup2 rw,nosuid,nodev,noexec 0 0\nefivarfs /sys/firmware/efi/efivars efivarfs ro,nosuid,nodev,noexec 0 0\n/dev/sr0 /media/boot iso9660 ro,relatime 0 0\n"
+
+test fn a_boot_whose_writable_mounts_are_all_memory_backed_is_ram_only() -> Bool {
+  match machine_boot_volatility(mounts: linux_proc_mounts_parse(proc_mounts: ram_only_mounts)) {
+    MachineBootRamOnly => true
+    _ => false
+  }
+}
+
+// THE PARSER'S ROSTER IS THE TYPE'S: every memory-only arm's wire name parses back to that arm, its persistence is
+// keeps-nothing (its row is cited), and no two arms share a wire name.
+test fn every_memory_only_filesystem_round_trips_through_the_parser_and_keeps_nothing() -> Bool {
+  let names = linux_memory_only_filesystems |> map(f => linux_memory_only_filesystem_row(filesystem: f).mount_type as String)
+  linux_memory_only_filesystems |> all(f => {
+      let kind = linux_filesystem_kind_from_mount_type(mount_type: linux_memory_only_filesystem_row(filesystem: f).mount_type)
+      (kind == LinuxMemoryOnlyFs { filesystem: f })
+        && (match linux_filesystem_persistence(kind: kind) { LinuxFilesystemKeepsNothing { filesystem: g } => g == f _ => false })
+    })
+    && names |> all(n => (names |> filter(m => m == n)).length() == 1)
+}
+
+// RED: each writable persistent mount refuses on its own, beside an otherwise RAM-only table -- a disk, firmware
+// NVRAM left writable, an overlay whose upper layer is unread.
+test fn a_writable_disk_nvram_or_overlay_mount_refuses() -> Bool {
+  [
+    ["/dev/nvme0n1p2 /var ext4 rw,relatime 0 0", "/var", "ext4"],
+    ["efivarfs /sys/firmware/efi/efivars efivarfs rw,nosuid,nodev,noexec 0 0", "/sys/firmware/efi/efivars", "efivarfs"],
+    ["pstore /sys/fs/pstore pstore rw,nosuid,nodev,noexec 0 0", "/sys/fs/pstore", "pstore"],
+    ["overlay /srv overlay rw,lowerdir=/a,upperdir=/b,workdir=/c 0 0", "/srv", "overlay"],
+  ] |> all(row => {
+    let line = match row |> first { Present { value: l } => l Absent => "" }
+    let target = match row |> skip(n: 1) |> first { Present { value: t } => t Absent => "" }
+    let fs = match row |> skip(n: 2) |> first { Present { value: f } => f Absent => "" }
+    match machine_boot_volatility(mounts: linux_proc_mounts_parse(proc_mounts: concat(ram_only_mounts, concat(line, "\n")))) {
+      MachineBootHoldsWritablePersistence { target: t, filesystem: f } => (t as String) == target && (f as String) == fs
+      _ => false
+    }
+  })
+}
+
+test fn an_unparsed_or_empty_mount_table_is_unread() -> Bool {
+  let malformed = match machine_boot_volatility(mounts: linux_proc_mounts_parse(proc_mounts: "tmpfs /run tmpfs\n")) {
+    MachineBootMountsUnread { cause: _ } => true
+    _ => false
+  }
+  let empty = match machine_boot_volatility(mounts: linux_proc_mounts_parse(proc_mounts: "")) {
+    MachineBootMountsUnread { cause: _ } => true
+    _ => false
+  }
+  malformed && empty
+}
+
+test fn a_ram_only_observed_boot_is_admitted_as_exactly_that_boot() -> Bool {
+  match admit_machine_boot_inventory(boot: observed_boot(host: "mtcollins1", id: subject_boot), mounts: linux_proc_mounts_parse(proc_mounts: ram_only_mounts)) {
+    MachineBootAdmitted { inventory: i } => (i.host as String) == "mtcollins1" && (i.boot_id as String) == subject_boot
+    MachineBootRefused { cause: _ } => false
+  }
+}
+
+// RED: an unobserved boot, and an observed boot with a disk, are never environments.
+test fn an_unobserved_boot_or_a_boot_with_a_disk_is_not_admitted() -> Bool {
+  let unobserved = match admit_machine_boot_inventory(boot: CurrentBootUnobserved { cause: "no transport" }, mounts: linux_proc_mounts_parse(proc_mounts: ram_only_mounts)) {
+    MachineBootRefused { cause: _ } => true
+    MachineBootAdmitted { inventory: _ } => false
+  }
+  let disk = match admit_machine_boot_inventory(boot: observed_boot(host: "mtcollins1", id: subject_boot), mounts: linux_proc_mounts_parse(proc_mounts: concat(ram_only_mounts, "/dev/nvme0n1p2 /var ext4 rw,relatime 0 0\n"))) {
+    MachineBootRefused { cause: c } => string_contains(s: c as String, pattern: "ext4")
+    MachineBootAdmitted { inventory: _ } => false
+  }
+  unobserved && disk
+}
+
+// ── 2. what ends it ────────────────────────────────────────────────────────────────────────────
+
+// The manager powers the host off on BOTH ends of the unit, and the attempt that does not end its boot carries
+// neither directive.
+test fn a_listener_that_ends_the_boot_carries_both_manager_actions_and_no_other_does() -> Bool {
+  let ends = match host_unit_listener_wait(listener_unit: "gunbc-qualification-q-1.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/q-1" as NonEmptyStr, lifetime: ListenerEndsTheBoot) {
+    HostUnitListenerReady { wait: w } => argv_words(command: w.command)
+    HostUnitListenerUnbuilt { cause: _ } => []
+  }
+  let own = match host_unit_listener_wait(listener_unit: "gunbc-qualification-q-1.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/q-1" as NonEmptyStr, lifetime: ListenerOwnLifetime) {
+    HostUnitListenerReady { wait: w } => argv_words(command: w.command)
+    HostUnitListenerUnbuilt { cause: _ } => []
+  }
+  (ends |> any(w => w == "--property=SuccessAction=poweroff")) && (ends |> any(w => w == "--property=FailureAction=poweroff"))
+    && count(own) > 0 && !(own |> any(w => string_contains(s: w, pattern: "Action=")))
+}
+
+// ── 3. who says it ended ───────────────────────────────────────────────────────────────────────
+
+test fn the_boot_reads_present_only_while_the_chassis_is_on_with_the_subject_boot() -> Bool {
+  let inv = fixture_machine_boot()
+  let on = ChassisPowerRead { power_on: true }
+  let present = match machine_boot_reading(inventory: inv, power: on, current: observed_boot(host: "mtcollins1", id: subject_boot)) {
+    RunnerResourcePresent => true
+    _ => false
+  }
+  let off = match machine_boot_reading(inventory: inv, power: ChassisPowerRead { power_on: false }, current: CurrentBootUnobserved { cause: "the host is off" }) {
+    RunnerResourceAbsent => true
+    _ => false
+  }
+  let rebooted = match machine_boot_reading(inventory: inv, power: on, current: observed_boot(host: "mtcollins1", id: next_boot)) {
+    RunnerResourceAbsent => true
+    _ => false
+  }
+  present && off && rebooted
+}
+
+// RED: no reading is guessed. An unread chassis, an undecodable one, a powered chassis whose boot is unread, and a
+// boot read on another host are each unreadable.
+test fn an_unread_chassis_or_boot_or_a_foreign_host_is_unreadable() -> Bool {
+  let inv = fixture_machine_boot()
+  let on = ChassisPowerRead { power_on: true }
+  let here = observed_boot(host: "mtcollins1", id: subject_boot)
+  [
+    machine_boot_reading(inventory: inv, power: ChassisUnreadable, current: here),
+    machine_boot_reading(inventory: inv, power: ChassisStatusUndecodable { cause: "two power lines" }, current: here),
+    machine_boot_reading(inventory: inv, power: on, current: CurrentBootUnobserved { cause: "ssh refused" }),
+    machine_boot_reading(inventory: inv, power: on, current: observed_boot(host: "srv3", id: subject_boot)),
+  ] |> all(r => match r {
+    RunnerResourceUnreadable { cause: _ } => true
+    _ => false
+  })
+}
+
+// ── the fold over a machine boot ───────────────────────────────────────────────────────────────
+
+fn fixture_subject() -> RunnerAttemptSubject<NonEmptyStr> {
+  RunnerAttemptSubject {
+    work: FabricIdentity { principal: "qualification", key: "fixture-work" as WorkKey },
+    host: "mtcollins1" as HostIdentity,
+    boot_id: subject_boot as NonEmptyStr,
+    attempt: "attempt-q-1" as AttemptIdentity,
+  }
+}
+
+fn fixture_at(ns: Nat) -> ObservationInstant {
+  ObservationInstant { domain: SharedMonotonic { origin: "controller-boot" }, basis: WallClock, since_origin: nanosecond(count: ns) }
+}
+
+fn bmc_source(producer_module: NonEmptyStr, producer_decl: NonEmptyStr) -> RunnerEvidenceSource {
+  RunnerEvidenceSource {
+    producer: decl_ref(module_path: producer_module, decl_name: producer_decl),
+    artifact: "controlled fixture, not host evidence",
+    digest: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
+  }
+}
+
+fn admitted_source() -> RunnerEvidenceSource {
+  RunnerEvidenceSource {
+    producer: machine_boot_observation_producer,
+    artifact: "controlled fixture, not host evidence",
+    digest: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" },
+  }
+}
+
+// The destroyer is the subject boot's manager (pid 1); the observer is a process on the controller's boot.
+fn machine_teardown(
+  before: RunnerResourceReading, after: RunnerResourceReading,
+  observer: ProcessIdentity, destroyer: ProcessIdentity, source: RunnerEvidenceSource,
+) -> RunnerTeardownResult<NonEmptyStr> {
+  let subject = fixture_subject()
+  let inventory = MachineBootInventory { inventory: fixture_machine_boot() }
+  produce_runner_teardown_receipt(
+    request: RunnerTeardownRequest { subject: subject, inventory: inventory, destroyer: destroyer, issued_at: fixture_at(ns: 20) },
+    before: RunnerEnvironmentObserved { observation: RunnerEnvironmentObservation {
+      subject: subject, inventory: inventory, observer: observer, at: fixture_at(ns: 10),
+      readback: machine_boot_readback(reading: before), evidence: source,
+    } },
+    after: RunnerEnvironmentObserved { observation: RunnerEnvironmentObservation {
+      subject: subject, inventory: inventory, observer: observer, at: fixture_at(ns: 30),
+      readback: machine_boot_readback(reading: after), evidence: source,
+    } })
+}
+
+fn controller() -> ProcessIdentity { ProcessIdentity { boot_id: controller_boot as NonEmptyStr, pid: 4242, start_time: "500" } }
+fn subject_manager() -> ProcessIdentity { ProcessIdentity { boot_id: subject_boot as NonEmptyStr, pid: 1, start_time: "1" } }
+
+// Positive control: present before, powered off after, observed off the machine through the admitted instrument.
+test fn a_boot_seen_on_then_powered_off_by_its_own_manager_is_torn_down() -> Bool {
+  match machine_teardown(before: RunnerResourcePresent, after: RunnerResourceAbsent, observer: controller(), destroyer: subject_manager(), source: admitted_source()) {
+    RunnerTeardownProduced { receipt: _ } => true
+    RunnerTeardownRefused { cause: _ } => false
+  }
+}
+
+// RED: the boot still running after the teardown survived it.
+test fn a_boot_still_running_after_the_teardown_survived() -> Bool {
+  match machine_teardown(before: RunnerResourcePresent, after: RunnerResourcePresent, observer: controller(), destroyer: subject_manager(), source: admitted_source()) {
+    RunnerTeardownRefused { cause: TeardownResourceSurvived { resource: RunnerMachineBoot } } => true
+    _ => false
+  }
+}
+
+// RED: a boot never seen running cannot be reported torn down.
+test fn a_boot_never_seen_running_is_a_missing_positive_control() -> Bool {
+  match machine_teardown(before: RunnerResourceAbsent, after: RunnerResourceAbsent, observer: controller(), destroyer: subject_manager(), source: admitted_source()) {
+    RunnerTeardownRefused { cause: TeardownPositiveControlMissing { resource: RunnerMachineBoot } } => true
+    _ => false
+  }
+}
+
+// RED: ANY process on the subject boot is inside the environment, not only the destroyer.
+test fn an_observer_on_the_subject_boot_is_inside_the_environment() -> Bool {
+  let on_boot = ProcessIdentity { boot_id: subject_boot as NonEmptyStr, pid: 777, start_time: "40" }
+  match machine_teardown(before: RunnerResourcePresent, after: RunnerResourceAbsent, observer: on_boot, destroyer: subject_manager(), source: admitted_source()) {
+    RunnerTeardownRefused { cause: TeardownObserverInsideEnvironment } => true
+    _ => false
+  }
+}
+
+// RED: a reading from any instrument other than the chassis-and-boot reading does not carry the physics.
+test fn a_reading_from_another_instrument_is_not_admitted() -> Bool {
+  match machine_teardown(before: RunnerResourcePresent, after: RunnerResourceAbsent, observer: controller(), destroyer: subject_manager(),
+    source: bmc_source(producer_module: "gunbc.runner.runner_lost_boot_sweep_run", producer_decl: "lost_boot_observe_current_boot")) {
+    RunnerTeardownRefused { cause: TeardownInstrumentNotAdmitted } => true
+    _ => false
+  }
+}
+
+// RED: a destroyer on another boot did not end this one.
+test fn a_destroyer_on_another_boot_is_a_boot_mismatch() -> Bool {
+  let elsewhere = ProcessIdentity { boot_id: next_boot as NonEmptyStr, pid: 1, start_time: "1" }
+  match machine_teardown(before: RunnerResourcePresent, after: RunnerResourceAbsent, observer: controller(), destroyer: elsewhere, source: admitted_source()) {
+    RunnerTeardownRefused { cause: TeardownBootMismatch } => true
+    _ => false
+  }
+}
+
+// RED: an unreadable after-reading refuses rather than passing.
+test fn an_unreadable_after_reading_refuses() -> Bool {
+  match machine_teardown(before: RunnerResourcePresent, after: RunnerResourceUnreadable { cause: "BMC timed out" }, observer: controller(), destroyer: subject_manager(), source: admitted_source()) {
+    RunnerTeardownRefused { cause: TeardownResourceUnreadable { resource: RunnerMachineBoot, cause: _ } } => true
+    _ => false
+  }
+}

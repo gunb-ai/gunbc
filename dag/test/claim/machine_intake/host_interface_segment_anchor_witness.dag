@@ -1,0 +1,83 @@
+module test.claim.machine_intake.host_interface_segment_anchor_witness
+
+// The anchor is judged at ONE interface: the inventory's real answers go in as supplied values (the
+// operator LAN segment is the corpus's own row), and each claim reads what the anchor returns.
+// The inventory's own producers are exercised by host_interface_inventory_witness.
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_mtjade1, operator_host_srv1 }
+import gunbc.fleet.fleet_intent_network { operator_docker_bridge_default_segment, operator_lan_segment }
+import product.network_topology { NetworkSegment, Lan }
+import gunbc.machine_intake.ethernet { HostData }
+import gunbc.machine_intake.host_interface_inventory { FunctionUnread }
+import gunbc.site_segment_anchor {
+  InterfaceAnchored,
+  InterfaceNotRead,
+  InterfaceUnanchored,
+  CidrNetworkNotIpv4,
+  NoSegmentContainsAddress,
+  SegmentsUnjudged,
+  UnjudgedSegment,
+  host_interface_segment_anchor,
+}
+
+// mtcollins1: host OS (.230) and dedicated controller (.228) both land on the operator LAN.
+test fn mtcollins1_host_and_controller_anchor_to_the_operator_lan() -> Bool {
+  let anchors = host_interface_segment_anchor(host: operator_host_mtcollins1, segments: [operator_lan_segment])
+  match anchors.operating_system {
+    InterfaceAnchored { host: _, function: _, lan: _, segment: s } => s == operator_lan_segment
+    InterfaceUnanchored { refusal: _ } => false
+  } && match anchors.controller {
+    InterfaceAnchored { host: _, function: _, lan: _, segment: s } => s == operator_lan_segment
+    InterfaceUnanchored { refusal: _ } => false
+  }
+}
+
+// mtjade1's host OS was never read: the anchor refuses with the inventory's own gap and does not
+// borrow the controller's segment. Its controller (10.0.7.2, the factory network) is read, and is
+// refused for the operator LAN as outside it, not defaulted onto it.
+test fn mtjade1_unread_host_os_is_a_typed_refusal_not_the_controllers_segment() -> Bool {
+  let anchors = host_interface_segment_anchor(host: operator_host_mtjade1, segments: [operator_lan_segment])
+  match anchors.operating_system {
+    InterfaceUnanchored { refusal: InterfaceNotRead { gap: FunctionUnread { host: _, function: f, consulted: _, statement: _ } } } => f == HostData
+    InterfaceUnanchored { refusal: _ } => false
+    InterfaceAnchored { host: _, function: _, lan: _, segment: _ } => false
+  } && match anchors.controller {
+    InterfaceUnanchored { refusal: NoSegmentContainsAddress { host: _, function: _ } } => true
+    InterfaceUnanchored { refusal: _ } => false
+    InterfaceAnchored { host: _, function: _, lan: _, segment: _ } => false
+  }
+}
+
+// srv1 has no dedicated controller row: its controller is refused as not read, never defaulted.
+test fn srv1_without_a_dedicated_controller_row_is_refused() -> Bool {
+  match host_interface_segment_anchor(host: operator_host_srv1, segments: [operator_lan_segment]).controller {
+    InterfaceUnanchored { refusal: InterfaceNotRead { gap: _ } } => true
+    InterfaceUnanchored { refusal: _ } => false
+    InterfaceAnchored { host: _, function: _, lan: _, segment: _ } => false
+  }
+}
+
+// An address on none of the supplied segments is a refusal, not the first segment.
+test fn an_address_outside_every_supplied_segment_is_refused() -> Bool {
+  match host_interface_segment_anchor(host: operator_host_mtcollins1, segments: [operator_docker_bridge_default_segment]).operating_system {
+    InterfaceUnanchored { refusal: NoSegmentContainsAddress { host: _, function: _ } } => true
+    InterfaceUnanchored { refusal: _ } => false
+    InterfaceAnchored { host: _, function: _, lan: _, segment: _ } => false
+  }
+}
+
+data malformed_segment: NetworkSegment = NetworkSegment { cidr: "not-a-network/24", gateway: none, locality: Lan }
+
+// FAIL-CLOSED RED: one matching /24 beside one unjudgeable cidr is NOT a unique anchor. The
+// single-/24 control above (mtcollins1 on [operator_lan_segment]) still anchors.
+test fn a_matching_segment_beside_an_unjudged_one_is_refused_with_its_cause() -> Bool {
+  match host_interface_segment_anchor(host: operator_host_mtcollins1, segments: [operator_lan_segment, malformed_segment]).operating_system {
+    InterfaceUnanchored { refusal: SegmentsUnjudged { host: _, function: _, unjudged: us } } => us == [UnjudgedSegment { segment: malformed_segment, cause: CidrNetworkNotIpv4 }]
+    InterfaceUnanchored { refusal: _ } => false
+    InterfaceAnchored { host: _, function: _, lan: _, segment: _ } => false
+  }
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

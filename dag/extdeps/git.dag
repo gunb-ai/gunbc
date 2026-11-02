@@ -2568,3 +2568,27 @@ fn git_remote_url_observation_of(
     GitRemoteUrlReadRefused { at: at, exit_code: exit_code, stderr: stderr }
   }
 }
+
+// ONE COMPONENT OF A REF NAME, as git-check-ref-format(1) admits it (git-scm.com/docs/git-check-ref-format):
+// no slash (a component sits between two), no leading dot, no `..`, no space, none of ~ ^ : ? * [ \, no `@{`,
+// and no `.lock` suffix. It carries those rules and NOT the control-character, DEL or trailing-dot rules, so a
+// name it admits may still be refused by git -- loudly, at the ref write -- and nothing here claims otherwise.
+// Its consumers are the qualification branch (gunbc.runner.runner_qualification_ref_pin qualification_branch_name)
+// and the runner group observer that admits one branch under a prefix
+// (gunbc.runner.runner_group_restriction_observation), which ask the same question of the same upstream.
+fn git_ref_component_admitted(component: String) -> Bool {
+  string_length(s: component) > 0
+    && !starts_with(s: component, prefix: ".")
+    && !string_contains(s: component, pattern: "/")
+    && !string_contains(s: component, pattern: "..")
+    && !string_contains(s: component, pattern: " ")
+    && !string_contains(s: component, pattern: "~")
+    && !string_contains(s: component, pattern: "^")
+    && !string_contains(s: component, pattern: ":")
+    && !string_contains(s: component, pattern: "?")
+    && !string_contains(s: component, pattern: "*")
+    && !string_contains(s: component, pattern: "[")
+    && !string_contains(s: component, pattern: "\\")
+    && !string_contains(s: component, pattern: "@{")
+    && !ends_with(s: component, suffix: ".lock")
+}

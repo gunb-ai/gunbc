@@ -1,5 +1,6 @@
 module test.claim.runner.runner_jit_listed_registration_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
@@ -18,7 +19,7 @@ import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.host.host_control_route { HostControlStanding, HostControlRefused, NoOutOfBandRoute, bmc_controlled_host }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
 import gunbc.runner.runner_slot_allocation { RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent, gunbc_runner_committed_width }
-import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused, runner_registration_labels }
+import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused, runner_evidence_gated_registration_labels }
 import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels }
 import gunbc.runner.runner_host_unit_slot {
   AttemptSlot, ServiceSlot, HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRegistrationLabelsRefused, HostUnitSlotHostNotControlled,
@@ -44,7 +45,7 @@ fn has_offer(m: ManagedHost) -> Bool {
 // one interface). Its offer now IS in fleet_owned_compute_offer_catalog, and the production width
 // gunbc_runner_committed_width(mtcollins1) == RunnerWidthDerived { slots: 5 } is asserted through the real
 // producers in test.claim.runner.mtcollins1_runner_offer_witness. STILL OWED, by the first change that
-// reads them through the real producers: runner_registration_labels(mtcollins1) equals the labels of a
+// reads them through the real producers: runner_evidence_gated_registration_labels(mtcollins1) equals the labels of a
 // bound service slot, and service_slot_population over the real host has exactly 5 bound slots.
 fn the_host() -> ManagedHost? { first(managed_hosts()) }
 
@@ -99,7 +100,7 @@ fn population_over(m: ManagedHost, width: RunnerWidthResolution, labels: RunnerR
 
 fn population_real(m: ManagedHost, id: String) -> CurrentServicePopulationStanding {
   match service_boot_id_of(run: kernel_boot(id: id)) {
-    Present { value: b } => current_service_population(host: controlled(m: m), boot: b)
+    Present { value: b } => current_service_population(host: controlled(m: m), boot: b, receipt: ReceiptAbsent)
     Absent => CurrentServicePopulationRefused { refusal: CurrentPopulationHostNotControlled { refusal: NoOutOfBandRoute { host: m.host } } }
   }
 }
@@ -135,7 +136,7 @@ test fn the_attempt_arm_is_the_qualification_routes_own_spelling() -> Bool {
   match the_host() {
     Absent => false
     Present { value: m } =>
-      match host_unit_slot_for(host: controlled(m: m), purpose: AttemptSlot { attempt: "q-1" }, workflow: service_slot_selected_workflow()) {
+      match host_unit_slot_for(host: controlled(m: m), purpose: AttemptSlot { attempt: "q-1" }, workflow: service_slot_selected_workflow(), receipt: ReceiptAbsent) {
         HostUnitSlotBound { slot: s } =>
           (s.unit as String) == (ephemeral_slot_unit(host: m.host, attempt: "q-1") as String)
             && s.labels == ephemeral_slot_labels(host: m.host, attempt: "q-1")
@@ -156,14 +157,14 @@ test fn a_service_slot_takes_the_registration_labels_and_an_unoffered_host_refus
         HostUnitSlotBound { slot: s } =>
           (s.unit as String) == unit(m: m, id: "00000000-0000-4000-8000-0000000000b1", index: 3) && s.labels == ["self-hosted", "linux", "ARM64", "gunbc-heavy", "gunbc-host-x"]
         HostUnitSlotRefused { refusal: _ } => false
-      }) && (has_offer(m: m) || (match service_slot_standing(m: m, id: "00000000-0000-4000-8000-0000000000b1", index: 0, labels: runner_registration_labels(host: m.host)) {
+      }) && (has_offer(m: m) || (match service_slot_standing(m: m, id: "00000000-0000-4000-8000-0000000000b1", index: 0, labels: runner_evidence_gated_registration_labels(host: m.host, receipt: ReceiptAbsent)) {
         HostUnitSlotRefused { refusal: HostUnitSlotRegistrationLabelsRefused { host: h, cause: _ } } => h == m.host
         _ => false
-      })) && (match service_slot_standing(m: m, id: "00000000-0000-4000-8000-0000000000b1", index: 0, labels: runner_registration_labels(host: m.host)) {
+      })) && (match service_slot_standing(m: m, id: "00000000-0000-4000-8000-0000000000b1", index: 0, labels: runner_evidence_gated_registration_labels(host: m.host, receipt: ReceiptAbsent)) {
         HostUnitSlotBound { slot: _ } => has_offer(m: m)
         HostUnitSlotRefused { refusal: HostUnitSlotRegistrationLabelsRefused { host: _, cause: _ } } => !has_offer(m: m)
         HostUnitSlotRefused { refusal: _ } => false
-      }) && (match host_unit_slot_for(host: controlled(m: m), purpose: AttemptSlot { attempt: "q-1" }, workflow: service_slot_selected_workflow()) {
+      }) && (match host_unit_slot_for(host: controlled(m: m), purpose: AttemptSlot { attempt: "q-1" }, workflow: service_slot_selected_workflow(), receipt: ReceiptAbsent) {
         HostUnitSlotBound { slot: _ } => true
         HostUnitSlotRefused { refusal: _ } => false
       })

@@ -13,6 +13,8 @@ import gunbc.runner.runner_capacity_plan {
 }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import gunbc.runner.runner_capacity_realize { runner_capacity_apply_wet_exit }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 
 // TOP-LEVEL gunbc.apply dispatcher. gunbc.live_deploy.apply remains the srv1 dashboard child
 // workflow only. RunnerCapacity plan half is PR A (#7939 runner_capacity_plan); ADD execution
@@ -80,6 +82,8 @@ fn apply_runner_capacity_plan(
                   srv3_width: w3,
                   srv4_width: w4,
                   roster: organization_runner_roster_live_read(),
+                  srv3_receipt: runner_user_session_receipt_observed(host: operator_host_srv3),
+                  srv4_receipt: runner_user_session_receipt_observed(host: operator_host_srv4),
                 )
               )
           }

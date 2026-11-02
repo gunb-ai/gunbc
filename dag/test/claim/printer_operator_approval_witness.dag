@@ -2,6 +2,7 @@ module test.claim.printer_operator_approval_witness
 
 
 
+import gunbc.host_state_root { host_state_tree }
 import gunbc.fleet.printer_report { report_has_state_and_error }
 
 import extdeps.shell.exec { ProcessObservation }
@@ -10,7 +11,7 @@ import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
 
 
 import std.types { Bool,String }
-import gunbc.fleet.printer_actuation { print_subject, report_allows_start, start_claim_path, printer_state_generation, attempt_claim_key }
+import gunbc.fleet.printer_actuation { print_subject, report_allows_start, printer_state_generation, attempt_claim_key, printer_start_claim_path }
 import gunbc.fleet.printer_job_monitor { observe_job, JobCompletedAwaitingInspection, JobUnresolved }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 
@@ -57,8 +58,8 @@ test fn partial_telemetry_does_not_count_as_a_complete_observation() -> Bool {
 // Path ownership is independent of the request's cryptographic construction.
 // Supplied approval identities must stay in the fixed durable claim directory.
 test fn durable_claim_is_bound_to_approval_identity() -> Bool {
- start_claim_path(key:"printer-start-a")=="/var/lib/gunbc/printer-starts/printer-start-a.claimed" &&
- start_claim_path(key:"printer-start-a")!=start_claim_path(key:"printer-start-b")
+ printer_start_claim_path(tree:host_state_tree())=="/var/lib/gunbc/printer-starts/claims" &&
+ attempt_claim_key(attempt:"printer-start-a")!=attempt_claim_key(attempt:"printer-start-b")
 }
 
 // A FINISH report as an A1 mini sends it in LAN mode (shape of a saved report on the printer host):

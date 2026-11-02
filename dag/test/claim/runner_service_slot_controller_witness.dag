@@ -1,5 +1,6 @@
 module test.claim.runner_service_slot_controller_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.optional { Absent, Present }
@@ -59,7 +60,7 @@ test fn a_non_service_slot_unit_name_is_unparsed() -> Bool {
   match service_boot_id_of(run: KernelBootId { boot_id: uuid }) {
     Absent => false
     Present { value: boot } =>
-      match service_slot_rebuild(host: refused, identity: "mtcollins1" as HostIdentity, boot: boot, unit: "ssh.service") {
+      match service_slot_rebuild(host: refused, identity: "mtcollins1" as HostIdentity, boot: boot, unit: "ssh.service", receipt: ReceiptAbsent) {
         ServiceSlotUnitUnparsed { unit: _ } => true
         _ => false
       }

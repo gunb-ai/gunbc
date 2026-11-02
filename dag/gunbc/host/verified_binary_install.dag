@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import std.algebra { Cons, Empty, list_append, string_contains }
 import extdeps.exec.command { ArgvCommand, argv_words, shell_command_render }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarNoOverwriteDir }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command, rm_recursive_force_command }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_command }
@@ -309,7 +309,7 @@ fn verified_binary_install_admission(
 // unverified copy of the binary lying around.
 fn verified_binary_install_install_steps(p: VerifiedBinaryInstallParams) -> List<ArgvCommand> {
   let extract =
-    tar_extract_command(archive: p.download_path as String, into_directory: p.extract_root, strip_components: 0)
+    tar_extract_command(archive: p.download_path as String, into_directory: p.extract_root, strip_components: 0, existing_directories: TarNoOverwriteDir)
   // THE MOVE AND THE MODE COME FROM THEIR AUTHORITIES, AND ELEVATION IS APPLIED TO THAT ARGV
   // (stern-bat-401 (4)). Both arms start from the SAME operation the unprivileged path uses —
   // `mv_exact_destination_command` and `chmod_set_mode_command` in extdeps — and the privileged arm

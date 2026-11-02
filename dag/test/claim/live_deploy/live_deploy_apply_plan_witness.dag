@@ -15,7 +15,6 @@ import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_o
 import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, LiveDeployRetract, host_effect_identity_evidence }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect_realize { realize_live_deploy_apply_on_host, deploy_apply_ports_on_host, deploy_apply_run_legs, DeployApplyPorts, ApplyRunOk, ApplyRunFailed }
-import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
@@ -52,7 +51,7 @@ fn lab_spec() -> DeploymentSpec {
 // readback, where a literal would expire). The unreadable clock is its own claim
 // (lab_apply_oidc_refuses_without_an_observer_clock).
 fn plan_for(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
-  deploy_apply_plan_legs(spec: spec, plan: plan, authorization: CapConvergeWithheld { cause: "witness" }, source_root: "/src", oidc_now: tracker_web_test_console_readback_observed_at_epoch)
+  deploy_apply_plan_legs(spec: spec, plan: plan, source_root: "/src", oidc_now: tracker_web_test_console_readback_observed_at_epoch)
 }
 
 fn legs_of(p: DeployApplyPlan) -> List<DeployApplyLeg> {
@@ -675,7 +674,7 @@ test fn a_refusal_after_planned_legs_drops_them_from_the_plan() -> Bool {
 test fn an_unreadable_oidc_clock_refuses_the_whole_lab_apply_plan() -> Bool {
   let spec = lab_spec()
   has_step(legs: full_legs(spec: spec), step: "serve-unit")
-    && match deploy_apply_plan_legs(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), authorization: CapConvergeWithheld { cause: "witness" }, source_root: "/src", oidc_now: Absent) {
+    && match deploy_apply_plan_legs(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src", oidc_now: Absent) {
       ApplyPlanRefused { step: _, reason: r } => string_contains(s: r, pattern: "observer clock unreadable")
       ApplyPlanReady { legs: _ } => false
     }

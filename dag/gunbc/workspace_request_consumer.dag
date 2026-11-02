@@ -15,8 +15,7 @@ import gunbc.workspace_allocation_store {
   WorkspaceAllocation, WorkspaceStoreRead, WorkspaceStoreReadOk, WorkspaceStoreUnreadable,
   WorkspaceRetired, WorkspaceReleased, workspace_read_owner,
   WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused,
-  workspace_settle_unplanned_retirement,
-}
+  workspace_settle_unplanned_retirement, workspace_allocation_store }
 import gunbc.workspace_allocation_lease {
   workspace_lease_standing, WorkspaceLeaseUnreadable, WorkspaceLeaseExpired, WorkspaceLeaseLive,
   workspace_record_expiry,
@@ -72,7 +71,7 @@ fn workspace_consumer_issue_write(kind: WorkspaceConsumerWriteKind, store: Fabri
   owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
   match kind {
     WorkspaceWriteSettleUnplanned => workspace_settle_unplanned_retirement(
-      store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at)
+      store: workspace_allocation_store(binding: store), owner: owner, idempotency_key: idempotency_key, observed_at: observed_at)
     WorkspaceWriteRecordExpiry => workspace_record_expiry(
       store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at)
   }
@@ -142,7 +141,7 @@ fn workspace_consumer_select(read: WorkspaceStoreRead, observed_at: Timestamp) -
 // no process-local queue or HTTP request identity is required to recover the obligation.
 fn workspace_consumer_discover(store: FabricStorageBinding, owner: PrincipalRef,
   observed_at: Timestamp) -> WorkspaceConsumerNext {
-  workspace_consumer_select(read: workspace_read_owner(store: store, owner: owner), observed_at: observed_at)
+  workspace_consumer_select(read: workspace_read_owner(store: workspace_allocation_store(binding: store), owner: owner), observed_at: observed_at)
 }
 
 fn workspace_consumer_settlement_result(result: WorkspaceStoreWrite) -> WorkspaceConsumerNext {
@@ -160,7 +159,7 @@ fn workspace_consumer_settlement_result(result: WorkspaceStoreWrite) -> Workspac
 // to its selected host; neither this coordinator nor a free-hold reading can discharge it.
 fn workspace_consumer_retire(store: FabricStorageBinding, owner: PrincipalRef,
   idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceConsumerNext {
-  match workspace_read_owner(store: store, owner: owner) {
+  match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: owner) {
     WorkspaceStoreUnreadable { reason: detail } => WorkspaceConsumerRefused { reason: detail }
     WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations,
       allocation => allocation.request.idempotency_key == idempotency_key).first() {

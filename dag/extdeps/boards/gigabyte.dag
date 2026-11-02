@@ -9,7 +9,7 @@ import std.measure {
   MegatransfersPerSecond, megatransfers_per_second,
 }
 import extdeps.boards.types {
-  BaseboardCatalogRow,
+  BaseboardCatalogRow, PortRowsNotRead,
   BaseboardPhysicalProfile,
   board_profile_power_headers_match, board_profile_area,
   board_profile_sockets_per_area_permille, board_profile_max_socket_power,
@@ -73,6 +73,7 @@ data gigabyte_mp72_hb0_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
   model_label: "Gigabyte MP72-HB0 (rev. 3.0)",
   vendor: gigabyte,
   bmc_firmware: OpenBmc,
+  onboard_ethernet_ports: PortRowsNotRead { obligation: "the MP72-HB0 manual's rear-panel LAN ports, their controllers, BMC sharing and disable switches have not been read" },
 }
 
 // bmc_firmware is the WEAKEST field in the row above. OpenBmc is asserted from family convention

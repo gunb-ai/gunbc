@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import std.content_hash { Sha256Digest }
 import std.measure { token_count, mebibyte, positive_slot_count, positive_measure_count, minute, second }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import extdeps.docker { BindMount }
 import extdeps.strata.serve_flags {
   StrataServeFlags, StrataKvQ4_0, StrataKvResidentWindow, StrataBatchGroupsAuto, StrataSplitStages, StrataLayerSplitAt, StrataExpertsPrivate,
@@ -14,9 +15,10 @@ import gunbc.serving.serving_benchmark_cell_plan { ServingBenchmarkCellPlan, Eng
 
 // THE srv3 SERVING CELL: Strata over the pair of RTX 2000 Ada cards, one engine split across both
 // (calm-crab-645's settings for this pair, gunbc-private docs/strategy/2026-10-25-serving-benchmarks.md
-// "Settings used"): IQ3_S weights, q4_0 KV with a 65,536-token resident window, 229,376-token context, 8
-// slots in auto batch groups, a layer split at 24 with stage-trimmed weights, and 3 pool workers per GPU
-// (the operator's default). One engine on the host, so the experts are its own and not mapped.
+// "Settings used"): IQ3_S weights, q4_0 KV with a 65,536-token resident window, the pool's context cap
+// (gunbc.serving.serving_context_cap serving_fleet_context_cap), 8 slots in auto batch groups, a layer
+// split at 24 with stage-trimmed weights, and 3 pool workers per GPU (the operator's default). One
+// engine on the host, so the experts are its own and not mapped.
 //
 // THE IMAGES DO NOT EXIST YET. srv3 has no Docker until the rootless-Docker lane (eager-heron-746)
 // lands; the engine and kit images are built and pinned after it, and until then this row says so and the
@@ -25,7 +27,7 @@ import gunbc.serving.serving_benchmark_cell_plan { ServingBenchmarkCellPlan, Eng
 data srv3_strata_flags: StrataServeFlags = StrataServeFlags {
   kv_format: StrataKvQ4_0,
   kv_residency: StrataKvResidentWindow { tokens: token_count(count: 65536) },
-  max_context: token_count(count: 229376),
+  max_context: serving_fleet_context_cap,
   parallel: positive_slot_count(count: positive_measure_count(predecessor: 7)),
   batch_groups: Present { value: StrataBatchGroupsAuto },
   pool_workers: Present { value: 6 },

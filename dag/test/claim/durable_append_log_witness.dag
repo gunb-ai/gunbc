@@ -1,0 +1,289 @@
+module test.claim.durable_append_log_witness
+
+import std.types { Bool, Int, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import std.optional { Present, Absent }
+import gunbc.durable_append_log_store { AppendLogSlot, AppendLogListingVerdict, ListingClean, ListingUnlisted, ListingLegacy, AppendLogLegacyCause, LegacyFramingMismatch, LegacyDuplicateClaim, append_log_listing_verdict, append_log_census_slots }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_exit, total_blocking_census, CensusVerdict }
+import std.durable_exclusive_hold { DurableHoldOwnerRef, SectionObservedComplete, SectionCompletionUnobservable }
+import std.durable_append_log {
+  AppendFraming, InPlaceRecordFile, AppendObservation, StreamObserved, InPlaceRecordObserved, InPlaceRecordObservation, InPlaceRecordAbsent, InPlaceRecordDecoded, InPlaceRecordUndecodable, append_readback,
+  AppendLogHead, NewlineDelimitedStream, RecordPerGeneration, AppendExpectation, AppendExpected, append_log_expectation,
+  AppendStreamObservation, AppendWriterStanding, WriterHoldsWindow, WriterWindowReleased, WriterStandingUnobserved,
+  AppendLogReadback, AppendLogSettled, AppendLogOpenPrefix, AppendLogTornTail, AppendLogStandingUnobserved,
+  append_stream_readback,
+  MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites, AppendWriter, HostWriter, SandboxWriter,
+  IntentCreateEmpty, IntentAppendRecord, AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused,
+  append_write_admission,
+  WriterExitObservation, WriterExitSeen, WriterExitUnseen, WriterExitedClean, append_window_completion,
+}
+
+// THE APPEND-LOG / MULTI-WRITER CONTRACT (std.durable_append_log, gunbc.durable_append_log_store).
+// GREEN controls first: the pure contract answers every law it declares. Then the EXPECTING-RED claims the
+// implementation lane must make pass: each hands the compiler a source the migrated tree must refuse (or a
+// symbol the migrated tree must have deleted) and asserts the refusal. They fail today because the unsealed
+// log members are still reachable through the generic attempt-state write and the events initializer, and
+// they are enrolled in v2.workflow.floor_expected_red `floor_expected_red_chunk_append_log_store`.
+// When the implementation lands they pass, the roster reports them stale, and the row is deleted, leaving
+// each as a permanent regression control (DESIGN 4b(4)).
+
+fn worker() -> DurableHoldOwnerRef { "attempt-worker-unit" as DurableHoldOwnerRef }
+fn other() -> DurableHoldOwnerRef { "another-writer" as DurableHoldOwnerRef }
+
+fn bytes(n: Nat) -> ByteSize { byte_size(count: n) }
+
+fn obs(records: List<String>, settled: Nat, tail: Nat) -> AppendStreamObservation {
+  AppendStreamObservation { complete_records: records, settled_bytes: bytes(n: settled), tail_bytes: bytes(n: tail) }
+}
+
+fn handed_off() -> MemberWriterPolicy { HostCreatesThenSandboxWrites { principal: worker() } }
+
+fn refused(a: AppendWriteAdmission) -> Bool {
+  match a { AppendWriteRefused { refusal: _ } => true, AppendWriteAdmitted => false }
+}
+
+fn admitted(a: AppendWriteAdmission) -> Bool {
+  match a { AppendWriteAdmitted => true, AppendWriteRefused { refusal: _ } => false }
+}
+
+// ── GREEN: ATOMICITY, ORDER AND READBACK ──────────────────────────────────────────────────────────
+test fn an_empty_log_expects_the_slot_absent_and_lands_on_the_first_position() -> Bool {
+  match append_log_expectation(head: AppendLogHead { record_count: 0, byte_length: bytes(n: 0) }) {
+    AppendExpected { expectation: _, position: p } => p == 1
+    _ => false
+  }
+}
+
+test fn the_next_position_follows_the_observed_head() -> Bool {
+  match append_log_expectation(head: AppendLogHead { record_count: 3, byte_length: bytes(n: 90) }) {
+    AppendExpected { expectation: _, position: p } => p == 4
+    _ => false
+  }
+}
+
+test fn a_released_stream_ending_on_a_terminator_reads_settled() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a", "b"], settled: 4, tail: 0), standing: WriterWindowReleased {}) {
+    AppendLogSettled { records: _, head: h } => h.record_count == 2
+    _ => false
+  }
+}
+
+test fn a_released_stream_with_bytes_after_the_last_terminator_is_a_torn_tail_refusal() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a"], settled: 2, tail: 5), standing: WriterWindowReleased {}) {
+    AppendLogTornTail { complete_records: _, torn_bytes: t, head: h } => t.count == 5 && h.byte_length.count == 2
+    _ => false
+  }
+}
+
+test fn an_open_window_reads_as_a_prefix_not_as_damage() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a"], settled: 2, tail: 5), standing: WriterHoldsWindow { owner: worker() }) {
+    AppendLogOpenPrefix { records: _, head: _, writer: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unobserved_writer_standing_is_neither_settled_nor_open() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a"], settled: 2, tail: 0), standing: WriterStandingUnobserved { cause: "hold unreadable" as NonEmptyStr }) {
+    AppendLogStandingUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+// The wire member is written in place (harness_turn Filesystem.Write, no rename): it is a single torn-capable
+// record file, framed InPlaceRecordFile, and its decoder is the reader's. Bytes it does not accept are refused.
+// THE WIRE MEMBER'S DECLARED DISPOSITION, TAKEN THROUGH ITS READBACK. The slot is the one the census declares
+// for AttemptDirectoryWire (harness_turn writes its round files in place, so they are torn-capable), and the
+// control reads a truncated round through THAT slot's framing: a census that declared RecordPerGeneration
+// would read the same bytes as unreadable, not as the torn-tail refusal.
+fn census_framing_of(member: String) -> AppendFraming? {
+  match filter(append_log_census_slots(), sl => (sl.member as String) == member) {
+    Cons { head: sl, tail: _ } => Present { value: sl.framing }
+    Empty {} => Absent
+  }
+}
+
+test fn a_truncated_wire_round_is_refused_through_the_census_framing() -> Bool {
+  match census_framing_of(member: "AttemptDirectoryWire") {
+    Absent => false
+    Present { value: f } => match append_readback(framing: f, observation: InPlaceRecordObserved { record: InPlaceRecordUndecodable { bytes: bytes(n: 9) } }, standing: WriterWindowReleased {}) {
+      AppendLogTornTail { complete_records: _, torn_bytes: t, head: _ } => t.count == 9
+      _ => false
+    }
+  }
+}
+
+test fn a_whole_wire_round_reads_settled_through_the_census_framing() -> Bool {
+  match census_framing_of(member: "AttemptDirectoryWire") {
+    Absent => false
+    Present { value: f } => match append_readback(framing: f, observation: InPlaceRecordObserved { record: InPlaceRecordDecoded { record: "{}", bytes: bytes(n: 2) } }, standing: WriterWindowReleased {}) {
+      AppendLogSettled { records: _, head: h } => h.record_count == 1
+      _ => false
+    }
+  }
+}
+
+test fn a_whole_or_absent_framing_does_not_read_undecodable_bytes_as_torn() -> Bool {
+  match append_readback(framing: RecordPerGeneration {}, observation: InPlaceRecordObserved { record: InPlaceRecordUndecodable { bytes: bytes(n: 9) } }, standing: WriterWindowReleased {}) {
+    AppendLogUnreadable { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn an_events_member_declared_a_stream_refuses_a_record_observation() -> Bool {
+  match census_framing_of(member: "AttemptWorkerEvents") {
+    Absent => false
+    Present { value: f } => match append_readback(framing: f, observation: InPlaceRecordObserved { record: InPlaceRecordAbsent {} }, standing: WriterWindowReleased {}) {
+      AppendLogUnreadable { cause: _ } => true
+      _ => false
+    }
+  }
+}
+
+test fn a_foreign_unterminated_record_is_refused_not_adopted() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a"], settled: 2, tail: 3), standing: WriterWindowReleased {}) {
+    AppendLogTornTail { complete_records: r, torn_bytes: _, head: _ } => r == ["a"]
+    _ => false
+  }
+}
+
+fn slot_under(member: NonEmptyStr, framing: AppendFraming) -> AppendLogSlot {
+  AppendLogSlot { member: member, framing: framing, writers: HostOnly {} }
+}
+
+fn events_slot() -> AppendLogSlot { slot_under(member: "events" as NonEmptyStr, framing: NewlineDelimitedStream {}) }
+
+// THE LISTING VERDICT DERIVES ITS CLAIMANTS from the listing and the slot's own member name. (The sealed
+// AppendLogParent is minted only by the owning store, so the witness drives the verdict the mint folds.)
+test fn the_mint_is_ready_over_a_clean_listing() -> Bool {
+  match append_log_listing_verdict(slot: events_slot(), listing: Present { value: ["events"] }) {
+    ListingClean => true
+    _ => false
+  }
+}
+
+test fn the_mint_is_unready_over_an_unlisted_parent() -> Bool {
+  match append_log_listing_verdict(slot: events_slot(), listing: Absent) {
+    ListingUnlisted => true
+    _ => false
+  }
+}
+
+test fn the_mint_refuses_two_entries_claiming_the_slot() -> Bool {
+  match append_log_listing_verdict(slot: events_slot(), listing: Present { value: ["events", "events"] }) {
+    ListingLegacy { cause: LegacyDuplicateClaim { entries: _ } } => true
+    _ => false
+  }
+}
+
+// ── GREEN: WHO MAY WRITE ──────────────────────────────────────────────────────────────────────────
+test fn the_host_creates_the_member_once_and_only_while_it_does_not_exist() -> Bool {
+  admitted(append_write_admission(policy: handed_off(), writer: HostWriter {}, intent: IntentCreateEmpty {}, standing: WriterWindowReleased {}, member_exists: false))
+    && refused(append_write_admission(policy: handed_off(), writer: HostWriter {}, intent: IntentCreateEmpty {}, standing: WriterWindowReleased {}, member_exists: true))
+}
+
+test fn the_host_never_appends_during_the_sandbox_window() -> Bool {
+  refused(append_write_admission(policy: handed_off(), writer: HostWriter {}, intent: IntentAppendRecord {}, standing: WriterHoldsWindow { owner: worker() }, member_exists: true))
+}
+
+test fn the_declared_principal_appends_only_inside_its_own_window() -> Bool {
+  admitted(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterHoldsWindow { owner: worker() }, member_exists: true))
+    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterWindowReleased {}, member_exists: true))
+    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: other() }, intent: IntentAppendRecord {}, standing: WriterHoldsWindow { owner: worker() }, member_exists: true))
+}
+
+test fn a_host_only_member_refuses_the_sandbox() -> Bool {
+  refused(append_write_admission(policy: HostOnly {}, writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterWindowReleased {}, member_exists: true))
+}
+
+test fn an_unobserved_standing_admits_nobody() -> Bool {
+  refused(append_write_admission(policy: handed_off(), writer: HostWriter {}, intent: IntentCreateEmpty {}, standing: WriterStandingUnobserved { cause: "x" as NonEmptyStr }, member_exists: false))
+}
+
+// ── EXPECTING-RED: WHAT THE IMPLEMENTATION LANE MUST MAKE PASS ────────────────────────────────────
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data baseline_source: String = "module probe_append_log_baseline\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_write, attempt_state_read }\nfn f(s: AttemptState) -> String {\n  \"\"\n}\n"
+
+data log_member_write_source: String = "module probe_append_log_member_write\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptWorkerEvents, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_write, attempt_state_read }\nfn f(s: AttemptState) -> String {\n  let w = attempt_state_write(store: s, member: AttemptWorkerEvents, content: \"x\")\n  \"\"\n}\n"
+
+data events_initializer_source: String = "module probe_append_log_events_initializer\nimport std.types { String }\nimport gunbc.roadmap.roadmap_attempt_state_store { AttemptState, AttemptWorkerLog, AttemptLaunchIdentity, attempt_state_write, attempt_state_read }\nimport gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_events_initialize_for_instance }\nfn f(s: AttemptState) -> String {\n  \"\"\n}\n"
+
+data forged_store_source: String = "module probe_append_log_forged_store\nimport std.types { NonEmptyStr }\nimport gunbc.durable_append_log_store { AppendLogStore, AppendLogParent }\nfn f(d: NonEmptyStr) -> AppendLogParent {\n  AppendLogParent { directory: d }\n}\n"
+
+// RED (EXPECTED, TRIGGER: the log and sandbox-written members leave AttemptStateMember and are reached only
+// through AppendLogStore) -- A LOG MEMBER IS WRITTEN THROUGH THE GENERIC ATTEMPT-STATE WRITE. Nothing refuses it
+// today (the closed enum still lists AttemptWorkerEvents); the migrated tree must.
+test fn a_log_member_cannot_be_written_through_the_generic_attempt_state_write() -> ProcessExit {
+  census_exit(blocking_delta(hostile: log_member_write_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+// RED (EXPECTED, TRIGGER: the events initializer routes through the writer-window create) -- THE EVENTS FILE IS
+// STILL CREATED BY A BARE Filesystem.WriteCreateNewWithMode IN dispatch_attempt_events_initialize_for_instance.
+// The symbol must be deleted: importing it must add a blocking diagnostic.
+test fn the_raw_events_initializer_is_gone() -> ProcessExit {
+  census_exit(blocking_delta(hostile: events_initializer_source, safe: baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+// GREEN CONTROL, already true: the sealed parent handle cannot be forged outside its module.
+test fn a_forged_append_log_parent_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: forged_store_source, wanted_class: "SoleConstructorViolation", wanted_subject: "AppendLogParent"), holds: fn(n) { n == 1 }))
+}
+
+fn census_slot_mint_unclean(slot: AppendLogSlot) -> Bool {
+  match append_log_listing_verdict(slot: slot, listing: Present { value: [] }) {
+    ListingClean => false
+    _ => true
+  }
+}
+
+// The census has a consumer: every slot it declares mints clean over an empty listing and admits its own
+// principal's append inside the window (the policy is built by the census, not written per row).
+test fn every_census_slot_mints_clean_over_an_empty_listing() -> Bool {
+  match filter(append_log_census_slots(), sl => census_slot_mint_unclean(slot: sl)) {
+    Empty {} => true
+    _ => false
+  }
+}
+
+// The count a readback states is the length of the records it returns, by construction.
+test fn the_head_count_is_the_length_of_the_returned_records() -> Bool {
+  match append_stream_readback(observed: obs(records: ["a", "b", "c"], settled: 6, tail: 0), standing: WriterWindowReleased {}) {
+    AppendLogSettled { records: _, head: h } => h.record_count == 3
+    _ => false
+  }
+}
+
+// The window ends on evidence: a seen exit completes the section, an unseen one is not a completion.
+test fn a_seen_writer_exit_completes_the_window() -> Bool {
+  match append_window_completion(observed: WriterExitSeen { exit: WriterExitedClean {} }) {
+    SectionObservedComplete { observation: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unseen_writer_exit_does_not_complete_the_window() -> Bool {
+  match append_window_completion(observed: WriterExitUnseen { cause: "unit state unreadable" as NonEmptyStr }) {
+    SectionCompletionUnobservable { cause: _ } => true
+    _ => false
+  }
+}
+
+// A healthy in-place member (its own file present in the parent) mints clean; only a generation file of its
+// key is another framing.
+fn wire_slot_verdict(listing: List<String>) -> AppendLogListingVerdict? {
+  match filter(append_log_census_slots(), sl => (sl.member as String) == "AttemptDirectoryWire") {
+    Cons { head: sl, tail: _ } => Present { value: append_log_listing_verdict(slot: sl, listing: Present { value: listing }) }
+    Empty {} => Absent
+  }
+}
+
+test fn an_in_place_member_with_its_own_file_present_mints_clean() -> Bool {
+  match wire_slot_verdict(listing: ["AttemptDirectoryWire"]) {
+    Present { value: ListingClean } => true
+    _ => false
+  }
+}

@@ -1,5 +1,6 @@
 module gunbc.auth.branch_run_grant
 
+import gunbc.fleet.fleet_converge_run_name { mode_of_run_title }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
 import std.measure { Second, second, second_count }
@@ -30,7 +31,7 @@ import gunbc.auth.branch_dispatch_federation {
   BranchRunFacts, BranchRunReading, BranchRunAdmitted, BranchRunRefused, judge_branch_run,
   branch_run_impersonation_cell, branch_run_key_variable, parse_branch_run_key,
   branch_run_grant_condition_title_prefix, branch_run_expiry_expression_prefix, branch_run_expiry_expression_suffix,
-  branch_run_key, mode_of_run_title, run_scoped_mode_named, run_scoped_mode_eligible, run_scoped_federation_named, run_scoped_account_id,
+  branch_run_key, run_scoped_mode_named, run_scoped_mode_eligible, run_scoped_federation_named, run_scoped_account_id,
 }
 import gunbc.auth.gcp_iam_converge {
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, ServiceAccountPolicy, PolicyDelta, PolicyDeltaRefused,

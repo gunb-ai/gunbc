@@ -1,0 +1,93 @@
+module test.claim.supermicro_h11ssl_unit1_platform_standing_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_fan_wiring {
+  FanHeaderWiring, FanCatalogSelectionAdmitted, FanCatalogSelectionRefusedModelUnobserved, catalog_selection,
+  PhysicalInventoryConfirmed, PhysicalInventoryRefused, PhysicalLabelNotObservedDeclaredPart, physical_inventory_confirmation,
+}
+import gunbc.machine_intake.supermicro_h11ssl_unit1_platform_standing {
+  H11sslSlotBoot, H11sslSlotTrainingStanding,
+  SlotTrainedEveryRecordedBoot, SlotTrainsIntermittently, SlotDisabledEveryRecordedBoot, SlotTrainingUnrecorded,
+  supermicro_h11ssl_slot_training_standing, supermicro_h11ssl_unit1_dimmh1_standing, supermicro_h11ssl_unit1_dimmh1_boots,
+  h11_dimmh1_trained, h11_dimmh1_disabled, supermicro_h11ssl_unit1_fan_headers,
+  supermicro_h11ssl_unit1_fan_placements, IntakeFrontExhaustRear, IntakeRearExhaustFront,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn is_intermittent(s: H11sslSlotTrainingStanding, trained: Nat, disabled: Nat) -> Bool {
+  match s {
+    SlotTrainsIntermittently { trained: t, disabled: d } => t == trained && d == disabled
+    _ => false
+  }
+}
+
+fn is_every_boot(s: H11sslSlotTrainingStanding) -> Bool {
+  match s { SlotTrainedEveryRecordedBoot { boots: _ } => true  _ => false }
+}
+
+fn is_never(s: H11sslSlotTrainingStanding) -> Bool {
+  match s { SlotDisabledEveryRecordedBoot { boots: _ } => true  _ => false }
+}
+
+fn is_unrecorded(s: H11sslSlotTrainingStanding) -> Bool {
+  match s { SlotTrainingUnrecorded => true  _ => false }
+}
+
+// THE SLOT IS FLAKY BY DERIVATION: 7 of the 12 recorded boots trained it and 5 disabled it.
+test fn witness_dimmh1_is_intermittent_on_the_recorded_boots() -> Bool {
+  supermicro_h11ssl_unit1_dimmh1_boots.length() == 12
+    && is_intermittent(s: supermicro_h11ssl_unit1_dimmh1_standing(), trained: 7, disabled: 5)
+}
+
+// EVERY ARM IS REACHABLE: boots that all trained, boots that all disabled, and a slot with no boots.
+test fn witness_slot_standing_arms_discriminate() -> Bool {
+  let good = [h11_dimmh1_trained(boot_id: "a", at: "2026-10-25T01:48:36Z"), h11_dimmh1_trained(boot_id: "b", at: "2026-10-25T06:16:59Z")]
+  let bad = [h11_dimmh1_disabled(boot_id: "c", at: "2026-10-26T00:21:16Z", sel_record: "5d")]
+  is_every_boot(s: supermicro_h11ssl_slot_training_standing(boots: good, slot: "DIMMH1"))
+    && is_never(s: supermicro_h11ssl_slot_training_standing(boots: bad, slot: "DIMMH1"))
+    && is_unrecorded(s: supermicro_h11ssl_slot_training_standing(boots: supermicro_h11ssl_unit1_dimmh1_boots, slot: "DIMMA1"))
+}
+
+// THE CHASSIS FANS ARE A DECLARED PART: good enough to pick a catalog row (a curve, a spare), refused as
+// physical inventory because nobody has read the label. The CPU fan's model is unobserved and selects nothing.
+fn header_selects(h: FanHeaderWiring?, catalog: String) -> Bool {
+  match h {
+    Absent => false
+    Present { value: w } => match catalog_selection(standing: w.model) { FanCatalogSelectionAdmitted { catalog: c } => c.decl_name == catalog  _ => false }
+  }
+}
+
+fn header_is_declared_not_inventory(h: FanHeaderWiring?) -> Bool {
+  match h {
+    Absent => false
+    Present { value: w } => match physical_inventory_confirmation(standing: w.model) { PhysicalInventoryRefused { cause: PhysicalLabelNotObservedDeclaredPart } => true  _ => false }
+  }
+}
+
+fn header_selects_nothing(h: FanHeaderWiring?) -> Bool {
+  match h {
+    Absent => false
+    Present { value: w } => match catalog_selection(standing: w.model) { FanCatalogSelectionRefusedModelUnobserved => true  _ => false }
+  }
+}
+
+test fn witness_fan_headers_bind_the_declared_part_and_no_more() -> Bool {
+  let fan3 = first_where(supermicro_h11ssl_unit1_fan_headers, w => w.header == "FAN3")
+  let fanb = first_where(supermicro_h11ssl_unit1_fan_headers, w => w.header == "FANB")
+  supermicro_h11ssl_unit1_fan_headers.length() == 2
+    && header_selects(h: fanb, catalog: "arctic_p12_pro_reverse_catalog")
+    && header_is_declared_not_inventory(h: fanb)
+    && header_selects_nothing(h: fan3)
+}
+
+// EVERY DECLARED FAN PLACEMENT NAMES A HEADER THAT IS WIRED, and the chassis fans blow front to rear.
+test fn witness_fan_placements_join_wired_headers() -> Bool {
+  supermicro_h11ssl_unit1_fan_placements.length() == 1
+    && supermicro_h11ssl_unit1_fan_placements.all(p => supermicro_h11ssl_unit1_fan_headers.any(w => w.header == p.header))
+    && supermicro_h11ssl_unit1_fan_placements.all(p => match p.airflow { IntakeFrontExhaustRear => true  IntakeRearExhaustFront => false })
+}

@@ -3,8 +3,8 @@ module gunbc.workspace_allocation_budget
 import std.types { String }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation }
-import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceReleased, WorkspaceRecorded }
-import gunbc.workspace_allocation_release { workspace_release_read, WorkspaceReleasePrepared, WorkspaceReleaseRefused }
+import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceReleased, WorkspaceRecorded, workspace_allocation_store }
+import gunbc.workspace_allocation_release { workspace_release_read, WorkspaceReleasePrepared, WorkspaceReleaseRefused, workspace_release_store }
 import product.fabric.budget { MoneyAccount }
 
 type WorkspaceBudgetRead
@@ -15,7 +15,7 @@ type WorkspaceBudgetRead
 // settlements; cancelled requests without a reservation never consume monetary authority.
 // A missing release receipt is not permission to reset the configured initial appropriation.
 fn workspace_budget_for_request(store: FabricStorageBinding, request: WorkspaceRequest, initial: MoneyAccount) -> WorkspaceBudgetRead {
-  match workspace_read_owner(store: store, owner: request.owner) {
+  match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: request.owner) {
     WorkspaceStoreUnreadable { reason: detail } => WorkspaceBudgetUnreadable { reason: detail }
     WorkspaceStoreReadOk { snapshot: observed } => if count(filter(observed.allocations, a => a.phase != WorkspaceReleased && (a.request.idempotency_key != request.idempotency_key || a.phase != WorkspaceRecorded || (match a.plan { Present { value: _ } => true Absent => false })))) != 0 {
       WorkspaceBudgetUnreadable { reason: "an existing allocation or prepared acquisition still owns this principal's budget" }
@@ -26,7 +26,7 @@ fn workspace_budget_for_request(store: FabricStorageBinding, request: WorkspaceR
       })
       match previous {
         Absent => WorkspaceBudgetObserved { account: initial }
-        Present { value: held } => match workspace_release_read(store: store, reservation: held) {
+        Present { value: held } => match workspace_release_read(store: workspace_release_store(binding: store), reservation: held) {
           WorkspaceReleaseRefused { reason: detail } => WorkspaceBudgetUnreadable { reason: detail }
           WorkspaceReleasePrepared { plan: settled } => if settled.released_account.account != initial.account || settled.released_account.currency != initial.currency {
             WorkspaceBudgetUnreadable { reason: "prior monetary settlement belongs to a different policy account" }

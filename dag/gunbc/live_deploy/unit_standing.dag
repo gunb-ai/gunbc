@@ -161,6 +161,7 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ServiceTasksMax { count: _ } => none
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
     }
   })
 }
@@ -198,6 +199,7 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
       ServiceTasksMax { count: _ } => none
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
     }
   })
 }
@@ -235,6 +237,7 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       ServiceTasksMax { count: _ } => none
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
     }
   })
 }

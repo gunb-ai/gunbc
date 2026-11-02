@@ -28,7 +28,7 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet.fleet_asset_identity { dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
@@ -266,6 +266,60 @@ data srv4_cooler_asset: PhysicalAsset = PhysicalAsset {
 data installed_cooler_containments: List<PhysicalContainment> = [
   HostContainsComponent { host: operator_host_srv3, component: cooler_srv3 },
   HostContainsComponent { host: operator_host_srv4, component: cooler_srv4 },
+]
+
+// ---- GPU BOARDS (gunbc.plans.gpu_card_host_program row N6b, card residence, in its first form: a card
+// as an asset with its board catalog row and serial, contained in its host). The slot each card sits in is
+// row N6a's extension of PhysicalContainment and is not carried yet, so the slot facts read so far stay in
+// the annotation beside the row they belong to.
+
+// srv1's RTX PRO 6000 Blackwell Workstation Edition, read on srv1 2026-10-30 (nvidia-smi: name, serial
+// 1792726101367, 97887 MiB, power limit 600 W, VBIOS 98.02.81.00.07, PCI 0005:01:00.0). The operator's
+// purchase is PNY VCNRTXPRO6000B-PB, PNY's SKU of this NVIDIA board. THE SLOT RUNS IT AT PCIe 4.0: the card
+// advertises 32 GT/s x16 (PCIe 5.0), its upstream port 0005:00:01.0 is an Ampere Altra root port whose
+// LnkCap is 16 GT/s x16 (lspci -vv), so the link can train no higher than PCIe 4.0 x16 on this host.
+data gpu_board_01_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_01,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia",
+    decl_name: "nvidia_rtx_pro_6000_workstation_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: Present { value: "1792726101367" },
+  procurement: none,
+}
+
+// The operator's two Radeon AI PRO R9700 cards (2026-10-30): Gigabyte's AI TOP 32G board
+// (extdeps.gpu.gigabyte), carrying AMD's GPU. Owned, not installed: their host is the plan's operator
+// decision D3, still open ("will probably go in a new host", operator 2026-10-30, so no host row exists for
+// them to be contained in). Their serials and board revision are unread.
+data gpu_board_02_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_02,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.gigabyte",
+    decl_name: "gigabyte_r9700_ai_top_32g_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: none,
+  procurement: none,
+}
+
+data gpu_board_03_asset: PhysicalAsset = PhysicalAsset {
+  identity: gpu_board_03,
+  catalog: DeclarationRef {
+    module_path: "extdeps.gpu.gigabyte",
+    decl_name: "gigabyte_r9700_ai_top_32g_board_catalog",
+    field: WholeDeclaration,
+  },
+  physical_serial: none,
+  procurement: none,
+}
+
+data gpu_board_assets: List<PhysicalAsset> = [gpu_board_01_asset, gpu_board_02_asset, gpu_board_03_asset]
+
+// Only installed cards are contained; an owned card with no row here is in inventory, not in a host.
+data installed_gpu_board_containments: List<PhysicalContainment> = [
+  HostContainsComponent { host: operator_host_srv1, component: gpu_board_01 },
 ]
 
 // srv1/srv2 carry no cooler asset row: their installed cooling is UNOBSERVED — not absent, and

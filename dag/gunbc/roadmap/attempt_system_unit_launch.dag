@@ -30,7 +30,8 @@ module gunbc.roadmap.attempt_system_unit_launch
 // world-writable, sha-addressed, with the service ExecStart pinned to that path. The requester can
 // edit instance.serve_binary and the checkout; those paths are not what root runs.
 
-import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_pane_working_directory, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds, dispatch_worker_git_trust_environment }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_pane_working_directory, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds, dispatch_worker_git_trust_environment }
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, CommitSha, path_segment_is_safe }
 import std.optional { Present, Absent }
 import extdeps.languages.json.emit { JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_array, json_string, serialize_json }
@@ -224,7 +225,7 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
       SystemdUnitNameAdmitted { name } => {
     let node = request.node_id as RoadmapNodeId
     let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
-    let log = dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
+    let log = attempt_state_text(instance: instance, node_id: node, attempt_key: request.attempt_key, member: AttemptWorkerLog)
     match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: request.node_id, attempt_key: request.attempt_key, role: AttemptWorkerRole, record_owner: instance.directory_owner) {
       AttemptExitHookRefused { reason } => AttemptSystemUnitStartUnderivable { reason: reason as String }
       AttemptExitHookRendered { exec_line } =>

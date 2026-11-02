@@ -1,0 +1,128 @@
+module gunbc.runner.runner_user_session_receipt_observed
+
+import std.types { String, NonEmptyStr, Bool, Int, List, Secret, Timestamp }
+import std.optional { Present, Absent }
+import std.resources { Network }
+import extdeps.github.workflow_runs
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import extdeps.github.github { max_per_page }
+import extdeps.transports.rest { RestAnswered, RestRefused }
+import extdeps.shell.credentials { env_credential }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.exec.command { LocalExec }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import product.host_identity { HostIdentity }
+import gunbc.repository { gunbc_repository }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.generated_artifact { artifact_location, FleetConvergeYamlArtifact }
+import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
+import gunbc.superseded_run_starvation_census { census_read_refusal_cause }
+import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
+import gunbc.runner.runner_user_session_receipt {
+  RunnerUserSessionReceiptInput, ReceiptSupplied, ReceiptUnreadable, ReceiptAbsent,
+  RunnerUserSessionRunScan, RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached,
+  runner_user_session_run_scan_step, runner_user_session_run_search_max_pages, runner_user_session_converge_receipt_read_command,
+  runner_user_session_converge_receipt_file_name, runner_user_session_receipt_input_of_text,
+}
+
+// THE LIVE READ OF A ROSTERED HOST'S CONVERGE RECEIPT, ONE FUNCTION FOR EVERY LEG. Each leg that resolves
+// registration labels obtains the receipt here, at its own effect edge, and passes the value down as the
+// `receipt` parameter; the label functions stay pure and nothing here is serialized for them to re-read.
+// Freshness is judged at the leg's own read time: the instant this returns is the `read_at` the grant ages
+// the receipt's probed_at against (gunbc.runner.runner_user_session_receipt
+// runner_user_session_converge_receipt_staleness), so a read made now of an old run still refuses.
+//
+// THE ROUTE: list the fleet-converge workflow's runs, SELECT the newest successful run of mode
+// runner_user_session_converge for this host (the selection policy is a fold beside the receipt, the query
+// shape is extdeps.github.workflow_runs ListWorkflowRuns), download that run's uploaded artifact with the
+// read spec the receipt module owns (the producer run's artifact, never a host-local path), read the file,
+// parse it with the receipt's own parser.
+//
+// EVERY ARM THAT IS NOT A READ DOCUMENT IS TYPED, NONE GRANTS. An unrostered host and a run listing with no
+// qualifying run are ReceiptAbsent (nothing to read: the label stays off for the typed reason the grant
+// states); every failure along the route -- no token, a refused listing, a failed download, an unreadable
+// file, an unreadable clock -- is ReceiptUnreadable with the step and the cause located in its words.
+// The listing is PAGED until an underfull page (no ordering across pages is assumed, so no age cutoff ends the
+// scan) and the newest qualifying run is chosen across all pages; hitting the page cap is ReceiptUnreadable --
+// a full page of other runs is never read as no qualifying run.
+
+data runner_user_session_receipt_token_env: String = "GITHUB_TOKEN"
+
+// A DOWNLOAD DIRECTORY PER READ (run id plus the read instant): reads at different instants do not share a
+// directory, so a file an earlier read left is not met by a later one (gh run download refuses to write into
+// files that already exist -- review 88966). It is NOT collision-free: two reads of one run in the same second
+// share a directory, and the second download then fails as a located ReceiptUnreadable -- never a grant.
+data runner_user_session_receipt_download_root: String = "target/runner-user-session-receipt-read"
+
+fn runner_user_session_receipt_download_dir(run: GitHubWorkflowRunId, read_at: Timestamp) -> String {
+  join([runner_user_session_receipt_download_root, github_workflow_run_id_wire_text(id: run), read_at], "/")
+}
+
+fn runner_user_session_receipt_unreadable(step: String, cause: String) -> RunnerUserSessionReceiptInput {
+  ReceiptUnreadable { why: join(["converge receipt read, ", step, ": ", cause], "") }
+}
+
+fn runner_user_session_receipt_observed(host: HostIdentity) -> RunnerUserSessionReceiptInput {
+  runner_user_session_receipt_observed_with(host: host, token: env_credential(env_var: runner_user_session_receipt_token_env as NonEmptyStr).token)
+}
+
+// THE ROUTE BELOW THE CREDENTIAL READ: the token is a parameter so a witness executes the real route up to the
+// first network effect (roster gate, missing-token refusal) with no ambient credential and no network.
+fn runner_user_session_receipt_observed_with(host: HostIdentity, token: Secret?) -> RunnerUserSessionReceiptInput {
+  if !any(runner_job_user_session_hosts, h => (h as String) == (host as String)) {
+    ReceiptAbsent
+  } else {
+    match token {
+      Absent => runner_user_session_receipt_unreadable(step: "token", cause: join([runner_user_session_receipt_token_env, " is not set in this process"], ""))
+      Present { value: token } => match clock_now_probed_at() {
+        Absent => runner_user_session_receipt_unreadable(step: "clock", cause: "the observer clock gave no instant, so the run search horizon cannot be judged")
+        Present { value: now } => runner_user_session_receipt_of_run_pages(host: host, token: token, page: 1, scanned: [], read_at: now as String)
+      }
+    }
+  }
+}
+
+// THE BOUNDED PAGE LOOP: one ListWorkflowRuns page per step, accumulating every page scanned; the pure scan fold decides
+// select / none / continue / cap (gunbc.runner.runner_user_session_receipt runner_user_session_run_scan_step).
+fn runner_user_session_receipt_of_run_pages(host: HostIdentity, token: Secret, page: Int, scanned: List<WorkflowRun>, read_at: Timestamp) -> RunnerUserSessionReceiptInput {
+  match github.WorkflowRuns.ListWorkflowRuns(
+    auth_token: token,
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    workflow_name: artifact_location(a: FleetConvergeYamlArtifact).name,
+    event: workflow_dispatch_event_name,
+    created_range: "",
+    per_page: max_per_page,
+    page: page,
+  ) {
+    RestRefused { refusal } => runner_user_session_receipt_unreadable(step: "run listing", cause: census_read_refusal_cause(operation: join(["github.WorkflowRuns.ListWorkflowRuns page ", to_string(page)], ""), refusal: refusal) as String)
+    RestAnswered { answer } => match runner_user_session_run_scan_step(scanned: scanned, page_runs: answer.result.workflow_runs, host: host as String, page: page, max_pages: runner_user_session_run_search_max_pages, page_size: max_per_page) {
+      RunScanSelected { run: run, created_at: _ } => runner_user_session_receipt_of_run(run: run, read_at: read_at)
+      RunScanNone { cause: _ } => ReceiptAbsent
+      RunScanContinues { scanned: all } => runner_user_session_receipt_of_run_pages(host: host, token: token, page: page + 1, scanned: all, read_at: read_at)
+      RunScanCapReached { cause: c } => runner_user_session_receipt_unreadable(step: "run listing", cause: c)
+    }
+  }
+}
+
+fn runner_user_session_receipt_of_run(run: GitHubWorkflowRunId, read_at: Timestamp) -> RunnerUserSessionReceiptInput {
+  let dir = runner_user_session_receipt_download_dir(run: run, read_at: read_at)
+  match run_shell_command_capture(command: runner_user_session_converge_receipt_read_command(run: run, into: dir), transport: LocalExec) {
+    ProcessRefused { exit_code, stderr } => runner_user_session_receipt_unreadable(step: "artifact download", cause: join(["gh run download exited ", to_string(exit_code), ": ", stderr], ""))
+    ProcessOutputPresent { text: _ } => runner_user_session_receipt_of_downloaded(run: run, dir: dir)
+    ProcessOutputAbsent => runner_user_session_receipt_of_downloaded(run: run, dir: dir)
+  }
+}
+
+fn runner_user_session_receipt_of_downloaded(run: GitHubWorkflowRunId, dir: String) -> RunnerUserSessionReceiptInput {
+  let path = join([dir, runner_user_session_converge_receipt_file_name()], "/")
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } => runner_user_session_receipt_unreadable(step: "receipt file", cause: join([path, ": ", error], ""))
+    FilesystemReadSucceeded { content } => match clock_now_probed_at() {
+      Absent => runner_user_session_receipt_unreadable(step: "clock", cause: "the observer clock gave no instant, so the receipt cannot be aged")
+      Present { value: now } => runner_user_session_receipt_input_of_text(text: content, read_at: now as String)
+    }
+  }
+}

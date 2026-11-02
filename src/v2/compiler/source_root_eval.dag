@@ -83,6 +83,7 @@ import v2.compiler.occurrence_resolution_census {
 }
 import v2.compiler.name_resolve {
   resolution_context_namespace,
+  resolution_context_with_blocked_members,
   closure_declarations_demand,
   Admission,
   ResolutionSubject,
@@ -215,6 +216,7 @@ import v2.compiler.module_acquisition {
   acquisition_first_duplicate,
   acquisition_ingest,
   acquisition_module_path,
+  acquisition_compilation_unit,
   acquisition_refusal_text,
   census_acquisition_ingest,
   enumerate_bound_modules,
@@ -1061,18 +1063,38 @@ fn native_test_context_state_empty() -> NativeTestContextFoldState {
   }
 }
 
+// The members this ingest READ AND THEN REFUSED, as the typed names a requester can be pointed at.
+// `native_test_context_absorb` already records one row per read whose front end refused, with the module
+// that read declared (parsed once, from the header the lane's own scan reads); a row with no declared
+// module names nothing and is skipped. This is the same authority that refusal row is, re-read -- not a
+// second pass over the ingest -- so the blocked member's own row keeps the cause and this yields only the
+// identity `validated_module_root_for_name` needs to refuse an import with the right reason.
+fn native_test_context_blocked_members(rows: FreeMonoid<NativeTestFileRefusal>) -> FreeMonoid<QualifiedName> {
+  fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.module {
+        Present { value: qn } => list_snoc_item(xs: acc, item: qn)
+        Absent => acc
+      }
+    }
+  )
+}
+
 fn native_test_context_finish(
   state: NativeTestContextFoldState,
   front: NativeTestFrontEnd,
   ingest: SourceRootIngest
 ) -> NativeTestContext {
   NativeTestContext {
-    resolution: resolution_context(
+    resolution: resolution_context_with_blocked_members(
       lm: front.lm,
       roots: state.roots,
       index: state.index,
       active_roots: source_root_set_from_ingest(ingest: ingest),
-      policy: v2.std.resolution_policy.default_name_resolution_policy()
+      policy: v2.std.resolution_policy.default_name_resolution_policy(),
+      blocked_members: native_test_context_blocked_members(rows: state.file_refusals)
     ),
     file_refusals: state.file_refusals,
     accepted_file_advisories: state.accepted_file_advisories,
@@ -1472,7 +1494,7 @@ type NativeLaneSourceFacts {
 fn native_lane_member_facts(member: AcquiredModule) -> NativeLaneSourceFacts {
   NativeLaneSourceFacts {
     module: member.name,
-    path: symbol_intern_lexeme(lexeme: acquisition_module_path(module: member)),
+    path: acquisition_compilation_unit(file: member.file),
     discovery: discover_floor_rows_for_source(
       repo_path: acquisition_module_path(module: member),
       marked: member.test_markers,
@@ -2740,23 +2762,23 @@ fn native_module_resolve_verdict(
           }
         ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: bindings } =>
           match step.context.resolution {
-            Accepted { value: shared, diagnostics: d } =>
-              let closure = closure_declarations_demand(shared: shared)
+            Accepted { value: inner_shared, diagnostics: inner_d } =>
+              let inner_closure = closure_declarations_demand(shared: inner_shared)
               NativeModuleResolveStep {
                 verdict: NativeModuleResolveAccepted {
                   resolved: resolved_tree_of(
                     root: resolved,
-                    symbol_index: shared.symbol_index,
-                    closure_declarations: closure.declarations,
-                    module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index,
+                    symbol_index: inner_shared.symbol_index,
+                    closure_declarations: inner_closure.declarations,
+                    module_outcomes: inner_closure.module_outcomes, outcome_index: inner_closure.outcome_index,
                     member_kinds: no_member_declaration_kinds(),
-                    type_declaration_modifiers: shared.type_declaration_modifiers,
+                    type_declaration_modifiers: inner_shared.type_declaration_modifiers,
                     bindings: bindings
                   )
                 },
                 context: native_test_context_with_resolution(
                   context: step.context,
-                  resolution: Accepted { value: closure.context, diagnostics: d }
+                  resolution: Accepted { value: inner_closure.context, diagnostics: inner_d }
                 ),
                 import_attribution: NativeImportTargetNotAsked,
                 partial: []
@@ -4389,6 +4411,7 @@ fn native_census_correction_declarer(c: Correction) -> Optional<QualifiedName> {
         AmbiguousIntent => optional_absent()
         ExternalContractUnknown => optional_absent()
         CorrectionNotModeled => optional_absent()
+        RequestedModuleMissing { requested: _ } => optional_absent()
       }
   }
 }
@@ -4771,7 +4794,7 @@ fn native_census_subject_closure(
                     Accepted { value: reached, diagnostics: _ } =>
                       NativeCensusSubjectClosureRead {
                         subject: subject.module,
-                        members: fold_list(xs: reached, empty: empty_map(), cons: fn(m, r) { map_insert(m, r, true) })
+                        members: fold_list(xs: reached, empty: empty_map(), cons: fn(reached_set, name) { map_insert(reached_set, name, true) })
                       }
                   }
               }

@@ -23,11 +23,9 @@ import extdeps.github.expressions {
 }
 import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.ci.ci_runner_target { selected_ci_runner_target, ci_runner_target_ram_speed_budget }
-import gunbc.host.host_memory_observation {
-  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
-  gunbc_ci_srv2_memtotal_measured,
-}
-import gunbc.instrument_targets { effect_pair_census_label, dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_dependency_wrong_capture_label }
+import gunbc.host.host_memory_observation { gunbc_ci_srv2_memtotal_measured }
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured }
+import gunbc.instrument_targets { effect_pair_census_label, dependency_demand_census_label, known_red_derivation_label, regen_round_cost_label, compute_run_unit_cold_label, compute_dependency_wrong_capture_label }
 import gunbc.instruments.compute_run_unit_cold {
   compute_run_unit_cold_unit_grant_bytes, compute_run_unit_cold_job_memory_demand,
 }
@@ -125,7 +123,6 @@ test fn the_whole_tree_censuses_declare_a_memory_demand_the_selected_target_admi
   let declared = map(instrument_dispatch_memory_demands(), d => render_label(l: d.label))
   any(declared, l => l == render_label(l: dependency_demand_census_label()))
     && any(declared, l => l == render_label(l: effect_pair_census_label()))
-    && any(declared, l => l == render_label(l: v2_native_census_label()))
     && instrument_dispatch_memory_demands_are_dispatchable()
     && instrument_dispatch_memory_demands_fit_selected_target()
 }
@@ -133,7 +130,7 @@ test fn the_whole_tree_censuses_declare_a_memory_demand_the_selected_target_admi
 // The discriminating red: a demand above the target's budget does not fit, so the generator refuses
 // rather than emitting a workflow whose runner cannot hold the subject; a demand at the budget fits.
 test fn a_memory_demand_above_the_target_budget_does_not_fit_holds() -> Bool {
-  let row = InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: byte_size(21474836481) }
+  let row = InstrumentDispatchMemoryDemand { label: regen_round_cost_label(), demand: byte_size(21474836481) }
   !instrument_dispatch_memory_demands_fit(demands: [row], budget: byte_size(21474836480))
     && instrument_dispatch_memory_demands_fit(demands: [row], budget: byte_size(21474836481))
 }
@@ -160,8 +157,8 @@ test fn the_memory_guard_is_label_bound_and_precedes_the_prelude_holds() -> Bool
   let t = generated_text()
   let steps = instrument_dispatch_steps(seed: "", guard: "", script: "")
   let names = map(steps, s => step_name(step: s))
-  let guard = concat("Require the declared memory for ", render_label(l: v2_native_census_label()))
-  let bound = concat(concat("inputs.label == '", render_label(l: v2_native_census_label())), "'")
+  let guard = concat("Require the declared memory for ", render_label(l: known_red_derivation_label()))
+  let bound = concat(concat("inputs.label == '", render_label(l: known_red_derivation_label())), "'")
   let before_checkout = fold(names, init: "searching", f: fn(acc, n) {
     if acc != "searching" { acc } else { if n == guard { "guard-first" } else { if n == "Checkout" { "checkout-first" } else { acc } } }
   })
@@ -289,7 +286,7 @@ fn srv2_usable_ram_bytes() -> Int {
 }
 
 test fn a_demand_inside_the_measured_host_and_outside_the_slot_is_refused_by_the_slot_holds() -> Bool {
-  let row = InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: byte_size(32212254720) }
+  let row = InstrumentDispatchMemoryDemand { label: regen_round_cost_label(), demand: byte_size(32212254720) }
   (32212254720 < srv2_usable_ram_bytes())
     && !instrument_dispatch_memory_demands_fit(demands: [row], budget: gunbc_ci_runner_slot_ram_speed_ceiling())
 }

@@ -11,6 +11,7 @@ import gunbc.realization_census_rows_gen {
   CauseOutsideVocabulary,
   VocabPhase,
   CauseIdentityDuplicated,
+  CauseRevisionEmpty,
   admit_realization_census_text,
   dag_string_literal,
 }
@@ -39,8 +40,10 @@ data c1: String = "storage_root\tstorage\tForked/Literal\tp\t1\t1\t1\t0\t0\tfind
 fn tsv(lines: List<String>) -> String { concat(join(lines, "\n"), "\n") }
 
 fn admit(modules: List<String>, findings: List<String>, classes: List<String>) -> RealizationCensusAdmission {
-  admit_realization_census_text(modules_tsv: tsv(lines: modules), findings_tsv: tsv(lines: findings), classes_tsv: tsv(lines: classes))
+  admit_realization_census_text(modules_tsv: tsv(lines: modules), findings_tsv: tsv(lines: findings), classes_tsv: tsv(lines: classes), revision: census_revision)
 }
+
+data census_revision: String = "1dd3eda5696a10e8cb49700f37d61b40c304d326"
 
 fn refusals(a: RealizationCensusAdmission) -> List<CensusCellRefusal> {
   match a {
@@ -130,12 +133,12 @@ test fn evidence_citations_split_into_references_and_text() -> Bool {
     Present { value: m } =>
       count(m.evidence_symbols) == 4
         && count(filter(m.evidence_symbols, c => match c {
-             EvidenceDeclaration { ref: r } => (r.module_path as String) == "gunbc.a" && ((r.decl_name as String) == "data_root" || (r.decl_name as String) == "root_dir")
+             EvidenceDeclaration { ref: r, revision: _ } => (r.module_path as String) == "gunbc.a" && ((r.decl_name as String) == "data_root" || (r.decl_name as String) == "root_dir")
              EvidenceUncited { text: _ } => false
            })) == 2
         && count(filter(m.evidence_symbols, c => match c {
              EvidenceUncited { text: t } => (t as String) == "Filesystem.Write" || (t as String) == "anchor (Open Group)"
-             EvidenceDeclaration { ref: _ } => false
+             EvidenceDeclaration { ref: _, revision: _ } => false
            })) == 2
         && match m.phase { PhaseP2 => true  _ => false }
     Absent => false
@@ -147,4 +150,27 @@ test fn evidence_citations_split_into_references_and_text() -> Bool {
 test fn a_module_list_pointer_naming_another_class_refuses() -> Bool {
   let bad = replace(c1, "class_id = storage_root", "class_id = something_else")
   refused_once_at(a: admit(modules: [mh, m1, m2], findings: [fh, f1, f2], classes: [ch, bad]), table: "classes.tsv", line: 2, column: "module_list")
+}
+
+// A ROW CITING A MODULE ABSENT AT HEAD IS ADMITTED ONLY WITH ITS REVISION. gunbc.no_such_module_at_head
+// is declared nowhere, which is what a module later deleted from main looks like from HEAD. The
+// admitted citation carries the revision it was read at, so it reads as "cited at <revision>"; the
+// same input with no revision has no construction and refuses at the revision, not at a cell.
+test fn a_citation_of_a_module_absent_at_head_is_admitted_carrying_its_revision() -> Bool {
+  let row = replace(replace(m1, "gunbc.a\t", "gunbc.no_such_module_at_head\t"), "\tdata_root\t", "\tdeleted_later\t")
+  let findings = [fh, replace(f1, "\tgunbc.a\t", "\tgunbc.no_such_module_at_head\t"), f2]
+  match first(first_module(a: admit(modules: [mh, row, m2], findings: findings, classes: [ch, c1]))) {
+    Present { value: m } =>
+      count(m.evidence_symbols) == 1
+        && count(filter(m.evidence_symbols, c => match c {
+             EvidenceDeclaration { ref: r, revision: v } => (r.module_path as String) == "gunbc.no_such_module_at_head" && (v as String) == census_revision
+             EvidenceUncited { text: _ } => false
+           })) == 1
+    Absent => false
+  }
+}
+
+test fn a_census_read_at_no_revision_refuses_instead_of_citing_without_one() -> Bool {
+  let rs = refusals(a: admit_realization_census_text(modules_tsv: tsv(lines: [mh, m1, m2]), findings_tsv: tsv(lines: [fh, f1, f2]), classes_tsv: tsv(lines: [ch, c1]), revision: " "))
+  count(rs) == 1 && count(filter(rs, r => match r.cause { CauseRevisionEmpty => true  _ => false })) == 1
 }

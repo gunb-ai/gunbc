@@ -251,5 +251,28 @@ fn census_ran(census: CompileDiagnosticCensus) -> CensusVerdict {
   census_verdict(census: census, holds: fn(n) { true })
 }
 
+// A DELETED OUTCOME-LAUNDERING FOLD STAYS DELETED. The route is attributed to the callable that is gone, not
+// merely counted: a bare "more blocking rows than the baseline" delta is satisfied by closure noise, so the claim
+// asserts the blocking MissingExport row keyed on the deleted name, exactly one, and the delta against a baseline
+// carrying the SAME closure on top. Restore the fold and the keyed row goes to zero. The one implementation for
+// every seal witness (test.claim.transition_lease_store_seal_witness, test.claim.outcome_laundering_seal_witness).
+fn deleted_callable_route_is_gone(source: String, baseline: String, deleted_callable: String) -> ProcessExit {
+  census_verdict_all([
+    census_verdict(
+      census: blocking_subject_census(source: source, wanted_class: "MissingExport", wanted_subject: deleted_callable),
+      holds: fn(n) { n == 1 },
+    ),
+    census_delta_verdict(red: total_blocking_census(source: source), control: total_blocking_census(source: baseline), holds: fn(n) { n >= 1 }),
+  ])
+}
 
-
+// The lawful control: the callable that stays resolves, and the closure adds no blocking row over the baseline.
+fn retained_callable_route_resolves(source: String, baseline: String, callable: String) -> ProcessExit {
+  census_verdict_all([
+    census_verdict(
+      census: blocking_subject_census(source: source, wanted_class: "MissingExport", wanted_subject: callable),
+      holds: fn(n) { n == 0 },
+    ),
+    census_delta_verdict(red: total_blocking_census(source: source), control: total_blocking_census(source: baseline), holds: fn(n) { n <= 0 }),
+  ])
+}

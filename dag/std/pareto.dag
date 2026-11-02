@@ -26,6 +26,16 @@ type DominanceVerdict
 
 type AxisGoal = HigherIsBetter | LowerIsBetter
 
+// The AxisGoal total order lives beside the type (DESIGN 3: a fact's home is its layer). It is the single
+// source for AxisGoal ordering; any equality over AxisGoal is derived from it (compare == Equal), never
+// hand-written a second time.
+fn axis_goal_compare(a: AxisGoal, b: AxisGoal) -> Ordering {
+  match a {
+    HigherIsBetter => match b { HigherIsBetter => Equal LowerIsBetter => Less }
+    LowerIsBetter => match b { HigherIsBetter => Greater LowerIsBetter => Equal }
+  }
+}
+
 type AxisComparison = Better | Same | Worse | UndecidedOnEvidence
 
 fn compare_int(a: Int, b: Int) -> Ordering {

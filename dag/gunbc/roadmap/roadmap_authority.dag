@@ -4455,23 +4455,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "customer-workspace-service", contribution: "Prospect census and buyer review are the customer-facing edge of the service; their identity and custody belong with it."),
     ),
     roadmap_node(
-      identity: "rn_6WDPNLJ4RQKZXC2VTH7BM9SYFG",
-      id: "ntfy-publisher-token-onto-gcp-custody",
-      owner: "buyer-review",
-      carriers: carrier(path: "docs/plans/review-sheet-and-census-lane-handoff.md"),
-      line: ticket(t: fields(
-        headline: "Dissolve the ntfy publisher-token HumanIntervention into the Mt Collins custody pattern",
-        boundary: "Consolidate gunbc.auth.approval_ntfy_deployment approval_ntfy_publisher_token_intervention into the custody authority gunbc#11679 establishes, as ONE fleet-converge mode whose credential is a dispatch choice over a CLOSED ROSTER of custody rows. The controller key becomes that roster's first row rather than a constant. Each row carries a SecretRef, a path, an owner principal, a group principal, a mode ARM, and the directory's own owner, group and mode.",
-        displaced_cost: "The read side is already modeled and only delivery is manual, so every credential rotation spends an operator. One converge mode per credential grows a hand-enumerated roster, and a free-text credential input is a stringly selector; the closed roster is what keeps both out.",
-        first_slice: "The consolidation onto the custody authority gunbc#11679 established, with the controller key as the first roster row. gunbc#11679 is merged, so nothing external gates this.",
-        red_control: "A 0640 token for a service group needs a directory that group can traverse, so a row whose directory mode refuses every group bit must fail; the exact-mode and forbidden-bits legs are derived from the mode arm, never taken as a caller octal.",
-        out_of_scope: "This does NOT retire gunbc.rung_drop approval_store_single_writer_by_agreement. A find-metadata readback establishes which principals HOLD PERMISSION BITS and not that a non-writer cannot open the store; that trigger needs an execution-as-another-user leg, and its row already names a permission-bits readback among the things that do not retire it.",
-        handback: "The custody authority with the controller key and the ntfy token as rows, and the HumanIntervention deleted rather than left beside it."
-      )),
-      dispatch: dispatchable(),
-      parent: in_project(project: "managed-identity-access-dependencies", contribution: "A publisher token held outside managed custody is an ambient credential this milestone retires."),
-    ),
-    roadmap_node(
       identity: "rn_6ZFZPYVBX39088FFTWTNF3SCXJ",
       id: "self-host-service-family-on-literal-terminal",
       owner: "self-host",

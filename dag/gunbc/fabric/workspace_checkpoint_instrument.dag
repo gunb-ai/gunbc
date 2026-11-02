@@ -48,7 +48,7 @@ import extdeps.tools.kopia {
   kopia_repository_create_filesystem_command, kopia_snapshot_create_command, KopiaSnapshotSummary, kopia_snapshot_summary_of,
 }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable, select_access_token_source }
 import gunbc.cloudflare.r2_origin { FabricWorkspace }
@@ -855,7 +855,7 @@ fn kopia_place(scratch: NonEmptyStr) -> KopiaPlacement {
                 KopiaUnplaced { cause: join(["the downloaded ", asset.name as String, " has SHA-256 ", fabric_blob_reading_digest(reading: r).hex, ", not the pinned ", asset.digest.hex as String], "") }
               } else {
                 let made = shell.Mkdir.Parents(path: dir as FilePath)
-                match workspace_run_refusal(run: workspace_run_local(command: tar_extract_command(archive: archive, into_directory: dir, strip_components: kopia_release_strip_components))) {
+                match workspace_run_refusal(run: workspace_run_local(command: tar_extract_command(archive: archive, into_directory: dir, strip_components: kopia_release_strip_components, existing_directories: TarOverwriteDir))) {
                   Present { value: why } => KopiaUnplaced { cause: concat("the kopia release could not be extracted: ", why) }
                   Absent => KopiaPlaced { binary: join([dir, "/kopia"], "") as NonEmptyStr }
                 }
@@ -975,7 +975,7 @@ fn workspace_measure_on_btrfs(parent: NonEmptyStr, run: NonEmptyStr, token_sourc
                   if !content_hash_eq_cryptographic(left: fabric_blob_reading_digest(reading: r), right: source.key) {
                     workspace_measure_fail(head: head, verdict: "refused-source-digest-mismatch", why: join(["the fetched source hashes to ", fabric_blob_reading_digest(reading: r).hex, ", not the dispatched address"], ""), custody: workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging)))
                   } else {
-                    let extracted = workspace_run_refusal(run: workspace_run_local(command: tar_extract_command(archive: fabric_blob_reading_path(reading: r) as String, into_directory: workspace, strip_components: 0)))
+                    let extracted = workspace_run_refusal(run: workspace_run_local(command: tar_extract_command(archive: fabric_blob_reading_path(reading: r) as String, into_directory: workspace, strip_components: 0, existing_directories: TarOverwriteDir)))
                     let source_custody = workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging))
                     match extracted {
                       Present { value: why } => workspace_measure_fail(head: head, verdict: "refused-source-extract", why: concat("the source archive could not be extracted: ", why), custody: source_custody)

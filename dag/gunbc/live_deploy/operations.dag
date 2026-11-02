@@ -36,11 +36,7 @@ import gunbc.shell_command_text {
 }
 import v2.extdeps.languages.bash_build {
   bash_build_with_redir_to_file,
-  bash_build_word_concat_from_nodes,
-  bash_build_word_lit,
-  bash_build_word_var,
 }
-import v2.std.node { Node }
 import extdeps.access.posix { FileMode }
 
 // Package-ensure and systemd unit-upsert argv spellings are derived from extdeps operation transport rows (dpkg.Package.Status, apt.PackageManager.Install, systemd.Systemctl daemon-reload/enable/restart/disable) — not hand-concatenated shell in emit.dag. Per shell-emission-model CUT: no minted EnsurePackage/UnitUpsert verb; emit composes inline If-Not-ExitZero(dpkg -s) then apt-install intent from these authorities. Privileged ops prefix sudo -n at the orchestration leaf (deploy access grant), never a root shell.
@@ -119,27 +115,6 @@ fn systemctl_unmask_command(unit: NonEmptyStr, privileged: Bool) -> String {
   } else {
     shell_command_text_of_argv(argv: systemctl_unmask_argv(unit: unit))
   }
-}
-
-// THE APPLY-FOLD STAGING DIRECTORY. Apply and retract both create a temp directory and hold it
-// in this shell variable; sudoers, helper grants, unit files and tree-sync env are named
-// relative to it. The cap member does NOT share this directory: two members writing one mktemp
-// dir is the class that left the helpers readback competing with fleet-width drop-ins.
-data deploy_stage_dir_var: String = "_gunbc_stage"
-
-// THE CAP MEMBER'S PRIVATE STAGING DIRECTORY. deploy_cap_upsert_staged_stmts authors
-// 20-fleet-width.conf / 40-fleet-high.conf here, never under deploy_stage_dir_var.
-data deploy_cap_stage_dir_var: String = "_gunbc_cap_stage"
-
-fn deploy_path_word_in_dir(dir_var: String, stage_name: String) -> Node {
-  bash_build_word_concat_from_nodes(parts: [
-    bash_build_word_var(name: dir_var),
-    bash_build_word_lit(text: concat("/", stage_name)),
-  ])
-}
-
-fn deploy_cap_stage_path_word(stage_name: String) -> Node {
-  deploy_path_word_in_dir(dir_var: deploy_cap_stage_dir_var, stage_name: stage_name)
 }
 
 fn install_directory_owned_command(

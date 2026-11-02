@@ -2,6 +2,7 @@ module gunbc.runner.runner_group_restriction_observation
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
+import extdeps.git { git_ref_component_admitted }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, MicrovmShakedownYamlArtifact }
 import gunbc.fleet.org_actions_inspection {
@@ -62,6 +63,7 @@ type RunnerGroupRestrictionRefusal
   | RunnerGroupDuplicated { count: Int }
   | RunnerGroupNotRestrictedToWorkflows { group: JitRunnerGroupId }
   | RunnerGroupSelectsOtherWorkflows { group: JitRunnerGroupId, selected: List<NonEmptyStr>, expected: NonEmptyStr }
+  | RunnerGroupSelectsOutsidePrefix { group: JitRunnerGroupId, selected: List<NonEmptyStr>, prefix: NonEmptyStr }
 
 fn runner_group_restriction_refusal_text(cause: RunnerGroupRestrictionRefusal) -> String {
   match cause {
@@ -73,6 +75,8 @@ fn runner_group_restriction_refusal_text(cause: RunnerGroupRestrictionRefusal) -
       join(["RunnerGroupNotRestrictedToWorkflows: group ", to_string(group.value), " has restricted_to_workflows=false, so every workflow may use it"], "")
     RunnerGroupSelectsOtherWorkflows { group, selected, expected } =>
       join(["RunnerGroupSelectsOtherWorkflows: group ", to_string(group.value), " selected_workflows=[", join(map(selected, s => s as String), ","), "] expected=[", expected as String, "]"], "")
+    RunnerGroupSelectsOutsidePrefix { group, selected, prefix } =>
+      join(["RunnerGroupSelectsOutsidePrefix: group ", to_string(group.value), " selected_workflows=[", join(map(selected, s => s as String), ","), "] expected exactly one of ", prefix as String, " or ", prefix as String, "<one ref component>"], "")
   }
 }
 
@@ -106,21 +110,7 @@ fn restriction_of(name: NonEmptyStr, selected_workflow: NonEmptyStr, row: Runner
 }
 
 fn observe_runner_group_restriction(name: NonEmptyStr, selected_workflow: NonEmptyStr, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {
-  match listed {
-    RunnerGroupListDecodeRefused { reason } =>
-      RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupListUnreadable { reason: reason } }
-    RunnerGroupListDecoded { groups } => {
-      let rows = filter(groups, g => (g.name as String) == (name as String))
-      if count(rows) > 1 {
-        RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupDuplicated { count: count(rows) } }
-      } else {
-        match rows.first() {
-          Absent => RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupAbsent }
-          Present { value: row } => restriction_of(name: name, selected_workflow: selected_workflow, row: row)
-        }
-      }
-    }
-  }
+  observe_runner_group_admission(name: name, admission: AdmitsExactWorkflow { workflow: selected_workflow }, listed: listed)
 }
 
 // The shakedown's own reading, which the microVM mint and controller consume.
@@ -132,4 +122,66 @@ fn observe_shakedown_runner_group_restriction(name: NonEmptyStr, listed: RunnerG
 // read the groups still carries a cause through to its operator rather than a bare "no".
 fn runner_group_restriction_not_yet_observed(name: NonEmptyStr) -> MicrovmRunnerGroupStanding {
   RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupRestrictionNotYetObserved }
+}
+
+// A GROUP WHOSE ONE WORKFLOW MOVES WITH EACH ATTEMPT. The qualification group
+// (gunbc.runner.runner_qualification_ref_pin) is re-pinned to the qualification workflow at the attempt's own
+// branch on every attempt, so no fixed workflow describes it between attempts. What stays fixed is the CLASS:
+// exactly one selected workflow, that is the prefix itself (as created, matching no branch) or the prefix plus
+// ONE ref component (extdeps.git git_ref_component_admitted). Anything else -- the default branch, another
+// file, a nested branch, a second entry -- names a workflow no attempt pinned, so it refuses. The record this
+// mints carries the workflow actually observed, so a mint is never handed the class in place of a workflow.
+type RunnerGroupWorkflowAdmission
+  = AdmitsExactWorkflow { workflow: NonEmptyStr }
+  | AdmitsOneBranchUnder { prefix: NonEmptyStr }
+
+fn selected_under_prefix(selected: String, prefix: String) -> Bool {
+  if selected == prefix {
+    true
+  } else if starts_with(s: selected, prefix: prefix) {
+    git_ref_component_admitted(component: substring(s: selected, start: string_length(s: prefix), end: string_length(s: selected)))
+  } else {
+    false
+  }
+}
+
+fn restriction_under_prefix(name: NonEmptyStr, prefix: NonEmptyStr, row: RunnerGroupIdentity) -> MicrovmRunnerGroupStanding {
+  let group = JitRunnerGroupId { value: row.id }
+  if !row.restricted_to_workflows {
+    RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupNotRestrictedToWorkflows { group: group } }
+  } else {
+    match row.selected_workflows.first() {
+      Present { value: only } =>
+        if count(row.selected_workflows) == 1 && selected_under_prefix(selected: only as String, prefix: prefix as String) {
+          RunnerGroupRestrictedToWorkflow { restriction: RestrictedRunnerGroup { group: group, name: name, selected_workflow: only } }
+        } else {
+          RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupSelectsOutsidePrefix { group: group, selected: row.selected_workflows, prefix: prefix } }
+        }
+      Absent => RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupSelectsOutsidePrefix { group: group, selected: row.selected_workflows, prefix: prefix } }
+    }
+  }
+}
+
+// THE ONE READ, BY ADMISSION: one complete, duplicate-refusing lookup of the name, then the row is judged by
+// its class -- an exact workflow, or one branch under a prefix.
+fn observe_runner_group_admission(name: NonEmptyStr, admission: RunnerGroupWorkflowAdmission, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {
+  match listed {
+    RunnerGroupListDecodeRefused { reason } =>
+      RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupListUnreadable { reason: reason } }
+    RunnerGroupListDecoded { groups } => {
+      let rows = filter(groups, g => (g.name as String) == (name as String))
+      if count(rows) > 1 {
+        RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupDuplicated { count: count(rows) } }
+      } else {
+        match rows.first() {
+          Absent => RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupAbsent }
+          Present { value: row } =>
+            match admission {
+              AdmitsExactWorkflow { workflow } => restriction_of(name: name, selected_workflow: workflow, row: row)
+              AdmitsOneBranchUnder { prefix } => restriction_under_prefix(name: name, prefix: prefix, row: row)
+            }
+        }
+      }
+    }
+  }
 }

@@ -6,7 +6,7 @@ import extdeps.uri { Uri, uri_wire }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.tools.make { make_command }
 import extdeps.tools.sed { sed_in_place_command }
 import extdeps.tools.gnu_coreutils { cp_command }
@@ -57,7 +57,7 @@ fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
   [
     curl_download_command(url: uri_wire(uri: plan.source_url), destination: plan.source_tarball as String),
     mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: bd),
-    tar_extract_command(archive: plan.source_tarball as String, into_directory: bd, strip_components: 1),
+    tar_extract_command(archive: plan.source_tarball as String, into_directory: bd, strip_components: 1, existing_directories: TarOverwriteDir),
     make_command(directory: bd, arguments: [arch, cross, "defconfig"]),
     sed_in_place_command(expression: "s/# CONFIG_STATIC is not set/CONFIG_STATIC=y/", path: config),
     sed_in_place_command(expression: "s/CONFIG_TC=y/# CONFIG_TC is not set/", path: config),

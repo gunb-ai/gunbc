@@ -393,6 +393,12 @@ fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
         empty: test_claim_symbol_digest(sym: ^test_claim_no_correction_declarer_refused_tag),
         cons: fn(acc, s) { combine_hash(a: acc, b: test_claim_symbol_digest(sym: s)) }
       )
+    RequestedModuleMissing { requested: r } =>
+      fold_list(
+        xs: r,
+        empty: test_claim_symbol_digest(sym: ^test_claim_no_correction_module_root_missing_tag),
+        cons: fn(acc, s) { combine_hash(a: acc, b: test_claim_symbol_digest(sym: s)) }
+      )
   }
 }
 

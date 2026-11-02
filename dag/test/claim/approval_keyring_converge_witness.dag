@@ -5,7 +5,6 @@ import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, List }
 import std.algebra { list_head }
-import gunbc.fleet.fleet_posix_accounts { fleet_usermod_binary_path }
 import std.process { ExitSuccess }
 import gunbc.auth.approval_keyring_pins { approval_mac_key_payload_sha256_prefix, approval_submission_mac_key_payload_sha256_prefix, approval_store_receipt_mac_key_payload_sha256_prefix }
 import gunbc.auth.approval_keyring_converge {
@@ -13,7 +12,7 @@ import gunbc.auth.approval_keyring_converge {
   keyring_host_must_be_broker_host_under,
   approval_keyring_converge_refuses_off_broker_host_under, approval_mac_key_digest_standing,
   keyring_mkdir_argv, store_root_mkdir_argv, claim_store_root_mkdir_argv,
-  ntfy_group_admit_argv, roadmap_unit_restart_argv,
+  roadmap_unit_restart_argv,
 }
 import gunbc.auth.approval_broker_state_directories {
   approval_decision_store_directory,
@@ -115,13 +114,6 @@ test fn the_projected_store_root_argv_is_the_operators_owner_only_install() -> B
 test fn claim_store_root_mkdir_is_install_for_the_ci_runner() -> Bool {
   match list_head(xs: claim_store_root_mkdir_argv()) {
     Present { value: w } => w == "install"
-    _ => false
-  }
-}
-
-test fn ntfy_group_admit_is_usermod_not_a_token_chown() -> Bool {
-  match list_head(xs: ntfy_group_admit_argv()) {
-    Present { value: w } => w == (fleet_usermod_binary_path as String)
     _ => false
   }
 }

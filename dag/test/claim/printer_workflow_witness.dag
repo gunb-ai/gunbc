@@ -1,7 +1,13 @@
 module test.claim.printer_workflow_witness
 
 import std.types { Bool, String }
-import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_start_claim_directory, printer_request_directory, print_run_directory }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_path, print_run_directory }
+import gunbc.fleet.printer_state_layout { printer_state_directories }
+import gunbc.fleet.print_record_stores { print_request_path, print_completion_path }
+import gunbc.fleet.printer_actuation { printer_start_claim_path }
+import gunbc.fleet.printer_execution_hold { printer_execution_hold_path }
+import product.printed_chassis.assembly_inventory_store { cassette_inventory_path }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.owned_directory { owned_directory_path, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fleet.fleet_posix_accounts { fleet_automation_user }
@@ -46,10 +52,10 @@ test fn w_tool_probe_requires_mosquitto_version_two_or_newer() -> Bool {
 // The printer's state roots belong to the fleet account, group-writable setgid so the job user reaches
 // them through that group, and the claim root precedes the request root nested in it.
 test fn w_printer_state_roots_are_fleet_owned_group_shared_and_parent_first() -> Bool {
-  let ds = printer_state_directories()
-  count(ds) == 3 &&
+  let ds = printer_state_directories(tree: host_state_tree())
+  count(ds) == 7 &&
   all(ds, d => (owned_directory_owner(t: d).user as String) == (fleet_automation_user.name as String) && (owned_directory_owner(t: d).group as String) == (fleet_automation_user.name as String) &&
     (match owned_directory_mode(t: d) { OwnedDirectoryModeResolved { mode: m } => file_mode_octal(mode: m) == "2770" OwnedDirectoryModeRefused { reason: _ } => false })) &&
-  map(ds, d => owned_directory_path(t: d) as String) == [printer_start_claim_directory as String, printer_request_directory() as String, print_run_directory as String] &&
-  starts_with(s: printer_request_directory() as String, prefix: concat(printer_start_claim_directory as String, "/"))
+  map(ds, d => owned_directory_path(t: d) as String) == [printer_starts_path(tree: host_state_tree()) as String, print_request_path(tree: host_state_tree()) as String, print_completion_path(tree: host_state_tree()) as String, printer_start_claim_path(tree: host_state_tree()) as String, printer_execution_hold_path(tree: host_state_tree()) as String, cassette_inventory_path(tree: host_state_tree()) as String, print_run_directory(tree: host_state_tree()) as String] &&
+  all([print_request_path(tree: host_state_tree()), print_completion_path(tree: host_state_tree()), printer_start_claim_path(tree: host_state_tree()), printer_execution_hold_path(tree: host_state_tree()), cassette_inventory_path(tree: host_state_tree())], m => starts_with(s: m as String, prefix: concat(printer_starts_path(tree: host_state_tree()) as String, "/")))
 }

@@ -14,7 +14,14 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_probe_cause_location_from_locus,
   ProbeStageAssemble
 }
-import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.diagnostic {
+  Diagnostic,
+  NonEmptyDiagnostics,
+  RequestedModuleMissing,
+  Unavailable,
+  diagnostics_fatal,
+  diagnostics_fatal_reason
+}
 import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { QualifiedName }
@@ -37,11 +44,19 @@ fn non_empty_symbol_chain_from_non_empty_diagnostics(
 // module root it failed to find, so resolve_module_not_found assemble causes classify as
 // MissingModuleIdentityUnavailable rather than AssembleMissingModule { requested }.
 // FrontierProbeDetail.MissingModule (#7762) carries the structural QualifiedName on receipt.detail
-// when frontier_probe_detail_from_diagnostic binds it. Trigger: a diagnostic evidence carrier for
-// ModuleRootMissing (one that does not reintroduce the diagnostic.dag ↔ qualified_name import
-// cycle); then extract it here and map Present -> AssembleMissingModule { requested }.
+// when frontier_probe_detail_from_diagnostic binds it. TRIGGER MET (PR #15343 review 87842):
+// v2.std.diagnostic's `NoCorrectionReason::RequestedModuleMissing { requested }` is that diagnostic
+// evidence carrier -- it is a FreeMonoid<Symbol>, so it adds no diagnostic.dag <-> qualified_name import
+// cycle, and it is the slot a located caller cannot overwrite, so the name survives
+// `admit_imported_module_existence`'s re-stamp of `at`. This reads it and maps Present ->
+// AssembleMissingModule { requested }; Absent stays MissingModuleIdentityUnavailable, which is still
+// reachable for a not_found that arrives without the carrier.
 fn diagnostic_module_root_missing_qn_optional(d: Diagnostic) -> Optional<QualifiedName> {
-  optional_absent()
+  match d.correction {
+    Unavailable { reason: RequestedModuleMissing { requested: requested } } =>
+      optional_present(value: requested)
+    _ => optional_absent()
+  }
 }
 
 // THE CAUSE IS THE FATAL DIAGNOSTIC, THE CHAIN'S LAST (advisories step 2, gunbc#13103). An advisory

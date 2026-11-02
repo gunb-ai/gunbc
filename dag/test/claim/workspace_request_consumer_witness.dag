@@ -5,7 +5,7 @@ import std.retry_law { RetryHistoryEvent, RealWorkFailure }
 import std.durable_compare_and_set { ExpectSlotAbsent }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation { WorkspaceRequest, SmallWorkspace, workspace_policy_ref }
-import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted, WorkspaceRecorded, workspace_retired }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted, WorkspaceRecorded, workspace_retired, workspace_allocation_store }
 import gunbc.workspace_request_consumer {
   workspace_consumer_select, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare,
   workspace_consumer_retry_from_history, WorkspaceConsumerRetry,
@@ -67,7 +67,7 @@ test fn persisted_expired_request_settles_after_reader_restart_without_offers() 
   let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
     FabricStorageRootReady => {
       let request = recorded().request
-      match workspace_record_request_at(store: FabricStorageLocalFiles { root: root }, request: request,
+      match workspace_record_request_at(store: workspace_allocation_store(binding: FabricStorageLocalFiles { root: root }), request: request,
         observed_at: "2026-09-27T12:00:00Z") {
         WorkspaceStoreWritten { allocation: _ } => {
           let reopened = FabricStorageLocalFiles { root: fabric_storage_file_root(root: directory.path) }
@@ -97,13 +97,13 @@ test fn waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_reti
   let store = FabricStorageLocalFiles { root: root }
   let request = recorded().request
   let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => match workspace_record_request_at(store: store, request: request, observed_at: "2026-09-27T12:00:00Z") {
-      WorkspaceStoreWritten { allocation: original } => match workspace_record_preparation_wait(store: store, request: request, reason: "no commissioned offers") {
+    FabricStorageRootReady => match workspace_record_request_at(store: workspace_allocation_store(binding: store), request: request, observed_at: "2026-09-27T12:00:00Z") {
+      WorkspaceStoreWritten { allocation: original } => match workspace_record_preparation_wait(store: workspace_allocation_store(binding: store), request: request, reason: "no commissioned offers") {
         WorkspaceStoreWritten { allocation: waiting } => waiting.reason == "no commissioned offers"
           && waiting.observed_at == original.observed_at && waiting.connection == original.connection
-          && (match workspace_request_release_at(store: store, owner: request.owner, idempotency_key: request.idempotency_key,
+          && (match workspace_request_release_at(store: workspace_allocation_store(binding: store), owner: request.owner, idempotency_key: request.idempotency_key,
             expected_generation: 0, observed_at: "2026-09-27T12:01:00Z") {
-            WorkspaceStoreWritten { allocation: _ } => match workspace_record_preparation_wait(store: store, request: request, reason: "late wait") {
+            WorkspaceStoreWritten { allocation: _ } => match workspace_record_preparation_wait(store: workspace_allocation_store(binding: store), request: request, reason: "late wait") {
               WorkspaceStoreConflict => true
               other => false
             }
@@ -129,7 +129,7 @@ test fn enrolled_roster_discovers_a_customer_request_the_operator_pass_misses() 
   let operator = PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "operator-test" }
   let request = recorded().request
   let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => match workspace_record_request_at(store: store, request: request, observed_at: "2026-09-27T12:00:00Z") {
+    FabricStorageRootReady => match workspace_record_request_at(store: workspace_allocation_store(binding: store), request: request, observed_at: "2026-09-27T12:00:00Z") {
       WorkspaceStoreWritten { allocation: _ } =>
         (match workspace_consumer_reconcile_enrolled(store: store, owners: [operator, request.owner], observed_at: "2026-09-27T12:01:00Z") {
           WorkspaceConsumerPrepare { allocation: found } => found.request == request

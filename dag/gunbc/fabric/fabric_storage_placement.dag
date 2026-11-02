@@ -51,9 +51,11 @@ type FabricStoragePlacement
 // A DEDICATED LISTENER AT THE ROOT MOUNT, not a --set-path mount on the dashboard's 443: whether
 // tailscale strips a mount path before proxying is not modeled in extdeps.tailscale.serve, and a root
 // mount makes the question not arise -- the request path the caller sends is the path the handler
-// routes on. 10000 because srv1's 443 carries the dashboard and its 8443 the approval notification
-// server (gunbc.auth.approval_ntfy_deployment approval_ntfy_serve_port); tailscale serve admits
-// HTTPS listeners on 443, 8443 and 10000 only.
+// routes on. 10000 because srv1's 443 carries the dashboard and its 8443 carried the approval
+// notification server's front door (ntfy_retire_front_door_port, taken down by
+// gunbc.fleet.approval_ntfy_retirement); tailscale serve admits HTTPS listeners on 443, 8443 and
+// 10000 only, and a listener this placement might one day share with another service is a reason
+// to keep the third slot rather than reuse a retired one.
 data fabric_storage_https_port: Port = 10000
 
 // THE DOOR IS A UNIX SOCKET, NOT A LOOPBACK PORT. A loopback TCP listener is reachable by every

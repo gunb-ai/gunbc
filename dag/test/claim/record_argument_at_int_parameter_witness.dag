@@ -1,0 +1,42 @@
+module test.claim.record_argument_at_int_parameter_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// A RECORD VALUE DOES NOT INHABIT AN INT PARAMETER. Instance of gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel (specimen seven: the wall decides on the value's kind, and
+// std.integer Int is a coproduct whose spelling is kernel-named). Evidence: zesty-badger-599, seed 747ed06b from
+// f20cdcc799ee, tree 761485283f2f, srv1 ~/zb-evidence/k7.log sha256 741b2557..., fixture zz_k_record.dag
+// 3c32ce6b...: `ZzR { a: Int }` at an Int parameter is admitted and dies at runtime ('cannot apply Lt to Record and
+// Int'); zz_k_control.dag 2d48078a... (an Int value) is accepted.
+//
+// UNRUN: authored, not executed. The RED is expected to FAIL on the current seed; the control to PASS before and
+// after. dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn rai_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn rai_source(parameter_type: String) -> String {
+  "module rai.probe\n\nimport std.types { String }\n\nimport std.integer { Int, int_to_decimal_string }\n\ntype ZzR {\n  a: Int\n}\n\nfn probe(v: " + parameter_type + ") -> String {\n  int_to_decimal_string(value: v)\n}\n"
+}
+
+// RED: a record-typed value at the Int parameter must refuse.
+test fn a_record_value_at_an_int_parameter_must_refuse() -> Bool {
+  rai_refusal_count(source: rai_source(parameter_type: "ZzR")) >= 1
+}
+
+// CONTROL: an Int value at the same parameter is accepted.
+test fn an_int_value_at_an_int_parameter_is_accepted() -> Bool {
+  rai_refusal_count(source: rai_source(parameter_type: "Int")) == 0
+}

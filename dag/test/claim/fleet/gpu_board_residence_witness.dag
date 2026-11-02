@@ -1,0 +1,55 @@
+module test.claim.fleet.gpu_board_residence_witness
+
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.placement_supply { PhysicalContainment, HostContainsComponent, PhysicalAsset }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_6ce85c, operator_hosts }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03 }
+import gunbc.fleet.fleet_physical_inventory { gpu_board_assets, installed_gpu_board_containments }
+import extdeps.gpu.types { GpuBoardAdmission, GpuBoardAdmitted, GpuBoardRefused }
+import extdeps.gpu.amd { amd_radeon_ai_pro_r9700_board_catalog, amd_board_catalogs }
+import extdeps.gpu.gigabyte { gigabyte_r9700_ai_top_32g_board_catalog }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn hosted_in(cs: List<PhysicalContainment>, host: HostIdentity, component: String) -> Bool {
+  cs.any(c => match c {
+    HostContainsComponent { host: h, component: k } => (h as String) == (host as String) && (k as String) == component
+    _ => false
+  })
+}
+
+fn contained_anywhere(cs: List<PhysicalContainment>, component: String) -> Bool {
+  cs.any(c => match c {
+    HostContainsComponent { host: _, component: k } => (k as String) == component
+    _ => false
+  })
+}
+
+fn admitted(a: GpuBoardAdmission) -> Bool {
+  match a { GpuBoardAdmitted { row: _ } => true  GpuBoardRefused { facts: _, refusal: _ } => false }
+}
+
+// srv1 HOLDS THE PRO 6000; THE TWO R9700s ARE OWNED AND IN NO HOST until the operator picks theirs (D3).
+test fn witness_srv1_holds_the_pro_6000_and_the_r9700s_are_uninstalled() -> Bool {
+  hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv1, component: gpu_board_01 as String)
+    && !contained_anywhere(cs: installed_gpu_board_containments, component: gpu_board_02 as String)
+    && !contained_anywhere(cs: installed_gpu_board_containments, component: gpu_board_03 as String)
+    && gpu_board_assets.length() == 3
+}
+
+// EVERY CARD IN INVENTORY BINDS A BOARD ROW THAT EXISTS, and the R9700 board row is admitted.
+test fn witness_card_assets_bind_admitted_board_rows() -> Bool {
+  admitted(a: amd_radeon_ai_pro_r9700_board_catalog)
+    && admitted(a: gigabyte_r9700_ai_top_32g_board_catalog)
+    && amd_board_catalogs.length() == 1
+    && gpu_board_assets.all(a => a.catalog.decl_name == "nvidia_rtx_pro_6000_workstation_board_catalog" || a.catalog.decl_name == "gigabyte_r9700_ai_top_32g_board_catalog")
+}
+
+// THE H11 HOST IS A ROSTER MEMBER UNDER ITS OPAQUE IDENTITY.
+test fn witness_h11_host_is_on_the_roster_opaquely() -> Bool {
+  operator_hosts.any(h => (h as String) == (operator_host_6ce85c as String))
+    && (operator_host_6ce85c as String) == "host-6ce85c"
+}

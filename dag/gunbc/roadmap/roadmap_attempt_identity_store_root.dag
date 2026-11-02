@@ -1,0 +1,120 @@
+module gunbc.roadmap.roadmap_attempt_identity_store_root
+
+import std.types { String, NonEmptyStr, FilePath, Int }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  file_hold_acquire,
+  FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
+  FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+}
+import gunbc.roadmap.roadmap_attempt_state_layout_move { move_row_legacy_names }
+import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+
+
+// THE DISPATCH ATTEMPT IDENTITY ORDINALS. An ordinal is claimed by acquiring a hold slot keyed by
+// (node, ordinal); an occupied slot belongs to an earlier attempt and is never read back or overwritten, and
+// a claim is never released (an identity is permanent). This replaces the hand WriteCreateNew claim loop in
+// gunbc.roadmap.roadmap_dispatch_actuator with gunbc.durable_exclusive_hold_file_store, the library whose
+// slot is the exclusion.
+//
+// THE STORE HAS ITS OWN MEMBER under the shared dispatch attempt-state root (the worktree-claims precedent,
+// gunbc.roadmap.roadmap_attempt_worktree_claim_root): the parent root also holds the other attempt stores,
+// and the old flat entries `attempt-identity-<node>-n<ordinal>` lived directly in it.
+// The ordinal space is bounded so a host that refuses every claim ends in a typed refusal, not a loop.
+data attempt_identity_ordinal_limit: Int = 4096
+
+fn attempt_identity_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", attempt_identity_slots.move.member as String], "") as NonEmptyStr
+}
+
+type AttemptIdentityStore sole_constructor {
+  instance: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type AttemptIdentityStoreReading
+  = AttemptIdentityStoreReady { store: AttemptIdentityStore }
+  | AttemptIdentityStoreUnready { detail: String }
+
+type AttemptIdentityListing
+  = AttemptIdentityListingRead { entries: String }
+  | AttemptIdentityListingUnreadable { detail: String }
+
+fn attempt_identity_listing(root: String, what: String) -> AttemptIdentityListing {
+  let listed = Filesystem.List(path: root)
+  match filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+      AttemptIdentityListingUnreadable { detail: join([what, " is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } =>
+      AttemptIdentityListingUnreadable { detail: join([what, " could not be listed: ", root, " (", e, ")"], "") }
+    FilesystemDirectoryListed(l) => AttemptIdentityListingRead { entries: l.entries }
+  }
+}
+
+// THE MINT. It takes the instance and nothing else. While ANY legacy flat entry remains in the shared
+// parent root the mint refuses permanently with a typed detail: it never mints over that state and never
+// reads both layouts, because an ordinal claimed in the flat layout would be re-claimed in the new member
+// and two attempts would share one identity. The move (a converge step in the deploy legs) empties the flat
+// layout first.
+fn attempt_identity_store(instance: HostDashboardInstance) -> AttemptIdentityStoreReading {
+  let parent = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+  match attempt_identity_listing(root: parent, what: "the dispatch attempt-state root") {
+    AttemptIdentityListingUnreadable { detail } => AttemptIdentityStoreUnready { detail: detail }
+    AttemptIdentityListingRead { entries } =>
+      if length(xs: move_row_legacy_names(row: attempt_identity_slots.move, parent_listing: entries)) > 0 {
+        AttemptIdentityStoreUnready { detail: join(["the dispatch attempt-state root ", parent, " still holds legacy flat attempt-identity entries; the layout move must run before any attempt identity is minted"], "") }
+      } else {
+        let root = attempt_identity_slots_path(instance: instance)
+        match attempt_identity_listing(root: root as String, what: "the attempt identity store") {
+          AttemptIdentityListingUnreadable { detail } => AttemptIdentityStoreUnready { detail: detail }
+          AttemptIdentityListingRead { entries: _ } => AttemptIdentityStoreReady { store: AttemptIdentityStore { instance: instance.instance_id, root: root } }
+        }
+      }
+  }
+}
+
+type AttemptIdentityClaim
+  = AttemptIdentityClaimed { ordinal: Int }
+  | AttemptIdentityClaimRefused { detail: String }
+
+fn attempt_identity_slot_key(node_id: String, ordinal: Int) -> NonEmptyStr {
+  join([node_id, "-n", to_string(value: ordinal)], "") as NonEmptyStr
+}
+
+// An occupied ordinal, and a lost race for it, belong to another attempt: the next ordinal is claimed. Any
+// other outcome is the store's and ends the claim.
+fn attempt_identity_claim(store: AttemptIdentityStore, node_id: String, minted_at: String, ordinal: Int) -> AttemptIdentityClaim {
+  if ordinal > attempt_identity_ordinal_limit {
+    AttemptIdentityClaimRefused { detail: join(["every ordinal up to ", to_string(value: attempt_identity_ordinal_limit), " is already claimed for node ", node_id], "") }
+  } else {
+    let key = attempt_identity_slot_key(node_id: node_id, ordinal: ordinal)
+    match file_hold_acquire(root: store.root, slot_key: key, requested_owner: join(["minted_at: ", minted_at], "") as DurableHoldOwnerRef) {
+      FileHoldAcquired { slot_key: _, owner: _, generation: _ } => AttemptIdentityClaimed { ordinal: ordinal }
+      FileHoldOccupied { slot_key: _, holder: _, generation: _ } => attempt_identity_claim(store: store, node_id: node_id, minted_at: minted_at, ordinal: ordinal + 1)
+      FileHoldAcquireLost { slot_key: _ } => attempt_identity_claim(store: store, node_id: node_id, minted_at: minted_at, ordinal: ordinal + 1)
+      FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } =>
+        AttemptIdentityClaimRefused { detail: join(["the attempt identity store at ", store.root as String, " refused the claim of ", key as String], "") }
+      FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } =>
+        AttemptIdentityClaimRefused { detail: join(["the attempt identity slot ", key as String, " is undecodable: ", d as String], "") }
+      FileHoldKeyNotSlotAddressable { slot_key: _ } =>
+        AttemptIdentityClaimRefused { detail: join(["the attempt identity key ", key as String, " is not slot addressable"], "") }
+    }
+  }
+}
+
+fn attempt_identity_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: attempt_identity_slots.move.member,
+    path: attempt_identity_slots_path(instance: instance) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: attempt_identity_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}

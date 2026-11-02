@@ -112,7 +112,8 @@ test fn witness_admission_guard_refuses_a_malformed_import_root_holds() -> Bool 
               roots: ValidatedModuleRoots {
                 roots: roots,
                 by_name: map_insert(m: empty_map(), key: malformed_entry_name(), value: root),
-                test_code: test_code_index_empty()
+                test_code: test_code_index_empty(),
+                blocked_members: Empty
               },
               import_edge: import_edge_for_malformed(),
               state: initial_admission_state(),

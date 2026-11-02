@@ -25,7 +25,7 @@ import gunbc.runner.runner_usage_receipt {
 }
 import gunbc.runner.runner_teardown_receipt {
   RunnerResourceClass,
-  RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
+  RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable, RunnerMachineBoot,
   TeardownObserverInsideEnvironment, TeardownInstrumentChanged,
   RunnerEnvironmentInventory, MicroVmEnvironmentInventory, MicroVmInventory, HostUnitEnvironmentInventory,
   HostUnitInventory, RunnerTransientUnit, RunnerResourceReading, RunnerResourcePresent,
@@ -242,7 +242,7 @@ fn fixture_inventory(tap: NonEmptyStr) -> RunnerEnvironmentInventory {
 fn fixture_readback(value: RunnerResourceReading) -> RunnerEnvironmentReadback {
   RunnerEnvironmentReadback {
     vmm: value, unit: value, cgroup: value, jail: value, jail_mount: value,
-    jit_drive: value, workspace: value, tap: value, firewall_table: value,
+    jit_drive: value, workspace: value, tap: value, firewall_table: value, machine_boot: value,
   }
 }
 
@@ -364,6 +364,7 @@ fn fixture_single_residue(resource: RunnerResourceClass, value: RunnerResourceRe
     workspace: if resource == RunnerWorkspace { value } else { RunnerResourceAbsent },
     tap: if resource == RunnerTap { value } else { RunnerResourceAbsent },
     firewall_table: if resource == RunnerFirewallTable { value } else { RunnerResourceAbsent },
+    machine_boot: if resource == RunnerMachineBoot { value } else { RunnerResourceAbsent },
   }
 }
 
@@ -400,7 +401,7 @@ fn fixture_host_unit_inventory(unit: NonEmptyStr) -> RunnerEnvironmentInventory 
 fn fixture_host_unit_readback(unit: RunnerResourceReading, cgroup: RunnerResourceReading, workspace: RunnerResourceReading) -> RunnerEnvironmentReadback {
   RunnerEnvironmentReadback {
     vmm: RunnerResourceAbsent, unit: unit, cgroup: cgroup, jail: RunnerResourceAbsent, jail_mount: RunnerResourceAbsent,
-    jit_drive: RunnerResourceAbsent, workspace: workspace, tap: RunnerResourceAbsent, firewall_table: RunnerResourceAbsent,
+    jit_drive: RunnerResourceAbsent, workspace: workspace, tap: RunnerResourceAbsent, firewall_table: RunnerResourceAbsent, machine_boot: RunnerResourceAbsent,
   }
 }
 

@@ -12,7 +12,7 @@ import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mkdir_parents_c
 import extdeps.linux.procfs { ProcMeminfo, procfs_path_literal }
 import extdeps.systemd.udevd { udev_disk_by_label_dir }
 import extdeps.systemd { systemd_booted_runtime_dir }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.posix.test_utility { test_executable_command, test_directory_command }
 import extdeps.posix.sh_invocation { posix_sh_script_command }
 import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
@@ -136,7 +136,7 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCapt
     HostCaptureStage { name: runner_host_section_tarball_digest, command: shell_command_render(command: sha256sum_file_command(path: runner_host_medium_tarball_on_medium(artifact: artifact))) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_clear, command: shell_command_render(command: rm_recursive_force_command(path: actions_runner_base_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_dir, command: shell_command_render(command: mkdir_parents_command(path: actions_runner_base_dir)) as NonEmptyStr },
-    HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0, existing_directories: TarOverwriteDir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },

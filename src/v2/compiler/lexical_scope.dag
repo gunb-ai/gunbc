@@ -255,8 +255,8 @@ fn bind_slot_sees_binder(slot: BindSlot) -> Bool {
 // are undecided. Both read this one traversal, so neither restates the other's.
 //
 // A top-level atom was once no candidate at all, so a catch-all `other => other` bound nothing and both
-// occurrences refused unbound (the ambient-name census rows at
-// gunbc.instruments.ambient_name_census_reading); the field rule now covers it.
+// occurrences refused unbound (reported by the since-retired ambient-name census);
+// the field rule now covers it.
 type PatternBinderCandidate {
   name: Symbol
   atom: Node

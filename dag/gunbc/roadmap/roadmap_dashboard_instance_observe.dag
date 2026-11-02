@@ -1,13 +1,17 @@
 module gunbc.roadmap.roadmap_dashboard_instance_observe
 
 import std.algebra { trim }
-import std.types { String, Bool, List, FilePath }
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import extdeps.shell
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.gunbc
 import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
   TypedArgvExecRefused,
   typed_argv_probe_over_ssh,
+  typed_argv_exec_over_ssh,
+  typed_argv_exec_over_ssh_with_stdin,
+  TypedArgvExecOutcome,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -58,33 +62,97 @@ fn dashboard_local_exec(
   }
 }
 
+// THE ONE DISPATCH ON provision_transport. Every command run on a dashboard instance's target host
+// (exec, probe, and exec with a stdin payload) goes through dashboard_target_run; the mode is a closed
+// set, so a probe-with-stdin (no transport for it) is unwritable rather than refused at run time.
+// dashboard_target_probe here and dashboard_target_exec in roadmap_dashboard_instance_apply are
+// projections of it onto DashboardExecResult, not separate dispatches.
+type DashboardTargetRunMode
+  = TargetExec
+  | TargetProbe
+  | TargetExecWithStdin { payload: String }
+
+type DashboardTargetRan
+  = TargetRan { exit_code: Int, success: Bool, stdout: String, stderr: String }
+  | TargetNotRun { reason: String }
+
+fn dashboard_target_ran_of_typed_argv(outcome: TypedArgvExecOutcome) -> DashboardTargetRan {
+  match outcome {
+    TypedArgvExecConverged { result } =>
+      TargetRan { exit_code: result.exit_code, success: result.success, stdout: result.stdout, stderr: result.stderr }
+    TypedArgvExecRefused { reason } => TargetNotRun { reason: reason }
+  }
+}
+
+fn dashboard_target_run(
+  instance: HostDashboardInstance,
+  program: FilePath,
+  args: List<String>,
+  mode: DashboardTargetRunMode,
+) -> DashboardTargetRan {
+  match instance.provision_transport {
+    DashboardLocalProvision =>
+      match mode {
+        // KNOWN DIVERGENCE, stated not hidden: no service runs a program with stdin AND a workdir, so this
+        // arm runs in the process cwd where TargetExec/TargetProbe run in the instance's controller
+        // workdir; a caller must pass absolute paths (dashboard_target_write_create_new refuses any other).
+        // RunArgvStdin carries no success field, so success is exit_code == 0, the same fact WitnessBin
+        // reports as exit_success. DISSOLVES ON: a WitnessBin operation with a stdin payload.
+        TargetExecWithStdin { payload } => {
+          let ran = shell.Exec.RunArgvStdin(
+            program: program as NonEmptyStr,
+            arguments: args,
+            stdin_payload: payload,
+          )
+          TargetRan { exit_code: ran.exit_code, success: ran.exit_code == 0, stdout: ran.stdout, stderr: ran.stderr }
+        }
+        TargetExec => dashboard_target_ran_of_local(instance: instance, program: program, args: args)
+        TargetProbe => dashboard_target_ran_of_local(instance: instance, program: program, args: args)
+      }
+    DashboardSshProvision { host } => {
+      let argv = concat([program as String], args)
+      dashboard_target_ran_of_typed_argv(
+        outcome: match mode {
+          TargetExec => typed_argv_exec_over_ssh(host: host, argv: argv)
+          TargetProbe => typed_argv_probe_over_ssh(host: host, argv: argv)
+          TargetExecWithStdin { payload } =>
+            typed_argv_exec_over_ssh_with_stdin(host: host, argv: argv, stdin_payload: payload)
+        },
+      )
+    }
+  }
+}
+
+fn dashboard_target_ran_of_local(
+  instance: HostDashboardInstance,
+  program: FilePath,
+  args: List<String>,
+) -> DashboardTargetRan {
+  let result = gunbc.WitnessBin.Run(
+    workdir: dashboard_instance_controller_workdir(instance: instance),
+    bin_path: program,
+    args: args,
+    expect: OutcomeIsData,
+  )
+  TargetRan { exit_code: result.exit_code, success: result.success, stdout: result.stdout, stderr: result.stderr }
+}
+
+fn dashboard_exec_result_of_ran(ran: DashboardTargetRan) -> DashboardExecResult {
+  match ran {
+    TargetRan { exit_code: _, success, stdout, stderr } =>
+      DashboardExecResult { success: success, stdout: stdout, stderr: stderr }
+    TargetNotRun { reason } => dashboard_exec_refused(detail: reason)
+  }
+}
+
 fn dashboard_target_probe(
   instance: HostDashboardInstance,
   program: FilePath,
   args: List<String>,
 ) -> DashboardExecResult {
-  match instance.provision_transport {
-    DashboardLocalProvision =>
-      dashboard_local_exec(
-        workdir: dashboard_instance_controller_workdir(instance: instance),
-        program: program,
-        args: args,
-      )
-    DashboardSshProvision { host } =>
-      match typed_argv_probe_over_ssh(
-        host: host,
-        argv: concat([program as String], args),
-      ) {
-        TypedArgvExecConverged { result } =>
-          DashboardExecResult {
-            success: result.success,
-            stdout: result.stdout,
-            stderr: result.stderr,
-          }
-        TypedArgvExecRefused { reason } =>
-          dashboard_exec_refused(detail: reason)
-      }
-  }
+  dashboard_exec_result_of_ran(
+    ran: dashboard_target_run(instance: instance, program: program, args: args, mode: TargetProbe),
+  )
 }
 
 type DashboardPathObservation

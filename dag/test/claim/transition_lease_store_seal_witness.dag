@@ -1,7 +1,7 @@
 module test.claim.transition_lease_store_seal_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict, deleted_callable_route_is_gone }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 
@@ -72,12 +72,6 @@ fn probe_outcomes(name: String, body: String) -> String {
 data closure_baseline_source: String = probe(name: "probe_transition_lease_closure_baseline", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
 data closure_outcomes_baseline_source: String = probe_outcomes(name: "probe_transition_lease_closure_outcomes_baseline", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
 
-// The delta for the laundering probes is taken against a baseline with the SAME outcome closure, so nothing the
-// extra imports contribute can be read as the refusal.
-fn blocking_delta_outcomes(hostile: String, holds: fn(Int) -> Bool) -> CensusVerdict {
-  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: closure_outcomes_baseline_source), holds: holds)
-}
-
 // THE ROUTE IS ATTRIBUTED TO THE CALLABLE THAT IS GONE, not merely counted. A bare "one more blocking
 // diagnostic than the baseline" delta is satisfied by closure noise: a sibling witness had to correct exactly
 // this, because its control was met by forty-five unrelated blocking rows and a reintroduced mint would have
@@ -88,13 +82,7 @@ fn blocking_delta_outcomes(hostile: String, holds: fn(Int) -> Bool) -> CensusVer
 // the folds are deleted, so the absent name is the measured fact: restore either fold and the keyed row goes to
 // zero and the claim reds. The evidence is the claim, not a script run beside it.
 fn laundering_route_is_gone(source: String, deleted_callable: String) -> ProcessExit {
-  census_verdict_all([
-    census_verdict(
-      census: blocking_subject_census(source: source, wanted_class: "MissingExport", wanted_subject: deleted_callable),
-      holds: fn(n) { n == 1 },
-    ),
-    blocking_delta_outcomes(hostile: source, holds: fn(n) { n >= 1 }),
-  ])
+  deleted_callable_route_is_gone(source: source, baseline: closure_outcomes_baseline_source, deleted_callable: deleted_callable)
 }
 
 data forged_store_literal_source: String = probe(name: "probe_transition_lease_forged_store_literal", body: "fn f(s: TransitionLeaseStore) -> TransitionLeaseStore {\n  TransitionLeaseStore { instance: s.instance, root: s.root }\n}\n")

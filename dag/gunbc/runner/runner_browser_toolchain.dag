@@ -1,5 +1,7 @@
 module gunbc.runner.runner_browser_toolchain
 
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
+import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { Bool, Int, List, NonEmptyStr, FilePath, list_length }
 import extdeps.shell
 import extdeps.posix.test_utility { test_exists_command }
@@ -10,7 +12,7 @@ import std.optional { Present, Absent }
 import std.env_binding { EnvBinding, EnvSet }
 import extdeps.exec.command { ArgvCommand, env_prefixed_command_in, env_cleared_command_in }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression }
+import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression, RunnerSpec }
 import extdeps.automation.playwright {
   PlaywrightBuild, playwright_1_62_1,
   PlaywrightNpmTarball, playwright_1_62_1_npm_tarball, playwright_core_1_62_1_npm_tarball,
@@ -60,7 +62,7 @@ import gunbc.host.host_effect_realize {
 }
 import product.host_identity { HostIdentity }
 import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.runner.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
+import gunbc.runner.runner_registration_labels { gunbc_user_session_label, runner_declared_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, fleet_runner_host_deploys }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -326,7 +328,7 @@ fn labels_cover(have: List<String>, want: List<String>) -> Bool {
 }
 
 fn host_runs_floor_labels(deploy: RunnerHostDeploy, floor_labels: List<String>) -> Bool {
-  match runner_registration_labels(host: (deploy.host_label as String) as HostIdentity) {
+  match runner_declared_registration_labels(host: (deploy.host_label as String) as HostIdentity) {
     RegistrationLabelsResolved { labels: ls } => labels_cover(have: ls, want: floor_labels)
     RegistrationLabelsRefused { host: _, cause: _ } => false
   }
@@ -338,16 +340,33 @@ fn browser_toolchain_pool_not_self_hosted() -> BrowserToolchainPool {
   }
 }
 
-fn runner_browser_toolchain_pool_of(deploys: List<RunnerHostDeploy>) -> BrowserToolchainPool {
-  match gunbc_ci_selected_runner_spec() {
+fn browser_toolchain_pool_selects_evidence_label() -> BrowserToolchainPool {
+  BrowserToolchainPoolUndefined {
+    cause: "the floor job's runs-on names the user-session label, which a converge receipt grants; the pool is derived from DECLARED labels (runner_declared_registration_labels) because an emission must not depend on a network observation, so a runs-on selecting an evidence-granted label has no declared pool -- the change that selects it reads the receipt at an effect edge and lifts this refusal",
+  }
+}
+
+// THE ONLY EMIT-TIME FOLD THAT READS DECLARED LABELS AGAINST A RUNS-ON: the floor's selected spec. A spec that
+// names the evidence-granted user-session label has no declared pool, so the claim "no runs-on selects
+// gunbc-user-session while the pool reads declared labels" is refused here rather than left to a comment.
+fn runner_browser_toolchain_pool_for_spec(deploys: List<RunnerHostDeploy>, spec: RunnerSpec) -> BrowserToolchainPool {
+  match spec {
     SelfHosted { labels: floor_labels } =>
-      BrowserToolchainPoolDerived {
-        hosts: fold(deploys, init: [], f: (acc, d) =>
-          if host_runs_floor_labels(deploy: d, floor_labels: floor_labels) { list_append(left: acc, right: [d]) } else { acc }),
+      if any(floor_labels, l => l == gunbc_user_session_label) {
+        browser_toolchain_pool_selects_evidence_label()
+      } else {
+        BrowserToolchainPoolDerived {
+          hosts: fold(deploys, init: [], f: (acc, d) =>
+            if host_runs_floor_labels(deploy: d, floor_labels: floor_labels) { list_append(left: acc, right: [d]) } else { acc }),
+        }
       }
     HostedRunner { label: _ } => browser_toolchain_pool_not_self_hosted()
     RunsOnExpression { expression: _ } => browser_toolchain_pool_not_self_hosted()
   }
+}
+
+fn runner_browser_toolchain_pool_of(deploys: List<RunnerHostDeploy>) -> BrowserToolchainPool {
+  runner_browser_toolchain_pool_for_spec(deploys: deploys, spec: gunbc_ci_selected_runner_spec())
 }
 
 fn runner_browser_toolchain_pool() -> BrowserToolchainPool {
@@ -1307,8 +1326,8 @@ fn browser_ready_labels_reload_leg(posture: BrowserReadyLabelsPosture) -> Browse
   }
 }
 
-fn browser_ready_labels_grant_plan(host: HostIdentity, target: BrowserReadyLabelsTarget) -> BrowserReadyLabelsPlan {
-  match runner_host_browser_ready_labels_dropin_text(host: host) {
+fn browser_ready_labels_grant_plan(host: HostIdentity, target: BrowserReadyLabelsTarget, receipt: RunnerUserSessionReceiptInput) -> BrowserReadyLabelsPlan {
+  match runner_host_browser_ready_labels_dropin_text(host: host, receipt: receipt) {
     RunnerUnitTextRefused { reason: r } => BrowserReadyLabelsUnrenderable { cause: r as String }
     RunnerUnitText { text: content } =>
       BrowserReadyLabelsGrantReady {
@@ -1365,8 +1384,8 @@ fn browser_ready_labels_reload_then(success: BrowserReadyLabelsOutcome, reload: 
   }
 }
 
-fn browser_ready_labels_converge_wet(host: NonEmptyStr, ready: Bool, transport: HostEffectTransport, target: BrowserReadyLabelsTarget) -> BrowserReadyLabelsOutcome {
-  let plan = if ready { browser_ready_labels_grant_plan(host: (host as String) as HostIdentity, target: target) } else { browser_ready_labels_revoke_plan(target: target) }
+fn browser_ready_labels_converge_wet(host: NonEmptyStr, ready: Bool, transport: HostEffectTransport, target: BrowserReadyLabelsTarget, receipt: RunnerUserSessionReceiptInput) -> BrowserReadyLabelsOutcome {
+  let plan = if ready { browser_ready_labels_grant_plan(host: (host as String) as HostIdentity, target: target, receipt: receipt) } else { browser_ready_labels_revoke_plan(target: target) }
   match plan {
     BrowserReadyLabelsUnrenderable { cause: c } =>
       BrowserReadyLabelsFailed { cause: concat("the readiness labels drop-in does not render: ", c) }
@@ -1447,7 +1466,7 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 none
               }
               let ready = match standing { Present { value: st } => runner_browser_toolchain_ready(s: st)  Absent => false }
-              let labels = browser_ready_labels_converge_wet(host: host, ready: ready, transport: browser_toolchain_admin_transport(target: admin, context: context), target: browser_ready_labels_production_target)
+              let labels = browser_ready_labels_converge_wet(host: host, ready: ready, transport: browser_toolchain_admin_transport(target: admin, context: context), target: browser_ready_labels_production_target, receipt: runner_user_session_receipt_observed(host: (host as String) as HostIdentity))
               let retirement_text = superseded_trees_text(r: observe_superseded_trees_wet(location: location))
               let readback_text = match standing {
                 Present { value: st } => runner_browser_toolchain_standing_text(s: st)

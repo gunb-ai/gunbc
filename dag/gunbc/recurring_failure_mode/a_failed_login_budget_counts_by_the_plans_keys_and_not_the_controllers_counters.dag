@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.a_failed_login_budget_counts_by_the_plans_keys_and_not_the_controllers_counters
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_failed_login_budget_counts_by_the_plans_keys_and_not_the_controllers_counters: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_failed_login_budget_counts_by_the_plans_keys_and_not_the_controllers_counters" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found on rung 1 -- a merge review traced the gate and found three undercounts that
+  // its own witnesses did not discriminate. The repair adds a discriminating RED and positive control for
+  // each, but nothing on the required path evaluates a witness, so the class stays at rung 1 until the
+  // structure stops the gate from holding a key that is not a controller counter.
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the failed-login budget's arithmetic taking a counter identity that only the served lockout reading can mint (one per account and served surface), so a login or a recorded failure on a surface the plan cannot name cannot be compared until it has been spread onto every counter it reaches, and an authentication-event identity carried on each recorded failure, so two failures collapse into one only when they are one event",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a gate that bounds failed logins against a lockout threshold judges a quantity that is not the one the controller keeps -- a key that is not a counter, a window rule that is not the counter's reset rule, or an attempt count that is not the number of authentications -- and the count it judges is LOWER than the controller's. The gate admits a plan whose last login locks the account. On OpenBMC root is both the managed and the published account, so the harm is losing the machine's only administrator.",
+    "SPECIMEN 1, key: gunbc.machine_intake.bmc_secure judged an IPMI login whose channel the lanplus transport picks as its own pseudo-counter (IpmiLanPlusLoginChannelUndetermined) against the tightest channel threshold. Threshold 3 on channel 1, two undetermined logins and one named to channel 1: 2 <= 2 and 1 <= 2, admitted, while all three can reach channel 1. Failures already recorded on channel 1 were filtered out of the undetermined login's history by exact key equality.",
+    "SPECIMEN 2, window: the same gate expired each recorded failure on its own age (now - at <= window). AccountService.AccountLockoutCounterResetAfter runs from the LAST failed login (AccountService.v1_19_0). Threshold 3, window 300 s, failures at T and T+290, evaluated at T+310: the counter holds 2, and the gate counted 1 and admitted the locking login.",
+    "SPECIMEN 3, attempts: the same gate folded the break-glass probe into the managed probe whenever the two named one account and the plan wrote one password for both, reasoning that one stored password makes one login. The dry reader takes two authentications with two pieces of evidence. Threshold 4 with two distinct rejections leaves 1; the fold reported 2.",
+    "FOUND BY: side-chat merge review of gunb-ai/gunbc#15356 at 515c21e06ed3, after 196/196 witnesses passed on the merged candidate. Every specimen sat in a case no witness constructed. Repaired in that PR: bmc_counters_reached and bmc_surface_reaches_counter spread a login onto every counter it reaches, bmc_failures_since_the_last_quiet_interval walks the reset rule, and bmc_break_glass_probe_is_the_managed_authentication dedupes on event identity. Each specimen has its own RED and positive control in test.claim.machine_intake.machine_intake_bmc_served_lockout_witness.",
+    "RECOGNITION RULE: when a gate compares a count with a limit someone else enforces, name the enforcer's counter, its reset rule and what it counts as one attempt, and check that the gate's key, window and dedup are those three and not the plan's own vocabulary. The tell is a key with an Undetermined arm, a window applied per item, or a dedup justified by a property of the account rather than of the event.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.machine_intake.bmc_secure", decl_name: "bmc_failed_login_budget_verdict", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.machine_intake.bmc_secure", decl_name: "bmc_failures_since_the_last_quiet_interval", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.machine_intake.bmc_secure", decl_name: "bmc_break_glass_probe_is_the_managed_authentication", field: WholeDeclaration },
+  ],
+}

@@ -17,7 +17,7 @@ import product.fabric.flex_policy {
   FlexPolicy, FlexBidAdmission, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused, FlexCurrencyMismatch, flex_bid_admission,
 }
 import product.fabric.flex_market {
-  FlexOwnerLabel, FlexOwnedCard, FlexDestroy, FlexKeep, flex_owner_label_gunbc_flex,
+  FlexOwnerLabel, FlexOwnedCard, FlexDestroy, FlexKeep, FlexCleanupStaleLoading, flex_owner_label_gunbc_flex,
 }
 import product.fabric.serving_recipe { SelectionQuoteEstablished, SelectionQuoteRefusedUnavailable }
 import product.fabric.flex_vast_shadow { FlexInstancesUnobserved,
@@ -221,6 +221,54 @@ test fn dry_with_a_destroy_due_records_it_and_destroys_nothing() -> Bool {
     FlexPlanDryDestroy { would: _ } => true
     _ => false
   } && !w_is_write(p: p)
+}
+
+// ---- DEAD FIRST: the pass consumes flex_market's flex_cleanup_dead. A card still loading past the launch's
+// envelope is destroyed even with room under the cap and no replacement serving — the release-for-value pass
+// holds on all three of those, and the card is being paid for either way. Before this the cleanup function
+// had no production caller at all, so a stuck-loading card sat in the fleet forever.
+test fn a_stale_loading_card_is_destroyed_by_the_pass_even_with_room_and_no_replacement() -> Bool {
+  let input = w_dead_input(loading_age: 7200, outbid: false)
+  match flex_plan_pass(input: input) {
+    FlexPlanDryDestroy { would: FlexDestroy { id: i, why: FlexCleanupStaleLoading } } => (i == "1001")
+    _ => false
+  }
+}
+
+// The same card at 600 s of loading is INSIDE the launch's envelope (an args-mode first boot was seen at
+// about 25 min, an ssh-mode one at 56+ min), so the pass plans nothing. This is the regression the old 600 s
+// cut caused: it destroyed cards that were booting normally, on a card whose rate was already being paid.
+test fn a_card_still_inside_the_launch_envelope_is_left_alone_by_the_pass() -> Bool {
+  let input = w_dead_input(loading_age: 600, outbid: false)
+  match flex_plan_pass(input: input) {
+    FlexPlanIdle => true
+    _ => false
+  }
+}
+
+// An outbid card is dead whatever its loading age, and the pass destroys it.
+test fn an_outbid_card_is_destroyed_by_the_pass() -> Bool {
+  let input = w_dead_input(loading_age: 0, outbid: true)
+  match flex_plan_pass(input: input) {
+    FlexPlanDryDestroy { would: FlexDestroy { id: i, why: _ } } => (i == "1001")
+    _ => false
+  }
+}
+
+fn w_dead_input(loading_age: Int, outbid: Bool) -> FlexPassInput {
+  let stuck = FlexOwnedCard {
+    owner: flex_owner_label_gunbc_flex, id: "1001" as NonEmptyStr,
+    vram: byte_size(count: 51539607552),
+    rate: usd_hour(amount: money_amount_micro(count: 2000000)),
+    held: true, running: false, loading: true, outbid: outbid, loading_age: second(count: loading_age),
+  }
+  FlexPassInput {
+    policy: w_input(mode: Plan, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none).policy,
+    gates: w_open, now: 1792008000000, cooldown: none,
+    observation: FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2)]), charges: w_charges(units: 1) },
+    cards: [stuck], allocations: [w_acquired()], intent: none, recipe: w_recipe, template_hashes: w_hashes,
+    no_room: false, replacement_serving: false,
+  }
 }
 
 fn w_card(owner: String, id: NonEmptyStr) -> FlexOwnedCard {

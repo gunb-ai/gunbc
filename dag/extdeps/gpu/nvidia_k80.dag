@@ -4,13 +4,13 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.measure { hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
-import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, GpuComputeCapability, InterconnectRead, OnBoardPcieSwitch, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower, SeveralGpus, cuda_legacy_gpus_page_authority }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { Gen3, PcieLink }
 import extdeps.pci.identity { PciDeviceId }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedToAuthority }
 import extdeps.uri { Uri, Https }
 
 // NVIDIA Tesla K80 board specification BD-07317-001_v05, read 2026-10-28: ONE board carrying "2x Tesla
@@ -18,8 +18,9 @@ import extdeps.uri { Uri, Https }
 // board), "Memory bandwidth: 480 GB/sec (cumulative)", PCI Express Gen3 x16, a 300 W board power cap, and a
 // passive heat sink. The device row is ONE GK210B at its own figures: 240 GB/s is the stated cumulative
 // 480 divided over the two identical GPUs, each on its own memory. The board owns the power, link and
-// thermal solution, once. "Kepler" is the architecture of the GK die prefix; the specification states
-// the die, not the architecture name.
+// thermal solution, once, and the switch is its interconnect: a model larger than 12 GB does not fit the
+// K80, whatever its "24 GB" says. "Kepler" is the architecture of the GK die prefix; the specification
+// states the die, not the architecture name. Compute capability 3.7 is the Legacy CUDA GPUs page's.
 
 data k80_board_specification_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -44,7 +45,7 @@ data nvidia_tesla_k80_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 12)), memory_kind: Dram },
   memory_bandwidth: Present { value: bandwidth(count: 240000000000) },
   boost_clock: none,
-  compute_capability: none,
+  compute_capability: Present { value: GpuComputeCapability { vendor: nvidia, major: 3, minor: 7 } },
   supported_runtimes: [Cuda],
   sm_cache: none,
   sm_cache_citations: [],
@@ -52,6 +53,7 @@ data nvidia_tesla_k80_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_k80", decl_name: "nvidia_tesla_k80_catalog", field_name: "memory"), authority: k80_board_specification_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_k80", decl_name: "nvidia_tesla_k80_catalog", field_name: "memory_bandwidth"), authority: k80_board_specification_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_k80", decl_name: "nvidia_tesla_k80_catalog", field_name: "execution_lane_count"), authority: k80_board_specification_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_k80", decl_name: "nvidia_tesla_k80_catalog", field_name: "compute_capability"), authority: cuda_legacy_gpus_page_authority },
   ],
   dense_tensor_throughput: [],
 }
@@ -60,7 +62,7 @@ data nvidia_tesla_k80_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "Tesla K80",
   gpu: nvidia_tesla_k80_catalog,
-  gpu_count: 2,
+  composition: SeveralGpus { count: 2, interconnect: InterconnectRead { interconnect: OnBoardPcieSwitch { downstream_link: none }, standing: CitedToAuthority { authority: k80_board_specification_authority } } },
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen3, lane_count: 16 } } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 300) } },
   zero_power: none,
@@ -68,7 +70,7 @@ data nvidia_tesla_k80_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   pci_device_id: Present { value: "102d" as PciDeviceId },
   driver_listed_name: Present { value: "Tesla K80" },
   figure_citations: [
-    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_k80", decl_name: "nvidia_tesla_k80_board_facts", field_name: "gpu_count"), authority: k80_board_specification_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_k80", decl_name: "nvidia_tesla_k80_board_facts", field_name: "composition"), authority: k80_board_specification_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_k80", decl_name: "nvidia_tesla_k80_board_facts", field_name: "attachment"), authority: k80_board_specification_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_k80", decl_name: "nvidia_tesla_k80_board_facts", field_name: "board_power"), authority: k80_board_specification_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_k80", decl_name: "nvidia_tesla_k80_board_facts", field_name: "thermal"), authority: k80_board_specification_authority },

@@ -1,0 +1,88 @@
+module gunbc.recurring_failure_mode.a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downstream_reads
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A PROXY THAT EDITS ONE FIELD OF A JSON REQUEST BODY BY DECODING IT, MUTATING A TABLE AND RE-ENCODING IT
+// REPLACES EVERY BYTE OF THAT BODY, AND NOTHING AT THE REQUEST BOUNDARY SAYS SO. Filed 2026-10-31 by
+// proud-bear-756 at the manager's direction (calm-crab-645, msg_b18efa42), after the defect was found in
+// the srv1 dev router and fixed by calm-moth-166 in the same stack (PR #15113, merged as 6975bc9e610e).
+// This row files the CLASS and its executed RED; the fix is not this row's work and is not claimed here.
+
+data a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downstream_reads: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downstream_reads" as NonEmptyStr,
+
+  // FOUND SILENTLY WRONG, SO BELOW THE LADDER. No status code, no log line, no diagnostic marked the
+  // state: the edited request parsed, routed, and answered 200. What moved was a number nobody reads --
+  // the upstream engine's cached-token count -- and it moved in a way that looked like an engine defect.
+  // The ceiling is MechanicallyPreventable rather than aspirational: one executed case pair refuses the
+  // state, and it did (see the control receipt below).
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability, already exercised once by hand, of running the router proxy falsifier's claim rows on the required path so that a forwarded-body byte-fidelity pair -- one request whose model id enters the rewrite and one control that does not, each asserting the upstream received the client's own bytes with only the named field replaced -- refuses any checkout that reintroduces a whole-body re-encode, while remaining INDIFFERENT to whether the rewrite itself is ever wanted"
+    },
+  },
+
+  receipts: [
+    "**INVALID STATE.** A routing policy that must change one field of a JSON body does it as decode, mutate,
+    re-encode: at 50043a419018734c846f483c06fb97cc68335fa0 the access-phase lines ended the alias rewrite
+    with 'if changed then ngx.req.set_body_data(cjson.encode(body)) end' (dag/gunbc/serving/router_dev_policy.dag,
+    pre-fix line 267, read in that blob). The bytes that reach the upstream are not the client's bytes with
+    one field changed; they are a fresh serialization of a Lua table. Object key ORDER is an artifact of the
+    encoder's traversal, and so are whitespace and number formatting, so a rewrite aimed at one key silently
+    rewrites every other byte. The request still parses and still answers, so the boundary that could have
+    spoken has nothing to say.",
+
+    "**THE HARM, AND WHY IT POINTED SOMEWHERE ELSE.** Upstream engines build a prompt from the request in
+    RECEIVED order -- Strata renders 'tools' in the order the keys arrive -- so a key reorder changes the
+    prompt text, which changes the prefix the engine's KV cache is keyed by. Reported by calm-moth-166 on
+    2026-10-30: h11 agent sessions reused 0 cached tokens on roughly half of their turns, which read as an
+    engine or cache defect. The turns that lost reuse were the ones whose model id was the router's alias
+    and so entered the rewrite; the turns sent with a direct model id kept their reuse. The router was the
+    only thing between the two populations and nobody had looked at the router's BYTES.",
+
+    "**WHAT MADE IT LOOK SAFE.** The instrument had byte-fidelity cases, and they held. Both were sent with a
+    DIRECT model id, so the rewrite branch never ran; and each assertion is a 'contains' over the forwarded
+    body, which a re-encoding satisfies as readily as a splice. A green case set that checks for the
+    presence of substrings says nothing about the bytes in between -- see the companion row
+    'a_green_case_set_that_counts_row_identities_and_never_the_branches_those_rows_take' for that class.",
+
+    "**THE FIX AS LANDED (calm-moth-166, not this row's claim).** An edit is a SPLICE on the raw bytes:
+    'forwarded(pick)' in router_dev_access_lines now finds the one occurrence of the named key and rebuilds
+    the string from the untouched prefix and suffix, and the alias and effort rewrites both go through it.
+    The plan already said the rule was 'Body bytes remain unchanged' (gunbc.plans.fabric_serving_router);
+    the fix made the code match the plan rather than the other way round.",
+
+    "**THE DISCRIMINATING RED, EXECUTED.** The pair now in falsifier_cases:
+    'dev_forwarded_body_is_the_client_bytes_when_nothing_is_rewritten' (control: direct model id, rewrite
+    not entered, upstream reports the body it received) and 'dev_alias_and_effort_rewrites_splice_the_client_bytes'
+    (aliased model id plus a reasoning_effort inside chat_template_kwargs: the upstream must report the
+    client's body with exactly the named field spliced in, key order included). calm-moth-166 ran the
+    control on srv1: same tree, one file restored to the pre-fix revision, and EXACTLY the four new cases
+    fail with everything else holding. That is what makes this RED discriminating rather than decorative --
+    a reintroduced re-encode moves these cases, and only these.",
+
+    "**CEILING AND TRIGGER.** The ceiling is MechanicallyPreventable and nothing higher is available at the
+    current substrate: the proxy model carries Lua as 'LuaPhaseBlock { phase: LuaPhase, lines: List<String> }'
+    (extdeps.proxy.openresty), so no type makes a whole-body re-encode unrepresentable while policy is
+    authored as lines. The blocker is ClimbableButUnbuilt, not AwaitsOneGrounding: the executing mechanism
+    exists and has run by hand; what is missing is the required-path step that runs it, since CI's
+    v2-bootstrap executes no claim rows. The second, higher-value step is the modeled redesign's: make the
+    rewrite unnecessary by having engines accept the alias, which removes the body edit instead of guarding
+    it -- that is calm-moth-166's plan, and this row does not claim credit for it.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_access_lines"),
+    decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "falsifier_cases"),
+    decl_ref(module_path: "gunbc.plans.fabric_serving_router", decl_name: "fabric_serving_router_plan"),
+    decl_ref(module_path: "extdeps.proxy.openresty", decl_name: "LuaPhaseBlock"),
+  ],
+}

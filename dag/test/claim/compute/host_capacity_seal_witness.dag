@@ -1,0 +1,55 @@
+module test.claim.compute.host_capacity_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE HOST CAPACITY SUBJECT IS MINTED FROM ITS DECLARATION AND CANNOT BE SPELLED OR HANDED OVER A PATH.
+// gunbc.compute.host_capacity ComputeCapacitySubject is sole_constructor, built in one place
+// (host_capacity_subject_in, reached from host_capacity_subject for a resolved host and from a witness with an
+// isolated instance), its root derived there from compute_capacity_slots. Each RED hands the compiler a module
+// outside the declaring file and asserts the refusal on the real acceptance path: a forged literal and a forged
+// cast are EXACTLY ONE SoleConstructorViolation on ComputeCapacitySubject; the mint handed a path adds at least one
+// blocking diagnostic beyond a baseline importing the same closure. Claimed rung: a consumer cannot be handed a
+// forged subject or one over the wrong root. NOT claimed: that business code cannot read subject.root (field
+// reads are not module-private; the declared residual gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module, recorded below by an expecting-red probe).
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data capacity_baseline_source: String = "module probe_capacity_baseline\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+data capacity_forged_literal_source: String = "module probe_capacity_literal\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(r: NonEmptyStr, p: PartitionId) -> ComputeCapacitySubject {\n  ComputeCapacitySubject { root: r, partition: p }\n}\n"
+data capacity_forged_cast_source: String = "module probe_capacity_cast\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(r: NonEmptyStr) -> ComputeCapacitySubject {\n  r as ComputeCapacitySubject\n}\n"
+data capacity_path_minter_source: String = "module probe_capacity_path_minter\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> ComputeCapacityLedger {\n  host_capacity_subject_in(requesting: i, host_instance: i, pool: ComputeBuildPool, root: \"/tmp/forged-capacity\")\n}\n"
+data capacity_root_out_source: String = "module probe_capacity_root_out\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> NonEmptyStr {\n  host_capacity_subject_in(requesting: i, host_instance: i, pool: ComputeBuildPool).subject.root\n}\n"
+data capacity_lawful_source: String = "module probe_capacity_lawful\nimport std.types { NonEmptyStr }\nimport product.capacity.event_chain { PartitionId }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.compute.host_capacity { ComputeCapacitySubject, ComputeCapacityLedger, ComputeBuildPool, host_capacity_subject_in }\nfn f(i: HostDashboardInstance) -> ComputeCapacityLedger {\n  host_capacity_subject_in(requesting: i, host_instance: i, pool: ComputeBuildPool)\n}\n"
+
+test fn a_forged_capacity_subject_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: capacity_forged_literal_source, subject: "ComputeCapacitySubject"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_capacity_subject_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: capacity_forged_cast_source, subject: "ComputeCapacitySubject"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_capacity_subject_mint_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: capacity_path_minter_source, safe: capacity_baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_root_is_readable_through_a_capacity_subject_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: capacity_root_out_source, safe: capacity_baseline_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn the_lawful_capacity_subject_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: capacity_lawful_source, safe: capacity_baseline_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: capacity_lawful_source, subject: "ComputeCapacitySubject"), holds: fn(n) { n == 0 }),
+  ])
+}

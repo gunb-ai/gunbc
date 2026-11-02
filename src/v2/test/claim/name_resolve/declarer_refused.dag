@@ -242,6 +242,7 @@ fn dr_fatal_declarer(v: NativeModuleResolveVerdict) -> String {
             AmbiguousIntent => "other"
             ExternalContractUnknown => "other"
             CorrectionNotModeled => "other"
+            RequestedModuleMissing { requested: _ } => "other"
           }
       }
   }

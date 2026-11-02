@@ -16,6 +16,7 @@ module test.claim.runner.runner_qualification_attempt_pass_witness
 // Both are reached only by the real producers on the live run
 // (gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_production_frontier).
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.types { Bool, CommitSha, Int, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -83,7 +84,7 @@ fn first_host_slot() -> HostUnitSlot? {
         host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)),
         purpose: AttemptSlot { attempt: attempt },
         workflow: qualification_selected_workflow(branch: pin_branch),
-      ) {
+       receipt: ReceiptAbsent) {
         HostUnitSlotBound { slot: s } => Present { value: s }
         HostUnitSlotRefused { refusal: _ } => none
       }

@@ -1070,6 +1070,12 @@ fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
     + gunbc_ci_artifact_transfer_step_timeout_minutes
 }
 
+// The microVM controller install's backstop: the deploy job's terms, which it shares, plus its tenancy
+// admission step (live-deploy tier), which runs before its approval and its key.
+fn gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() + gunbc_ci_live_deploy_step_timeout_minutes
+}
+
 // The dark-install step's measured RENDER FOLD, reserved as its own budget term. On run 40630763823
 // the entry rendered the install script/legs through the generic emit path for a silent 696.6 s
 // (job log 04:39:56 -> 04:51:33, zero output between the two shell.Exec.RunArgv calls) -- the step's

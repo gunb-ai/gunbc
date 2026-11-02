@@ -22,7 +22,7 @@ import gunbc.workspace_commissioning_store { workspace_commissioning_committed_f
 import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 import gunbc.workspace_tool_observer { workspace_observe_tools, WorkspaceToolsReady, WorkspaceToolsUnobserved }
 import gunbc.workspace_allocation_supply { workspace_observe_host_supply, WorkspaceHostSupplyObserved, WorkspaceHostSupplyUnavailable }
-import gunbc.workspace_gateway_store { workspace_read_gateway_evidence, WorkspaceGatewayEvidenceRead, WorkspaceGatewayEvidenceUnavailable }
+import gunbc.workspace_gateway_store { workspace_read_gateway_evidence, WorkspaceGatewayEvidenceRead, WorkspaceGatewayEvidenceUnavailable, workspace_gateway_store }
 import gunbc.workspace_offer_producer { WorkspaceHostOfferRead, WorkspaceHostOfferUnmet, workspace_host_offer_admit }
 import gunbc.workspace_allocation_policy { workspace_enrolled_ssh_access }
 import gunbc.workspace_ssh_access { WorkspaceSshFromHost, WorkspaceSshThroughGateway, WorkspaceHostAccessObserved, WorkspaceGatewayAccessObserved }
@@ -70,7 +70,7 @@ fn workspace_observe_slot_offer(request: WorkspaceRequest, host: HostIdentity, s
                         access: WorkspaceHostAccessObserved { host: host, observed_at: supply.observed_at }, now: now as String)
                     }
                   }
-                  WorkspaceSshThroughGateway => match workspace_read_gateway_evidence(store: fabric_state_storage_binding(), slot: slot) {
+                  WorkspaceSshThroughGateway => match workspace_read_gateway_evidence(store: workspace_gateway_store(binding: fabric_state_storage_binding()), slot: slot) {
                     WorkspaceGatewayEvidenceUnavailable { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason }
                     WorkspaceGatewayEvidenceRead { evidence: gateway } => match clock_now_probed_at() {
                       Absent => WorkspaceHostOfferUnmet { host: host, reason: "host offer clock is unavailable" }

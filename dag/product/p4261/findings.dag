@@ -1,0 +1,82 @@
+module product.p4261.findings
+
+import std.types { Bool, List }
+import product.electrical.continuity { EvidenceRef, OperatorPhotograph }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision }
+import product.p4261.carrier { AssemblyLabel, BoardMarking, CarrierLayoutObservation, PcbCode }
+
+// WHAT THE P4261 RECORDS ESTABLISH, AS TYPED RESULTS A CONSUMER READS BEFORE ANYTHING IS RENDERED.
+// product.p4261.readings interprets selected observations; this module turns them into the findings
+// consumers cite, and product.p4261.report only renders them, so rewording, omitting or translating a
+// sentence cannot change whether a finding holds. The carrier findings (CarrierFinding,
+// carrier_finding) still live in product.p4261.report while the private strategy imports them from
+// there; they move here with the ownership cutover that rewires that consumer.
+
+// THE RECEIVED BOARD IS NAMED BY ITS OWN LABEL. A label in a listing photograph names what was sold,
+// possibly a sibling unit; only the operator's photograph of the board in hand names this one, so every
+// consumer that labels the carrier reads it here rather than restating it.
+fn is_operator_photograph(e: EvidenceRef) -> Bool {
+  match e {
+    OperatorPhotograph { taken_on: _, locator: _ } => true
+    _ => false
+  }
+}
+
+fn is_received_label(m: BoardMarking) -> Bool {
+  match m {
+    AssemblyLabel { model: _, part_number: _, revision: _, serial: _, evidence } => is_operator_photograph(e: evidence)
+    _ => false
+  }
+}
+
+fn received_labels(layout: CarrierLayoutObservation) -> List<BoardMarking> {
+  filter(layout.markings, m => is_received_label(m: m))
+}
+
+// WHICH REVISION A BOARD WAS BUILT TO IS READ OFF ITS OWN LABEL AND PCB PRINT. The record names the
+// NVIDIA revision it claims (layout.revision, extdeps.nvidia.p4261). Any received-board marking that
+// disagrees with the row wins, whatever else was read, so a board recorded against the wrong revision
+// says so instead of inheriting another revision's identity. Agreement is reported only for what was
+// read: the assembly label (part number and revision code) and the PCB print (PCB code) are separate
+// evidence, and one agreeing does not stand for the other. A label only in a seller's listing is not
+// the received board's (is_received_label).
+type AssemblyRevisionStanding
+  = RevisionReadOnBoard { revision: P4261AssemblyRevision }
+  | RevisionLabelReadPcbUnread { revision: P4261AssemblyRevision }
+  | RevisionPcbReadLabelUnread { revision: P4261AssemblyRevision }
+  | RevisionContradictedOnBoard { revision: P4261AssemblyRevision, marking: BoardMarking }
+  | RevisionUnreadOnBoard { revision: P4261AssemblyRevision }
+
+fn is_received_pcb_print(m: BoardMarking) -> Bool {
+  match m {
+    PcbCode { code: _, printed_beside: _, evidence } => is_operator_photograph(e: evidence)
+    _ => false
+  }
+}
+
+fn is_revision_marking(m: BoardMarking) -> Bool {
+  is_received_label(m: m) || is_received_pcb_print(m: m)
+}
+
+fn marking_contradicts_revision(m: BoardMarking, r: P4261AssemblyRevision) -> Bool {
+  match m {
+    AssemblyLabel { model, part_number, revision, serial: _, evidence: _ } =>
+      !(model == r.model && part_number == r.assembly_part_number && revision == r.revision_code)
+    PcbCode { code, printed_beside: _, evidence: _ } => !(code == r.pcb_code)
+    _ => false
+  }
+}
+
+fn assembly_revision_standing(layout: CarrierLayoutObservation) -> AssemblyRevisionStanding {
+  let read = filter(layout.markings, m => is_revision_marking(m: m))
+  let label_read = any(read, m => is_received_label(m: m))
+  let pcb_read = any(read, m => is_received_pcb_print(m: m))
+  match (filter(read, m => marking_contradicts_revision(m: m, r: layout.revision))).first() {
+    Present { value: m } => RevisionContradictedOnBoard { revision: layout.revision, marking: m }
+    Absent =>
+      if label_read && pcb_read { RevisionReadOnBoard { revision: layout.revision } }
+      else { if label_read { RevisionLabelReadPcbUnread { revision: layout.revision } }
+      else { if pcb_read { RevisionPcbReadLabelUnread { revision: layout.revision } }
+      else { RevisionUnreadOnBoard { revision: layout.revision } } } }
+  }
+}

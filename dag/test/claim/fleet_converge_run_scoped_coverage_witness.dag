@@ -9,12 +9,13 @@ import gunbc.fleet.fleet_converge_workflow {
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
   fleet_converge_unfederated_run_scoped_refusal_of, fleet_converge_unfederated_run_scoped_refusal,
   fleet_converge_run_scoped_step_if, fleet_converge_branch_account_expression, fleet_converge_jobs, fleet_converge_job, fleet_converge_mode_job_id,
-  FleetConvergeWorkflowMode, DashboardDeploy, FullHostPlan,
+  FleetConvergeWorkflowMode, Srv1RootMutation, FullHostPlan,
   fleet_converge_branch_run_grant_await_job, fleet_converge_branch_run_grant_await_job_id, fleet_converge_branch_run_grant_wait_if,
   fleet_converge_grant_wait_placement_refusal, needs_result_is,
   fleet_converge_grant_wait_admits, fleet_converge_grant_required_expression, GrantWaitSucceeded, GrantWaitSkipped, GrantWaitFailed, GrantWaitCancelled,
   MtCollins1Boot, fleet_converge_mtcollins1_boot_job_if,
 }
+import gunbc.fleet.srv1_root_mutation_mode { DashboardDeploy }
 import extdeps.github.expressions { LogicalAnd, LogicalNot }
 import extdeps.github.actions { Step, RunStep, UsesStep, Job, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.github.expressions { serialize_expression }
@@ -149,7 +150,7 @@ test fn the_grant_wait_holds_no_fleet_runner_and_a_wait_on_srv1_refuses() -> Boo
 // RED: dashboard_deploy is outside the relation, so its job has no grant wait and no branch-pool sign-in, and
 // the eligibility rule gives it no grant off main (it keeps today's main-only route).
 test fn dashboard_deploy_keeps_the_main_only_route() -> Bool {
-  (match executing_job(mode: DashboardDeploy) {
+  (match executing_job(mode: Srv1RootMutation(DashboardDeploy)) {
     Absent => false
     Present { value: j } => !any(j.steps, s => step_id_of(s: s) == "branch_run_grant_await")
       && !j.needs.contains(fleet_converge_branch_run_grant_await_job_id as String)

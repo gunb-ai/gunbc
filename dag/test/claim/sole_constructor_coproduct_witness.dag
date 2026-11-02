@@ -1,0 +1,51 @@
+module test.claim.sole_constructor_coproduct_witness
+
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key,
+  census_total_count
+}
+
+// A SEALED COPRODUCT'S VARIANTS ARE CONSTRUCTED ONLY BY ITS DECLARING MODULE (DESIGN 4b; the seed dropped the
+// modifier because sole_constructor_construction_diags keyed on the constructed VARIANT's declaration, which
+// carries no property -- the property sits on the coproduct). The RED authors a variant from a foreign module
+// and demands exactly ONE SoleConstructorViolation keyed on that variant; the CONTROL matches every variant
+// from a foreign module and demands none. Fixture: test.fixture.sole_constructor_variant_probe.definer. A
+// census that declined to run is -1, never a zero that would read as "the seal held".
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn keyed_count(source: String, wanted_subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "SoleConstructorViolation", subject_name: wanted_subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn total_violations(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data forged_variant_source: String = "module probe_forged_sealed_variant\nimport std.types { Int }\nimport test.fixture.sole_constructor_variant_probe.definer { SealedChoice, SealedA }\nfn forged() -> SealedChoice {\n  SealedA { n: 999 }\n}\n"
+
+data matching_source: String = "module probe_matching_sealed_variants\nimport std.types { Int }\nimport test.fixture.sole_constructor_variant_probe.definer { SealedChoice, SealedA, SealedB }\nfn read(c: SealedChoice) -> Int {\n  match c {\n    SealedA { n: n } => n\n    SealedB { s: _ } => 0\n  }\n}\n"
+
+test fn a_foreign_sealed_variant_is_refused_with_exactly_one_keyed_violation() -> Bool {
+  keyed_count(source: forged_variant_source, wanted_subject: "SealedA") == 1
+}
+
+test fn a_foreign_match_on_every_sealed_variant_draws_no_violation() -> Bool {
+  keyed_count(source: matching_source, wanted_subject: "SealedA") == 0 && total_violations(source: matching_source) >= 0
+}
+
+test fn the_matching_control_compiled_and_drew_no_violation_of_any_key() -> Bool {
+  keyed_count(source: matching_source, wanted_subject: "SealedB") == 0 && total_violations(source: matching_source) >= 0
+}

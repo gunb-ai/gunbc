@@ -1,5 +1,6 @@
 module test.claim.github_app_registry
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import gunbc.auth.github_credential {
   unsatisfied_capabilities,
   GitHubCredentialAuthority, ActionsJobCredential,
@@ -1363,7 +1364,7 @@ fn group_restricted_to(workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
 }
 
 fn host_unit_slot(h: ManagedHost) -> HostUnitSlotStanding {
-  host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow)
+  host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow, receipt: ReceiptAbsent)
 }
 
 fn host_unit_planned(standing: HostUnitSlotStanding, perms: List<GitHubAppPermission>, group: MicrovmRunnerGroupStanding) -> JitMintPlan {
@@ -1432,7 +1433,7 @@ test fn witness_jit_mint_refuses_a_group_restricted_to_another_workflow() -> Boo
 test fn witness_jit_mint_refuses_a_host_the_managed_host_seam_does_not_bind() -> Bool {
   let unbound = BmcControlAccessUnobserved { endpoint: BmcControllerEndpoint { host: "fixture-bmc" } }
   match host_unit_planned(
-    standing: host_unit_slot_for(host: bmc_controlled_host(host: operator_host_srv2, standing: unbound), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow),
+    standing: host_unit_slot_for(host: bmc_controlled_host(host: operator_host_srv2, standing: unbound), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow, receipt: ReceiptAbsent),
     perms: runner_grant,
     group: group_restricted_to(workflow: qualification_workflow),
   ) {

@@ -1,0 +1,199 @@
+module gunbc.compute.compute_producer_lease
+
+import std.types { String, NonEmptyStr, List }
+import std.durable_compare_and_set { cas_generation_count, cas_unreadable_slot_detail, cas_store_failure_detail }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldObservation,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+  DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner,
+  HoldReleaseAgainstAnotherGeneration, HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
+  FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+  FileHoldReleasePlanned, FileHoldReleaseNotEligible, FileHoldReleased, FileHoldReleaseLost,
+  FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
+  file_hold_acquire, file_hold_release_assess, file_hold_release_commit, observe_file_hold,
+}
+import gunbc.durable_cas_file_store { cas_key_of_slot_name }
+import std.algebra { trim }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.compute.host_capacity { compute_root }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation, filesystem_listing_entry_names, listed_entry_presence,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+}
+
+// THE PRODUCER LEASE, A HOLD ON THE HOLD LIBRARY. The lease is the producer's exclusion over one work identity
+// (gunbc.compute.work_provider_local): one slot per identity under one leases directory. It replaces a hand lock --
+// an exclusive create of leases/<identity> released by a Delete -- which forked std.durable_exclusive_hold (the
+// leasing row of DESIGN 3b). Acquire, release and the read of who holds it are now the hold library's
+// (gunbc.durable_exclusive_hold_file_store), so a stale holder cannot free a successor's lease by deleting a path.
+//
+// HOLDER SEMANTICS ARE TODAY'S. The owner is the same text the plain file carried: the seat holder line
+// ("holder <seat path>"), then the commit and the time. The producer's own drop frees whatever holds the identity
+// (today's unconditional delete, now a compare-and-set on the generation it read); the seat discharge frees only a
+// hold whose owner starts with its own holder line (today's compare-then-delete, the read-then-delete window now
+// closed by the compare-and-set).
+//
+// A LEGACY PLAIN-FILE LEASE REFUSES THE MINT, PERMANENTLY. The hold library's slots are <identity>.<generation>, so
+// a leases/<identity> file written by the old code lies outside the hold namespace and no acquire would ever see it:
+// the new code would start fresh beside a lease it cannot read. The mint therefore observes the directory and
+// answers Unready while any entry is not hold-shaped (a name with no "."), so no acquire, standing read or release
+// is reachable over a directory holding one. The operator remedy is to remove the leases/<identity> file by hand
+// once that identity has no producer; the refusal stays after the cutover as the guard, not as a transition.
+
+type ComputeProducerLeaseDeclaration { member: NonEmptyStr }
+
+data compute_lease_slots: ComputeProducerLeaseDeclaration = ComputeProducerLeaseDeclaration { member: "leases" as NonEmptyStr }
+
+// The sealed directory of producer leases. Only this module constructs it, from the declaration and the
+// instance's compute root; no mint takes a path.
+type ComputeProducerLeases sole_constructor { root: NonEmptyStr }
+
+type ComputeProducerLeasesReading
+  = ComputeProducerLeasesReady { leases: ComputeProducerLeases }
+  | ComputeProducerLeasesUnready { detail: String }
+
+fn compute_producer_leases(instance: HostDashboardInstance) -> ComputeProducerLeasesReading {
+  let parent = compute_root(instance: instance) as String
+  let dir = join([parent, "/", compute_lease_slots.member as String], "")
+  let leases = ComputeProducerLeases { root: dir as NonEmptyStr }
+  match listed_entry_presence(directory: parent, name: compute_lease_slots.member as String) {
+    FilesystemEntryAbsent(_) => ComputeProducerLeasesReady { leases: leases }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => ComputeProducerLeasesUnready { detail: join(["the compute root is not admissible: ", c], "") }
+    FilesystemEntryPresenceIndeterminate { cause: c } => ComputeProducerLeasesUnready { detail: c }
+    FilesystemEntryListed { directory: _, name: _ } => compute_producer_leases_listed(leases: leases)
+  }
+}
+
+fn compute_producer_leases_listed(leases: ComputeProducerLeases) -> ComputeProducerLeasesReading {
+  let dir = leases.root as String
+  let listing = Filesystem.List(path: dir)
+  match filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ComputeProducerLeasesUnready { detail: join(["the leases directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => ComputeProducerLeasesUnready { detail: join(["the leases directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(admitted) =>
+      compute_producer_leases_screened(leases: leases, legacy: filesystem_listing_entry_names(listing: admitted) |> filter(n => !compute_producer_lease_entry_is_slot(name: n)))
+  }
+}
+
+// A hold slot file is "<key>.<generation>": the one grammar the hold library writes and decodes
+// (gunbc.durable_cas_file_store cas_key_of_slot_name). An entry that does not decode under it is not a hold.
+fn compute_producer_lease_entry_is_slot(name: String) -> Bool {
+  match cas_key_of_slot_name(name: trim(s: name)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn compute_producer_leases_screened(leases: ComputeProducerLeases, legacy: List<String>) -> ComputeProducerLeasesReading {
+  if length(legacy) == 0 {
+    ComputeProducerLeasesReady { leases: leases }
+  } else {
+    ComputeProducerLeasesUnready { detail: join([leases.root as String, " holds a legacy plain-file lease (not migrated): ", join(legacy, ", "), "; remove each by hand once its identity has no producer"], "") }
+  }
+}
+
+fn compute_producer_lease_path(leases: ComputeProducerLeases, identity: String) -> String {
+  join([leases.root as String, "/", identity], "")
+}
+
+fn compute_producer_leases_reading_path(reading: ComputeProducerLeasesReading, identity: String) -> String? {
+  match reading {
+    ComputeProducerLeasesReady { leases: l } => Present { value: compute_producer_lease_path(leases: l, identity: identity) }
+    ComputeProducerLeasesUnready { detail: _ } => Absent
+  }
+}
+
+// FOR DIAGNOSTIC TEXT ONLY: the path when the leases are admissible, else a labelled refusal that cannot be
+// mistaken for a path.
+fn compute_producer_leases_reading_label(reading: ComputeProducerLeasesReading, identity: String) -> String {
+  match reading {
+    ComputeProducerLeasesReady { leases: l } => compute_producer_lease_path(leases: l, identity: identity)
+    ComputeProducerLeasesUnready { detail: d } => join(["<producer leases not admissible: ", d, ">"], "")
+  }
+}
+
+type ComputeProducerLeaseAcquire
+  = ComputeProducerLeaseAcquired
+  | ComputeProducerLeaseOccupied { holder: String }
+  | ComputeProducerLeaseRefused { detail: String }
+
+fn compute_producer_lease_acquire(leases: ComputeProducerLeases, identity: String, owner: String) -> ComputeProducerLeaseAcquire {
+  let location = compute_producer_lease_path(leases: leases, identity: identity)
+  match file_hold_acquire(root: leases.root, slot_key: identity as NonEmptyStr, requested_owner: owner as NonEmptyStr as DurableHoldOwnerRef) {
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => ComputeProducerLeaseAcquired
+    FileHoldOccupied { slot_key: _, holder: h, generation: _ } => ComputeProducerLeaseOccupied { holder: h as String }
+    FileHoldSlotUndecodable { slot_key: _, generation: g, detail: d } =>
+      ComputeProducerLeaseRefused { detail: join([location, " is not a hold at generation ", to_string(cas_generation_count(g: g)), " (a legacy plain-file lease; remove it by hand once no producer holds this identity): ", d as String], "") }
+    FileHoldAcquireLost { slot_key: _ } => ComputeProducerLeaseRefused { detail: join([location, " was taken by another producer between this acquire's read and its write"], "") }
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: c } => ComputeProducerLeaseRefused { detail: join([location, " could not be read or written (if it is a legacy plain-file lease, remove it by hand once no producer holds this identity): ", cas_store_failure_detail(cause: c)], "") }
+    FileHoldKeyNotSlotAddressable { slot_key: k } => ComputeProducerLeaseRefused { detail: join([location, ": the identity ", k as String, " is not slot-addressable"], "") }
+  }
+}
+
+type ComputeProducerLeaseStanding
+  = ComputeProducerLeaseHeldBy { owner: String }
+  | ComputeProducerLeaseNotHeld
+  | ComputeProducerLeaseUnreadable { detail: String }
+
+fn compute_producer_lease_standing(leases: ComputeProducerLeases, identity: String) -> ComputeProducerLeaseStanding {
+  match observe_file_hold(root: leases.root, key: identity as NonEmptyStr) {
+    HoldSlotHeld { generation: _, owner: o } => ComputeProducerLeaseHeldBy { owner: o as String }
+    HoldSlotAbsent => ComputeProducerLeaseNotHeld
+    HoldSlotFree { generation: _, released_by: _ } => ComputeProducerLeaseNotHeld
+    HoldSlotUndecodable { generation: _, detail: d } => ComputeProducerLeaseUnreadable { detail: join(["not a hold (a legacy plain-file lease): ", d as String], "") }
+    HoldObservationUnavailable { cause: c } => ComputeProducerLeaseUnreadable { detail: cas_unreadable_slot_detail(cause: c) }
+  }
+}
+
+type ComputeProducerLeaseRelease
+  = ComputeProducerLeaseReleased
+  | ComputeProducerLeaseKept { detail: String }
+
+fn compute_producer_lease_release_refusal_text(refusal: DurableHoldReleaseRefusal) -> String {
+  match refusal {
+    HoldReleaseSlotAbsent => "no lease was ever held for this identity"
+    HoldReleaseAlreadyFree { generation: g, released_by: _ } => join(["the lease is already free at generation ", to_string(cas_generation_count(g: g))], "")
+    HoldReleaseHeldByAnotherOwner { generation: _, holder: h } => join(["the lease is held by ", h as String], "")
+    HoldReleaseAgainstAnotherGeneration { acquired: _, observed: o } => join(["the lease moved to generation ", to_string(cas_generation_count(g: o))], "")
+    HoldReleaseSlotUndecodable { generation: _, detail: d } => join(["the lease is not a hold: ", d as String], "")
+    HoldReleaseObservationUnavailable { cause: c } => join(["the lease could not be read: ", cas_unreadable_slot_detail(cause: c)], "")
+  }
+}
+
+// FREE THE HOLD THIS READ OBSERVED. The owner and generation come from the live read; the hold library re-reads
+// the slot and commits held-at-N to free-at-N+1 by compare-and-set, refusing a hold that changed hands since.
+fn compute_producer_lease_release_observed(leases: ComputeProducerLeases, identity: String, owner: String, released_by: String) -> ComputeProducerLeaseRelease {
+  match observe_file_hold(root: leases.root, key: identity as NonEmptyStr) {
+    HoldSlotHeld { generation: g, owner: o } =>
+      if (o as String) != owner {
+        ComputeProducerLeaseKept { detail: "the lease changed hands between the read and the release" }
+      } else {
+        match file_hold_release_assess(root: leases.root, slot_key: identity as NonEmptyStr, owner: o, acquired_generation: g, released_by: released_by as NonEmptyStr as DurableHoldReleaseRef) {
+          FileHoldReleaseNotEligible { slot_key: _, refusal: r } => ComputeProducerLeaseKept { detail: compute_producer_lease_release_refusal_text(refusal: r) }
+          FileHoldReleasePlanned { plan: p } => match file_hold_release_commit(plan: p) {
+            FileHoldReleased { slot_key: _, generation: _ } => ComputeProducerLeaseReleased
+            FileHoldReleaseLost { slot_key: _ } => ComputeProducerLeaseKept { detail: "the lease moved after the release was assessed; it is not released by this call" }
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: c } => ComputeProducerLeaseKept { detail: join(["the lease could not be released and is STILL held: ", cas_store_failure_detail(cause: c)], "") }
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: k } => ComputeProducerLeaseKept { detail: join(["the identity ", k as String, " is not slot-addressable"], "") }
+          }
+        }
+      }
+    HoldSlotAbsent => ComputeProducerLeaseKept { detail: "no lease was ever held for this identity" }
+    HoldSlotFree { generation: _, released_by: _ } => ComputeProducerLeaseKept { detail: "the lease is already free" }
+    HoldSlotUndecodable { generation: _, detail: d } => ComputeProducerLeaseKept { detail: join(["the lease is not a hold (a legacy plain-file lease): ", d as String], "") }
+    HoldObservationUnavailable { cause: c } => ComputeProducerLeaseKept { detail: join(["the lease could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+  }
+}
+
+// THE PRODUCER'S OWN DROP: whatever holds this identity, as the unconditional delete it replaces did.
+fn compute_producer_lease_release_current(leases: ComputeProducerLeases, identity: String) -> ComputeProducerLeaseRelease {
+  match compute_producer_lease_standing(leases: leases, identity: identity) {
+    ComputeProducerLeaseHeldBy { owner: o } => compute_producer_lease_release_observed(leases: leases, identity: identity, owner: o, released_by: "compute producer drop")
+    ComputeProducerLeaseNotHeld => ComputeProducerLeaseKept { detail: "no lease is held for this identity" }
+    ComputeProducerLeaseUnreadable { detail: d } => ComputeProducerLeaseKept { detail: d }
+  }
+}

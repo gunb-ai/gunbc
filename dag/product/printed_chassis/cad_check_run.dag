@@ -4,11 +4,12 @@ import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
 import std.types {String}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import product.printed_chassis.review_realization {program_for}
-import product.printed_chassis.printable_assembly {PrintedAssemblyRoot,PrintableAssemblyReady,PrintableAssemblyRefused,printable_manifest,printed_assembly_root_from_wire}
-import product.printed_chassis.printable_assembly_selection {select_printable_assembly}
+import product.printed_chassis.printable_assembly {PrintedAssemblyRoot,PrintableAssemblyReady,PrintableAssemblyRefused,printable_manifest}
+import product.printed_chassis.printable_assembly_selection {select_printable_assembly,printed_assembly_root_from_wire}
 import gunbc.cli_wire {CliWirePrintable,CliWireUnprintable}
 import extdeps.filesystem.filesystem_io {Filesystem}
 import extdeps.languages.json.emit {serialize_json,json_array,json_string}
+import gunbc.host_state_root {host_state_tree}
 import product.printing.print_runtime {CadRuntimeReady,cad_program_command,observe_cad_runtime,CadRuntimeObserved,CadRuntimeRefused}
 import extdeps.exec.command {LocalExec}
 import gunbc.command_runner {run_shell_command_capture}
@@ -44,7 +45,7 @@ fn check_printable_cad(cad:CadRuntimeReady,root:PrintedAssemblyRoot,output:Strin
 
 fn run(root:String,output:String) -> ProcessExit {
  match printed_assembly_root_from_wire(s:root) {
-  Present {value:r}=>match observe_cad_runtime() {
+  Present {value:r}=>match observe_cad_runtime(tree:host_state_tree()) {
    CadRuntimeObserved {runtime:c}=>check_printable_cad(cad:c,root:r,output:output)
    CadRuntimeRefused {reason:why}=>exit_failure(reason:why)
   }

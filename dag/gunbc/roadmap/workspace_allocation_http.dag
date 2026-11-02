@@ -10,7 +10,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.auth.request_authentication { RequestAccessPath, RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy, ServeActionCreateAllocation, ServeActionReleaseAllocation }
 import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, workspace_write_admission, workspace_owner_admission, workspace_request_admit, WorkspaceRequestAdmitted, WorkspaceRequestAdmissionRefused, WorkspaceRequestPolicyRefused }
 import gunbc.workspace_allocation { WorkspaceRequest, workspace_profile_parse, workspace_profile_wire }
-import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceRunning, WorkspaceWanted, workspace_phase_wire, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_record_request_at, workspace_request_release_at, WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_allocation_json }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceRunning, WorkspaceWanted, workspace_phase_wire, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_record_request_at, workspace_request_release_at, WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_allocation_json, workspace_allocation_store }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path, allocation_release_route }
@@ -47,7 +47,7 @@ fn workspace_http_create_over(
         observed_at: observed_at, route_path: allocation_page_path, action: ServeActionCreateAllocation, csrf_presented: submission.csrf_token,
       ) {
         Deny { refusal } => workspace_http_reason(status: 403, reason: access_refusal_reason(refusal: refusal))
-        Permit => match workspace_read_owner(store: store, owner: session.principal) {
+        Permit => match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: session.principal) {
           WorkspaceStoreUnreadable { reason } => workspace_http_reason(status: 503, reason: reason)
           WorkspaceStoreReadOk { snapshot } => match first(filter(snapshot.allocations, a => a.request.idempotency_key == submission.idempotency_key.value)) {
             Present { value: prior } => match workspace_profile_parse(value: submission.profile) {
@@ -62,7 +62,7 @@ fn workspace_http_create_over(
               idempotency_key: submission.idempotency_key, profile_wire: submission.profile,
               pinned_image: pinned_image,
             ) {
-              WorkspaceRequestAdmitted { request: admitted } => workspace_http_create_result(store: store, admitted: admitted, observed_at: observed_at, result: workspace_record_request_at(store: store, request: admitted, observed_at: observed_at))
+              WorkspaceRequestAdmitted { request: admitted } => workspace_http_create_result(store: store, admitted: admitted, observed_at: observed_at, result: workspace_record_request_at(store: workspace_allocation_store(binding: store), request: admitted, observed_at: observed_at))
               WorkspaceRequestAdmissionRefused { decision } => match decision {
                 Deny { refusal } => workspace_http_reason(status: 403, reason: access_refusal_reason(refusal: refusal))
                 Permit => workspace_http_reason(status: 503, reason: "Inconsistent allocation admission")
@@ -84,7 +84,7 @@ fn workspace_http_list_over(request: ServeHttpRequest<RequestAccessPath, Request
   match request.security.authentication {
     GoogleOidcSession { session } => match workspace_owner_admission(security: request.security, owner: session.principal, policy: policy, observed_at: observed_at, route_path: allocation_page_path, action: ServeActionCreateAllocation) {
       Deny { refusal } => workspace_http_reason(status: 403, reason: access_refusal_reason(refusal: refusal))
-      Permit => match workspace_read_owner(store: store, owner: session.principal) {
+      Permit => match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: session.principal) {
         WorkspaceStoreUnreadable { reason } => workspace_http_reason(status: 503, reason: reason)
         WorkspaceStoreReadOk { snapshot } => workspace_http_json(status: 200, value: json_array(elements: map(snapshot.allocations, a => workspace_http_snapshot(allocation: a, now: observed_at))))
       }
@@ -109,7 +109,7 @@ fn workspace_http_release_over(
         observed_at: observed_at, route_path: allocation_release_route(), action: ServeActionReleaseAllocation, csrf_presented: submission.csrf_token,
       ) {
         Deny { refusal } => workspace_http_reason(status: 403, reason: access_refusal_reason(refusal: refusal))
-        Permit => workspace_http_write(observed_at: observed_at, result: workspace_request_release_at(store: store, owner: session.principal, idempotency_key: allocation_id, expected_generation: submission.generation, observed_at: observed_at))
+        Permit => workspace_http_write(observed_at: observed_at, result: workspace_request_release_at(store: workspace_allocation_store(binding: store), owner: session.principal, idempotency_key: allocation_id, expected_generation: submission.generation, observed_at: observed_at))
       }
       FabricServiceEvidence { kind: _, authenticated_at: _ } => workspace_http_reason(status: 401, reason: "Sign in to release a workspace")
       SessionStandingInvalid { standing: _ } => workspace_http_reason(status: 401, reason: "Sign in to release a workspace")
@@ -149,7 +149,7 @@ fn workspace_http_get_over(request: ServeHttpRequest<RequestAccessPath, RequestA
   match request.security.authentication {
     GoogleOidcSession { session } => match workspace_owner_admission(security: request.security, owner: session.principal, policy: policy, observed_at: observed_at, route_path: allocation_page_path, action: ServeActionCreateAllocation) {
       Deny { refusal } => workspace_http_reason(status: 403, reason: access_refusal_reason(refusal: refusal))
-      Permit => match workspace_read_owner(store: store, owner: session.principal) {
+      Permit => match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: session.principal) {
         WorkspaceStoreUnreadable { reason } => workspace_http_reason(status: 503, reason: reason)
         WorkspaceStoreReadOk { snapshot } => match first(filter(snapshot.allocations, item => item.request.idempotency_key == allocation_id)) {
           Absent => workspace_http_reason(status: 404, reason: "Allocation not found")
@@ -176,7 +176,7 @@ fn workspace_http_create_result(store: FabricStorageBinding, admitted: Workspace
 // An unwritten create answers from the committed intent under the same idempotency key, or
 // reports the write's own outcome when no such intent exists.
 fn workspace_http_create_committed(store: FabricStorageBinding, admitted: WorkspaceRequest, observed_at: Timestamp, result: WorkspaceStoreWrite) -> ServeHttpResponse {
-  match workspace_read_owner(store: store, owner: admitted.owner) {
+  match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: admitted.owner) {
     WorkspaceStoreUnreadable { reason } => workspace_http_reason(status: 503, reason: reason)
     WorkspaceStoreReadOk { snapshot } => match first(filter(snapshot.allocations, item => item.request.idempotency_key == admitted.idempotency_key)) {
       Present { value: committed } => if committed.request.profile == admitted.profile {

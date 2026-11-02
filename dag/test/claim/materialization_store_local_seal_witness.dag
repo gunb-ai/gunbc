@@ -1,7 +1,7 @@
 module test.claim.materialization_store_local_seal_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit}
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit, census_delta_verdict, total_blocking_census, CensusVerdict }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 
@@ -71,16 +71,47 @@ test fn a_direct_verified_settle_is_an_admission_refusal() -> ProcessExit {
 // THE REMAINING EFFECTFUL HELPERS ARE SEALED: creating a store file, and reclaiming a slot's
 // generations, are reachable only from the store's own paths -- a direct call could write an
 // unindexed file, or apply this store's window to a slot that keeps every generation.
-data direct_create_new_source: String = "module probe_store_direct_create_new\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemCreateNew }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn direct(p: String, c: String) -> FilesystemCreateNew {\n  local_store_create_new(path: p, content: c)\n}\n"
 
-data direct_settle_slot_source: String = "module probe_store_direct_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(r: String, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(root_path: r, key: k)\n}\n"
+data path_settle_slot_source: String = "module probe_store_path_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(r: String, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(root_path: r, key: k)\n}\n"
 
-test fn a_direct_store_file_create_is_an_admission_refusal() -> ProcessExit {
-  census_exit(census_verdict(census: admission_refusals(source: direct_create_new_source, callee: "local_store_create_new"), holds: fn(n) { n == 1 }))
+data binding_settle_slot_source: String = "module probe_store_binding_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(b: LocalStoreBinding, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(binding: b, key: k)\n}\n"
+
+data path_read_index_source: String = "module probe_store_path_read_index\nimport std.cache_identity { ArtifactKindId }\nimport extdeps.realization.materialization_store_local { LocalStoreIndexRead, local_store_read_index }\nfn direct(r: String, f: ArtifactKindId) -> LocalStoreIndexRead {\n  local_store_read_index(root_path: r, family: f)\n}\n"
+
+data binding_read_index_source: String = "module probe_store_binding_read_index\nimport std.cache_identity { ArtifactKindId }\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreIndexRead, local_store_read_index }\nfn direct(b: LocalStoreBinding, f: ArtifactKindId) -> LocalStoreIndexRead {\n  local_store_read_index(binding: b, family: f)\n}\n"
+
+
+// THE INDEX AND ITS SLOT SETTLEMENT TAKE THE SEALED BINDING, NEVER A PATH. They once took root_path: String behind
+// an admit_callers roster; the roster is deleted and the parameter is the binding, which only the open mints
+// (a_forged_store_binding_is_refused_at_compile). So a path handed to either adds a blocking diagnostic beyond the
+// same call handed a binding. Claimed: a consumer cannot be handed a forged binding or one over a root it chose.
+fn blocking_delta(hostile: String, safe: String) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: fn(n) { n >= 1 })
 }
 
-test fn a_direct_slot_settle_is_an_admission_refusal() -> ProcessExit {
-  census_exit(census_verdict(census: admission_refusals(source: direct_settle_slot_source, callee: "local_store_settle_slot"), holds: fn(n) { n == 1 }))
+data path_create_new_source: String = "module probe_store_path_create_new\nimport std.types { String }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nimport std.materialization_object { StoreObjectPublish }\nfn direct(p: String, c: String) -> StoreObjectPublish {\n  local_store_create_new(path: p, content: c)\n}\n"
+data root_create_new_source: String = "module probe_store_root_create_new\nimport std.types { String }\nimport std.materialization_store_grant { MaterializationStoreRoot }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nimport std.materialization_object { StoreObjectPublish }\nfn direct(r: MaterializationStoreRoot, c: String) -> StoreObjectPublish {\n  local_store_create_new(root: r, name: \"x\", content: c)\n}\n"
+data path_read_source: String = "module probe_store_path_read\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemExactRead }\nimport extdeps.realization.materialization_store_local { local_store_read }\nfn direct(p: String) -> FilesystemExactRead {\n  local_store_read(path: p)\n}\n"
+data root_read_source: String = "module probe_store_root_read\nimport std.types { String }\nimport std.materialization_store_grant { MaterializationStoreRoot }\nimport extdeps.filesystem.filesystem_io { FilesystemExactRead }\nimport extdeps.realization.materialization_store_local { local_store_read }\nfn direct(r: MaterializationStoreRoot) -> FilesystemExactRead {\n  local_store_read(root: r, name: \"x\")\n}\n"
+
+// THE OPEN PATH TAKES THE SEALED ROOT GRANT, NEVER A PATH, AND CARRIES NO ROSTER. local_store_read and
+// local_store_create_new once took path: String behind an admit_callers roster; they now take the
+// MaterializationStoreRoot grant (the same sealed input local_store_open takes) and a name inside it.
+
+test fn no_store_file_create_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: path_create_new_source, safe: root_create_new_source))
+}
+
+test fn no_store_file_read_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: path_read_source, safe: root_read_source))
+}
+
+test fn no_slot_settle_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: path_settle_slot_source, safe: binding_settle_slot_source))
+}
+
+test fn no_index_read_takes_a_path() -> ProcessExit {
+  census_exit(blocking_delta(hostile: path_read_index_source, safe: binding_read_index_source))
 }
 
 // THE OPENED STORE IS UNFORGEABLE. A capability is a verified binding plus its clean-sweep proof, minted
@@ -155,4 +186,24 @@ test fn a_direct_held_session_call_is_an_admission_refusal() -> ProcessExit {
 
 test fn a_direct_named_window_observe_call_is_an_admission_refusal() -> ProcessExit {
   census_exit(census_verdict(census: admission_refusals(source: direct_named_window_observe_source, callee: "cas_verify_named_window_head"), holds: fn(n) { n == 1 }))
+}
+
+// THE EFFECT OUTCOME IS NOT LAUNDERED INTO A SUCCESS BY AN EXPORTED FOLD. store_publish_observation (a FilesystemCreateNew
+// into StoreObjectPublished) and local_store_commit_released (a settled release into a commit) are deleted; the fold lives
+// inline in local_store_create_new and in the bracket arm. A probe importing either deleted name is EXACTLY ONE blocking
+// MissingExport keyed on it; the control imports the lawful local_store_create_new and has none.
+data publish_fold_source: String = "module probe_publish_fold\nimport extdeps.realization.materialization_store_local { store_publish_observation }\nfn f() -> Int {\n  1\n}\n"
+data commit_released_fold_source: String = "module probe_commit_released_fold\nimport extdeps.realization.materialization_store_local { local_store_commit_released }\nfn f() -> Int {\n  1\n}\n"
+data publish_lawful_source: String = "module probe_publish_lawful\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn f() -> Int {\n  1\n}\n"
+
+test fn the_publish_fold_is_gone_with_one_keyed_missing_export() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: publish_fold_source, wanted_class: "MissingExport", wanted_subject: "store_publish_observation"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_commit_released_fold_is_gone_with_one_keyed_missing_export() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: commit_released_fold_source, wanted_class: "MissingExport", wanted_subject: "local_store_commit_released"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_lawful_publish_route_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: publish_lawful_source, wanted_class: "MissingExport", wanted_subject: "local_store_create_new"), holds: fn(n) { n == 0 }))
 }

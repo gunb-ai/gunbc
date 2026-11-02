@@ -32,14 +32,14 @@ import gunbc.auth.privileged_effect_census {
   RealizedUnderApprovedConvergence, PrivilegedEffectSite, convergence_lineage_defects, srv1_root_mutation_approval_root,
 }
 import gunbc.ci.deploy_route_requirement {
-  srv1_deploy_route_requirement, srv1_observed_job_tenancy, deploy_route_switch_admitted, SoleTenantOfJobUid,
+  srv1_deploy_route_requirement, SharesJobUidWithPullRequestJobs, deploy_route_switch_admitted, SoleTenantOfJobUid,
 }
 import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly,
   NoDischargeSiteModeled,
 }
 import gunbc.auth.privileged_effect_census {
-  manual_api_effect_beside_unlanded_approval_adapter, srv1_root_step_by_hand_beside_the_broker_route,
+  manual_api_effect_beside_unlanded_approval_adapter,
   fleet_host_file_converge_edge_beside_the_broker_route,
 }
 import gunbc.cloudflare.r2_origin { cloudflare_account_allocation_intervention }
@@ -731,9 +731,9 @@ test fn the_attempt_unit_stall_release_shares_the_rearm_site_and_its_selection()
       && selected_federated(s: v.selection))
 }
 
-// D3: the deploy route's root may not switch while srv1 shares its job uid with pull request jobs.
-test fn the_deploy_route_switch_is_refused_while_srv1_shares_the_job_uid() -> Bool {
-  !deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: srv1_observed_job_tenancy)
+// D3: the deploy route's root may not switch while the job uid is shared with pull request jobs.
+test fn the_deploy_route_switch_is_refused_while_the_job_uid_is_shared() -> Bool {
+  !deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: SharesJobUidWithPullRequestJobs)
     && deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: SoleTenantOfJobUid)
 }
 
@@ -763,7 +763,6 @@ test fn manual_operator_api_effects_select_the_approval_route_for_the_unlanded_a
     && row_diverges_for_exactly(key: "gunbc.cloudflare.r2_origin::cloudflare_bootstrap_custody_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
     && row_diverges_for_exactly(key: "gunbc.review_sheet_operator::shared_drive_create_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
     && row_diverges_for_exactly(key: "gunbc.review_sheet_operator::spreadsheet_create_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
-    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_publisher_token_mint_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
 }
 
 // THE ENVIRONMENT IS ONLY ITS BRANCH RULE NOW (operator, 2026-10-28): the GitHub-gate reason dissolved
@@ -773,14 +772,6 @@ test fn the_srv1_production_protection_row_selects_the_approval_route_for_the_by
   row_diverges_for_exactly(key: "gunbc.auth.github_deployment_environment::srv1_production_protection_standing", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
 }
 
-// OPERATOR RULING 2026-10-22 (one_approval_route_for_every_privileged_action): host-root reach that a
-// human can attend selects the broker route, never the administrator edge. These rows realize it by hand
-// or by a GitHub click, and each pins the exact reason authority.
-test fn the_ntfy_srv1_root_steps_select_the_approval_route_for_the_by_hand_reason() -> Bool {
-  row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
-    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_server_install_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
-    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_subscriber_grant_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
-}
 
 // OPERATOR RULING 2026-10-26 (srv1_root_mutation_approval_is_filed_by_the_job): the per-dispatch gate is
 // the job's own broker filing, so the row selects the approval capability and CONFORMS -- no reason --

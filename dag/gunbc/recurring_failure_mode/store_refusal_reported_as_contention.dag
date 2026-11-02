@@ -8,7 +8,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable }
 data store_refusal_reported_as_contention: RecurringFailureMode = RecurringFailureMode {
   identity: "store_refusal_reported_as_contention" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable at the external store boundary; the internal occupied-versus-refused partition is construction in cas_outcome_from_create." as NonEmptyStr } },
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable at the external store boundary; the internal occupied-versus-refused partition is construction in cas_create_refusal." as NonEmptyStr } },
 
   receipts: [
     "INVALID STATE: a conditional-write realization reports every unsuccessful write as a lost precondition, without observing that a competing publication actually defeated the expectation. HARM: permission, capacity, or IO refusal becomes ordinary contention; the caller re-evaluates and retries against a phantom winner while the operational deficit disappears from its own refusal channel. This is the DESIGN section 5 refusal-as-contention widen, not a missing shared outcome.",
@@ -26,7 +26,7 @@ data store_refusal_reported_as_contention: RecurringFailureMode = RecurringFailu
 
     "RUNG FOUND AT BY EXECUTION: mechanically preventable at the hermetic classification fold, at the filesystem publication layer, and at the composed path, at the grain of the three EXECUTED receipts above and no higher.",
 
-    "CEILING: mechanically preventable at the external store boundary; the internal occupied-versus-refused partition is construction in cas_outcome_from_create. Crash-durable directory metadata is a different class.",
+    "CEILING: mechanically preventable at the external store boundary; the internal occupied-versus-refused partition is construction in cas_create_refusal. Crash-durable directory metadata is a different class.",
 
     "FABRIC CONSUMER: gunbc.fabric.fabric_control_plane reserve_selected_cell maps CasPreconditionFailed to ReservationLost and CasStoreRefused to StoreUnavailable. Before this repair an unwritable store reported ReservationLost. After it, operational faults are StoreUnavailable. A genuine occupied slot is still ReservationLost. That is the observable change, and it is the defect closing rather than a silent shift of a correct race.",
 
@@ -34,7 +34,7 @@ data store_refusal_reported_as_contention: RecurringFailureMode = RecurringFailu
   ],
 
   evidence: [
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_outcome_from_create"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_create_refusal"),
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_classify_generation_read"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_witness", decl_name: "a_permission_refused_create_is_store_refused_not_contention"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_witness", decl_name: "an_unrecognized_read_kind_is_refused_as_unrecognized_not_as_other"),
