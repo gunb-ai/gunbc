@@ -615,11 +615,15 @@ fn seconds_per_hour() -> Nat {
 // vendor into the per-hour arm made a three-minute job project a whole hour, a
 // twentyfold overstatement that would have kept the selection fold from ever
 // choosing that supplier. The quantum is now the supplier's own.
+// Ceiling division in Nat throughout. `quantum_seconds - 1` is a Nat difference, which is an Int
+// (std.coercion arithmetic carrier selection), so `(seconds + (quantum_seconds - 1)) / q` was an Int
+// beside the Nat branch. Same value for every input: q > 0 on that branch.
 fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
   if quantum_seconds == 0 {
     seconds
   } else {
-    (seconds + (quantum_seconds - 1)) / quantum_seconds
+    let whole = seconds / quantum_seconds
+    if seconds % quantum_seconds == 0 { whole } else { whole + 1 }
   }
 }
 
