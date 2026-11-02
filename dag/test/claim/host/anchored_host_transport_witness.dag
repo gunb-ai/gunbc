@@ -13,7 +13,8 @@ import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact, ProvisionedInstall, known_hosts_line, known_host_row_field, fleet_name_at_ssh_port }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
 import gunbc.provisioning.network_install_receipt { ClientClassUnread, NetworkInstallReceipt, network_install_receipt }
-import test.claim.provisioning.network_install_receipt_witness { all_fetches, good, installed_host, readings, subject }
+import test.claim.provisioning.network_install_receipt_witness { all_fetches, client, good, installed_host, other_client, readings, subject }
+import extdeps.network.mac { Eui48Address }
 import gunbc.host.anchored_host_transport {
   AnchoredHostRow,
   AnchoredBindingBound,
@@ -216,6 +217,9 @@ test fn an_unanchored_host_refuses_the_transport() -> Bool {
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
       }
   }
@@ -293,6 +297,9 @@ test fn a_transport_to_another_machine_never_binds_the_anchored_host() -> Bool {
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
       }
   }
 }
@@ -307,6 +314,9 @@ test fn a_local_shell_refuses_before_any_key_is_read() -> Bool {
     AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
     AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
     AnchoredBindingNotTheAnchoredHost { cause: _ } => false
   }
 }
@@ -634,11 +644,13 @@ test fn the_runbook_mints_nothing_and_still_installs_the_anchor() -> Bool {
 // side is minted by the real receipt fold from admitted readings, not hand-fabricated, and the host
 // side is mtcollins1 ONLY because it is the fleet_ssh_locus-resolved host this file's transport
 // fixture reaches; a fixture installed system is a model state, not a claim about mtcollins1's disks.
-fn provisioned_pin_fixture(install_attempt: String) -> KnownHostKeyRow admit_callers: [
+fn provisioned_pin_fixture(install_attempt: String, install_client_mac: Eui48Address) -> KnownHostKeyRow admit_callers: [
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "anchored_pin_and_current_install_record_bind_the_host"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_reinstall_without_re_enrolment_refuses_the_old_pin"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_key_refuses_a_provisioned_pin"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unattested_install_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
 ] {
   let base = mtcollins1_anchored_host_row
   KnownHostKeyRow {
@@ -648,6 +660,7 @@ fn provisioned_pin_fixture(install_attempt: String) -> KnownHostKeyRow admit_cal
     public_key_base64: fixture_public_key.material as String,
     sha256_fingerprint: "SHA256:HERMETICWITNESSFIXTUREFINGERPRINT0",
     provenance: ProvisionedInstall {
+      install_client_mac: install_client_mac,
       install_attempt: install_attempt as NonEmptyStr,
       authority: "fixture: the install-boot console capture and the complete install receipt" as NonEmptyStr,
     },
@@ -661,6 +674,8 @@ fn attested_fixture_receipt() -> NetworkInstallReceipt? admit_callers: [
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_reinstall_without_re_enrolment_refuses_the_old_pin"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_key_refuses_a_provisioned_pin"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_pin_from_another_record_never_vouches_an_installed_contact"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
 ] {
   match subject() {
     Absent => Absent
@@ -695,7 +710,7 @@ test fn anchored_pin_and_current_install_record_bind_the_host() -> Bool {
     Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
       Absent => false
       Present { value: t } =>
-        let pin = provisioned_pin_fixture(install_attempt: "attempt-1")
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client)
         match anchored_host_transport_provisioned(
           pin: pin,
           current_install: receipt,
@@ -719,7 +734,7 @@ test fn a_reinstall_without_re_enrolment_refuses_the_old_pin() -> Bool {
     Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
       Absent => false
       Present { value: t } =>
-        let pin = provisioned_pin_fixture(install_attempt: "attempt-0")
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-0", install_client_mac: client)
         let outcome = anchored_host_transport_provisioned(
           pin: pin,
           current_install: receipt,
@@ -745,7 +760,7 @@ test fn a_wrong_key_refuses_a_provisioned_pin() -> Bool {
     Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
       Absent => false
       Present { value: t } => match anchored_host_transport_provisioned(
-        pin: provisioned_pin_fixture(install_attempt: "attempt-1"),
+        pin: provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client),
         current_install: receipt,
         transport: t,
         presented_key_line: join(["ssh-ed25519 ", wrong_public_key_base64], ""),
@@ -768,7 +783,7 @@ test fn an_unattested_install_never_binds_a_provisioned_pin() -> Bool {
     Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
       Absent => false
       Present { value: t } =>
-        let pin = provisioned_pin_fixture(install_attempt: "attempt-1")
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client)
         match anchored_host_transport_provisioned(
           pin: pin,
           current_install: receipt,
@@ -824,7 +839,7 @@ test fn a_transport_to_another_machine_never_binds_a_provisioned_pin() -> Bool {
     Present { value: receipt } => match fleet_transport_to(host: operator_host_srv2) {
       Absent => false
       Present { value: t } =>
-        let pin = provisioned_pin_fixture(install_attempt: "attempt-1")
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client)
         match anchored_host_transport_provisioned(
           pin: pin,
           current_install: receipt,
@@ -835,6 +850,32 @@ test fn a_transport_to_another_machine_never_binds_a_provisioned_pin() -> Bool {
           string_contains(s: cause, pattern: "srv2") && string_contains(s: cause, pattern: "mtcollins1")
         AnchoredBindingRefused { cause: cause } =>
           string_contains(s: cause, pattern: "not the endpoint of any managed host")
+        _ => false
+      }
+    }
+  }
+}
+
+// CLAIM: AN INSTALL RECORD OF ANOTHER MACHINE NEVER VOUCHES A PROVISIONED PIN. The pin names the
+// client MAC of ITS install boot; the current complete record on file belongs to a different
+// machine's install boot. Attempt ids are unique across hosts only by convention, and the compare
+// does not trust conventions: a record from another host's install cannot vouch this pin, and the
+// refusal says the record is not this machine's.
+test fn an_install_record_of_another_machine_never_vouches_a_provisioned_pin() -> Bool {
+  match attested_fixture_receipt() {
+    Absent => false
+    Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
+      Absent => false
+      Present { value: t } =>
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: other_client)
+        match anchored_host_transport_provisioned(
+          pin: pin,
+          current_install: receipt,
+          transport: t,
+          presented_key_line: known_hosts_line(k: pin),
+        ) {
+        AnchoredBindingInstallNotAttested { why: why } =>
+          string_contains(s: why, pattern: "not this machine's")
         _ => false
       }
     }

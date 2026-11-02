@@ -32,7 +32,8 @@ import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret, fleet_auto
 import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow, ScannedFirstContact, ProvisionedInstall, known_hosts_line, fleet_name_at_ssh_port,
 }
-import gunbc.provisioning.network_install_receipt { NetworkInstallReceipt, InstalledToDisk, InstallNotEstablished }
+import gunbc.provisioning.network_install_receipt { NetworkInstallReceipt, InstalledToDisk, InstallNotEstablished, network_install_client }
+import extdeps.network.mac { mac_addresses_are_equal }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_bound_transport {
   HostBoundTransport, HostBoundTransportResolved, HostBoundTransportRefused, host_bound_transport_of,
@@ -368,7 +369,12 @@ fn anchored_host_transport_against(
 // invalidates the old pin EVEN IF the presented key still matches the stale row - the reused-key
 // case per-install minting exists to forbid. The host is never an input: it is read from the
 // transport (host_bound_transport_of), so no caller pairs one machine's transport with another
-// machine's pin - the same discipline as anchored_host_transport_against. Crossing strategies
+// machine's pin - the same discipline as anchored_host_transport_against. The RECEIPT side is
+// machine-checked too: the pin names the install-boot client MAC of the install that minted it,
+// and a receipt whose install-boot MAC differs never vouches this pin - attempt ids are unique
+// across hosts only by convention, and this compare does not trust conventions (the receipt
+// world carries no HostIdentity; machine identity travels in the receipt's own currency).
+// Crossing strategies
 // refuses: a scanned, transcribed or (T1, #15523) per-boot pin never vouches an installed
 // contact; the per-boot comparison refuses the other direction. admit_callers gates this to its
 // witnesses until the fold and a live route consume it - that wiring is the plan's next slice,
@@ -385,6 +391,7 @@ fn anchored_host_transport_provisioned(
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unattested_install_never_binds_a_provisioned_pin"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_pin_from_another_record_never_vouches_an_installed_contact"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
 ] {
   match host_bound_transport_of(transport: transport) {
     HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
@@ -395,13 +402,17 @@ fn anchored_host_transport_provisioned(
         }
       } else {
           match pin.provenance {
-          ProvisionedInstall { install_attempt: pinned_attempt, authority: _ } => match current_install {
+          ProvisionedInstall { install_client_mac: pinned_mac, install_attempt: pinned_attempt, authority: _ } => match current_install {
             InstallNotEstablished { subject: subject, gaps: _ } =>
               AnchoredBindingInstallNotAttested {
                 why: join(["no complete install record attests the installed system of attempt `", subject.attempt.attempt as String, "`; a provisioned pin vouches only against the complete record of the install that minted it; contacting NO host"], ""),
               }
             InstalledToDisk { subject: subject, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, installer_record_at: _, secure_boot: _, trust: _, observed_at: _ } =>
-              if subject.attempt.attempt != pinned_attempt {
+              if !mac_addresses_are_equal(left: network_install_client(subject: subject), right: pinned_mac) {
+                AnchoredBindingInstallNotAttested {
+                  why: join(["the install record on file is not this machine's: its install-boot client MAC is not the MAC the provisioned pin for ", pin.host as String, " names; one host's install record never vouches another host"], ""),
+                }
+              } else if subject.attempt.attempt != pinned_attempt {
                 AnchoredBindingInstallSuperseded {
                   pinned_install: pinned_attempt as String,
                   current_install: subject.attempt.attempt as String,
