@@ -346,6 +346,10 @@ test fn the_standalone_run_keeps_verbose_records_raw_bytes_and_exit_status() -> 
     && string_contains(s: block, pattern: "run=0 verbose_raw=[PSU2_Status")
     && string_contains(s: block, pattern: "run=0 verbose_exit=0")
     && string_contains(s: block, pattern: "run=0 verbose_sdr=captured")
+    // The marker is single-valued in BOTH directions (review 89921): a read whose records arrived must
+    // not answer the reader with a failure marker it can grep for.
+    && !string_contains(s: block, pattern: "verbose_sdr=unread")
+    && !string_contains(s: block, pattern: "verbose_sdr=not_taken")
 }
 
 // (2) THE DISCRIMINATING HOST-OFF CONTROL: the lane that never issued the read renders not_taken and
@@ -354,10 +358,13 @@ test fn the_standalone_run_keeps_verbose_records_raw_bytes_and_exit_status() -> 
 test fn the_lane_that_never_read_the_repository_says_so_and_fakes_nothing() -> Bool {
   let block = render_run_verbose_block(capture: RunVerboseNotTaken)
   string_contains(s: block, pattern: "run=0 verbose_sdr=not_taken")
+    // The three markers are MUTUALLY EXCLUSIVE, each state asserting its own and denying the other two
+    // (review 89921: one receipt carried `captured` and `unread` together).
+    && !string_contains(s: block, pattern: "verbose_sdr=captured")
+    && !string_contains(s: block, pattern: "verbose_sdr=unread")
     && !string_contains(s: block, pattern: "verbose_record=")
     && !string_contains(s: block, pattern: "verbose_raw=")
     && !string_contains(s: block, pattern: "verbose_exit=")
-    && !string_contains(s: block, pattern: "verbose_sdr=captured")
 }
 
 // (3) AN UNREADABLE REPOSITORY IS NOT AN EMPTY ONE: the read was issued and the transport failed, so the
@@ -374,6 +381,9 @@ test fn an_attempted_but_unreadable_capture_is_never_silence_and_never_not_taken
     },
   )
   string_contains(s: block, pattern: "run=0 verbose_sdr=unread")
+    // THE MARKER THE REVIEW FOUND DOUBLED (review 89921): an attempted-and-failed read must NOT also
+    // claim `captured`, or PR-B's grep for a successful capture lands on a read that timed out.
+    && !string_contains(s: block, pattern: "verbose_sdr=captured")
     && string_contains(s: block, pattern: "run=0 verbose_exit=2")
     && string_contains(s: block, pattern: "run=0 verbose_stderr=[Unable to open SDR repository]")
     && !string_contains(s: block, pattern: "verbose_sdr=not_taken")

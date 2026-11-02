@@ -654,23 +654,36 @@ fn render_run_verbose_block(capture: RunVerboseCapture) -> String {
 fn render_run_verbose_lines(capture: RunVerboseCapture) -> List<String> {
   match capture {
     RunVerboseNotTaken => [join(["run=0 verbose_sdr=not_taken"], "")]
-    RunVerboseCaptured { readout: readout, exit_code: exit_code, raw_stdout: raw_stdout, raw_stderr: raw_stderr } =>
-      [
-        // The state marker, the transport's OWN exit status, and the bytes it said -- the parse is
-        // derived output and is rendered alongside them, never instead of them (manager msg_abffa482).
-        join(["run=0 verbose_sdr=captured"], ""),
+    RunVerboseCaptured { readout: readout, exit_code: exit_code, raw_stdout: raw_stdout, raw_stderr: raw_stderr } => {
+      // THE STATE MARKER IS DERIVED FROM THE READOUT, never asserted by the arm (review 89921). The arm
+      // means "the read was ATTEMPTED"; the marker must say whether the records ARRIVED. Emitting
+      // `captured` unconditionally and `unread` afterwards put two contradictory markers in one receipt,
+      // and PR-B greps THIS field to ground the fan admission rule -- a reader searching for
+      // `verbose_sdr=captured` would have treated a timed-out read as a successful capture.
+      //
+      // An ISSUED-and-FAILED read is `unread`: not the not_taken line above (that lane never read the
+      // repository), and not the zero-records case below (an empty repository, read successfully).
+      // #15562's lesson -- a repository that could not be read is not a repository that is empty.
+      let state_marker = match readout {
+        SdrVerboseUnreadable => join(["run=0 verbose_sdr=unread"], "")
+        SdrVerboseRead { records: _ } => join(["run=0 verbose_sdr=captured"], "")
+      }
+      // The transport's OWN exit status and the bytes it said ride in BOTH arms: the parse is derived
+      // output and is rendered alongside them, never instead of them (manager msg_abffa482), and a
+      // failed read is exactly the case whose bytes an operator needs.
+      let run_lines = [
+        state_marker,
         join(["run=0 verbose_exit=", to_string(exit_code)], ""),
         join(["run=0 verbose_raw=[", raw_stdout, "]"], ""),
         join(["run=0 verbose_stderr=[", raw_stderr, "]"], ""),
       ]
-        .concat(match readout {
-          // A read that was ISSUED and failed says so. This is not the not_taken line above and it is
-          // not the zero-records case below: an unreadable repository is not an empty one.
-          SdrVerboseUnreadable => [join(["run=0 verbose_sdr=unread"], "")]
-          SdrVerboseRead { records: records } => flat_map(records, rec =>
-            [join(["run=0 verbose_record=[", rec.record_line, "]"], "")]
-              .concat(map(rec.detail_lines, d => join(["run=0 verbose_detail=[", d, "]"], ""))))
-        })
+      run_lines.concat(match readout {
+        SdrVerboseUnreadable => []
+        SdrVerboseRead { records: records } => flat_map(records, rec =>
+          [join(["run=0 verbose_record=[", rec.record_line, "]"], "")]
+            .concat(map(rec.detail_lines, d => join(["run=0 verbose_detail=[", d, "]"], ""))))
+      })
+    }
   }
 }
 
