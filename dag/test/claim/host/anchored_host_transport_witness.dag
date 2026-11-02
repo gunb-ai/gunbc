@@ -89,6 +89,7 @@ fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers:
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unattested_install_never_binds_a_provisioned_pin"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_pin_from_another_record_never_vouches_an_installed_contact"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
 ] {
   match fleet_ssh_execution_context_hermetic_witness_fixture() {
     Absent => none

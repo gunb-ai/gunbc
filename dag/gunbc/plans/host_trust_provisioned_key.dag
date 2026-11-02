@@ -13,8 +13,9 @@ import std.types { String }
 // and #15554) is the sibling this note reuses every mechanism from: the console line grammar, the
 // sealed pin comparison, the refusal arms. This note opens no parallel trust catalog, transport,
 // seed path or marker grammar; it names the existing home and the single arm each one gains.
-// Design note only: no model, witness, live effect, IAM or secret is created here. Code follows
-// only after merry-fox-82 approves this note.
+// Design note first: the note itself created no model, witness, live effect, IAM or secret.
+// merry-fox-82 approved the note (dashboard msg_34308ee8) and directed the model and witnesses;
+// this PR carries that approved code. No live effect, IAM grant or secret is created here either.
 
 fn opening() -> List<MarkdownBlock> {
   [
@@ -93,7 +94,7 @@ fn reds() -> List<MarkdownBlock> {
   [
     h2(text: "REDs the design owes (model-level witnesses, no live effect)"),
     ul(items: [
-      li(text: "Cloned-key reuse refuses — dag/test/claim/fleet/fleet_host_key_enrollment_witness.dag: enrolling a second row whose public half or fingerprint already exists anywhere in the catalog refuses, across hosts and across installs of one host. This fold-level uniqueness rule does not exist today; it is the named new rule."),
+      li(text: "Cloned-key reuse refuses — dag/test/claim/fleet/fleet_host_key_enrollment_witness.dag: the catalog rule fleet_host_key_public_halves_are_unique refuses a second row sharing a public half unless the rows name the SAME host and, where both are ProvisionedInstall records, the SAME install attempt: a half enrolled for a different host (the clone case) refuses, and a half enrolled twice for one host under different install attempts (reinstall reuse) refuses. One host's one install may carry the same half at several addresses or in corroborating records — the registry holds such rows today (srv1's tailnet row and its ts.net row share a half). The rule compares public halves; a fingerprint is derived from the half, so it is not compared separately. This fold-level uniqueness rule does not exist before this PR; it is the named new rule."),
       li(text: "Constructor admission refuses — same home: a ProvisionedInstall row lacking the installed reference or the provisioning citation does not exist."),
       li(text: "Reinstall without re-enrolment refuses — both dag/test/claim/fleet/fleet_host_key_enrollment_witness.dag and dag/test/claim/host/anchored_host_transport_witness.dag: against a newer complete install receipt the old row is not authoritative (a presented key matching the old row meets the stale-install refusal), and the fresh-key case meets AnchoredBindingPresentedKeyMismatch."),
       li(text: "Another machine's install record never vouches a pin — dag/test/claim/host/anchored_host_transport_witness.dag: a complete current receipt whose install-boot client MAC differs from the MAC the pin names refuses as not-attested, even when the attempt id and the presented key match; host equality is enforced NOW, in the receipt's own currency, because the receipt world carries no HostIdentity and the persistence axis that bridges install-subject to fleet identity is the axis's, not this compare's."),

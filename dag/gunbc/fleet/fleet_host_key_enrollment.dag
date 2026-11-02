@@ -251,7 +251,7 @@ fn public_half_provisioned_attempt(p: HostKeyEnrollmentProvenance) -> NonEmptySt
 }
 
 fn fleet_host_key_public_halves_are_unique(rows: List<KnownHostKeyRow>) -> Bool {
-  let slots_clear = optional_is_absent(opt: first_duplicate_by_key(xs: rows, key: k => k.public_key_base64 + " " + (k.host as String) + " " + known_host_row_field(row: k)))
+  let slots_clear = optional_is_absent(opt: first_duplicate_by_key(xs: rows, key: k => k.public_key_base64 + " " + (k.host as String) + " " + known_host_row_field(k: k)))
   let groups = fold(list_sort_by_key(xs: rows, key: k => k.public_key_base64, order: string_total_order()), init: PublicHalfGroup { half: Absent, host: Absent, attempt: Absent, broken: false }, f: (acc, row) => {
       let same_half = match acc.half {
         Absent => false
