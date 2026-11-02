@@ -1,6 +1,6 @@
 module gunbc.provisioning.network_boot_actuation
 
-import gunbc.boot_artifact_delivery { BootControlTarget }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliverySolution }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget }
@@ -104,13 +104,13 @@ fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation
 // THE INSTALL-ATTEMPT-RECORD STEP: the one production call of the sealed binder. An UbuntuAutoinstallSeedBinding
 // is minted only by bind_ubuntu_autoinstall_seed, so the seed an arm carries is never typed by hand; this entry
 // takes the raw seed, target, unit key, intake attempt and live disk selection, binds, and only then derives
-// the arm and actuates it. The strategy is a single parameter: one strategy per attempt, and a refused binding
+// the arm and actuates it. The route is the solver's BootDeliverySolution, not a free parameter: one route per attempt, and a refused binding
 // is Withheld, never re-armed as the other delivery. `evidence.seed` is overwritten by the binding, so a
 // caller cannot present a seed that the binder did not mint for this attempt. A refused binding is
 // Withheld as ArmRefused { SeedBindingRefused { blocker } }: the binder's own typed blocker survives to the
 // result, never degraded to an absence.
 fn network_boot_attempt_actuation(
-  strategy: BootControlTarget,
+  solution: BootDeliverySolution,
   evidence: DeliveryEvidence,
   attempt: AttemptBinding,
   seed: UbuntuAutoinstallSeed,
@@ -122,7 +122,7 @@ fn network_boot_attempt_actuation(
   match bind_ubuntu_autoinstall_seed(seed: seed, target: target, unit_key: unit_key, attempt: intake_attempt, selection: selection) {
     Bound { binding: b } =>
       network_boot_arm_actuator_steps(arm: provisioning_arm_derive(
-        strategy: strategy,
+        solution: solution,
         evidence: DeliveryEvidence {
           firmware: evidence.firmware,
           chain: evidence.chain,
