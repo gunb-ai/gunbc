@@ -1,7 +1,7 @@
 module test.claim.regen_receipt_witness
 
 import std.types { Bool, String, List }
-import gunbc.regen_receipt { RegenReceipt, FirstGeneration, Refused, refusal_reason }
+import gunbc.regen_receipt { RegenReceipt, FirstGeneration, Refused, RegenSurfaceRoles, RegenSurfaceOwner, refusal_reason }
 
 // THE REFUSED VARIANT, AND WHAT THESE WITNESSES CAN AND CANNOT ESTABLISH.
 //
@@ -48,7 +48,15 @@ test fn a_first_generation_receipt_carries_no_refusal_cause() -> Bool {
       candidate_generated_digest: "digest-candidate",
       first_generation_equal: true,
       changed_paths: [],
-      candidate_artifact: "target/stage0-regen-candidate"
+      candidate_artifact: "target/stage0-regen-candidate",
+      surface_roles: RegenSurfaceRoles {
+        basename_to_module: [RegenSurfaceOwner { basename: "std_measure.rs", module: "std.measure" }],
+        generation_modules: ["std.measure"],
+        bootstrap_sources: [],
+        bootstrap_products: [],
+        seed_embedded_basenames: ["std_measure.rs"],
+        generated_product_roles: []
+      }
     }
   ) == ""
 }

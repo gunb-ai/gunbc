@@ -25,6 +25,33 @@ import std.types { String, Int, List, Bool }
 // Refused therefore has no digest fields and no equality field, so there is nothing to invent --
 // DESIGN 4b structural impossibility, not a check added beside it. What it carries instead is the
 // one thing a refusal genuinely measured: why it refused.
+// THE SURFACE ROLES THE CONVERGENCE ROUND PLANS FROM, measured by the pass that derived them. Building
+// them loads the module index and every file's heads reading, so under generation-state lifetime
+// isolation (v2.workflow.regen_convergence_transaction regen_admit_generation_begin) they are
+// generation work: generation 0 computes them while its corpus is resident and its receipt carries
+// them to the orchestrator, which plans from the receipt rather than loading the corpus itself.
+// Each basename's declaring module; the generation, bootstrap-source, bootstrap-product and
+// seed-embedded populations; and each generated product's generation role and seed membership.
+type RegenSurfaceOwner {
+  basename: String
+  module: String
+}
+
+type RegenGeneratedProductRole {
+  product: String
+  generation_role: String
+  seed_membership: String
+}
+
+type RegenSurfaceRoles {
+  basename_to_module: List<RegenSurfaceOwner>
+  generation_modules: List<String>
+  bootstrap_sources: List<String>
+  bootstrap_products: List<String>
+  seed_embedded_basenames: List<String>
+  generated_product_roles: List<RegenGeneratedProductRole>
+}
+
 type RegenReceipt
   = FirstGeneration {
       commit_sha: String
@@ -34,6 +61,7 @@ type RegenReceipt
       first_generation_equal: Bool
       changed_paths: List<String>
       candidate_artifact: String
+      surface_roles: RegenSurfaceRoles
     }
   | Refused {
       commit_sha: String
@@ -56,7 +84,7 @@ data stage0_regen_receipt_artifact_name: String = "stage0-regen-receipt"
 // distinguishable by their own fields without consulting this.
 fn refusal_reason(receipt: RegenReceipt) -> String {
   match receipt {
-    FirstGeneration { commit_sha: _, authority_digest: _, committed_generated_digest: _, candidate_generated_digest: _, first_generation_equal: _, changed_paths: _, candidate_artifact: _ } => "",
+    FirstGeneration { commit_sha: _, authority_digest: _, committed_generated_digest: _, candidate_generated_digest: _, first_generation_equal: _, changed_paths: _, candidate_artifact: _, surface_roles: _ } => "",
     Refused { commit_sha: _, authority_digest: _, reason, candidate_artifact: _ } => reason
   }
 }

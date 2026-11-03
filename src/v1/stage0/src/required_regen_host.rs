@@ -67,6 +67,118 @@ const RECEIPT_SCHEMA: &str = "gunbc.regen_receipt.v2";
 /// ever see nondeterminism. The declared drop is `gunbc.rung_drop`
 /// `floor_cut_regen_second_generation_agreement`.
 ///
+/// THE SURFACE-ROLE FACTS a convergence round plans from (`gunbc.regen_receipt` `RegenSurfaceRoles`),
+/// carried by the generation that derived them. Building them loads the module index and its
+/// per-file heads readings, so they are generation work under generation-state lifetime isolation
+/// (`v2.workflow.regen_convergence_transaction` `regen_admit_generation_begin`): generation 0's
+/// child computes them while its corpus is resident anyway and writes them into its receipt, and
+/// the orchestrator plans from the receipt instead of loading the corpus into its own lifetime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConvergenceSurfaceRoles {
+    pub basename_to_module: Vec<SurfaceOwnerRow>,
+    pub generation_modules: Vec<String>,
+    pub bootstrap_sources: Vec<String>,
+    pub bootstrap_products: Vec<String>,
+    pub seed_embedded_basenames: Vec<String>,
+    pub generated_product_roles: Vec<GeneratedProductRoleRow>,
+}
+
+/// `gunbc.regen_receipt` `RegenSurfaceOwner`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SurfaceOwnerRow {
+    pub basename: String,
+    pub module: String,
+}
+
+/// `gunbc.regen_receipt` `RegenGeneratedProductRole`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeneratedProductRoleRow {
+    pub product: String,
+    pub generation_role: String,
+    pub seed_membership: String,
+}
+
+/// The planning shape the convergence loop reads.
+type SurfaceRolesForPlanning = (
+    HashMap<String, String>,
+    BTreeSet<String>,
+    BTreeSet<String>,
+    BTreeSet<String>,
+    BTreeSet<String>,
+    HashMap<String, (String, String)>,
+);
+
+impl ConvergenceSurfaceRoles {
+    /// The receipt rows, sorted, so one tree's roles always serialize to the same bytes.
+    fn from_planning(roles: SurfaceRolesForPlanning) -> Self {
+        let (owners, generation, sources, products, embedded, product_roles) = roles;
+        let mut basename_to_module: Vec<SurfaceOwnerRow> = owners
+            .into_iter()
+            .map(|(basename, module)| SurfaceOwnerRow { basename, module })
+            .collect();
+        basename_to_module.sort();
+        let mut generated_product_roles: Vec<GeneratedProductRoleRow> = product_roles
+            .into_iter()
+            .map(
+                |(product, (generation_role, seed_membership))| GeneratedProductRoleRow {
+                    product,
+                    generation_role,
+                    seed_membership,
+                },
+            )
+            .collect();
+        generated_product_roles.sort();
+        ConvergenceSurfaceRoles {
+            basename_to_module,
+            generation_modules: generation.into_iter().collect(),
+            bootstrap_sources: sources.into_iter().collect(),
+            bootstrap_products: products.into_iter().collect(),
+            seed_embedded_basenames: embedded.into_iter().collect(),
+            generated_product_roles,
+        }
+    }
+
+    /// Back to the planning shape. A basename or product listed twice is refused rather than
+    /// resolved by whichever row came last.
+    fn into_planning(self) -> Result<SurfaceRolesForPlanning, String> {
+        let mut owners = HashMap::new();
+        for row in self.basename_to_module {
+            if owners.insert(row.basename.clone(), row.module).is_some() {
+                return Err(format!(
+                    "SurfaceRolesReceiptDuplicated: basename {} has two owner rows",
+                    row.basename
+                ));
+            }
+        }
+        let mut product_roles = HashMap::new();
+        for row in self.generated_product_roles {
+            if product_roles
+                .insert(
+                    row.product.clone(),
+                    (row.generation_role, row.seed_membership),
+                )
+                .is_some()
+            {
+                return Err(format!(
+                    "SurfaceRolesReceiptDuplicated: product {} has two role rows",
+                    row.product
+                ));
+            }
+        }
+        Ok((
+            owners,
+            self.generation_modules.into_iter().collect(),
+            self.bootstrap_sources.into_iter().collect(),
+            self.bootstrap_products.into_iter().collect(),
+            self.seed_embedded_basenames.into_iter().collect(),
+            product_roles,
+        ))
+    }
+}
+
 /// Authority: `gunbc.regen_receipt`.
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[serde(tag = "pass", deny_unknown_fields)]
@@ -82,6 +194,9 @@ pub enum RegenReceipt {
         changed_paths: Vec<String>,
         candidate_artifact: String,
         candidate_manifest: RegenCandidateManifest,
+        /// Required: a receipt without them does not parse, so an orchestrator can never plan a
+        /// round from roles nobody derived.
+        surface_roles: ConvergenceSurfaceRoles,
     },
     /// A POPULATION REFUSAL HAS NO MEASUREMENT, AND THIS VARIANT HAS NOWHERE TO WRITE ONE.
     ///
@@ -431,8 +546,14 @@ pub fn run_required_regen_scoped(
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
-    let (basename_to_module, _, _, _, _, _) =
-        convergence_surface_roles(&workspace, &convergence_roots)?;
+    let (
+        basename_to_module,
+        generation_modules,
+        bootstrap_sources,
+        bootstrap_products,
+        seed_embedded_basenames,
+        generated_product_roles,
+    ) = convergence_surface_roles(&workspace, &convergence_roots)?;
     report_cgroup_memory_diagnostic("child.after_surface_roles");
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
@@ -463,6 +584,14 @@ pub fn run_required_regen_scoped(
         changed_paths: changed_paths.clone(),
         candidate_artifact: candidate_dir_rel.to_string(),
         candidate_manifest,
+        surface_roles: ConvergenceSurfaceRoles::from_planning((
+            basename_to_module,
+            generation_modules,
+            bootstrap_sources,
+            bootstrap_products,
+            seed_embedded_basenames,
+            generated_product_roles,
+        )),
     };
     write_receipt(&receipt_path, &receipt)?;
 
@@ -5661,6 +5790,7 @@ struct FirstGenerationConvergenceObservation {
     drifted: Vec<String>,
     authority_digest: String,
     manifest: RegenCandidateManifest,
+    surface_roles: ConvergenceSurfaceRoles,
 }
 
 fn read_first_generation_receipt(
@@ -5678,12 +5808,14 @@ fn read_first_generation_receipt(
             candidate_artifact: _,
             authority_digest,
             candidate_manifest,
+            surface_roles,
             ..
         } => Ok(FirstGenerationConvergenceObservation {
             committed_digest: committed_generated_digest,
             drifted: changed_paths,
             authority_digest,
             manifest: candidate_manifest,
+            surface_roles,
         }),
         RegenReceipt::Refused { reason, .. } => Err(format!(
             "regen refused before convergence planning: {reason}"
@@ -6413,7 +6545,15 @@ fn convergence_surface_roles(
     ),
     String,
 > {
-    let (edges, modules) = regen_module_edges(workspace)?;
+    // THE MODULE NAMES, NOT THE EDGES. This used to call `regen_module_edges`, which builds the
+    // whole-pool closure edge index (2065857 edges over 8098 modules on main 3637b4f651a; about
+    // 100 s and 2.5 GB of transient heap on a release build) and returns that index's module keys
+    // beside it -- and this function bound the edges and never read them. `regen_module_names` is
+    // the identical `source_files` key set of the identical index, so the answer is unchanged by
+    // construction and the undemanded edge build is gone (DESIGN section 2). This call runs in the
+    // generation child right after `regen.digest`: the point where the srv3 children went silent
+    // at memory.high.
+    let modules = regen_module_names(workspace);
     // Ownership includes emitted-not-committed modules. Joining through the committed mirror
     // population would erase exactly the new-module case the convergence transaction must
     // install, so derive the projection from the complete module index instead.
@@ -7900,14 +8040,8 @@ pub fn run_regen_round_cost(
     // ledger rows and the crate count reach the receipt.
     let carried_cost = handoff_in.as_ref().map(|h| h.cost.clone());
 
-    let (
-        basename_to_module,
-        generation_modules,
-        bootstrap_sources,
-        bootstrap_products,
-        seed_embedded_basenames,
-        generated_product_roles,
-    ) = convergence_surface_roles(&workspace, source_roots)?;
+    // The surface roles are NOT computed here. They are corpus-derived generation work
+    // (`ConvergenceSurfaceRoles`), carried by generation 0's receipt and bound once it is read.
     let scope = if affected_scope {
         regen_emission_scope_for_diff(&workspace, source_roots)?
     } else {
@@ -7942,6 +8076,14 @@ pub fn run_regen_round_cost(
     report_cgroup_memory_diagnostic("parent.end generation=0");
     v1_rt::trace_mark("round.built_seed_regen.done".to_string());
     let first = first?;
+    let (
+        basename_to_module,
+        generation_modules,
+        bootstrap_sources,
+        bootstrap_products,
+        seed_embedded_basenames,
+        generated_product_roles,
+    ) = first.surface_roles.clone().into_planning()?;
     let mut candidate_digest = first.manifest.candidate_tree_digest.clone();
     let starting_surface_digest = first.committed_digest;
     let mut candidate_tree_id = first.manifest.candidate_tree_id.clone();
@@ -10033,6 +10175,30 @@ pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedP
 /// uses (`whole_pool_closure_edge_index`: dotted references, which include every import line, plus bare
 /// references) -- one authority for "what pulls what", read here in reverse. A file the index
 /// names but cannot map to a module is a refusal: an edge dropped silently would shrink the bound.
+/// Every module the regen source roots declare: the `source_files` keys of the module index over
+/// `regen_source_roots()`, sorted. The edge-free half of `regen_module_edges`, for a caller that
+/// demands the names and not the dependency edges.
+pub fn regen_module_names(workspace: &Path) -> Vec<String> {
+    let abs_roots: Vec<String> = super::regen_source_roots()
+        .all()
+        .iter()
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let index = super::build_multi_entry_index(&abs_roots);
+    index
+        .source_files
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 pub fn regen_module_edges(
     workspace: &Path,
 ) -> Result<(Vec<(String, String)>, Vec<String>), String> {
@@ -11535,5 +11701,138 @@ mod generation_supervisor_tests {
                 assert!(cause.contains(&dir.display().to_string()), "{cause}");
             }
         }
+    }
+}
+
+/// THE SURFACE ROLES TRAVEL BY RECEIPT (generation-state lifetime isolation): generation 0's child
+/// derives them and its receipt carries them; the orchestrator never loads the corpus to derive them
+/// itself. These pin the carrier, not the derivation (`convergence_surface_roles` is unchanged
+/// except for the edge build it never read).
+#[cfg(test)]
+mod surface_roles_receipt_tests {
+    use super::*;
+
+    fn roles() -> SurfaceRolesForPlanning {
+        (
+            [
+                ("std_measure.rs".to_string(), "std.measure".to_string()),
+                (
+                    "v1_compiler_parse.rs".to_string(),
+                    "v1.compiler.parse".to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            ["std.measure".to_string()].into_iter().collect(),
+            BTreeSet::new(),
+            ["Cargo.toml".to_string()].into_iter().collect(),
+            ["std_measure.rs".to_string()].into_iter().collect(),
+            [(
+                "Cargo.toml".to_string(),
+                ("GenerationInput".to_string(), "OutsideSeed".to_string()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    }
+
+    #[test]
+    fn the_roles_round_trip_through_the_receipt_rows() {
+        let carried = ConvergenceSurfaceRoles::from_planning(roles());
+        let json = serde_json::to_string(&carried).unwrap();
+        let back: ConvergenceSurfaceRoles = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.clone().into_planning().unwrap(), roles());
+        // Sorted rows: one tree's roles serialize to one byte string whatever the map order was.
+        assert_eq!(
+            serde_json::to_string(&ConvergenceSurfaceRoles::from_planning(roles())).unwrap(),
+            json
+        );
+    }
+
+    /// RED: a first-generation receipt with no surface roles does not parse, so the orchestrator
+    /// refuses the round instead of planning from roles nobody derived.
+    #[test]
+    fn a_receipt_without_surface_roles_refuses_the_round() {
+        let dir = std::env::temp_dir().join(format!("gunbc-roles-receipt-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("receipt.json");
+        let mut receipt = serde_json::to_value(RegenReceipt::FirstGeneration {
+            schema: RECEIPT_SCHEMA.to_string(),
+            commit_sha: "sha".to_string(),
+            authority_digest: "a".to_string(),
+            committed_generated_digest: "c".to_string(),
+            candidate_generated_digest: "d".to_string(),
+            first_generation_equal: false,
+            changed_paths: vec!["std_measure.rs".to_string()],
+            candidate_artifact: "target/stage0-regen-candidate".to_string(),
+            candidate_manifest: RegenCandidateManifest {
+                producer_seed_digest: "seed".to_string(),
+                generation_id: "generation".to_string(),
+                candidate_tree_id: "tree".to_string(),
+                candidate_tree_digest: "tree-digest".to_string(),
+                aggregate_digest: "aggregate".to_string(),
+                surfaces: Vec::new(),
+            },
+            surface_roles: ConvergenceSurfaceRoles::from_planning(roles()),
+        })
+        .unwrap();
+        fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let read = read_first_generation_receipt(&path).expect("a complete receipt is read");
+        assert_eq!(read.surface_roles.into_planning().unwrap(), roles());
+        receipt.as_object_mut().unwrap().remove("surface_roles");
+        fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let refused = read_first_generation_receipt(&path)
+            .err()
+            .expect("a receipt without surface roles was accepted");
+        assert!(refused.contains("surface_roles"), "{refused}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_duplicated_owner_row_is_refused_not_last_write_wins() {
+        let mut carried = ConvergenceSurfaceRoles::from_planning(roles());
+        carried.basename_to_module.push(SurfaceOwnerRow {
+            basename: "std_measure.rs".to_string(),
+            module: "std.other".to_string(),
+        });
+        let refused = carried
+            .into_planning()
+            .expect_err("a duplicate owner was resolved");
+        assert!(
+            refused.contains("SurfaceRolesReceiptDuplicated"),
+            "{refused}"
+        );
+    }
+
+    /// The footprint this moves, measured: the module names alone (the identical key set of the
+    /// identical index) without the edge build. Run with --ignored --nocapture on a release build;
+    /// prints the orchestrator-shaped VmRSS readings the RFM row cites.
+    #[test]
+    #[ignore]
+    fn measure_module_names_versus_module_edges() {
+        let ws = workspace_root();
+        let rss = || {
+            fs::read_to_string("/proc/self/status")
+                .unwrap()
+                .lines()
+                .find(|l| l.starts_with("VmRSS"))
+                .unwrap()
+                .to_string()
+        };
+        let t = Instant::now();
+        let names = regen_module_names(&ws);
+        eprintln!("MEASURE names={} {:?} {}", names.len(), t.elapsed(), rss());
+        let t = Instant::now();
+        let (_edges, modules) = regen_module_edges(&ws).unwrap();
+        eprintln!(
+            "MEASURE edges path modules={} {:?} {}",
+            modules.len(),
+            t.elapsed(),
+            rss()
+        );
+        assert_eq!(
+            names, modules,
+            "the edge-free module set differs from the edge path's"
+        );
     }
 }
