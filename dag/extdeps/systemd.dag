@@ -1,9 +1,7 @@
 module extdeps.systemd
 
-import std.types { NonEmptyStr, String, Int, Bool }
-import std.types { list_length }
+import std.types { NonEmptyStr, String, Int, Bool, list_length, List }
 import std.algebra { trim }
-import std.types { List }
 import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count, Second, second_count,

@@ -150,12 +150,8 @@ import extdeps.storage.types {
 }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
-import extdeps.provisioning.network_boot {
-  ClientNetworkBootMode,
-  LegacyBiosPxe,
-  UefiHttpBoot,
-  UefiPxe,
-}
+import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliveryPlan, BootDeliverySolution, BootDeliveryPlanned, BootDeliveryPlanAdmitted, BootDeliveryPlanIncoherent, admit_boot_delivery_plan, PxeChainBoot, BootDeliveryRefused, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
+import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, BiosX86, UefiX86_64, UefiArm64, HttpBootX86_64, HttpBootArm64 }
 import extdeps.os.ubuntu_kernel_nic_coverage { UbuntuKernelFlavour, r8169_claims_pci_device }
 import extdeps.pci.identity { PciDeviceId }
 import gunbc.machine_intake.bmc_first_contact_standing {
@@ -314,11 +310,12 @@ fn admit_provisioning_target(
 // THE SEED NEEDS BOTH ANSWERS WITHOUT ONE IMPLYING THE OTHER. Whether the BMC serves a serial-over-LAN
 // console is a property of the BMC firmware family (extdeps.bmc.endpoint's closed set — reused, not
 // restated). Whether the image arrives by PXE, HTTP boot, or BMC virtual media is a property of delivery,
-// which the S0 seam decides and hands over. Collapsing them would let a strategy name change what the
+// which the BootDeliveryPlan solved by gunbc.boot_artifact_delivery carries. Collapsing them would let a strategy name change what the
 // seed promises about its console, which is the per-host branching this program forbids.
-type SeedDeliveryStrategy =
-    PxeStrategy { boot_mode: ClientNetworkBootMode }
-  | VirtualMediaStrategy { media_stem: NonEmptyStr }
+// THE DELIVERY AXIS IS THE ROUTE AUTHORITY'S OWN VOCABULARY: gunbc.boot_artifact_delivery BootControlTarget says how
+// the board is told to boot, and the observed DHCP client architecture (extdeps.provisioning.dhcp_client_arch) says what
+// firmware answered, which BootControlTarget does not carry (BIOS PXE and UEFI PXE are one BootFromNetworkPxe). Both are
+// existing types; the seed declares no delivery vocabulary of its own.
 
 // WHAT THE STRATEGY IS FOR, AS SEEN FROM HERE: whether the installer's serial console is opened by the
 // firmware on a link the operator controls (PXE, where a TFTP/HTTP conversation is already in progress
@@ -333,12 +330,15 @@ type SeedDeliveryStrategy =
 // machine booted seed X" identically, which is exactly the memory-instead-of-evidence failure the binding
 // exists to remove. The rule for a diagnostic here: it must be as narrow as the axis it spells, so a new
 // ClientNetworkBootMode member forces a row here and cannot silently inherit "pxe".
-fn delivery_strategy_diagnostic(strategy: SeedDeliveryStrategy) -> NonEmptyStr {
+fn delivery_strategy_diagnostic(strategy: BootControlTarget, client_arch: DhcpProcessorArchitecture?) -> NonEmptyStr {
   match strategy {
-    PxeStrategy { boot_mode: mode } =>
-      concat("pxe-", client_network_boot_mode_token(mode: mode))
-    VirtualMediaStrategy { media_stem: stem } =>
-      concat("virtual-media-", stem)
+    BootFromNetworkPxe =>
+      match client_arch {
+        Present { value: arch } => concat("pxe-", client_arch_token(arch: arch))
+        Absent => "pxe-unobserved"
+      }
+    BootFromUefiHttp => "uefi-http"
+    BootFromRemovableMedia => "virtual-media"
   }
 }
 
@@ -346,11 +346,13 @@ fn delivery_strategy_diagnostic(strategy: SeedDeliveryStrategy) -> NonEmptyStr {
 // token would make two different transports hash alike. The TFTP locator is deliberately NOT part of the
 // token — it is a server-side address owned by the PXE edge, not a decision the seed makes, and letting an
 // edge's address move a seed digest would couple seed identity to a hostname.
-fn client_network_boot_mode_token(mode: ClientNetworkBootMode) -> NonEmptyStr {
-  match mode {
-    LegacyBiosPxe { tftp_root: _ } => "bios"
-    UefiPxe { tftp_root: _ } => "uefi-pxe"
-    UefiHttpBoot => "uefi-http"
+fn client_arch_token(arch: DhcpProcessorArchitecture) -> NonEmptyStr {
+  match arch {
+    BiosX86 => "bios"
+    UefiX86_64 => "uefi-pxe"
+    UefiArm64 => "uefi-pxe"
+    HttpBootX86_64 => "uefi-http"
+    HttpBootArm64 => "uefi-http"
   }
 }
 
@@ -480,11 +482,12 @@ fn virtual_media_usb_modules() -> List<LoadableModuleClass> {
 
 fn profile_with_delivery_modules(
   profile: BoardSeedProfile,
-  delivery: SeedDeliveryStrategy,
+  delivery: BootControlTarget,
 ) -> BoardSeedProfile {
   match delivery {
-    PxeStrategy { boot_mode: _ } => profile
-    VirtualMediaStrategy { media_stem: _ } =>
+    BootFromNetworkPxe => profile
+    BootFromUefiHttp => profile
+    BootFromRemovableMedia =>
       BoardSeedProfile {
         install_drivers: profile.install_drivers,
         loadable_modules: list_append(left: profile.loadable_modules, right: virtual_media_usb_modules()),
@@ -514,7 +517,7 @@ fn profile_with_delivery_modules(
 //                  the AST2500's BMC.
 //   ipmi_watchdog  CONFIG_IPMI_WATCHDOG, drivers/char/ipmi/Kconfig, ipmi_watchdog.o — the BMC watchdog, so
 //                  a board that hangs mid-install is reset rather than kept company by nobody.
-fn board_seed_profile(board: ProvisioningBoard, delivery: SeedDeliveryStrategy) -> BoardSeedProfile {
+fn board_seed_profile(board: ProvisioningBoard, delivery: BootControlTarget) -> BoardSeedProfile {
   let row = match board {
     AltraBoard =>
       BoardSeedProfile {
@@ -2028,6 +2031,8 @@ type SeedInteractiveCause
   // owner out through every path the seed offers and no waiver can rescue it. Named separately because the fix
   // is different: here, admit the operator's key; there, lock the console or record why not.
   | KeyOnlyPostureAdmitsNoKeys
+  // PXE WITH NO OBSERVED CLIENT ARCHITECTURE: BIOS and UEFI PXE differ in the console stanza, and neither is chosen for an unobserved client.
+  | PxeClientArchitectureUnobserved
 
 // THE PROOF, AS DATA. The audit's green arm is neither unit nor Bool: it carries WHY it is green, in the
 // same parts the refusal names, so an auditor reading a rendered seed later can re-check the claim without
@@ -2050,14 +2055,21 @@ type NonInteractiveConsoleStanza = ConsoleSuppressed | ConsoleAnsweredByUnattend
 // THE STANZA IS DERIVED BY MATCHING THE TRANSPORT, NEVER BY RE-READING A BOOL THAT ALREADY FLATTENED IT.
 // The two arms are the two things the seed says on the kernel command line: either a console exists and is
 // answered by the unattended answer file, or there is no console to answer at all.
-fn console_stanza_for(strategy: SeedDeliveryStrategy) -> NonInteractiveConsoleStanza {
+fn console_stanza_for(strategy: BootControlTarget, client_arch: DhcpProcessorArchitecture?) -> NonInteractiveConsoleStanza? {
   match strategy {
-    // UEFI reaches a console the installer will print to, so the seed must ANSWER rather than suppress: a
-    // reachable SOL console is still nobody at the panel.
-    PxeStrategy { boot_mode: UefiPxe { tftp_root: _ } } => ConsoleAnsweredByUnattended
-    PxeStrategy { boot_mode: UefiHttpBoot } => ConsoleAnsweredByUnattended
-    PxeStrategy { boot_mode: LegacyBiosPxe { tftp_root: _ } } => ConsoleSuppressed
-    VirtualMediaStrategy { media_stem: _ } => ConsoleSuppressed
+    BootFromRemovableMedia => Present { value: ConsoleSuppressed }
+    BootFromUefiHttp => Present { value: ConsoleAnsweredByUnattended }
+    // Which firmware answered is the one fact the control target does not carry; an unobserved client is
+    // Absent here and the audit refuses it rather than choosing a stanza.
+    BootFromNetworkPxe =>
+      match client_arch {
+        Absent => none
+        Present { value: BiosX86 } => Present { value: ConsoleSuppressed }
+        Present { value: UefiX86_64 } => Present { value: ConsoleAnsweredByUnattended }
+        Present { value: UefiArm64 } => Present { value: ConsoleAnsweredByUnattended }
+        Present { value: HttpBootX86_64 } => Present { value: ConsoleAnsweredByUnattended }
+        Present { value: HttpBootArm64 } => Present { value: ConsoleAnsweredByUnattended }
+      }
   }
 }
 
@@ -2073,7 +2085,8 @@ fn audit_ubuntu_autoinstall_seed(
   late_packages: List<PackageIntent>,
   locale: SeedLocale,
   entry: AdminAccessAuthorisation,
-  strategy: SeedDeliveryStrategy,
+  strategy: BootControlTarget,
+  client_arch: DhcpProcessorArchitecture?,
   // THE AXES THE INTERACTIVITY CHAIN CANNOT SEE ON ITS OWN. The architecture decides whether a silence
   // receipt counts (a receipt established against the arm64 pool says nothing about the amd64 .deb); the
   // credential decides whether the key-only posture's own entrypoint obligation applies, which is NOT the
@@ -2102,6 +2115,7 @@ fn audit_ubuntu_autoinstall_seed(
               late_packages: late_packages,
               locale: locale,
               strategy: strategy,
+              client_arch: client_arch,
               architecture: architecture,
             )
           }
@@ -2111,6 +2125,7 @@ fn audit_ubuntu_autoinstall_seed(
           late_packages: late_packages,
           locale: locale,
           strategy: strategy,
+          client_arch: client_arch,
           architecture: architecture,
         )
       }
@@ -2144,7 +2159,8 @@ fn audit_seed_interactivity(
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
   locale: SeedLocale,
-  strategy: SeedDeliveryStrategy,
+  strategy: BootControlTarget,
+  client_arch: DhcpProcessorArchitecture?,
   architecture: Architecture,
 ) -> SeedAudit {
   match prompt_over_locale(locale: locale) {
@@ -2163,15 +2179,19 @@ fn audit_seed_interactivity(
                   match first_blocking_refusal(intents: late_packages, architecture: architecture) {
                     Present { value: late_offender } => SeedRefused { cause: late_offender }
                     Absent =>
-                      SeedIsNonInteractive {
-                        evidence: NonInteractiveProof {
-                          questions_closed: questions_closed_count(
-                            install_packages: install_packages,
-                            late_packages: late_packages,
-                            network: network,
-                          ),
-                          console_stanza: console_stanza_for(strategy: strategy),
-                        },
+                      match console_stanza_for(strategy: strategy, client_arch: client_arch) {
+                        Absent => SeedRefused { cause: PxeClientArchitectureUnobserved }
+                        Present { value: stanza } =>
+                          SeedIsNonInteractive {
+                            evidence: NonInteractiveProof {
+                              questions_closed: questions_closed_count(
+                                install_packages: install_packages,
+                                late_packages: late_packages,
+                                network: network,
+                              ),
+                              console_stanza: stanza,
+                            },
+                          }
                       }
                   }
               }
@@ -2340,7 +2360,8 @@ type UbuntuAutoinstallSeed sole_constructor {
   // merry-fox-82)
   password_read: Optional<AdminPasswordHashReceipt>,
   locale: SeedLocale,
-  delivery: SeedDeliveryStrategy,
+  delivery: BootControlTarget,
+  client_arch: DhcpProcessorArchitecture?,
   keyboard: CeremonialKeyboardLayout,
   proof: NonInteractiveProof,
 }
@@ -2369,9 +2390,76 @@ fn build_ubuntu_autoinstall_seed(
   // stored beside it.
   password_read: Optional<AdminPasswordHashReceipt>,
   locale: SeedLocale,
-  delivery: SeedDeliveryStrategy,
+  // THE ROUTE IS THE SOLVER'S, NOT A PARAMETER. The boot-control target the seed is built for is read from the
+  // admitted BootDeliveryPlan; a refused solution yields no seed, so a caller cannot name removable media beside a
+  // plan that selected PXE.
+  solution: BootDeliverySolution,
   keyboard: CeremonialKeyboardLayout,
 ) -> Optional<UbuntuAutoinstallSeed> {
+  match solution {
+    BootDeliveryRefused { cause: _ } => Absent
+    BootDeliveryPlanned { plan: unadmitted } =>
+      match admit_boot_delivery_plan(plan: unadmitted) {
+        BootDeliveryPlanIncoherent { cause: _ } => Absent
+        BootDeliveryPlanAdmitted { plan: planned } =>
+          if plan_artifact_serves_target(plan: planned, target: target) == false {
+            Absent
+          } else {
+          build_seed_for_control(
+          target: target, network: network, install_drivers: install_drivers, loadable_modules: loadable_modules,
+          late_drivers: late_drivers, install_packages: install_packages, late_packages: late_packages, disk: disk,
+          entry: entry, credential: credential, password_read: password_read, locale: locale,
+          delivery: planned.boot_control, client_arch: plan_observed_client_arch(plan: planned), keyboard: keyboard,
+          )
+          }
+      }
+  }
+}
+
+// THE PLAN'S ARTIFACT AND THE TARGET ARE ONE ARCHITECTURE. The plan delivers an artifact built for one
+// architecture; a seed for a target of another would install a machine from media it cannot boot. A refused
+// target has no architecture to join and yields no seed through the builder's own refusal.
+fn plan_artifact_serves_target(plan: BootDeliveryPlan, target: ProvisioningTargetAdmission) -> Bool {
+  match target {
+    TargetAdmitted { standing: admitted } => admitted.architecture == plan.artifact.architecture
+    TargetRefused { reason: _ } => true
+  }
+}
+
+// THE CLIENT ARCHITECTURE IS THE PLAN'S, NOT A SECOND INPUT. The firmware that answered DHCP is read from the
+// solved plan's own PxeChainBoot evidence; a plan that carries no such observation (virtual media, HTTP boot)
+// yields none, and the seed's PXE audit then refuses rather than choosing a console stanza.
+fn plan_observed_client_arch(plan: BootDeliveryPlan) -> DhcpProcessorArchitecture? {
+  match plan.delivery {
+    PxeChainBoot { evidence: e } => Present { value: e.client.client.arch }
+    _ => none
+  }
+}
+
+// SEALED TO THE ADMITTED-PLAN WRAPPER. delivery and client_arch are free values here, so only the wrapper that
+// derives them from an admitted plan, and the witness fixtures that sweep the control family as supplied
+// values, may call it; a production caller reaching this directly could name a route the plan contradicts.
+fn build_seed_for_control(
+  target: ProvisioningTargetAdmission,
+  network: SeedNetworkPosture,
+  install_drivers: List<SeedInstallDriver>,
+  loadable_modules: List<LoadableModuleClass>,
+  late_drivers: List<LateDriver>,
+  install_packages: List<PackageIntent>,
+  late_packages: List<PackageIntent>,
+  disk: TargetDiskSelector,
+  entry: AdminAccessAuthorisation,
+  credential: AdminCredentialPosture,
+  password_read: Optional<AdminPasswordHashReceipt>,
+  locale: SeedLocale,
+  delivery: BootControlTarget,
+  client_arch: DhcpProcessorArchitecture?,
+  keyboard: CeremonialKeyboardLayout,
+) -> Optional<UbuntuAutoinstallSeed> admit_callers: [
+  decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "build_ubuntu_autoinstall_seed"),
+  decl_ref(module_path: "test.claim.ubuntu_autoinstall_seed_witness", decl_name: "build_seed_fixture_with_modules"),
+  decl_ref(module_path: "test.claim.ubuntu_autoinstall_seed_witness", decl_name: "build_seed_fixture_under_rule"),
+] {
   match target {
     TargetRefused { reason: _ } => Absent
     TargetAdmitted { standing: admitted } =>
@@ -2382,6 +2470,7 @@ fn build_ubuntu_autoinstall_seed(
         locale: locale,
         entry: entry,
         strategy: delivery,
+        client_arch: client_arch,
         // THE ADMITTED ARCHITECTURE, not a parameter the caller can point somewhere else: the seed's target
         // carries the architecture it was admitted for, and the package rows must answer to THAT.
         architecture: admitted.architecture,
@@ -2407,6 +2496,7 @@ fn build_ubuntu_autoinstall_seed(
                 password_read: password_read,
                 locale: locale,
                 delivery: delivery,
+                client_arch: client_arch,
                 keyboard: keyboard,
                 proof: established,
                 },
@@ -3262,7 +3352,7 @@ fn render_ubuntu_autoinstall_seed(seed: UbuntuAutoinstallSeed) -> NonEmptyStr {
     concat("nic=", nic_driver_claim_diagnostic(flavour: seed.target.kernel_flavour)),
     concat("locale=", seed_locale_wire(locale: seed.locale)),
     concat("keyboard=", ceremonial_keyboard_layout_wire(layout: seed.keyboard)),
-    concat("delivery=", delivery_strategy_diagnostic(strategy: seed.delivery)),
+    concat("delivery=", delivery_strategy_diagnostic(strategy: seed.delivery, client_arch: seed.client_arch)),
     concat("console=", console_stanza_diagnostic(stanza: seed.proof.console_stanza)),
     concat("addressing=", addressing_diagnostic(addressing: seed.network.addressing)),
     concat("family=", address_family_diagnostic(family: seed.network.family)),
@@ -3474,10 +3564,11 @@ fn password_field_from(seed: UbuntuAutoinstallSeed) -> Optional<NonEmptyStr> {
 // that matters: a PXE boot and a virtual-media boot both read NoCloud from the media, and no field of the seed
 // selects a PXE server here. A future requirement to serve the document over HTTP (a seed_url) adds the arm and
 // has to say which evidence names the URL; it may not name a machine.
-fn payload_delivery_for(delivery: SeedDeliveryStrategy) -> AutoinstallDeliveryMethod {
+fn payload_delivery_for(delivery: BootControlTarget) -> AutoinstallDeliveryMethod {
   match delivery {
-    PxeStrategy { boot_mode: _ } => NoCloudLocal
-    VirtualMediaStrategy { media_stem: _ } => NoCloudLocal
+    BootFromNetworkPxe => NoCloudLocal
+    BootFromUefiHttp => NoCloudLocal
+    BootFromRemovableMedia => NoCloudLocal
   }
 }
 
@@ -4187,7 +4278,8 @@ type UbuntuAutoinstallSeedBinding sole_constructor {
   // renderer refused, which the binder refuses outright rather than binding (no binding describes an
   // unservable seed), so the field is present-and-derived or the record does not exist.
   served: ServedSeedBundle
-  delivery: SeedDeliveryStrategy
+  delivery: BootControlTarget
+  client_arch: DhcpProcessorArchitecture?
   disk: TargetDiskSelector
   disk_selection: BoundDiskEvidence
 }
@@ -4303,6 +4395,7 @@ fn bind_ubuntu_autoinstall_seed(
                   seed_rendering: render_ubuntu_autoinstall_seed(seed: seed),
                   served: served,
                   delivery: seed.delivery,
+                  client_arch: seed.client_arch,
                   disk: seed.disk,
                   disk_selection: provenance_chosen_identity(provenance: provenance),
                 },

@@ -43,7 +43,7 @@ data refusal_deferred_to_emitted_runtime: RecurringFailureMode = RecurringFailur
 
     "CEILING: structurally guaranteed, and reached in the specimen -- a located compile-time refusal per declared field, derived from modeled structure, with zero files emitted.",
 
-    "NEXT TRIGGER for the class as a whole: an emission-stage census that pairs every refusal-construct emitter with its diagnostic twin, since nothing today makes the missing half visible and the specimen was found by accident.",
+    "NEXT TRIGGER for the class as a whole: an emission-stage check that pairs each refusal-construct emitter with its diagnostic twin (no census run is a prerequisite: retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`)), since nothing today makes the missing half visible and the specimen was found by accident.",
 
     "POPULATION NOTE THE SPECIMEN CARRIES: the wall converted a SILENT corpus defect into a loud one -- gunbc.WitnessBin.Run declares stderr_truncated, stderr_total_bytes and stderr_retained_bytes, three channels the Rust realization cannot answer because the emitted Command body implements no capture policy, so every entry closure reaching that operation now refuses at field grain.",
 

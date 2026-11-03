@@ -81,8 +81,8 @@ import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_ho
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.realization_schedule { RunnableBatchClamp }
-import std.decl_ref { decl_ref }
+import std.realization_schedule { RunnableBatchClamp, ScheduleWitnessEntry }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
 import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 import std.nat { Nat }
 
@@ -115,8 +115,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var,
 }
-import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.std.node { Node }
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script,
   gunbc_run_step_script_with_prelude,
@@ -132,7 +130,6 @@ import gunbc.commit_workflow {
   project_ci_floor_gates,
   project_ci_floor_witness_entries
 }
-import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
 import gunbc.auth.heal_publisher_federation {
   HealPublisherFederation, public_heal_publisher_federation,
@@ -173,7 +170,6 @@ import std.env_binding { EnvSet, EnvUnset }
 import std.optional { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list, list_map }
 import extdeps.rust.cargo { cargo_default_release_dir }
 
