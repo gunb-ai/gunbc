@@ -56,6 +56,7 @@ import gunbc.machine_intake.bmc_first_contact_reading {
   bmc_ipmi_sdr_elist_read, bmc_redfish_thermal_read, bmc_redfish_sensors_read,
   bmc_ipmi_sol_info_read, bmc_redfish_serial_interfaces_read,
   bmc_redfish_boot_options_read, bmc_redfish_ethernet_interface_read, bmc_redfish_virtual_media_read,
+  bmc_redfish_ethernet_interfaces_collection_read,
   srv13_first_contact_manifest, srv13_first_contact_reading_2026_10_07,
   mtjade1_first_contact_manifest, mtjade1_first_contact_reading_2026_10_06,
   h11ssl_unit1_first_contact_manifest, h11ssl_unit1_first_contact_reading_2026_10_27,
@@ -1392,6 +1393,48 @@ test fn a_malformed_uefi_device_path_names_that_property_not_another() -> Bool {
         && string_contains(s: cause as String, pattern: "BootOptionEnabled") == false
     ReadingEstablished { value: reading, standing: standing } => false
     ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// THE COLLECTION'S OWN FAILURE OUTRANKS THE CANDIDATE COUNT. The EthernetInterfaces collection is the authority
+// over WHICH interfaces exist. Here it was ASKED and its answer did not decode, and no member resource was read
+// at all -- the exact shape that used to fall out as coverage debt, because the candidate count was consulted
+// before the collection was. The reading REFUSES and names the collection.
+fn c1_without_member_read(responses: List<BmcModeledResponse>) -> List<BmcModeledResponse> {
+  filter(responses, response => response.read != bmc_redfish_ethernet_interface_read)
+}
+
+fn c1_collection_only_responses(body: String) -> List<BmcModeledResponse> {
+  concat(
+    c1_without_member_read(dry_responses()),
+    [BmcModeledResponse {
+      read: bmc_redfish_ethernet_interfaces_collection_read,
+      operation: RedfishGet { uri: "/redfish/v1/Systems/1/EthernetInterfaces" },
+      outcome: HttpStatusRecorded { code: 200 },
+      body: body,
+    }],
+  )
+}
+
+test fn a_refused_port_collection_refuses_even_with_no_candidate_to_count() -> Bool {
+  match battery(responses: c1_collection_only_responses(body: "{\"Members\": 7}"), binding: no_binding()).boot_nic {
+    ReadingRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "EthernetInterfaces collection")
+        && string_contains(s: cause as String, pattern: "Members")
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// CONTROL, THE SAME SOURCE WITH THE COLLECTION READ NEVER TAKEN: nothing was attempted and failed, so the empty
+// candidate list is coverage debt and the reading says so. The two claims differ in exactly one external fact --
+// whether the collection was asked -- and that fact alone decides refusal versus obligation.
+test fn an_untaken_port_collection_with_no_candidate_is_coverage_debt() -> Bool {
+  match battery(responses: c1_without_member_read(dry_responses()), binding: no_binding()).boot_nic {
+    ReadingNotTaken { obligation: obligation } =>
+      string_contains(s: obligation as String, pattern: "EthernetInterface")
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingRefused { cause: cause } => false
   }
 }
 

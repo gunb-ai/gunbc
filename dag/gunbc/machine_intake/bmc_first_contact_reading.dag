@@ -1931,16 +1931,23 @@ fn bmc_boot_nic_reading(
           Present { value: detail } => reading_refused(concat(
             "a BootOption device path names a MAC(...) node this reader cannot decode: ", detail
           ) as NonEmptyStr)
-          Absent => match bmc_selection_from(options: bmc_enabled_options(options: entries), candidates: bmc_port_candidates(ports: ports)) {
-            JoinSelected { candidate: candidate, boot_option: option, device_path: path } => ReadingEstablished {
-              value: ConfiguredBootSelection { candidate: candidate, boot_option: option, device_path: path },
-              standing: bmc_body_standing(body: options_body),
+          Absent => match bmc_collection_refusal(collection: collection) {
+            // THE JOIN IS BUILT ON THE POPULATION THE COLLECTION AUTHORIZES. A configured selection names one of
+            // the interfaces the collection says exists; if that collection read was attempted and refused, the
+            // selection is a join over a population this battery does not know. The refusal surfaces here too,
+            // before the join, the count and the obligations.
+            Present { value: cause } => reading_refused(cause)
+            Absent => match bmc_selection_from(options: bmc_enabled_options(options: entries), candidates: bmc_port_candidates(ports: ports)) {
+              JoinSelected { candidate: candidate, boot_option: option, device_path: path } => ReadingEstablished {
+                value: ConfiguredBootSelection { candidate: candidate, boot_option: option, device_path: path },
+                standing: bmc_body_standing(body: options_body),
+              }
+              JoinAmbiguous { detail: detail } => reading_refused(detail)
+              JoinNone => bmc_boot_nic_without_selection(
+                ports: ports, options: options, collection: collection, systems_body: systems_body,
+                source: source, controller: controller, observed_at: observed_at, standings: standings,
+              )
             }
-            JoinAmbiguous { detail: detail } => reading_refused(detail)
-            JoinNone => bmc_boot_nic_without_selection(
-              ports: ports, options: options, collection: collection, systems_body: systems_body,
-              source: source, controller: controller, observed_at: observed_at, standings: standings,
-            )
           }
         }
       }
@@ -1948,12 +1955,34 @@ fn bmc_boot_nic_reading(
   }
 }
 
+// THE COLLECTION'S OWN REFUSAL, IN ONE PLACE. Both places that may reason past it (the join in
+// `bmc_boot_nic_reading`, the count and obligations in `bmc_boot_nic_without_selection`) ask this helper, so the
+// refusal text has one authority and cannot drift between them.
+fn bmc_collection_refusal_text(cause: NonEmptyStr) -> NonEmptyStr {
+  concat("the EthernetInterfaces collection read: ", cause as String) as NonEmptyStr
+}
+
+fn bmc_collection_refusal(collection: BmcCollectionAttempt) -> NonEmptyStr? {
+  match collection {
+    CollectionRefused { cause: cause } => Present { value: bmc_collection_refusal_text(cause: cause) }
+    _ => none
+  }
+}
+
+// THE ORDER IS THE MODEL. The driver has already surfaced the two refusals that outrank everything here — a
+// member read that failed, a BootOptions read that failed — so what is left to decide is the collection, the
+// count, the configured selection and the obligations, in that order.
+//
+// THE COLLECTION IS ASKED FIRST, AND ITS REFUSAL IS NEVER ANSWERED BY COUNTING. The collection is the authority
+// over WHICH interfaces exist, so a collection read that was attempted and came back undecodable cannot be
+// answered by the members that happened to be committed: the same malformed collection would refuse or turn
+// into coverage debt depending on whether some unrelated member read produced a candidate. Candidate count
+// cannot erase an already-observed collection failure, so the zero-candidate fallback sits BELOW this match,
+// inside `bmc_boot_nic_from_candidates`, where it is reachable only when the collection did not refuse.
 fn bmc_boot_nic_without_selection(ports: List<BmcPortReading>, options: BmcBootOptionsAttempt, collection: BmcCollectionAttempt, systems_body: BmcBodyAttempt, source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, standings: BmcReadingStandings) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
   let candidates = bmc_port_candidates(ports: ports)
-  if count(candidates) == 0 {
-    reading_not_taken(bmc_boot_nic_obligation(options: options, systems_body: systems_body))
-  } else { match collection {
-    CollectionRefused { cause: cause } => reading_refused(concat("the EthernetInterfaces collection read: ", cause as String) as NonEmptyStr)
+  match collection {
+    CollectionRefused { cause: cause } => reading_refused(bmc_collection_refusal_text(cause: cause))
     CollectionAnnounced { count: announced } =>
       if announced > count(candidates) {
         reading_refused(concat(
@@ -1964,9 +1993,12 @@ fn bmc_boot_nic_without_selection(ports: List<BmcPortReading>, options: BmcBootO
       } else {
         bmc_boot_nic_from_candidates(candidates: candidates, options: options, systems_body: systems_body, source: source, controller: controller, observed_at: observed_at, standings: standings)
       }
+    // THE POPULATION WAS NEVER ANNOUNCED. The members that were read still stand on their own reads, and the
+    // debt is carried into the standing note; with no candidate at all this is coverage debt, which is what
+    // the not-taken arm inside `bmc_boot_nic_from_candidates` says.
     CollectionOwed { obligation: obligation } =>
       bmc_boot_nic_from_candidates(candidates: candidates, options: options, systems_body: systems_body, source: source, controller: controller, observed_at: observed_at, standings: standings)
-  } }
+  }
 }
 
 fn bmc_boot_nic_from_candidates(candidates: List<BootNicCandidate>, options: BmcBootOptionsAttempt, systems_body: BmcBodyAttempt, source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, standings: BmcReadingStandings) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
@@ -1986,6 +2018,9 @@ fn bmc_boot_nic_from_candidates(candidates: List<BootNicCandidate>, options: Bmc
         bmc_candidate_text(candidates: candidates),
       ) as NonEmptyStr)
     } else {
+      // REACHED ONLY WHEN THE COLLECTION DID NOT REFUSE. `bmc_boot_nic_without_selection` asks the collection
+      // before it counts, so an empty candidate list gets here only when the collection was announced
+      // consistently or never announced at all — which is coverage debt, not a suppressed read failure.
       reading_not_taken(bmc_boot_nic_obligation(options: options, systems_body: systems_body))
     }
   }
