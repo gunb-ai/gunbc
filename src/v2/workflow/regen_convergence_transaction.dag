@@ -1139,7 +1139,10 @@ fn regen_admit_generation_progress(
 // about a third of one generation, so a retained generation still cannot hide under it. The same
 // receipt shows the orchestrator's OWN footprint, about 10.7 GB before any generation, is the larger
 // share of the slot; that is gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal's open
-// trigger, not this bound's.
+// trigger, not this bound's. AND THE 1.9 GB THIS BOUND ADMITS IS NOT EXPLAINED BY IT: whether that
+// growth is demanded by the next transition or retained from the last is an open trigger on the
+// same row (a second reading, run 41709366312, srv3-05, +1.83 GB); retained growth is deleted at the
+// step that holds it, and this bound then falls.
 data regen_orchestrator_resident_growth_bound: ByteSize = byte_size(count: 3221225472)
 
 type RegenGenerationBeginAdmission
