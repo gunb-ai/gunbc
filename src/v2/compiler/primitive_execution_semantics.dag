@@ -10,8 +10,7 @@ import v2.std.text { String }
 // is the classification FACT (what an operation does, what XL-1 will do about it, and the rows), a
 // layer below the evidence and receipt half of effect_demand, which needs v2.workflow.floor_discovery
 // and through it git, exec and posix process modules. A consumer that needs only the classification
-// (v2.compiler.effect_pair_census, which source_root_eval imports and the required build emits) must
-// not pay for the host-workflow modules. The declarations below are moved verbatim.
+// must not pay for the host-workflow modules. The declarations below are moved verbatim.
 
 // WHAT THE OPERATION DOES, kept strictly apart from what XL-1 intends to do about it. A boolean
 // effectful flag would have been the obvious carrier and is the wrong one: it conflates an operation
