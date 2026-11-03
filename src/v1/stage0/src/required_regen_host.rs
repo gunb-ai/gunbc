@@ -92,13 +92,69 @@ pub struct SurfaceOwnerRow {
     pub module: String,
 }
 
-/// `gunbc.regen_receipt` `RegenGeneratedProductRole`.
+/// `gunbc.regen_receipt` `RegenGeneratedProductRole`: the two role facts are the closed coproducts of
+/// `gunbc.regen_affected_set`, serialized under the host-boundary labels that module projects
+/// (`regen_generated_product_generation_role_labels`, `regen_generated_product_seed_membership_labels`),
+/// so an unknown label is unwritable on the way in and does not deserialize on the way back.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeneratedProductRoleRow {
     pub product: String,
-    pub generation_role: String,
-    pub seed_membership: String,
+    pub generation_role: GeneratedProductGenerationRole,
+    pub seed_membership: GeneratedProductSeedMembership,
+}
+
+/// `gunbc.regen_affected_set` `GeneratedAggregateProductGenerationRole`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
+pub enum GeneratedProductGenerationRole {
+    GenerationInput,
+    GenerationSubject,
+    NonSeedGeneratedOutput,
+}
+
+/// `gunbc.regen_affected_set` `GeneratedAggregateProductSeedMembership`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize)]
+pub enum GeneratedProductSeedMembership {
+    SeedEmbedded,
+    OutsideSeed,
+}
+
+impl GeneratedProductGenerationRole {
+    fn from_label(label: &str) -> Result<Self, String> {
+        match label {
+            "GenerationInput" => Ok(Self::GenerationInput),
+            "GenerationSubject" => Ok(Self::GenerationSubject),
+            "NonSeedGeneratedOutput" => Ok(Self::NonSeedGeneratedOutput),
+            other => Err(format!(
+                "SurfaceRolesReceiptUnknownRole: generation role {other:?}"
+            )),
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::GenerationInput => "GenerationInput",
+            Self::GenerationSubject => "GenerationSubject",
+            Self::NonSeedGeneratedOutput => "NonSeedGeneratedOutput",
+        }
+    }
+}
+
+impl GeneratedProductSeedMembership {
+    fn from_label(label: &str) -> Result<Self, String> {
+        match label {
+            "SeedEmbedded" => Ok(Self::SeedEmbedded),
+            "OutsideSeed" => Ok(Self::OutsideSeed),
+            other => Err(format!(
+                "SurfaceRolesReceiptUnknownRole: seed membership {other:?}"
+            )),
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::SeedEmbedded => "SeedEmbedded",
+            Self::OutsideSeed => "OutsideSeed",
+        }
+    }
 }
 
 /// The planning shape the convergence loop reads.
@@ -112,33 +168,34 @@ type SurfaceRolesForPlanning = (
 );
 
 impl ConvergenceSurfaceRoles {
-    /// The receipt rows, sorted, so one tree's roles always serialize to the same bytes.
-    fn from_planning(roles: SurfaceRolesForPlanning) -> Self {
+    /// The receipt rows, sorted, so one tree's roles always serialize to the same bytes. A role
+    /// label outside the closed coproducts refuses.
+    fn from_planning(roles: SurfaceRolesForPlanning) -> Result<Self, String> {
         let (owners, generation, sources, products, embedded, product_roles) = roles;
         let mut basename_to_module: Vec<SurfaceOwnerRow> = owners
             .into_iter()
             .map(|(basename, module)| SurfaceOwnerRow { basename, module })
             .collect();
         basename_to_module.sort();
-        let mut generated_product_roles: Vec<GeneratedProductRoleRow> = product_roles
+        let mut generated_product_roles = product_roles
             .into_iter()
-            .map(
-                |(product, (generation_role, seed_membership))| GeneratedProductRoleRow {
+            .map(|(product, (generation_role, seed_membership))| {
+                Ok(GeneratedProductRoleRow {
                     product,
-                    generation_role,
-                    seed_membership,
-                },
-            )
-            .collect();
+                    generation_role: GeneratedProductGenerationRole::from_label(&generation_role)?,
+                    seed_membership: GeneratedProductSeedMembership::from_label(&seed_membership)?,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         generated_product_roles.sort();
-        ConvergenceSurfaceRoles {
+        Ok(ConvergenceSurfaceRoles {
             basename_to_module,
             generation_modules: generation.into_iter().collect(),
             bootstrap_sources: sources.into_iter().collect(),
             bootstrap_products: products.into_iter().collect(),
             seed_embedded_basenames: embedded.into_iter().collect(),
             generated_product_roles,
-        }
+        })
     }
 
     /// Back to the planning shape. A basename or product listed twice is refused rather than
@@ -155,13 +212,11 @@ impl ConvergenceSurfaceRoles {
         }
         let mut product_roles = HashMap::new();
         for row in self.generated_product_roles {
-            if product_roles
-                .insert(
-                    row.product.clone(),
-                    (row.generation_role, row.seed_membership),
-                )
-                .is_some()
-            {
+            let labels = (
+                row.generation_role.label().to_string(),
+                row.seed_membership.label().to_string(),
+            );
+            if product_roles.insert(row.product.clone(), labels).is_some() {
                 return Err(format!(
                     "SurfaceRolesReceiptDuplicated: product {} has two role rows",
                     row.product
@@ -591,7 +646,7 @@ pub fn run_required_regen_scoped(
             bootstrap_products,
             seed_embedded_basenames,
             generated_product_roles,
-        )),
+        ))?,
     };
     write_receipt(&receipt_path, &receipt)?;
 
@@ -11738,13 +11793,14 @@ mod surface_roles_receipt_tests {
 
     #[test]
     fn the_roles_round_trip_through_the_receipt_rows() {
-        let carried = ConvergenceSurfaceRoles::from_planning(roles());
+        let carried = ConvergenceSurfaceRoles::from_planning(roles()).unwrap();
         let json = serde_json::to_string(&carried).unwrap();
         let back: ConvergenceSurfaceRoles = serde_json::from_str(&json).unwrap();
         assert_eq!(back.clone().into_planning().unwrap(), roles());
         // Sorted rows: one tree's roles serialize to one byte string whatever the map order was.
         assert_eq!(
-            serde_json::to_string(&ConvergenceSurfaceRoles::from_planning(roles())).unwrap(),
+            serde_json::to_string(&ConvergenceSurfaceRoles::from_planning(roles()).unwrap())
+                .unwrap(),
             json
         );
     }
@@ -11773,7 +11829,7 @@ mod surface_roles_receipt_tests {
                 aggregate_digest: "aggregate".to_string(),
                 surfaces: Vec::new(),
             },
-            surface_roles: ConvergenceSurfaceRoles::from_planning(roles()),
+            surface_roles: ConvergenceSurfaceRoles::from_planning(roles()).unwrap(),
         })
         .unwrap();
         fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
@@ -11788,9 +11844,30 @@ mod surface_roles_receipt_tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// The role facts are closed: an unknown label refuses on the way in and does not deserialize
+    /// on the way back.
+    #[test]
+    fn an_unknown_role_label_is_unwritable_in_the_receipt() {
+        let mut bad = roles();
+        bad.5.insert(
+            "x.rs".to_string(),
+            ("GenerationInputs".to_string(), "OutsideSeed".to_string()),
+        );
+        let refused =
+            ConvergenceSurfaceRoles::from_planning(bad).expect_err("a misspelt role was written");
+        assert!(
+            refused.contains("SurfaceRolesReceiptUnknownRole"),
+            "{refused}"
+        );
+        let json = serde_json::to_string(&ConvergenceSurfaceRoles::from_planning(roles()).unwrap())
+            .unwrap()
+            .replace("\"GenerationInput\"", "\"GenerationInputs\"");
+        assert!(serde_json::from_str::<ConvergenceSurfaceRoles>(&json).is_err());
+    }
+
     #[test]
     fn a_duplicated_owner_row_is_refused_not_last_write_wins() {
-        let mut carried = ConvergenceSurfaceRoles::from_planning(roles());
+        let mut carried = ConvergenceSurfaceRoles::from_planning(roles()).unwrap();
         carried.basename_to_module.push(SurfaceOwnerRow {
             basename: "std_measure.rs".to_string(),
             module: "std.other".to_string(),

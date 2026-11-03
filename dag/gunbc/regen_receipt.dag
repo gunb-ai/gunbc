@@ -1,6 +1,7 @@
 module gunbc.regen_receipt
 
 import std.types { String, Int, List, Bool }
+import gunbc.regen_affected_set { GeneratedAggregateProductGenerationRole, GeneratedAggregateProductSeedMembership }
 
 // ONE PASS, ONE RECEIPT (operator ruling 2026-10-04: "we don't need to run multiple times - we are
 // not that particular about determinism in v1 anymore"). The regen used to answer two questions
@@ -37,10 +38,12 @@ type RegenSurfaceOwner {
   module: String
 }
 
+// The two role facts are the closed coproducts gunbc.regen_affected_set already declares, not their
+// host-boundary label strings: a misspelt role has no constructor here.
 type RegenGeneratedProductRole {
   product: String
-  generation_role: String
-  seed_membership: String
+  generation_role: GeneratedAggregateProductGenerationRole
+  seed_membership: GeneratedAggregateProductSeedMembership
 }
 
 type RegenSurfaceRoles {
