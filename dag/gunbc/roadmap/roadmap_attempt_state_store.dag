@@ -575,8 +575,7 @@ type AttemptAppendLogReading
   | AttemptAppendLogUnready { detail: String }
   | AttemptAppendLogLegacyRefused { cause: AppendLogLegacyCause }
 
-// The census log members that are AttemptStateMember values. AttemptDirectoryWire is an in-place record in the
-// wire directory written by the worker lane (roadmap_attempt_directory_wire), NOT an AttemptStateMember, so it is
+// The eight census log members that are AttemptStateMember values, i.e. the closed AttemptLogMember type.
 // The AttemptDirectoryWire census member (row Seeadecb2) is NOT yet sealed: it is still written by the harness
 // through harness_turn.harness_wire_log_path (its two writers) and read by harness_conversation_fork,
 // roadmap_dispatch_actuator and roadmap_authority. It is an in-place record in the wire directory and NOT an
