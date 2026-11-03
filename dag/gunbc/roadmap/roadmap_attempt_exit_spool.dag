@@ -201,9 +201,9 @@ fn attempt_exit_unit_for_role(node_id: String, attempt_key: String, role: Attemp
   match role {
     AttemptWorkerRole => attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token)
     AttemptObligationRole => AttemptExitUnitDerived { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key) }
-    AttemptReviewerRole { criterion_key: _, head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key) }
+    AttemptReviewerRole { criterion_key, head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key) }
     AttemptAuditorRole { head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_audit_unit_name(node_id: node_id, attempt_key: attempt_key) }
-    AttemptSupervisorRole { turn: _ } => AttemptExitUnitDerived { unit: dispatch_supervisor_unit_name(node_id: node_id, attempt_key: attempt_key) }
+    AttemptSupervisorRole { turn } => AttemptExitUnitDerived { unit: dispatch_supervisor_unit_name(node_id: node_id, attempt_key: attempt_key, turn: turn) }
   }
 }
 
