@@ -1374,7 +1374,7 @@ jobs:
           GUNBC_RUNNER_ID_PROBES: ${{ github.event.inputs.runner_ids }}
           GUNBC_RUNNER_ROSTER_PAGE_SIZE: ${{ github.event.inputs.roster_page_size }}
         if: github.event.inputs.mode == 'org_runner_roster_observe'
-        timeout-minutes: 5
+        timeout-minutes: 26
       - name: Upload org runner roster receipt
         id: org_runner_roster_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
