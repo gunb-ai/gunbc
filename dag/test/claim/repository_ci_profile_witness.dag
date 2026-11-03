@@ -47,6 +47,7 @@ import gunbc.ci.repository_ci_profile {
   profile_with_roster_runner, profile_with_heal_runner, profile_with_drift_runner,
   profile_with_compiler_source,
   profile_with_publisher_runner, profile_with_required_context,
+  tier_o_drift_check_label,
 }
 import gunbc.auth.heal_publisher_federation { public_heal_publisher_federation }
 import extdeps.github.actions { PermWrite, Step, RunStep, UsesStep, Job, RunnerSpec, HostedRunner, UbuntuLatest }
@@ -590,7 +591,7 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
         // (gunbc's own drift watch is the opposite shape: it exists to poll, and its emitter refuses a
         // row with no cadence.)
         cron: Absent,
-        check: DagInvocation { entry: "dag/claim/projections.dag", function: "projection_check" },
+        check: tier_o_drift_check_label(),
         seal: if seal {
           Present {
             value: HealSeal {
