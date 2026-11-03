@@ -116,7 +116,7 @@ import gunbc.provisioning.public_nocloud_seed {
   seed_credential_keys,
 }
 import extdeps.bmc.endpoint { AmiMegaRac, SupermicroAten }
-import test.fixture.boot_delivery_plans { removable_media_solution, pxe_solution, refused_solution, solution_selecting_control }
+import test.fixture.boot_delivery_plans { removable_media_solution, pxe_solution, refused_solution, solution_selecting_control, incoherent_pxe_solution }
 import gunbc.boot_artifact_delivery { BootDeliverySolution, BootControlTarget, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, BiosX86, UefiArm64, HttpBootArm64 }
 import extdeps.uri { Https, Uri }
@@ -135,6 +135,7 @@ import gunbc.machine_intake.subject {
   UnitKeyStanding,
 }
 import gunbc.provisioning.ubuntu_autoinstall_seed {
+  build_seed_for_control,
   // The per-board profile rows and the architecture row table, imported by the amd64 render witness and the
   // no-rows RED: a board's driver set is a ROW the witness can read, not a literal the witness would have to
   // re-declare (which would make the test the authority on what the board carries).
@@ -2313,7 +2314,7 @@ fn build_seed_fixture_with_modules(
 ) -> Optional<UbuntuAutoinstallSeed> {
   match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
     Present { value: entry } =>
-      build_ubuntu_autoinstall_seed(
+      build_seed_for_control(
         target: target,
         network: network,
         install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
@@ -2326,7 +2327,8 @@ fn build_seed_fixture_with_modules(
         credential: credential,
         password_read: password_read_for(credential: credential),
         locale: EnUsUtf8,
-        solution: solution_selecting_control(control: delivery, client_arch: client_arch),
+        delivery: delivery,
+        client_arch: client_arch,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -2357,7 +2359,7 @@ fn build_seed_fixture_under_rule(
 ) -> Optional<UbuntuAutoinstallSeed> {
   match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
     Present { value: entry } =>
-      build_ubuntu_autoinstall_seed(
+      build_seed_for_control(
         target: target,
         network: network,
         install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
@@ -2370,7 +2372,8 @@ fn build_seed_fixture_under_rule(
         credential: credential,
         password_read: password_read_for(credential: credential),
         locale: EnUsUtf8,
-        solution: solution_selecting_control(control: delivery, client_arch: client_arch),
+        delivery: delivery,
+        client_arch: client_arch,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -6054,6 +6057,15 @@ fn build_seed_for_solution(solution: BootDeliverySolution) -> Optional<UbuntuAut
 // RED: a refused delivery solution yields no seed — the route is the solver's, never a caller's choice.
 test fn a_refused_delivery_solution_yields_no_seed() -> Bool {
   match build_seed_for_solution(solution: refused_solution) {
+    Absent => True
+    Present { value: _ } => False
+  }
+}
+
+// RED: the seed builder admits the plan first; a PXE delivery beside a removable-media control yields no seed
+// (the arm refuses the same plan as PlanBootControlNotTheDeliverys), instead of a fabricated virtual-media seed.
+test fn an_incoherent_plan_yields_no_seed() -> Bool {
+  match build_seed_for_solution(solution: incoherent_pxe_solution) {
     Absent => True
     Present { value: _ } => False
   }
