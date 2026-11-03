@@ -38,11 +38,15 @@ import extdeps.bmc.types {
   ResetForceRestart,
 }
 import gunbc.boot_artifact_delivery {
+  BootDeliveryPlanAdmitted,
+  BootDeliveryPlanIncoherence,
+  BootDeliveryPlanIncoherent,
   BootDeliveryPlanned,
   BootDeliveryRefusalCause,
   BootDeliveryRefused,
   BootDeliverySolution,
   BootFromNetworkPxe,
+  admit_boot_delivery_plan,
   redfish_boot_target_of_control,
 }
 import gunbc.os_install_arm {
@@ -128,6 +132,7 @@ fn srv3_os_install_plan_autoinstall(plan: Srv3OsInstallPlan) -> UbuntuAutoinstal
 // detectable after the fact (DESIGN §5, construction over validation).
 type OsInstallPlanRefusal
   = OsInstallPlanBootDeliveryRefused { cause: BootDeliveryRefusalCause }
+  | OsInstallPlanBootDeliveryPlanIncoherent { cause: BootDeliveryPlanIncoherence }
   | OsInstallPlanArmNotRealizable { refusal: OsInstallArmRefusal }
 
 type Srv3OsInstallPlanStanding
@@ -139,26 +144,31 @@ fn srv3_os_install_plan_standing_for(
   autoinstall: UbuntuAutoinstallPayload,
 ) -> Srv3OsInstallPlanStanding {
   match solution {
-    BootDeliveryPlanned { plan: p } =>
-      match os_install_delivery_for(
-        arm: os_install_arm_of(delivery: p.delivery),
-        pxe_chain: srv3_pxe_network_boot_chain,
-        autoinstall: autoinstall,
-      ) {
-        OsInstallDeliveryRealizable { delivery: d } =>
-          OsInstallPlanReady {
-            plan: Srv3OsInstallPlan {
-              os_target: UbuntuOs { distro: NobleNumbat2404Lts },
-              host_architecture: Aarch64,
-              lan_survey: srv3_lan_install_survey,
-              delivery: d,
-              bmc_boot_target: redfish_boot_target_of_control(control: p.boot_control),
-              bmc_boot_enabled: BootOverrideOnce,
-              post_stage_reset: ResetForceRestart,
-            },
+    BootDeliveryPlanned { plan: unadmitted } =>
+      match admit_boot_delivery_plan(plan: unadmitted) {
+        BootDeliveryPlanIncoherent { cause: x } =>
+          OsInstallPlanRefused { cause: OsInstallPlanBootDeliveryPlanIncoherent { cause: x } }
+        BootDeliveryPlanAdmitted { plan: p } =>
+          match os_install_delivery_for(
+            arm: os_install_arm_of(delivery: p.delivery),
+            pxe_chain: srv3_pxe_network_boot_chain,
+            autoinstall: autoinstall,
+          ) {
+            OsInstallDeliveryRealizable { delivery: d } =>
+              OsInstallPlanReady {
+                plan: Srv3OsInstallPlan {
+                  os_target: UbuntuOs { distro: NobleNumbat2404Lts },
+                  host_architecture: Aarch64,
+                  lan_survey: srv3_lan_install_survey,
+                  delivery: d,
+                  bmc_boot_target: redfish_boot_target_of_control(control: p.boot_control),
+                  bmc_boot_enabled: BootOverrideOnce,
+                  post_stage_reset: ResetForceRestart,
+                },
+              }
+            OsInstallDeliveryArmNotRealizable { refusal: x } =>
+              OsInstallPlanRefused { cause: OsInstallPlanArmNotRealizable { refusal: x } }
           }
-        OsInstallDeliveryArmNotRealizable { refusal: x } =>
-          OsInstallPlanRefused { cause: OsInstallPlanArmNotRealizable { refusal: x } }
       }
     BootDeliveryRefused { cause: c } =>
       OsInstallPlanRefused { cause: OsInstallPlanBootDeliveryRefused { cause: c } }

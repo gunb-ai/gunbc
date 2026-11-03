@@ -5,20 +5,45 @@ import extdeps.bmc.webui.nbd_proxy { VmSlotIndexEndpoint }
 import extdeps.bmc.webui.nbd_proxy_serve { nbd_proxy_serve_systemd_realization_disposition }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_built }
 import extdeps.tools.websocat { websocat_header_argv_word_dissolution_trigger }
-import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliveryRefused, BootFromNetworkPxe, BootFromRemovableMedia, redfish_boot_target_of_control }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliveryPlanned, BootDeliveryRefused, BootFromNetworkPxe, BootFromRemovableMedia, redfish_boot_target_of_control }
 import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect { Srv3NbdProxyServe }
-import gunbc.nbd_proxy_virtual_media_install { ActuatorArmNbdProxy, ActuatorArmPxe, ActuatorBootOnce, ActuatorFirmwareUpdate, ActuatorForceRestart, ActuatorNbdProxyServe, ActuatorPlanReady, ActuatorPlanRealized, ActuatorPlanRefused, ActuatorPlanUnrealized, ActuatorPxeNetworkBootStaging, ActuatorRedfishInsertMedia, ActuatorStepActuatorHostUnsatisfiable, ActuatorStepImageUnresolved, ActuatorStepReady, ActuatorStepRealizationAbsent, ActuatorStepRefused, OsInstallActuatorStep, actuator_plan_realization, actuator_step_realization, actuator_step_realization_under, os_install_actuator_steps, srv3_nbd_proxy_export_dissolution_trigger, srv3_nbd_proxy_export_placeholder, srv3_os_install_actuator_plan_standing }
+import gunbc.nbd_proxy_virtual_media_install { ActuatorArmNbdProxy, ActuatorBootDeliveryPlanIncoherent, OsInstallActuatorArm, os_install_actuator_plan_standing_for, ActuatorArmPxe, ActuatorBootOnce, ActuatorFirmwareUpdate, ActuatorForceRestart, ActuatorNbdProxyServe, ActuatorPlanReady, ActuatorPlanRealized, ActuatorPlanRefused, ActuatorPlanUnrealized, ActuatorPxeNetworkBootStaging, ActuatorRedfishInsertMedia, ActuatorStepActuatorHostUnsatisfiable, ActuatorStepImageUnresolved, ActuatorStepReady, ActuatorStepRealizationAbsent, ActuatorStepRefused, OsInstallActuatorStep, actuator_plan_realization, actuator_step_realization, actuator_step_realization_under, os_install_actuator_steps, srv3_nbd_proxy_export_dissolution_trigger, srv3_nbd_proxy_export_placeholder, srv3_os_install_actuator_plan_standing }
 import gunbc.os_install_actuator_selection { ActuatorSelected, ActuatorUnsatisfiable, OsInstallActuatorSelection, srv3_os_install_actuator_selection }
 import gunbc.provisioning.seeded_install_media_publish { SeededImageNotBuilt, SeededImageRecordDiverged, SeededImageRecordedImageAbsent, SeededImageResolution, SeededImageResolved, SeededImageUnobservable }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_input_for }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, NonEmptyStr, list_length }
+import std.types { Bool, List, NonEmptyStr, list_length }
+import test.fixture.boot_delivery_plans { incoherent_pxe_solution, pxe_solution }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The supplied-values boundary for the step-shape claims: arm and control are given here because these claims are
+// about what each step sequence contains, not about which plan selects it (the plan route is the
+// os_install_actuator_plan_standing_for claims below, which admit the plan and derive both).
+fn actuator_steps_fixture(arm: OsInstallActuatorArm, boot_control: BootControlTarget) -> List<OsInstallActuatorStep> {
+  os_install_actuator_steps(arm: arm, boot_control: boot_control, export: srv3_nbd_proxy_export_placeholder)
+}
+
+// P1a RED: a contradictory plan (PXE delivery, removable-media control) is refused as incoherent BEFORE any
+// arm or step is derived, so no ready plan carries steps built from its unadmitted fields.
+test fn a_contradictory_plan_yields_no_actuator_plan() -> Bool {
+  match os_install_actuator_plan_standing_for(solution: incoherent_pxe_solution, export: srv3_nbd_proxy_export_placeholder, image: srv3_resolved_image_fixture) {
+    ActuatorPlanRefused { cause: ActuatorBootDeliveryPlanIncoherent { cause: _ } } => true
+    _ => false
+  }
+}
+
+// Control: the coherent PXE plan passes admission, so the refusal above is the incoherence and not the fixture.
+test fn a_coherent_plan_is_not_refused_as_incoherent() -> Bool {
+  match os_install_actuator_plan_standing_for(solution: pxe_solution, export: srv3_nbd_proxy_export_placeholder, image: srv3_resolved_image_fixture) {
+    ActuatorPlanRefused { cause: ActuatorBootDeliveryPlanIncoherent { cause: _ } } => false
+    _ => true
+  }
+}
 
 // A SUPPLIED user-data body: the fixture needs the input's shape, not the renderer's output; the
 // real rendering route is exercised by test.claim.srv3.srv3_seeded_install_media_witness.
@@ -62,11 +87,7 @@ test fn srv3_actuator_plan_is_solve_driven_and_follows_the_refusal() -> Bool {
 }
 
 test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
-  let steps = os_install_actuator_steps(
-    arm: ActuatorArmNbdProxy,
-    boot_control: BootFromRemovableMedia,
-    export: srv3_nbd_proxy_export_placeholder
-  )
+  let steps = actuator_steps_fixture(arm: ActuatorArmNbdProxy, boot_control: BootFromRemovableMedia)
   list_length(items: steps) == 3
     && match steps.first() {
       ActuatorNbdProxyServe { endpoint: e, slot: 0, index: 0, export: _ } =>
@@ -84,11 +105,7 @@ test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
 }
 
 test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
-  let steps = os_install_actuator_steps(
-    arm: ActuatorArmPxe,
-    boot_control: BootFromNetworkPxe,
-    export: srv3_nbd_proxy_export_placeholder
-  )
+  let steps = actuator_steps_fixture(arm: ActuatorArmPxe, boot_control: BootFromNetworkPxe)
   list_length(items: steps) == 3
     && match steps.first() {
       ActuatorPxeNetworkBootStaging => true
@@ -105,11 +122,7 @@ test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
 // extdeps.tools.websocat, admitted at the argv_command wall), so the scaffold retired to Terminal
 // and this witness asserts the standing plus the reason that says why.
 test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
-  let steps = os_install_actuator_steps(
-    arm: ActuatorArmNbdProxy,
-    boot_control: BootFromRemovableMedia,
-    export: srv3_nbd_proxy_export_placeholder
-  )
+  let steps = actuator_steps_fixture(arm: ActuatorArmNbdProxy, boot_control: BootFromRemovableMedia)
   let first_step_ready = match steps.first() {
     Absent => false
     Present { value: first_step } =>
@@ -176,11 +189,7 @@ test fn unrealized_actuator_steps_refuse_rather_than_reporting_absent() -> Bool 
 // not just the first. The PXE arm's staging step has no realization, so its plan refuses.
 test fn plan_with_unrealized_steps_is_refused_and_names_them() -> Bool {
   match actuator_plan_realization(
-    steps: os_install_actuator_steps(
-      arm: ActuatorArmPxe,
-      boot_control: BootFromNetworkPxe,
-      export: srv3_nbd_proxy_export_placeholder
-    ),
+    steps: actuator_steps_fixture(arm: ActuatorArmPxe, boot_control: BootFromNetworkPxe),
     image: srv3_resolved_image_fixture,
   ) {
     ActuatorPlanUnrealized { refusals: rs } => list_length(items: rs) == 1
@@ -201,11 +210,7 @@ fn nbd_serve_step_refuses_image(step: OsInstallActuatorStep, image: SeededImageR
 // arm must refuse by name rather than serve a path of its own.
 test fn nbd_serve_step_serves_the_resolved_image_and_refuses_an_unresolved_one() -> Bool {
   let selection = ActuatorSelected { host: srv1_host }
-  match os_install_actuator_steps(
-    arm: ActuatorArmNbdProxy,
-    boot_control: BootFromRemovableMedia,
-    export: srv3_nbd_proxy_export_placeholder
-  ).first() {
+  match actuator_steps_fixture(arm: ActuatorArmNbdProxy, boot_control: BootFromRemovableMedia).first() {
     Absent => false
     Present { value: step } => nbd_serve_step_claims_hold(step: step, selection: selection)
   }

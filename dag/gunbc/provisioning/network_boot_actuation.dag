@@ -24,13 +24,14 @@ import gunbc.provisioning.provisioning_arm {
   ArmUnobserved,
   ArmRefused,
   SeedBindingRefused,
+  BootDeliveryPlanNotCoherent,
   DeliveryEvidence,
   provisioning_arm_derive,
   provisioning_arm_attempt,
   solution_attempt,
   FirmwarePreparation,
 }
-import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliverySolution, BootFromNetworkPxe, BootFromRemovableMedia, redfish_boot_target_of_control }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliveryPlanAdmitted, BootDeliveryPlanIncoherent, BootDeliverySolution, admit_boot_delivery_plan, redfish_boot_target_of_control }
 
 // THE EXECUTING CONSUMER OF AN ArmShape (the frontier gunbc.provisioning.provisioning_arm
 // `provisioning_arm_consumer_frontier` binds to `network_boot_arm_actuator_steps`). It runs nothing:
@@ -76,31 +77,42 @@ type NetworkBootActuation
       shape: ArmShape
     }
 
+// THE CONTROL TARGET IS THE ADMITTED PLAN'S, never a constant of the arm's family: a UEFI HTTP plan arms as
+// ArmedPxeOrUefiHttp too, and a hard-coded BootFromNetworkPxe would stage the wrong boot source for it. The
+// plan is admitted again here because ProvisioningArm is a value any caller can build; an arm whose plan is
+// absent or incoherent is Withheld, never actuated from the shape alone.
 fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation {
   match provisioning_arm_attempt(arm: arm) {
     Absent => ArmActuationWithheld { attempt: none, shape: arm.shape }
-    Present { value: attempt } => match arm.shape {
-      ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
-        ArmActuationPxe {
-          attempt: attempt,
-          boot_control: BootFromNetworkPxe,
-          boot_target: redfish_boot_target_of_control(control: BootFromNetworkPxe),
-          chain: c,
-          firmware: f,
-          origin: o,
-          seed: s,
+    Present { value: attempt } => match arm.plan {
+      Absent => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
+      Present { value: unadmitted } => match admit_boot_delivery_plan(plan: unadmitted) {
+        BootDeliveryPlanIncoherent { cause: c } =>
+          ArmActuationWithheld { attempt: Present { value: attempt }, shape: ArmRefused { cause: BootDeliveryPlanNotCoherent { cause: c } } }
+        BootDeliveryPlanAdmitted { plan: admitted } => match arm.shape {
+          ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
+            ArmActuationPxe {
+              attempt: attempt,
+              boot_control: admitted.boot_control,
+              boot_target: redfish_boot_target_of_control(control: admitted.boot_control),
+              chain: c,
+              firmware: f,
+              origin: o,
+              seed: s,
+            }
+          ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
+            ArmActuationVirtualMedia {
+              attempt: attempt,
+              boot_control: admitted.boot_control,
+              boot_target: redfish_boot_target_of_control(control: admitted.boot_control),
+              media_observation: m,
+              origin: o,
+              seed: s,
+            }
+          ArmUnobserved { missing: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
+          ArmRefused { cause: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
         }
-      ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
-        ArmActuationVirtualMedia {
-          attempt: attempt,
-          boot_control: BootFromRemovableMedia,
-          boot_target: redfish_boot_target_of_control(control: BootFromRemovableMedia),
-          media_observation: m,
-          origin: o,
-          seed: s,
-        }
-      ArmUnobserved { missing: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
-      ArmRefused { cause: _ } => ArmActuationWithheld { attempt: Present { value: attempt }, shape: arm.shape }
+      }
     }
   }
 }

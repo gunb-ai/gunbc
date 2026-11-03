@@ -2,9 +2,10 @@ module test.claim.srv3.srv3_os_install_actuate_scope_witness
 
 import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliveryRefused }
 import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
-import gunbc.srv3.srv3_os_install_actuate_scope { srv3_actuator_prep_binds_seeded_iso_path, srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses, srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref, srv3_os_install_actuate_credential_resolution_is_wired, srv3_os_install_actuate_is_actuator_prep_not_install_solved, srv3_seeded_plan_refuses_with_the_solve }
+import gunbc.srv3.srv3_os_install_actuate_scope { SeedDeliveryAsked, SeedDeliveryPlanIncoherent, autoinstall_seed_delivery_standing_for, srv3_actuator_prep_binds_seeded_iso_path, srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses, srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref, srv3_os_install_actuate_credential_resolution_is_wired, srv3_os_install_actuate_is_actuator_prep_not_install_solved, srv3_seeded_plan_refuses_with_the_solve }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool }
+import test.fixture.boot_delivery_plans { incoherent_pxe_solution, pxe_solution }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -37,4 +38,21 @@ test fn srv3_actuator_prep_binds_iso_path_while_plan_refuses() -> Bool {
 
 test fn srv3_os_install_actuate_scope_is_prep_not_install_solved() -> Bool {
   srv3_os_install_actuate_is_actuator_prep_not_install_solved()
+}
+
+// P1a RED: the seed-delivery question is not asked of a plan that was never admitted. A contradictory plan
+// (PXE delivery, removable-media control) answers with its incoherence, which "no seed gap" must not mask.
+test fn a_contradictory_plan_is_not_asked_about_seed_delivery() -> Bool {
+  match autoinstall_seed_delivery_standing_for(solution: incoherent_pxe_solution) {
+    SeedDeliveryPlanIncoherent { cause: _ } => true
+    SeedDeliveryAsked { refusal: _ } => false
+  }
+}
+
+// Control: the coherent plan is admitted and the question is asked.
+test fn a_coherent_plan_is_asked_about_seed_delivery() -> Bool {
+  match autoinstall_seed_delivery_standing_for(solution: pxe_solution) {
+    SeedDeliveryPlanIncoherent { cause: _ } => false
+    SeedDeliveryAsked { refusal: _ } => true
+  }
 }

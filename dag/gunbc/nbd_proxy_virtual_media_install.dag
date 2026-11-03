@@ -47,6 +47,9 @@ import gunbc.provisioning.seeded_install_media_publish {
 }
 import gunbc.boot_artifact_delivery {
   BootArtifactDelivery,
+  BootDeliveryPlanAdmitted,
+  BootDeliveryPlanIncoherence,
+  BootDeliveryPlanIncoherent,
   BootDeliveryPlanned,
   BootDeliveryRefusalCause,
   BootDeliveryRefused,
@@ -58,6 +61,7 @@ import gunbc.boot_artifact_delivery {
   PxeChainBoot,
   RedfishVirtualMediaPull,
   UefiHttpBoot,
+  admit_boot_delivery_plan,
   redfish_boot_target_of_control,
 }
 import gunbc.os_install_arm {
@@ -149,7 +153,14 @@ fn nbd_proxy_serve_step(export: NbdProxyServeInterface) -> OsInstallActuatorStep
   }
 }
 
-fn os_install_actuator_steps(arm: OsInstallActuatorArm, boot_control: BootControlTarget, export: NbdProxyServeInterface) -> List<OsInstallActuatorStep> {
+// arm and boot_control are two facts of ONE admitted plan, so they are never supplied independently: the only
+// production caller derives both from the plan it admitted (os_install_actuator_plan_standing_for), and the
+// witness fixture is the supplied-values boundary for the step-shape claims.
+fn os_install_actuator_steps(arm: OsInstallActuatorArm, boot_control: BootControlTarget, export: NbdProxyServeInterface) -> List<OsInstallActuatorStep> admit_callers: [
+  decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_plan"),
+  decl_ref(module_path: "test.claim.nbd_proxy_virtual_media_install", decl_name: "actuator_steps_fixture"),
+  decl_ref(module_path: "test.claim.os_install_actuator_selection", decl_name: "actuator_steps_fixture"),
+] {
   let boot_target = redfish_boot_target_of_control(control: boot_control)
   match arm {
     ActuatorArmRedfishVirtualMedia => [
@@ -170,7 +181,9 @@ fn os_install_actuator_steps(arm: OsInstallActuatorArm, boot_control: BootContro
   }
 }
 
-fn os_install_actuator_plan(arm: OsInstallActuatorArm, boot_control: BootControlTarget, export: NbdProxyServeInterface) -> OsInstallActuatorPlan {
+fn os_install_actuator_plan(arm: OsInstallActuatorArm, boot_control: BootControlTarget, export: NbdProxyServeInterface) -> OsInstallActuatorPlan admit_callers: [
+  decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_plan_standing_for")
+] {
   OsInstallActuatorPlan {
     arm: arm,
     steps: os_install_actuator_steps(arm: arm, boot_control: boot_control, export: export),
@@ -194,6 +207,7 @@ data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeIn
 // no delivery mechanism has no actuator step sequence, and must not be handed a plausible one.
 type OsInstallActuatorPlanRefusal
   = ActuatorBootDeliveryRefused { cause: BootDeliveryRefusalCause }
+  | ActuatorBootDeliveryPlanIncoherent { cause: BootDeliveryPlanIncoherence }
   | ActuatorArmRefused { delivery: BootArtifactDelivery }
   | ActuatorStepsUnrealized { refusals: List<ActuatorStepRefusal> }
 
@@ -207,19 +221,24 @@ fn os_install_actuator_plan_standing_for(
   image: SeededImageResolution,
 ) -> OsInstallActuatorPlanStanding {
   match solution {
-    BootDeliveryPlanned { plan: bp } =>
-      match os_install_actuator_arm_of(delivery: bp.delivery) {
-        ActuatorArmRealizable { arm: a } =>
-          match os_install_actuator_plan(arm: a, boot_control: bp.boot_control, export: export) {
-            p =>
-              match actuator_plan_realization(steps: p.steps, image: image) {
-                ActuatorPlanRealized { intents: xs } => ActuatorPlanReady { plan: p, intents: xs }
-                ActuatorPlanUnrealized { refusals: rs } =>
-                  ActuatorPlanRefused { cause: ActuatorStepsUnrealized { refusals: rs } }
+    BootDeliveryPlanned { plan: unadmitted } =>
+      match admit_boot_delivery_plan(plan: unadmitted) {
+        BootDeliveryPlanIncoherent { cause: x } =>
+          ActuatorPlanRefused { cause: ActuatorBootDeliveryPlanIncoherent { cause: x } }
+        BootDeliveryPlanAdmitted { plan: bp } =>
+          match os_install_actuator_arm_of(delivery: bp.delivery) {
+            ActuatorArmRealizable { arm: a } =>
+              match os_install_actuator_plan(arm: a, boot_control: bp.boot_control, export: export) {
+                p =>
+                  match actuator_plan_realization(steps: p.steps, image: image) {
+                    ActuatorPlanRealized { intents: xs } => ActuatorPlanReady { plan: p, intents: xs }
+                    ActuatorPlanUnrealized { refusals: rs } =>
+                      ActuatorPlanRefused { cause: ActuatorStepsUnrealized { refusals: rs } }
+                  }
               }
+            ActuatorArmNotRealizable { delivery: d } =>
+              ActuatorPlanRefused { cause: ActuatorArmRefused { delivery: d } }
           }
-        ActuatorArmNotRealizable { delivery: d } =>
-          ActuatorPlanRefused { cause: ActuatorArmRefused { delivery: d } }
       }
     BootDeliveryRefused { cause: c } =>
       ActuatorPlanRefused { cause: ActuatorBootDeliveryRefused { cause: c } }

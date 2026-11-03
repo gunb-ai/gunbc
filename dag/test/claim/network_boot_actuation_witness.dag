@@ -1,7 +1,7 @@
 module test.claim.network_boot_actuation_witness
 
-import gunbc.boot_artifact_delivery { BootDeliverySolution, BootFromNetworkPxe, BootFromRemovableMedia }
-import test.fixture.boot_delivery_plans { pxe_solution, refused_solution, removable_media_solution, intake_subject }
+import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliverySolution, BootFromNetworkPxe, BootFromRemovableMedia }
+import test.fixture.boot_delivery_plans { uefi_http_plan_serving, intake_artifact, pxe_plan, pxe_solution, refused_solution, removable_media_solution, intake_subject }
 import std.types { Bool, String, EpochMs, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { decl_ref }
@@ -448,4 +448,32 @@ test fn a_refused_binding_carries_the_binders_blocker_typed() -> Bool {
 
 test fn the_attempt_entry_frontier_names_the_install_attempt_step() -> Bool {
   network_boot_attempt_actuation_consumer_ref() == decl_ref(module_path: "gunbc.provisioning.network_boot_install_attempt", decl_name: "network_boot_install_attempt_step")
+}
+
+// P1b: the control target is the ADMITTED PLAN'S, so a PXE arm cannot be substituted for another plan. A UEFI
+// HTTP plan is not admitted in this stack (its eligibility is not established), so it is Withheld whatever
+// shape is supplied, and in particular never actuated as BootFromNetworkPxe.
+test fn a_uefi_http_plan_is_never_actuated_as_pxe() -> Bool {
+  is_withheld(actuate(solution: BootDeliveryPlanned { plan: uefi_http_plan_serving(digest: intake_artifact.digest) }, evidence: full_evidence()))
+}
+
+// The unadmitted-HTTP negative on the actuation boundary itself: a hand-built arm carrying the HTTP plan and a
+// PXE-or-HTTP shape (which the derive would never pair) is Withheld, not read from the shape alone.
+test fn a_hand_built_arm_with_an_unadmitted_http_plan_is_withheld() -> Bool {
+  match arm_for(solution: pxe_solution, evidence: full_evidence()).shape {
+    shape =>
+      is_withheld(network_boot_arm_actuator_steps(arm: ProvisioningArm {
+        plan: Present { value: uefi_http_plan_serving(digest: intake_artifact.digest) },
+        shape: shape,
+      }))
+  }
+}
+
+// Positive: the PXE arm's control is the admitted plan's own boot_control, not a constant.
+test fn a_pxe_arm_takes_its_control_from_the_admitted_plan() -> Bool {
+  match actuate(solution: pxe_solution, evidence: full_evidence()) {
+    ArmActuationPxe { attempt: _, boot_control: m, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } =>
+      m == pxe_plan.boot_control
+    _ => false
+  }
 }
