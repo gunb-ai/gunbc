@@ -1,7 +1,7 @@
 module v2.compiler.effect_demand
 
 import std.decl_ref { DeclarationRef }
-import v2.compiler.primitive_execution_semantics {
+import v2.std.operation_declaration {
   BoundCompilerInput, EffectOperationClassification, NativeDerivedComputation, NativeHostActuation, NativeHostObservation,
   OperationDispositionUnclassified, OperationRetired, effect_demand_operation_classifications
 }
@@ -799,11 +799,11 @@ fn effect_demand_live_census(observed: List<EffectDemandKey>) -> EffectDemandCen
 }
 
 fn effect_demand_blocked_operation_count() -> Int {
-  length(xs: effect_demand_blocked_operations(classifications: effect_demand_operation_classifications))
+  length(xs: effect_demand_blocked_operations(classifications: effect_demand_operation_classifications()))
 }
 
 fn effect_demand_implementable_operation_count() -> Int {
-  length(xs: effect_demand_implementable_operations(classifications: effect_demand_operation_classifications))
+  length(xs: effect_demand_implementable_operations(classifications: effect_demand_operation_classifications()))
 }
 
 // WHAT A MEASUREMENT IS CURRENTLY STANDING ON, named so that a single-instrument result cannot be
