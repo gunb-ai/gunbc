@@ -52,7 +52,6 @@ import extdeps.bmc.ipmi_boot_selection {
   ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear, ipmi_boot_flags_clear_data_states_invalid,
 }
 import extdeps.bmc.ipmitool_observed_output {
-  BootdevEchoStanding,
   bootdev_cdrom_echo_capture, ipmitool_bootdev_cdrom_reply_standing,
 }
 

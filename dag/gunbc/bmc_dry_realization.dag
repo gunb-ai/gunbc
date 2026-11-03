@@ -73,12 +73,13 @@ fn bmc_ipmi_operation(operation: String) -> OperationRef {
 // standing field on the reply, which bmc_lift then shed on the way into ShellProcessExited -- a label that
 // dies at the first boundary is worse than none, because it advertises a guarantee nothing enforces. The
 // standing therefore lives on the ROW that supplies the bytes (extdeps.bmc.ipmitool_observed_output
-// ObservedBootdevReply), where it is consumed: it is what decides whether the model may answer that command
+// BootdevEchoStanding), where it is consumed: it is what decides whether the model may answer that command
 // on this firmware release at all. From the reply outwards the bytes are untagged, and the rule that keeps
 // them honest is behavioral, not typographic: NO VERDICT IS JUDGED FROM A BOOTDEV ECHO. The verdict of a
 // clear is the parameter-5 readback (`bmc_bootparam_get_reply` above, answering from captured bytes), and
 // mtcollins1_boot_acceptance_matrix `a_lying_bootdev_echo_moves_no_verdict` runs the real route with the
-// clear's echo replaced by a hostile one and shows no outcome, receipt, or verdict moves.
+// clear's echo replaced by a hostile one -- a raw Set System Boot Options prints nothing at all, so every
+// byte that row prints is an invention -- and shows no outcome, receipt, or verdict moves.
 type BmcReply
   = BmcReplied { stdout: String, world: BmcWorld }
   | BmcReplyFault { reason: NonEmptyStr }

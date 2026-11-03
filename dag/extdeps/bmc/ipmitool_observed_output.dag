@@ -28,7 +28,7 @@ data ipmitool_bootparam5_no_override: String = "Boot parameter version: 1\nBoot 
 
 // The same read after `chassis bootdev none` -- the clear this model no longer dispatches, kept as the
 // reason it was retired. Read over IPMI on srv1 during boot run 41573858366 (2026-11-03T04:04:23Z, the
-// lane's own stale-clear read, logged in that run's diagnostics). The bytes say the whole story: the // device
+// lane's own stale-clear read, logged in that run's diagnostics). The bytes say the whole story: the device
 // word reports nothing selected -- 'Boot Device Selector : No override' -- while the flag byte says the
 // BMC still has a flag to consume: 'Boot parameter data: 8000000000', 'Boot Flag Valid'. `ipmitool chassis
 // bootdev none` clears the SELECTOR and never touches the VALID BIT, so an override a previous attempt left
