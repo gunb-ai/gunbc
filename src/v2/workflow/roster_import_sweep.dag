@@ -50,7 +50,7 @@ import extdeps.git
 import extdeps.git.inspect
 import std.optional { Absent, Optional, Present, optional_is_absent }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, Extent, WholeFile, NodeLocus, SourcePortLocus, InvariantPortLocus, DeclarationLocus, NonEmptyDiagnostics, diagnostics_fatal }
 import v2.std.grammar { parse_production_emitted_identity_optional, node_atom_identity_optional }
 import v2.std.node_query { find_named_child }
 import v2.std.node { Atom, Authored, ComputationNode, Conj, Edge, Match, Node, Positional, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol, NotADeclaration, StructuralLabel, positional_child_target_nodes }
@@ -172,10 +172,24 @@ fn roster_qn_text(qn: QualifiedName) -> String {
 
 // THE CLOSED SET OF REFUSAL REASONS of this module; every REFUSE row is rendered from one by roster_refusal_text,
 // the sole place a reason becomes protocol text. Admission is Optional (Absent = admitted), never a member of this set.
+// A STAGE REFUSAL CARRIES ITS FATAL DIAGNOSTIC (DESIGN section 5: typed AND located). The reason symbol and the file come from
+// the diagnostic itself; the span is byte-granular where the locus has an extent and says so when it has none (a NodeLocus
+// names a node, not bytes). Built in one place, roster_stage_diagnostic, for the tokenize, parse and normalize arms alike.
+type RosterStageSpan
+  = StageSpanBytes { start: Int, end: Int }
+  | StageSpanWholeFile
+  | StageSpanUnlocated
+
+type RosterStageDiagnostic {
+  cause: String
+  file: String
+  span: RosterStageSpan
+}
+
 type RosterRefusalReason
-  = RefusalTokenizeRefused
-  | RefusalParseRefused
-  | RefusalNormalizeRefused
+  = RefusalTokenizeRefused { diagnostic: RosterStageDiagnostic }
+  | RefusalParseRefused { diagnostic: RosterStageDiagnostic }
+  | RefusalNormalizeRefused { diagnostic: RosterStageDiagnostic }
   | RefusalShapeNameBoundElsewhere
   | RefusalNoImportAnchor
   | RefusalExtentNotOnCharBoundary
@@ -242,11 +256,41 @@ type RosterRefusalReason
   | RefusalEditsOverlap { start: Int, end: Int, reach: Int }
   | RefusalEditsCoincide { at: Int }
 
+fn roster_stage_span_of(extent: Extent) -> RosterStageSpan {
+  match extent {
+    ByteRange { start: s, end: e } => StageSpanBytes { start: s, end: e }
+    WholeFile => StageSpanWholeFile
+  }
+}
+
+// THE ONE RULE for every stage arm: the FATAL diagnostic (diagnostics_fatal is the sole place the fatal pick is defined),
+// its reason, its file and its extent.
+fn roster_stage_diagnostic(d: NonEmptyDiagnostics) -> RosterStageDiagnostic {
+  let fatal = diagnostics_fatal(d: d)
+  let cause = symbol_lexeme(sym: fatal.reason)
+  match fatal.at {
+    Textual { file: f, extent: x } => RosterStageDiagnostic { cause: cause, file: symbol_lexeme(sym: f), span: roster_stage_span_of(extent: x) }
+    SourcePortLocus { anchor: _, file: f, extent: x } => RosterStageDiagnostic { cause: cause, file: symbol_lexeme(sym: f), span: roster_stage_span_of(extent: x) }
+    NodeLocus { anchor: _ } => RosterStageDiagnostic { cause: cause, file: "", span: StageSpanUnlocated }
+    InvariantPortLocus { anchor: _, invariant: _ } => RosterStageDiagnostic { cause: cause, file: "", span: StageSpanUnlocated }
+    DeclarationLocus { declaration: _ } => RosterStageDiagnostic { cause: cause, file: "", span: StageSpanUnlocated }
+  }
+}
+
+fn roster_stage_diagnostic_text(d: RosterStageDiagnostic) -> String {
+  let where_text = match d.span {
+    StageSpanBytes { start: s, end: e } => "bytes=" + int_to_decimal_string(value: s) + ".." + int_to_decimal_string(value: e)
+    StageSpanWholeFile => "bytes=whole-file"
+    StageSpanUnlocated => "bytes=unlocated"
+  }
+  "reason=" + d.cause + " file=" + d.file + " " + where_text
+}
+
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
-    RefusalTokenizeRefused => "tokenize-refused"
-    RefusalParseRefused => "parse-refused"
-    RefusalNormalizeRefused => "normalize-refused"
+    RefusalTokenizeRefused { diagnostic: d } => "tokenize-refused " + roster_stage_diagnostic_text(d: d)
+    RefusalParseRefused { diagnostic: d } => "parse-refused " + roster_stage_diagnostic_text(d: d)
+    RefusalNormalizeRefused { diagnostic: d } => "normalize-refused " + roster_stage_diagnostic_text(d: d)
     RefusalShapeNameBoundElsewhere => "shape-name-bound-elsewhere"
     RefusalNoImportAnchor => "no-import-anchor"
     RefusalExtentNotOnCharBoundary => "extent-not-on-char-boundary"
@@ -1378,13 +1422,13 @@ fn roster_census_heads(parse_root: Node, call: Optional<String>) -> Int {
 
 fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>, census_call: Optional<String>, gates: List<RosterSiteGate>) -> RosterCensusRead {
   match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
-        Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalTokenizeRefused)
+        Rejected { diagnostics: d } => roster_census_refused(reason: RefusalTokenizeRefused { diagnostic: roster_stage_diagnostic(d: d) })
         Accepted { value: stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: stream, prepared: prepared) {
-            Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalParseRefused)
+            Rejected { diagnostics: d } => roster_census_refused(reason: RefusalParseRefused { diagnostic: roster_stage_diagnostic(d: d) })
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-                Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
+                Rejected { diagnostics: d } => roster_census_refused(reason: RefusalNormalizeRefused { diagnostic: roster_stage_diagnostic(d: d) })
                 Accepted { value: scoped, diagnostics: _ } =>
                   let sites = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites
                   let unmet = roster_gate_unmet(sides: sides, gates: gates, candidates: candidates, sites: sites, spans: artifact.span_index, imported: scoped.tree.import_bindings)
@@ -3004,7 +3048,8 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own",
     "occurrences-unknown-row-key-refuses",
     "occurrences-key-on-a-bound-site-refuses",
-    "occurrences-key-outside-the-paths-refuses"
+    "occurrences-key-outside-the-paths-refuses",
+    "stage-refusal-carries-its-byte-span"
   ]
 }
 
@@ -3161,6 +3206,7 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-scalar-column-after-multibyte-text-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-scalar-column-after-multibyte-text-refuses", text: wide, keys: ["control/rename.dag:6:17"], key: "control/rename.dag:6:17", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-key-on-a-bound-site-refuses", fail: roster_occ_expect_unmatched(name: "occurrences-key-on-a-bound-site-refuses", text: bound, keys: ["control/rename.dag:7:3"], key: "control/rename.dag:7:3", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-key-outside-the-paths-refuses", fail: roster_occ_outside_paths_control()),
+    roster_control_verdict(name: "stage-refusal-carries-its-byte-span", fail: roster_stage_span_control(companions: companions, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-pipe-site-rewrites", before: pipe_src, keys: ["control/rename.dag:6:8"], after: pipe_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-negated-pipe-site-rewrites", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-chained-pipe-refuses-not-skips", fail: roster_occ_expect_refused(name: "occurrences-keyed-chained-pipe-refuses-not-skips", text: chain_src, keys: ["control/rename.dag:6:8", "control/rename.dag:6:22"], prepared: prepared, lex: lex)),
@@ -3170,6 +3216,18 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
 
 fn roster_occ_scope_of(key: String) -> RosterHomeScope {
   OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { row: "map_get", call: "map_get", occurrences: [key] } }
+}
+
+// RED: a file that fails a front-end stage yields a REFUSE cause WITH its reason, file and byte span (DESIGN section 5), not the
+// bare stage name. The unclosed parameter list is refused by tokenize or parse; either arm must carry a byte span.
+fn roster_stage_span_control(companions: List<RosterCompanion>, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_rename_outcome(companions: companions, text: "module c.rename\n\nfn f( {\n", prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } =>
+      let t = roster_refusal_text(reason: r)
+      let staged = starts_with(s: t, prefix: "tokenize-refused reason=") || starts_with(s: t, prefix: "parse-refused reason=")
+      if staged && string_contains(s: t, pattern: " file=control/rename.dag bytes=") && !string_contains(s: t, pattern: "bytes=unlocated") { "" } else { "CONTROL-FAIL stage-refusal-carries-its-byte-span: refused as " + t + "\n" }
+    other => "CONTROL-FAIL stage-refusal-carries-its-byte-span: not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+  }
 }
 
 // A key naming a file outside the run's paths meets no file's run, so it refuses at the entry; a key inside the paths passes it.
