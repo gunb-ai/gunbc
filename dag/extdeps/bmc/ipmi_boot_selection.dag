@@ -85,17 +85,6 @@ fn ipmi_boot_device_label(device: IpmiBootDevice) -> NonEmptyStr {
   }
 }
 
-// THE WORD THAT CLEARS THE OVERRIDE. `ipmitool chassis bootdev none` is the clear: `none` is ipmitool's
-// word for the SAME selector this module already grounds as 0 = 'no override' (ipmi_boot_selector_reading
-// below, IPMI v2.0 rev 1.1 data-2 bits 5:2), and the state it leaves on mtcollins1 is a capture, byte for
-// byte -- extdeps.bmc.ipmitool_observed_output ipmitool_bootparam5_no_override: 'Boot parameter data:
-// 0000000000', 'Boot Flag Invalid', 'Boot Device Selector : No override'. It is deliberately NOT an
-// IpmiBootDevice: this model never SELECTS 'none' -- there is no device to force -- so it has no selector
-// arm, no label arm, and no place in IpmiBootSelection or ipmi_boot_selectable_devices (which stays the
-// two devices that CAN be forced). What the command PRINTS is a different question, held beside the other
-// observed output at extdeps.bmc.ipmitool_observed_output ipmitool_bootdev_none_reply_standing.
-data ipmi_boot_device_none: NonEmptyStr = "none"
-
 fn ipmi_boot_mode_label(mode: IpmiFirmwareBootMode) -> NonEmptyStr {
   match mode {
     IpmiBootLegacy => "legacy"
@@ -204,6 +193,56 @@ fn ipmi_boot_flags_parameter_hex(selection: IpmiBootSelection) -> String? {
   match uint8_octets_of_ints(values: ipmi_boot_flags_parameter_data(selection: selection)) {
     QualifiedOctetsReady { value: o } => Present { value: base16_encode_lower(octets: o) }
     QualifiedOctetsRefused { observed: _ } => Absent
+  }
+}
+
+// THE CLEAR, AS IT CROSSES THE WIRE. Set System Boot Options (netfn Chassis 0x00, command 0x08),
+// parameter selector 5 (boot flags), parameter revision 1, then the five boot-flag data bytes -- ALL FIVE
+// ZERO. Cited to IPMI v2.0 rev 1.1, Get/Set System Boot Options, boot option parameter 5, the same authority
+// as the set path above: data 1 bit 7 is the boot flag VALID bit, bit 6 persistence, bit 5 BIOS boot type;
+// data 2 bits 5:2 the device selector, 0 = "no override"; data 3-5 reserved. Clearing bit 7 is the whole
+// point: `ipmitool chassis bootdev none` clears the SELECTOR and leaves the valid bit SET -- boot run
+// 41573858366 read exactly that -- 'Boot parameter data: 8000000000' beside 'Boot Device Selector : No
+// override', committed as extdeps.bmc.ipmitool_observed_output
+// ipmitool_bootparam5_valid_after_bootdev_none -- so an override an earlier attempt left stayed valid and the
+// handoff was withheld for it. Each byte is its own
+// input to the operation, so the world can check the one the spec gives a meaning to against the one the
+// caller sent, word by word.
+data ipmi_boot_flag_data_1_clear: NonEmptyStr = "0x00" // bit 7 VALID clear, bit 6 persistence, bit 5 BIOS type
+data ipmi_boot_flag_data_2_clear: NonEmptyStr = "0x00" // selector 0 = no override (IpmiSelectorNoOverride)
+data ipmi_boot_flag_data_3_clear: NonEmptyStr = "0x00" // reserved
+data ipmi_boot_flag_data_4_clear: NonEmptyStr = "0x00" // reserved
+data ipmi_boot_flag_data_5_clear: NonEmptyStr = "0x00" // reserved
+
+// WHAT AN OCTET TEXT SAYS, OR NOTHING WHEN IT IS NOT AN OCTET. '0xNN' is the spelling ipmitool's raw form
+// takes; anything else is refused rather than guessed at.
+fn ipmi_raw_octet_value(text: NonEmptyStr) -> Int? {
+  let wire = text as String
+  if !starts_with(s: wire, prefix: "0x") || wire.length() != 4 {
+    none
+  } else {
+    base16_word_value(word: substring(s: wire, start: 2, end: 4), max_digits: 2)
+  }
+}
+
+// THE CHECK THAT MAKES THE SPELLING ABOVE EVIDENCE RATHER THAN A STRING: decode every data byte and require
+// what the clear means by them. A byte that decodes to zero IS 'valid bit clear, persistence clear, BIOS
+// type clear' for data 1 and 'selector 0 = no override' for data 2 -- so this is the meaning, read back out
+// of the wire text, and the witness pins it. The dry world refuses any other bytes on this, so the lane
+// cannot send a Set that sets something.
+fn ipmi_boot_flags_clear_data_states_invalid() -> Bool {
+  match ipmi_raw_octet_value(text: ipmi_boot_flag_data_1_clear) {
+    Absent => false
+    Present { value: data_one } => match ipmi_raw_octet_value(text: ipmi_boot_flag_data_2_clear) {
+      Absent => false
+      Present { value: data_two } =>
+        if data_one != 0 || data_two != 0 { false } else {
+          all([ipmi_boot_flag_data_3_clear, ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear], o => match ipmi_raw_octet_value(text: o) {
+            Present { value: v } => v == 0
+            Absent => false
+          })
+        }
+    }
   }
 }
 

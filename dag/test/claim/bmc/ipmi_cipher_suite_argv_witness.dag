@@ -200,20 +200,32 @@ test fn master_write_read_authenticated_argv_is_mains_on_both_mtcollins1_routes(
     && materialize(operation: "MasterWriteReadAuthenticated", bindings: bindings_master_write_read_authenticated(), suite: mtcollins1_row_suite()) == main_argv_master_write_read_authenticated
 }
 
-fn bindings_chassis_boot_dev() -> List<OperationInputBinding> {
+// THE CLEAR OF BOOT PARAMETER 5, WORD FOR WORD: raw, netfn 0x00 (Chassis), command 0x08 (Set System Boot
+// Options), parameter selector 0x05, parameter revision 0x01, then the five boot-flag data bytes with the
+// VALID bit (data 1 bit 7), the persistence bit and the selector all written clear -- the write IPMI v2.0
+// rev 1.1's boot option parameter 5 table describes, and the one this repository dispatches instead of
+// `chassis bootdev none`, which cleared the selector and left the flag set (boot run 41573858366 read that
+// state back: extdeps.bmc.ipmitool_observed_output ipmitool_bootparam5_valid_after_bootdev_none). The census
+// binds the data bytes the way production does; extdeps.bmc.ipmi_boot_selection holds them and reads the
+// meaning back out of the spelling.
+fn bindings_chassis_boot_options_clear() -> List<OperationInputBinding> {
   [
     host(),
     operation_argv_bind_text(name: "username", text: "admin"),
     operation_argv_bind_text(name: "password_file", text: "/run/gunbc/mtcollins1-bmc-password"),
-    operation_argv_bind_text(name: "device", text: "cdrom"),
+    operation_argv_bind_text(name: "boot_flag_data_1", text: "0x00"),
+    operation_argv_bind_text(name: "boot_flag_data_2", text: "0x00"),
+    operation_argv_bind_text(name: "boot_flag_data_3", text: "0x00"),
+    operation_argv_bind_text(name: "boot_flag_data_4", text: "0x00"),
+    operation_argv_bind_text(name: "boot_flag_data_5", text: "0x00"),
   ]
 }
 
-data main_argv_chassis_boot_dev: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "chassis", "bootdev", "cdrom"]
+data main_argv_chassis_boot_options_clear: List<String> = ["ipmitool", "-H", "192.168.1.228", "-I", "lanplus", "-U", "admin", "-f", "/run/gunbc/mtcollins1-bmc-password", "raw", "0x00", "0x08", "0x05", "0x01", "0x00", "0x00", "0x00", "0x00", "0x00"]
 
-test fn chassis_boot_dev_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
-  materialize(operation: "ChassisBootDev", bindings: bindings_chassis_boot_dev(), suite: mtcollins1_observation_suite()) == main_argv_chassis_boot_dev
-    && materialize(operation: "ChassisBootDev", bindings: bindings_chassis_boot_dev(), suite: mtcollins1_row_suite()) == main_argv_chassis_boot_dev
+test fn chassis_boot_options_clear_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
+  materialize(operation: "ChassisBootOptionsClear", bindings: bindings_chassis_boot_options_clear(), suite: mtcollins1_observation_suite()) == main_argv_chassis_boot_options_clear
+    && materialize(operation: "ChassisBootOptionsClear", bindings: bindings_chassis_boot_options_clear(), suite: mtcollins1_row_suite()) == main_argv_chassis_boot_options_clear
 }
 
 fn bindings_chassis_boot_dev_with_options() -> List<OperationInputBinding> {
@@ -407,7 +419,7 @@ fn ipmi_argv_rows() -> List<IpmiArgvRow> {
   IpmiArgvRow { operation: "SelListAuthenticatedCached", bindings: bindings_sel_list_authenticated_cached(), main: main_argv_sel_list_authenticated_cached },
   IpmiArgvRow { operation: "SdrElistAuthenticatedCached", bindings: bindings_sdr_elist_authenticated_cached(), main: main_argv_sdr_elist_authenticated_cached },
   IpmiArgvRow { operation: "MasterWriteReadAuthenticated", bindings: bindings_master_write_read_authenticated(), main: main_argv_master_write_read_authenticated },
-  IpmiArgvRow { operation: "ChassisBootDev", bindings: bindings_chassis_boot_dev(), main: main_argv_chassis_boot_dev },
+  IpmiArgvRow { operation: "ChassisBootOptionsClear", bindings: bindings_chassis_boot_options_clear(), main: main_argv_chassis_boot_options_clear },
   IpmiArgvRow { operation: "ChassisBootDevWithOptions", bindings: bindings_chassis_boot_dev_with_options(), main: main_argv_chassis_boot_dev_with_options },
   IpmiArgvRow { operation: "SolDeactivate", bindings: bindings_sol_deactivate(), main: main_argv_sol_deactivate },
   IpmiArgvRow { operation: "ChassisBootParamGet", bindings: bindings_chassis_boot_param_get(), main: main_argv_chassis_boot_param_get },
