@@ -11478,20 +11478,38 @@ fn try_v2_std_collection_primitive_grounding(
             // The fall-through used to be silent: an argument shape the native carrier cannot
             // realize returned `Ok(None)`, which the caller read as "no builtin matched" and
             // resolved on the interpreted route, where the same primitive's authored body called
-            // back into it. The refusal is named here instead: the seam, the primitive, and the
-            // argument kinds the native realization cannot carry, so a reader is sent after the
-            // element kind rather than after the call chain.
+            // back into it. The refusal is named here instead: the seam, the primitive and the
+            // argument kinds. The CAUSE is stated per family rather than shared, because the two
+            // families genuinely differ and one sentence about both would be a fabricated cause:
+            // the set carrier is `Rc<OrdSet<String>>`, so a non-String item is unreachable there,
+            // while `map_insert` takes any key that has a decidable identity through `CanonKey`
+            // and refuses an undecidable key itself, so a map call reaching this arm is not an
+            // element-kind problem at all.
             let arg_kinds = args
                 .iter()
                 .map(|(_, v)| v.type_label_public())
                 .collect::<Vec<_>>()
                 .join(", ");
+            let cause = match builtin_name {
+                "set_insert" | "set_contains" => {
+                    "the native set carrier is realized over String elements only, so an item of \
+                     another kind is refused at the seam rather than falling through to the \
+                     authored body"
+                }
+                "empty_set" => {
+                    "empty_set's builtin answers unconditionally, so reaching this arm is a host \
+                     misconfiguration"
+                }
+                _ => {
+                    "host misconfiguration, or a carrier the native map realization cannot carry \
+                     reached the seam"
+                }
+            };
             Some(Err(InterpError::TypeError {
                 msg: format!(
                     "{V2_STD_COLLECTION_MODULE}.{}: native collection primitive refused this \
                      argument shape at the HostRealizedSeam seam (argument kinds [{arg_kinds}]; \
-                     {builtin_name} is realized natively for String elements only, so this is a \
-                     typed refusal at the seam, not a divergent call chain)",
+                     {cause}; a typed refusal at the seam, not a divergent call chain)",
                     fn_node.name
                 ),
             }))

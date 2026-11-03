@@ -1492,8 +1492,9 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // carrying a fabricated value, which DESIGN section 5 forbids, and std.bytes records the same mistake at
 // its own head.
 //
-// CARRIER. Set<element> is std.types' alias for FinitePowerSet<element> (dag/std/types.dag:198); this
-// module declares FinitePowerSet itself (:144), so the alias is spelled directly instead of imported.
+// CARRIER. `Set<element>` is std.types' alias `type Set<element> = FinitePowerSet<element>` in
+// dag/std/types.dag; `FinitePowerSet` itself is declared in this module, so the alias is spelled
+// directly instead of imported.
 //
 // TWO DISAGREEMENTS BETWEEN THE SURFACES ARE FILED, not hidden, and a caller must know both before
 // choosing an element kind: the kernel orders and dedupes by Ord while the template declares membership by
@@ -1502,10 +1503,12 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // (gunbc.recurring_failure_mode.set_element_kind_interpreted_native_divergence). A Set<Int> membership test
 // therefore builds and runs emitted and is not answered interpreted. What the interpreted side RAISES is a
 // question this commit changes and so is left open rather than asserted: before these bodies existed the
-// builtin tier's Ok(None) fell through to a module free-function lookup that had nothing to find and raised
-// NoSuchFunction (v1_interpreter.rs:24301, :11571, :11576, :11589); with a std.algebra body now present
-// under those names, the answer depends on whether the calling module can resolve them at all, which is a
-// fact to establish by running a control, not by reading. Either way it is a refusal, not a wrong Bool.
+// builtin tier's Ok(None) fell through to a module free-function lookup that had nothing to find: the
+// `free_call.set_insert` and `free_call.set_contains` arms of `eval_builtin` answered Ok(None), the call
+// fell to `lookup_fn_from`, and its `ok_or_else` raised `InterpError::NoSuchFunction`. With a std.algebra
+// body now present under those names, the answer depends on whether the calling module can resolve them
+// at all, which is a fact to establish by running a control, not by reading. Either way it is a refusal,
+// not a wrong Bool.
 fn empty_set_primitive_delegate<element>() -> FinitePowerSet<element> {
   empty_set_primitive_delegate()
 }

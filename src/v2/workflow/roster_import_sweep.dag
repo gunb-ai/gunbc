@@ -414,7 +414,8 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     // type and no token exists to read; set_insert and set_contains carry the element only in a typed
     // position, so lexically every element kind looks identical. The kinds also differ in REALIZABILITY,
     // not merely in typing: the interpreted route realizes String elements while the kernel realizes any
-    // T: Ord (v1_rt.rs:1037), so an un-keyed run cannot tell a Set<String> site from a Set<Int> site and
+    // fn set_contains over T: Ord (src/v1/stage0/src/v1_rt.rs), so an un-keyed run cannot tell a
+    // Set<String> site from a Set<Int> site and
     // joining them under one row is the false join roster_site_gated_site_refusal exists to prevent. Per
     // DESIGN section 5 the un-keyed run refuses at the site; a keyed run names the element kind.
     RosterHeadRow { call: "empty_set", key: "empty_set", import_name: "empty_set", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, site_gated: true },
