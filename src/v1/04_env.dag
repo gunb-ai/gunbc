@@ -2447,7 +2447,7 @@ fn transparent_alias_rhs(pre: Node) -> Node? {
 // declaring item in the symbol index. Kept APART from alias_rhs_of_declaration on purpose: a refinement is not a transparent
 // alias (transparent_alias_rhs refuses it), so EpochMs never agrees with Int at an assignment through this reader. It exists for
 // readings that legitimately see through the refinement to its base, the arithmetic carrier (v1.compiler.infer_types
-// operand_carrier_ref_settled): a refinement narrows the value set, not the algebra.
+// operand_carrier_reading_settled): a refinement narrows the value set, not the algebra.
 fn refinement_rhs_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Node? {
   match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(item_ref.module_path as String, ".", item_ref.decl_name as String)) {
     Absent => none

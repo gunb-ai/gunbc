@@ -25,7 +25,7 @@ import std.algebra {
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
 
-import std.coercion { ArithmeticCarrierSelection, ArithmeticCarrierSelected, ArithmeticNoCarrier, ArithmeticCarrierAmbiguous, select_arithmetic_carrier, injection_targets, ConversionPlan, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
+import std.coercion { ArithmeticCarrierSelection, ArithmeticCarrierSelected, ArithmeticNoCarrier, ArithmeticCarrierAmbiguous, ArithmeticCarrierUndecided, select_arithmetic_carrier, injection_targets, ConversionPlan, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
 import gunbc.structural_realization_bindings { conversion_plan_rows, kernel_grounding_rows }
 import std.literal_elaboration { UnboundedIntegers }
 
@@ -1891,7 +1891,19 @@ fn carrier_has_algebra(carrier: DeclarationRef) -> Bool {
 // unbounded kernel integer in (std.integer Int). The same row the literal elaboration reads, so a kernel Int
 // operand meets the injection rows by identity rather than falling outside the fold.
 fn operand_carrier_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  operand_carrier_ref_settled(n: n, source_indices: source_indices, env: env, fuel: 16)
+  match operand_carrier_reading_settled(n: n, source_indices: source_indices, env: env, fuel: 16) {
+    OperandCarrierNamed { carrier: d } => Present { value: d }
+    OperandCarrierUnnamed => none
+    OperandCarrierChainUnbounded => none
+  }
+}
+
+fn operand_carrier_chain_unbounded(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match operand_carrier_reading_settled(n: n, source_indices: source_indices, env: env, fuel: 16) {
+    OperandCarrierNamed { carrier: _ } => false
+    OperandCarrierUnnamed => false
+    OperandCarrierChainUnbounded => true
+  }
 }
 
 // AN ALIAS IS THE CARRIER OF WHAT IT SETTLES TO. A declared alias (`type NonNegativeInt = Nat`,
@@ -1900,25 +1912,33 @@ fn operand_carrier_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: 
 // alias_rhs_of_declaration) or its declared right-hand side's head (a parameterized alias, v1.compiler.infer_env parameterized_alias_of_declaration),
 // never by spelling. A declared refinement (`type EpochMs = Int where range(min: 0)`) is the carrier of its base. Reading the alias's own declaration
 // made `instant + 1` and `nonneg * n` carrier-less and refused (gunbc#15610 heal: std.state_durability,
-// extdeps.git.object_store). Fuel bounds an alias chain; a cycle is refused where aliases are resolved.
-fn operand_carrier_ref_settled(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> DeclarationRef? {
-  if fuel <= 0 { return none }
+// extdeps.git.object_store). Fuel bounds an alias chain; a cycle is refused where aliases are resolved. A chain
+// longer than the fuel is OperandCarrierChainUnbounded, never "names no declaration": the selection refuses it as
+// ArithmeticCarrierUndecided rather than abstaining (review 90183: exhaustion read as Absent let the operator fall
+// back to the left operand's typing, or refuse as carrier-less, reporting "we did not look" as an answer).
+type OperandCarrierReading
+  = OperandCarrierNamed { carrier: DeclarationRef }
+  | OperandCarrierUnnamed
+  | OperandCarrierChainUnbounded
+
+fn operand_carrier_reading_settled(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> OperandCarrierReading {
+  if fuel <= 0 { return OperandCarrierChainUnbounded }
   // A `T where p` field is the carrier of T: the refinement narrows the value set, not the algebra.
   if is_where_refinement_node(n: n) {
     return match n.children |> first {
-      Present { value: base } => operand_carrier_ref_settled(n: base, source_indices: source_indices, env: env, fuel: fuel - 1)
-      Absent => none
+      Present { value: base } => operand_carrier_reading_settled(n: base, source_indices: source_indices, env: env, fuel: fuel - 1)
+      Absent => OperandCarrierUnnamed
     }
   }
   match type_reference_declaration_ref(n: n, source_indices: source_indices, env: env) {
     // A declaration the algebra table names IS a carrier; the walk stops there rather than read through it. v2.std.integer
     // `type Int = GroupCompletion<Nat>` is the Int carrier, and walking on reached GroupCompletion, which has no row
     // (srv2 kh-q1e-e4, gunbc 6803c3f0: 14 refusals in src/v2/std/integer.dag).
-    Present { value: d } => if carrier_has_algebra(carrier: d) { Present { value: d } } else {
+    Present { value: d } => if carrier_has_algebra(carrier: d) { OperandCarrierNamed { carrier: d } } else {
       match alias_rhs_of_declaration(item_ref: d, env: env) {
         // A transparent alias recurses on its right-hand side NODE, so a kernel right-hand side (`type X = Int`,
         // which names no declaration) still reaches the kernel grounding arm below.
-        Present { value: rhs } => operand_carrier_ref_settled(n: rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
+        Present { value: rhs } => operand_carrier_reading_settled(n: rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
         Absent =>
           // A PARAMETERIZED alias (`type List<element> = FreeMonoid<element>`) has no transparent right-hand
           // side; without this arm `done + [x]` (FreeMonoid beside List) read as two carriers and refused (gunbc#15610
@@ -1929,25 +1949,25 @@ fn operand_carrier_ref_settled(n: Node, source_indices: Map<String, NewlineIndex
           // FreeMonoid and refused (srv2 kh-lp2, gunbc 86235c39: authored List<T> operands passed, every list-literal
           // operand refused; corpus gate kh-q1e-e3, 25 sites).
           match parameterized_alias_of_declaration(item_ref: d, source_indices: source_indices, env: env) {
-            Present { value: pa } => operand_carrier_ref_settled(n: pa.rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
+            Present { value: pa } => operand_carrier_reading_settled(n: pa.rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
             Absent =>
               // A declared refinement is the carrier of its base, the same reading the field-level `T where p` arm gives.
               match refinement_rhs_of_declaration(item_ref: d, env: env) {
-                Present { value: refined } => operand_carrier_ref_settled(n: refined, source_indices: source_indices, env: env, fuel: fuel - 1)
-                Absent => Present { value: d }
+                Present { value: refined } => operand_carrier_reading_settled(n: refined, source_indices: source_indices, env: env, fuel: fuel - 1)
+                Absent => OperandCarrierNamed { carrier: d }
               }
           }
       } }
     Absent =>
       match kernel_settled_name(n: n, source_indices: source_indices, env: env, fuel: 16) {
         Present { value: kernel } =>
-          if kernel != "Int" { none } else {
+          if kernel != "Int" { OperandCarrierUnnamed } else {
             match kernel_grounding_rows |> filter(g => match g.extent { UnboundedIntegers => true  _ => false }) |> first {
-              Present { value: g } => Present { value: g.carrier }
-              Absent => none
+              Present { value: g } => OperandCarrierNamed { carrier: g.carrier }
+              Absent => OperandCarrierUnnamed
             }
           }
-        Absent => none
+        Absent => OperandCarrierUnnamed
       }
   }
 }
@@ -2010,6 +2030,8 @@ fn carrier_reaches_field(carrier: DeclarationRef, requirement: ArithmeticRequire
 fn arithmetic_carrier_selection(requirement: ArithmeticRequirement, left_type: Node, right_type: Node?, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> ArithmeticCarrierSelection? {
   let right_is_text = match right_type { Absent => false  Present { value: rt } => operand_is_text(n: rt, env: env) }
   if operand_is_text(n: left_type, env: env) || right_is_text { return none }
+  let right_unbounded = match right_type { Absent => false  Present { value: rt } => operand_carrier_chain_unbounded(n: rt, source_indices: source_indices, env: env) }
+  if (operand_carrier_chain_unbounded(n: left_type, source_indices: source_indices, env: env) || right_unbounded) { return Present { value: ArithmeticCarrierUndecided } }
   match operand_carrier_ref(n: left_type, source_indices: source_indices, env: env) {
     Absent =>
       match right_type {
@@ -2081,6 +2103,7 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, right_type: Node?, source_i
           infer_arithmetic_binop_type_node(op: op, left_type: arithmetic_carrier_type(selected: c, left_type: left_type, right_type: right_type, source_indices: source_indices, env: env), source_indices: source_indices)
         Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => BinOpInferred { result_type: error_type, algebra_field: none }
         Present { value: ArithmeticNoCarrier } => BinOpInferred { result_type: error_type, algebra_field: none }
+        Present { value: ArithmeticCarrierUndecided } => BinOpInferred { result_type: error_type, algebra_field: none }
         Absent => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
       }
   }
@@ -2088,12 +2111,19 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, right_type: Node?, source_i
 
 // Unary minus: the same fold with one operand. -n for a Nat is the Int the embedding reaches (Nat defines no
 // negate), never the operand's own type.
+// The requirement is read from unary_arithmetic_requirement, the one home of `negate` (review 90183 found the
+// literal still inline here after review 90087 moved it).
 fn infer_neg_type_node(operand_type: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node {
-  match arithmetic_carrier_selection(requirement: ArithmeticRequirement { field: "negate", preserved: [] }, left_type: operand_type, right_type: none, source_indices: source_indices, env: env) {
-    Present { value: ArithmeticCarrierSelected { carrier: c } } => arithmetic_carrier_type(selected: c, left_type: operand_type, right_type: none, source_indices: source_indices, env: env)
-    Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => error_type
-    Present { value: ArithmeticNoCarrier } => error_type
+  match unary_arithmetic_requirement(op: Neg) {
     Absent => operand_type
+    Present { value: requirement } =>
+      match arithmetic_carrier_selection(requirement: requirement, left_type: operand_type, right_type: none, source_indices: source_indices, env: env) {
+        Present { value: ArithmeticCarrierSelected { carrier: c } } => arithmetic_carrier_type(selected: c, left_type: operand_type, right_type: none, source_indices: source_indices, env: env)
+        Present { value: ArithmeticCarrierAmbiguous { candidates: _ } } => error_type
+        Present { value: ArithmeticNoCarrier } => error_type
+        Present { value: ArithmeticCarrierUndecided } => error_type
+        Absent => operand_type
+      }
   }
 }
 

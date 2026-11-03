@@ -315,6 +315,9 @@ type ArithmeticCarrierSelection
   = ArithmeticCarrierSelected { carrier: DeclarationRef }
   | ArithmeticNoCarrier
   | ArithmeticCarrierAmbiguous { candidates: List<DeclarationRef> }
+  // An operand's carrier was not read to its end (an alias chain longer than the reader's bound): no verdict, and a
+  // refusal, never the operand-algebra fallback an unnamed operand gets.
+  | ArithmeticCarrierUndecided
 
 // The one projection of a plan onto its injection fields; every other phase has none.
 type InjectionFields {

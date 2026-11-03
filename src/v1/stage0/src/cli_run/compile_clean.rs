@@ -947,6 +947,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         DeclaredTypeInhabitanceUnmodeled { position: s(), span: no_span() },
         ArithmeticWithoutCarrier { operation: s(), operands: istrings(), span: no_span() },
         ArithmeticAmbiguousCarrier { operation: s(), candidates: istrings(), span: no_span() },
+        ArithmeticUndecidedCarrier { operation: s(), span: no_span() },
         UnlistedImportUse { name: s(), span: no_span() },
         ReferenceDerivedImportProviderUnknown { name: s(), referencing_module: s(), span: no_span() },
         ReferenceDerivedImportExportUnproven { name: s(), referencing_module: s(), provider_module: s(), span: no_span() },
@@ -1419,6 +1420,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => "ArithmeticWithoutCarrier",
         CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => "ArithmeticAmbiguousCarrier",
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { .. } => "ArithmeticUndecidedCarrier",
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => {
             "DeclaredTypeInhabitanceUndecided"
         }
@@ -1550,6 +1552,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position, .. } => position.clone(),
         CompilerDiagnostic::ArithmeticWithoutCarrier { operation, .. } => operation.clone(),
         CompilerDiagnostic::ArithmeticAmbiguousCarrier { operation, .. } => operation.clone(),
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { operation, .. } => operation.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
@@ -1668,6 +1671,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => None,
         CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => None,
         CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => None,
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { .. } => None,
         CompilerDiagnostic::DeclaredTypeNotInhabited { expected, got, .. } => {
             Some((expected.clone(), got.clone()))
         }

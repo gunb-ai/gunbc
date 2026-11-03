@@ -424,6 +424,7 @@ type CompilerDiagnostic
   | DeclaredTypeInhabitanceUnmodeled { position: String, span: SourceSpan }
   | ArithmeticWithoutCarrier { operation: String, operands: List<String>, span: SourceSpan }
   | ArithmeticAmbiguousCarrier { operation: String, candidates: List<String>, span: SourceSpan }
+  | ArithmeticUndecidedCarrier { operation: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | ReferenceDerivedImportProviderUnknown { name: String, referencing_module: String, span: SourceSpan }
   | ReferenceDerivedImportExportUnproven { name: String, referencing_module: String, provider_module: String, span: SourceSpan }
@@ -684,6 +685,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     DeclaredTypeInhabitanceUnmodeled { position: _, span: s } => s
     ArithmeticWithoutCarrier { operation: _, operands: _, span: s } => s
     ArithmeticAmbiguousCarrier { operation: _, candidates: _, span: s } => s
+    ArithmeticUndecidedCarrier { operation: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: s } => s
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: s } => s
@@ -798,6 +800,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("no arithmetic carrier: no declared carrier defines ", op, " for the operands (", join(os, separator: ", "), ") through the declared implicit injections")
     ArithmeticAmbiguousCarrier { operation: op, candidates: cs, span: _ } =>
       concat("arithmetic carrier is ambiguous for ", op, ": ", to_string(cs |> count), " incomparable carriers (", join(cs, separator: ", "), ") define it through the declared implicit injections; name the conversion")
+    ArithmeticUndecidedCarrier { operation: op, span: _ } =>
+      concat("arithmetic carrier is undecided for ", op, ": an operand's alias chain is longer than the carrier reader's bound, so its carrier was not read; no carrier is assumed")
     DeclaredTypeInhabitanceUnmodeled { position: pos, span: _ } =>
       concat("declared-type inhabitance is UNMODELED at the ", pos, ": no arm of the relation judges this pair yet. This is not an undecidable fact but a gap in the relation's wiring, counted here instead of read as acceptance until the class is dispositioned and the terminal arm refuses")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
@@ -954,6 +958,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ArithmeticWithoutCarrier { operation: _, operands: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ArithmeticAmbiguousCarrier { operation: _, candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArithmeticUndecidedCarrier { operation: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     DeclaredTypeInhabitanceUnmodeled { position: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     UnlistedImportUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }

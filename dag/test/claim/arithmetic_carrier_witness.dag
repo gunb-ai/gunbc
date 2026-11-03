@@ -5,6 +5,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
+  census_blocking_rows_of_class,
   census_total_count
 }
 import gunbc.structural_realization_bindings { conversion_plan_rows }
@@ -12,6 +13,7 @@ import std.coercion {
   ArithmeticCarrierSelected,
   ArithmeticNoCarrier,
   ArithmeticCarrierAmbiguous,
+  ArithmeticCarrierUndecided,
   select_arithmetic_carrier,
   ConversionPlan,
   ConversionPhase,
@@ -35,6 +37,13 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 fn blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_class_count(source: String, class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: class))
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
@@ -83,6 +92,23 @@ test fn w_list_plus_int_literal_is_one_carrier() -> Bool {
 
 test fn w_list_plus_record_literal_is_one_carrier() -> Bool {
   blocking_count(source: list_plus_record_literal_source) == 0
+}
+
+// AN ALIAS CHAIN LONGER THAN THE CARRIER READER'S BOUND IS UNDECIDED, NOT CARRIER-LESS (review 90183). Twenty
+// transparent aliases over Int exceed v1.compiler.types operand_carrier_reading_settled's fuel; the operator refuses as
+// ArithmeticUndecidedCarrier instead of falling back to the left operand (both operands) or reading as carrier-less. The
+// three-link chain is the control: the same shape inside the bound keeps the Int carrier.
+data long_alias_chain_source: String = "module probe_arith_long_alias_chain\nimport std.types { Int }\ntype A0 = Int\ntype A1 = A0\ntype A2 = A1\ntype A3 = A2\ntype A4 = A3\ntype A5 = A4\ntype A6 = A5\ntype A7 = A6\ntype A8 = A7\ntype A9 = A8\ntype A10 = A9\ntype A11 = A10\ntype A12 = A11\ntype A13 = A12\ntype A14 = A13\ntype A15 = A14\ntype A16 = A15\ntype A17 = A16\ntype A18 = A17\ntype A19 = A18\ntype A20 = A19\nfn f(a: A20, b: A20) -> A20 { a + b }\n"
+
+data short_alias_chain_source: String = "module probe_arith_short_alias_chain\nimport std.types { Int }\ntype B1 = Int\ntype B2 = B1\ntype B3 = B2\nfn f(a: B3, b: B3) -> B3 { a + b }\n"
+
+test fn w_alias_chain_past_the_bound_is_undecided() -> Bool {
+  blocking_class_count(source: long_alias_chain_source, class: "ArithmeticUndecidedCarrier") >= 1
+    && blocking_class_count(source: long_alias_chain_source, class: "ArithmeticWithoutCarrier") == 0
+}
+
+test fn w_alias_chain_within_the_bound_keeps_its_carrier() -> Bool {
+  blocking_count(source: short_alias_chain_source) == 0
 }
 
 data freemonoid_plus_int_source: String = "module probe_arith_freemonoid_plus_int\nimport std.types { Int }\nimport std.algebra { FreeMonoid }\nfn f(a: FreeMonoid<Int>, b: Int) -> FreeMonoid<Int> { a + b }\n"
@@ -155,6 +181,7 @@ fn selected_is(s: ArithmeticCarrierSelection, want: DeclarationRef) -> Bool {
     ArithmeticCarrierSelected { carrier: c } => declaration_ref_eq(a: c, b: want)
     ArithmeticNoCarrier => false
     ArithmeticCarrierAmbiguous { candidates: _ } => false
+    ArithmeticCarrierUndecided => false
   }
 }
 
@@ -184,6 +211,7 @@ test fn w_incomparable_carriers_refuse_as_ambiguous() -> Bool {
     ArithmeticCarrierAmbiguous { candidates: _ } => true
     ArithmeticCarrierSelected { carrier: _ } => false
     ArithmeticNoCarrier => false
+    ArithmeticCarrierUndecided => false
   }
 }
 
@@ -192,6 +220,7 @@ test fn w_injection_not_preserving_the_operator_is_not_a_route() -> Bool {
     ArithmeticNoCarrier => true
     ArithmeticCarrierSelected { carrier: _ } => false
     ArithmeticCarrierAmbiguous { candidates: _ } => false
+    ArithmeticCarrierUndecided => false
   }
 }
 
