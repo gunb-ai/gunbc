@@ -3,6 +3,7 @@ module product.p4261.report
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
+  ohm_count,
   ampere_count,
   Micrometer,
   micrometer,
@@ -122,9 +123,107 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.electrical.investigation_hypothesis { hypothesis_text }
+import product.p4261.investigation { ClassifiedHypothesis, DesignAndSpecimen, DesignRelationRemainder, HypothesisClass, SpecimenDiagnostic, p4261_hypotheses }
+import extdeps.nvidia.p4261.netlist { p4261_net_propositions }
+import product.p4261.findings {
+  CarrierFinding,
+  FindingJudgment,
+  J20ObservationContext,
+  J20InventoryJudged,
+  J20AgreementJudged,
+  PolarityJudged,
+  AcrossJudged,
+  IdentificationJudged,
+  BoundJudged,
+  DrawJudged,
+  SwitchJudged,
+  EnableJudged,
+  OvervoltageJudged,
+  ProjectionJudged,
+  PhaseJudged,
+  BusJudged,
+  NotAComponent,
+  NetPropositionJudged,
+  finding_established,
+  j20_context,
+  judge_finding,
+}
+import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
+import product.p4261.comparison {
+  P4261Comparison,
+  ComparedSide,
+  InstallationSnapshot,
+  RemovedBy,
+  RemovalRefitIndistinguishable,
+  SeenWithNoLaterRemoval,
+  SeenAbsent,
+  InstallationUnknown,
+  ObservedRelation,
+  SameIdentifiedPart,
+  DifferentParts,
+  SameCandidateConstraint,
+  DifferenceUndetermined,
+  ComparisonIncomplete,
+  BoardReadingsDisagree,
+}
+import product.p4261.evidence {
+  NetGap,
+  OccupantNotPresentInState,
+  ConnectorNotMappedWhole,
+  RowContactNotReached,
+  InputClassesNotEstablished,
+  PartNotPlaced,
+  NetStateOutcome,
+  NetSupported,
+  NetCounterevidence,
+  NetEvidenceConflict,
+  NetUnresolved,
+  NetStateAssessment,
+  NetRevisionOutcome,
+  NetRevisionSupported,
+  NetRevisionCounterevidence,
+  NetRevisionConflict,
+  NetRevisionUnresolved,
+  NetRevisionNotAttributable,
+  NetPropositionAssessment,
+  net_assessment,
+  RecountGap,
+  InventoryAssessment,
+  InventorySupportedOnSpecimen,
+  InventoryMissing,
+  InventoryContradicted,
+  InventoryNotAttributable,
+  RowSplitUnread,
+  CoverageIncomplete,
+  MappingRefused,
+  ReadOnlyOffListing,
+  j20_inventory_assessment,
+  j20_recount,
+  RecountEstablished,
+  RecountNotEstablished,
+  RecountNotAMapping,
+  RecountNotAtAdmittedJ20,
+  RecountReadOffListing,
+  RecountInPart,
+  RecountSidesUnread,
+  RecountRefused,
+  PopulationOutcome,
+  SupportedOnSpecimen,
+  EvidenceMissing,
+  Contradicted,
+  ObservationsConflict,
+  NotAttributable,
+  assembly_revision_standing,
+  AssemblyRevisionStanding,
+  received_labels,
+  RevisionContradictedOnBoard,
+  RevisionLabelReadPcbUnread,
+  RevisionPcbReadLabelUnread,
+  RevisionReadOnBoard,
+  RevisionUnreadOnBoard,
+}
 import product.p4261.carrier {
   AssemblyLabel,
-  AwayFromLatch,
   CaliperSpan,
   CarrierLayoutObservation,
   CensusComplete,
@@ -132,15 +231,19 @@ import product.p4261.carrier {
   CountedFromPhotograph,
   EdgeReceptacle,
   FlatCableConnectors,
-  LatchSide,
+  RowRead,
   ManagementIoObservation,
+  InventoryByRow,
+  InventoryInPart,
+  InventoryRefused,
+  InventorySidesUnread,
+  InventoryTotalOnly,
   MappedOnHousing,
   MicroUsbPlugFits,
-  p4261_grey_path_hypothesis,
-  p4261_j20_main_input_hypothesis,
-  p4261_local_control_hypothesis,
-  p4261_q4_temperature_diode_hypothesis,
-  p4261_vdd_bypass_hypothesis,
+  ObservedInventory,
+  TerminalAtTwoCoordinates,
+  TwoTerminalsAtOneCoordinate,
+  observed_inventory,
   PartlyPhotographed,
   PinHeader,
   PlugFitUntried,
@@ -177,14 +280,35 @@ import product.p4261.e1_b {
   e1_u55_pins,
   e1_u5_2,
   e1_vector_all_on,
-  p4261_enable_network_hypothesis,
-  p4261_near_4r7_converter_hypothesis,
 }
 import product.p4261.readings {
+  gate_pin_reading,
+  translator_pin_reading,
+  j68_shape,
+  installed,
+  PitchFit,
+  j24_reading,
+  J24NotObserved,
+  J24Unmeasured,
+  J24Read,
+  J24Reading,
+  J68Shape,
+  j68_reading,
+  J68Unmeasured,
+  J68Read,
+  PinRoleReading,
+  PinComponentAbsent,
+  PinNoRowOfKind,
+  PinRole,
+  q300_gate_path,
+  Q300U51NotObserved,
+  Q300Unmeasured,
+  Q300PathRead,
   AccessPointUnseparated,
   across_input,
   AcrossInput,
   AcrossInputContradicted,
+  AcrossGap,
   AcrossInputStanding,
   AcrossInputUnestablished,
   attachment_of,
@@ -254,7 +378,6 @@ import product.p4261.readings {
   JtagHeaderStanding,
   logic_of,
   mosfet_of,
-  nat_min_of,
   neighbour_terminals,
   NoEnergizedInputReading,
   NoInputBound,
@@ -296,16 +419,6 @@ import product.p4261.readings {
   TerminalsNotPlaced,
   ThresholdPin,
   translator_of,
-}
-import product.p4261.findings {
-  assembly_revision_standing,
-  AssemblyRevisionStanding,
-  received_labels,
-  RevisionContradictedOnBoard,
-  RevisionLabelReadPcbUnread,
-  RevisionPcbReadLabelUnread,
-  RevisionReadOnBoard,
-  RevisionUnreadOnBoard,
 }
 
 // THE RENDERED REPORT (diagnostics only): text over the records and their derivations, and the
@@ -351,23 +464,6 @@ fn input_draw_text(d: InputDrawStanding) -> String {
   }
 }
 
-fn translator_pin_text(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> String {
-  match installed(layout: layout, c: c) {
-    Absent => join([component_text(c: c), " is not a component of this carrier's observation"], "")
-    Present { value: x } => match translator_of(c: x) {
-      Absent => join([component_text(c: c), " carries no level-translator row, so its pin ", to_string(number), " has no role to read"], "")
-      Present { value: t } => {
-        let basis = match identified_row(c: x) { Present { value: _ } => "", Absent => "under the candidate pinout, " }
-        match translator_pin_standing(spec: t, number: number) {
-          DataPortOfChannel { pin, channel, b_side } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is the ", if b_side { "B" } else { "A" }, " end of channel ", to_string(channel), ": a data port whose direction is that channel's direction input, a live fact"], "")
-          ControlIntoTheTranslator { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is a direction or enable input into the part"], "")
-          TranslatorSupplyOrReturn { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its supply or return"], "")
-          NoTranslatorPinNumbered { number: n } => join([component_text(c: c), " has no pin ", to_string(n)], "")
-        }
-      }
-    }
-  }
-}
 
 fn configuration_scheme_text(s: ConfigurationScheme) -> String {
   match s {
@@ -403,38 +499,11 @@ fn u4_configuration_text(layout: CarrierLayoutObservation) -> String {
   }
 }
 
-// J24 AS THE RECORD HAS IT: its positions, the photographic pitch, and how many positions read a value
-// to the return, none near zero.
-fn j24_text(layout: CarrierLayoutObservation) -> String {
-  match installed(layout: layout, c: e1_j24) {
-    Absent => join([component_text(c: e1_j24), " is not a component of this carrier's observation"], "")
-    Present { value: x } => match layout.measured {
-      Absent => join(["J24 has ", to_string(count(x.terminals)), " positions and no reading"], "")
-      Present { value: b } => {
-        let rs = filter(b.bench.resistances, o => any(x.terminals, t => terminal_ref_equal(a: o.first, b: e1_j24_pin(n: t)) && terminal_ref_equal(a: o.second, b: e1_ground_ref)))
-        let valued = filter(rs, o => match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
-        join([
-          "J24 has ", to_string(count(x.terminals)), " positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about ", to_string(e1_j24_pitch.along_row_tenths_mm), "/10 mm along a row and ", to_string(e1_j24_pitch.between_rows_tenths_mm), "/10 mm between rows, within ", to_string(e1_j24_pitch.tolerance_tenths_mm), "/10 mm, by a photograph against a tape aligned to neither axis; ",
-          to_string(count(rs)), " read to J20's black lead, ", to_string(count(valued)), " with a value (", to_string(nat_min_of(filter(map(valued, o => match valued_ohms(o: o) { Present { value: v } => v, Absent => 0 }), v => v > 0))), " ohm the least), none near zero, so no position is read as the return",
-        ], "")
-      }
-    }
-  }
-}
+// J24 AS THE RECORD HAS IT: its positions, the photographic pitch, its readings to the return by kind,
+// and what they say of the return (product.p4261.readings j24_reading).
 
 // J68 BY ITS UNPOWERED SHAPE: which positions read as the return, which are open, and whether two
 // positions of the other row read alike, the facts a JTAG header's layout predicts.
-fn j68_shape_from(all: List<ResistanceObservation>) -> String {
-  let rs = filter(all, o => any(e1_j68_points, n => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: n)) && terminal_ref_equal(a: o.second, b: e1_ground_ref)))
-  let zeros = filter(rs, o => is_reported_zero(o: o))
-  let open = filter(rs, o => match o.display { DisplayOverRange => true, _ => false })
-  let alike = any(rs, o => terminal_ref_equal(a: o.first, b: e1_terminal(c: e1_j68, name: "L3")) && match valued_ohms(o: o) { Present { value: v } => any(rs, p => terminal_ref_equal(a: p.first, b: e1_terminal(c: e1_j68, name: "L5")) && match valued_ohms(o: p) { Present { value: w } => w == v, Absent => false }), Absent => false })
-  join([
-    "J68 unpowered: ", to_string(count(rs)), " positions read to J20's black lead; ", to_string(count(zeros)), " report zero without a baseline (", join(map(zeros, o => terminal_text(t: o.first)), ", "), "), ", to_string(count(open)), " over range (", join(map(open, o => terminal_text(t: o.first)), ", "), ")",
-    "; L3 and L5 ", if alike { "read alike" } else { "do not read alike" },
-    ": the shape of Intel's ten-pin JTAG layout with L as the odd pins and R the even, a candidate the powered re-read decides",
-  ], "")
-}
 
 fn jtag_standing_text(s: JtagHeaderStanding) -> String {
   match s {
@@ -445,12 +514,6 @@ fn jtag_standing_text(s: JtagHeaderStanding) -> String {
   }
 }
 
-fn j68_shape_text(layout: CarrierLayoutObservation) -> String {
-  match layout.measured {
-    Absent => "J68 has no unpowered reading"
-    Present { value: b } => join([j68_shape_from(all: b.bench.resistances), ". J68 as a JTAG header is ", jtag_standing_text(s: j68_jtag_standing(rs: b.bench.resistances, vs: j68_plain_volts(phases: b.phases), scans: e1_j68_chain_scans)), "; under the candidate map R2 is the reference rail and R1, R5 the returns, so no bridge is placed between any two of its positions again"], "")
-  }
-}
 
 fn alteration_text(a: AssetAlteration) -> String {
   match a.change {
@@ -509,23 +572,6 @@ fn u5_2_root_of_trust_text(layout: CarrierLayoutObservation) -> String {
   }
 }
 
-fn gate_pin_text(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> String {
-  match installed(layout: layout, c: c) {
-    Absent => join([component_text(c: c), " is not a component of this carrier's observation"], "")
-    Present { value: x } => match gate_of(c: x) {
-      Absent => join([component_text(c: c), " carries no logic-gate row, so its pin ", to_string(number), " has no role to read"], "")
-      Present { value: g } => {
-        let basis = match identified_row(c: x) { Present { value: _ } => "", Absent => "under the candidate pinout, " }
-        match gate_pin_standing(spec: g, number: number) {
-          GateInputPin { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is an input the gate reads"], "")
-          GateOutputPin { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its output, the AND of its inputs"], "")
-          GateSupplyOrReturn { pin } => join([basis, component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its supply or return"], "")
-          NoGatePinNumbered { number: n } => join([component_text(c: c), " has no pin ", to_string(n)], "")
-        }
-      }
-    }
-  }
-}
 
 // Which way a net meeting one of a shift register's pins runs, from the pin's datasheet role; a part not
 // identified as one has no pin roles to read.
@@ -767,15 +813,15 @@ fn withstand_kind_text(k: VoltageWithstandKind) -> String {
 
 fn row_side_text(s: RowSide) -> String {
   match s {
-    LatchSide => "on the latch side"
-    AwayFromLatch => "away from the latch"
     SideUnrecorded => "side unrecorded"
+    RowRead { row } => match row { LatchRow => "on the latch side", AwayFromLatchRow => "away from the latch" }
   }
 }
 
 fn polarity_gap_text(g: PolarityGap) -> String {
   match g {
     SidesUnrecorded => "a contact's side is unrecorded"
+    HousingNotMappedWhole => "the housing is not mapped whole and consistently"
     NoMeasuredBoard => "no measured board"
     InputUnmapped => "J20's contacts are not mapped on this board"
     BeepsNotOfOneState => "the board's beeps are not all of one physical state and module configuration"
@@ -801,12 +847,7 @@ fn across_text(s: AcrossInputStanding) -> String {
       component_text(c: component), " across the input ('", terminal_text(t: on_fused), "' on the fused side, '", terminal_text(t: on_return), "' on the return side)",
     ], "")
     AcrossInputContradicted { component, readings } => join([component_text(c: component), " placement CONTRADICTED (", join(map(readings, o => continuity_text(o: o)), "; "), ")"], "")
-    AcrossInputUnestablished { component, gap } => join([component_text(c: component), " not placed across the input (",
-      match gap {
-        InputPolarityNotEstablished => "the input polarity is not established"
-        NotTwoTerminals => "not a two-terminal part"
-        TerminalsNotPlaced => "its terminals are not read to the two sides"
-      }, ")"], "")
+    AcrossInputUnestablished { component, gap } => join([component_text(c: component), " not placed across the input (", across_gap_text(g: gap), ")"], "")
   }
 }
 
@@ -832,173 +873,85 @@ fn bound_text(b: InputBoundStanding) -> String {
   }
 }
 
-fn j20_position_count(layout: CarrierLayoutObservation) -> Nat {
-  match layout.j20 {
-    CountedFromPhotograph { positions: n, evidence: _ } => n
-    MappedOnHousing { housing } => count(housing.positions)
+// The J20 positions the board's census establishes, from its observed inventory (product.p4261.carrier
+// observed_inventory): a count only where the census gives one; a partial or refused mapping gives none.
+fn j20_position_count(layout: CarrierLayoutObservation) -> Nat? {
+  match observed_inventory(census: layout.j20) {
+    InventoryByRow { latch_row, away_row } => Present { value: latch_row + away_row }
+    InventoryTotalOnly { total } => Present { value: total }
+    InventorySidesUnread { latch_row_known, away_row_known, side_unread } => Present { value: latch_row_known + away_row_known + side_unread }
+    InventoryInPart { latch_row_at_least: _, away_row_at_least: _, side_unread: _ } => Absent
+    InventoryRefused { defect: _ } => Absent
   }
 }
 
-fn span_fits(s: CaliperSpan, pitch: Micrometer, cavity_min: Micrometer, cavity_max: Micrometer) -> Bool {
-  micrometer_count(m: s.measured) >= s.pitches * micrometer_count(m: pitch) + s.cavities * micrometer_count(m: cavity_min)
-    && micrometer_count(m: s.measured) <= s.pitches * micrometer_count(m: pitch) + s.cavities * micrometer_count(m: cavity_max)
-}
 
 // Whether every caliper span is consistent with a pitch, given bounds on the cavity width.
-fn calipers_fit_pitch(spans: List<CaliperSpan>, pitch: Micrometer, cavity_min: Micrometer, cavity_max: Micrometer) -> Bool {
-  count(spans) > 0 && all(spans, s => span_fits(s: s, pitch: pitch, cavity_min: cavity_min, cavity_max: cavity_max))
-}
 
 fn fit_word(b: Bool) -> String {
   if b { "fit" } else { "do not fit" }
 }
 
-fn caliper_text(spans: List<CaliperSpan>) -> String {
-  match spans.first() {
-    Absent => ""
-    Present { value: _ } => join([
-      "; caliper spans ", fit_word(b: calipers_fit_pitch(spans: spans, pitch: micrometer(count: 3000), cavity_min: micrometer(count: 2000), cavity_max: micrometer(count: 2600))),
-      " a 3.0 mm pitch and ", fit_word(b: calipers_fit_pitch(spans: spans, pitch: micrometer(count: 4200), cavity_min: micrometer(count: 2000), cavity_max: micrometer(count: 2600))),
-      " a 4.2 mm pitch, for a cavity of 2.0 to 2.6 mm",
-    ], "")
+
+fn observed_inventory_text(i: ObservedInventory) -> String {
+  match i {
+    InventoryByRow { latch_row, away_row } => join([to_string(latch_row + away_row), " positions mapped, ", to_string(latch_row), " in the latch-side row and ", to_string(away_row), " in the row away from the latch"], "")
+    InventoryTotalOnly { total } => join([to_string(total), " positions counted, no row read"], "")
+    InventorySidesUnread { latch_row_known, away_row_known, side_unread } => join([to_string(latch_row_known + away_row_known + side_unread), " positions mapped: ", to_string(latch_row_known), " latch-side, ", to_string(away_row_known), " away from the latch, ", to_string(side_unread), " of unread side"], "")
+    InventoryInPart { latch_row_at_least, away_row_at_least, side_unread } => join(["mapped in part: at least ", to_string(latch_row_at_least), " latch-side and ", to_string(away_row_at_least), " away from the latch, ", to_string(side_unread), " of unread side"], "")
+    InventoryRefused { defect } => match defect {
+      TerminalAtTwoCoordinates { terminal } => join(["mapping refused: ", terminal as String, " is placed at two positions"], "")
+      TwoTerminalsAtOneCoordinate { side, index } => join(["mapping refused: two terminals at position ", to_string(index), " ", row_side_text(s: side)], "")
+    }
+  }
+}
+
+fn j20_text_of(ctx: J20ObservationContext) -> String {
+  match ctx.census {
+    CountedFromPhotograph { component: _, positions: n, evidence: _ } => join([to_string(n), " positions counted from a photograph; pin continuity unread", caliper_text(fits: ctx.calipers)], "")
+    MappedOnHousing { housing: _ } => join([observed_inventory_text(i: ctx.observed), caliper_text(fits: ctx.calipers)], "")
   }
 }
 
 fn j20_text(layout: CarrierLayoutObservation) -> String {
-  match layout.j20 {
-    CountedFromPhotograph { positions: n, evidence: _ } => join([to_string(n), " positions counted from a photograph; pin continuity unread", caliper_text(spans: layout.j20_calipers)], "")
-    MappedOnHousing { housing } => join([to_string(count(housing.positions)), " positions mapped on the housing", caliper_text(spans: layout.j20_calipers)], "")
+  j20_text_of(ctx: j20_context(layout: layout))
+}
+
+// What the board's census says of its revision's reconstructed J20 inventory (product.p4261.evidence).
+fn j20_agreement_text(a: InventoryAssessment?) -> String {
+  match a {
+    Absent => "no reconstructed J20 inventory for this revision"
+    Present { value: x } => {
+      let claimed = join([to_string(x.claim.latch_row_positions), " and ", to_string(x.claim.away_row_positions)], "")
+      match x.outcome {
+        InventorySupportedOnSpecimen => join(["this supports the reconstructed ", x.claim.position.revision.revision_code as String, " inventory of ", claimed, " on ", x.asset as String], "")
+        InventoryContradicted { observed: _ } => join(["this contradicts the reconstructed ", x.claim.position.revision.revision_code as String, " inventory of ", claimed], "")
+        InventoryMissing { gap } => join(["the reconstructed ", x.claim.position.revision.revision_code as String, " inventory of ", claimed, " is not established by it: ", match gap {
+          RowSplitUnread => "the rows' split is unread"
+          CoverageIncomplete => "the mapping is partial"
+          MappingRefused { defect: _ } => "the mapping is refused"
+          ReadOnlyOffListing => "it was read only off the seller's listing"
+        }], "")
+        InventoryNotAttributable { gap: _ } => join(["the reconstructed ", x.claim.position.revision.revision_code as String, " inventory is not attributable to this board's census"], "")
+      }
+    }
   }
 }
 
-// ── NARROW FINDINGS, for consumers that cite one fact ─────────────────────────────────────────
+// ── NARROW FINDINGS, RENDERED ────────────────────────────────────────────────────────────────
 //
-// A consumer that records "this was established" cites ONE finding, not the whole carrier report, so
-// that removing or contradicting that fact in this model reopens the consumer and nothing else. Each
-// finding's standing is derived here from the typed model; its text is this module's own rendering.
-type CarrierFinding
-  = J20ContactInventory
-  | J20Polarity
-  | ComponentAcrossInput { component: ComponentInstanceIdentity }
-  | ComponentIdentified { component: ComponentInstanceIdentity }
-  | InputUpperBound
-  | J20EnergizedDraw
-  | InputSwitchState { component: ComponentInstanceIdentity }
-  | ControllerEnableState { component: ComponentInstanceIdentity }
-  | ControllerOvervoltageState { component: ComponentInstanceIdentity }
-  | EnableInputProjection { component: ComponentInstanceIdentity }
-  | CarrierPhaseObserved { key: NonEmptyStr }
-  | ProtectedInputBusInPhase { key: NonEmptyStr }
-
+// A finding is judged in product.p4261.findings (judge_finding, finding_established); here it is only
+// worded. The arm of the rendered result is chosen by finding_established and nothing else, and the
+// words come from the judgment handed in, never from another look at the board.
 type FindingStanding
   = FindingEstablished { text: String }
   | FindingNotEstablished { reason: String }
 
-fn installed(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> InstalledComponent? {
-  (filter(layout.components, x => component_identity_eq(a: x.component, b: c))).first()
-}
 
-fn not_a_component(c: ComponentInstanceIdentity) -> FindingStanding {
-  FindingNotEstablished { reason: join([component_text(c: c), " is not a component of this carrier's observation"], "") }
-}
 
-fn across_finding(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> FindingStanding {
-  match installed(layout: layout, c: c) {
-    Absent => not_a_component(c: c)
-    Present { value: x } => match across_input(layout: layout, c: x) {
-      AcrossInput { component, on_fused, on_return, fused_path, return_path } =>
-        FindingEstablished { text: across_text(s: AcrossInput { component: component, on_fused: on_fused, on_return: on_return, fused_path: fused_path, return_path: return_path }) }
-      AcrossInputContradicted { component, readings } => FindingNotEstablished { reason: across_text(s: AcrossInputContradicted { component: component, readings: readings }) }
-      AcrossInputUnestablished { component, gap } => FindingNotEstablished { reason: across_text(s: AcrossInputUnestablished { component: component, gap: gap }) }
-    }
-  }
-}
 
-fn identified_finding(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> FindingStanding {
-  match installed(layout: layout, c: c) {
-    Absent => not_a_component(c: c)
-    Present { value: x } => {
-      let said = match identification_text(i: x.identification) {
-        Absent => "nothing read on it identifies a part"
-        Present { value: t } => t
-      }
-      if identification_established(i: x.identification) {
-        FindingEstablished { text: join([component_text(c: c), " is ", said], "") }
-      } else {
-        FindingNotEstablished { reason: join([component_text(c: c), " is not identified: ", said], "") }
-      }
-    }
-  }
-}
 
-fn carrier_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> FindingStanding {
-  match f {
-    J20ContactInventory => match layout.j20 {
-      MappedOnHousing { housing: _ } => FindingEstablished { text: join(["J20: ", j20_text(layout: layout)], "") }
-      CountedFromPhotograph { positions: _, evidence: _ } => FindingNotEstablished { reason: join(["J20 is only counted from a photograph: ", j20_text(layout: layout)], "") }
-    }
-    J20Polarity => match input_polarity(layout: layout) {
-      PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => FindingEstablished { text: join(["J20 ", polarity_text(p: input_polarity(layout: layout))], "") }
-      PolarityContradicted { readings: _ } => FindingNotEstablished { reason: polarity_text(p: input_polarity(layout: layout)) }
-      PolarityUnestablished { gaps: _ } => FindingNotEstablished { reason: polarity_text(p: input_polarity(layout: layout)) }
-    }
-    ComponentAcrossInput { component } => across_finding(layout: layout, c: component)
-    ComponentIdentified { component } => identified_finding(layout: layout, c: component)
-    InputUpperBound => match input_bound(layout: layout) {
-      BoundEstablished { bound: _, equally_limiting: _, observed: _ } => FindingEstablished { text: join(["J20 input ", bound_text(b: input_bound(layout: layout))], "") }
-      BoundContradicted { contradicted: _, observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
-      BoundUnestablished { observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
-    }
-    InputSwitchState { component } => match installed(layout: layout, c: component) {
-      Absent => not_a_component(c: component)
-      Present { value: x } => match input_switch_standing(layout: layout, c: x) {
-        SwitchStateUnestablished { component: _, gap: _ } => FindingNotEstablished { reason: switch_text(s: input_switch_standing(layout: layout, c: x)) }
-        _ => FindingEstablished { text: switch_text(s: input_switch_standing(layout: layout, c: x)) }
-      }
-    }
-    ControllerEnableState { component } => match installed(layout: layout, c: component) {
-      Absent => not_a_component(c: component)
-      Present { value: x } => match controller_enable_standing(layout: layout, c: x) {
-        PinThresholdUnestablished { component: _, readings: _, gap: _ } => FindingNotEstablished { reason: enable_text(s: controller_enable_standing(layout: layout, c: x)) }
-        _ => FindingEstablished { text: enable_text(s: controller_enable_standing(layout: layout, c: x)) }
-      }
-    }
-    ControllerOvervoltageState { component } => match installed(layout: layout, c: component) {
-      Absent => not_a_component(c: component)
-      Present { value: x } => match controller_overvoltage_standing(layout: layout, c: x) {
-        PinThresholdUnestablished { component: _, readings: _, gap: _ } => FindingNotEstablished { reason: overvoltage_text(s: controller_overvoltage_standing(layout: layout, c: x)) }
-        _ => FindingEstablished { text: overvoltage_text(s: controller_overvoltage_standing(layout: layout, c: x)) }
-      }
-    }
-    EnableInputProjection { component } => match installed(layout: layout, c: component) {
-      Absent => not_a_component(c: component)
-      Present { value: x } => match enable_projection(layout: layout, c: x) {
-        EnableProjectionUnestablished { component: _, gap: _ } => FindingNotEstablished { reason: projection_text(p: enable_projection(layout: layout, c: x)) }
-        _ => FindingEstablished { text: projection_text(p: enable_projection(layout: layout, c: x)) }
-      }
-    }
-    J20EnergizedDraw => match input_draw(layout: layout) {
-      InputDrawBounded { bounded: _, observed: _ } => FindingEstablished { text: join(["J20 ", input_draw_text(d: input_draw(layout: layout))], "") }
-      InputDrawContradicted { contradicted: _, observed: _ } => FindingNotEstablished { reason: input_draw_text(d: input_draw(layout: layout)) }
-      InputDrawUnestablished { gaps: _ } => FindingNotEstablished { reason: input_draw_text(d: input_draw(layout: layout)) }
-    }
-    CarrierPhaseObserved { key } => match phase_standing_in(layout: layout, key: key) {
-      Absent => FindingNotEstablished { reason: join(["no phase '", key as String, "' is recorded on this carrier"], "") }
-      Present { value: s } => if is_phase_classified(s: s) { FindingEstablished { text: phase_standing_text(s: s) } } else { FindingNotEstablished { reason: phase_standing_text(s: s) } }
-    }
-    ProtectedInputBusInPhase { key } => match protected_bus_in(layout: layout, key: key) {
-      Absent => FindingNotEstablished { reason: join(["no phase '", key as String, "' is recorded on this carrier"], "") }
-      Present { value: s } => if is_bus_read(s: s) { FindingEstablished { text: protected_bus_text(s: s) } } else { FindingNotEstablished { reason: protected_bus_text(s: s) } }
-    }
-  }
-}
 
-fn is_finding_established(s: FindingStanding) -> Bool {
-  match s {
-    FindingEstablished { text: _ } => true
-    FindingNotEstablished { reason: _ } => false
-  }
-}
 
 // The input switches and controllers this observation identifies, rendered from their standings.
 fn input_stage_text(layout: CarrierLayoutObservation) -> String {
@@ -1028,19 +981,6 @@ fn input_stage_text(layout: CarrierLayoutObservation) -> String {
 
 // Q300'S LEAD B TOWARD U51: what the pair reads across ranges, derived from the record, never from the
 // trace followed by eye. Rendered only where U51 is a component of the observation.
-fn q300_gate_path_reading(layout: CarrierLayoutObservation) -> String {
-  match installed(layout: layout, c: e1_u51) {
-    Absent => join([component_text(c: e1_u51), " is not a component of this carrier's observation"], "")
-    Present { value: _ } => match layout.measured {
-      Absent => "no reading from Q300 lead b toward U51"
-      Present { value: b } => join([
-        "Q300 lead b to U51 pin 8 ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_u51_pin(n: "pin 8"))),
-        "; Q300 lead b to J20's black lead ", pair_range_text(s: pair_range_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_ground_ref)),
-        "; no U51 pin is read as Q300 lead b's node. On the front, ", to_string(count(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500))), " of U500's contacts read at or below 500 ohm from Q300 lead b on the 2k range (", join(map(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u500, names: e1_u500_contacts, ceiling_ohms: 500), n => n as String), ", "), "), against 800 ohm to its ground contact and to the via beside the U43 chain; the pad above U500 to J20's black lead ", pair_polarity_text(s: pair_polarity_standing(os: b.bench.resistances, a: e1_u500_pad, b: e1_ground_ref), a: e1_u500_pad, b: e1_ground_ref), "; Q300 lead b to that pad ", pair_polarity_text(s: pair_polarity_standing(os: b.bench.resistances, a: e1_q300_lead_b, b: e1_u500_pad), a: e1_q300_lead_b, b: e1_u500_pad), ". Of U55's pins, ", to_string(count(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u55, names: e1_u55_pins, ceiling_ohms: 500))), " read at or below 500 ohm from Q300 lead b on the 2k range (", join(map(terminals_reading_at_most(rs: b.bench.resistances, c: e1_u55, names: e1_u55_pins, ceiling_ohms: 500), n => n as String), ", "), "). ", gate_pin_text(layout: layout, c: e1_u43, number: 4), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 13), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 16), "; ", translator_pin_text(layout: layout, c: e1_u55, number: 12),
-      ], "")
-    }
-  }
-}
 
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
@@ -1048,6 +988,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     ". J20 ", input_draw_text(d: input_draw(layout: layout)),
     ". ", input_stage_text(layout: layout),
     ". ", netlist_reading(layout: layout),
+    ". ", net_propositions_text(layout: layout),
     ". ", phases_reading(layout: layout),
     ". ", q300_gate_path_reading(layout: layout),
     ". ", u4_configuration_text(layout: layout),
@@ -1056,7 +997,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     ". ", j24_text(layout: layout),
     ". ", j68_shape_text(layout: layout),
     ". ", alterations_text(layout: layout),
-    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis), ". ", hypothesis_text(h: p4261_near_4r7_converter_hypothesis),
+    ". ", hypotheses_text(),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
 }
@@ -1256,4 +1197,299 @@ fn edge_connector_text(layout: CarrierLayoutObservation) -> String {
       },
     ], "")
   }
+}
+
+// ── THE E1 AGAINST THE K1 (product.p4261.comparison), RENDERED ──────────────────────────────────
+// Rendering only: every word below is read off the comparison's typed result, and no finding reads it.
+
+fn comparison_rows_text(rows: List<ElectronicComponentRow>) -> String {
+  join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or ")
+}
+
+fn comparison_conclusion_text(c: ObservedRelation) -> String {
+  match c {
+    SameIdentifiedPart { row } => join(["both read ", comparison_rows_text(rows: [row])], "")
+    DifferentParts { e1, k1 } => join(["different parts: the E1 reads ", comparison_rows_text(rows: e1), ", the K1 ", comparison_rows_text(rows: k1)], "")
+    SameCandidateConstraint { rows } => join(["both read a code shared by ", comparison_rows_text(rows: rows), ", which does not make the fitted parts the same"], "")
+    DifferenceUndetermined { e1, k1 } => join(["undetermined: the E1 reads ", comparison_rows_text(rows: e1), ", the K1 ", comparison_rows_text(rows: k1)], "")
+    ComparisonIncomplete { boards } => join(["incomplete: no part row established as received on ", join(map(boards, b => b as String), " or ")], "")
+    BoardReadingsDisagree { asset, observations } => join([asset as String, "'s own ", to_string(count(observations)), " readings there disagree"], "")
+  }
+}
+
+fn population_outcome_text(o: PopulationOutcome) -> String {
+  match o {
+    SupportedOnSpecimen { supporting: _ } => "supported on this board"
+    EvidenceMissing { undecided: _ } => "not established by this board's readings"
+    Contradicted { contradicting: _, supporting: _ } => "contradicted by this board's readings"
+    ObservationsConflict { observations: _ } => "undecidable: this board's own readings there disagree"
+    NotAttributable { gap: _ } => "not attributable to this board"
+  }
+}
+
+fn installation_snapshot_text(i: InstallationSnapshot) -> String {
+  match i {
+    RemovedBy { key } => join(["now removed (", key as String, ")"], "")
+    RemovalRefitIndistinguishable => "removed and refitted in one recorded event, so its state since is not distinguishable"
+    SeenWithNoLaterRemoval => "seen fitted, no removal recorded since"
+    SeenAbsent => "seen absent"
+    InstallationUnknown => "presence unrecorded"
+  }
+}
+
+fn compared_side_text(s: ComparedSide) -> String {
+  let claim = match s.assessment {
+    Absent => "no population claim"
+    Present { value: a } => join(["reconstructed claim ", population_outcome_text(o: a.outcome)], "")
+  }
+  join([s.asset as String, ": ", claim, ", ", installation_snapshot_text(i: s.installation)], "")
+}
+
+fn population_comparison_text(c: P4261Comparison) -> String {
+  join([
+    "at the designators both revisions' silkscreens carry (a shared label, not an established circuit correspondence): ",
+    join(map(c.positions, p => join([p.designator as String, " as received ", comparison_conclusion_text(c: p.observed), " (", compared_side_text(s: p.e1), "; ", compared_side_text(s: p.k1), ")"], "")), "; "),
+    ". Not covered: ", to_string(count(c.e1.uncovered)), " components observed on ", c.e1.asset as String, " and ", to_string(count(c.k1.uncovered)), " on ", c.k1.asset as String,
+    " have no admitted designator reading, and ", to_string(count(c.e1.refused) + count(c.k1.refused)), " readings were refused",
+  ], "")
+}
+
+// ── FORMATTERS OF READINGS THE REPORT USED TO INTERPRET ITSELF (product.p4261.readings, Stage B4) ──
+
+fn caliper_text(fits: List<PitchFit>) -> String {
+  match fits.first() {
+    Absent => ""
+    Present { value: _ } => join([
+      "; caliper spans ",
+      join(map(fits, f => join([if f.fits { "fit" } else { "do not fit" }, " a ", to_string(micrometer_count(m: f.pitch) / 1000), ".", to_string((micrometer_count(m: f.pitch) % 1000) / 100), " mm pitch"], "")), " and "),
+      ", for a cavity of 2.0 to 2.6 mm",
+    ], "")
+  }
+}
+
+fn j24_text(layout: CarrierLayoutObservation) -> String {
+  match j24_reading(layout: layout) {
+    J24NotObserved => join([component_text(c: e1_j24), " is not a component of this carrier's observation"], "")
+    J24Unmeasured { positions } => join(["J24 has ", to_string(positions), " positions and no reading"], "")
+    J24Read { reading: r } => j24_text_of(r: r)
+  }
+}
+
+fn j24_text_of(r: J24Reading) -> String {
+  join([
+      "J24 has ", to_string(r.positions), " positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about ", to_string(e1_j24_pitch.along_row_tenths_mm), "/10 mm along a row and ", to_string(e1_j24_pitch.between_rows_tenths_mm), "/10 mm between rows, within ", to_string(e1_j24_pitch.tolerance_tenths_mm), "/10 mm, by a photograph against a tape aligned to neither axis; ",
+      to_string(r.readings), " readings recorded to J20's black lead, covering ", to_string(r.positions_read), " of the ", to_string(r.positions), " positions; ", to_string(r.valued), " with a value (", match r.least_positive { Absent => "none above zero", Present { value: o } => join([to_string(ohm_count(r: o)), " ohm the least"], "") }, "), ",
+      to_string(r.reported_zero), " reporting zero without a baseline, ", to_string(r.at_baseline), " recorded at the probe baseline",
+    ], "")
+}
+
+fn j68_shape_text_of(shape: J68Shape) -> String {
+  join([
+    "J68 unpowered: ", to_string(count(shape.read)), " positions read to J20's black lead; ", to_string(count(shape.reported_zero)), " report zero without a baseline (", join(map(shape.reported_zero, o => terminal_text(t: o.first)), ", "), "), ", to_string(count(shape.over_range)), " over range (", join(map(shape.over_range, o => terminal_text(t: o.first)), ", "), ")",
+    "; L3 and L5 ", if shape.l3_l5_alike { "read alike" } else { "do not read alike" },
+    ": the shape of Intel's ten-pin JTAG layout with L as the odd pins and R the even, a candidate the powered re-read decides",
+  ], "")
+}
+
+fn j68_shape_text(layout: CarrierLayoutObservation) -> String {
+  match j68_reading(layout: layout) {
+    J68Unmeasured => "J68 has no unpowered reading"
+    J68Read { shape, jtag } => join([j68_shape_text_of(shape: shape), ". J68 as a JTAG header is ", jtag_standing_text(s: jtag), "; under the candidate map R2 is the reference rail and R1, R5 the returns, so no bridge is placed between any two of its positions again"], "")
+  }
+}
+
+fn pin_basis(candidate: Bool) -> String {
+  if candidate { "under the candidate pinout, " } else { "" }
+}
+
+fn gate_pin_text_of(c: ComponentInstanceIdentity, number: Nat, r: PinRoleReading<GatePinStanding>) -> String {
+  match r {
+    PinComponentAbsent => join([component_text(c: c), " is not a component of this carrier's observation"], "")
+    PinNoRowOfKind => join([component_text(c: c), " carries no logic-gate row, so its pin ", to_string(number), " has no role to read"], "")
+    PinRole { standing, candidate } => match standing {
+      GateInputPin { pin } => join([pin_basis(candidate: candidate), component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is an input the gate reads"], "")
+      GateOutputPin { pin } => join([pin_basis(candidate: candidate), component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its output, the AND of its inputs"], "")
+      GateSupplyOrReturn { pin } => join([pin_basis(candidate: candidate), component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its supply or return"], "")
+      NoGatePinNumbered { number: n } => join([component_text(c: c), " has no pin ", to_string(n)], "")
+    }
+  }
+}
+
+fn translator_pin_text_of(c: ComponentInstanceIdentity, number: Nat, r: PinRoleReading<TranslatorPinStanding>) -> String {
+  match r {
+    PinComponentAbsent => join([component_text(c: c), " is not a component of this carrier's observation"], "")
+    PinNoRowOfKind => join([component_text(c: c), " carries no level-translator row, so its pin ", to_string(number), " has no role to read"], "")
+    PinRole { standing, candidate } => match standing {
+      DataPortOfChannel { pin, channel, b_side } => join([pin_basis(candidate: candidate), component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is the ", if b_side { "B" } else { "A" }, " end of channel ", to_string(channel), ": a data port whose direction is that channel's direction input, a live fact"], "")
+      ControlIntoTheTranslator { pin } => join([pin_basis(candidate: candidate), component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is a direction or enable input into the part"], "")
+      TranslatorSupplyOrReturn { pin } => join([pin_basis(candidate: candidate), component_text(c: c), " pin ", to_string(number), " (", pin.name as String, ") is its supply or return"], "")
+      NoTranslatorPinNumbered { number: n } => join([component_text(c: c), " has no pin ", to_string(n)], "")
+    }
+  }
+}
+
+fn q300_gate_path_reading(layout: CarrierLayoutObservation) -> String {
+  match q300_gate_path(layout: layout) {
+    Q300U51NotObserved => join([component_text(c: e1_u51), " is not a component of this carrier's observation"], "")
+    Q300Unmeasured => "no reading from Q300 lead b toward U51"
+    Q300PathRead { path: q } => join([
+      "Q300 lead b to U51 pin 8 ", pair_range_text(s: q.to_u51_pin8),
+      "; Q300 lead b to J20's black lead ", pair_range_text(s: q.to_return),
+      "; no U51 pin is read as Q300 lead b's node. On the front, ", to_string(count(q.u500_at_most_500)), " of U500's contacts read at or below 500 ohm from Q300 lead b on the 2k range (", join(map(q.u500_at_most_500, n => n as String), ", "), "), against 800 ohm to its ground contact and to the via beside the U43 chain; the pad above U500 to J20's black lead ", pair_polarity_text(s: q.pad_to_return, a: e1_u500_pad, b: e1_ground_ref), "; Q300 lead b to that pad ", pair_polarity_text(s: q.lead_to_pad, a: e1_q300_lead_b, b: e1_u500_pad), ". Of U55's pins, ", to_string(count(q.u55_at_most_500)), " read at or below 500 ohm from Q300 lead b on the 2k range (", join(map(q.u55_at_most_500, n => n as String), ", "), "). ", gate_pin_text_of(c: e1_u43, number: 4, r: q.u43_pin4), "; ", translator_pin_text_of(c: e1_u55, number: 13, r: q.u55_pin13), "; ", translator_pin_text_of(c: e1_u55, number: 16, r: q.u55_pin16), "; ", translator_pin_text_of(c: e1_u55, number: 12, r: q.u55_pin12),
+    ], "")
+  }
+}
+
+fn recount_gap_text(gap: RecountGap) -> String {
+  match gap {
+    RecountNotAMapping => "J20 is only counted, its rows unmapped"
+    RecountNotAtAdmittedJ20 => "the mapping is not of a component admitted at this board's J20"
+    RecountReadOffListing => "the mapping was read only off the seller's listing"
+    RecountInPart => "J20 is mapped only in part"
+    RecountSidesUnread => "a mapped position's row is unread"
+    RecountRefused { defect: _ } => "J20's mapping is refused"
+  }
+}
+
+fn identification_said(x: InstalledComponent) -> String {
+  match identification_text(i: x.identification) {
+    Absent => "nothing read on it identifies a part"
+    Present { value: t } => t
+  }
+}
+
+// The words of one judgment: what an established finding says, or why it is not established. Which of
+// the two it is, the caller takes from finding_established.
+fn judgment_words(j: FindingJudgment, established: Bool) -> String {
+  match j {
+    J20InventoryJudged { recount, agreement, context } => match recount {
+      RecountEstablished { latch_row: _, away_row: _ } => join(["J20: ", j20_text_of(ctx: context), ". ", j20_agreement_text(a: agreement)], "")
+      RecountNotEstablished { gap, observed: _ } => join([recount_gap_text(gap: gap), ": ", j20_text_of(ctx: context)], "")
+    }
+    J20AgreementJudged { agreement, context } => match agreement {
+      Absent => join([j20_agreement_text(a: Absent), "; J20: ", j20_text_of(ctx: context)], "")
+      Present { value: _ } => join(["J20: ", j20_text_of(ctx: context), "; ", j20_agreement_text(a: agreement)], "")
+    }
+    PolarityJudged { polarity } => if established { join(["J20 ", polarity_text(p: polarity)], "") } else { polarity_text(p: polarity) }
+    AcrossJudged { standing } => across_text(s: standing)
+    IdentificationJudged { observed } => if established { join([component_text(c: observed.component), " is ", identification_said(x: observed)], "") } else { join([component_text(c: observed.component), " is not identified: ", identification_said(x: observed)], "") }
+    BoundJudged { bound } => if established { join(["J20 input ", bound_text(b: bound)], "") } else { bound_text(b: bound) }
+    DrawJudged { draw } => if established { join(["J20 ", input_draw_text(d: draw)], "") } else { input_draw_text(d: draw) }
+    SwitchJudged { standing } => switch_text(s: standing)
+    EnableJudged { standing } => enable_text(s: standing)
+    OvervoltageJudged { standing } => overvoltage_text(s: standing)
+    ProjectionJudged { projection } => projection_text(p: projection)
+    PhaseJudged { key, standing } => match standing {
+      Absent => join(["no phase '", key as String, "' is recorded on this carrier"], "")
+      Present { value: x } => phase_standing_text(s: x)
+    }
+    BusJudged { key, standing } => match standing {
+      Absent => join(["no phase '", key as String, "' is recorded on this carrier"], "")
+      Present { value: x } => protected_bus_text(s: x)
+    }
+    NotAComponent { component } => join([component_text(c: component), " is not a component of this carrier's observation"], "")
+    NetPropositionJudged { key, assessment } => match assessment {
+      Absent => join(["no reconstructed wiring proposition '", key as String, "'"], "")
+      Present { value: a } => net_assessment_text(a: a)
+    }
+  }
+}
+
+fn render_finding(j: FindingJudgment) -> FindingStanding {
+  if finding_established(j: j) { FindingEstablished { text: judgment_words(j: j, established: true) } } else { FindingNotEstablished { reason: judgment_words(j: j, established: false) } }
+}
+
+fn carrier_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> FindingStanding {
+  render_finding(j: judge_finding(layout: layout, f: f))
+}
+
+// Public compositions of a typed reading and its formatter, for consumers that hold a layout.
+fn gate_pin_text(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> String {
+  gate_pin_text_of(c: c, number: number, r: gate_pin_reading(layout: layout, c: c, number: number))
+}
+
+fn translator_pin_text(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, number: Nat) -> String {
+  translator_pin_text_of(c: c, number: number, r: translator_pin_reading(layout: layout, c: c, number: number))
+}
+
+fn j68_shape_from(all: List<ResistanceObservation>) -> String {
+  j68_shape_text_of(shape: j68_shape(all: all))
+}
+
+// ── WIRING PROPOSITIONS ON THIS BOARD (product.p4261.evidence assess_net_proposition), RENDERED ─────
+
+fn across_gap_text(g: AcrossGap) -> String {
+  match g {
+    InputPolarityNotEstablished => "the input polarity is not established"
+    NotTwoTerminals => "not a two-terminal part"
+    TerminalsNotPlaced => "its terminals are not read to the two sides"
+  }
+}
+
+fn net_gap_text(g: NetGap) -> String {
+  match g {
+    OccupantNotPresentInState => "no part present at the position in that state"
+    ConnectorNotMappedWhole => "the connector is not mapped whole"
+    RowContactNotReached => "no terminal of the part is reached by every position of the row"
+    InputClassesNotEstablished => "the input's two row classes are not established"
+    PartNotPlaced { gap } => across_gap_text(g: gap)
+  }
+}
+
+fn net_state_outcome_text(o: NetStateOutcome) -> String {
+  match o {
+    NetSupported { terminals, readings: _ } => join(["supported at ", join(map(terminals, t => terminal_text(t: t)), " and ")], "")
+    NetCounterevidence { terminals, readings: _ } => join(["not so: ", join(map(terminals, t => terminal_text(t: t)), " and "), " both in one class"], "")
+    NetEvidenceConflict { readings, occupants } => if count(occupants) > 1 { join([to_string(count(occupants)), " distinct parts present at the position"], "") } else { join(["readings disagree (", to_string(count(readings)), ")"], "") }
+    NetUnresolved { gap } => join(["unresolved: ", net_gap_text(g: gap)], "")
+  }
+}
+
+fn net_state_text(a: NetStateAssessment) -> String {
+  join([if count(a.state.after) == 0 { "as received" } else { join(["after ", join(map(a.state.after, k => k as String), ", ")], "") }, ": ", net_state_outcome_text(o: a.outcome)], "")
+}
+
+fn net_revision_text(r: NetRevisionOutcome) -> String {
+  match r {
+    NetRevisionSupported => "supported by this board as received"
+    NetRevisionCounterevidence => "contradicted by this board as received"
+    NetRevisionConflict => "this board's readings as received disagree"
+    NetRevisionUnresolved => "not established by this board as received"
+    NetRevisionNotAttributable { gap: _ } => "not attributable to this board"
+  }
+}
+
+fn net_assessment_text(a: NetPropositionAssessment) -> String {
+  join([a.proposition.key as String, " (reconstructed, ", net_revision_text(r: a.revision), "; ", join(map(a.states, s => net_state_text(a: s)), "; "), ")"], "")
+}
+
+fn net_propositions_text(layout: CarrierLayoutObservation) -> String {
+  let assessed = flat_map(p4261_net_propositions, p => match net_assessment(layout: layout, key: p.key) { Absent => no_net_assessments(), Present { value: a } => [a] })
+  let applicable = filter(assessed, a => match a.revision { NetRevisionNotAttributable { gap: _ } => false, _ => true })
+  match applicable.first() {
+    Absent => "no reconstructed wiring proposition applies to this board"
+    Present { value: _ } => join(["Reconstructed wiring propositions (low-impedance reachability, not copper identity): ", join(map(applicable, a => net_assessment_text(a: a)), "; ")], "")
+  }
+}
+
+fn no_net_assessments() -> List<NetPropositionAssessment> {
+  []
+}
+
+// OUR HYPOTHESES (product.p4261.investigation), each with what it is about and the typed wiring
+// propositions it argues about. They are hypotheses, not derivations; nothing reads their prose.
+fn hypothesis_class_text(c: HypothesisClass) -> String {
+  match c {
+    DesignRelationRemainder { positions } => if count(positions) == 0 { "about the board's design, not yet modeled" } else { join(["about the board's design at ", join(map(positions, p => p.designator as String), ", "), ", not yet modeled"], "") }
+    SpecimenDiagnostic { asset } => join(["about ", asset as String, " as we hold it"], "")
+    DesignAndSpecimen { positions, asset } => join(["about the board's design at ", join(map(positions, p => p.designator as String), ", "), " and about ", asset as String, " as we hold it"], "")
+  }
+}
+
+fn classified_hypothesis_text(h: ClassifiedHypothesis) -> String {
+  join([hypothesis_text(h: h.hypothesis), " [", hypothesis_class_text(c: h.class), if count(h.concerns) == 0 { "" } else { join(["; argues about ", join(map(h.concerns, k => k as String), ", ")], "") }, "]"], "")
+}
+
+fn hypotheses_text() -> String {
+  join(map(p4261_hypotheses, h => classified_hypothesis_text(h: h)), ". ")
 }

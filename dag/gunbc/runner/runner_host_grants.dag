@@ -41,6 +41,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_plan_merge,
   executor_privileged_plan_rows,
   runner_slot_privileged_operations,
+  runner_slot_install_operations,
 }
 import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -79,7 +80,7 @@ import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner.runner_slot_retirement { host_maskable_units }
 import gunbc.host.managed_host_unit_hold { unit_hold_store_hosts, unit_hold_store_directory }
 import gunbc.host.host_boot_attempt_admission { boot_attempt_slot_directory }
-import gunbc.host_state_root { host_state_tree }
+import gunbc.host_state_root { host_state_tree, host_state_tree_directory }
 import gunbc.provisioning.install_media_store { install_media_store_directory }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host_is_derived_srv1 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }

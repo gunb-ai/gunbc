@@ -59,7 +59,8 @@ fn mentions(lines: List<NonEmptyStr>, fragment: String) -> Bool {
 // THE REAL PATH: the first planned assembly, DV5 asset A on the measured E1. The E1's module receptacles
 // were not photographed face-on, so mating is unobserved and names that photograph; it is not refused,
 // and the rest of the bench plan is listed after it -- including the E1's measured 60 V input bound, and
-// that the boot to observe is of THESE assets.
+// that the boot to observe is of THESE assets. Its power path carries the E1/K1 population comparison
+// (product.p4261.comparison), the comparison's production reader.
 test fn the_first_assembly_stands_at_mating_with_the_bench_plan_after_it() -> Bool {
   match assembly_qualification(a: first_assembly) {
     AssemblyBlockedAt { stage: s, open_here: here, open_later: later } =>
@@ -74,6 +75,8 @@ test fn the_first_assembly_stands_at_mating_with_the_bench_plan_after_it() -> Bo
         && mentions(lines: later, fragment: "USB 3.0 SuperSpeed Micro-B")
         && mentions(lines: later, fragment: "ARLINGTON-MB takes J7 12 V, J135 12 V, J9 (rail unprinted)")
         && mentions(lines: later, fragment: "GenZ 4C+ slot J31")
+        && mentions(lines: later, fragment: "What the two P4261 revisions held read at the designators both revisions' silkscreens carry")
+        && mentions(lines: later, fragment: "U1_P5 as received both read Texas Instruments Incorporated")
         && mentions(lines: later, fragment: "observe module gh200-dv5-a (699-2G530-0215-DV5) booting to BMC and OS on carrier p4261-e1-b")
     _ => false
   }
