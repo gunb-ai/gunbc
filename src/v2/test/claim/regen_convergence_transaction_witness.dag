@@ -1,6 +1,7 @@
 module v2.test.claim.regen_convergence_transaction_witness
 
 import std.types { Bool, List, String }
+import std.measure { byte_size, byte_size_count }
 import gunbc.regen_affected_set {
   regen_generation_role_modules,
   regen_bootstrap_product_paths,
@@ -72,7 +73,7 @@ import v2.workflow.regen_convergence_transaction {
   RegenGenerationBeginRefused,
   regen_admit_generation_begin,
   regen_generation_begin_admission_label,
-  regen_orchestrator_resident_growth_bound_bytes,
+  regen_orchestrator_resident_growth_bound,
   regen_admit_stage_execution,
   regen_stage_execution_admission_label,
   regen_stage_execution_admission_detail,
@@ -165,22 +166,27 @@ test fn finite_generation_bound_refuses_separately_from_a_cycle() -> Bool {
 // 15.6 GB still charged to the slot when generation 2 began, against a first-generation baseline
 // that held none of it). The control is an orchestrator whose footprint did not grow.
 test fn RED_an_orchestrator_holding_a_generation_refuses_the_next_generation() -> Bool {
-  match regen_admit_generation_begin(ordinal: 2, resident_at_first_bytes: 900000000, resident_now_bytes: 15636525056) {
-    RegenGenerationBeginRefused { refusal: GenerationStateRetainedByOrchestrator { ordinal: 2, resident_at_first_bytes: 900000000, resident_now_bytes: 15636525056, growth_bound_bytes: _ } } =>
-      string_contains(
-        s: regen_generation_begin_admission_label(admission: regen_admit_generation_begin(ordinal: 2, resident_at_first_bytes: 900000000, resident_now_bytes: 15636525056)),
-        pattern: "GenerationStateRetainedByOrchestrator ordinal=2"
-      )
+  let admission = regen_admit_generation_begin(ordinal: 2, resident_at_first: byte_size(count: 900000000), resident_now: byte_size(count: 15636525056))
+  match admission {
+    RegenGenerationBeginRefused { refusal: GenerationStateRetainedByOrchestrator { ordinal: 2, resident_at_first: first, resident_now: now, growth_bound: _ } } =>
+      byte_size_count(b: first) == 900000000
+        && byte_size_count(b: now) == 15636525056
+        && string_contains(s: regen_generation_begin_admission_label(admission: admission), pattern: "GenerationStateRetainedByOrchestrator ordinal=2")
+        && string_contains(s: regen_generation_begin_admission_label(admission: admission), pattern: "orchestrator_resident_bytes_now=15636525056")
     _ => false
   }
 }
 
+// A shrinking orchestrator is never refused: the comparison is growth, and growth below zero is none.
 test fn an_orchestrator_that_did_not_grow_admits_every_transition_and_the_bound_is_tight() -> Bool {
   let first = 900000000
-  let at_bound = regen_admit_generation_begin(ordinal: 3, resident_at_first_bytes: first, resident_now_bytes: first + regen_orchestrator_resident_growth_bound_bytes)
-  let over_bound = regen_admit_generation_begin(ordinal: 3, resident_at_first_bytes: first, resident_now_bytes: first + regen_orchestrator_resident_growth_bound_bytes + 1)
-  regen_generation_begin_admission_label(admission: regen_admit_generation_begin(ordinal: 1, resident_at_first_bytes: first, resident_now_bytes: first)) == "Admitted"
+  let bound = byte_size_count(b: regen_orchestrator_resident_growth_bound)
+  let at_bound = regen_admit_generation_begin(ordinal: 3, resident_at_first: byte_size(count: first), resident_now: byte_size(count: first + bound))
+  let over_bound = regen_admit_generation_begin(ordinal: 3, resident_at_first: byte_size(count: first), resident_now: byte_size(count: first + bound + 1))
+  let shrank = regen_admit_generation_begin(ordinal: 3, resident_at_first: byte_size(count: first), resident_now: byte_size(count: 1000))
+  regen_generation_begin_admission_label(admission: regen_admit_generation_begin(ordinal: 1, resident_at_first: byte_size(count: first), resident_now: byte_size(count: first))) == "Admitted"
     && regen_generation_begin_admission_label(admission: at_bound) == "Admitted"
+    && regen_generation_begin_admission_label(admission: shrank) == "Admitted"
     && match over_bound {
       RegenGenerationBeginRefused { refusal: _ } => true
       RegenGenerationBeginAdmitted => false

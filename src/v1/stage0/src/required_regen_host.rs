@@ -2316,6 +2316,16 @@ mod tests {
              whose cost moves would print nothing again"
         );
 
+        // The liveness model is orchestration state, loaded before the generation begins -- and
+        // before the observer's clock below starts, so its load time is not charged to the child.
+        let liveness = SupervisedSubjectModel::load(
+            &["dag", "src/v2"]
+                .iter()
+                .map(|root| workspace_root().join(root).to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+        )
+        .expect("load the liveness model");
+
         // ONE: read the destination from another thread while the child is still running. The child
         // sleeps 6s after printing, so a line seen within 3s of the call starting is strictly before
         // the child can have exited -- which is the whole claim: the reader sees the child working.
@@ -2344,7 +2354,10 @@ mod tests {
                 stderr: stderr_path.clone(),
             },
             &temp,
-            GenerationSupervision::SlotStallVerdict { ordinal: 1 },
+            GenerationSupervision::SlotStallVerdict {
+                ordinal: 1,
+                model: &liveness,
+            },
         )
         .expect("spawn the fixture child");
         let observed_at = observer
@@ -3241,6 +3254,120 @@ impl RegenConvergenceModel {
             self.indices.clone(),
             crate::v1_interpreter::ExecutionMode::Hermetic,
         )
+    }
+}
+
+/// THE LIVENESS AUTHORITY, loaded once before generation 0 as orchestration state and asked at
+/// every supervisor sample: `gunbc.host.memory_stall_refusal`. The seed supplies the slot readings
+/// it observed and evaluates the authority's own window construction, verdict and texts -- the
+/// same route `regen_admit_generation_begin` takes through `RegenConvergenceModel` -- so no
+/// threshold, arm or rendering is restated in Rust.
+pub(crate) struct SupervisedSubjectModel {
+    graph: Rc<crate::v1_compiler_compile::ResolvedGraph>,
+    indices: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
+}
+
+impl SupervisedSubjectModel {
+    fn load(source_roots: &[String]) -> Result<Self, String> {
+        let entry = source_roots
+            .iter()
+            .map(|root| Path::new(root).join("gunbc/host/memory_stall_refusal.dag"))
+            .find(|path| path.is_file())
+            .ok_or_else(|| {
+                "refusal: the supervised-subject liveness model (gunbc.host.memory_stall_refusal) \
+                 is outside source roots"
+                    .to_string()
+            })?;
+        let index = super::process_shared_index_or_refuse(source_roots);
+        let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+            .map_err(|e| {
+                format!("refusal: the supervised-subject liveness model did not resolve: {e}")
+            })?;
+        Ok(Self { graph, indices })
+    }
+
+    /// One evaluation of the authority over the window between two slot readings: the window's own
+    /// line, and the refusal text when the verdict refuses. An authority that does not answer is a
+    /// refusal of the generation, never an admission.
+    fn judge(
+        &self,
+        base: &crate::memory_governor::SlotStallCounters,
+        now: &crate::memory_governor::SlotStallCounters,
+        wall_ms: u64,
+    ) -> Result<(String, Option<String>), String> {
+        use crate::v1_interpreter::{self, str_value, Value};
+        let ctx = super::make_eval_context(
+            &self.graph,
+            self.indices.clone(),
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+        );
+        let measure = |count: u64| Value::Record {
+            type_name: ctx.sym("Measure"),
+            fields: Rc::new(vec![(ctx.sym("count"), Value::Int(count as i64))]),
+        };
+        let reading = |c: &crate::memory_governor::SlotStallCounters| Value::Record {
+            type_name: ctx.sym("SupervisedSlotReading"),
+            fields: Rc::new(vec![
+                (ctx.sym("major_faults"), Value::Int(c.major_faults as i64)),
+                (ctx.sym("user_cpu"), measure(c.user_usec / 1000)),
+                (
+                    ctx.sym("envelope_events"),
+                    Value::Int(c.envelope_events as i64),
+                ),
+                (ctx.sym("pressure_body"), str_value(c.pressure_body.clone())),
+            ]),
+        };
+        let call = |name: &str, args: &[(Option<String>, Value)]| {
+            v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(&ctx, name, args, false)
+            })
+            .map_err(|e| {
+                format!("refusal: gunbc.host.memory_stall_refusal {name} did not answer: {e}")
+            })
+        };
+        let text = |v: Value| match &v {
+            Value::Str(s) => Ok(s.as_ref().to_string()),
+            other => Err(format!(
+                "refusal: the liveness model returned {} where it renders text",
+                other.type_label_public()
+            )),
+        };
+        let window = call(
+            "supervised_subject_window_between",
+            &[
+                (Some("base".to_string()), reading(base)),
+                (Some("now".to_string()), reading(now)),
+                (Some("wall".to_string()), measure(wall_ms)),
+            ],
+        )?;
+        let line = text(call(
+            "supervised_subject_window_text",
+            &[(Some("w".to_string()), window.clone())],
+        )?)?;
+        let verdict = call(
+            "supervised_subject_verdict",
+            &[(Some("w".to_string()), window)],
+        )?;
+        let refuses = match call(
+            "supervised_subject_verdict_refuses",
+            &[(Some("v".to_string()), verdict.clone())],
+        )? {
+            Value::Bool(b) => b,
+            other => {
+                return Err(format!(
+                    "refusal: supervised_subject_verdict_refuses returned {}",
+                    other.type_label_public()
+                ))
+            }
+        };
+        if !refuses {
+            return Ok((line, None));
+        }
+        let refusal = text(call(
+            "supervised_subject_refusal_text",
+            &[(Some("v".to_string()), verdict)],
+        )?)?;
+        Ok((line, Some(refusal)))
     }
 }
 
@@ -5525,6 +5652,7 @@ fn run_built_seed_regen(
     affected_scope: bool,
     admitted_executable_digest: &str,
     ordinal: usize,
+    liveness: &SupervisedSubjectModel,
 ) -> Result<FirstGenerationConvergenceObservation, String> {
     let receipt_path = workspace.join(receipt_rel);
     if receipt_path.exists() {
@@ -5578,7 +5706,10 @@ fn run_built_seed_regen(
         &argv,
         rebuilt_seed_regen_child_output_policy(),
         workspace,
-        GenerationSupervision::SlotStallVerdict { ordinal },
+        GenerationSupervision::SlotStallVerdict {
+            ordinal,
+            model: liveness,
+        },
     )?;
     // Drift makes --required-regen exit one after it has written the candidate and receipt. The
     // receipt, not the process code, distinguishes ordinary drift from a production refusal.
@@ -5653,7 +5784,7 @@ fn spawn_rebuilt_seed_regen_child(
     argv: &[String],
     output_policy: RebuiltSeedChildOutput,
     working_dir: &Path,
-    supervision: GenerationSupervision,
+    supervision: GenerationSupervision<'_>,
 ) -> Result<RebuiltSeedChildRun, String> {
     let (stdout_sink, stderr_sink): (
         Box<dyn std::io::Write + Send>,
@@ -5772,16 +5903,19 @@ fn spawn_rebuilt_seed_regen_child(
 
 /// HOW A GENERATION'S CHILD IS WATCHED WHILE IT RUNS.
 ///
-/// The authority is `gunbc.host.memory_stall_refusal` `supervised_subject_verdict` (seed mirror in
-/// `memory_governor`): a generation that emits no progress mark for the declared window while its
+/// The authority is `gunbc.host.memory_stall_refusal` `supervised_subject_verdict`, evaluated
+/// through `SupervisedSubjectModel` over readings `memory_governor` takes: a generation that emits no progress mark for the declared window while its
 /// slot shows memory-envelope evidence is refused and its process group ended, instead of holding
 /// under memory.high until the step timeout -- the srv3 heal ending, where a swapless slot produced
 /// neither an OOM kill nor swap for the exit-time envelope verdict to read. The supervisor is named
 /// for the subject it watches (a generation), not for heal's round 2, so another subject step under
 /// the same slot contract enrolls by supplying the same window.
-pub(crate) enum GenerationSupervision {
+pub(crate) enum GenerationSupervision<'a> {
     /// Production: read the slot counters from this process's own cgroup (the child inherits it).
-    SlotStallVerdict { ordinal: usize },
+    SlotStallVerdict {
+        ordinal: usize,
+        model: &'a SupervisedSubjectModel,
+    },
     /// Test seam: refuse after a fixed wall, so the teardown route is executed for real without a
     /// memory-starved slot.
     #[cfg(test)]
@@ -5892,15 +6026,12 @@ impl GenerationSupervisor {
 
     fn observe(
         &mut self,
+        model: &SupervisedSubjectModel,
         now: Instant,
         marks: u64,
         reading: crate::memory_governor::SlotStallReading,
     ) -> SupervisorStep {
-        use crate::memory_governor::{
-            supervised_subject_pressure_full_share_basis_points, supervised_subject_refusal_text,
-            supervised_subject_verdict, supervised_subject_verdict_refuses,
-            supervised_subject_window, SlotStallReading,
-        };
+        use crate::memory_governor::SlotStallReading;
         let heartbeat_due =
             now.saturating_duration_since(self.last_heartbeat) >= GENERATION_SUPERVISOR_HEARTBEAT;
         let elapsed_s = now.saturating_duration_since(self.begun).as_secs();
@@ -5929,28 +6060,27 @@ impl GenerationSupervisor {
         }
         let (since, base) = self.baseline.as_ref().expect("baseline set above");
         let wall_ms = now.saturating_duration_since(*since).as_millis() as u64;
-        let window = supervised_subject_window(base, &counters, wall_ms);
-        let share = supervised_subject_pressure_full_share_basis_points(&window.pressure)
-            .map(|bp| bp.to_string())
-            .unwrap_or_else(|| "unmeasurable".to_string());
-        let receipt = format!(
-            "progress_marks={marks} since_progress_ms={wall_ms} slot_memory_current={} \
-             psi_full_share_bp={share} envelope_events_in_window={} major_faults_in_window={} \
-             user_cpu_ms_in_window={}",
-            counters
-                .memory_current
-                .map(|b| b.to_string())
-                .unwrap_or_else(|| "unreadable".to_string()),
-            window.envelope_events_in_window,
-            window.since_progress.major_faults_in_window,
-            window.since_progress.self_user_cpu_ms_in_window,
-        );
-        let verdict = supervised_subject_verdict(window);
-        if supervised_subject_verdict_refuses(&verdict) {
+        let memory_current = counters
+            .memory_current
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".to_string());
+        let (window_line, refusal) = match model.judge(base, &counters, wall_ms) {
+            Ok(judged) => judged,
+            Err(failure) => {
+                return SupervisorStep::Refuse {
+                    refusal: format!(
+                        "{failure} [rebuilt-seed generation {} after {elapsed_s} s]",
+                        self.ordinal
+                    ),
+                }
+            }
+        };
+        let receipt =
+            format!("progress_marks={marks} slot_memory_current={memory_current} {window_line}");
+        if let Some(refusal) = refusal {
             return SupervisorStep::Refuse {
                 refusal: format!(
-                    "{} [rebuilt-seed generation {} after {elapsed_s} s; {receipt}]",
-                    supervised_subject_refusal_text(&verdict),
+                    "{refusal} [rebuilt-seed generation {} after {elapsed_s} s; {receipt}]",
                     self.ordinal
                 ),
             };
@@ -5984,12 +6114,12 @@ enum GenerationEnding {
 fn supervise_generation(
     child: &mut std::process::Child,
     progress: &std::sync::atomic::AtomicU64,
-    supervision: GenerationSupervision,
+    supervision: GenerationSupervision<'_>,
 ) -> GenerationEnding {
     let begun = Instant::now();
     let slot_dir = crate::memory_governor::leaf_cgroup_dir();
     let mut supervisor = match &supervision {
-        GenerationSupervision::SlotStallVerdict { ordinal } => {
+        GenerationSupervision::SlotStallVerdict { ordinal, .. } => {
             Some(GenerationSupervisor::new(*ordinal, begun))
         }
         #[cfg(test)]
@@ -6008,7 +6138,7 @@ fn supervise_generation(
         } else {
             next_sample = now + GENERATION_SUPERVISOR_SAMPLE;
             match (&supervision, supervisor.as_mut()) {
-                (GenerationSupervision::SlotStallVerdict { .. }, Some(supervisor)) => {
+                (GenerationSupervision::SlotStallVerdict { model, .. }, Some(supervisor)) => {
                     let reading = match slot_dir.as_deref() {
                         Some(dir) => crate::memory_governor::read_slot_stall_counters(dir),
                         None => crate::memory_governor::SlotStallReading::Unreadable {
@@ -6016,6 +6146,7 @@ fn supervise_generation(
                         },
                     };
                     match supervisor.observe(
+                        model,
                         now,
                         progress.load(std::sync::atomic::Ordering::SeqCst),
                         reading,
@@ -7657,6 +7788,7 @@ pub fn run_regen_round_cost(
     // below -- is loaded BEFORE generation 0, so the orchestrator's footprint at generation 0 is
     // the baseline every later transition is held to.
     let convergence_model = RegenConvergenceModel::load(source_roots)?;
+    let liveness_model = SupervisedSubjectModel::load(source_roots)?;
     let initial_seed_digest = current_exe_digest()?;
     let orchestrator_resident_at_first = admit_generation_begin(&convergence_model, 0, None)?;
     v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
@@ -7669,6 +7801,7 @@ pub fn run_regen_round_cost(
         affected_scope,
         &initial_seed_digest,
         0,
+        &liveness_model,
     );
     report_rebuilt_seed_regen_cgroup("end generation=0");
     v1_rt::trace_mark("round.built_seed_regen.done".to_string());
@@ -7753,6 +7886,7 @@ pub fn run_regen_round_cost(
                 affected_scope,
                 &current_seed_digest,
                 generation_ordinal,
+                &liveness_model,
             ) {
                 Ok(next) => {
                     candidate_digest = next.manifest.candidate_tree_digest.clone();
@@ -7940,6 +8074,7 @@ pub fn run_regen_round_cost(
             affected_scope,
             &current_seed_digest,
             generation_ordinal,
+            &liveness_model,
         );
         report_rebuilt_seed_regen_cgroup(&format!("end generation={generation_ordinal}"));
         v1_rt::trace_mark("round.built_seed_regen.done".to_string());
@@ -10981,6 +11116,14 @@ mod generation_supervisor_tests {
     use crate::memory_governor::{SlotStallCounters, SlotStallReading};
     use std::time::Duration;
 
+    fn liveness_model() -> SupervisedSubjectModel {
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|root| workspace_root().join(root).to_string_lossy().into_owned())
+            .collect();
+        SupervisedSubjectModel::load(&roots).expect("load gunbc.host.memory_stall_refusal")
+    }
+
     #[test]
     fn a_progress_mark_is_exactly_what_trace_mark_renders_for_a_phase_boundary() {
         for emoji in [true, false] {
@@ -11020,7 +11163,16 @@ mod generation_supervisor_tests {
             major_faults: faults,
             user_usec: user_ms * 1000,
             envelope_events: events,
-            psi_full_total_us: psi_full_ms.map(|ms| ms * 1000),
+            pressure_body: psi_full_ms
+                .map(|ms| {
+                    format!(
+                        "some avg10=0.00 avg60=0.00 avg300=0.00 total={}\n\
+                         full avg10=0.00 avg60=0.00 avg300=0.00 total={}\n",
+                        ms * 1000 + 5,
+                        ms * 1000
+                    )
+                })
+                .unwrap_or_default(),
             memory_current: Some(22_000_000_000),
         })
     }
@@ -11031,24 +11183,27 @@ mod generation_supervisor_tests {
     #[test]
     fn a_silent_generation_under_the_envelope_throttle_is_refused_after_the_window() {
         let t0 = Instant::now();
+        let model = liveness_model();
         let mut supervisor = GenerationSupervisor::new(1, t0);
         // A mark arrives at 60 s: the window is measured from here.
         assert!(matches!(
-            supervisor.observe(t0, 0, counters(0, 0, 0, Some(0))),
+            supervisor.observe(&model, t0, 0, counters(0, 0, 0, Some(0))),
             SupervisorStep::Continue { .. }
         ));
         let mark_at = t0 + Duration::from_secs(60);
         assert!(matches!(
-            supervisor.observe(mark_at, 1, counters(10, 50_000, 0, Some(1_000))),
+            supervisor.observe(&model, mark_at, 1, counters(10, 50_000, 0, Some(1_000))),
             SupervisorStep::Continue { .. }
         ));
-        let window = Duration::from_millis(
-            crate::memory_governor::SUPERVISED_SUBJECT_NO_PROGRESS_WINDOW_MINIMUM_WALL_MS,
-        );
+        // The authority's window (gunbc.host.memory_stall_refusal
+        // supervised_subject_no_progress_window_minimum_wall), supplied here as the reading it
+        // declares: fifteen minutes.
+        let window = Duration::from_secs(15 * 60);
         let wall_ms = window.as_millis() as u64;
         // One second short of the window: still progressing, however bad the counters.
         assert!(matches!(
             supervisor.observe(
+                &model,
                 mark_at + window - Duration::from_secs(1),
                 1,
                 counters(10, 50_000, 900, Some(1_000 + wall_ms))
@@ -11056,6 +11211,7 @@ mod generation_supervisor_tests {
             SupervisorStep::Continue { .. }
         ));
         match supervisor.observe(
+            &model,
             mark_at + window,
             1,
             counters(10, 50_000, 412, Some(1_000 + wall_ms * 8 / 10)),
@@ -11081,11 +11237,13 @@ mod generation_supervisor_tests {
     #[test]
     fn a_generation_that_keeps_marking_is_never_judged_on_its_counters() {
         let t0 = Instant::now();
+        let model = liveness_model();
         let mut supervisor = GenerationSupervisor::new(2, t0);
-        let _ = supervisor.observe(t0, 0, counters(0, 0, 0, Some(0)));
+        let _ = supervisor.observe(&model, t0, 0, counters(0, 0, 0, Some(0)));
         for minute in 1..=40u64 {
             let at = t0 + Duration::from_secs(minute * 60);
             let step = supervisor.observe(
+                &model,
                 at,
                 minute / 5,
                 counters(minute * 100_000, 0, minute * 1000, Some(minute * 60_000)),
@@ -11102,15 +11260,16 @@ mod generation_supervisor_tests {
     #[test]
     fn an_unreadable_slot_is_reported_unsupervised_not_admitted_as_healthy() {
         let t0 = Instant::now();
+        let model = liveness_model();
         let mut supervisor = GenerationSupervisor::new(1, t0);
         let unreadable = || SlotStallReading::Unreadable {
             cause: "read /sys/fs/cgroup/x/memory.stat: No such file or directory".to_string(),
         };
         assert!(matches!(
-            supervisor.observe(t0, 0, unreadable()),
+            supervisor.observe(&model, t0, 0, unreadable()),
             SupervisorStep::Continue { heartbeat: None }
         ));
-        match supervisor.observe(t0 + Duration::from_secs(3600), 0, unreadable()) {
+        match supervisor.observe(&model, t0 + Duration::from_secs(3600), 0, unreadable()) {
             SupervisorStep::Continue {
                 heartbeat: Some(line),
             } => assert!(line.contains("supervision=unavailable"), "{line}"),

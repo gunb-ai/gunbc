@@ -1,6 +1,7 @@
 module v2.workflow.regen_convergence_transaction
 
 import std.types { Bool, Int, List, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
 
 // A convergence transaction promotes generated surfaces through buildable seed states. The three axes below are deliberately independent: being compiled into the seed does not make a surface a producer of the next generation, and sharing a crate partition does not prove that a compatibility cut is complete.
 type RegenGenerationRole
@@ -110,9 +111,9 @@ type RegenConvergenceRefusal
   | GenerationBoundExceeded { bound: Int }
   | GenerationStateRetainedByOrchestrator {
       ordinal: Int
-      resident_at_first_bytes: Int
-      resident_now_bytes: Int
-      growth_bound_bytes: Int
+      resident_at_first: ByteSize
+      resident_now: ByteSize
+      growth_bound: ByteSize
     }
   | FinalRegenerationStillDrifts { surfaces: List<RegenSurfaceIdentity> }
   | FinalRustConsistencyInstrumentRefused { reason: String }
@@ -641,8 +642,8 @@ fn regen_convergence_refusal_detail(refusal: RegenConvergenceRefusal) -> String 
     GenerationCycleDetected { seed_digest: seed, candidate_tree_digest: tree } =>
       concat("GenerationCycleDetected seed_digest=", concat(seed, concat(" candidate_tree_digest=", tree)))
     GenerationBoundExceeded { bound: bound } => concat("GenerationBoundExceeded bound=", to_string(bound))
-    GenerationStateRetainedByOrchestrator { ordinal: ordinal, resident_at_first_bytes: first, resident_now_bytes: now, growth_bound_bytes: bound } =>
-      concat("GenerationStateRetainedByOrchestrator ordinal=", concat(to_string(ordinal), concat(" orchestrator_resident_at_first_generation=", concat(to_string(first), concat(" orchestrator_resident_now=", concat(to_string(now), concat(" growth_bound=", to_string(bound))))))))
+    GenerationStateRetainedByOrchestrator { ordinal: ordinal, resident_at_first: first, resident_now: now, growth_bound: bound } =>
+      concat("GenerationStateRetainedByOrchestrator ordinal=", concat(to_string(ordinal), concat(" orchestrator_resident_bytes_at_first_generation=", concat(to_string(byte_size_count(b: first)), concat(" orchestrator_resident_bytes_now=", concat(to_string(byte_size_count(b: now)), concat(" growth_bound_bytes=", to_string(byte_size_count(b: bound)))))))))
     FinalRegenerationStillDrifts { surfaces: surfaces } =>
       concat("FinalRegenerationStillDrifts surfaces=[", concat(regen_surface_identity_text_list(rows: surfaces), "]"))
     FinalRustConsistencyInstrumentRefused { reason: reason } => concat("FinalRustConsistencyInstrumentRefused reason=", reason)
@@ -1130,7 +1131,7 @@ fn regen_admit_generation_progress(
 // prints it at every transition, and an absolute ceiling is that receipt's to set.
 // POLICY: one GiB of growth, about a tenth of the ~10 GB a generation adds to its slot
 // (the srv4 receipts above), so a generation-sized retention cannot hide under it.
-data regen_orchestrator_resident_growth_bound_bytes: Int = 1073741824
+data regen_orchestrator_resident_growth_bound: ByteSize = byte_size(count: 1073741824)
 
 type RegenGenerationBeginAdmission
   = RegenGenerationBeginAdmitted
@@ -1138,16 +1139,18 @@ type RegenGenerationBeginAdmission
 
 fn regen_admit_generation_begin(
   ordinal: Int,
-  resident_at_first_bytes: Int,
-  resident_now_bytes: Int
+  resident_at_first: ByteSize,
+  resident_now: ByteSize
 ) -> RegenGenerationBeginAdmission {
-  if resident_now_bytes - resident_at_first_bytes > regen_orchestrator_resident_growth_bound_bytes {
+  let first = byte_size_count(b: resident_at_first)
+  let now = byte_size_count(b: resident_now)
+  if now > first && now - first > byte_size_count(b: regen_orchestrator_resident_growth_bound) {
     RegenGenerationBeginRefused {
       refusal: GenerationStateRetainedByOrchestrator {
         ordinal: ordinal,
-        resident_at_first_bytes: resident_at_first_bytes,
-        resident_now_bytes: resident_now_bytes,
-        growth_bound_bytes: regen_orchestrator_resident_growth_bound_bytes
+        resident_at_first: resident_at_first,
+        resident_now: resident_now,
+        growth_bound: regen_orchestrator_resident_growth_bound
       }
     }
   } else {

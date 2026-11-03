@@ -3,7 +3,7 @@ module gunbc.host.memory_stall_refusal
 import std.types { Int, String, NonEmptyStr, Bool }
 import std.disposition { Disposition, Terminal }
 import extdeps.linux.procfs { ProcSelfStat, procfs_path_literal }
-import extdeps.linux.psi { PsiStallInterval, PsiStallMeasured, PsiStallUnmeasurable }
+import extdeps.linux.psi { PsiStallInterval, PsiStallMeasured, PsiStallUnmeasurable, parse_psi, psi_full_stall_interval }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.measure {
@@ -16,6 +16,7 @@ import std.measure {
   BasisPoint,
   basis_point,
   basis_point_count,
+  microsecond,
   microsecond_count,
 }
 
@@ -448,5 +449,76 @@ fn supervised_subject_page_thrash_clause(v: MemoryStallVerdict) -> String {
         to_string(basis_point_count(bp: cpu_floor) / 100),
         "%; cgroup memory.stat pgmajfault and cpu.stat user_usec).",
       ], "")
+  }
+}
+
+// ── THE HOST'S READINGS, AND THE WINDOW BETWEEN TWO OF THEM ────────────────────────────────────
+//
+// What the observer reads from the slot's cgroup, supplied exactly as read: the major-fault and
+// user-CPU counters (memory.stat pgmajfault, cpu.stat user_usec), the envelope-event count
+// (memory.events high + max), and the memory.pressure file's body uncut -- the empty string where
+// the file does not exist, which parse_psi answers as unparseable rather than as zero pressure.
+// Every one is cumulative and slot-wide, so a window is the difference of two readings; the
+// construction lives here so the seed supplies readings and never restates the verdict's inputs.
+type SupervisedSlotReading = SupervisedSlotReading {
+  major_faults: Int,
+  user_cpu: Millisecond,
+  envelope_events: Int,
+  pressure_body: String,
+}
+
+// A cumulative counter that went backwards was reset (a cgroup recreated under the same path); the
+// pair then measured no events, never a negative count.
+fn supervised_counter_delta(before: Int, now: Int) -> Int {
+  if now < before { 0 } else { now - before }
+}
+
+fn supervised_subject_window_between(base: SupervisedSlotReading, now: SupervisedSlotReading, wall: Millisecond) -> SupervisedSubjectWindow {
+  let cpu_before = millisecond_count(m: base.user_cpu)
+  let cpu_now = millisecond_count(m: now.user_cpu)
+  SupervisedSubjectWindow {
+    since_progress: MemoryStallObservation {
+      window_wall: wall,
+      major_faults_in_window: supervised_counter_delta(before: base.major_faults, now: now.major_faults),
+      self_user_cpu_in_window: millisecond(count: if cpu_now < cpu_before { 0 } else { cpu_now - cpu_before }),
+      cache_evictions_in_window: 0,
+      cache_readmissions_in_window: 0,
+    },
+    pressure: psi_full_stall_interval(
+      before: parse_psi(body: base.pressure_body),
+      after: parse_psi(body: now.pressure_body),
+      window: microsecond(count: millisecond_count(m: wall) * 1000)
+    ),
+    envelope_events_in_window: supervised_counter_delta(before: base.envelope_events, now: now.envelope_events),
+  }
+}
+
+// The window as one line, for the observer's heartbeat and for the refusal's receipt: one
+// rendering, so the two can never describe the same window differently.
+fn supervised_subject_window_text(w: SupervisedSubjectWindow) -> String {
+  match w {
+    SupervisedSubjectWindow { since_progress: o, pressure: p, envelope_events_in_window: e } => match o {
+      MemoryStallObservation {
+        window_wall: wall,
+        major_faults_in_window: faults,
+        self_user_cpu_in_window: cpu,
+        cache_evictions_in_window: _,
+        cache_readmissions_in_window: _,
+      } =>
+        join([
+          "since_progress_ms=", to_string(millisecond_count(m: wall)),
+          " psi_full_share_bp=",
+          match supervised_subject_pressure_full_share(p: p) {
+            Present { value: share } => to_string(basis_point_count(bp: share))
+            Absent => match p {
+              PsiStallMeasured { stalled: _, window: _ } => "unmeasurable"
+              PsiStallUnmeasurable { cause: c } => concat("unmeasurable(", concat(c as String, ")"))
+            }
+          },
+          " envelope_events_in_window=", to_string(e),
+          " major_faults_in_window=", to_string(faults),
+          " user_cpu_ms_in_window=", to_string(millisecond_count(m: cpu)),
+        ], "")
+    }
   }
 }

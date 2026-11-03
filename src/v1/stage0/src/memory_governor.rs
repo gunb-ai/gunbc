@@ -1035,221 +1035,12 @@ pub fn memory_stall_refusal_pressure_text(v: &MemoryStallVerdict) -> String {
     }
 }
 
-/// SEED MIRROR of `gunbc.host.memory_stall_refusal` `supervised_subject_no_progress_window_minimum_wall`:
-/// how long a supervised subject may go without a progress mark before its memory evidence is
-/// judged at all. Policy, grounded in the measured healthy heal round-2 gaps the authority row
-/// cites (longest 298-319 s); fifteen minutes is about three times that.
-pub const SUPERVISED_SUBJECT_NO_PROGRESS_WINDOW_MINIMUM_WALL_MS: u64 = 900_000;
-
-/// SEED MIRROR of `gunbc.host.memory_stall_refusal`
-/// `supervised_subject_envelope_pressure_full_share_floor`: the slot's PSI `full` share of the
-/// window at or above which, with an envelope event in the same window, a silent subject refuses.
-pub const SUPERVISED_SUBJECT_ENVELOPE_PRESSURE_FULL_SHARE_FLOOR_BASIS_POINTS: u64 = 5000;
-
-/// Seed mirror of `extdeps.linux.psi` `PsiStallInterval`: a stall over an interval is the delta of
-/// two cumulative `full` totals, or a typed reason it could not be taken.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PsiStallInterval {
-    Measured { stalled_us: u64, window_us: u64 },
-    Unmeasurable { cause: String },
-}
-
-/// Mirror of `extdeps.linux.psi` `psi_full_stall_interval` over the two `full` totals (already
-/// parsed; `None` is an absent `full` line or an unreadable file).
-pub fn psi_full_stall_interval(
-    before_full_total_us: Option<u64>,
-    after_full_total_us: Option<u64>,
-    window_us: u64,
-) -> PsiStallInterval {
-    match (before_full_total_us, after_full_total_us) {
-        (None, _) => PsiStallInterval::Unmeasurable {
-            cause: "the `full` line is absent from the before reading".to_string(),
-        },
-        (_, None) => PsiStallInterval::Unmeasurable {
-            cause: "the `full` line is absent from the after reading".to_string(),
-        },
-        (Some(b), Some(a)) if a < b => PsiStallInterval::Unmeasurable {
-            cause:
-                "the cumulative `full` total went backwards; the counter was reset between readings"
-                    .to_string(),
-        },
-        (Some(_), Some(_)) if window_us == 0 => PsiStallInterval::Unmeasurable {
-            cause: "a zero-length window measures no stall fraction".to_string(),
-        },
-        (Some(b), Some(a)) => PsiStallInterval::Measured {
-            stalled_us: a - b,
-            window_us,
-        },
-    }
-}
-
-/// The cumulative `total=` of the `full` line of a PSI file (Documentation/accounting/psi.rst:
-/// two lines, `some` and `full`, each `avg10=A avg60=B avg300=C total=T`, T in microseconds).
-pub fn psi_full_total_us(content: &str) -> Option<u64> {
-    content
-        .lines()
-        .find(|l| l.split_whitespace().next() == Some("full"))?
-        .split_whitespace()
-        .find_map(|t| t.strip_prefix("total="))?
-        .parse()
-        .ok()
-}
-
-/// Seed mirror of `gunbc.host.memory_stall_refusal` `SupervisedSubjectWindow`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SupervisedSubjectWindow {
-    pub since_progress: MemoryStallObservation,
-    pub pressure: PsiStallInterval,
-    pub envelope_events_in_window: u64,
-}
-
-/// Seed mirror of `gunbc.host.memory_stall_refusal` `SupervisedSubjectVerdict`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SupervisedSubjectVerdict {
-    Progressing {
-        since_progress_wall_ms: u64,
-        minimum_wall_ms: u64,
-    },
-    SilentWithoutEnvelopeEvidence {
-        since_progress_wall_ms: u64,
-        pressure: PsiStallInterval,
-        envelope_events_in_window: u64,
-        page_thrash: MemoryStallVerdict,
-    },
-    RefusedEnvelopeThrottle {
-        since_progress_wall_ms: u64,
-        pressure_full_share_basis_points: u64,
-        pressure_full_share_floor_basis_points: u64,
-        envelope_events_in_window: u64,
-    },
-    RefusedPageThrash {
-        since_progress_wall_ms: u64,
-        page_thrash: MemoryStallVerdict,
-    },
-}
-
-/// Mirror of `supervised_subject_pressure_full_share`.
-pub fn supervised_subject_pressure_full_share_basis_points(p: &PsiStallInterval) -> Option<u64> {
-    match p {
-        PsiStallInterval::Measured {
-            stalled_us,
-            window_us,
-        } => Some(stalled_us.saturating_mul(10_000) / (*window_us).max(1)),
-        PsiStallInterval::Unmeasurable { .. } => None,
-    }
-}
-
-fn supervised_subject_page_thrash_or_silent(
-    w: SupervisedSubjectWindow,
-) -> SupervisedSubjectVerdict {
-    let wall = w.since_progress.window_wall_ms;
-    let thrash = memory_stall_verdict(w.since_progress);
-    if matches!(thrash, MemoryStallVerdict::StallRefusedPageThrash { .. }) {
-        SupervisedSubjectVerdict::RefusedPageThrash {
-            since_progress_wall_ms: wall,
-            page_thrash: thrash,
-        }
-    } else {
-        SupervisedSubjectVerdict::SilentWithoutEnvelopeEvidence {
-            since_progress_wall_ms: wall,
-            pressure: w.pressure,
-            envelope_events_in_window: w.envelope_events_in_window,
-            page_thrash: thrash,
-        }
-    }
-}
-
-/// Mirror of `gunbc.host.memory_stall_refusal` `supervised_subject_verdict`: semantic progress
-/// first; then the throttle arm (PSI full share at the floor AND an envelope event); then the
-/// page-thrash verdict over the slot's counters; otherwise a silent window admits.
-pub fn supervised_subject_verdict(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdict {
-    let wall = w.since_progress.window_wall_ms;
-    if wall < SUPERVISED_SUBJECT_NO_PROGRESS_WINDOW_MINIMUM_WALL_MS {
-        return SupervisedSubjectVerdict::Progressing {
-            since_progress_wall_ms: wall,
-            minimum_wall_ms: SUPERVISED_SUBJECT_NO_PROGRESS_WINDOW_MINIMUM_WALL_MS,
-        };
-    }
-    match supervised_subject_pressure_full_share_basis_points(&w.pressure) {
-        Some(share)
-            if share >= SUPERVISED_SUBJECT_ENVELOPE_PRESSURE_FULL_SHARE_FLOOR_BASIS_POINTS
-                && w.envelope_events_in_window > 0 =>
-        {
-            SupervisedSubjectVerdict::RefusedEnvelopeThrottle {
-                since_progress_wall_ms: wall,
-                pressure_full_share_basis_points: share,
-                pressure_full_share_floor_basis_points:
-                    SUPERVISED_SUBJECT_ENVELOPE_PRESSURE_FULL_SHARE_FLOOR_BASIS_POINTS,
-                envelope_events_in_window: w.envelope_events_in_window,
-            }
-        }
-        _ => supervised_subject_page_thrash_or_silent(w),
-    }
-}
-
-/// Mirror of `supervised_subject_verdict_refuses`.
-pub fn supervised_subject_verdict_refuses(v: &SupervisedSubjectVerdict) -> bool {
-    matches!(
-        v,
-        SupervisedSubjectVerdict::RefusedEnvelopeThrottle { .. }
-            | SupervisedSubjectVerdict::RefusedPageThrash { .. }
-    )
-}
-
-/// Mirror of `supervised_subject_refusal_text` (and its page-thrash clause): empty for the
-/// non-refusing arms, the observed readings attributed to the slot for the two refusals.
-pub fn supervised_subject_refusal_text(v: &SupervisedSubjectVerdict) -> String {
-    match v {
-        SupervisedSubjectVerdict::Progressing { .. }
-        | SupervisedSubjectVerdict::SilentWithoutEnvelopeEvidence { .. } => String::new(),
-        SupervisedSubjectVerdict::RefusedEnvelopeThrottle {
-            since_progress_wall_ms,
-            pressure_full_share_basis_points,
-            pressure_full_share_floor_basis_points,
-            envelope_events_in_window,
-        } => format!(
-            "MemoryStallRefusedEnvelopeThrottle: the subject made no progress for \
-             {since_progress_wall_ms} ms while every non-idle task in its slot was stalled on \
-             memory for {}% of that wall (cgroup memory.pressure full; floor {}%) and the slot \
-             crossed its memory envelope {envelope_events_in_window} time(s) (memory.events high \
-             + max). The slot is holding the subject under its memory.high throttle below \
-             memory.max: with swap refused there is no OOM kill and no swap to end the run, so \
-             it would hold until the step timeout. Refusing rather than holding.",
-            pressure_full_share_basis_points / 100,
-            pressure_full_share_floor_basis_points / 100,
-        ),
-        SupervisedSubjectVerdict::RefusedPageThrash {
-            since_progress_wall_ms,
-            page_thrash,
-        } => {
-            let clause = match page_thrash {
-                MemoryStallVerdict::StallRefusedPageThrash {
-                    major_faults_per_minute,
-                    threshold_per_minute,
-                    self_cpu_share_basis_points,
-                    cpu_share_floor_basis_points,
-                    ..
-                } => format!(
-                    "refaulted at {major_faults_per_minute} major faults/minute (line \
-                     {threshold_per_minute}) while computing for {}% of the wall (floor {}%; \
-                     cgroup memory.stat pgmajfault and cpu.stat user_usec).",
-                    self_cpu_share_basis_points / 100,
-                    cpu_share_floor_basis_points / 100,
-                ),
-                _ => String::new(),
-            };
-            format!(
-                "MemoryStallRefusedPageThrash: the subject made no progress for \
-                 {since_progress_wall_ms} ms while its slot {clause} Refusing rather than holding."
-            )
-        }
-    }
-}
-
-/// ONE READING OF THE SLOT'S CUMULATIVE COUNTERS, taken by an observer outside the subject. Every
-/// field is cgroup-wide (the subject shares its cgroup with whatever spawned it), so a window is
-/// always the DIFFERENCE of two readings. The four the verdict needs are required together: a
-/// reading missing any of them is `SlotStallReading::Unreadable`, never a zero.
+/// ONE READING OF A SLOT'S CUMULATIVE COUNTERS, taken by an observer outside the subject and
+/// supplied, as read, to `gunbc.host.memory_stall_refusal` `SupervisedSlotReading`. This is host
+/// observation only: the window between two readings, the PSI parse, the verdict and every line it
+/// prints are the authority's (`supervised_subject_window_between` and the fns after it), evaluated
+/// by the seed through the interpreter -- nothing here restates them. The three counters are
+/// required together: a reading missing any is `SlotStallReading::Unreadable`, never a zero.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlotStallCounters {
     /// `memory.stat` `pgmajfault`.
@@ -1258,9 +1049,9 @@ pub struct SlotStallCounters {
     pub user_usec: u64,
     /// `memory.events` `high` + `max`.
     pub envelope_events: u64,
-    /// `memory.pressure` `full` `total=`; `None` where PSI is absent -- the throttle arm is then
-    /// unmeasurable and the page-thrash arm still judges.
-    pub psi_full_total_us: Option<u64>,
+    /// `memory.pressure`, uncut; empty when the file is absent, which the authority's `parse_psi`
+    /// answers as unparseable rather than as zero pressure.
+    pub pressure_body: String,
     /// `memory.current`, for the heartbeat only.
     pub memory_current: Option<u64>,
 }
@@ -1285,40 +1076,13 @@ pub fn read_slot_stall_counters(dir: &Path) -> SlotStallReading {
             user_usec: field("cpu.stat", "user_usec")?,
             envelope_events: field("memory.events", "high")?
                 .saturating_add(field("memory.events", "max")?),
-            psi_full_total_us: read("memory.pressure")
-                .ok()
-                .and_then(|body| psi_full_total_us(&body)),
+            pressure_body: read("memory.pressure").unwrap_or_default(),
             memory_current: read_cgroup_u64(dir, "memory.current"),
         })
     })();
     match counters {
         Ok(c) => SlotStallReading::Read(c),
         Err(cause) => SlotStallReading::Unreadable { cause },
-    }
-}
-
-/// The window between two readings of one slot, `wall_ms` apart. Counters that went backwards
-/// (a cgroup recreated under the same path) saturate to zero for the fault and CPU deltas; the
-/// PSI interval types its own reset.
-pub fn supervised_subject_window(
-    base: &SlotStallCounters,
-    now: &SlotStallCounters,
-    wall_ms: u64,
-) -> SupervisedSubjectWindow {
-    SupervisedSubjectWindow {
-        since_progress: MemoryStallObservation {
-            window_wall_ms: wall_ms,
-            major_faults_in_window: now.major_faults.saturating_sub(base.major_faults),
-            self_user_cpu_ms_in_window: now.user_usec.saturating_sub(base.user_usec) / 1000,
-            cache_evictions_in_window: 0,
-            cache_readmissions_in_window: 0,
-        },
-        pressure: psi_full_stall_interval(
-            base.psi_full_total_us,
-            now.psi_full_total_us,
-            wall_ms.saturating_mul(1000),
-        ),
-        envelope_events_in_window: now.envelope_events.saturating_sub(base.envelope_events),
     }
 }
 
@@ -3475,137 +3239,5 @@ mod tests {
         assert_eq!(decision, CgroupBindDecision::NotRequested);
         assert!(cgroup_bind_refusal_diagnostic(&decision).is_none());
         assert!(cgroup_bind_note(&decision).contains("not requested"));
-    }
-}
-
-/// PARITY WITH THE AUTHORITY'S OWN FIXTURES (`test.claim.host.memory_stall_refusal_witness`, the
-/// supervised-subject block): the same windows, the same answers.
-#[cfg(test)]
-mod supervised_subject_mirror_tests {
-    use super::*;
-
-    fn silent_wall_ms() -> u64 {
-        SUPERVISED_SUBJECT_NO_PROGRESS_WINDOW_MINIMUM_WALL_MS + 1
-    }
-
-    fn quiet(wall_ms: u64) -> MemoryStallObservation {
-        MemoryStallObservation {
-            window_wall_ms: wall_ms,
-            major_faults_in_window: 0,
-            self_user_cpu_ms_in_window: 0,
-            cache_evictions_in_window: 0,
-            cache_readmissions_in_window: 0,
-        }
-    }
-
-    fn full(share_bp: u64, wall_ms: u64) -> PsiStallInterval {
-        PsiStallInterval::Measured {
-            stalled_us: wall_ms * share_bp / 10,
-            window_us: wall_ms * 1000,
-        }
-    }
-
-    fn window(o: MemoryStallObservation, p: PsiStallInterval, e: u64) -> SupervisedSubjectWindow {
-        SupervisedSubjectWindow {
-            since_progress: o,
-            pressure: p,
-            envelope_events_in_window: e,
-        }
-    }
-
-    #[test]
-    fn red_a_silent_subject_under_the_envelope_throttle_refuses() {
-        let v = supervised_subject_verdict(window(
-            quiet(silent_wall_ms()),
-            full(8000, silent_wall_ms()),
-            412,
-        ));
-        assert!(supervised_subject_verdict_refuses(&v));
-        let text = supervised_subject_refusal_text(&v);
-        assert!(
-            text.starts_with("MemoryStallRefusedEnvelopeThrottle"),
-            "{text}"
-        );
-        assert!(text.contains("80% of that wall"), "{text}");
-        assert!(text.contains("412 time(s)"), "{text}");
-    }
-
-    #[test]
-    fn a_recent_progress_mark_admits_whatever_the_pressure() {
-        let wall = SUPERVISED_SUBJECT_NO_PROGRESS_WINDOW_MINIMUM_WALL_MS - 1;
-        assert!(matches!(
-            supervised_subject_verdict(window(quiet(wall), full(10_000, wall), 100_000)),
-            SupervisedSubjectVerdict::Progressing { since_progress_wall_ms, .. } if since_progress_wall_ms == wall
-        ));
-    }
-
-    #[test]
-    fn each_throttle_half_alone_admits_and_the_floor_is_tight() {
-        let w = silent_wall_ms();
-        assert!(!supervised_subject_verdict_refuses(
-            &supervised_subject_verdict(window(quiet(w), full(9000, w), 0))
-        ));
-        assert!(!supervised_subject_verdict_refuses(
-            &supervised_subject_verdict(window(quiet(w), full(100, w), 5000))
-        ));
-        let floor = SUPERVISED_SUBJECT_ENVELOPE_PRESSURE_FULL_SHARE_FLOOR_BASIS_POINTS;
-        assert!(supervised_subject_verdict_refuses(
-            &supervised_subject_verdict(window(quiet(w), full(floor, w), 1))
-        ));
-        assert!(!supervised_subject_verdict_refuses(
-            &supervised_subject_verdict(window(quiet(w), full(floor - 1, w), 1))
-        ));
-    }
-
-    #[test]
-    fn without_psi_the_page_thrash_arm_still_refuses_and_silence_alone_admits() {
-        let w = silent_wall_ms();
-        let unmeasured = || PsiStallInterval::Unmeasurable {
-            cause: "memory.pressure is absent".to_string(),
-        };
-        let thrash = supervised_subject_verdict(window(
-            MemoryStallObservation {
-                window_wall_ms: w,
-                major_faults_in_window: w / 6,
-                self_user_cpu_ms_in_window: w / 50,
-                cache_evictions_in_window: 0,
-                cache_readmissions_in_window: 0,
-            },
-            unmeasured(),
-            0,
-        ));
-        assert!(matches!(
-            thrash,
-            SupervisedSubjectVerdict::RefusedPageThrash { .. }
-        ));
-        let text = supervised_subject_refusal_text(&thrash);
-        assert!(
-            text.starts_with("MemoryStallRefusedPageThrash") && text.contains("pgmajfault"),
-            "{text}"
-        );
-        let silence = supervised_subject_verdict(window(quiet(w * 4), unmeasured(), 0));
-        assert!(!supervised_subject_verdict_refuses(&silence));
-        assert_eq!(supervised_subject_refusal_text(&silence), "");
-    }
-
-    #[test]
-    fn the_psi_reader_takes_the_full_total_and_the_interval_types_a_reset() {
-        let body = "some avg10=0.00 avg60=0.00 avg300=0.00 total=1200\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=900\n";
-        assert_eq!(psi_full_total_us(body), Some(900));
-        assert_eq!(
-            psi_full_total_us("some avg10=0.00 avg60=0.00 avg300=0.00 total=1200\n"),
-            None
-        );
-        assert!(matches!(
-            psi_full_stall_interval(Some(900), Some(100), 1000),
-            PsiStallInterval::Unmeasurable { .. }
-        ));
-        assert_eq!(
-            psi_full_stall_interval(Some(100), Some(900), 1000),
-            PsiStallInterval::Measured {
-                stalled_us: 800,
-                window_us: 1000
-            }
-        );
     }
 }
