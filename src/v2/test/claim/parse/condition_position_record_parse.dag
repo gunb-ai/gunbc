@@ -3,6 +3,7 @@ module v2.test.claim.parse.condition_position_record_parse
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_module_prepared, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.compilers.lexing { token_stream_all }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
@@ -138,38 +139,38 @@ data newline_minus_after_if_source: String = "module probe.nl_minus\n\nfn probe_
 
 fn newline_minus_after_if_parses() -> Bool { g_parse_accepted(text: newline_minus_after_if_source, file: ^nl_minus_probe) }
 
-// SITE DIAGNOSTICS (temporary; cc2-15695c-acb4 measured newline_minus_after_if_parses_holds
-// FAIL at acb4c89c -- the text refuses somewhere, and the engine datum says the infix guard
-// CANNOT abort (parse_expr_infix_continue: guard-reject ends the table cleanly). These arms
-// localize the refusing site; the battery collapses to one assertion once the site is known.)
-// D1: the if-block form alone -- does the if production stop at its block when the NEXT line
-// starts with `-`?
-data nl_minus_if_only_source: String = "module probe.nl_minus_if\n\nfn probe_nl(c: Bool, x: Int, y: Int) -> Int {\n  if c { x }\n -y\n}\n"
-
-fn nl_minus_if_block_form_parses() -> Bool {
-  match g_parse_at_production(text: nl_minus_if_only_source, file: ^nl_minus_if_probe, production: ^dag_production_if_expr) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
-// D2: the condition alone -- does the condition chain stop at `c` (bare) on this text?
-fn nl_minus_condition_is_bare_c() -> Bool {
-  match g_parse_at_production(text: nl_minus_if_only_source, file: ^nl_minus_if_probe, production: ^dag_production_condition_expr) {
-    Absent => false
-    Present { value: cond } => g_count_production(root: cond, emitted: ^dag_surface_primary_expr) == 1
-  }
-}
-
-// D3: a unary-minus statement with no if at all -- is the statement itself admissible?
+// SITE BATTERY (transient instrument -- it collapses to the single executed assertion on the
+// newline claim before landing; it is a measurement, not a landed artifact). Two executed
+// measurements conflict on this text (cc2-15695c at 7d5d0d02: the reason-level refusal claim
+// failed, consistent with the text PARSING; cc2-15695c-acb4 at acb4c89c: the parse claim failed,
+// consistent with the text REFUSING) on grammars identical for this text. The battery localizes
+// the behavior at module level (the production-level route is NOT equivalent: parse_production_-
+// prepared takes a bare List<Token>, a stream that carries no source cannot answer AfterLineBreak
+// -- LayoutUnknownWithoutSource -- so guard behavior there is a different route and measures
+// nothing about this text).
+// A1: the dual-role minus with NO if at all -- does `x` newline `-y` parse?
 data unary_stmt_only_source: String = "module probe.unary_only\n\nfn probe_u(x: Int, y: Int) -> Int {\n  x\n -y\n}\n"
 
 fn unary_minus_statement_parses() -> Bool { g_parse_accepted(text: unary_stmt_only_source, file: ^unary_only_probe) }
 
-// D4: newline statement tail WITHOUT minus -- isolates the minus from the line break.
+// A2: the full text refuses carrying the guard's reason (the seed's behavior, per the guard's
+// own comment: the refusal is raised AT the line-break `-`).
+fn newline_minus_refuses_with_guard_reason() -> Bool {
+  match g_tokenize_parse(text: newline_minus_after_if_source, file: ^nl_minus_probe) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == "NewlineBeforeDualRoleOperator"
+  }
+}
+
+// A3: newline statement tail WITHOUT minus -- isolates the minus from the line break.
 data newline_tail_no_minus_source: String = "module probe.nl_tail\n\nfn probe_nl(c: Bool, x: Int, y: Int) -> Int {\n  if c { x }\n y\n}\n"
 
 fn newline_tail_without_minus_parses() -> Bool { g_parse_accepted(text: newline_tail_no_minus_source, file: ^nl_tail_probe) }
+
+// A4: same-line minus is subtraction (guard admits) -- the lexing control.
+data same_line_minus_source: String = "module probe.same_line_minus\n\nfn probe_m(x: Int, y: Int) -> Int {\n  x - y\n}\n"
+
+fn same_line_minus_parses() -> Bool { g_parse_accepted(text: same_line_minus_source, file: ^same_line_minus_probe) }
 
 fn labeled_call_block_condition_still_parses() -> Bool { g_parse_accepted(text: labeled_call_block_condition_source, file: ^cond_labeled_call_probe) }
 
@@ -206,7 +207,7 @@ fn g_parse_at_production(text: String, file: Symbol, production: Symbol) -> Opti
             PreparedVoidGrammar => Absent
             PreparedModeled { modeled: modeled } =>
               match parse_production_prepared(
-                tokens: token_stream,
+                tokens: token_stream_all(stream: token_stream),
                 validated: modeled.validated,
                 analysis: modeled.analysis,
                 production_name: production
@@ -293,13 +294,13 @@ test fn dotcond_with_tail_parses_holds() -> Bool { dotcond_with_tail_parses() }
 
 test fn newline_minus_after_if_parses_holds() -> Bool { newline_minus_after_if_parses() }
 
-test fn nl_minus_if_block_form_parses_holds() -> Bool { nl_minus_if_block_form_parses() }
-
-test fn nl_minus_condition_is_bare_c_holds() -> Bool { nl_minus_condition_is_bare_c() }
-
 test fn unary_minus_statement_parses_holds() -> Bool { unary_minus_statement_parses() }
 
+test fn newline_minus_refuses_with_guard_reason_holds() -> Bool { newline_minus_refuses_with_guard_reason() }
+
 test fn newline_tail_without_minus_parses_holds() -> Bool { newline_tail_without_minus_parses() }
+
+test fn same_line_minus_parses_holds() -> Bool { same_line_minus_parses() }
 
 test fn labeled_call_block_condition_still_parses_holds() -> Bool { labeled_call_block_condition_still_parses() }
 
