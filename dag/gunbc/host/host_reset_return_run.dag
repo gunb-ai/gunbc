@@ -82,6 +82,7 @@ import gunbc.host.host_reset_return {
   reset_return_verdict_of_mint,
   select_reset_observer,
   subject_for_observer,
+  consumed_release_of_mint,
 }
 import gunbc.host.bmc_control_binding { bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.host_reset_subject_roster {
@@ -111,6 +112,7 @@ import gunbc.machine_intake.oob_boot_handoff {
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
+import gunbc.host.managed_host_boot_handoff { admitted_release_of }
 
 // THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host.host_reset_return is pure
 // and is exercised by its witness against fixtures, which is what a fold is owed. This module is

@@ -1013,7 +1013,7 @@ fn total_order_templates() -> FreeMonoid<AlgebraFieldTemplate> {
 //
 // IT IS THE ORDERED RING'S SURFACE WITHOUT `negate`, and the omission is the content. A semiring
 // has no additive inverse: the naturals are closed under add and mul and not under subtraction
-// (std.coercion dag_subtraction_refinement types a difference of naturals as an Int). So `negate`
+// (std.coercion select_arithmetic_carrier types a difference of naturals as an Int). So `negate`
 // derives for Int and does not derive for Nat, from the two profiles rather than from a special
 // case -- which is what makes the inhabitance a claim that can be wrong.
 fn ordered_semiring_templates() -> FreeMonoid<AlgebraFieldTemplate> {
@@ -1353,6 +1353,11 @@ fn list_head<T>(xs: FreeMonoid<T>) -> Optional<T> {
     Empty => Absent
     Cons { head: h, tail: _ } => Present { value: h }
   }
+}
+
+// list_head's mirror at the other end: the left fold keeps the item it last saw, so Empty => Absent (never a host null).
+fn list_last<T>(xs: FreeMonoid<T>) -> Optional<T> {
+  fold_list(xs: xs, empty: Absent, cons: fn(acc, item) { Present { value: item } })
 }
 
 fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {

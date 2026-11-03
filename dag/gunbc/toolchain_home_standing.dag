@@ -11,7 +11,10 @@ import v2.workflow.ci_workflow_run_emit {
   ci_isolate_rm_rustup_cargo_command,
   ci_isolate_echo_home_command,
   ci_isolate_echo_cargo_home_command,
-  ci_isolate_echo_rustup_home_command
+  ci_isolate_echo_rustup_home_command,
+  ci_pin_rustup_default_command,
+  ci_pin_rustup_cargo_bin_resolve_command,
+  ci_pin_rustup_echo_cargo_bin_command
 }
 
 // EVERY GENERATED JOB THAT INSTALLS A RUST TOOLCHAIN GETS A STANDING, AND A JOB THAT GETS NONE IS
@@ -104,6 +107,30 @@ fn step_installs_toolchain(step: Step) -> Bool {
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     UsesStep { name: _, id: _, uses: u, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       action_release_same_producer(a: u, b: setup_rust_action)
+  }
+}
+
+// THE THIRD MEMBER OF A TOOLCHAIN LANE, IDENTIFIED THE SAME WAY AS THE OTHER TWO -- by the command
+// rows it runs, never by where it sits in a list or by a name someone can respell. Pinning is not a
+// courtesy after the isolation: an isolated RUSTUP_HOME starts with NO default toolchain, which is the
+// first line of the step's own name, so a lane whose third step cannot be recognised as the pin has
+// not composed a lane at all.
+//
+// THREE ROWS ARE REQUIRED. The selection of the active toolchain as the default, the resolution of
+// cargo under the isolated CARGO_HOME that selection made necessary, and the echo that publishes that
+// resolution. A step running only the selection leaves the next step reaching for a cargo nothing
+// named, which is a different step and is refused below rather than given the pin's role.
+fn script_pins_default_toolchain(run: String) -> Bool {
+  string_contains(s: run, pattern: ci_pin_rustup_default_command()) &&
+    string_contains(s: run, pattern: ci_pin_rustup_cargo_bin_resolve_command) &&
+    string_contains(s: run, pattern: ci_pin_rustup_echo_cargo_bin_command)
+}
+
+fn step_pins_default_toolchain(step: Step) -> Bool {
+  match step {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      script_pins_default_toolchain(run: r)
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
   }
 }
 

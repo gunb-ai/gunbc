@@ -2,24 +2,23 @@ module gunbc.recurring_failure_mode.below_ceiling_order_is_checked_at_runtime_no
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.recurring_failure_mode { FoundBelowTheLadder, BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 data below_ceiling_order_is_checked_at_runtime_not_constructed: RecurringFailureMode = RecurringFailureMode {
   identity: "below_ceiling_order_is_checked_at_runtime_not_constructed" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "a strict-order witness over a closed ordered enum exists for GuaranteeRung, so that current < ceiling is carried by a constructed witness rather than refused at runtime by standing_admission" } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "a strict-order witness over a closed ordered enum exists for GuaranteeRung, so that current < ceiling is carried by a constructed witness rather than left unchecked" } },
 
   receipts: [
-    "INVALID STATE: a RungStanding BelowCeiling whose current rung is at or above its ceiling. The type admits it; standing_admission refuses it as StandingNotBelowCeiling, so safety depends on the census executing and staying enrolled.",
-    "HARM: a standing that claims to be below its ceiling while at or above it ranks as climbable work that does not exist, or hides an inflated rung; it is caught only on the roster read by gunbc.instruments.rfm_rung_census.",
+    "INVALID STATE: a RungStanding BelowCeiling whose current rung is at or above its ceiling. The type admits it, and since the rung census was retired no executing check refuses it (the former runtime refusal was deleted with its only consumer), so the class currently sits below the ladder.",
+    "HARM: a standing that claims to be below its ceiling while at or above it ranks as climbable work that does not exist, or hides an inflated rung; it was caught only on the roster read by the retired rung census.",
     "WHY NOT CONSTRUCTED NOW (review 83709): v2.std.cardinality NatLeWitness is a non-strict order over Nat, and GuaranteeRung is a closed enum with no strict-order witness over it; indexing it into Nat to reuse NatLeWitness would add a second order authority beside guarantee_rung_index.",
-    "CEILING: structurally guaranteed once the strict-order witness exists; decidable, awaiting one grounding. NEXT TRIGGER: the capability named in the standing is built; then BelowCeiling takes the witness, StandingNotBelowCeiling is deleted, and its RED stays enrolled as a compile-refusal fixture.",
+    "CEILING: structurally guaranteed once the strict-order witness exists; decidable, awaiting one grounding. NEXT TRIGGER: the capability named in the standing is built; then BelowCeiling takes the witness and a current at or above its ceiling has no constructor.",
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.recurring_failure_mode", decl_name: "standing_admission", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.std.cardinality", decl_name: "NatLeWitness", field: WholeDeclaration },
   ],
 }

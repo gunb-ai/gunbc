@@ -1,4 +1,7 @@
 module gunbc.accelerator_demo.accelerator_demo_recognizer
+import gunbc.accelerator_demo.accelerator_demo_plan { AcceleratorRecognitionOutcome, CarriesEffects, NotElementwisePure }
+import gunbc.accelerator_demo.accelerator_demo_program { AcceleratorDemoProgram, relu_mul_add_effectful_program, relu_mul_add_gather_program, relu_mul_add_pure_program }
+import std.numerical_contract { NumericalContract }
 
 
 fn recognize_accelerator_program(program: AcceleratorDemoProgram) -> AcceleratorRecognitionOutcome {
