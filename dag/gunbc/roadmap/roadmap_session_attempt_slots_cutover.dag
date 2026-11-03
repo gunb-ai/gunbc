@@ -21,7 +21,7 @@ import gunbc.durable_cas_file_store {
 import gunbc.compute.attempt_lifecycle {
   attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
   attempt_slot_read, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
-  attempt_record_state, AttemptState,
+  attempt_record_state, AttemptState, attempt_terminate, AttemptRecovered,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id }
 import gunbc.roadmap.roadmap_session_attempt_slots_root {
@@ -588,9 +588,11 @@ fn attempt_slots_carry_one(source: SlotStore, target: SlotStore, reference: NonE
         // The current store already holds a slot under this reference. Same attempt -> the carry already
         // happened, whatever state each side is in. Different attempt -> nothing here may choose between
         // them, so the carry refuses and names both identities.
-        AttemptSlotHeld { record: target_record, generation: _ } =>
+        AttemptSlotHeld { record: target_record, generation: target_generation } =>
           if target_record.identity == source_record.identity {
-            AttemptSlotsCarryAlreadyCarried { reference: reference }
+            // MUTANT: the re-run stamps the slot it re-ran on -- a fresh generation in the store it
+            // owns -- and then answers AlreadyCarried exactly as before. Labels unchanged; bytes new.
+            match attempt_terminate(store: target, reference: reference, expected: target_generation, verdict: AttemptRecovered, detail: "MUTANT re-run stamp") { _ => AttemptSlotsCarryAlreadyCarried { reference: reference } }
           } else {
             AttemptSlotsCarryRefused {
               reference: reference,
