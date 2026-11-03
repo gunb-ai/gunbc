@@ -11,6 +11,7 @@ import gunbc.boot_artifact_delivery {
   PlanControlRouteNotTheTargets,
   PlanControllerDeliveryWithoutController,
   PlanEligibilityNotTheDeliverys,
+  PlanEligibilityNotEstablished,
   PlanNetworkEstablishmentForOtherTarget,
   BootFromUefiHttp,
   NetworkAddressedTarget,
@@ -19,7 +20,7 @@ import gunbc.boot_artifact_delivery {
 import extdeps.network.mac { mac_address }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
 import test.claim.machine_intake.boot_artifact_delivery_witness { solver_emitted_pxe_solution, solver_emitted_media_solution }
-import test.fixture.boot_delivery_plans { pxe_solution, refused_solution, removable_media_solution, pxe_plan, removable_media_plan, unit, attempt_one, controller_target, network_target, intake_artifact, intake_subject, solution_selecting_control, uefi_http_plan_serving }
+import test.fixture.boot_delivery_plans { pxe_solution, refused_solution, removable_media_solution, pxe_plan, removable_media_plan, unit, attempt_one, controller_target, network_target, intake_artifact, intake_subject, solution_selecting_control, uefi_http_plan_serving, configfs_plan_without_qualification }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, content_hash_of_value }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -588,9 +589,18 @@ test fn a_uefi_http_delivery_serving_another_artifact_is_incoherent() -> Bool {
   }
 }
 
-test fn a_uefi_http_delivery_serving_the_plans_artifact_is_admitted() -> Bool {
-  match admit_boot_delivery_plan(plan: uefi_http_plan_serving(digest: intake_artifact.digest)) {
-    BootDeliveryPlanAdmitted { plan: _ } => true
+// Missing eligibility evidence is never an admitted fact: a UEFI HTTP plan serving the plan's artifact with an
+// EMPTY evidence list is refused as not established (it passed admission before), and so is a configfs plan.
+test fn an_empty_uefi_http_evidence_plan_is_not_admitted() -> Bool {
+  match incoherence_of(plan: uefi_http_plan_serving(digest: intake_artifact.digest)) {
+    Present { value: PlanEligibilityNotEstablished { delivery: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_configfs_plan_with_an_empty_qualification_is_not_admitted() -> Bool {
+  match incoherence_of(plan: configfs_plan_without_qualification()) {
+    Present { value: PlanEligibilityNotEstablished { delivery: _ } } => true
     _ => false
   }
 }
