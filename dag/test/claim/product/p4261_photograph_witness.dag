@@ -1,0 +1,642 @@
+module test.claim.product.p4261_photograph_witness
+
+// WHAT THIS WITNESS HOLDS. product.electrical.photograph says a claim about the board can cite the frame
+// it was read from, by the SHA-256 of that frame's bytes, and product.p4261.e1_photographs holds the 201
+// records the 2026-11-03 E1 atlas produced: 192 frames somebody photographed and 9 views we drew. The claim worth defending is one sentence: A BOARD ROW IS
+// CHECKABLE AGAINST AN IMAGE ONLY IF THE STORE HOLDS THE BYTES IT NAMES. Everything below attacks the
+// ways that sentence gets faked -- a citation that resolves to nothing and still reads as evidence, a
+// digest somebody guessed, a file name used as an identity, an image we drew used to corroborate the
+// readings it was drawn from, a pixel box quietly dropped, or a gap written so smoothly it looks like a
+// receipt.
+//
+// IT RUNS LOCALLY, NOT IN CI. Public CI runs no witnesses, and the required `v2-bootstrap` job does not
+// evaluate them (DESIGN, "What a green v2-bootstrap does not say"). Build the seed from a public worktree
+// and run each name below:
+//
+//   cargo build --release -p v1-compiler --bin gunbc
+//   GUNBC_MEMORY_BUDGET_BYTES=6442450944 ./target/release/gunbc run --claim-run \
+//     --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/product/p4261_photograph_witness.dag --function <name>
+//
+// (unset GUNBC_RESOLVED_GRAPH_CACHE_DIR and GUNBC_NATIVE_CACHE_ROOT first).
+
+import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
+import std.list { distinct_by_key, duplicated_by_key, first_where }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import std.types { Bool, List, NonEmptyStr, String }
+import product.electrical.connectivity { ComponentInstanceIdentity }
+import product.electrical.continuity { OperatorPhotograph }
+import product.electrical.photograph {
+  AndonstarMicroscopeScreen,
+  AndonstarSdCardSensor,
+  CaptureDevice,
+  BottomSurface,
+  BytesNeverStored,
+  BytesNotInStore,
+  CapturedFrame,
+  CapturedOn,
+  CaptureDateUnrecorded,
+  CheckableAgainstStoredBytes,
+  DigestNotInStore,
+  FrameIsOurOwnDrawing,
+  GeneratedImage,
+  DeviceUnrecorded,
+  InStore,
+  PhoneCamera,
+  Photograph,
+  PhotographCitation,
+  PhotographSurface,
+  PixelRegion,
+  StoreLocation,
+  SurfaceUnrecorded,
+  TopSurface,
+  Broken,
+  Checkable,
+  Gap,
+  citation_explanation,
+  citation_verdict,
+  cite,
+  photograph_citation_text,
+  photograph_in_store,
+}
+import std.measure {
+  FiniteByteSizeBuilt,
+  FiniteByteSizeNonPositive,
+  byte_size,
+  byte_size_count,
+  finite_byte_size,
+  finite_byte_size_count,
+  finite_byte_size_from_byte_size,
+  positive_measure_count,
+}
+import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
+import product.p4261.e1_b { p4261_e1_layout }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import product.p4261.photograph_store {
+  BoardPhotographStore,
+  NoStoreForBoard,
+  StoreHeld,
+  StoreRowHoldsForeignFrames,
+  frames_of_another_board,
+  store_row_judgment,
+}
+import product.p4261.e1_photographs { e1_photograph, e1_photographs }
+import product.p4261.evidence { ReadingGrounding, FromStore, NoPhotographStore, StoreHoldsAnotherBoardsFrames, board_image_reading_grounding, broken_groundings, checkable_groundings, gap_groundings, image_readings_rest_on_stored_bytes, judge_image_readings, reading_groundings }
+import product.p4261.report { judgment_words }
+import product.p4261.findings { ImageReadingsJudged }
+import product.p4261.k1_a { p4261_k1_layout }
+
+// WHICH FRAMES THE STORE HOLDS, by how they came to be. These live HERE and not in
+// product.electrical.photograph: nothing in the product layer needs to count frames by origin, and a
+// function that only a test reads is test code, which belongs with the test (DESIGN §3c). The split still
+// matters -- the captured frames are the evidence and the generated views are our own drawings -- so the
+// census below keeps them apart rather than counting 201 rows as 201 pieces of evidence.
+fn captured_frames(store: List<Photograph>) -> List<Photograph> {
+  filter(store, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false })
+}
+
+fn generated_views(store: List<Photograph>) -> List<Photograph> {
+  filter(store, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => false GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => true })
+}
+
+fn frames_showing(store: List<Photograph>, shown: PhotographSurface) -> List<Photograph> {
+  filter(captured_frames(store), p => match p.origin {
+    CapturedFrame { surface, capture: _, taken_on: _ } => surface == shown
+    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
+  })
+}
+
+// Frames whose face nobody established. They stay in the store -- they are bytes we hold, and a reading can
+// cite them -- and they enter NO per-side count: a part placed from one of them would be sitting on a
+// guessed side of the board.
+fn frames_without_a_named_face(store: List<Photograph>) -> List<Photograph> {
+  filter(captured_frames(store), p => match p.origin {
+    CapturedFrame { surface, capture: _, taken_on: _ } => match surface {
+      SurfaceUnrecorded { obligation: _ } => true
+      TopSurface => false
+      BottomSurface => false
+    }
+    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
+  })
+}
+
+// The rows for ONE board. A receipt is about one carrier, so the count that guards it is scoped to that
+// carrier: a corpus-wide count would still pass if another board's frames were added to the module.
+fn rows_for(board: PhysicalAssetIdentity) -> List<Photograph> {
+  filter(e1_photographs, p => physical_asset_identity_eq(a: p.board, b: board))
+}
+
+// The frames one device made. Batch 5 came off the microscope's own sensor onto its SD card; the earlier
+// frames are pictures of its screen. The two are different grains, so a count that mixed them would let a
+// claim about one rest on the other.
+fn frames_captured_by(store: List<Photograph>, device: CaptureDevice) -> List<Photograph> {
+  filter(captured_frames(store), p => match p.origin {
+    CapturedFrame { surface: _, capture, taken_on: _ } => capture == device
+    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
+  })
+}
+
+// The frames no registry attributed to a device, named rather than assumed: an assumed microscope would be
+// a fabricated provenance, so those rows carry `DeviceUnrecorded` with the note that would close it.
+fn device_is_silent(capture: CaptureDevice) -> Bool {
+  match capture {
+    DeviceUnrecorded { obligation: _ } => true
+    AndonstarMicroscopeScreen => false
+    AndonstarSdCardSensor => false
+    PhoneCamera => false
+  }
+}
+
+fn frames_with_a_silent_device(store: List<Photograph>) -> List<Photograph> {
+  filter(captured_frames(store), p => match p.origin {
+    CapturedFrame { surface: _, capture, taken_on: _ } => device_is_silent(capture: capture)
+    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
+  })
+}
+
+// A frame the manifest describes, used to check the STORE against the RECEIPT rather than against itself:
+// the row's digest and its byte count are both the manifest's, and a generator that shifted the byte count
+// by one (the `predecessor` form positive counts are authored in) or paired a name with the wrong file goes
+// red here instead of shipping a store nobody can reconcile with Drive.
+data manifest_first_top_frame: Sha256Digest = Sha256Digest { hex: "7c960ce9a78338faf4cbed178fd5d0f8bbe83afee6796d865d3801400f0ca6f2" as Sha256DigestHex }
+
+// A frame nobody has ever hashed, used as the citation a real store must refuse. Not a typo of a real
+// digest: it is all zeros, so a reader can see at once that no frame is meant.
+data no_such_frame: Sha256Digest = Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex }
+
+// Two frames that carry ONE NAME in the folder. This is what a re-export or a re-shot produces; if the
+// store identified frames by name, these would collapse to one row and a reading would rest on bytes
+// somebody else shot.
+fn same_name_two_frames(board: PhysicalAssetIdentity) -> List<Photograph> {
+  [
+  Photograph {
+    content: Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" as Sha256DigestHex },
+    board: board,
+    origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
+    bytes: finite_byte_size(count: positive_measure_count(predecessor: 99999)),
+    store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "t4_01.jpg" },
+  },
+  Photograph {
+    content: Sha256Digest { hex: "2222222222222222222222222222222222222222222222222222222222222222" as Sha256DigestHex },
+    board: board,
+    origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
+    bytes: finite_byte_size(count: positive_measure_count(predecessor: 100199)),
+    store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "t4_01.jpg" },
+  }]
+}
+
+// A board carrying ONLY the rows a test needs. The real E1 layout supplies the identity fields so the
+// fixture is a board and not a bag of parts; `components` is empty so a count below means what it says.
+fn fixture_board(readings: List<DesignatorReading>) -> CarrierLayoutObservation {
+  let base = p4261_e1_layout
+  CarrierLayoutObservation { ambiguous_designators: [],
+    asset: base.asset, design: base.design, revision: base.revision, markings: base.markings, module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey, management_io: base.management_io, components: [], measured: base.measured, input: base.input,
+    unresolved: base.unresolved, designator_readings: readings,
+  }
+}
+
+fn reading_off_frame(designator: NonEmptyStr, citation: PhotographCitation) -> DesignatorReading {
+  DesignatorReading {
+    specimen: ComponentInstanceIdentity { design: p4261_e1_layout.design, local_identity: designator },
+    designator: designator,
+    evidence: OperatorPhotograph { citation: citation },
+  }
+}
+
+fn first_captured_frame() -> Photograph? {
+  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false })
+}
+
+fn first_generated_image() -> Photograph? {
+  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => false GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => true })
+}
+
+// ── THE STORE ────────────────────────────────────────────────────────────────
+
+// The receipts say what the store must hold, and the store holds it -- for ONE board, which is what a
+// receipt is about: the E1 holds 201 rows, 192 frames the camera made (125 top, 60 bottom, 7 whose face
+// nobody has established) and 9 images the atlas scripts drew. A row dropped by the generator, or a whole
+// face of the board dropped, goes red here rather than quietly halving what the board's claims can be
+// checked against. The last clause checks a row against the manifest rather than against the store: the
+// frame the receipt describes as 2,108,657 bytes is the frame the row says it is. Byte positivity is NOT
+// checked here because it cannot be -- the field is std.measure's `FiniteByteSize`, whose count has no
+// zero constructor, so a store-wide sweep would be validation standing where construction was
+// available (DESIGN §5).
+test fn the_store_holds_the_atlas_receipts() -> Bool {
+  let held = rows_for(board: p4261_e1_layout.asset)
+  count(held) == 201
+    // and none of another board's: the digest says which bytes, `board` says whose specimen they depict.
+    && count(rows_for(board: p4261_k1_layout.asset)) == 0
+    && count(captured_frames(held)) == 192
+    && count(generated_views(held)) == 9
+    && count(frames_showing(held, TopSurface)) == 125
+    && count(frames_showing(held, BottomSurface)) == 60
+    && count(frames_without_a_named_face(held)) == 7
+    // The device census adds up to the captured total, with the silence named: the registry notes the
+    // microscope screen for 22 frames, a phone for 5, and says nothing for 55 -- which carry
+    // `DeviceUnrecorded` rather than an assumed microscope.
+    && count(frames_captured_by(store: held, device: AndonstarMicroscopeScreen)) == 22
+    && count(frames_captured_by(store: held, device: PhoneCamera)) == 5
+    && count(frames_captured_by(store: held, device: AndonstarSdCardSensor)) == 110
+    && count(frames_with_a_silent_device(store: held)) == 55
+    && match e1_photograph(manifest_first_top_frame) {
+      Present { value } => finite_byte_size_count(size: value.bytes) == 2108657
+        && (value.store.folder_name as String) == "E1/photos_top"
+      Absent => false
+    }
+}
+
+// A frame is its bytes, not its name. Two rows share a file name here, and they stay two frames that
+// resolve separately; if the lookup read the folder path or the name, this goes red -- which is the
+// failure mode the store exists to prevent, since a re-export reuses names and a reading would then rest
+// on somebody else's pixels while citing a frame that looks correct.
+// A store row claims a FILE sits at a Drive path, so a length of nothing is a lie rather than a
+// measurement. The field's type is std.measure's own `FiniteByteSize` -- `Measure<Memory, One,
+// PositiveMeasureCount>` -- so a row cannot state zero bytes: `PositiveMeasureCount`'s single constructor
+// is a successor over a Nat, and the red "a zero-sized frame was stored" is UNAUTHORABLE BY CONSTRUCTION.
+// That is the reason there is no fixture for it, and why the check that IS authorable is here: the path a
+// receipt takes off a wire, `finite_byte_size_from_byte_size`, must refuse a zero rather than store one --
+// and must not refuse one byte, or the refusal above would be about the path being broken rather than
+// about zero. A second positive byte carrier beside `FiniteByteSize` would have been a failed
+// decomposition (DESIGN §2); the store reuses the one the grain rounder already reads.
+test fn a_frame_cannot_claim_a_file_of_no_length() -> Bool {
+  match finite_byte_size_from_byte_size(size: byte_size(count: 0)) {
+    FiniteByteSizeBuilt { size: _ } => false
+    FiniteByteSizeNonPositive { observed } => observed == 0
+  }
+    && match finite_byte_size_from_byte_size(size: byte_size(count: 1)) {
+      FiniteByteSizeBuilt { size } => finite_byte_size_count(size: size) == 1
+      FiniteByteSizeNonPositive { observed: _ } => false
+    }
+}
+
+// A DRAWING OWES ITS LINEAGE. The operator's ruling: a derived overlay is review output, not evidence,
+// and it must say which atlas snapshot drew its annotations. `citation_verdict` already refuses one as
+// grounding; this pins the other half -- every drawn view in the store names the snapshot it came from,
+// and the nine of them are not silently counted among the 192 pieces of evidence.
+test fn a_drawing_names_the_snapshot_that_drew_it() -> Bool {
+  let views = generated_views(rows_for(board: p4261_e1_layout.asset))
+  length(views) == 9
+    && views.all(p => match p.origin {
+         GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision } =>
+           atlas_revision == "2026-11-03b"
+         CapturedFrame { surface: _, capture: _, taken_on: _ } => false
+       })
+}
+
+// Batch 5, the SD-card frames, keeps the two things that make it a different kind of evidence from the
+// screen captures: it says the ANDONSTAR WROTE IT FROM ITS OWN SENSOR (a screen capture and a sensor
+// capture are different grains, and a claim about legibility has to say which it read), and it carries the
+// day the operator gave rather than the day the microscope's clock wrote into the file name -- those files
+// are named 2020_0112_..., which is a broken clock and not a fact. If the generator ever reads the date
+// off the file, or files a sensor frame under the screen device, this goes red.
+test fn the_sd_batch_says_the_sensor_wrote_it_on_the_day_the_operator_gave() -> Bool {
+  let held = rows_for(board: p4261_e1_layout.asset)
+  let sd = frames_captured_by(store: held, device: AndonstarSdCardSensor)
+  count(sd) == 110
+    && count(frames_showing(held, TopSurface)) == 125
+    && count(frames_showing(sd, TopSurface)) == 79
+    && count(frames_showing(sd, BottomSurface)) == 24
+    && count(frames_without_a_named_face(sd)) == 7
+    // Every one of them carries the stated day, and not one carries the clock's own 2020.
+    && count(filter(sd, p => match p.origin {
+      CapturedFrame { surface: _, capture: _, taken_on: CapturedOn { on } } => (on as String) == "2026-11-03"
+      CapturedFrame { surface: _, capture: _, taken_on: CaptureDateUnrecorded { obligation: _ } } => false
+      GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
+    })) == 110
+    // Not one SD frame was filed under the screen, the phone, or a silent device.
+    && count(frames_captured_by(store: sd, device: AndonstarMicroscopeScreen)) == 0
+    && count(frames_captured_by(store: sd, device: PhoneCamera)) == 0
+    && count(frames_with_a_silent_device(store: sd)) == 0
+}
+
+test fn identity_is_the_bytes_and_not_the_file_name() -> Bool {
+  let a = Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" as Sha256DigestHex }
+  let b = Sha256Digest { hex: "2222222222222222222222222222222222222222222222222222222222222222" as Sha256DigestHex }
+  let frames = same_name_two_frames(p4261_e1_layout.asset)
+  count(distinct_by_key(frames, p => p.store.file_name as String)) == 1
+    && count(distinct_by_key(frames, p => p.content.hex as String)) == 2
+    && !content_hash_eq_cryptographic(left: a, right: b)
+    && match photograph_in_store(store: frames, content: a) {
+      Present { value } => finite_byte_size_count(size: value.bytes) == 100000
+      Absent => false
+    }
+    && match photograph_in_store(store: frames, content: b) {
+      Present { value } => finite_byte_size_count(size: value.bytes) == 100200
+      Absent => false
+    }
+}
+
+// No two rows describe the same bytes. A store that held one frame twice under two atlas ids would let a
+// reading be "corroborated" twice by the same pixels.
+test fn no_frame_is_held_twice() -> Bool {
+  count(duplicated_by_key(e1_photographs, p => p.content.hex as String)) == 0
+}
+
+// Every row is findable by the content it names, including by the board's own bound lookup. Red if the
+// lookup reads anything but the digest, or if the list and the rows disagree about what is in the store.
+test fn every_row_resolves_by_its_own_content() -> Bool {
+  e1_photographs.all(p => match e1_photograph(p.content) {
+    Present { value } => content_hash_eq_cryptographic(left: value.content, right: p.content)
+    Absent => false
+  })
+}
+
+// ── GREEN: WHAT A CLAIM MAY CITE ─────────────────────────────────────────────
+
+// A citation naming bytes the store holds is checkable, and the standing says which face of the carrier it
+// shows -- so a report can say "top side, from a frame we hold" without trusting the sentence beside the
+// claim. The frame is taken from the store itself: this is the real E1 set resolving, not a fixture.
+test fn a_citation_to_bytes_the_store_holds_is_checkable() -> Bool {
+  match first_captured_frame() {
+    Absent => false
+    Present { value: frame } => match cite(store: e1_photographs, citation: InStore { content: frame.content, region: Absent }) {
+      CheckableAgainstStoredBytes { surface, region: _ } => match frame.origin {
+        CapturedFrame { surface: shot, capture: _, taken_on: _ } => surface == shot
+        GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
+      }
+      _ => false
+    }
+  }
+}
+
+// The box survives. A citation may point at a part rather than at the whole board the part happens to be
+// on, and the box has to arrive intact at the standing and in the sentence a report prints: a stub that
+// dropped it would still read as "photographed" while making a 40-megapixel frame stand in for a 60-pixel
+// marking.
+test fn a_citation_points_at_a_box_and_the_box_arrives() -> Bool {
+  match first_captured_frame() {
+    Absent => false
+    Present { value: frame } =>
+      let box = PixelRegion { left: 175, top: 120, width: 65, height: 40 }
+      match cite(store: e1_photographs, citation: InStore { content: frame.content, region: Present { value: box } }) {
+        CheckableAgainstStoredBytes { surface: _, region: Present { value: kept } } =>
+          kept.left == 175 && kept.top == 120 && kept.width == 65 && kept.height == 40
+            && string_contains(photograph_citation_text(citation: InStore { content: frame.content, region: Present { value: box } }), "175")
+            && string_contains(photograph_citation_text(citation: InStore { content: frame.content, region: Absent }), "whole frame")
+        _ => false
+      }
+  }
+}
+
+// ── RED: WHAT A CLAIM MAY NOT CITE ───────────────────────────────────────────
+
+// A digest the store does not hold is refused, by name. This is the fixture the handoff asks for: the same
+// shape a K1 frame cited against the E1 store takes, and the shape a mistyped or guessed digest takes.
+// Refusal means it is NOT checkable, it is NOT among the checkable citations, and the standing says which
+// bytes are missing instead of saying merely "no".
+// A FRAME OF ANOTHER BOARD CANNOT CARRY A READING ABOUT THIS ONE. The digest says which bytes, not what they
+// picture; `Photograph.board` says which specimen the pixels are of, and this is the control that makes that
+// field execute. One digest, one citation, the same primitive production uses -- supplied a store row that
+// attributes the frame to the K1 while the E1 is being judged, `store_row_judgment` REFUSES the row and names
+// the foreign frame, so there is no held store to read and nothing establishes; supplied the identical row
+// attributed to the E1, it is held, the citation is checkable and the board establishes. Everything here is
+// built from inputs the witness itself supplies, and the only difference between the two halves is the board
+// the store row names.
+fn frame_as(frame: Photograph, board: PhysicalAssetIdentity) -> Photograph {
+  Photograph { content: frame.content, board: board, origin: frame.origin, bytes: frame.bytes, store: frame.store }
+}
+
+test fn a_frame_of_another_board_is_refused_where_the_same_frame_of_this_board_is_checkable() -> Bool {
+  match first_captured_frame() {
+    Absent => false
+    Present { value: frame } =>
+      let cited = InStore { content: frame.content, region: Absent }
+      let as_k1 = frame_as(frame: frame, board: p4261_k1_layout.asset)
+      let as_e1 = frame_as(frame: frame, board: p4261_e1_layout.asset)
+      let one_reading = fixture_board(readings: [reading_off_frame(designator: "U909", citation: cited)])
+      // The two rows are the same bytes; they differ ONLY in the board the store row is a picture of.
+      let k1shaped = BoardPhotographStore {
+        board: p4261_e1_layout.asset,
+        frames: [as_k1],
+        receipts: "witness fixture",
+      }
+      let e1shaped = BoardPhotographStore {
+        board: p4261_e1_layout.asset,
+        frames: [as_e1],
+        receipts: "witness fixture",
+      }
+      true
+      // The store authority is the ONE place the specimen is decided. It refuses a row carrying another
+      // board's frame and names the foreign rows, so whoever assembled the store sees what to fix instead
+      // of watching the reading quietly fail.
+      && match store_row_judgment(held: k1shaped) {
+        StoreRowHoldsForeignFrames { board, foreign: foreign } =>
+          physical_asset_identity_eq(a: board, b: p4261_e1_layout.asset)
+            && count(foreign) == 1
+            && match first_where(foreign, f => content_hash_eq_cryptographic(left: f.content, right: frame.content)) {
+              Present { value: _ } => true
+              Absent => false
+            }
+        StoreHeld { store: _ } => false
+        NoStoreForBoard { board: _, obligation: _ } => false
+      }
+      // ...and holds the row whose frames are the board's own, with nothing foreign in it.
+      && match store_row_judgment(held: e1shaped) {
+        StoreHeld { store: held } => count(frames_of_another_board(store: held)) == 0
+        StoreRowHoldsForeignFrames { board: _, foreign: _ } => false
+        NoStoreForBoard { board: _, obligation: _ } => false
+      }
+      // Same bytes both halves, so the digest never decided this -- the attribution did. Reading the HELD
+      // row is what makes the citation checkable and the board establish; production only ever judges a
+      // store this authority has held, which is why the refusal happens here rather than per citation.
+      && match store_row_judgment(held: e1shaped) {
+        StoreHeld { store: held } =>
+          citation_verdict(standing: cite(store: held.frames, citation: cited)) == Checkable
+            && image_readings_rest_on_stored_bytes(
+              grounding: judge_image_readings(store: held.frames, layout: one_reading))
+        StoreRowHoldsForeignFrames { board: _, foreign: _ } => false
+        NoStoreForBoard { board: _, obligation: _ } => false
+      }
+  }
+}
+
+test fn a_citation_to_bytes_the_store_does_not_hold_is_refused() -> Bool {
+  let citation = InStore { content: no_such_frame, region: Absent }
+  citation_verdict(standing: cite(store: e1_photographs, citation: citation)) == Broken
+    && match cite(store: e1_photographs, citation: citation) {
+      DigestNotInStore { content } => content_hash_eq_cryptographic(left: content, right: no_such_frame)
+      _ => false
+    }
+    // ...and the refusal is about the STORE, not about the digest's shape: the very same construction IS
+    // checkable against a store that holds those bytes. Without this clause, a stub that refuses everything
+    // would satisfy every red case above.
+    && citation_verdict(
+      standing: cite(
+        store: same_name_two_frames(p4261_e1_layout.asset),
+        citation: InStore { content: Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" as Sha256DigestHex }, region: Absent },
+      )) == Checkable
+}
+
+// At board grain, that row is a DEFECT and not a gap. It claims bytes it does not have, so it lands in
+// `broken_groundings` naming its designator, and it is in neither of the other two lists. Sorted into
+// "waiting on the operator" it would be reported as thin coverage while it is actually a wrong record.
+test fn a_board_row_citing_bytes_we_do_not_have_is_broken_not_thin() -> Bool {
+  let board = fixture_board([reading_off_frame("U999", InStore { content: no_such_frame, region: Absent })])
+  let gs = reading_groundings(store: e1_photographs, layout: board)
+  count(gs) == 1
+    && count(broken_groundings(gs)) == 1
+    && count(checkable_groundings(gs)) == 0
+    && count(gap_groundings(gs)) == 0
+    && match broken_groundings(gs).first() {
+      Present { value } => (value.read_of as String) == "U999"
+      Absent => false
+    }
+}
+
+// An image we drew cannot corroborate the readings it was drawn from. The atlas's grid overviews, zone
+// drafts, pinout and power-path diagram are in the store and are cited by the sheets, so the trap is live:
+// a marking "confirmed" by a picture we made from the marking is the circularity the atlas README itself
+// warns about. Citing one is refused, and at board grain it is a broken record, not a gap.
+test fn a_frame_we_drew_ourselves_cannot_ground_a_reading() -> Bool {
+  match first_generated_image() {
+    Absent => false
+    Present { value: drawn } =>
+      let citation = InStore { content: drawn.content, region: Absent }
+      citation_verdict(standing: cite(store: e1_photographs, citation: citation)) == Broken
+        && match cite(store: e1_photographs, citation: citation) {
+          FrameIsOurOwnDrawing { obligation } => string_length(obligation as String) > 0
+          _ => false
+        }
+        && match broken_groundings(reading_groundings(store: e1_photographs, layout: fixture_board([reading_off_frame("U998", citation)]))).first() {
+          Present { value } => (value.read_of as String) == "U998"
+          Absent => false
+        }
+  }
+}
+
+// A gap says what it lacks and what would close it. The bench frames from 2026-10-15 to 11-01 went into a
+// chat and their bytes are not ours; such a citation keeps its date and its text locator, gets no digest,
+// is refused as grounding, and carries the obligation that would resolve it. Deleting these citations would
+// have deleted the readings with them; hashing them anyway would have made the uncheckable look checkable.
+test fn a_gap_names_the_bytes_it_lacks_and_what_would_close_it() -> Bool {
+  let citation = BytesNotInStore { taken_on: "2026-10-19", locator: "Andonstar upload a7113c26", obligation: "operator re-supplies the chat upload so its bytes can be hashed" }
+  citation_verdict(standing: cite(store: e1_photographs, citation: citation)) == Gap
+    && match cite(store: e1_photographs, citation: citation) {
+      BytesNeverStored { taken_on, locator, obligation } =>
+        (taken_on as String) == "2026-10-19"
+          && string_contains(locator as String, "a7113c26")
+          && string_contains(obligation as String, "re-supplies")
+      _ => false
+    }
+    && string_contains(photograph_citation_text(citation: citation), "not in the store")
+    // What a consumer renders for a failure is what the fold decided, in words a bench reader can act on:
+    // a broken row's explanation carries the digest to go and look up.
+    && string_contains(
+      citation_explanation(standing: cite(store: e1_photographs, citation: InStore { content: no_such_frame, region: Absent })),
+      "0000000000000000000000000000000000000000000000000000000000000000")
+}
+
+// ── THE REAL BOARD ───────────────────────────────────────────────────────────
+
+// Every image-reading on the real E1 is judged, and the three standings partition them: nothing is
+// silently neither-checkable-nor-a-gap, and nothing on the board claims bytes the store does not hold.
+// Today all 94 fall in `gap_groundings` -- the 85 citations are 2026-10-15..11-01 chat frames and the atlas
+// frames are not yet cited by a specimen row -- which is what the handoff says is true. When the atlas
+// best-photos are cited (piece 3), rows move out of gaps into `checkable_groundings` and this stays green;
+// the day a row cites a digest nobody computed, it goes red here.
+test fn the_real_e1_judges_every_image_reading() -> Bool {
+  match board_image_reading_grounding(p4261_e1_layout) {
+    FromStore { read, checkable, broken, gaps } =>
+      // THE FRONTIER, PINNED TO THE NUMBER. The 2026-11-03 atlas pass moved the E1 from all-gap to
+      // part-grounded, on purpose and in this PR: of the board's 456 image readings, 310 cite a frame
+      // the photograph store holds by content hash, 146 still cite bytes that never reached the store
+      // -- the 2026-10-15 to 10-31 bench sessions left text locators and their bytes were never
+      // supplied -- and none are broken. Each number was pinned by probe: equality holds at exactly
+      // these values (read at 456 and nowhere in 450..499, checkable at 310, gaps at 146), so undoing
+      // any part of the pass turns this red rather than quietly re-greening. The last conjunct says
+      // the board is not yet fully grounded: 146 readings still name bytes we do not have, which is
+      // what the obligation on every gap is for.
+      read == 456
+        && checkable == 310
+        && count(broken) == 0
+        && count(gaps) == 146
+        && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
+        && gaps.all(g => match g.standing {
+          BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0
+          _ => false
+        })
+    // The E1 has a store. Reporting it as having none would be the opposite error, and just as quiet.
+    NoPhotographStore { board: _, obligation: _ } => false
+    // ...and a store that pictures some other board is a defect to fix, never a grounding to accept.
+    StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
+  }
+}
+
+// A BOARD WE NEVER PHOTOGRAPHED is a typed absence, not a board with zero evidence. The K1's ten citations
+// are honest gaps and its Drive folders are unhashed, so the judgement must say "no store for this board"
+// with the obligation attached, rather than returning an empty census that reads like a surveyed-and-found-
+// bare board. Red if `NoPhotographStore` collapses into `FromStore { read: 0 }`, because those two facts
+// need different work and a reader must be able to tell them apart.
+test fn a_board_we_never_photographed_is_a_typed_absence() -> Bool {
+  match board_image_reading_grounding(p4261_k1_layout) {
+    NoPhotographStore { board, obligation } =>
+      (board as String) == "p4261-k1-a"
+        && string_length(obligation as String) > 0
+        && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_k1_layout))
+    FromStore { read: _, checkable: _, broken: _, gaps: _ } => false
+    StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
+  }
+}
+
+// THE STORE IS A CONTROL AT THE EVIDENCE LEVEL ONLY. The same board, the same citations: judged against the
+// frames we hold it is grounded, and judged against a set that does not contain them it is not. That
+// difference is what makes the judgement a check; it is also why the finding above takes NO store argument
+// -- a consumer that could name the set could name the verdict.
+test fn the_same_board_judged_against_a_store_lacking_its_frames_fails() -> Bool {
+  match first_captured_frame() {
+    Absent => false
+    Present { value: frame } =>
+      let citing = fixture_board([reading_off_frame("U900", InStore { content: frame.content, region: Absent })])
+      image_readings_rest_on_stored_bytes(judge_image_readings(store: e1_photographs, layout: citing))
+        && !image_readings_rest_on_stored_bytes(judge_image_readings(store: [], layout: citing))
+        && match judge_image_readings(store: [], layout: citing) {
+          FromStore { read, checkable, broken, gaps: _ } => read == 1 && checkable == 0 && count(broken) == 1
+          NoPhotographStore { board: _, obligation: _ } => false
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
+        }
+  }
+}
+
+// A reading is bound to a frame, and the frame to bytes: two rows that name the same atlas file are one
+// frame, and two frames that name one another's digest are two defects. This is the store being usable as
+// the thing the evidence joins on, which is the rung product.p4261.evidence names for its own support.
+test fn a_frame_the_board_cites_is_a_frame_somebody_can_open() -> Bool {
+  match first_captured_frame() {
+    Absent => false
+    Present { value: frame } => match e1_photograph(frame.content) {
+      Present { value: found } =>
+        (found.store.folder_id as String) == (frame.store.folder_id as String)
+          && (found.store.file_name as String) == (frame.store.file_name as String)
+          && finite_byte_size_count(size: found.bytes) == finite_byte_size_count(size: frame.bytes)
+      Absent => false
+    }
+  }
+}
+
+// 12.8 A broken row is reported with the reason that makes it broken, because the
+// sheet renders the judge's own explanation rather than its own sentence. Both rows
+// below are Broken to the judge, and neither is a gap: one frame is a drawing we
+// made from the board's own fields, the other is bytes that never reached the store.
+// A sheet that flattened the two into one sentence would be false here, which is the
+// defect the 2026-11-03b review found -- the sheet said "bytes the store does not
+// hold" about frames the store does hold. Both rows carry the SAME designator, so the
+// only thing the two sentences can differ in is the reason the judge gave.
+test fn a_broken_row_is_reported_with_the_reason_that_makes_it_broken() -> Bool {
+  match first_generated_image() {
+    Absent => false
+    Present { value: drawn } =>
+      let drawn_row = ReadingGrounding { read_of: "U908", standing: cite(store: e1_photographs, citation: InStore { content: drawn.content, region: Absent }) }
+      let missing_row = ReadingGrounding { read_of: "U908", standing: cite(store: e1_photographs, citation: InStore { content: no_such_frame, region: Absent }) }
+      let drawn_sheet = judgment_words(j: ImageReadingsJudged { grounding: FromStore { read: 1, checkable: 0, broken: [drawn_row], gaps: [] } }, established: false)
+      let missing_sheet = judgment_words(j: ImageReadingsJudged { grounding: FromStore { read: 1, checkable: 0, broken: [missing_row], gaps: [] } }, established: false)
+
+      citation_verdict(standing: drawn_row.standing) == Broken
+        && citation_verdict(standing: missing_row.standing) == Broken
+        && citation_explanation(standing: drawn_row.standing) != citation_explanation(standing: missing_row.standing)
+        && drawn_sheet != missing_sheet
+  }
+}

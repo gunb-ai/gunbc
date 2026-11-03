@@ -216,6 +216,9 @@ fn numbered_pins(row: ElectronicComponentRow) -> List<Nat> {
     RootOfTrustSpec { root_of_trust: _ } => no_pin_numbers()
     SerialFlashSpec { flash: _ } => no_pin_numbers()
     SwitchingRegulatorSpec { regulator } => map(regulator.pins, p => p.number)
+    BusMultiplexerSpec { multiplexer: _ } => no_pin_numbers()
+    UsbHubSpec { hub: _ } => no_pin_numbers()
+    ClockFanoutSpec { clock: _ } => no_pin_numbers()
   }
 }
 

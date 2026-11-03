@@ -1,0 +1,442 @@
+module test.claim.product.p4261_atlas_pass_witness
+
+// ==================================================================================================
+// The 2026-11-03b atlas pass, pinned.
+//
+// The atlas pass put two hundred and sixty-two E1 positions on the record, along with the readings,
+// the installed-component states, the held-unresolved rows and one ambiguous sighting that came out
+// of the corrected inventories. The pass was rebuilt after a cleanup bug merged distinct designators
+// by stripping underscores (U1_2 into U12, U2_2 into U22, U3_2 into U32).
+//
+// Completeness here is an IDENTITY JOIN, not a count: `p4261_e1_positions` is joined at designator
+// grain to `e1_position_receipts` -- the same inventory rows the pass was read from, emitted as data
+// by scripts/gen_e1_position_receipts_dag.py with its commit named -- so a position that is not a
+// certain, complete, above-the-passive-level read cannot be added without turning this red, and a
+// read that the receipts have cannot go missing silently. A count would not do that job: delete a
+// position and add a misspelling, and the count still matches (DESIGN §5, "completeness is an
+// identity join, not a count equality"). The row counts that remain below are named for what they
+// are -- a per-pass change detector -- with the join that replaces each one.
+//
+// What these tests hold is the SHAPE the pass must keep:
+//
+//   * the merged pairs stay two positions, and the merged-away spellings do not appear at all;
+//   * no placeholder, group label, thermal pad or outline-owed-a-glance became a position;
+//   * a claim names a part only where the body's own marking carries that part's printed code;
+//   * an empty footprint is an observation about THIS board and never a population claim;
+//   * the alteration ledger stays a different thing from an observed-empty footprint;
+//   * one ambiguous sighting mints no second position, and the sighting survives as read.
+//
+// A red here means the pass regressed: a position was minted from a reading that does not support it,
+// or an observation was promoted into NVIDIA's design.
+// ==================================================================================================
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq }
+import product.electrical.identification {
+  FootprintUnpopulated,
+  IdentifiedByMarking,
+  InstalledComponent,
+  MarkingCandidate,
+  MarkingReading,
+  MarkingUnresolved,
+}
+import extdeps.nvidia.p4261.population {
+  PopulatedPart,
+  PopulationClaim,
+  PartRow,
+  p4261_e1_positions,
+  p4261_k1_positions,
+  p4261_position_at,
+}
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.electronic_component.diodes_pi3ch480 { pi3ch480_qex }
+import extdeps.electronic_component.types { designator_eq, designator_of, designator_text }
+import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
+import product.p4261.e1_position_receipts {
+  e1_held_receipts,
+  e1_position_receipts,
+}
+import product.p4261.e1_b { p4261_e1_layout }
+import product.p4261.e1_photographs { e1_photographs }
+import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite }
+import product.electrical.continuity { OperatorPhotograph }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
+
+fn is_position(d: NonEmptyStr) -> Bool {
+  match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
+    Present { value: _ } => true
+    Absent { } => false
+  }
+}
+
+fn claim_of(d: NonEmptyStr) -> PopulatedPart? {
+  match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
+    Present { value: p } => p.population
+    Absent { } => Absent { }
+  }
+}
+
+fn component_rows(d: NonEmptyStr) -> List<InstalledComponent> {
+  let who = ComponentInstanceIdentity { design: p4261_e1_layout.design, local_identity: d }
+  filter(p4261_e1_layout.components, c => component_identity_eq(a: c.component, b: who))
+}
+
+fn identified_as(d: NonEmptyStr, row_name: NonEmptyStr) -> Bool {
+  any(component_rows(d), c => match c.identification {
+    IdentifiedByMarking { row, marking: _ } => (row.ordering_code as String) == (row_name as String)
+    _ => false
+  })
+}
+
+fn stated_empty(d: NonEmptyStr) -> Bool {
+  any(component_rows(d), c => match c.identification {
+    FootprintUnpopulated { evidence: _ } => true
+    _ => false
+  })
+}
+
+fn held_unresolved(d: NonEmptyStr) -> Bool {
+  any(p4261_e1_layout.unresolved, u => match u.designator {
+    Present { value: v } => (v as String) == (d as String)
+    Absent { } => false
+  })
+}
+
+fn no_row_at_all(d: NonEmptyStr) -> Bool {
+  count(component_rows(d)) == 0 && !is_position(d)
+}
+
+// 1. The merged pairs, on the record as two positions each, with the corrected identifications
+// where the body's marking carries the code. This is the red for the underscore cleanup: if anything
+// in the pass starts normalising spellings again, one of these rows disappears into the other.
+test fn the_underscore_merges_stayed_two_positions() -> Bool {
+  is_position("U12") && is_position("U1_2")
+    && is_position("U22") && is_position("U2_2")
+    && is_position("U3_2") && is_position("U32")
+    && is_position("U3_P3")
+    && is_position("U1_P1") && is_position("U1_P5")
+}
+
+// 2. And the identification landed on the right spellings: the buffers are U12 and U22 (the operator's
+// correction), the flash is U2_2 and U3_2, and the small part U1_2 claims nothing. If the old merge
+// is reintroduced, U1_2 would carry the buffer row and U2_2 would lose the flash.
+test fn the_buffers_and_the_flash_landed_on_the_right_spellings() -> Bool {
+  identified_as("U12", "PCA9617ADP")
+    && identified_as("U22", "PCA9617ADP")
+    && identified_as("U2_2", "MT25QU01GBBB8E12-0SIT")
+    && identified_as("U3_2", "MT25QU01GBBB8E12-0SIT")
+    && !identified_as("U1_2", "PCA9617ADP")
+    && !identified_as("U22", "MT25QU01GBBB8E12-0SIT")
+    && match claim_of("U1_2") { Absent { } => true, Present { value: _ } => false }
+}
+
+// 3. A claim needs the body's marking, not the atlas's guess: U58_P2, U501, U50 and U451 name a
+// candidate part and stay candidates, and none of them may carry an identification. This is DESIGN
+// §4d's rule with an executing consumer.
+test fn a_candidate_never_became_an_identification() -> Bool {
+  any(component_rows("U501"), c => match c.identification {
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => true
+    _ => false
+  })
+    && any(component_rows("U50"), c => match c.identification {
+      MarkingCandidate { row: _, marking: _, discriminator: _ } => true
+      _ => false
+    })
+    && !identified_as("U501", "PI6C49X0208ZHIEX")
+    && !identified_as("U50", "LSF0108PWR")
+    && !identified_as("U58_P2", "MPQ8633")
+    // A candidate is not a population claim either: NVIDIA's design list says nothing about these
+    // positions until a reading settles them.
+    && match claim_of("U501") { Absent { } => true, Present { value: _ } => false }
+    && match claim_of("U50") { Absent { } => true, Present { value: _ } => false }
+    && match claim_of("U58_P2") { Absent { } => true, Present { value: _ } => false }
+}
+
+// 4. Y1 keeps only what was printed on it. A frequency read off a body is not a crystal
+// identification, and no orderable may attach to it from this pass.
+// The body prints 27.000. That figure is kept verbatim in the marking reading and identifies nothing:
+// PrintedRating's only arm is a fuse rating, so the honest arm is the unresolved one, and no orderable
+// attaches to Y1 from this pass. (A crystal's maker, package and orderable are still owed.)
+test fn a_printed_frequency_is_not_an_identification() -> Bool {
+  any(component_rows("Y1"), c => match c.identification {
+    // MarkingReading.text is optional: a reading can record evidence without a legible text. Absent text
+    // prints nothing, so it cannot be the reading that carries "27.000".
+    MarkingUnresolved { marking: m, discriminator: _ } => match m.text {
+      Present { value: t } => (t as String).contains("27.000")
+      Absent => false
+    }
+    _ => false
+  })
+    && !identified_as("Y1", "anything")
+    && match claim_of("Y1") { Absent { } => true, Present { value: _ } => false }
+}
+
+// 5. Nothing that the pass decided against became a position: the '?' rows, the group label, the
+// duplicate rows the atlas itself struck, the bare thermal pads, and the three outlines that were
+// owed a closer look. Each of these is a position that would exist on NVIDIA's list and does not.
+// Two of these names are not like the others, and the difference is the rule rather than an exception.
+// J3 was on the design list BEFORE this pass: the 2026-10-20 bench session read it (upload 9cd281be, whose
+// bytes never reached us), so it keeps its position and its gap. What the pass must not do is mint anything
+// new for it -- so the check is that no J3 reading cites a frame the store holds, not that no J3 position
+// exists. U1_TSE is the mirror image: the corrected inventory reads its designator clear and confirmed
+// (t4_07), so it IS a position; only its body marking is unread, and an unread marking is a population gap,
+// never a reason to drop a position the silkscreen gave us.
+test fn what_the_pass_refused_to_mint_is_absent() -> Bool {
+  !is_position("DS10-DS13")
+    && !is_position("U88") && !is_position("U108") && !is_position("U138")
+    && !is_position("U1_INV")
+    && !is_position("Y2") && !is_position("Y360") && !is_position("J141")
+    && !is_position("U817") && !is_position("D5_P1") && !is_position("Q5_P1")
+    && !is_position("D17") && !is_position("Q12")
+    && !is_position("U?") && !is_position("?")
+    && is_position("U1_TSE") && is_position("U1_TSW")
+    && count(filter(p4261_e1_layout.designator_readings, r =>
+      (r.designator as String) == "J3"
+        && match r.evidence {
+          OperatorPhotograph { citation } =>
+            match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
+              Checkable { } => true
+              Gap { } => false
+              Broken { } => false
+            }
+          _ => false
+        })) == 0
+}
+
+// 6. The refusals are not silently dropped: each is on the observation side, named, with the photo
+// that would close it in its obligation. A refusal that vanishes is a coverage gap that hides.
+test fn what_was_refused_is_held_with_an_obligation() -> Bool {
+  held_unresolved("DS10-DS13")
+    && held_unresolved("U817") && held_unresolved("D5_P1") && held_unresolved("Q5_P1")
+    && held_unresolved("U88") && held_unresolved("J3")
+}
+
+// 6b. And the held set is not a rumour. Every designator the receipts say we read and did not
+// position is on the board as an unresolved sighting (or as the one ambiguous reading), and
+// `obligation: NonEmptyStr` means such a row cannot be written without naming what would close
+// it. The test above samples six designators; a mutant run -- D17's unresolved row deleted --
+// passed it, which is how the missing direction was found. This joins the whole held set, so a
+// held part cannot vanish from the board silently.
+test fn every_held_receipt_is_recorded_on_the_board() -> Bool {
+  // The reverse direction of the refusal side: every held receipt survives as an unresolved
+  // board row. No name is exempted -- the ambiguous U3 sighting is not a held receipt (it is a
+  // read that became a position), and its own control is
+  // `the_ambiguous_sighting_mints_no_second_position`. The obligation cannot be empty because
+  // `UnresolvedPart.obligation` is `NonEmptyStr`: the type is the authority, so re-testing it
+  // here would be a second copy of the same rule.
+  //
+  // Why the direction is written with `.all` and not `count(list, pred)`: a first version of
+  // this test used `count(e1_held_receipts, h => ...)`, and the mutant below stayed green under
+  // it -- a two-argument `count` is not the repository idiom (`count(filter(list, pred))`,
+  // `.all`, `.any` are) and does not filter. The same mutant turns this red.
+  e1_held_receipts.all(r =>
+    any(p4261_e1_layout.unresolved, u => match u.designator {
+      Present { value: d } => designator_eq(a: designator_of(verbatim: d), b: r.designator)
+      Absent { } => false
+    }))
+}
+
+// 7. An empty footprint is a statement about THIS board. It is an observation arm, so the position
+// beside it carries no population claim at all -- there is no "unpopulated" arm in PopulatedPart, and
+// an empty footprint on our board is never a claim about NVIDIA's intent.
+test fn an_empty_footprint_claims_nothing_about_the_design() -> Bool {
+  let empties = ["U2_P5", "U3_P5", "D1_P5", "U2_P1", "F302", "U3_P1", "U523"]
+  all(empties, d => stated_empty(d) && match claim_of(d) { Absent { } => true, Present { value: _ } => false })
+}
+
+// 8. The altered board is a different thing from an empty footprint. U10_P2's MP2333 was removed
+// during the rail-short repair; recording it as observed-empty would say we found it empty.
+test fn an_alteration_is_not_recorded_as_an_observed_empty() -> Bool {
+  !stated_empty("U10_P2") && held_unresolved("U10_P2")
+}
+
+// 9. One sighting, two candidate positions, no second position. The top-side "U3" is preserved as
+// read, with U3_2 as the leading explanation and the conflict stated; it mints nothing, and the
+// canonical bottom-side U3 remains the only U3 on the design list.
+test fn the_ambiguous_sighting_mints_no_second_position() -> Bool {
+  let rows = p4261_e1_layout.ambiguous_designators
+  count(rows) == 1 && is_position("U3") && is_position("U3_2")
+    && match rows.first() {
+      Present { value: r } =>
+        (designator_text(designator: designator_of(verbatim: r.verbatim)) as String) == "U3"
+          && (r.candidate as String) == "U3_2"
+          && (r.conflict as String).contains("bottom")
+      Absent { } => false
+    }
+}
+
+// 10. EVERY reading on the board, checked against the store rather than asserted: a reading's citation
+// must resolve to a captured frame of THIS board, or name the gap that keeps it out (bytes never
+// hashed). Broken is refused -- a digest the store does not hold, a frame of another specimen, an image
+// we drew ourselves. And at least one reading must be Checkable, or this test would pass on a board of
+// gaps: the same fold evidence.dag reads, so the witness cannot drift from production.
+fn verdict_of(r: DesignatorReading) -> CitationVerdict {
+  match r.evidence {
+    OperatorPhotograph { citation } =>
+      citation_verdict(standing: cite(store: e1_photographs, citation: citation))
+    _ => Broken { }
+  }
+}
+
+test fn every_reading_cites_a_frame_or_names_a_gap() -> Bool {
+  all(p4261_e1_layout.designator_readings, r => match verdict_of(r) { Broken { } => false, _ => true })
+    && any(p4261_e1_layout.designator_readings, r => match verdict_of(r) { Checkable { } => true, _ => false })
+    // The parts the corrected inventories settled are among the checkable ones, and each is read once.
+    && count(filter(p4261_e1_layout.designator_readings, r => (r.designator as String) == "U12")) == 1
+    && count(filter(p4261_e1_layout.designator_readings, r => (r.designator as String) == "U1_2")) == 1
+    && count(filter(p4261_e1_layout.designator_readings, r => (r.designator as String) == "U2_2")) == 1
+}
+
+// ---- the positions are the receipts, joined by identity -------------------------------------------
+//
+// DESIGN §5: "Completeness is an identity join, not a count equality." The referent is not this file
+// and not the model: it is the 2026-11-03 atlas receipts, emitted as data by
+// gen_e1_position_receipts_dag.py from inventory_top.csv, inventory_bottom.csv, the per-photo
+// sightings and final_pass_corrections.json (the header of e1_position_receipts.dag names them). So
+// a reader can re-run the generator against the receipts and get this set again; and a position that
+// disappears, a spelling that drifts, or a read that never happened shows up as a refusal here rather
+// than as a number that happens to still add up. Delete U41 and add a misspelled U4l and every count
+// in this file stays where it was; these two directions do not.
+//
+// The base rule the generator applies is stated in its own header -- a designated part above the
+// passive level, the designator transcribed 'clear', standing 'confirmed' or 'final-pass critic', no
+// unreadable character. 249 of the 262 positions come from that rule alone. The other 13 are named
+// exceptions carrying the receipt that justifies them (a per-photo sighting the merged inventory
+// lost, an entry on the atlas's own anomaly list, a bench read the atlas could not repeat, the bulk
+// capacitors the handoff puts in scope), and 5 more reads the rule reaches were refused anyway and
+// are held instead -- the two duplicate bottom-side labels and the three empty footprints that need
+// a visual check. k, the designators whose read carries a '?' or a '*', is 81 distinct above the
+// passive level: those stay in the receipts entirely, which is why no test here can count them.
+
+test fn the_positions_are_the_receipts_and_nothing_else() -> Bool {
+  // Every position on NVIDIA's design list is a designator the receipts admitted, by the rule or by a
+  // named exception that says what it rests on.
+  p4261_e1_positions.all(p =>
+    any(e1_position_receipts, r => designator_eq(a: p.position.designator, b: r.designator)))
+    // And every designator the receipts admitted is on the list. The two directions together are the
+    // join: neither alone says the sets are the same.
+    && e1_position_receipts.all(r => match p4261_position_at(positions: p4261_e1_positions, verbatim: designator_text(r.designator)) {
+      Present { value: _ } => true
+      Absent { } => false
+    })
+}
+
+test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
+  // The other half of refusing: a read the receipts held back must not have slipped into the design
+  // facts. This is the assertion that catches a tentative read minting a position.
+  e1_held_receipts.all(r => match p4261_position_at(positions: p4261_e1_positions, verbatim: designator_text(r.designator)) {
+    Present { value: _ } => false
+    Absent { } => true
+  })
+}
+
+test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
+  // Nothing in the board record -- not an unresolved row, not the ambiguous sighting -- names a
+  // designator the receipts never recorded. A row with no designator at all (the unnamed clusters)
+  // is not a claim about a designator and is not checked here.
+  p4261_e1_layout.unresolved.all(u => match u.designator {
+    Present { value: d } =>
+      any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: d), b: r.designator))
+        || any(e1_held_receipts, r => designator_eq(a: designator_of(verbatim: d), b: r.designator))
+    Absent { } => true
+  })
+    // The ambiguous sighting: its verbatim and its candidate are both things the receipts saw. It
+    // mints no position of its own, which is what its own test below holds.
+    && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3"), b: r.designator))
+    && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3_2"), b: r.designator))
+}
+
+// ---- what a count is still good for ------------------------------------------------------------------
+//
+// Named as what it is: a per-pass change detector, not a completeness claim (DESIGN §5). The position
+// census above is a join; these two numbers have no independent referent yet. The component count
+// becomes a join when the atlas's component sightings are emitted the way the designator reads are,
+// and the claim count when a marking carries the receipt it was read from; the trigger that replaces
+// this test is that work, or the K1 receipts making the same joins natural. Until then it is here so
+// a deleted row or a wrongly merged pair is loud rather than a smaller board.
+
+test fn the_pass_row_counts_are_a_change_detector() -> Bool {
+  count(p4261_e1_layout.components) == 212
+    && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 47
+    // The held set keeps its 24 members, and the K1 keeps its own 13 positions: an E1 pass must
+    // not reach into another board's design facts. Both are change detectors, not proofs -- the
+    // held set's own authority is `every_held_receipt_is_recorded_on_the_board` joined to
+    // `e1_held_receipts`, and the design list's is `the_positions_are_the_receipts_and_nothing_else`.
+    && count(e1_held_receipts) == 24
+    && count(p4261_k1_positions) == 13
+}
+
+// ---- one reading per position --------------------------------------------------------------------
+//
+// The census pins two totals; this pins the shape a total cannot. Readings and positions stand in
+// one-to-one correspondence: every position on the list has exactly one designator reading, and no
+// reading names a designator that is not on the list. A position losing its reading while another
+// gains a second leaves both totals at 262 and every other test here green, which is exactly the
+// mistake this catches. The comparison goes through Designator's own equality, so a reading cannot
+// be matched to a position by a spelling that differs in case or whitespace: the reading side is a
+// plain string today (the type still says NonEmptyStr), so this test, not the type, is what holds
+// the two lists together -- see the PR note on widening DesignatorReading.designator.
+
+test fn every_position_is_read_exactly_once_and_nothing_else_is() -> Bool {
+  p4261_e1_positions.all(p =>
+    count(filter(p4261_e1_layout.designator_readings,
+      r => designator_eq(a: designator_of(verbatim: r.designator), b: p.position.designator))) == 1)
+    && p4261_e1_layout.designator_readings.all(r => is_position(r.designator))
+}
+
+test fn no_component_instance_is_recorded_twice() -> Bool {
+  // One board row per component instance. Two rows under one local name would put two
+  // identifications on the same part on the board, and whichever a lookup met first would win --
+  // a silent coin toss on what the part is. Duplicates cannot be seen in a total, so this counts
+  // each name's own occurrences.
+  p4261_e1_layout.components.all(c =>
+    count(filter(p4261_e1_layout.components, d =>
+      component_identity_eq(a: c.component, b: d.component))) == 1)
+}
+
+
+// ─── an unread vendor table is an obligation, never an upstream fact (review 90420) ──────────────
+/// Piece 3's fifth control, asked for by review 90420. DESIGN §3: "Observations this repository makes
+/// are receipts in the observing layer, not facts of the observed upstream; a missing observation is a
+/// downstream coverage obligation, never an `Unobserved` property inside the upstream module." The
+/// PI3CH480 data sheet's customer-marking table could not be read here, so the row must publish NO mark,
+/// the read obligation must sit on the four claims that use the row, and the print our bodies carry must
+/// sit on the observing side. Pinned all three ways; `a_candidate_never_became_an_identification` covers
+/// the other four new rows, whose marking tables WERE read and whose marks are therefore published.
+fn pi3ch480_positions() -> List<NonEmptyStr> {
+  ["U66", "U67", "U535", "U536"]
+}
+
+fn claim_obligation(d: NonEmptyStr) -> NonEmptyStr? {
+  match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
+    Present { value: p } => match p.population {
+      Present { value: PopulationClaim { standing: TranscribedUncited { read_obligation: o } } } => Present { value: o }
+      _ => Absent { }
+    }
+    Absent { } => Absent { }
+  }
+}
+
+fn print_is_an_observing_receipt(d: NonEmptyStr) -> Bool {
+  count(component_rows(d), c => match c.identification {
+    IdentifiedByMarking { marking: MarkingReading { text: t, evidence: OperatorPhotograph { citation } } } =>
+      (t as String).contains("PI3CH")
+        && match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
+             Checkable { } => true
+             _ => false
+           }
+    _ => false
+  }) == 1
+}
+
+test fn an_unread_vendor_table_is_a_downstream_obligation() -> Bool {
+  match pi3ch480_qex.top_marking {
+    Present { value: _ } => false
+    Absent { } => true
+  }
+    && all(pi3ch480_positions(), d => match claim_obligation(d: d) {
+         Present { value: o } => (o as String).contains("customer-marking table")
+         Absent { } => false
+       })
+    && all(pi3ch480_positions(), d => print_is_an_observing_receipt(d: d))
+}
