@@ -1134,21 +1134,21 @@ fn a_look(reading: AttachReadiness) -> ReadinessLook {
 // configurations it was decoded from.
 test fn a_started_look_prints_the_configurations_it_read() -> Bool {
   string_contains(
-    s: readiness_look_text(look: a_look(reading: ReadinessStarted { row: pre_ready_row(wire: 1, session: "0"), configurations: configurations_body(marker: "started-look") })),
+    s: readiness_look_text(l: a_look(reading: ReadinessStarted { row: pre_ready_row(wire: 1, session: "0"), configurations: configurations_body(marker: "started-look") })),
     pattern: "\"marker\":\"started-look\"",
   )
 }
 
 test fn a_connecting_look_prints_the_configurations_it_read() -> Bool {
   string_contains(
-    s: readiness_look_text(look: a_look(reading: ReadinessConnecting { row: pre_ready_row(wire: 0, session: "255"), configurations: configurations_body(marker: "connecting-look") })),
+    s: readiness_look_text(l: a_look(reading: ReadinessConnecting { row: pre_ready_row(wire: 0, session: "255"), configurations: configurations_body(marker: "connecting-look") })),
     pattern: "\"marker\":\"connecting-look\"",
   )
 }
 
 test fn an_unbound_started_look_prints_the_configurations_it_read() -> Bool {
   string_contains(
-    s: readiness_look_text(look: a_look(reading: ReadinessStartedUnbound { row: pre_ready_row(wire: 1, session: "255"), configurations: configurations_body(marker: "unbound-look") })),
+    s: readiness_look_text(l: a_look(reading: ReadinessStartedUnbound { row: pre_ready_row(wire: 1, session: "255"), configurations: configurations_body(marker: "unbound-look") })),
     pattern: "\"marker\":\"unbound-look\"",
   )
 }
@@ -1159,8 +1159,8 @@ test fn an_unbound_started_look_prints_the_configurations_it_read() -> Bool {
 // prove a body can appear at all.
 test fn the_receipt_text_distinguishes_two_configurations_of_the_same_row() -> Bool {
   let row = pre_ready_row(wire: 0, session: "255")
-  let left = readiness_look_text(look: a_look(reading: ReadinessConnecting { row: row, configurations: configurations_body(marker: "left") }))
-  let right = readiness_look_text(look: a_look(reading: ReadinessConnecting { row: row, configurations: configurations_body(marker: "right") }))
+  let left = readiness_look_text(l: a_look(reading: ReadinessConnecting { row: row, configurations: configurations_body(marker: "left") }))
+  let right = readiness_look_text(l: a_look(reading: ReadinessConnecting { row: row, configurations: configurations_body(marker: "right") }))
   left != right
     && string_contains(s: left, pattern: "\"marker\":\"left\"")
     && string_contains(s: right, pattern: "\"marker\":\"right\"")
