@@ -15,6 +15,19 @@ const A1_IMPORTED_GENERIC_FN_CELL: &str = "module eq_probe_alias_imported_generi
 const A2_PLAIN_ALIAS_GREEN: &str = "module eq_probe_alias_plain\ntype Cell {\n  value: Int\n}\ntype CellAlias = Cell\nfn same(a: CellAlias, b: CellAlias) -> Bool { a == b }\n";
 const A2PRIME_LOCAL_GENERIC_PLAIN_CELL: &str = "module eq_probe_alias_local_generic_plain\ntype Cell<T> {\n  value: T\n}\ntype CellInt = Cell<Int>\nfn same(a: CellInt, b: CellInt) -> Bool { a == b }\n";
 
+// --- A/B caller fixtures (keen-heron): exercise the expand callers that can change, on the
+// FINAL-round (regen'd) binary. Diagnostic only; never in the PR.
+// Group A (structural comparison of two peeled types):
+//   arg_same  : pass an alias-to-record where the SAME concrete record is declared -> stay ACCEPTED.
+//   arg_diff  : pass an alias-to-record where a DIFFERENT record is declared -> now REFUSE (a
+//               real arg/type mismatch the shell used to mask). Reaches the Group A peel callers
+//               (direct_call_arg_mismatch_diags / declared_type_kernel_inhabitance_mismatch).
+// Group B (head-name / classification read off the structure): a match on an alias-to-coproduct
+//   forces the coproduct head-name readers to classify the alias; if classified it is accepted.
+const ARG_SAME_RECORD: &str = "module eq_fixture_arg_same\ntype Point {\n  x: Int\n}\ntype PointAlias = Point\nfn takes(p: Point) -> Int { p.x }\nfn run(q: PointAlias) -> Int { takes(q) }\n";
+const ARG_DIFF_RECORD: &str = "module eq_fixture_arg_diff\ntype Point {\n  x: Int\n}\ntype Other {\n  y: Int\n}\ntype PointAlias = Point\nfn takes(o: Other) -> Int { o.y }\nfn run(q: PointAlias) -> Int { takes(q) }\n";
+const COPRODUCT_ALIAS_MATCH: &str = "module eq_fixture_coproduct\ntype Shape {\n  Circle {\n    r: Int\n  }\n  Square {\n    s: Int\n  }\n}\ntype ShapeAlias = Shape\nfn area(sh: ShapeAlias) -> Int { match sh { Circle { r } => r, Square { s } => s } }\n";
+
 fn report(label: &str, source: &str) {
     // SAFETY: the row runs tests with --test-threads=1; the flag only gates diagnostic eprintlns.
     unsafe { std::env::set_var("EQ_ALIAS_PROBE_DIAG", "1") };
@@ -72,4 +85,17 @@ fn t6_a2prime_local_generic_plain_cell() {
         "A2PRIME_LOCAL_GENERIC_PLAIN_CELL",
         A2PRIME_LOCAL_GENERIC_PLAIN_CELL,
     );
+}
+
+#[test]
+fn t7_ab_arg_same_record() {
+    report("AB_ARG_SAME_RECORD", ARG_SAME_RECORD);
+}
+#[test]
+fn t8_ab_arg_diff_record() {
+    report("AB_ARG_DIFF_RECORD", ARG_DIFF_RECORD);
+}
+#[test]
+fn t9_ab_coproduct_alias_match() {
+    report("AB_COPRODUCT_ALIAS_MATCH", COPRODUCT_ALIAS_MATCH);
 }
