@@ -1544,6 +1544,18 @@ pub fn read_cgroup_u64(dir: &Path, file: &str) -> Option<u64> {
         .and_then(|s| s.trim().parse().ok())
 }
 
+/// One cgroup control file as text for an observation line: the trimmed content, `absent` when the
+/// file does not exist, `unreadable(<kind>)` for any other failure. Unlike `read_cgroup_raw`, which
+/// folds both failures into `None`, this keeps them apart so a printed line never defaults a
+/// missing file to a number.
+pub fn cgroup_file_or_absent(dir: &Path, file: &str) -> String {
+    match std::fs::read_to_string(dir.join(file)) {
+        Ok(body) => body.trim().to_string(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => "absent".to_string(),
+        Err(error) => format!("unreadable({:?})", error.kind()),
+    }
+}
+
 pub fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
     std::fs::read_to_string(dir.join(file))
         .ok()

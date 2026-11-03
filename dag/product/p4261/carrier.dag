@@ -7,7 +7,7 @@ import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.ti_lm5066i { lm5066i_pwp }
 import extdeps.electronic_component.ti_sn74lv165a { sn74lv165a_pw }
-import extdeps.electronic_component.types { ElectronicComponentRow }
+import extdeps.electronic_component.types { ElectronicComponentRow , designator_eq, designator_of }
 import product.electrical.carrier_phase { CarrierPhaseObservation, CarrierTransitionObservation, SwitchPoleClosure }
 import extdeps.connector.amphenol_g97v22332hr { g97v22332hr }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalDesignIdentity, ElectricalTerminalRef, TerminalIdentity, component_identity_eq, design_identity_eq }
@@ -379,12 +379,20 @@ type CorrespondenceAdmission {
   refused: List<CorrespondenceRefusal>
 }
 
+// A reading's text is lifted into the identity type and compared there: what was seen is text, a position
+// is an identity, and the only sanctioned comparison between them is the designator authority's -- exact
+// spelling, nothing done to either side first.
 fn positions_named(layout: CarrierLayoutObservation, d: NonEmptyStr) -> List<P4261DesignPosition> {
-  filter(p4261_positions_of(revision: layout.revision), x => (x.position.designator as String) == (d as String))
+  filter(p4261_positions_of(revision: layout.revision), x =>
+    designator_eq(a: x.position.designator, b: designator_of(verbatim: d)))
 }
 
+// One specimen under two SPELLINGS is two readings, not one reading typed twice: U1_P1 and U1_P5 are two
+// channels, and U1_2 and U12 would have been one component had the comparison tidied the text first.
 fn read_under_another_designator(layout: CarrierLayoutObservation, r: DesignatorReading) -> Bool {
-  any(layout.designator_readings, x => component_identity_eq(a: x.specimen, b: r.specimen) && (x.designator as String) != (r.designator as String))
+  any(layout.designator_readings, x =>
+    component_identity_eq(a: x.specimen, b: r.specimen)
+      && !designator_eq(a: designator_of(verbatim: x.designator), b: designator_of(verbatim: r.designator)))
 }
 
 fn correspondence_refusal(layout: CarrierLayoutObservation, r: DesignatorReading) -> CorrespondenceRefusal? {
