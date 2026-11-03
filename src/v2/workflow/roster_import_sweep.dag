@@ -3118,6 +3118,8 @@ fn roster_rename_control_names() -> List<String> {
     "collection-head-first", "collection-head-reverse", "collection-head-take", "collection-head-flat_map",
     "collection-head-append", "collection-head-append-pipe", "collection-head-append-foreign-label", "collection-head-append-reordered", "collection-head-append-arity",
     "collection-head-append-site-gated", "collection-head-append-whole-row-set-refuses",
+    "set-cluster-set-insert-refuses-without-occurrences", "set-cluster-set-contains-refuses-without-occurrences",
+    "set-cluster-empty-set-refuses-without-occurrences",
     "collection-head-last",
     "appended-callee-uncovered-refuses",
     "appended-callee-covered-admitted",
@@ -3185,6 +3187,18 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     roster_control_verdict(name: "sort-by-whole-row-set-refuses", fail: roster_unkeyed_expect_refusal(name: "sort-by-whole-row-set-refuses", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> List<String> {\n  sort_by(xs, fn(s) { s })\n}\n", want: "row-site-gated-needs-occurrences home=std.algebra row=sort_by/symbol call=sort_by selection=no-site-keys", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "sort-by-whole-row-set-clean-file-passes", fail: roster_unkeyed_expect_clean(name: "sort-by-whole-row-set-clean-file-passes", text: "module c.rename\n\nimport std.algebra { Cons, list_sort_by_key }\n\nfn f(xs: List<String>) -> List<String> {\n  list_sort_by_key(xs: xs, key: fn(s) { s }, order: string_total_order())\n}\n", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "sort-by-whole-call-refuses", fail: roster_scope_exit_refuses(name: "sort-by-whole-call-refuses", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "sort_by"), refusal: RefusalScopeSelectsSeveralRows { home: "std.algebra", call: "sort_by", count: 3 })),
+    // set_insert: the set-cluster row is site-gated, so a run carrying no occurrence key for it
+    // refuses naming the row rather than rewriting every site that spells the call -- the
+    // same rule `append/list` pins, now on a row whose element kind the native carrier cannot order.
+    roster_control_verdict(name: "set-cluster-set-insert-refuses-without-occurrences", fail: roster_unkeyed_expect_refusal(name: "set-cluster-set-insert-refuses-without-occurrences", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(s: FinitePowerSet<Int>, x: Int) -> Bool {\n  set_insert(s, x)\n}\n", want: "row-site-gated-needs-occurrences home=std.algebra row=set_insert call=set_insert selection=no-site-keys", prepared: prepared, lex: lex)),
+    // set_contains: the set-cluster row is site-gated, so a run carrying no occurrence key for it
+    // refuses naming the row rather than rewriting every site that spells the call -- the
+    // same rule `append/list` pins, now on a row whose element kind the native carrier cannot order.
+    roster_control_verdict(name: "set-cluster-set-contains-refuses-without-occurrences", fail: roster_unkeyed_expect_refusal(name: "set-cluster-set-contains-refuses-without-occurrences", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(s: FinitePowerSet<Int>, x: Int) -> Bool {\n  set_contains(s, x)\n}\n", want: "row-site-gated-needs-occurrences home=std.algebra row=set_contains call=set_contains selection=no-site-keys", prepared: prepared, lex: lex)),
+    // empty_set: the set-cluster row is site-gated, so a run carrying no occurrence key for it
+    // refuses naming the row rather than rewriting every site that spells the call -- the
+    // same rule `append/list` pins, now on a row whose element kind the native carrier cannot order.
+    roster_control_verdict(name: "set-cluster-empty-set-refuses-without-occurrences", fail: roster_unkeyed_expect_refusal(name: "set-cluster-empty-set-refuses-without-occurrences", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(s: FinitePowerSet<Int>, x: Int) -> Bool {\n  empty_set(s, x)\n}\n", want: "row-site-gated-needs-occurrences home=std.algebra row=empty_set call=empty_set selection=no-site-keys", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-append-pipe", fail: roster_append_expect_text(name: "collection-head-append-pipe", before: append_fn_head + "  xs |> append(items: ys)" + append_fn_tail, keys: append_key, after: append_fn_head_moved + "  list_append(left: xs, right: ys)" + append_fn_tail, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-append-foreign-label", fail: roster_append_expect_refusal(name: "collection-head-append-foreign-label", text: append_fn_head + "  append(xs, parts: ys)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-append-reordered", fail: roster_append_expect_refusal(name: "collection-head-append-reordered", text: append_fn_head + "  append(items: ys, xs)" + append_fn_tail, keys: append_key, want: "rename-call-named-argument call=append", prepared: prepared, lex: lex)),
