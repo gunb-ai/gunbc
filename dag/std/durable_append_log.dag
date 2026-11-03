@@ -194,10 +194,11 @@ fn append_stream_readback_at(observed: AppendStreamObservation, standing: Append
 // the member (create-new, group-writable under a dedicated worker account) and the sandboxed worker writes
 // it. The contract is therefore a SEQUENCE of exclusive windows, never two writers at once:
 //   HostCreatesThenSandboxWrites   host create-new (empty), then ONE sandbox window, then host reads only.
-// The create and the append are DIFFERENT admissions: append_write_admission judges (policy, writer, intent,
-// standing, existence) for appends, and the create goes through append_host_create_admission(policy, existence),
-// which has NO standing argument -- a create is exclusive through create-new, so a standing there could only ever
-// be fabricated by the caller.
+// The create and the append are DIFFERENT admissions, and THE APPEND ADMISSION REFUSES EVERY CREATE FIRST --
+// before any standing, policy or principal is read, host or sandbox. append_write_admission judges appends only
+// (policy, writer, standing, existence); the ONE admitted create route is
+// append_host_create_admission(policy, existence), which has NO standing argument -- a create is exclusive
+// through create-new, so a standing there could only ever be fabricated by the caller.
 //   HostOnly                       the host is the only writer; the record shape is RecordPerGeneration.
 type MemberWriterPolicy
   = HostOnly
@@ -218,10 +219,13 @@ type AppendWriteRefusal
   | HostWriteDuringSandboxWindow { holder: DurableHoldOwnerRef }
   | WriterStandingUnknown { cause: NonEmptyStr }
   | CreateOverExistingMember
-  // A create handed to the APPEND admission. Not a policy judgement: the create route is a different fn
-  // (append_host_create_admission) that takes no standing at all, so a standing-carrying create call is the
-  // caller reaching for a route this module deliberately closed (review 90279).
-  | HostCreateRequiresCreateAdmission
+  // A create handed to the APPEND admission, by ANY writer -- host or sandbox, under any policy, with the
+  // window held by that writer or by nobody. Not a policy judgement and not a standing judgement: the create
+  // route is a different fn (append_host_create_admission) that takes no standing and no window at all, and it
+  // is the only admitted create. Every create reaching this admission is a caller reaching for the route
+  // review 90279 closed, so it is refused before the standing, the policy or the principal is consulted --
+  // a standing can never be what decides a create, in either direction.
+  | CreateRequiresCreateAdmission
 
 type AppendWriteAdmission
   = AppendWriteAdmitted
@@ -239,34 +243,37 @@ fn append_write_admission(
   standing: AppendWriterStanding,
   member_exists: Bool,
 ) -> AppendWriteAdmission {
-  match standing {
-    WriterStandingUnobserved { cause: c } => AppendWriteRefused { refusal: WriterStandingUnknown { cause: c } }
-    _ => match policy {
-      HostOnly => match writer {
-        HostWriter => append_host_admission(intent: intent, standing: standing, member_exists: member_exists)
-        SandboxWriter { principal: _ } => AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
-      }
-      HostCreatesThenSandboxWrites { principal: allowed } => match writer {
-        HostWriter => match intent {
-          IntentAppendRecord => match standing {
+  match intent {
+    // FIRST, and before ANYTHING else: not the standing, not the policy, not the principal. A create is never
+    // admitted here for any writer under any policy -- including a sandbox writer holding its own window, which
+    // used to be a second admitted create route. One admitted create route exists: append_host_create_admission.
+    IntentCreateEmpty => AppendWriteRefused { refusal: CreateRequiresCreateAdmission }
+    IntentAppendRecord => match standing {
+      WriterStandingUnobserved { cause: c } => AppendWriteRefused { refusal: WriterStandingUnknown { cause: c } }
+      _ => match policy {
+        HostOnly => match writer {
+          HostWriter => append_host_admission(intent: intent, standing: standing, member_exists: member_exists)
+          SandboxWriter { principal: _ } => AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
+        }
+        HostCreatesThenSandboxWrites { principal: allowed } => match writer {
+          HostWriter => match standing {
             WriterHoldsWindow { owner: o } => AppendWriteRefused { refusal: HostWriteDuringSandboxWindow { holder: o } }
             _ => AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
           }
-          IntentCreateEmpty => AppendWriteRefused { refusal: HostCreateRequiresCreateAdmission }
+          SandboxWriter { principal: p } => append_sandbox_admission(allowed: allowed, principal: p, intent: intent, standing: standing, member_exists: member_exists)
         }
-        SandboxWriter { principal: p } => append_sandbox_admission(allowed: allowed, principal: p, intent: intent, standing: standing, member_exists: member_exists)
       }
     }
   }
 }
 
 // THE HOST APPEND ROUTE (HostOnly): appends are what a standing can speak about, so the standing is consulted
-// here -- a held window refuses the host (WriterWindowHeldByAnother). A CREATE is refused before the standing is
-// read, whatever the standing says: the standing never decides a create anywhere in this module (review 90279),
-// and create-new is what makes a create exclusive.
+// here -- a held window refuses the host (WriterWindowHeldByAnother). append_write_admission refuses a create
+// before it ever calls this fn; the create arm stays as the answer to a DIRECT call, so this helper can never
+// admit a create either. member_exists is carried for the create route's shape only; an append does not read it.
 fn append_host_admission(intent: AppendWriteIntent, standing: AppendWriterStanding, member_exists: Bool) -> AppendWriteAdmission {
   match intent {
-    IntentCreateEmpty => AppendWriteRefused { refusal: HostCreateRequiresCreateAdmission }
+    IntentCreateEmpty => AppendWriteRefused { refusal: CreateRequiresCreateAdmission }
     IntentAppendRecord => match standing {
       WriterHoldsWindow { owner: o } => AppendWriteRefused { refusal: WriterWindowHeldByAnother { holder: o } }
       _ => AppendWriteAdmitted
@@ -287,20 +294,24 @@ fn append_host_create_admission(policy: MemberWriterPolicy, member_exists: Bool)
   }
 }
 
+// THE SANDBOX APPEND ROUTE. A held window owned by the declared principal admits an APPEND and nothing else:
+// it used to admit a create too, which was a second admitted create route (a sandbox worker creating its own
+// member outside the host's exclusive create-new). The create is refused here as well as in
+// append_write_admission, so no call shape reaches an admitted create (review 90279).
 fn append_sandbox_admission(allowed: DurableHoldOwnerRef, principal: DurableHoldOwnerRef, intent: AppendWriteIntent, standing: AppendWriterStanding, member_exists: Bool) -> AppendWriteAdmission {
-  if !durable_hold_owner_equal(left: allowed, right: principal) {
-    AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
-  } else {
-    match standing {
-      WriterHoldsWindow { owner: o } => if durable_hold_owner_equal(left: o, right: principal) {
-        match intent {
-          IntentAppendRecord => AppendWriteAdmitted
-          IntentCreateEmpty => if member_exists { AppendWriteRefused { refusal: CreateOverExistingMember } } else { AppendWriteAdmitted }
+  match intent {
+    IntentCreateEmpty => AppendWriteRefused { refusal: CreateRequiresCreateAdmission }
+    IntentAppendRecord => if !durable_hold_owner_equal(left: allowed, right: principal) {
+      AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
+    } else {
+      match standing {
+        WriterHoldsWindow { owner: o } => if durable_hold_owner_equal(left: o, right: principal) {
+          AppendWriteAdmitted
+        } else {
+          AppendWriteRefused { refusal: WriterWindowHeldByAnother { holder: o } }
         }
-      } else {
-        AppendWriteRefused { refusal: WriterWindowHeldByAnother { holder: o } }
+        _ => AppendWriteRefused { refusal: WriterWindowNotOpen }
       }
-      _ => AppendWriteRefused { refusal: WriterWindowNotOpen }
     }
   }
 }

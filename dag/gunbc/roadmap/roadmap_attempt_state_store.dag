@@ -11,7 +11,7 @@ import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { filesystem_listing_entry_names, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import gunbc.durable_append_log_store { AppendLogParent, AppendLogSlot, AppendLogReady, AppendLogUnready, AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, sandbox_provider, attempt_worker_principal_role }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, WorkerIsServiceUser, WorkerDedicatedAccount }
-import std.durable_append_log { AppendFraming, NewlineDelimitedStream, HostCreatesThenSandboxWrites, AppendWriteAdmitted, AppendWriteRefused, AppendWriteRefusal, HostCreateRequiresCreateAdmission, append_host_create_admission }
+import std.durable_append_log { AppendFraming, NewlineDelimitedStream, HostCreatesThenSandboxWrites, AppendWriteAdmitted, AppendWriteRefused, AppendWriteRefusal, CreateRequiresCreateAdmission, append_host_create_admission }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_verification_receipt { verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename, CurrentVerificationSelectionObservation, SelectionUnreadable, SelectionAbsent, current_verification_selection_decode_document, ExactVerificationReceiptSource, ExactVerificationReceiptUnreadable, ExactVerificationReceiptAbsent, ExactVerificationReceiptPresent }
@@ -661,7 +661,8 @@ fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, 
 // to the sandbox by the member's existence. Contract: std.durable_append_log append_host_create_admission
 // (policy, member existence) -- it takes NO AppendWriterStanding, so this call fabricates nothing (review 90279);
 // the create is exclusive through the Filesystem.WriteCreateNew effect below, and the append admission now
-// refuses a host create outright (HostCreateRequiresCreateAdmission), so the standing-free route is the only one. The dedicated-account branch keeps the old
+// refuses EVERY create outright (CreateRequiresCreateAdmission), host or sandbox, before any standing, policy
+// or principal is read, so this create route is the only admitted create. The dedicated-account branch keeps the old
 // group-writable mode at creation; the service-user branch was historically an overwrite-capable Write, but the
 // store op is CREATE-NEW on BOTH branches so an existing member is a typed outcome (AlreadyExists), never an
 // overwrite. Business key only; the path is derived from the sealed attempt-state record, never supplied.
@@ -690,7 +691,7 @@ fn attempt_append_log_refusal_detail(refusal: AppendWriteRefusal) -> String {
     HostWriteDuringSandboxWindow { holder: _ } => "a host write was attempted during the sandbox window"
     WriterStandingUnknown { cause: c } => join(["the writer standing is unobserved: ", c], "")
     CreateOverExistingMember => "the member already exists; create-new will not overwrite it"
-    HostCreateRequiresCreateAdmission => "a create is not admitted by the append admission; append_host_create_admission (policy, member existence) is the only create route"
+    CreateRequiresCreateAdmission => "a create is not admitted by the append admission; append_host_create_admission (policy, member existence) is the only create route"
   }
 }
 
