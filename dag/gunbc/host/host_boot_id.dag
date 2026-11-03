@@ -1,0 +1,62 @@
+module gunbc.host.host_boot_id
+
+import std.types { String }
+import std.optional { Present, Absent }
+import extdeps.uuid { Uuid }
+import extdeps.linux.kernel_random { kernel_boot_id_of }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
+import gunbc.host.host_operation_exec { HostOperationOutcome, HostOperationObserved, HostOperationRefused }
+
+// ONE BOOT OF ONE HOST, NAMED BY ITS KERNEL (random(4) boot_id, extdeps.linux.kernel_random). It is the
+// board-neutral boot identity: what an initialized host's OS identity carries (gunbc.host.initialized_host), what
+// a service slot is scoped to (gunbc.runner.runner_host_unit_slot ServiceSlot), and what the lost-boot sweep joins
+// a recorded boot to (gunbc.runner.runner_lost_boot_sweep_run). It was ServiceBootId in the runner's slot module
+// until the initialized-host record needed the same fact below the runner; a second type for it there would have
+// been a second name for one concept, so it moved here and the runner reads it from here.
+//
+// sole_constructor, and every constructor below reads a KERNEL boot id: the capture's KernelBootId run field, or
+// the text of /proc/sys/kernel/random/boot_id. A historical attempt ordinal, a bare string or a name read off a
+// listing never becomes one.
+type HostBootId sole_constructor {
+  boot_id: Uuid
+}
+
+// THE CAPTURE'S RUN IDENTITY, when it is a kernel boot id. The capture's run field is the boot capture's own
+// format (gunbc.machine_intake.host_capture_envelope), which keeps the historical ordinal apart; only the kernel
+// arm names a boot.
+fn host_boot_id_of_capture_run(run: HostCaptureRunIdentity) -> HostBootId? {
+  match run {
+    KernelBootId { boot_id: b } => Present { value: HostBootId { boot_id: b } }
+    HistoricalAttemptOrdinal { ordinal: _ } => none
+  }
+}
+
+// THE KERNEL'S OWN FILE, decoded by its upstream's one reader (trim, then a UUID; anything else is no boot id).
+fn host_boot_id_of_kernel_text(text: String) -> HostBootId? {
+  match kernel_boot_id_of(text: text) {
+    Present { value: u } => Present { value: HostBootId { boot_id: u } }
+    Absent => none
+  }
+}
+
+// THE READ OF THE BOOT ID OVER A HOST OPERATION (host_operation_exec ProcfsReadBootId), judged. The outcome is the
+// supplied boundary of the hermetic witnesses; the verdict mints no evidence about which host answered, so a
+// consumer that needs "host H is on boot B" joins this to the transport it read over.
+type BootIdReadVerdict
+  = BootIdReadEstablished { boot: HostBootId }
+  | BootIdReadUnreadable { cause: String }
+
+fn boot_id_read_verdict(host: String, read: HostOperationOutcome) -> BootIdReadVerdict {
+  match read {
+    HostOperationRefused { operation: _, reason: why } => BootIdReadUnreadable { cause: concat("the boot id read was refused: ", why) }
+    HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+      if ok == false {
+        BootIdReadUnreadable { cause: join(["the boot id read on ", host, " exited unsuccessfully"], "") }
+      } else {
+        match host_boot_id_of_kernel_text(text: out) {
+          Absent => BootIdReadUnreadable { cause: join(["the boot id read on ", host, " is not a uuid"], "") }
+          Present { value: b } => BootIdReadEstablished { boot: b }
+        }
+      }
+  }
+}

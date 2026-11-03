@@ -1,6 +1,7 @@
 module std.list
 
 import std.types { List, Bool, String, Map, Int }
+import std.algebra { collection_concat_shape, list_reverse }
 // Temporary realization: the seed intercepts algebra.contains and discards eq.
 // Tracking: gunbc.list_membership_operation_gap. Retire list_member and rewire
 // list_cover when the declared contains route executes caller equality, with the
@@ -87,7 +88,7 @@ fn distinct_by_key<T>(xs: List<T>, key: fn(T) -> String) -> List<T> {
       Absent => KeyedScan { seen: map_insert(acc.seen, key(x), 1), kept_reversed: concat([x], acc.kept_reversed) }
     }
   })
-  reverse(scan.kept_reversed)
+  list_reverse(xs: scan.kept_reversed)
 }
 
 // THE FIRST ELEMENT OF EACH DUPLICATED KEY, emitted when its second occurrence is seen. The map
@@ -120,5 +121,5 @@ fn duplicated_by_key<T>(xs: List<T>, key: fn(T) -> String) -> List<T> {
         }
     }
   })
-  reverse(scan.kept_reversed)
+  list_reverse(xs: scan.kept_reversed)
 }
