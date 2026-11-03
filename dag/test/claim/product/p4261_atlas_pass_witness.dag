@@ -34,10 +34,11 @@ import extdeps.nvidia.p4261.population {
   PopulatedPart,
   PartRow,
   p4261_e1_positions,
+  p4261_k1_positions,
   p4261_position_at,
 }
 import extdeps.electronic_component.types { designator_of, designator_text }
-import product.p4261.carrier { DesignatorReading }
+import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_b { p4261_e1_layout }
 import product.p4261.e1_photographs { e1_photographs }
 import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite }
@@ -243,3 +244,37 @@ test fn every_reading_cites_a_frame_or_names_a_gap() -> Bool {
     && count(filter(p4261_e1_layout.designator_readings, r => (r.designator as String) == "U1_2")) == 1
     && count(filter(p4261_e1_layout.designator_readings, r => (r.designator as String) == "U2_2")) == 1
 }
+
+// ---- the pass census, pinned as a tripwire ---------------------------------------------------------
+//
+// The header says a count is a receipt rather than an assertion, and the report renders counts from
+// the model, so nothing here is a report. This test exists for one reason: it is the tripwire for
+// THIS pass. A position deleted by a careless edit, two component rows merged on the wrong key, a
+// reading dropped when its citation went stale -- each leaves every shape test above green, because a
+// shape is still a shape once it has any instances. These numbers were established by probe (equality
+// holds at each value and at no neighbour of it), so an accidental deletion turns this red instead of
+// quietly re-greening.
+//
+// n/m/k, as the handoff asks for it: n positions admitted from reads that are certain and complete;
+// m reads held back with an obligation, which are the unresolved rows plus the one ambiguous sighting;
+// k reads whose designator carried a '?' or a '*', which stay out of the model entirely -- 81 distinct
+// designated footprints above the passive level (85 inventory rows), a figure read off the atlas
+// receipts, since a read the model does not hold cannot be counted by the model.
+
+test fn the_pass_census_is_exactly_this() -> Bool {
+  let positions = count(p4261_e1_positions)
+  let claimed = count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false }))
+  // n: certain, complete reads that became positions; the K1 keeps its own 13 and is untouched here.
+  positions == 262
+    && count(p4261_k1_positions) == 13
+    // claimed / unclaimed: a listed position with no claim is our coverage gap, never NVIDIA's silence.
+    && claimed == 47
+    && positions - claimed == 215
+    // one reading per position; one component row per instance, after 29 duplicate sightings merged.
+    && count(p4261_e1_layout.designator_readings) == 262
+    && count(p4261_e1_layout.components) == 212
+    // m: what the pass refused to mint, held with the obligation that would close it.
+    && count(p4261_e1_layout.unresolved) == 34
+    && count(p4261_e1_layout.ambiguous_designators) == 1
+}
+
