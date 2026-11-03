@@ -1,8 +1,7 @@
 module test.claim.roadmap.roadmap_serve_witness
 import gunbc.site.document { site_styles }
 import std.access { Permit, Deny }
-import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView, ServeActionDispatchNode }
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
+import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView, ServeActionDispatchNode, RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
 
 import gunbc.roadmap.roadmap_serve {
   RoadmapServeHandler, IssueQueryHandler, serve_issue_query,
@@ -81,7 +80,7 @@ import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_page { roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
-import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
+import gunbc.roadmap.roadmap_event_log { StandingsUnobserved, IssueComment, EventPrincipalAuthenticated, LegacyEmailPrincipal }
 import gunbc.auth.session {
   AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken,
   SessionProfile, SessionCookieAbsent,
@@ -89,7 +88,6 @@ import gunbc.auth.session {
 import extdeps.uri { Uri, Https }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_eq, fabric_workflow_principal }
-import gunbc.roadmap.roadmap_event_log { IssueComment, EventPrincipalAuthenticated, LegacyEmailPrincipal }
 import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }

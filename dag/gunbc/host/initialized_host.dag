@@ -1,0 +1,143 @@
+module gunbc.host.initialized_host
+
+import std.types { String, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.network.endpoint { SocketAddress }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }
+import gunbc.host.host_bound_transport { HostBoundTransport }
+import gunbc.host.anchored_host_transport {
+  AnchoredHostBinding, AnchoredBindingBound, anchored_host_binding_refusal_reason, anchored_host_transport_live,
+}
+import gunbc.host.running_os { RunningOs, RunningOsReading, RunningOsObserved, RunningOsUnobserved }
+import gunbc.host.host_boot_id { HostBootId, BootIdReadEstablished, BootIdReadUnreadable, boot_id_read_verdict }
+import gunbc.host.host_operation_exec { HostOperationOutcome, host_operation_exec, ProcfsReadBootId }
+
+// WHAT ANY BOOT TRANSACTION HANDS ON ONCE A HOST IS UP (gunbc.plans.physical_machine_boot_program, the
+// initialized-host contract): the host, the reach and trust it was authenticated over, what OS is running, and
+// which boot this is. It is generic: no board, no delivery route, no persistence assumption and no runner fact.
+// What a runner additionally needs (its account, the accepted workload revision) sits on top of it in
+// gunbc.runner and is never a boot prerequisite.
+//
+// NOT CALLED A HANDOFF: gunbc.host.managed_host_boot_handoff is the out-of-band boot drive, and one word for two
+// contracts is a meaning fork (DESIGN section 3).
+//
+// THE OS IDENTITY: the running OS, keyed on persistence (gunbc.host.running_os; the record never assumes the
+// running OS is the delivered image), and beside it the kernel's boot id read over the trusted transport, which is
+// orthogonal to persistence.
+type InitializedOsIdentity {
+  running: RunningOs
+  boot: HostBootId
+}
+
+// sole_constructor, and the only constructor takes an AnchoredBindingBound: the host's presented key matched its
+// pinned anchor (gunbc.host.anchored_host_transport). The host is the bound transport's own (read off the address
+// by gunbc.host.host_bound_transport, never stated beside it), the trust is the anchor that key matched, carried by
+// the binding, and the reach is that anchor's address, so none of the three can disagree with another. A host with
+// no pin has no AnchoredBindingBound, so it has no InitializedHost.
+type InitializedHost sole_constructor {
+  bound: HostBoundTransport
+  trust: KnownHostKeyRow
+  os: InitializedOsIdentity
+}
+
+type InitializedHostRefusal
+  // the anchored binding refused: no row, no pin, a key that is not the pin, another machine, no transport. Its
+  // cause is the binding's own text (anchored_host_binding_refusal_reason), never a re-coined one.
+  = InitializedHostUntrusted { cause: String }
+  // trusted, but the kernel boot id read over that transport did not establish a boot.
+  | InitializedHostBootUnread { cause: String }
+  // the route's terminal readback did not establish what OS is running.
+  | InitializedHostRunningOsUnobserved { cause: String }
+  // the running-OS reading is of another machine than the one the transport authenticated: the readback's capture
+  // was bound to observed_host, the pinned key to bound. Agreeing boot ids do not make them one host.
+  | InitializedHostReadingOfAnotherHost { observed_host: HostIdentity, bound_host: HostIdentity }
+  // the running OS was observed on one boot and the host is now on another: it rebooted after the readback, so
+  // what the readback saw is not what is running now.
+  | InitializedHostBootDisagrees { running_observed_on: HostBootId, read_over_transport: HostBootId }
+
+type InitializedHostStanding
+  = HostInitialized { host: InitializedHost }
+  | HostNotInitialized { refusal: InitializedHostRefusal }
+
+// THE ONE CONSTRUCTOR, PURE: the binding, the running-OS reading the route's terminal readback produced and the
+// outcome of the boot-id read are supplied values, so every arm is authorable without a host. In production the
+// read was taken over that binding's transport (initialized_host_live), never another.
+fn initialized_host_over(binding: AnchoredHostBinding, running: RunningOsReading, read: HostOperationOutcome) -> InitializedHostStanding {
+  match binding {
+    AnchoredBindingBound { bound: b, anchor: a } =>
+      match boot_id_read_verdict(host: b.host as String, read: read) {
+        BootIdReadUnreadable { cause: c } => HostNotInitialized { refusal: InitializedHostBootUnread { cause: c } }
+        BootIdReadEstablished { boot: boot } =>
+          match running {
+            RunningOsUnobserved { cause: c } => HostNotInitialized { refusal: InitializedHostRunningOsUnobserved { cause: c } }
+            RunningOsObserved { running: r, observed_host: of, observed_on: seen } =>
+              if host_identity_eq(a: of, b: b.host) == false {
+                HostNotInitialized { refusal: InitializedHostReadingOfAnotherHost { observed_host: of, bound_host: b.host } }
+              } else {
+                if (seen.boot_id as String) == (boot.boot_id as String) {
+                  HostInitialized { host: InitializedHost { bound: b, trust: a, os: InitializedOsIdentity { running: r, boot: boot } } }
+                } else {
+                  HostNotInitialized { refusal: InitializedHostBootDisagrees { running_observed_on: seen, read_over_transport: boot } }
+                }
+              }
+          }
+      }
+    other => initialized_host_untrusted(binding: other)
+  }
+}
+
+fn initialized_host_untrusted(binding: AnchoredHostBinding) -> InitializedHostStanding {
+  HostNotInitialized { refusal: InitializedHostUntrusted { cause: anchored_host_binding_refusal_reason(b: binding) } }
+}
+
+// THE PRODUCTION ROUTE: the anchored transport (row, pin, the operator's go, the scanned key; it contacts nothing
+// when the pin is absent or the go is unset), then the kernel boot id read over THAT transport. No read is taken on
+// any refusal, so an untrusted host is refused before any effect on it. The running-OS reading is the route's own
+// terminal readback (for the Ephemeral runner medium, gunbc.runner.runner_host_medium runner_host_running_os).
+fn initialized_host_live(host: HostIdentity, attempt_raw: String, running: RunningOsReading) -> InitializedHostStanding {
+  match anchored_host_transport_live(host: host, attempt_raw: attempt_raw) {
+    AnchoredBindingBound { bound: b, anchor: a } =>
+      initialized_host_over(
+        binding: AnchoredBindingBound { bound: b, anchor: a },
+        running: running,
+        read: host_operation_exec(transport: b.transport, operation: ProcfsReadBootId),
+      )
+    other => initialized_host_untrusted(binding: other)
+  }
+}
+
+// READERS. The host, the reach and the transport are projections of the sealed record, not second fields.
+fn initialized_host_identity(host: InitializedHost) -> HostIdentity {
+  host.bound.host
+}
+
+fn initialized_host_reach(host: InitializedHost) -> SocketAddress {
+  host.trust.address
+}
+
+fn initialized_host_transport(host: InitializedHost) -> HostBoundTransport {
+  host.bound
+}
+
+fn initialized_host_os(host: InitializedHost) -> InitializedOsIdentity {
+  host.os
+}
+
+fn initialized_host_refusal_text(refusal: InitializedHostRefusal) -> String {
+  match refusal {
+    InitializedHostUntrusted { cause: c } => concat("the host is not authenticated against its pinned key: ", c)
+    InitializedHostBootUnread { cause: c } => concat("the host's kernel boot id was not established: ", c)
+    InitializedHostRunningOsUnobserved { cause: c } => concat("what OS the host is running was not established: ", c)
+    InitializedHostReadingOfAnotherHost { observed_host: o, bound_host: h } =>
+      join(["the running OS was observed on ", o as String, " but the authenticated host is ", h as String], "")
+    InitializedHostBootDisagrees { running_observed_on: s, read_over_transport: r } =>
+      join(["the running OS was observed on boot ", s.boot_id as String, " but the host is now on boot ", r.boot_id as String], "")
+  }
+}
+
+// THE CONSUMER (DESIGN section 3c). Nothing on main reads an InitializedHost yet; it is consumed by a named later
+// change, not dangling.
+data initialized_host_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner.runner_initialization RunnerInitialization (the runner account plus the accepted workload revision on top of this record), and through it the qualification attempt's held and bound steps (gunbc.runner.runner_qualification_attempt_run), which take it in place of a host name, a runner user and a transport looked up by name. TRIGGER: the stacked PR on #15266 that adds runner_initialization (B2 of gunbc.plans.physical_machine_boot_program); the service-slot re-pointing (leg F) follows #15335. The live producer route for mtcollins1 refuses until its host-key pin is read back on boot 7 (gunbc.host.anchored_host_transport mtcollins1_host_key_read_obligation)." as NonEmptyStr,
+)

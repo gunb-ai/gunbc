@@ -51,9 +51,9 @@ import v1.compiler.infer_types {
 }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declaration_substitution_basis,
+  TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declared_module_owner, declaration_substitution_basis,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+  GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, global_bare_declarer_in_scope, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
   listed_import_required_bare_call_blocked
 }
 
@@ -570,7 +570,9 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
     } else {
       match map_get(type_env.symbol_index.global_bare, name) {
         Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+          if global_bare_declarer_in_scope(env: type_env, name: name, declarer: mp) {
+            BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+          } else { BorrowedCensusDeclNotFound }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
           match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
             Present { value: cand } =>
