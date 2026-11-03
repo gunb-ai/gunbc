@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.an_empty_controls_report_reads_as_all_held
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data an_empty_controls_report_reads_as_all_held: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_empty_controls_report_reads_as_all_held" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of a controls instrument reporting a three-valued outcome per declared control identity (held, refused with its failure text, no verdict), joined by identity against one declared roster, so that a control that produced nothing has no constructor that reads as held" } },
+
+  receipts: [
+    "INVALID STATE: v2.workflow.roster_import_sweep roster_controls_report is a concatenation of control outputs, and roster_import_sweep_controls_wire reads an EMPTY report as success. A control signals held by contributing the empty string and failure by contributing CONTROL-FAIL text, so a control that contributed nothing because it did not run, was removed from the concatenation, or returned early on an unexpected path is indistinguishable from one that held. Read at main 6b9fa5e6, about 107 leaf controls reach the report; only the rename, disjoint, occ and head groups (about 33) pass through roster_rename_control_count_check, an identity join against roster_rename_control_names that refuses a declared control that did not run. The other roughly 74 leaves (the top-level label controls, the kind controls and the small pure controls) have no such join.",
+    "HARM: //gunbc/instruments:roster-import-sweep-controls is the admission evidence for NAMESPACE-XL sweep waves and the controls they cite. Deleting one of the uncounted terms from the concatenation, or a control whose discriminating path silently stops producing text, leaves the label green with no signal; the green then certifies controls that never executed. Same class as gunbc.recurring_failure_mode a_cost_probe_reports_pass_on_a_rejected_input: a PASS read as a verdict about something the instrument never established.",
+    "RUNG FOUND AT: below the ladder (silent: no output and held produce the same empty report and the same exit 0). Found by reading, not by an incident: the per-control inventory written for the option (b) split design of the controls label (wise-moth-707, for tidy-ant-251, 2026-11-03). No instance of a dropped control is claimed here; the claim is that one would not be seen.",
+    "CEILING: structurally guaranteed. The controls and their names are modeled facts: one declared roster of control identities, each run producing a typed outcome HELD | CONTROL-FAIL { text } | NO-VERDICT { cause }, and an aggregate that is green only when every declared identity is HELD, refusing on a missing, duplicated or undeclared identity and treating any NO-VERDICT (timeout, OOM, unit not executed, grammar rejected, build failed, missing output) as never green. That makes an absent control unrepresentable as held. The rename group's count check is the existing local instance to generalise, not a second mechanism beside it.",
+    "NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: the three-valued per-control outcome above, joined by identity over the whole label. NOT satisfied by extending roster_rename_control_names to more names by hand while the report stays a string concatenation, which narrows this instance and leaves the class.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_controls_report", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_import_sweep_controls_wire", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.roster_import_sweep", decl_name: "roster_rename_control_count_check", field: WholeDeclaration },
+  ],
+}
