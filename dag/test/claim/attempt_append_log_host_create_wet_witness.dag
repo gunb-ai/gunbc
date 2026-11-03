@@ -177,6 +177,36 @@ test fn a_planted_legacy_generation_refuses_the_host_create() -> Bool {
   planted && removed.success
 }
 
+// THE LIMIT OF THAT REFUSAL, EXECUTED (DESIGN 6: state the material limit, do not gate every unknown). The mint
+// looks only at its own member name and that name's generations (gunbc.durable_append_log_store
+// append_log_entry_is_other_framing, append_log_entry_claims), so an UNRELATED entry of the shape the retired
+// unowned-class frontier rows recorded -- job-<pid>.out under the attempt-state root -- is neither claimed nor
+// refused: the member is created beside it and the foreign bytes stay untouched and unread. This claim is a
+// specimen of what the retired census rows used to record, NOT a requirement that future mints keep ignoring it.
+test fn an_unowned_foreign_entry_is_neither_claimed_nor_refused_by_the_mint() -> Bool {
+  let root = fresh_root()
+  let inst = instance_service_at(root: root)
+  let observed = foreign_entry_cell(instance: inst)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  observed && removed.success
+}
+
+fn foreign_entry_cell(instance: HostDashboardInstance) -> Bool {
+  let ensured = ensure_member_dir(instance: instance)
+  let prov = attempt_state_provision(instance: instance, node: "wet-node", attempt_key: "wet-key")
+  let dir = attempt_state_provision_directory(provision: prov, directory: attempt_log_member_directory(member: AttemptWorkerEvents))
+  let expected_path = attempt_log_provision_path(provision: prov, member: AttemptWorkerEvents)
+  let stray = join([dir, "/job-4242.out"], "")
+  let planted = Filesystem.Write(path: stray as FilePath, content: "unowned worker stdout bytes\n")
+  match attempt_append_log_host_create(instance: instance, node: "wet-node", attempt_key: "wet-key", member: AttemptWorkerEvents) {
+    AttemptAppendLogCreated { path: p, created_mode: _ } =>
+      ensured && planted.success && p == expected_path
+      && Filesystem.Read(path: stray as FilePath).success
+      && Filesystem.Read(path: p).success
+    _ => false
+  }
+}
+
 fn legacy_generation_cell(instance: HostDashboardInstance) -> Bool {
   let ensured = ensure_member_dir(instance: instance)
   let dir = attempt_state_provision_directory(

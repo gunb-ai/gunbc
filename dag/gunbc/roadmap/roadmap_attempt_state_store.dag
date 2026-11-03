@@ -1,10 +1,10 @@
 module gunbc.roadmap.roadmap_attempt_state_store
 
 import std.types { String, NonEmptyStr, FilePath, Int, List, Bool }
-import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.materialization_ladder { string_list_contains }
 import std.decl_ref { decl_ref }
-import std.dissolution { retires_dissolution, unbound_dissolution }
+import std.dissolution { retires_dissolution }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome,
@@ -589,64 +589,6 @@ data attempt_directory_wire_frontier_rows: List<FrontierRow> = [frontier_row_dec
   dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.harness.harness_turn", decl_name: "harness_wire_log_path")),
 )]
 
-// Unowned durable entries observed on the live host (srv1) under the dispatch attempt-state root that no
-// store claims and no reader retains. They are NOT log members and NOT plain attempt-state members: they have
-// no writer in this repository (the external srv1 lab harness / dispatcher-installed exec wrapper and the codex
-// provider harness drop them beneath the root), and the only codex extdeps model (extdeps.llm.codex_app_server)
-// models the app-server protocol lines, not these on-disk files -- so there is no extdeps declaration to ref.
-// Each class carries a distinct PathSubject keyed on its canonical entry-name pattern, giving every row a unique
-// identity so controls can name which class is missing or duplicated. The root (srv1_dispatch_attempt_state_root)
-// is checked by sibling seal witnesses; PathSubject subjects are opaque keys, not declaration refs (DESIGN §5).
-// None may be silently ignored and none may brick the 16 live attempts.
-// DISSOLUTION is unbound: a class is resolved by getting an owner store or an M1 NotAStore ruling from a reader
-// census, NOT by its (external) writer disappearing -- retiring a writer would close the row falsely.
-data attempt_state_unowned_entries_frontier_rows: List<FrontierRow> = [
-  frontier_row_path(
-    path: "job-<pid>.out",
-    reason: "unowned durable class job-<pid>.out (worker/, ~1456 observed on srv1, no retention): stdout of a worker job, redirected to a per-pid file by the external srv1 lab harness exec wrapper that launches the gunbc-worker unit; no repository writer, no extdeps model names the file; needs an owner store or an M1 NotAStore ruling from a reader census.",
-    dissolution: unbound_dissolution(description: "class job-<pid>.out is given an owner store, or ruled NotAStore under ruling M1 by a reader census showing nothing reads it after the run."),
-  ),
-  frontier_row_path(
-    path: "job-<pid>.err",
-    reason: "unowned durable class job-<pid>.err (worker/, observed alongside .out on srv1, no retention): stderr of a worker job, redirected by the external srv1 lab harness exec wrapper; no repository writer, no extdeps model names the file; needs an owner store or an M1 NotAStore ruling from a reader census.",
-    dissolution: unbound_dissolution(description: "class job-<pid>.err is given an owner store, or ruled NotAStore under ruling M1 by a reader census showing nothing reads it after the run."),
-  ),
-  frontier_row_path(
-    path: "<stem>.harness-request.json.response.json",
-    reason: "unowned durable class <stem>.harness-request.json.response.json (worker/ and review/, observed on srv1): the RESPONSE side of a harness request, written by the codex provider harness; the request side is the plain AttemptStateMember scratch, but the response side has no member, no repository writer, and extdeps.llm.codex_app_server models only the app-server protocol lines, not this file; needs an owner store or an M1 ruling.",
-    dissolution: unbound_dissolution(description: "class harness-request.json.response.json is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
-  ),
-  frontier_row_path(
-    path: "<stem>.harness-request.json.response.headers",
-    reason: "unowned durable class <stem>.harness-request.json.response.headers (worker/ and review/, observed on srv1): the RESPONSE HEADERS side of a harness request, written by the codex provider harness; no member, no repository writer, no extdeps model names the file; needs an owner store or an M1 ruling.",
-    dissolution: unbound_dissolution(description: "class harness-request.json.response.headers is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
-  ),
-  frontier_row_path(
-    path: "handin",
-    reason: "unowned durable class handin (worker/, ~11 observed on srv1): hand-in artifacts written by an external handin step beneath the attempt-state root; no repository writer, no extdeps model names them; needs an owner store or an M1 ruling.",
-    dissolution: unbound_dissolution(description: "class handin is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
-  ),
-  frontier_row_path(
-    path: "supervision-observation-after-turn-<N>",
-    reason: "unowned durable class supervision-observation-after-turn-<N> (worker/, observed on srv1): a supervision-loop observation written by the external supervision loop beneath the attempt-state root; no repository writer, no extdeps model; needs an owner store or an M1 ruling.",
-    dissolution: unbound_dissolution(description: "class supervision-observation-after-turn-N is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
-  ),
-  frontier_row_path(
-    path: "supervision-check-verdict-after-turn-<N>",
-    reason: "unowned durable class supervision-check-verdict-after-turn-<N> (worker/, observed on srv1): a supervision-loop check verdict written by the external supervision loop; no repository writer, no extdeps model; needs an owner store or an M1 ruling.",
-    dissolution: unbound_dissolution(description: "class supervision-check-verdict-after-turn-N is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
-  ),
-  frontier_row_path(
-    path: "supervision-check-request-after-turn-<N>",
-    reason: "unowned durable class supervision-check-request-after-turn-<N> (worker/, with .response.json and .response.headers siblings, observed on srv1): a supervision-loop check request/response written by the external supervision loop; no repository writer, no extdeps model; needs an owner store or an M1 ruling.",
-    dissolution: unbound_dissolution(description: "class supervision-check-request-after-turn-N is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
-  ),
-  frontier_row_path(
-    path: "supervision-check-events-after-turn-<N>",
-    reason: "unowned durable class supervision-check-events-after-turn-<N> (worker/, observed on srv1): a supervision-loop check event log written by the external supervision loop; no repository writer, no extdeps model; needs an owner store or an M1 ruling.",
-    dissolution: unbound_dissolution(description: "class supervision-check-events-after-turn-N is given an owner store, or ruled NotAStore under ruling M1 by a reader census."),
-  ),
-]
 
 // Single authority mapping each AttemptLogMember variant to its census key. Exhaustive match: a new
 // variant without a case is a compile error. The returned NonEmptyStr is the census member field value.

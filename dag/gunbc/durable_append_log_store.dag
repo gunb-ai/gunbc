@@ -3,7 +3,6 @@ module gunbc.durable_append_log_store
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import std.optional { Present, Absent }
-import std.dissolution { DissolutionCondition, bound_dissolution, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.durable_cas_file_store { cas_key_generation_of_name }
 import std.durable_append_log {
@@ -49,17 +48,6 @@ type AppendLogStore {
   parent: NonEmptyStr
   slot: AppendLogSlot
 }
-
-// THE MINT'S CONSUMER IS A DECLARED FRONTIER, not a gap: the typed row below names the consumer and the trigger.
-// Amended with #15471's seal move (decision B): the consumer is the declaring roadmap module's business-key
-// mint, so the frontier is bound to the appearance of that declaration.
-data append_log_mint_consumer_frontier: DissolutionCondition = bound_dissolution(
-  ref: DeclarationRef {
-    module_path: "gunbc.roadmap.roadmap_attempt_state_store" as NonEmptyStr,
-    decl_name: "attempt_append_log_store_open" as NonEmptyStr,
-    field: WholeDeclaration {},
-  },
-)
 
 // THE MINT REFUSES ON LEGACY. The parent directory is listed; an entry that is the slot's file under a
 // different framing (a generation file where a stream is declared, or the reverse) or a second file claiming
