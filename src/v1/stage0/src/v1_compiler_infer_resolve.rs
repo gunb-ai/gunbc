@@ -508,7 +508,7 @@ pub fn expand_nominal_alias_rhs_by_name(
                         .clone(),
                     }
                 } else {
-                    resolve_node_bounded(
+                    let mut structural = resolve_node_bounded(
                         resolved.clone(),
                         env.clone(),
                         module_name.clone(),
@@ -516,7 +516,24 @@ pub fn expand_nominal_alias_rhs_by_name(
                         false,
                     )
                     .resolved
-                    .clone()
+                    .clone();
+                    // DESIGN 6b: a nominal alias whose binding `resolved` is an ungrounded
+                    // leaf still carries its target on TypeBinding.alias_rhs. Expand it AS
+                    // WRITTEN (applied args intact) so the alias genuinely expands and the
+                    // consumer judges the aliased declaration rather than the alias shell.
+                    // lookup_type_by_name is NOT used here: it drops the applied args (the
+                    // peel defect #15175 fixes), so it would misjudge a parameterized alias.
+                    if structural.connective.clone() == Connective::NoConnective {
+                        if let Some(binding) = crate::v1_compiler_infer_env::lookup_binding_by_name(
+                            env.clone(),
+                            brand.clone(),
+                        ) {
+                            if let Some(rhs) = binding.alias_rhs.clone() {
+                                structural = rhs;
+                            }
+                        }
+                    }
+                    structural
                 };
                 if ((((brand.clone() != "".to_string())
                     && (brand.clone()
