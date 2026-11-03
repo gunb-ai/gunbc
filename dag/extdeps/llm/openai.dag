@@ -206,6 +206,13 @@ data structural_coverage_gap_openai_chat_completion_200_residual: List<CoverageC
       VariantPending { variant: "refusal_without_content" }
     ],
     trigger: "model response content/tool/audio coproduct surface"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiChatCompletion200Body" },
+      Missing { item: "object_is_a_plain_String_not_a_checked_carrier" }
+    ],
+    trigger: "the non-streaming chat body still types `object` as an unvalidated String while its streamed counterpart and both text-completion bodies carry branded carriers built by checked constructors (`openai_chat_completion_chunk_object`, `openai_text_completion_object`). A caller that sends stream: true gets a checked value; a caller that sends stream: false gets whatever bytes came back. Found while writing the refusal witness for the text endpoint, which is the only place a chat answer is currently kept out of the text-completion type. The PR that closes this declares the chat body's own object carrier the way the chunk's is declared, with a witness refusing the other endpoints' spellings"
   }
 ]
 
@@ -819,9 +826,11 @@ fn openai_text_completion_object(s: String) -> OpenAiTextCompletionObject? {
   }
 }
 
-// The prompt member as the endpoint document gives it. Four arms, each cited to the one member's union
-// in the anchor above (platform.openai.com/docs/api-reference/completions/create, member
-// `completions-prompt`, read 2026-11-01), which lists exactly these four shapes and no others:
+// The prompt member as the endpoint gives it. Four arms, each cited to the one member's union in the
+// anchors at the top of this file: the docs page (member `completions-prompt`) for the meaning, and the
+// vendor's generated `CompletionCreateParams.prompt` for the shape --
+// `Union[str, Sequence[str], Iterable[int], Iterable[Iterable[int]], None]` -- which lists exactly these
+// four shapes and no others:
 //   PromptText       -- string             one prompt, one completion
 //   PromptTexts      -- array<string>      one completion per entry
 //   PromptTokens     -- array<int>         one prompt, already tokenized by the caller
@@ -831,19 +840,34 @@ fn openai_text_completion_object(s: String) -> OpenAiTextCompletionObject? {
 // one completion and two, so it is not a detail a reader can recover. Tokens stay integers here: they
 // are already the engine's own vocabulary, and re-rendering them as text would make the tokenizer's
 // decision a routing fact.
+//
+// THE MEMBER IS REQUIRED, SO IT IS NOT AN OPTION HERE. The docs page lists `completions-prompt` as
+// required with no default, and the vendor's generated parameter says the same in code:
+// `prompt: Required[Union[str, SequenceNotStr[str], Iterable[int], Iterable[Iterable[int]], None]]` --
+// `SequenceNotStr` is upstream's own guard against reading a bare string as a list of characters, and it
+// is the reason `PromptTexts` is a list of strings and not a list of anything.. A request
+// record that typed this as `OpenAiCompletionPrompt?` would let a caller build a request the upstream
+// contract refuses -- for a REQUEST record, faithfulness means required members are not optional, and a
+// state that cannot legally occur is not a case this type should carry.
+//
+// The generated union also admits `None`, which is not the same thing as being absent: it is the member
+// present and holding null. That is deliberately not an arm here either. A null prompt asks for nothing to
+// complete, and the endpoint refuses it; four shapes are the four things a caller can actually ask for.
 type OpenAiCompletionPrompt
   = PromptText { text: String }
   | PromptTexts { texts: List<String> }
   | PromptTokens { tokens: List<Int> }
   | PromptTokenLists { token_lists: List<List<Int>> }
 
-// The sampling members are the same carrier as the chat request's, for the same reason: std.float has
-// no ruled literal or operator home, the json parser keeps a number as an un-evaluated lexeme, and
-// nothing here compares or range-checks them. `openai_chat_completion_wire_frontier_rows` carries that
-// frontier for both endpoints' requests; a ruled float home dissolves one, not one per endpoint.
+// The sampling members are the same carrier as the chat request's, for the same reason: std.float has no
+// ruled literal or operator home, the carrier is `extdeps.languages.json.grammar`'s `JsonNumberLexeme`
+// built only through `json_number_lexeme`, and nothing here compares or range-checks them. `JsonNumber`
+// itself is a VARIANT of `extdeps.languages.json.emit`'s `JsonValue`, not a type a field may be typed as.
+// `openai_chat_completion_wire_frontier_rows` carries that frontier for both endpoints' requests; a ruled
+// float home dissolves one row, not one per endpoint.
 type OpenAiTextCompletionRequest {
   model: String
-  prompt: OpenAiCompletionPrompt?
+  prompt: OpenAiCompletionPrompt
   suffix: String?
   max_tokens: Int?
   best_of: Int?
@@ -851,18 +875,26 @@ type OpenAiTextCompletionRequest {
   n: Int?
   seed: Int?
   stop: OpenAiCompletionStop?
-  stream: Bool
+  // Optional here for the same reason it is optional on the chat request: the generated parameters carry
+  // it as two overloads, `Optional[Literal[False]]` and `Required[Literal[True]]`, so a client that never
+  // mentions `stream` is sending a valid request that a required `Bool` would make unrepresentable. Absent
+  // is read as "not streaming", which is upstream's meaning and is stated rather than defaulted.
+  stream: Bool?
   stream_options: OpenAiStreamOptions?
-  temperature: JsonNumber?
-  top_p: JsonNumber?
-  presence_penalty: JsonNumber?
-  frequency_penalty: JsonNumber?
+  temperature: JsonNumberLexeme?
+  top_p: JsonNumberLexeme?
+  presence_penalty: JsonNumberLexeme?
+  frequency_penalty: JsonNumberLexeme?
 }
 
 type OpenAiTextCompletionChoice {
   index: Int
   text: String
-  finish_reason: OpenAiFinishReason?
+  // Required, not optional: the vendor's generated `CompletionChoice` types this member
+  // `finish_reason: Literal["stop", "length", "content_filter"]` -- no default, no Optional -- so a
+  // non-streaming choice always carries one. The coproduct it is typed WITH is the chat endpoint's wider
+  // set, and that superset is declared in `structural_coverage_gap_openai_text_completion_members`.
+  finish_reason: OpenAiFinishReason
 }
 
 // `usage` is the chat record, reused. The two endpoint documents give that member the same shape and
@@ -876,14 +908,23 @@ type OpenAiTextCompletion200Body {
   model: String
   choices: List<OpenAiTextCompletionChoice>
   usage: OpenAiChatCompletion200Usage?
-  service_tier: String?
+  // No `service_tier` here. The member belongs to the chat endpoint's response; the vendor's generated
+  // `Completion` has no such field, so giving this record one would let a reader wait for a value this
+  // endpoint never sends.
   system_fingerprint: String?
 }
 
-// One event of a streamed answer from this endpoint. Two facts a reader needs and cannot infer from
-// the non-streaming shape: the final event carries a finish_reason and NO text, so `text` is optional
-// here while it is required above; and an engine may send a closing frame with usage and an empty
-// choices list, so `choices` is a list that may be empty rather than a non-empty one.
+// One event of a streamed answer from this endpoint. The anchor here is WEAKER than the rest of this
+// module, and the weakness is declared rather than hidden: the vendor generates NO chunk type for this
+// endpoint -- its resource types the stream as `Completion | Stream[Completion]`, reusing the non-streaming
+// record, in which both `text` and `finish_reason` are required. A reused record cannot describe an
+// intermediate event (text, no finish_reason) and a final one (a finish_reason) at once, so what is being
+// relaxed here is the vendor's own typing, not the wire. The source for the two relaxations below is the
+// endpoint's documented streaming behaviour, and that page could not be fetched programmatically at the read
+// date (platform.openai.com answers 403 to a programmatic fetch), so this is the one shape in this module
+// whose optionality is not pinned by a generated type -- the row that closes it is in
+// `structural_coverage_gap_openai_text_completion_members`. `choices` may be empty because an engine may
+// send a closing usage-only frame.
 type OpenAiTextCompletionChunkChoice {
   index: Int
   text: String?
@@ -922,6 +963,20 @@ data structural_coverage_gap_openai_text_completion_members: List<CoverageClosur
       Missing { item: "logprobs_token_ranks" }
     ],
     trigger: "the streamed counterpart of the row above, which needs the accumulation rule for per-token logprobs across events"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiTextCompletionChoice" },
+      Missing { item: "finish_reason_is_the_chat_endpoint's_wider_set" }
+    ],
+    trigger: "a text-completion finish_reason of its own. The generated CompletionChoice documents exactly stop, length and content_filter for this endpoint, so typing the member with the chat coproduct OpenAiFinishReason admits values (tool_calls, and function_call once that gap closes) this endpoint never sends -- a superset, which is a reader's trap rather than a lie. A separate coproduct is blocked in this module by name, not by meaning: its unit arms would have to be Stop, Length and ContentFilter, and those three are already OpenAiFinishReason's arms, whose wire spelling comes from openai_finish_reason_wire_contract. The PR that gives this endpoint its own finish_reason either declares it in another module or gives both coproducts per-variant wire names"
+  },
+  {
+    facts: [
+      Subject { path: "OpenAiTextCompletionChunkChoice" },
+      Missing { item: "optionality_not_pinned_by_a_generated_type" }
+    ],
+    trigger: "the vendor generates no chunk type for this endpoint -- its resource types the stream as Completion | Stream[Completion], reusing the non-streaming record in which text and finish_reason are both required -- and the endpoint's documented streaming behaviour could not be fetched programmatically at the read date. The change that closes this captures a real stream from a rented card and re-derives the optionality of text and finish_reason from the events that actually arrive, then either keeps the relaxations with the capture as the anchor or restores the vendor's required typing"
   }
 ]
 

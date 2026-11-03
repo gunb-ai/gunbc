@@ -38,10 +38,14 @@ test fn the_documented_object_value_builds_the_carrier() -> Bool {
 }
 
 // A response from either chat endpoint is REFUSED as a text completion: the non-streaming chat body
-// (`chat.completion`) and the streamed chunk (`chat.completion.chunk`) both carry an `object` member, and
-// both bodies type it as a plain `String`, so this constructor is the only thing standing between one
-// endpoint's answer and the other's type. RED WHEN: the constructor stops refusing (its `else` arm returns
-// Present), or the text-completion constant is set to a chat value.
+// (`chat.completion`) and the streamed chunk (`chat.completion.chunk`) both carry an `object` member. They
+// are not equally guarded -- the chunk's member is its own checked carrier (`OpenAiChatCompletionChunkObject`,
+// built by `openai_chat_completion_chunk_object`), while the non-streaming chat body still types it as a plain
+// `String`, a gap this change declares rather than fixes (the row naming it is
+// `structural_coverage_gap_openai_chat_completion_200_residual`). So for that body this constructor is the
+// only thing standing between one endpoint's answer and the other's type, and for the chunk it is the second
+// check, not the only one. RED WHEN: the constructor stops refusing (its `else` arm returns Present), or the
+// text-completion constant is set to a chat value.
 test fn another_endpoints_object_value_is_refused() -> Bool {
   if builds_a_carrier(value: "chat.completion") == 0
     && builds_a_carrier(value: openai_chat_completion_chunk_object_wire) == 0 { true } else { false }
