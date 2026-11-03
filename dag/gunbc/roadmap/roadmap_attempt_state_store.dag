@@ -117,8 +117,10 @@ type AttemptStateMember
 // tries is refused by the type checker on the real acceptance path (the claim), while plain members stay
 // accepted. They are reached only through gunbc.durable_append_log_store, whose owning store mints each
 // member's writer window and the sandboxed worker appends under it. Each variant is keyed to its census row
-// by attempt_append_log_member_census_key (exhaustive match, compile-time safety) and the resulting
-// AppendLogSlot carries the member name from the census itself.
+// by attempt_append_log_member_census_key. The match being exhaustive only guarantees that EVERY VARIANT YIELDS
+// A KEY -- that is the whole compile-time part. The census is data: a missing or renamed row still resolves at
+// runtime, the join returns Absent, and the caller gets the typed Unready. Nothing here proves a row exists
+// (review 90228). The AppendLogSlot the join does return carries the member name from the census itself.
 type AttemptLogMember
   = AttemptWorkerLog
   | AttemptWorkerEvents
