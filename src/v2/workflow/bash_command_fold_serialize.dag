@@ -42,19 +42,24 @@ fn bash_fold_built_stmt_production_binding(stmt: Node) -> Symbol {
 // ONE ROW PER LEAF. The row is derived from the emitted node once, the target model is spelled from
 // it, and the serializer is handed that row rather than asked to select it again from rules built
 // out of it (v2.compiler.target_serialize target_serialize_source_from_selected_row).
-// THE COLLISION BETWEEN A SUBSTITUTION'S OPENERS, REFUSED WHERE THE BYTES ARE MADE. `$(` immediately
-// followed by a body that opens with `(` is read by bash as an ARITHMETIC expansion: `$(('cd' '..'; 'pwd'))`
-// dies at run time with `syntax error: operand expected`, while `$( ('cd' '..'; 'pwd'))` prints what the
-// caller asked for -- both checked against bash, not reasoned about. Where a substitution's own text is
-// spelled, the language module separates the openers (v2.extdeps.languages.bash::
-// bash_cmdsubst_body_spelling). This module spells a node's bytes from its GRAMMAR ROW, where `$(` and the
-// body are separate tokens and every arm of TokenClassEmitTransform is unconditional
-// (v2.std.compilers.target_model::apply_emit_spelling_transform), so no spacing rule can reach that pair.
-// The row render is therefore the place to stop it -- and it is taken as the ONE choke point every row
-// render passes through (bash_fold_serialize_leaf_node), rather than as a list of constructs to remember:
-// a command, a concatenation, a redirection and any future row-rendered form all pass this way, so the
-// invariant is structural and not a hand-kept enumeration. The walk stops at the first collision and runs
-// once per row render, over the same subtree the row serializer itself walks to spell the node.
+// THE ONE PATH THAT CANNOT SPELL THE SUBSTITUTION'S SPACE, AND WHAT IT REFUSES. A substitution whose body
+// opens with `(` is valid bash and the language module spells it with the separating space
+// (v2.extdeps.languages.bash::bash_cmdsubst_body_spelling), so `$((` -- bash's arithmetic opener, which dies at
+// run time with `syntax error: operand expected` -- cannot be produced wherever that text is used. This module
+// spells a node's bytes from its GRAMMAR ROW, where `$(` and the body are SEPARATE TOKENS and every arm of
+// TokenClassEmitTransform is unconditional (v2.std.compilers.target_model::apply_emit_spelling_transform): no
+// rule can reach between them, so this render refuses that operand shape rather than emit bytes bash cannot
+// read. The refusal is therefore scoped to the one path where the evidence lives, and it is taken at the ONE
+// choke point every row render passes through (bash_fold_serialize_leaf_node) rather than as a list of
+// constructs to remember -- a command, a concatenation and any future row-rendered form all pass this way, so
+// the invariant is structural, not hand-kept. The walk stops at the first collision and runs once per row
+// render, over the same subtree the row serializer itself walks to spell the node.
+//
+// NAMED TRIGGER FOR THE REMAINING WORK -- `bash_fold_subtree_reaches_cmdsubst_subshell`, named here and at its
+// call site. When the row render is taught the space (a substitution-scoped token for the operand's opening
+// paren, so the emit transform can be scoped, with round-trip evidence for the parser), delete this guard and
+// move the command and concatenation controls from refusal rows to the spaced goldens the word path already
+// carries. Until that exists, this guard is load-bearing: deleting it reddens exactly those two rows.
 fn bash_fold_cmdsubst_subshell_operand_refused() -> Outcome<String> {
   bash_fold_serialize_refused(variant: ^bash_fold_serialize_cmdsubst_subshell_operand_refused)
 }
@@ -368,22 +373,18 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
           } else if kind == ^bash_fold_word_kind_cmdsubst {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
               Present { value: body } =>
-                if bash_fold_node_is_fold_subshell(node: body) {
-                  // The spaced bytes are available on THIS path (the substitution's own target model spells
-                  // them), but the shape is refused here too, so a substitution carries one operand shape on
-                  // every path: the command and concatenation doors cannot admit what this one refuses.
-                  bash_fold_cmdsubst_subshell_operand_refused()
-                } else {
-                  bind_outcome(
-                    o: bash_fold_serialize_node(stmt: body),
-                    f: fn(body_spelling) {
-                      bash_fold_serialize_emit_from_node(
-                        emitted: bash_word_cmdsubst_emitted,
-                        target: bash_word_cmdsubst_target_model(body: body_spelling)
-                      )
-                    }
-                  )
-                }
+                bind_outcome(
+                  o: bash_fold_serialize_node(stmt: body),
+                  f: fn(body_spelling) {
+                    // Any operand the grammar admits, a subshell included: the substitution's own text carries
+                    // the separating space (v2.extdeps.languages.bash::bash_cmdsubst_body_spelling), so the
+                    // bytes are the compound command and never an arithmetic expression.
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_word_cmdsubst_emitted,
+                      target: bash_word_cmdsubst_target_model(body: body_spelling)
+                    )
+                  }
+                )
               Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
             }
           } else if kind == ^bash_build_refused_empty_word_list {
