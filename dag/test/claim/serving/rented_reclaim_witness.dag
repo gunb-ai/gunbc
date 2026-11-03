@@ -1,6 +1,7 @@
 module test.claim.serving.rented_reclaim_witness
 
-import std.types { Bool, NonEmptyStr, Nat, EpochSecs, List }
+import std.types { Bool, NonEmptyStr, EpochSecs, List }
+import std.nat { Nat }
 import std.decl_ref { decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
