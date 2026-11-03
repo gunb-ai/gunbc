@@ -1,0 +1,323 @@
+module test.claim.product.p4261_connector_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.electrical.connectivity { ElectricalDesignIdentity, TerminalIdentity, component_instance_identity }
+import product.electrical.continuity { EvidenceRef, OperatorPhotograph, SellerListingPhotograph }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.nvidia.p4261 { p4261_e1 }
+import extdeps.nvidia.p4261.population { p4261_position }
+import extdeps.nvidia.p4261.connectors { P4261ContactInventory, p4261_contact_inventories }
+import product.p4261.carrier {
+  CarrierLayoutObservation,
+  ConnectorHousing,
+  ConnectorPositionCensus,
+  CountedFromPhotograph,
+  EveryPositionMapped,
+  HousingPosition,
+  InventoryByRow,
+  InventoryInPart,
+  InventoryRefused,
+  InventorySidesUnread,
+  InventoryTotalOnly,
+  InputConnector,
+  MappedInPart,
+  MappedOnHousing,
+  ObservedInventory,
+  RowSide,
+  SideUnrecorded,
+  TerminalAtTwoCoordinates,
+  TwoTerminalsAtOneCoordinate,
+  admit_correspondence,
+  away_side,
+  latch_side,
+  observed_inventory,
+  row_side_key,
+}
+import product.p4261.evidence {
+  CensusOfAnotherConnector,
+  CoverageIncomplete,
+  InventoryContradicted,
+  InventoryMissing,
+  InventoryNotAttributable,
+  InventoryOutcome,
+  InventorySupportedOnSpecimen,
+  MappingRefused,
+  NoAdmittedReading,
+  ReadOnlyOffListing,
+  RevisionNotEstablishedOnBoard,
+  RowSplitUnread,
+  assess_contact_inventory,
+  j20_inventory_assessment,
+}
+import product.p4261.findings { CarrierFinding, ComponentAcrossInput, J20ContactInventory, J20InventoryMatchesRevision, J20Polarity, finding_established, judge_finding }
+import product.p4261.e1_b { e1_d2, e1_design, e1_input, e1_j20, e1_j20_housing, p4261_e1_layout }
+import product.p4261.k1_a { p4261_k1_layout }
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
+
+fn with_census(base: CarrierLayoutObservation, census: ConnectorPositionCensus) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    asset: base.asset, design: base.design, revision: base.revision, markings: base.markings, module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors, j20: census, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: base.measured, input: base.input,
+    unresolved: base.unresolved, designator_readings: base.designator_readings,
+  }
+}
+
+fn unlabelled(base: CarrierLayoutObservation) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    asset: base.asset, design: base.design, revision: base.revision, markings: [], module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: base.measured, input: base.input,
+    unresolved: base.unresolved, designator_readings: base.designator_readings,
+  }
+}
+
+fn second_e1() -> CarrierLayoutObservation {
+  let b = p4261_e1_layout
+  CarrierLayoutObservation {
+    asset: "p4261-e1-supplied-second" as PhysicalAssetIdentity, design: "p4261-e1-supplied-second" as ElectricalDesignIdentity, revision: b.revision, markings: b.markings,
+    module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors, j20: b.j20, j20_calipers: b.j20_calipers,
+    edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey, management_io: b.management_io,
+    components: b.components, measured: Absent, input: Absent, unresolved: b.unresolved, designator_readings: [],
+  }
+}
+
+fn photo() -> EvidenceRef {
+  OperatorPhotograph { taken_on: "supplied", locator: "supplied photograph" }
+}
+
+fn listing() -> EvidenceRef {
+  SellerListingPhotograph { listing: "supplied listing", read_on: "supplied" }
+}
+
+fn mapped(ps: List<HousingPosition>, coverage_partial: Bool, evidence: EvidenceRef) -> ConnectorPositionCensus {
+  MappedOnHousing { housing: ConnectorHousing {
+    component: e1_j20,
+    positions: ps,
+    coverage: if coverage_partial { MappedInPart { obligation: "supplied: the rest unread" } } else { EveryPositionMapped },
+    sides_evidence: evidence,
+  } }
+}
+
+fn without_latch_index(i: Nat) -> List<HousingPosition> {
+  filter(e1_j20_housing.positions, p => !(row_side_key(s: p.side) == 1 && p.index == i))
+}
+
+fn with_side_unread(i: Nat) -> List<HousingPosition> {
+  map(e1_j20_housing.positions, p => if row_side_key(s: p.side) == 1 && p.index == i { HousingPosition { terminal: p.terminal, side: SideUnrecorded, index: p.index } } else { p })
+}
+
+fn extra_latch(n: Nat) -> HousingPosition {
+  HousingPosition { terminal: (join(["supplied latch-side extra ", to_string(n)], "") as NonEmptyStr) as TerminalIdentity, side: latch_side(), index: 100 + n }
+}
+
+fn e1_claim() -> P4261ContactInventory {
+  match (filter(p4261_contact_inventories, c => (c.position.designator as String) == "J20")).first() {
+    Present { value: c } => c
+    Absent => P4261ContactInventory { position: p4261_position(revision: p4261_e1, designator: "J20"), latch_row_positions: 0, away_row_positions: 0, standing: TranscribedUncited { read_obligation: "missing" } }
+  }
+}
+
+fn assess(layout: CarrierLayoutObservation, claim: P4261ContactInventory) -> InventoryOutcome {
+  assess_contact_inventory(claim: claim, layout: layout, admitted: admit_correspondence(layout: layout).admitted).outcome
+}
+
+fn supported(o: InventoryOutcome) -> Bool {
+  match o { InventorySupportedOnSpecimen => true, _ => false }
+}
+
+fn contradicted(o: InventoryOutcome) -> Bool {
+  match o { InventoryContradicted { observed: _ } => true, _ => false }
+}
+
+fn missing_as(o: InventoryOutcome, want: Nat) -> Bool {
+  match o {
+    InventoryMissing { gap } => match gap {
+      RowSplitUnread => want == 0
+      CoverageIncomplete => want == 1
+      MappingRefused { defect: _ } => want == 2
+      ReadOnlyOffListing => want == 3
+    }
+    _ => false
+  }
+}
+
+fn unattributed_as(o: InventoryOutcome, want: Nat) -> Bool {
+  match o {
+    InventoryNotAttributable { gap } => match gap {
+      CensusOfAnotherConnector => want == 0
+      NoAdmittedReading => want == 1
+      RevisionNotEstablishedOnBoard => want == 2
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn by_row(i: ObservedInventory, latch: Nat, away: Nat) -> Bool {
+  match i { InventoryByRow { latch_row, away_row } => latch_row == latch && away_row == away, _ => false }
+}
+
+fn established(layout: CarrierLayoutObservation, f: CarrierFinding) -> Bool {
+  finding_established(j: judge_finding(layout: layout, f: f))
+}
+
+// ── OBSERVATION AND CONFORMANCE ARE TWO FINDINGS ──────────────────────────────────────────────
+
+// THE RECORDED INVENTORY AND ITS AGREEMENT WITH THE REVISION ARE KEPT APART. The E1's mapping, nine and
+// nine, is a recorded inventory and supports the reconstructed E1 inventory of nine and nine. A
+// complete mapping of eight and nine is still a recorded inventory -- the recount stands -- but it
+// contradicts the claim. The K1, counted only off the listing, has no recorded inventory and no claim.
+test fn the_recorded_inventory_and_its_agreement_are_kept_apart() -> Bool {
+  let eight = with_census(base: p4261_e1_layout, census: mapped(ps: without_latch_index(i: 9), coverage_partial: false, evidence: e1_j20_housing.sides_evidence))
+  by_row(i: observed_inventory(census: p4261_e1_layout.j20), latch: 9, away: 9)
+    && supported(o: assess(layout: p4261_e1_layout, claim: e1_claim()))
+    && established(layout: p4261_e1_layout, f: J20ContactInventory)
+    && established(layout: p4261_e1_layout, f: J20InventoryMatchesRevision)
+    && by_row(i: observed_inventory(census: eight.j20), latch: 8, away: 9)
+    && contradicted(o: assess(layout: eight, claim: e1_claim()))
+    && established(layout: eight, f: J20ContactInventory)
+    && !established(layout: eight, f: J20InventoryMatchesRevision)
+    && !established(layout: p4261_k1_layout, f: J20ContactInventory)
+    && !established(layout: p4261_k1_layout, f: J20InventoryMatchesRevision)
+    && match j20_inventory_assessment(layout: p4261_k1_layout) { Absent => true, Present { value: _ } => false }
+}
+
+// THE CLAIM IS NOT THE OBSERVATION. A claim of eight and nine leaves the E1's mapping exactly as read --
+// nine and nine -- and is contradicted by it.
+test fn the_claim_does_not_shape_the_observation() -> Bool {
+  let c = e1_claim()
+  let eight_claim = P4261ContactInventory { position: c.position, latch_row_positions: 8, away_row_positions: 9, standing: c.standing }
+  contradicted(o: assess(layout: p4261_e1_layout, claim: eight_claim))
+    && by_row(i: observed_inventory(census: p4261_e1_layout.j20), latch: 9, away: 9)
+}
+
+// ── COUNTING ──────────────────────────────────────────────────────────────────────────────────
+
+// POSITIONS ARE COUNTED ONCE, AND AN INCONSISTENT MAPPING IS REFUSED. Eight latch-side positions with
+// one of them listed twice count eight, not nine, and contradict. One terminal placed at two
+// positions, or two terminals at one position, refuses the mapping, and the claim is missing with the
+// defect -- never matched.
+test fn positions_are_counted_once_and_inconsistency_refused() -> Bool {
+  let eight = without_latch_index(i: 9)
+  let repeated = match eight.first() { Present { value: p } => concat(eight, [p]), Absent => eight }
+  let moved = match eight.first() { Present { value: p } => concat(eight, [HousingPosition { terminal: p.terminal, side: p.side, index: 9 }]), Absent => eight }
+  let doubled = concat(e1_j20_housing.positions, [HousingPosition { terminal: "supplied second terminal at latch 1" as TerminalIdentity, side: latch_side(), index: 1 }])
+  by_row(i: observed_inventory(census: mapped(ps: repeated, coverage_partial: false, evidence: photo())), latch: 8, away: 9)
+    && contradicted(o: assess(layout: with_census(base: p4261_e1_layout, census: mapped(ps: repeated, coverage_partial: false, evidence: photo())), claim: e1_claim()))
+    && match observed_inventory(census: mapped(ps: moved, coverage_partial: false, evidence: photo())) { InventoryRefused { defect } => match defect { TerminalAtTwoCoordinates { terminal: _ } => true, _ => false }, _ => false }
+    && match observed_inventory(census: mapped(ps: doubled, coverage_partial: false, evidence: photo())) { InventoryRefused { defect } => match defect { TwoTerminalsAtOneCoordinate { side: _, index: _ } => true, _ => false }, _ => false }
+    && missing_as(o: assess(layout: with_census(base: p4261_e1_layout, census: mapped(ps: moved, coverage_partial: false, evidence: photo())), claim: e1_claim()), want: 2)
+}
+
+// AN UNREAD SIDE OR AN UNMAPPED POSITION IS NEVER A LOWER COUNT. One position's side unread: eighteen
+// positions, the split unread, the claim missing. A partial mapping of seventeen: missing, not
+// contradicted. A partial mapping already holding ten latch-side positions: contradicted. A count of
+// eighteen with no mapping: missing the split; of sixteen: contradicted.
+test fn an_unread_side_or_position_is_never_a_lower_count() -> Bool {
+  let unread = with_census(base: p4261_e1_layout, census: mapped(ps: with_side_unread(i: 3), coverage_partial: false, evidence: photo()))
+  let partial = with_census(base: p4261_e1_layout, census: mapped(ps: without_latch_index(i: 9), coverage_partial: true, evidence: photo()))
+  let ten = with_census(base: p4261_e1_layout, census: mapped(ps: concat(e1_j20_housing.positions, [extra_latch(n: 1)]), coverage_partial: true, evidence: photo()))
+  match observed_inventory(census: unread.j20) { InventorySidesUnread { latch_row_known, away_row_known, side_unread } => latch_row_known == 8 && away_row_known == 9 && side_unread == 1, _ => false }
+    && missing_as(o: assess(layout: unread, claim: e1_claim()), want: 0)
+    && missing_as(o: assess(layout: partial, claim: e1_claim()), want: 1)
+    && contradicted(o: assess(layout: ten, claim: e1_claim()))
+    && missing_as(o: assess(layout: with_census(base: p4261_e1_layout, census: CountedFromPhotograph { component: e1_j20, positions: 18, evidence: photo() }), claim: e1_claim()), want: 0)
+    && contradicted(o: assess(layout: with_census(base: p4261_e1_layout, census: CountedFromPhotograph { component: e1_j20, positions: 16, evidence: photo() }), claim: e1_claim()))
+}
+
+// ── ATTRIBUTION AND PROVENANCE ────────────────────────────────────────────────────────────────
+
+// SUPPORT NEEDS THIS CONNECTOR, THIS BOARD, AND OUR OWN READING. A census of another connector is not
+// attributable to J20; a matching mapping whose sides were read only off the seller's listing does not
+// support; a board whose labels are unread is not established as the revision; a second E1 with no
+// designator reading has no admitted J20.
+test fn support_needs_this_connector_this_board_and_our_reading() -> Bool {
+  let other = component_instance_identity(design: e1_design, local_identity: "supplied other connector")
+  let foreign = with_census(base: p4261_e1_layout, census: CountedFromPhotograph { component: other, positions: 18, evidence: photo() })
+  let off_listing = with_census(base: p4261_e1_layout, census: mapped(ps: e1_j20_housing.positions, coverage_partial: false, evidence: listing()))
+  unattributed_as(o: assess(layout: foreign, claim: e1_claim()), want: 0)
+    && missing_as(o: assess(layout: off_listing, claim: e1_claim()), want: 3)
+    && unattributed_as(o: assess(layout: unlabelled(base: p4261_e1_layout), claim: e1_claim()), want: 2)
+    && unattributed_as(o: assess(layout: second_e1(), claim: e1_claim()), want: 1)
+}
+
+// ── REVIEW ROUND 1: ADMISSION OF THE OBSERVATION ITSELF ──────────────────────────────────────
+
+fn with_input_housing(h: ConnectorHousing) -> CarrierLayoutObservation {
+  let b = p4261_e1_layout
+  CarrierLayoutObservation {
+    asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles,
+    backplane_connectors: b.backplane_connectors, j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors,
+    management_io_survey: b.management_io_survey, management_io: b.management_io, components: b.components, measured: b.measured,
+    input: Present { value: InputConnector { housing: h, fuse_terminal: e1_input.fuse_terminal } }, unresolved: b.unresolved, designator_readings: b.designator_readings,
+  }
+}
+
+fn housing_of(ps: List<HousingPosition>, partial: Bool) -> ConnectorHousing {
+  ConnectorHousing { component: e1_j20, positions: ps, coverage: if partial { MappedInPart { obligation: "supplied" } } else { EveryPositionMapped }, sides_evidence: e1_j20_housing.sides_evidence }
+}
+
+fn at_index(i: Nat) -> List<HousingPosition> {
+  filter(e1_j20_housing.positions, p => p.index == i)
+}
+
+// THE RECOUNT IS THIS BOARD'S, COMPLETE AND READ ROW BY ROW. The E1-B's mapping, and one of eight and
+// nine, establish the recorded inventory. The same mapping under a second E1's identity, a mapping of
+// another connector, one whose sides were read only off the listing, and one with a row unread do not.
+test fn the_recount_is_this_boards_complete_and_read_by_row() -> Bool {
+  let other = component_instance_identity(design: e1_design, local_identity: "supplied other connector")
+  let foreign = with_census(base: p4261_e1_layout, census: MappedOnHousing { housing: ConnectorHousing { component: other, positions: e1_j20_housing.positions, coverage: EveryPositionMapped, sides_evidence: e1_j20_housing.sides_evidence } })
+  let off_listing = with_census(base: p4261_e1_layout, census: mapped(ps: e1_j20_housing.positions, coverage_partial: false, evidence: listing()))
+  let unread = with_census(base: p4261_e1_layout, census: mapped(ps: with_side_unread(i: 3), coverage_partial: false, evidence: e1_j20_housing.sides_evidence))
+  let eight = with_census(base: p4261_e1_layout, census: mapped(ps: without_latch_index(i: 9), coverage_partial: false, evidence: e1_j20_housing.sides_evidence))
+  established(layout: p4261_e1_layout, f: J20ContactInventory)
+    && established(layout: eight, f: J20ContactInventory)
+    && !established(layout: second_e1(), f: J20ContactInventory)
+    && !established(layout: foreign, f: J20ContactInventory)
+    && !established(layout: off_listing, f: J20ContactInventory)
+    && !established(layout: unread, f: J20ContactInventory)
+}
+
+// WHOLE-ROW POLARITY NEEDS A HOUSING MAPPED WHOLE. The E1's housing establishes J20's polarity and D2's
+// placement. Position 1 of each row alone, marked partial, and the full mapping with one terminal
+// placed again at another index, establish neither -- though the readings they rest on are unchanged.
+test fn whole_row_polarity_needs_a_housing_mapped_whole() -> Bool {
+  let partial = with_input_housing(h: housing_of(ps: at_index(i: 1), partial: true))
+  let moved = match at_index(i: 2).first() { Present { value: p } => concat(e1_j20_housing.positions, [HousingPosition { terminal: p.terminal, side: p.side, index: 10 }]), Absent => e1_j20_housing.positions }
+  let defective = with_input_housing(h: housing_of(ps: moved, partial: false))
+  established(layout: p4261_e1_layout, f: J20Polarity)
+    && established(layout: p4261_e1_layout, f: ComponentAcrossInput { component: e1_d2 })
+    && !established(layout: partial, f: J20Polarity)
+    && !established(layout: partial, f: ComponentAcrossInput { component: e1_d2 })
+    && !established(layout: defective, f: J20Polarity)
+    && !established(layout: defective, f: ComponentAcrossInput { component: e1_d2 })
+}
+
+// KNOWN ROWS SURVIVE AN UNREAD SIDE. Ten positions known on the latch row, seven away and one unread
+// contradict nine and nine whether the mapping is declared complete or partial; eight, nine and one
+// unread are only missing the split.
+test fn known_rows_survive_an_unread_side() -> Bool {
+  let ten_latch = concat(concat(e1_j20_housing.positions, [extra_latch(n: 1)]), [])
+  let ten_seven_one = map(filter(ten_latch, p => !(row_side_key(s: p.side) == 2 && (p.index == 8 || p.index == 9))), p => p)
+  let with_unread = concat(ten_seven_one, [HousingPosition { terminal: "supplied position of unread side" as TerminalIdentity, side: SideUnrecorded, index: 200 }])
+  let complete = with_census(base: p4261_e1_layout, census: mapped(ps: with_unread, coverage_partial: false, evidence: photo()))
+  let in_part = with_census(base: p4261_e1_layout, census: mapped(ps: with_unread, coverage_partial: true, evidence: photo()))
+  let eight_nine_one = with_census(base: p4261_e1_layout, census: mapped(ps: with_side_unread(i: 3), coverage_partial: false, evidence: photo()))
+  match observed_inventory(census: complete.j20) { InventorySidesUnread { latch_row_known, away_row_known, side_unread } => latch_row_known == 10 && away_row_known == 7 && side_unread == 1, _ => false }
+    && contradicted(o: assess(layout: complete, claim: e1_claim()))
+    && contradicted(o: assess(layout: in_part, claim: e1_claim()))
+    && missing_as(o: assess(layout: eight_nine_one, claim: e1_claim()), want: 0)
+}
+
+// AN UNREAD SIDE IS NOT A COORDINATE. Two distinct terminals at index 3 with both sides unread collide
+// with nothing and keep the total of eighteen; two distinct terminals at the same READ side and index
+// are refused.
+test fn an_unread_side_is_not_a_coordinate() -> Bool {
+  let both_unread = map(e1_j20_housing.positions, p => if p.index == 3 { HousingPosition { terminal: p.terminal, side: SideUnrecorded, index: p.index } } else { p })
+  match observed_inventory(census: mapped(ps: both_unread, coverage_partial: false, evidence: photo())) { InventorySidesUnread { latch_row_known, away_row_known, side_unread } => latch_row_known + away_row_known + side_unread == 18 && side_unread == 2, _ => false }
+    && match observed_inventory(census: mapped(ps: concat(e1_j20_housing.positions, [HousingPosition { terminal: "supplied second terminal at latch 1" as TerminalIdentity, side: latch_side(), index: 1 }]), coverage_partial: false, evidence: photo())) { InventoryRefused { defect: _ } => true, _ => false }
+}

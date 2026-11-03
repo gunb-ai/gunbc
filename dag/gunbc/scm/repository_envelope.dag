@@ -149,6 +149,10 @@ import gunbc.scm.object_store {
   WholeResidence, PartialResidence, store_unrostered_objects, store_shadowing_objects, store_rostered_rows, store_rostered_shards,
   store_rostered_lookup, store_object_index, find_object_via,
   authored_source_target_locator, scm_object_kind,
+  corpus_manifest_target_locator,
+  find_corpus_manifest_record,
+  object_id_eq,
+  path_unique_manifest_identity,
 }
 import std.content_hash { fnv1a64_structural_hex_digest }
 import gunbc.scm.commit_closure {
@@ -192,6 +196,7 @@ import gunbc.scm.load_standing {
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.integer { int_to_decimal_string }
+import std.algebra { map_lookup }
 
 // THE ENCODING IS NOT CANONICAL WITH RESPECT TO INSERTION HISTORY, and that is declared here rather
 // than left for someone to discover by diffing two repositories that ought to match.

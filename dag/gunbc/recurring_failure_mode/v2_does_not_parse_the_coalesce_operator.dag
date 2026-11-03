@@ -1,21 +1,15 @@
 module gunbc.recurring_failure_mode.v2_does_not_parse_the_coalesce_operator
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data v2_does_not_parse_the_coalesce_operator: RecurringFailureMode = RecurringFailureMode {
   identity: "v2_does_not_parse_the_coalesce_operator" as NonEmptyStr,
 
   rung: RungRead {
     found_at: FoundOnRung { rung: Mitigatable },
-    standing: BelowCeiling {
-      current: FoundOnRung { rung: Mitigatable },
-      ceiling: StructurallyGuaranteed,
-      blocker: ClimbableButUnbuilt,
-      trigger_capability: "the v2 dag grammar's expression production admitting the null-coalescing operator `??` as a binary operator, as the v1 seed's parser does -- sufficient for `let v = x ?? 1` and `(x ?? 1) == 1` in authored .dag source to parse natively, each as a RED that parses after the fix."
-    },
+    standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed FOR THE PARSE CLASS ONLY: the v2 dag grammar's infix table has a `??` row, so no Accepted module is refused at parse for using the operator; the later canonicalization gap is its own class, gunbc.recurring_failure_mode v2_does_not_canonicalize_the_coalesce_operator." as NonEmptyStr },
   },
 
   receipts: [
@@ -36,6 +30,8 @@ data v2_does_not_parse_the_coalesce_operator: RecurringFailureMode = RecurringFa
     "CEILING 3, structurally guaranteed: the production admits the operator, so no Accepted program meets the refusal.",
 
     "REVIEW TELL: evidence that an operator parses taken from a string-literal fixture rather than authored code; a source rewrite made only so the native parser accepts it, with no row naming the grammar gap.",
+
+    "FIXED, EXECUTED (2026-11-01, branch calm-nullcoalesce-grammar head 9bc5e259ddc7, srv2 release seed binary sha256 e8183e1468949a98482a67ca099c188cfad00c86aa99a427bdba5deca688d624, gunbc run --claim-run on v2.test.claim.parse.coalesce_operator_parse): AFTER 5 PASS / 0 FAIL; BEFORE (origin/main c0e9e74cf2f2 plus the same claim file) 1 PASS / 4 FAIL -- the four `??` parse arms (let-bound, parenthesized-compared, between && and ==, chained) refuse before and parse after, and the existing binary-operator control passes both times. The fix: a `??` lex rule before `?` and one InfixLeft row between `&&` and `==` in v2.extdeps.languages.dag dag_infix_operators, rows from `==` up renumbered by +1; the only readers of binding_power are the table consumers in v2.compiler.parse and v2.std.grammar (inspected by git grep), none hard-codes a value.",
   ],
 
   evidence: [],

@@ -3,6 +3,7 @@ import std.optional { Present, Absent }
 
 import std.nat { Nat }
 import std.types { String }
+import std.algebra { collection_concat_shape }
 
 // THE FINITE-MACHINE INTEGER BOUNDARY, in one place.
 //

@@ -8,10 +8,10 @@ import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.types { ElectronicComponentRow }
 import product.electrical.carrier_phase { CarrierPhaseObservation, CarrierTransitionObservation, SwitchPoleClosure }
 import extdeps.connector.amphenol_g97v22332hr { g97v22332hr }
-import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalDesignIdentity, ElectricalTerminalRef, TerminalIdentity }
+import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalDesignIdentity, ElectricalTerminalRef, TerminalIdentity, component_identity_eq, design_identity_eq }
 import product.electrical.source_draw { SourceDrawObservation }
 import product.electrical.bench_session { BenchRecord }
-import product.electrical.continuity { ContinuityObservation, DiodeModeObservation, EvidenceRef }
+import product.electrical.continuity { ContinuityObservation, DiodeModeObservation, EvidenceRef, ModuleState }
 import product.electrical.identification {
   InstalledComponent,
   names,
@@ -20,7 +20,9 @@ import product.electrical.identification {
   regulator_pins,
 }
 import product.electrical.investigation_hypothesis { InvestigationHypothesis }
-import extdeps.nvidia.p4261 { P4261AssemblyRevision }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_revision_eq }
+import extdeps.nvidia.p4261.population { P4261DesignPosition, p4261_positions_of }
+import extdeps.nvidia.p4261.connectors { HousingRow, LatchRow, AwayFromLatchRow }
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS OBSERVED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
 // document names this board, so everything here is the operator's observation of a physical unit,
@@ -47,30 +49,158 @@ import extdeps.nvidia.p4261 { P4261AssemblyRevision }
 
 // ── CONNECTOR HOUSINGS ────────────────────────────────────────────────────────────────────────
 
-// WHICH PHYSICAL ROW, against a reference anyone can find on the housing: the latch. A row swap reverses
-// polarity, so a position whose side was not recorded is never assumed.
+// WHICH PHYSICAL ROW A POSITION WAS READ ON, against a reference anyone can find on the housing: the
+// latch. The row itself is the housing's geometry (extdeps.nvidia.p4261.connectors HousingRow); what is
+// ours is the reading of it, or its absence. A row swap reverses polarity, so a position whose side was
+// not recorded is never assumed.
 type RowSide
-  = LatchSide
-  | AwayFromLatch
+  = RowRead { row: HousingRow }
   | SideUnrecorded
 
+fn latch_side() -> RowSide {
+  RowRead { row: LatchRow }
+}
+
+fn away_side() -> RowSide {
+  RowRead { row: AwayFromLatchRow }
+}
+
+// A position as one bench session mapped it: its terminal (our photo-relative name), the side it was
+// read on, and its index in that session's counting -- which end it counts from is the session's, not
+// the connector maker's pin 1.
 type HousingPosition {
   terminal: TerminalIdentity
   side: RowSide
   index: Nat
 }
 
-// A connector's contact inventory: each position is a terminal of the connector's component instance,
-// so its count is the inventory's length and nothing else, and the sides carry their own receipt.
+// HOW MUCH OF THE HOUSING A MAPPING COVERS. A mapping is a reading of positions; whether it reached
+// every position is its own fact. A partial mapping's absent positions are unknown, never absent from
+// the housing.
+type MappingCoverage
+  = EveryPositionMapped
+  | MappedInPart { obligation: NonEmptyStr }
+
+// One connector's positions as mapped on a board, with the photograph the sides were read on.
 type ConnectorHousing {
   component: ComponentInstanceIdentity
   positions: List<HousingPosition>
+  coverage: MappingCoverage
   sides_evidence: EvidenceRef
 }
 
+// The two observations of a housing kept apart: a count of positions read off a photograph of the
+// named connector, and a mapping of its positions.
 type ConnectorPositionCensus
-  = CountedFromPhotograph { positions: Nat, evidence: EvidenceRef }
+  = CountedFromPhotograph { component: ComponentInstanceIdentity, positions: Nat, evidence: EvidenceRef }
   | MappedOnHousing { housing: ConnectorHousing }
+
+// ── THE OBSERVED INVENTORY, DERIVED ONCE ───────────────────────────────────────────────────────
+//
+// What a board's census establishes about its connector, from distinct positions only. A position's
+// index is always read; its side may not be. One terminal read twice at compatible positions is one
+// position (its side taken from whichever reading recorded it). A terminal at two different indices,
+// or on two different read sides, is a defect; so are two terminals at the same index on the same READ
+// side. An unread side is unknown, never a row of its own: two terminals at one index whose sides are
+// unread collide with nothing. A defective census is refused with the defect, never counted.
+//
+// The rows read keep their counts whatever else is unread:
+//   every position mapped, every side read       the count per row
+//   every position mapped, some sides unread     the known count per row, and how many are unread
+//   mapped in part                               lower bounds per row, and how many are unread
+//   a count off a photograph                     a total, and no row information at all
+type MappingDefect
+  = TerminalAtTwoCoordinates { terminal: TerminalIdentity }
+  | TwoTerminalsAtOneCoordinate { side: RowSide, index: Nat }
+
+type ObservedInventory
+  = InventoryByRow { latch_row: Nat, away_row: Nat }
+  | InventorySidesUnread { latch_row_known: Nat, away_row_known: Nat, side_unread: Nat }
+  | InventoryInPart { latch_row_at_least: Nat, away_row_at_least: Nat, side_unread: Nat }
+  | InventoryTotalOnly { total: Nat }
+  | InventoryRefused { defect: MappingDefect }
+
+fn row_side_key(s: RowSide) -> Nat {
+  match s {
+    SideUnrecorded => 0
+    RowRead { row } => match row { LatchRow => 1, AwayFromLatchRow => 2 }
+  }
+}
+
+fn side_read(s: RowSide) -> Bool {
+  row_side_key(s: s) != 0
+}
+
+fn same_terminal(a: HousingPosition, b: HousingPosition) -> Bool {
+  (a.terminal as String) == (b.terminal as String)
+}
+
+// Two readings that cannot both place one terminal: different indices, or different READ sides.
+fn coordinates_incompatible(a: HousingPosition, b: HousingPosition) -> Bool {
+  a.index != b.index || (side_read(s: a.side) && side_read(s: b.side) && row_side_key(s: a.side) != row_side_key(s: b.side))
+}
+
+// The same known position: both sides read and equal, and the same index.
+fn same_known_coordinate(a: HousingPosition, b: HousingPosition) -> Bool {
+  side_read(s: a.side) && side_read(s: b.side) && row_side_key(s: a.side) == row_side_key(s: b.side) && a.index == b.index
+}
+
+fn mapping_defects(ps: List<HousingPosition>) -> List<MappingDefect> {
+  concat(
+    map(filter(ps, p => any(ps, q => same_terminal(a: p, b: q) && coordinates_incompatible(a: p, b: q))), p => TerminalAtTwoCoordinates { terminal: p.terminal }),
+    map(filter(ps, p => any(ps, q => same_known_coordinate(a: p, b: q) && !same_terminal(a: p, b: q))), p => TwoTerminalsAtOneCoordinate { side: p.side, index: p.index }),
+  )
+}
+
+// One entry per distinct terminal, keeping a read side over an unread one.
+fn distinct_positions(ps: List<HousingPosition>) -> List<HousingPosition> {
+  fold(ps, init: no_positions(), f: (acc, p) =>
+    if any(acc, q => same_terminal(a: p, b: q)) {
+      if side_read(s: p.side) { map(acc, q => if same_terminal(a: p, b: q) && !side_read(s: q.side) { p } else { q }) } else { acc }
+    } else { concat(acc, [p]) })
+}
+
+fn no_positions() -> List<HousingPosition> {
+  []
+}
+
+fn on_row(ps: List<HousingPosition>, key: Nat) -> Nat {
+  count(filter(ps, p => row_side_key(s: p.side) == key))
+}
+
+fn observed_inventory(census: ConnectorPositionCensus) -> ObservedInventory {
+  match census {
+    CountedFromPhotograph { component: _, positions, evidence: _ } => InventoryTotalOnly { total: positions }
+    MappedOnHousing { housing } => match mapping_defects(ps: housing.positions).first() {
+      Present { value: d } => InventoryRefused { defect: d }
+      Absent => {
+        let ps = distinct_positions(ps: housing.positions)
+        match housing.coverage {
+          MappedInPart { obligation: _ } => InventoryInPart { latch_row_at_least: on_row(ps: ps, key: 1), away_row_at_least: on_row(ps: ps, key: 2), side_unread: on_row(ps: ps, key: 0) }
+          EveryPositionMapped => if on_row(ps: ps, key: 0) > 0 { InventorySidesUnread { latch_row_known: on_row(ps: ps, key: 1), away_row_known: on_row(ps: ps, key: 2), side_unread: on_row(ps: ps, key: 0) } } else { InventoryByRow { latch_row: on_row(ps: ps, key: 1), away_row: on_row(ps: ps, key: 2) } }
+        }
+      }
+    }
+  }
+}
+
+// A housing the electrical derivations may read whole: every position mapped and the mapping
+// consistent. A partial or defective mapping keeps its observed terminals, but no whole-row conclusion
+// rests on it.
+fn housing_admitted_whole(h: ConnectorHousing) -> Bool {
+  match h.coverage {
+    MappedInPart { obligation: _ } => false
+    EveryPositionMapped => count(mapping_defects(ps: h.positions)) == 0
+  }
+}
+
+// The connector a census describes.
+fn census_component(census: ConnectorPositionCensus) -> ComponentInstanceIdentity {
+  match census {
+    CountedFromPhotograph { component, positions: _, evidence: _ } => component
+    MappedOnHousing { housing } => housing.component
+  }
+}
 
 // A caliper span across a row of cavities: so many pitches plus so many cavity widths.
 type CaliperAxis
@@ -150,7 +280,18 @@ type UnresolvedPart {
 
 // ── THE MEASURED BOARD AND ITS INPUT ──────────────────────────────────────────────────────────
 
+// WHICH STATE THE BOARD'S PIN, SWITCH AND ATTACHMENT DERIVATIONS READ. A board's bench work spans
+// several physical states (product.electrical.bench_session SpecimenState); the derivations over its
+// controller pins, switches and probe attachments read one, named here by the dividing events it
+// follows and its module configuration. A selection naming no state of the record is refused, and the
+// derivations then read nothing (product.p4261.readings analysis_state).
+type AnalysisSelection {
+  after: List<NonEmptyStr>
+  module: ModuleState
+}
+
 type MeasuredBoard {
+  analysis: AnalysisSelection
   asset: PhysicalAssetIdentity
   continuity: List<ContinuityObservation>
   diode_readings: List<DiodeModeObservation>
@@ -184,6 +325,89 @@ type CarrierLayoutObservation {
   measured: MeasuredBoard?
   input: InputConnector?
   unresolved: List<UnresolvedPart>
+  designator_readings: List<DesignatorReading>
+}
+
+// ── WHICH OF OUR COMPONENTS SITS AT WHICH OF NVIDIA'S DESIGN POSITIONS ──────────────────────────
+//
+// A board's components are ours (one identity space per physical board, ElectricalDesignIdentity); its
+// design positions are NVIDIA's, per revision (extdeps.nvidia.p4261.population). They are two identity
+// spaces and stay two. What joins them is an observation: we read silkscreen designator D beside our
+// component C, on this photograph or in this statement (DesignatorReading). Text equality between a
+// component's name and a designator joins nothing.
+//
+// A JOIN IS ADMITTED, NEVER AUTHORED. SpecimenPosition is sealed, and its one mint resolves a reading
+// against the catalogue of THE BOARD'S OWN REVISION only, so an E1 component cannot be bound to a K1
+// position, and the two roles cannot be swapped (a position is not a component identity). A reading is
+// refused, with its cause, when its component belongs to another board's identity space or has no
+// component observation on this board, when its
+// designator names no position of the board's revision (or names one the catalogue lists twice), or
+// when one component was read under two designators -- then every reading of that component is refused,
+// never the first taken. Several of our components may sit at one position (a part, and later the
+// footprint it was lifted from): each is admitted, and an assessment places each against the
+// position's removals before weighing it (product.p4261.evidence).
+//
+// ADMITTED IS NOT ATTRIBUTED. Admission resolves designators against the board's SELECTED revision;
+// whether the board is that revision is the Stage A judgment (product.p4261.evidence
+// revision_supported), which every assessment and comparison requires before a reading here can
+// support anything.
+type DesignatorReading {
+  specimen: ComponentInstanceIdentity
+  designator: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+type SpecimenPosition sole_constructor {
+  specimen: ComponentInstanceIdentity
+  position: P4261DesignPosition
+  evidence: EvidenceRef
+}
+
+type CorrespondenceRefusal
+  = SpecimenOfAnotherBoard { reading: DesignatorReading }
+  | SpecimenNotObserved { reading: DesignatorReading }
+  | NoSuchPosition { reading: DesignatorReading }
+  | PositionListedTwice { reading: DesignatorReading }
+  | SpecimenReadUnderTwoDesignators { reading: DesignatorReading }
+
+type CorrespondenceAdmission {
+  admitted: List<SpecimenPosition>
+  refused: List<CorrespondenceRefusal>
+}
+
+fn positions_named(layout: CarrierLayoutObservation, d: NonEmptyStr) -> List<P4261DesignPosition> {
+  filter(p4261_positions_of(revision: layout.revision), x => (x.position.designator as String) == (d as String))
+}
+
+fn read_under_another_designator(layout: CarrierLayoutObservation, r: DesignatorReading) -> Bool {
+  any(layout.designator_readings, x => component_identity_eq(a: x.specimen, b: r.specimen) && (x.designator as String) != (r.designator as String))
+}
+
+fn correspondence_refusal(layout: CarrierLayoutObservation, r: DesignatorReading) -> CorrespondenceRefusal? {
+  let named = positions_named(layout: layout, d: r.designator)
+  if !design_identity_eq(a: r.specimen.design, b: layout.design) { Present { value: SpecimenOfAnotherBoard { reading: r } } }
+  else if !any(layout.components, c => component_identity_eq(a: c.component, b: r.specimen)) { Present { value: SpecimenNotObserved { reading: r } } }
+  else if count(named) == 0 { Present { value: NoSuchPosition { reading: r } } }
+  else if count(named) > 1 { Present { value: PositionListedTwice { reading: r } } }
+  else if read_under_another_designator(layout: layout, r: r) { Present { value: SpecimenReadUnderTwoDesignators { reading: r } } }
+  else { Absent }
+}
+
+fn admitted_position(layout: CarrierLayoutObservation, r: DesignatorReading) -> SpecimenPosition? {
+  match correspondence_refusal(layout: layout, r: r) {
+    Present { value: _ } => Absent
+    Absent => match (positions_named(layout: layout, d: r.designator)).first() {
+      Absent => Absent
+      Present { value: p } => Present { value: SpecimenPosition { specimen: r.specimen, position: p, evidence: r.evidence } }
+    }
+  }
+}
+
+fn admit_correspondence(layout: CarrierLayoutObservation) -> CorrespondenceAdmission {
+  CorrespondenceAdmission {
+    admitted: flat_map(layout.designator_readings, r => match admitted_position(layout: layout, r: r) { Absent => [], Present { value: s } => [s] }),
+    refused: flat_map(layout.designator_readings, r => match correspondence_refusal(layout: layout, r: r) { Absent => [], Present { value: c } => [c] }),
+  }
 }
 
 data p4261_grey_path_hypothesis: InvestigationHypothesis = InvestigationHypothesis {

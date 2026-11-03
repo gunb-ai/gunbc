@@ -6,6 +6,8 @@ import std.measure { Bandwidth, bandwidth, bandwidth_count, ByteSize, byte_size 
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import extdeps.network.mac { Eui48Address, mac_address, mac_addresses_are_equal }
+import extdeps.boards.types { OnboardEthernetPortRow }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_lan3 }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, PrefixLength }
 import extdeps.netplan.netplan {
   NetplanRenderer, SystemdNetworkd,
@@ -80,6 +82,28 @@ data srv1_i210_mac: Eui48Address = mac_address(octet1: 72, octet2: 33, octet3: 1
 data srv1_x550_port0_mac: Eui48Address = mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 198, octet6: 233)
 data srv1_x550_port1_mac: Eui48Address = mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 198, octet6: 234)
 data srv1_bmc_usb_nic_mac: Eui48Address = mac_address(octet1: 170, octet2: 122, octet3: 19, octet4: 218, octet5: 115, octet6: 211)
+
+// WHICH REAR PORT A HOST NIC IS, as far as a read grounds it. The board's manual names the ports
+// (extdeps.boards.asrock_rack asrock_altrad8ud_1l2t_lan1..lan3); the host names the NIC by
+// MAC; this row joins the two only where the join is forced. srv1's I210 is LAN3 because the board
+// carries exactly one I210 and the manual puts it on LAN3, and the kernel binds this MAC to igb. The X550's
+// two MACs are NOT bound: which of its PCI functions is LAN1 and which LAN2 is not read, and the
+// shared-NIC marking makes the difference matter.
+type OnboardPortBinding {
+  host: HostIdentity
+  mac: Eui48Address
+  port: OnboardEthernetPortRow
+  grounds: NonEmptyStr
+}
+
+data host_onboard_port_bindings: List<OnboardPortBinding> = [
+  OnboardPortBinding {
+    host: operator_host_srv1,
+    mac: srv1_i210_mac,
+    port: asrock_altrad8ud_1l2t_lan3,
+    grounds: "the ALTRAD8UD-1L2T carries one Intel i210 and the manual puts it on LAN3 (section 1.6, item 5); srv1's kernel binds this MAC to igb at 0003:06:00.0 (srv1_nic_boot_readings, read 2026-10-25)" as NonEmptyStr,
+  },
+]
 
 // THE LAN ROUTER, DECLARED ONCE. srv1's DHCP lease (below) names this address as BOTH its gateway and its
 // sole DNS server, read on 2026-10-25; the router is therefore also the only resolver on the LAN, which is
