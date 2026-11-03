@@ -137,10 +137,11 @@ import extdeps.os.ubuntu_autoinstall {
 // be bound. Importing the fold rather than restating its output is what makes "the document the machine was
 // given" answerable — a local string that merely resembles the payload proves nothing about the document.
 import gunbc.os_install_emit { AutoinstallUserData, autoinstall_user_data }
-// The two callees below are spelled in the import lists that own them: the effect join refuses a
-// callee it can only reach by proximity ('no established callee identity'), which is what had been
-// refusing this corpus in the drift lane. See
-// gunbc.recurring_failure_mode.effect_summary_join_refuses_a_bare_name_whose_import_is_missing.
+// The two callees below are spelled in the import lists that own them. The class is recorded in
+// gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution: an
+// unimported bare name is bound by proximity, which resolve accepts and the effect join does not
+// ('no established callee identity'), and that refusal is what had been failing the drift lane.
+// These two sites, and one in gunbc.fleet.fleet_converge_workflow, are its receipts (gunbc#15751).
 import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line, ssh_ed25519_key_identity }
 import extdeps.storage.types {
   BareDevice,
