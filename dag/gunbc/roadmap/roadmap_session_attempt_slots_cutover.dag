@@ -571,7 +571,7 @@ fn attempt_slots_carry(target: SessionAttemptSlotsStore, moved: ReplacedAttemptS
                   instance_id: moved.instance_id,
                   old_root: moved.old_slots_root,
                   new_root: target.slots.root,
-                  outcomes: map(keys, k => attempt_slots_carry_one(source: source, target: target.slots, reference: k)),
+                  outcomes: fold(map(keys, k => attempt_slots_carry_one(source: source, target: target.slots, reference: k)), init: [] as List<AttemptSlotsCarryOutcome>, f: (acc, o) => if any(acc, x => match x { AttemptSlotsCarryRefused { reference: _, detail: _ } => true  _ => false }) { acc } else { acc |> list_push(o) }),
                 },
               }
           }
