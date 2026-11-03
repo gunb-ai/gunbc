@@ -971,7 +971,7 @@ service Filesystem {
   }
 }
 
-// ── THE HANDLE'S REALIZATION IS A DECLARED FRONTIER, ENROLLED IN gunbc.census_closure_frontier (§3c) ──
+// ── THE HANDLE'S REALIZATION IS A DECLARED FRONTIER, TYPED AS ROWS BESIDE ITS DECLARATIONS (§3c) ──
 //
 // Both dissolutions are UNBOUND because their triggers are declarations the tree does not carry yet (a bound
 // dissolution may only cite a declaration it already has). Each description names the change that discharges it, so

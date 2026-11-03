@@ -17,7 +17,7 @@ import extdeps.linux.cgroup_v2_memory { CgroupMemoryInterfaceFile, MemoryPeak, c
 import extdeps.tools.gnu_time { gnu_time_program }
 import extdeps.systemd.systemctl { systemctl_version_command, SystemdReportsMemoryPeak, SystemdTooOldForMemoryPeak, SystemdVersionUnreadable, systemd_memory_peak_support }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.gnu_coreutils { cp_command }
 import gunbc.host.verified_archive_install {
@@ -352,7 +352,7 @@ fn firecracker_fetch_commands(root: String, rel: FirecrackerRelease, scratch: St
 
 fn firecracker_install_commands(root: String, rel: FirecrackerRelease, scratch: String) -> List<ArgvCommand> {
   [
-    tar_extract_command(archive: firecracker_tarball_path(scratch: scratch, rel: rel), into_directory: scratch, strip_components: 0),
+    tar_extract_command(archive: firecracker_tarball_path(scratch: scratch, rel: rel), into_directory: scratch, strip_components: 0, existing_directories: TarOverwriteDir),
     cp_command(source: join([scratch, "/", firecracker_release_binary_path_in_tarball(rel: rel)], ""), destination: firecracker_installed_binary(root: root, rel: rel)),
   ]
 }

@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.tools.unzip { unzip_extract_command }
 import extdeps.tools.dpkg_deb { dpkg_deb_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
@@ -257,7 +257,7 @@ fn staged_archive_install_commands(archives_dir: String, tree: String, a: Staged
   [
     mkdir_parents_command(path: dest),
     match a.extraction {
-      ExtractTar { strip_components: n } => tar_extract_command(archive: archive, into_directory: dest, strip_components: n)
+      ExtractTar { strip_components: n } => tar_extract_command(archive: archive, into_directory: dest, strip_components: n, existing_directories: TarOverwriteDir)
       ExtractZip => unzip_extract_command(archive: archive, into_directory: dest)
       ExtractDebData => dpkg_deb_extract_command(archive: archive, into_directory: dest)
     },

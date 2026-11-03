@@ -92,6 +92,7 @@ import gunbc.machine_intake.subject {
   qualification_subject_of,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
+import extdeps.network.mac { mac_address }
 import gunbc.machine_intake.access {
   AccessContextBound,
   AccessContextCatalogRefused,
@@ -107,6 +108,9 @@ import gunbc.machine_intake.access {
   AccessObservationReceipt,
   BootDeliveryTarget,
   BoundBmcAccessContextStanding,
+  ControllerAddressedTarget,
+  NetworkAddressedTarget,
+  boot_delivery_target_subject,
   bind_bmc_access_context,
 }
 import gunbc.install_transport_qualification {
@@ -154,14 +158,20 @@ import gunbc.network_boot_delivery {
   SitePxeEdgeReceipt,
   network_boot_requirements_all,
 }
+import gunbc.provisioning.ubuntu_autoinstall_seed { console_stanza_for, ConsoleSuppressed, ConsoleAnsweredByUnattended }
+import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
 import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
 import gunbc.boot_artifact_delivery {
   BootArtifactStagingBinding,
   BootDeliveryPlan,
   BootDeliveryPlanned,
   BootDeliveryPolicy,
+  BootControlByFirmwareBootOrder,
   BootDeliveryRefused,
   BootDeliveryRequest,
+  DeliveryNoEligibleNetworkTransport,
+  CandidateRequiresController,
+  plan_bmc_boot_control_observation,
   BootDeliverySolution,
   BootFromRemovableMedia,
   BoundBootDeliveryEvidence,
@@ -172,6 +182,9 @@ import gunbc.boot_artifact_delivery {
   CandidateNetworkBootUnestablished,
   CandidateOemParameterUnset,
   CandidateOpenBmcConfigfsUsbGadget,
+  CandidateOpenBmcNbdProxyWebsocket,
+  BootFromNetworkPxe,
+  BootDeliveryCandidateVerdict,
   CandidatePxeChainBoot,
   CandidateRedfishProbeAbsent,
   CandidateRedfishProbeBelowPlanFloor,
@@ -218,31 +231,23 @@ import gunbc.os_install_mechanism {
   os_install_solution_of_delivery,
 }
 
+import test.fixture.boot_delivery_plans {
+  assembly,
+  attempt_one,
+  attempt_two,
+  established_network_boot_for,
+  firmware_manifest,
+  intake_artifact,
+  intake_subject,
+  network_target,
+  unit,
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ---------------------------------------------------------------------------
 // The intake subject and attempt this solve is for.
 // ---------------------------------------------------------------------------
-data unit: UnitKey = "BRD-000777" as UnitKey
-
-data assembly: AssemblyManifest = AssemblyManifest {
-  chassis_part_number: "CH-2U-MTC",
-  components: [ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-A1-777" }],
-}
-
-data firmware_manifest: FirmwareManifest = FirmwareManifest {
-  entries: [FirmwareEntry { component: "bmc", version: "1.2.3" }],
-  configuration_digests: [],
-}
-
-data attempt_one: IntakeAttemptId = "intake-20260830-0001" as IntakeAttemptId
-data attempt_two: IntakeAttemptId = "intake-20260830-0002" as IntakeAttemptId
-
-data intake_subject: MachineIntakeSubject = MachineIntakeSubject {
-  subject: qualification_subject_of(unit_key: unit, assembly: assembly, firmware: firmware_manifest),
-  attempt_id: attempt_one,
-}
-
 data other_attempt_subject: MachineIntakeSubject = MachineIntakeSubject {
   subject: qualification_subject_of(unit_key: unit, assembly: assembly, firmware: firmware_manifest),
   attempt_id: attempt_two,
@@ -253,20 +258,11 @@ data other_attempt_subject: MachineIntakeSubject = MachineIntakeSubject {
 data megarac_endpoint: BmcControllerEndpoint = BmcControllerEndpoint { host: "192.168.1.60" }
 data other_controller: BmcControllerEndpoint = BmcControllerEndpoint { host: "192.168.1.61" }
 
-data target: BootDeliveryTarget = BootDeliveryTarget { subject: intake_subject, endpoint: megarac_endpoint }
-data other_attempt_target: BootDeliveryTarget = BootDeliveryTarget { subject: other_attempt_subject, endpoint: megarac_endpoint }
-data other_controller_target: BootDeliveryTarget = BootDeliveryTarget { subject: intake_subject, endpoint: other_controller }
+data target: BootDeliveryTarget = ControllerAddressedTarget { subject: intake_subject, endpoint: megarac_endpoint }
+data other_attempt_target: BootDeliveryTarget = ControllerAddressedTarget { subject: other_attempt_subject, endpoint: megarac_endpoint }
+data other_controller_target: BootDeliveryTarget = ControllerAddressedTarget { subject: intake_subject, endpoint: other_controller }
 
 // THE ARTIFACT. Everything staged must name this digest.
-data intake_artifact: BootArtifact = BootArtifact {
-  purpose: IntakeLinuxEnvironment,
-  architecture: Aarch64,
-  digest: content_hash_of_value(value: "intake-linux-aarch64-fixture"),
-  format: IsoImage,
-  entrypoint: "/EFI/BOOT/BOOTAA64.EFI",
-  build_identity: "intake-agent-0.1.0-fixture",
-}
-
 data other_digest: ContentHash = content_hash_of_value(value: "some-other-iso")
 
 // ---------------------------------------------------------------------------
@@ -594,9 +590,9 @@ test fn redfish_virtual_media_planned_from_bound_context_and_probe_receipt() -> 
           params.transfer_protocol == TransferHttps
             && params.media.media_id == "CD1"
             && p.artifact.build_identity == intake_artifact.build_identity
-            && p.target.endpoint == megarac_endpoint
+            && p.target == target
             && p.boot_control == BootFromRemovableMedia
-            && p.boot_control_route.route == redfish_route
+            && match plan_bmc_boot_control_observation(plan: p) { Present { value: o } => o.route == redfish_route Absent => false }
             && list_length(items: p.eligibility.evidence_manifest) == 9
             && p.eligibility.selected == SelectedFromProfileIntersection { surface: SurfaceRedfishVirtualMedia }
         _ => false
@@ -634,7 +630,7 @@ test fn bound_context_for_another_controller_is_not_this_target() -> Bool {
   ) {
     BootDeliveryRefused { cause: c } =>
       match c {
-        DeliveryTargetControllerMismatch { requested: r, bound_endpoint: e } => r.endpoint == other_controller && e == megarac_endpoint
+        DeliveryTargetControllerMismatch { requested: r, bound_endpoint: e } => r == other_controller_target && e == megarac_endpoint
         _ => false
       }
     BootDeliveryPlanned { plan: _ } => false
@@ -871,7 +867,7 @@ fn solve_with_control(control: List<BmcBootControlRouteObservation>) -> BootDeli
 
 test fn boot_control_route_is_the_observed_one_never_the_catalogued_preference() -> Bool {
   let ipmi_only = match solve_with_control(control: [control_over_ipmi]) {
-    BootDeliveryPlanned { plan: p } => p.boot_control_route.route == IpmiLanplusRoute { cipher_suite: Absent } && p.boot_control_route.raw_response == control_over_ipmi.raw_response
+    BootDeliveryPlanned { plan: p } => match plan_bmc_boot_control_observation(plan: p) { Present { value: o } => o.route == IpmiLanplusRoute { cipher_suite: Absent } && o.raw_response == control_over_ipmi.raw_response Absent => false }
     BootDeliveryRefused { cause: _ } => false
   }
   let unobserved = match solve_with_control(control: []) {
@@ -923,7 +919,7 @@ test fn observed_mt_collins_build_plans_megarac_rest_remote_media_with_image_red
           params.image_name == "intake.iso"
             && megarac_image_redirection_wire(r: params.image_redirection) == "1"
             && p.boot_control == BootFromRemovableMedia
-            && p.boot_control_route.route == IpmiLanplusRoute { cipher_suite: Absent }
+            && match plan_bmc_boot_control_observation(plan: p) { Present { value: o } => o.route == IpmiLanplusRoute { cipher_suite: Absent } Absent => false }
         _ => false
       }
     BootDeliveryRefused { cause: _ } => false
@@ -1115,7 +1111,7 @@ test fn configfs_path_established_for_another_target_is_refused() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateOpenBmcConfigfsUsbGadget) {
-            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateEvidenceForOtherTarget { evidence_target: t } => (t.subject.attempt_id as NonEmptyStr) == (attempt_two as NonEmptyStr) _ => false }
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateEvidenceForOtherTarget { evidence_target: t } => (boot_delivery_target_subject(target: t).attempt_id as NonEmptyStr) == (attempt_two as NonEmptyStr) _ => false }
             _ => false
           }
         _ => false
@@ -1127,93 +1123,6 @@ test fn configfs_path_established_for_another_target_is_refused() -> Bool {
 // Network boot: every axis observed AND the establishment naming the
 // requested digest selects PXE; the same establishment naming another digest
 // is a staged-artifact mismatch, never a plan.
-fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> NetworkBootDeliveryStanding {
-  let obs = DeclarationRef {
-    module_path: "test.claim.machine_intake.boot_artifact_delivery_witness",
-    decl_name: "established_network_boot_for",
-    field: WholeDeclaration,
-  }
-  let site = "onboarding-segment" as SiteIdentity
-  NetworkBootDeliveryEstablished {
-    evidence: NetworkBootDeliveryEstablishment {
-      target: t,
-      fleet: FleetBootServiceReceipt {
-        https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
-        origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
-        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
-        observation: obs,
-        observed_at: 1788000000000,
-      },
-      site: SitePxeEdgeReceipt {
-        edge: SitePxeEdge {
-          site: site,
-          discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
-          bootstrap_transports: FreeSemigroup { head: ArchitectureChainloader {
-            architecture: Aarch64,
-            filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
-            chainloader_digest: digest,
-            tftp_root: Uri { scheme: Tftp, locator: "192.0.2.10/snponly.efi" },
-          }, tail: [] },
-          global_endpoint_reachability: GlobalHttpsEndpointReachable {
-            broker_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
-            artifact_origin: Uri { scheme: Https, locator: "boot-origin.example.test" },
-            observation: obs,
-            observed_at: 1788000000000,
-          },
-        },
-        observation: obs,
-        observed_at: 1788000000000,
-      },
-      client: ObservedClientBootModeReceipt {
-        target: t,
-        site: site,
-        client: ObservedDhcpPxeClient {
-          vendor_class: "PXEClient:Arch:00011:UNDI:003016",
-          arch: UefiArm64,
-        },
-        observation: obs,
-        observed_at: 1788000000000,
-      },
-      boot_control: NetworkBootBootControlReceipt {
-        target: t,
-        observation: obs,
-        observed_at: 1788000000000,
-      },
-      manifest: SignedBootManifestReceipt {
-          identity: SignedBootManifestIdentity {
-          target_unit: t.subject.subject.unit_key,
-          attempt_id: t.subject.attempt_id,
-          nonce: "nonce-boot-artifact",
-          architecture: Aarch64,
-          boot_mode: UefiPxe { tftp_root: Uri { scheme: Tftp, locator: "192.0.2.10/snponly.efi" } },
-          chainloader_digest: digest,
-          kernel_digest: digest,
-          initrd_digest: digest,
-          root_digest: digest,
-          kernel_cmdline: "console=ttyAMA0",
-          not_before: 1788000000000,
-          expiry: 1788003600000,
-          signing_key_identity: "boot-manifest-key-0" as MacKeyId,
-          callback_identity: "intake-callback-0",
-        },
-        observation: obs,
-        observed_at: 1788000000000,
-      },
-      bundle: BootBundleAvailabilityReceipt {
-        kernel_digest: digest,
-        initrd_digest: digest,
-        root_digest: digest,
-        served_from: Uri { scheme: Https, locator: "boot-origin.example.test" },
-        publication_observation: obs,
-        readback_observation: obs,
-      },
-      trust: EstablishedControlledNetwork {
-        evidence: ControlledNetworkTrustObservation { site: site, observation: obs, observed_at: 1788000000000 },
-      },
-    },
-  }
-}
-
 test fn established_network_boot_naming_the_artifact_selects_pxe_and_another_digest_does_not() -> Bool {
   let planned = solve_boot_artifact_delivery(
     request: request_with(staging: boot_artifact_staging_unbound),
@@ -1255,7 +1164,7 @@ test fn established_network_boot_naming_the_artifact_selects_pxe_and_another_dig
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidatePxeChainBoot) {
-            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateEvidenceForOtherTarget { evidence_target: t } => t.endpoint == other_controller _ => false }
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateEvidenceForOtherTarget { evidence_target: t } => t == other_controller_target _ => false }
             _ => false
           }
         _ => false
@@ -1360,4 +1269,130 @@ test fn a_plan_names_one_transport_and_records_the_rest_as_outranked() -> Bool {
         && plan_outranked_by_redfish_count(verdicts: p.eligibility.considered) >= 1
     BootDeliveryRefused { cause: _ } => false
   }
+}
+
+// GAPS (a)+(b): a BMC-less host is representable. A network-addressed target is reached by
+// the MAC its firmware DHCPs from, carries no controller, so the four controller-gated
+// candidates are ineligible-with-cause (CandidateRequiresController) and the solve does NOT
+// refuse before the network transports are judged. POSITIVE: established PXE evidence for the
+// network target plans PxeChainBoot, boot control is the firmware's boot order (no fabricated
+// BMC route), and the controller candidates stand as RequiresController. RED 1: no network
+// evidence leaves a typed DeliveryNoEligibleNetworkTransport naming the same causes. RED 2:
+// establishment evidence for the controller-addressed target is evidence for another target.
+// RED 3: a bound BMC access context beside a network target is never consumed (a BMC plan
+// cannot be reached for a host with no controller).
+fn network_request() -> BootDeliveryRequest {
+  BootDeliveryRequest { target: network_target, artifact: intake_artifact, staging: boot_artifact_staging_unbound }
+}
+
+fn network_requires_controller_for_every_bmc_candidate(considered: List<BootDeliveryCandidateVerdict>) -> Bool {
+  fold(
+    [CandidateRedfishVirtualMedia, CandidateMegaRacRestRemoteMedia, CandidateOpenBmcNbdProxyWebsocket, CandidateOpenBmcConfigfsUsbGadget],
+    init: true,
+    f: (acc, c) => acc && boot_delivery_candidate_standing_of(verdicts: considered, candidate: c) == CandidateIneligible { cause: CandidateRequiresController },
+  )
+}
+
+test fn a_network_addressed_target_plans_pxe_without_a_controller_and_refuses_typed_otherwise() -> Bool {
+  let unbound = AccessContextProfileLookupNotRun { endpoint: other_controller }
+  let planned = solve_boot_artifact_delivery(
+    request: network_request(),
+    ev: evidence_of(access: unbound, configfs: configfs_unestablished, network_boot: established_network_boot_for(t: network_target, digest: intake_artifact.digest)),
+    policy: policy,
+  )
+  let pxe_planned = match planned {
+    BootDeliveryPlanned { plan: p } =>
+      p.target == network_target
+        && p.boot_control == BootFromNetworkPxe
+        && p.boot_control_route == BootControlByFirmwareBootOrder
+        && match plan_bmc_boot_control_observation(plan: p) {
+          Present { value: _ } => false
+          Absent => true
+        }
+        && list_length(items: p.eligibility.evidence_manifest) == 0
+        && match p.delivery {
+          PxeChainBoot { evidence: _ } => true
+          _ => false
+        }
+    BootDeliveryRefused { cause: _ } => false
+  }
+  let no_evidence = solve_boot_artifact_delivery(
+    request: network_request(),
+    ev: evidence_of(access: unbound, configfs: configfs_unestablished, network_boot: NetworkBootDeliveryUnestablished { missing: network_boot_requirements_all }),
+    policy: policy,
+  )
+  let refused_typed = match no_evidence {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleNetworkTransport { considered: considered } => network_requires_controller_for_every_bmc_candidate(considered: considered)
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+  let other_target_evidence = solve_boot_artifact_delivery(
+    request: network_request(),
+    ev: evidence_of(access: unbound, configfs: configfs_unestablished, network_boot: established_network_boot_for(t: target, digest: intake_artifact.digest)),
+    policy: policy,
+  )
+  let other_target_refused = match other_target_evidence {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleNetworkTransport { considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidatePxeChainBoot) {
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateEvidenceForOtherTarget { evidence_target: t } => t == target _ => false }
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+  let bmc_context_not_consumed = match solve_boot_artifact_delivery(
+    request: network_request(),
+    ev: evidence_of(access: bind(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https })), configfs: configfs_unestablished, network_boot: NetworkBootDeliveryUnestablished { missing: network_boot_requirements_all }),
+    policy: policy,
+  ) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleNetworkTransport { considered: _ } => true
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+  pxe_planned && refused_typed && other_target_refused && bmc_context_not_consumed
+}
+
+// THE SEED'S INHABITANCE CLAIM: a REAL solved plan's boot_control, paired with the client architecture its
+// own PxeChainBoot evidence observed (UefiArm64 in established_network_boot_for), reaches the seed's console
+// stanza -- the seed witness supplies these two values, and this is the one execution of the producing route.
+test fn a_solved_plans_boot_control_and_observed_arch_reach_the_seed_console_stanza() -> Bool {
+  match solve_boot_artifact_delivery(
+    request: request_with(staging: boot_artifact_staging_unbound),
+    ev: evidence_of(access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)), configfs: configfs_unestablished, network_boot: established_network_boot_for(t: target, digest: intake_artifact.digest)),
+    policy: policy,
+  ) {
+    BootDeliveryPlanned { plan: p } =>
+      match p.delivery {
+        PxeChainBoot { evidence: e } =>
+          match console_stanza_for(strategy: p.boot_control, client_arch: Present { value: e.client.client.arch }) {
+            Present { value: ConsoleAnsweredByUnattended } => true
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryRefused { cause: _ } => false
+  }
+}
+
+// THE INHABITANCE SOURCES for consumers that are handed a solved plan (provisioning_arm_witness feeds these
+// through provisioning_arm_derive): the REAL solver's output, never a designed value.
+fn solver_emitted_pxe_solution() -> BootDeliverySolution {
+  solve_boot_artifact_delivery(
+    request: network_request(),
+    ev: evidence_of(access: AccessContextProfileLookupNotRun { endpoint: other_controller }, configfs: configfs_unestablished, network_boot: established_network_boot_for(t: network_target, digest: intake_artifact.digest)),
+    policy: policy,
+  )
+}
+
+fn solver_emitted_media_solution() -> BootDeliverySolution {
+  solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia], probe: Present { value: probe_https }), staging: staging_all)
 }

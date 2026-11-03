@@ -1,6 +1,6 @@
 module v2.test.claim.body_lowering.peeled_shell_fold_head
 
-import v2.compiler.body_lowering_fold { body_lower_is_pass_through_emitted }
+import v2.std.compilers.sugar { sugar_is_pass_through_emitted }
 import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_realization }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
@@ -13,7 +13,7 @@ import v2.std.node { Node }
 import std.optional { Absent, Present }
 
 // body_lower_try_body_lowered no longer retries body_lower_try_fold_loop on
-// body_lower_unwrap_surface_shell(node) (gunbc#12495). That deletion preserves
+// sugar_unwrap_surface_shell(node) (gunbc#12495). That deletion preserves
 // output only while no pass-through shell the unwrap peels carries a fold-family
 // head: the fold-loop search descends through exactly those shells, so the retry
 // answered the same as the first search. This claim is the control that goes red
@@ -51,7 +51,7 @@ fn peeled_shell_fold_head_parsed() -> Outcome<Node> {
 
 fn psfh_is_pass_through_shell(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } => body_lower_is_pass_through_emitted(emitted: id)
+    Present { value: id } => sugar_is_pass_through_emitted(emitted: id)
     Absent => false
   }
 }

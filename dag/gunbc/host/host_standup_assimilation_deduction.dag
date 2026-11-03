@@ -8,6 +8,8 @@ import gunbc.network_identity_subsumption {
   srv3_pre_install_lease_table, srv3_post_install_lease_table_fixture, lease_table_has_os_up_subsumption,
 }
 import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import std.measure { millisecond, millisecond_count }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 
 
 data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = std.disposition.Terminal {

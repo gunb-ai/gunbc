@@ -476,6 +476,18 @@ test fn a_masked_inactive_cgroupless_owed_unit_does_not_withhold_the_caps() -> B
     && plan_leaves(p: masked_plan_for(show: show))
 }
 
+// Positive: a masked unit whose last run FAILED, with no cgroup, is stopped too -- srv1-02 after it was
+// masked out of a crash loop (L2 run 41154097819). Read as reaching a live cgroup it withheld the cap
+// phase and barred the reload its own role drop-in needed. RED beside it: failed WITH a cgroup, and
+// activating with none (a crash-looping slot between restarts), are not inert.
+test fn a_masked_failed_cgroupless_owed_unit_does_not_withhold_the_caps() -> Bool {
+  let show = masked_show(load: "masked", active: "failed", cgroup: "")
+  pending_none(got: runner_host_cap_pending_reloads(population: fabric_population_of(show: show), bracket_units: [unit(n: "01")]))
+    && plan_leaves(p: masked_plan_for(show: show))
+    && plan_withheld_naming(p: masked_plan_for(show: masked_show(load: "masked", active: "failed", cgroup: "/system.slice/x")), needle: "actions-runner@srv3-06.service reload=owed")
+    && plan_withheld_naming(p: masked_plan_for(show: masked_show(load: "masked", active: "activating", cgroup: "")), needle: "actions-runner@srv3-06.service reload=owed")
+}
+
 // RED: masked but still ACTIVE (a cgroup exists) is not inert.
 test fn a_masked_but_active_owed_unit_still_withholds() -> Bool {
   plan_withheld_naming(p: masked_plan_for(show: masked_show(load: "masked", active: "active", cgroup: "/system.slice/x")), needle: "actions-runner@srv3-06.service reload=owed")

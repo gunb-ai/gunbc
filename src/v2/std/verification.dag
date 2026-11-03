@@ -342,11 +342,11 @@ fn generated_claim_anchor(anchor: GeneratedAnchorKey) -> ClaimAnchorKey {
 
 fn test_claim_classification(c: TestClaim) -> TestClassification {
   match c {
-    CompilesClaim { classification: c, label: _, anchor: _, input: _, expected_value: _ } => c
-    DiagnosticClaim { classification: c, label: _, anchor: _, input: _, expected_rejection: _ } => c
-    EqualsClaim { classification: c, label: _, anchor: _, lhs: _, rhs: _ } => c
-    StructuralEqualsClaim { classification: c, label: _, anchor: _, lhs: _, rhs: _ } => c
-    RoundTripClaim { classification: c, label: _, anchor: _, input: _ } => c
+    CompilesClaim { classification: cls, label: _, anchor: _, input: _, expected_value: _ } => cls
+    DiagnosticClaim { classification: cls, label: _, anchor: _, input: _, expected_rejection: _ } => cls
+    EqualsClaim { classification: cls, label: _, anchor: _, lhs: _, rhs: _ } => cls
+    StructuralEqualsClaim { classification: cls, label: _, anchor: _, lhs: _, rhs: _ } => cls
+    RoundTripClaim { classification: cls, label: _, anchor: _, input: _ } => cls
   }
 }
 

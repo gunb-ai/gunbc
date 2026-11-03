@@ -6,11 +6,15 @@ import std.content_hash { content_hash_of_value }
 import std.measure { Second, second, second_count }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac
-import extdeps.bmc.megarac { megarac_firmware_0_32, megarac_committed_hpm_read_release }
+import extdeps.bmc.megarac {
+  megarac_firmware_0_32, megarac_firmware_0_45_reported, megarac_no_redirection_session_index,
+}
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.host.bmc_release_capability_catalog { megarac_committed_hpm_check_identity }
+import gunbc.machine_intake.megarac_media_row_reading { boot_run_41573858366_end_media_row }
 import gunbc.machine_intake.mount_establishment {
   MediaImageAbsentFromListing,
   MediaImageListed,
@@ -174,6 +178,7 @@ type MegaRacPresentationEvidence {
   cd_before_any_write: CdErrorReading
   cd_at_ready: CdErrorReading
   general_at_ready: MegaRacRawRead
+  in_interval: ReadinessLook
 }
 
 // THE STOP COMMAND'S ANSWER AND THE READ-BACK ARE TWO FACTS AND BOTH ARE KEPT. This firmware has
@@ -1522,11 +1527,18 @@ type PresentingRow {
 type MegaRacRedirectionUnread
   = RedirectionUnreadFirmware { firmware: BmcFirmwareReleaseIdentity, wire: Int }
   | RedirectionUnreadCode { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+  // THE CODE'S MEANING IS A BET THIS REPOSITORY DREW, not a gap in the catalogue: the row was read (boot run
+  // 41573858366's, status 0 beside the no-session marker, naming no medium) and what it means was inferred
+  // from the 0.32 table, the marker and the empty name. It refuses, because §4d forbids a lane acting on an
+  // inference -- but it refuses with its own cause so the operator is told which row, which code, and what
+  // reading would settle it, instead of being told the catalogue does not name it.
+  | RedirectionUnreadInferred { firmware: BmcFirmwareReleaseIdentity, wire: Int }
 
 fn redirection_unread_wire(unread: MegaRacRedirectionUnread) -> Int {
   match unread {
     RedirectionUnreadFirmware { firmware: _, wire: w } => w
     RedirectionUnreadCode { firmware: _, wire: w } => w
+    RedirectionUnreadInferred { firmware: _, wire: w } => w
   }
 }
 
@@ -1536,6 +1548,19 @@ fn redirection_unread_text(unread: MegaRacRedirectionUnread) -> String {
       join(["redirection_status ", to_string(w), " on firmware ", f.raw_version, ", a release whose status codes are not catalogued at all"], "")
     RedirectionUnreadCode { firmware: f, wire: w } =>
       join(["redirection_status ", to_string(w), " on firmware ", f.raw_version, ", a code that release's catalogue does not name"], "")
+    RedirectionUnreadInferred { firmware: f, wire: w } =>
+      join(
+        [
+          "redirection_status ",
+          to_string(w),
+          " on firmware ",
+          f.raw_version,
+          ", a code this release's catalogue does not name and whose meaning is INFERRED here (0.32 reads ",
+          to_string(w),
+          " as stopped, the row carries the no-session marker and names no medium) -- a lane does not boot on an inference; an operator's reading of the controller's own UI for this row would establish it",
+        ],
+        "",
+      )
   }
 }
 
@@ -1545,15 +1570,17 @@ fn seeded_stems_recognise(stems: FreeSemigroup<NonEmptyStr>, image_name: String)
   (non_empty_to_list(xs: stems) |> filter(st => match ubuntu_seeded_install_media_name_digest_prefix(image_stem: st, image_name: image_name) { Absent => false  Present { value: _ } => true }) |> count) > 0
 }
 
-// THE EVIDENCED RELEASE FOR A STOP: the identity the committed hpm capture DERIVES
-// (extdeps.bmc.megarac megarac_committed_hpm_read_release -- the same release the capability row's own
-// derived export names, pinned equal by
+// THE EVIDENCED RELEASE FOR A STOP: the release this unit's committed hpm read ESTABLISHES -- the
+// observing layer's answer, gunbc.host.bmc_release_capability_catalog
+// megarac_committed_hpm_check_identity, which walks the retained stdout and keeps the refusal causes. NOT
+// the vendor's page label "0.45.3": the label is what the vendor's page calls this build, and no boot ever
+// carries it, so binding the exception to it would bind it to an identity nothing reads. The vendor table
+// keys its 0.45 arm on the release the controller REPORTS (extdeps.bmc.megarac
+// megarac_firmware_0_45_reported); that this unit's read lands on that release is a claim --
 // test.claim.machine_intake.megarac_media_0_45_3_witness
-// w_the_media_table_key_and_the_capability_row_derive_the_same_release), NOT the vendor's page label
-// "0.45.3": the label is what the vendor's page calls this build, and no boot ever carries it, so binding
-// the exception to it would bind it to an identity nothing reads. Absent -- the capture cannot be parsed --
-// means no evidenced release, and the exception does not fire.
-fn evidenced_release_of_a_stop() -> BmcFirmwareReleaseIdentity? = megarac_committed_hpm_read_release
+// w_the_committed_read_lands_on_the_release_the_media_table_catalogues -- not something this file assumes.
+// Absent -- no established read -- means no evidenced release, and the exception does not fire.
+fn evidenced_release_of_a_stop() -> BmcFirmwareReleaseIdentity? = megarac_committed_hpm_check_identity
 
 // THE STOP EXCEPTION IS BOUND TO THE BUILD THE COMMITTED READ NAMES (side-chat HOLD on gunbc#14959): an
 // unread CODE on the build whose catalogue the executed runs ground -- boot run 38789347052's session read
@@ -1567,15 +1594,20 @@ fn unread_code_on_the_evidenced_release(unread: MegaRacRedirectionUnread) -> Boo
       Present { value: read } => bmc_firmware_release_identity_eq(a: f, b: read)
       Absent => false
     }
+    // THE EXCEPTION THAT ALLOWS A STOP ON AN UNREAD CODE IS FOR CODES THE EXECUTED RUNS GROUNDED, and a
+    // meaning guessed from another release is not one of them however well the build is evidenced.
+    RedirectionUnreadInferred { firmware: _, wire: _ } => false
   }
 }
 
 // WHY AN UNREAD ROW WAS NOT STOPPED, ONE ARM PER CONDITION, checked in this order so the refusal names the
 // first condition that failed rather than a disjunction of them. The order runs from the read itself (a
 // readiness look never writes; the release must be the evidenced one) to the row (named, not the wanted
-// image, recognised as this lane's). Boot run 40070230626 refused on the release arm -- its controller is
-// admitted as 0.32 under gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation
-// -- while the text it printed named the image as foreign; that is the defect these arms remove.
+// image, recognised as this lane's). Boot run 40070230626 refused on the release arm -- its controller was
+// then admitted as 0.32 under
+// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation, the drop the
+// 2026-11-01 cutover retired -- while the text it printed named the image as foreign; that is the defect
+// these arms remove.
 type UnreadRowStopRefusal
   = UnreadStopOnReadOnlyLook
   | UnreadStopReleaseNotEvidenced { unread: MegaRacRedirectionUnread }
@@ -1616,7 +1648,7 @@ fn unread_row_replaceable(
     Present { value: stems } =>
       if unread_code_on_the_evidenced_release(unread: unread) == false {
         UnreadRowNotStoppable { refusal: UnreadStopReleaseNotEvidenced { unread: unread } }
-      } else if image_name == "" {
+      } else if megarac_media_row_names_no_medium(name: image_name) {
         UnreadRowNotStoppable { refusal: UnreadStopRowUnnamed }
       } else if image_name == (desired as String) {
         UnreadRowNotStoppable { refusal: UnreadStopRowIsTheWantedImage }
@@ -1633,6 +1665,108 @@ fn unread_row_replaceable(
           },
         }
       }
+  }
+}
+
+// HOW THIS CONTROLLER SPELLS "THE ROW NAMES NO MEDIUM", AND WHAT WE MAKE OF IT. The media table's image_name
+// member comes back as the EMPTY STRING for a leftover row that names no image: the controller has no word
+// for absence, so the spelling is the vendor's and the reading of it is ours. Every reading in this repository
+// turns that answer into `none`, and a non-empty answer into `Present`. The distinction is not cosmetic -- the
+// inference below promotes an unread code only for a row that names no medium, so "" must not be able to pose
+// as a name, and ONE SITE spells it: the two functions below are the only readings of the member in this
+// module, and every test of it -- the stoppability of an unread row, the presenting reading, and the inference
+// -- is written from them (DESIGN.md §3b: this is an observation this repository makes, so it sits here rather
+// than in extdeps).
+fn megarac_media_row_named_medium(name: String) -> NonEmptyStr? {
+  if name == "" {
+    Absent
+  } else {
+    Present { value: name as NonEmptyStr }
+  }
+}
+
+// THE TEST FORM OF THE SAME READING, so a fold that only needs to know whether the row named anything does not
+// re-spell the vendor's empty answer.
+fn megarac_media_row_names_no_medium(name: String) -> Bool {
+  match megarac_media_row_named_medium(name: name) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// WHAT THIS REPOSITORY INFERRED FROM THE ROW IT READ, CARRIED AS WHAT IT IS (DESIGN.md §4d: an inference is a
+// bet: typed as a bet, neither deleted nor promoted; a reader who consumes it as fact is the defect). On the
+// release the controller reports as raw "0.45" the vendor's catalogue names 1 (started) and -- beside the
+// no-session marker -- 16 (stopped, operator-attested); it says NOTHING about 0. Boot run 41573858366 read one
+// leftover CD row at 0: media_type 1, redirection_status 0, session_index the no-session marker, image_name the
+// empty string, recorded in that run's diagnostics by the receipt
+// gunbc.machine_intake.megarac_media_row_reading boot_run_41573858366_end_media_row. Read against the 0.32
+// table, where 0 is Stopped, and against the marker, that row SHAPE resembles an ejected CD. The resemblance
+// is a guess WE made from one reading; it is not a MegaRacRedirectionStatus, no lane acts on it, and the
+// attach lane refuses the row with a cause of its own (RedirectionUnreadInferred) naming the reading that
+// would lift it -- an operator's dated reading of the controller's own UI for a status-0 CD row that names no
+// medium, of the kind gunbc.machine_intake.megarac_media_row_reading mtcollins1_cd_row_ui_attestation is for
+// code 16. Until that reading is committed, nothing may consume this as a state, and
+// test.claim.machine_intake.megarac_media_0_45_3_witness pins both halves: the row that was read is guessed,
+// and every lane that meets the guess refuses it.
+type MegaRacStatusZeroRowInference
+  = MegaRacStatusZeroRowGuessedNotPresenting { firmware: BmcFirmwareReleaseIdentity, wire: Int, session_index: Int }
+  | MegaRacStatusZeroRowNotGuessed { reason: MegaRacStatusZeroRowRefusal }
+
+// WHY NOTHING WAS INFERRED -- one typed cause per separation, each pinned RED in the witness: a code that is
+// not 0, a session that is live, a session index the reading never carried, a row that NAMES a medium (a row
+// naming an image was never read at 0 on this release), and a release this was never read on.
+type MegaRacStatusZeroRowRefusal
+  = ZeroRowWireIsNotZero { wire: Int }
+  | ZeroRowSessionIsActive { session_index: Int }
+  | ZeroRowSessionWasNotRead
+  | ZeroRowIsNotTheCdDvdRow { media_type: Int }
+  | ZeroRowIndexWasNotRead
+  | ZeroRowIsNotTheReadIndex { media_index: Int }
+  | ZeroRowNamesAMedium { name: NonEmptyStr }
+  | ZeroRowReleaseWasNeverReadThatWay { firmware: BmcFirmwareReleaseIdentity }
+
+// THE GUARD IS THE EVIDENCE. The guess is drawn only on the whole shape of the row that was read -- the
+// release the controller reports, code 0, the CD/DVD row type, the image-list index, the no-session marker,
+// and a row naming no medium -- so it cannot leak onto a row nobody read: the type and the index come from
+// the parse and are required to be the values the read row carried, taken from that reading rather than
+// written as literals here. Everything else answers with one of the typed causes above and the caller falls
+// back to the vendor's own uncatalogued answer.
+fn megarac_status_zero_row_inference(
+  firmware: BmcFirmwareReleaseIdentity,
+  wire: Int,
+  media_type: Int,
+  media_index: Int?,
+  session_index: Int?,
+  image_name: NonEmptyStr?,
+) -> MegaRacStatusZeroRowInference {
+  if !bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) {
+    MegaRacStatusZeroRowNotGuessed { reason: ZeroRowReleaseWasNeverReadThatWay { firmware: firmware } }
+  } else if wire != 0 {
+    MegaRacStatusZeroRowNotGuessed { reason: ZeroRowWireIsNotZero { wire: wire } }
+  } else if media_type != boot_run_41573858366_end_media_row.media_type {
+    MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheCdDvdRow { media_type: media_type } }
+  } else {
+    match media_index {
+      Absent => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIndexWasNotRead }
+      Present { value: position } =>
+        if position != boot_run_41573858366_end_media_row.media_index {
+          MegaRacStatusZeroRowNotGuessed { reason: ZeroRowIsNotTheReadIndex { media_index: position } }
+        } else {
+          match session_index {
+            Absent => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionWasNotRead }
+            Present { value: index } =>
+              if index != megarac_no_redirection_session_index {
+                MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionIsActive { session_index: index } }
+              } else {
+                match image_name {
+                  Present { value: named } => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowNamesAMedium { name: named } }
+                  Absent => MegaRacStatusZeroRowGuessedNotPresenting { firmware: firmware, wire: wire, session_index: index }
+                }
+              }
+          }
+        }
+    }
   }
 }
 
@@ -1659,6 +1793,26 @@ fn configuration_row_reading(
               match parse_int(s: st) {
                 Absent => ConfigurationRowUnreadable { detail: concat("redirection_status is not an integer: ", st) }
                 Present { value: wire } =>
+                  // THE ROW, NOT JUST THE CODE. This controller reports 16 for a stopped/ejected CD and
+                  // 255 where no redirection session is live, and the pair -- not the bare code -- is what
+                  // was read on this build; the index is taken as the row carries it, so an absent or
+                  // unparsable index is never promoted to the no-session marker.
+                  let session_index = match json_number_member(doc: row, key: "session_index") {
+                    Absent => none
+                    Present { value: s } => match parse_int(s: s) {
+                      Absent => none
+                      Present { value: i } => Present { value: i }
+                    }
+                  }
+                  // The image-list position the ROW carries: absent or unparsable stays absent rather than
+                  // becoming 0, because 0 is the value the read row happened to carry, not a default.
+                  let media_index = match json_number_member(doc: row, key: "media_index") {
+                    Absent => none
+                    Present { value: m } => match parse_int(s: m) {
+                      Absent => none
+                      Present { value: i } => Present { value: i }
+                    }
+                  }
                   if mt != "1" {
                     if name == (image_name as String) {
                       ConfigurationRowUnreadable { detail: "a row names the image but is not CD media_type 1" }
@@ -1666,12 +1820,39 @@ fn configuration_row_reading(
                       ConfigurationRowIdle
                     }
                   } else {
-                    match megarac_redirection_status_of_wire(firmware: firmware, wire: wire) {
+                    // THE MEDIUM THE ROW NAMES, TYPED -- this repository's reading of the controller's empty
+                    // answer, spelled in one place.
+                    let named_medium = megarac_media_row_named_medium(name: name)
+                    match megarac_redirection_status_of_row(
+                      firmware: firmware,
+                      wire: wire,
+                      session_index: session_index,
+                    ) {
                       RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadFirmware { firmware: f, wire: w } }
                       RedirectionStatusKnown { firmware: f, status: status } =>
                         match status {
                           RedirectionStopped => ConfigurationRowIdle
-                          RedirectionWireUncatalogued { wire: w } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } }
+                          // THE VENDOR SAYS NOTHING ABOUT THIS CODE -- SO THE QUESTION IS WHETHER *WE* READ
+                          // THIS ROW. Only if we did, in the one shape we read it in, is there a bet to carry;
+                          // and even then the answer is a refusal with its own cause, never
+                          // ConfigurationRowIdle: idle is what lets the lane attach and, downstream, call
+                          // StartMedia over a row that may be presenting. A row nobody read keeps the plain
+                          // uncatalogued refusal.
+                          RedirectionWireUncatalogued { wire: w } =>
+                            match parse_int(s: mt) {
+                              Absent => ConfigurationRowUnreadable { detail: concat("media_type is not an integer: ", mt) }
+                              Present { value: media_type } => match megarac_status_zero_row_inference(
+                                firmware: f,
+                                wire: w,
+                                media_type: media_type,
+                                media_index: media_index,
+                                session_index: session_index,
+                                image_name: named_medium,
+                              ) {
+                              MegaRacStatusZeroRowGuessedNotPresenting { firmware: g, wire: gw, session_index: _ } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadInferred { firmware: g, wire: gw } }
+                              MegaRacStatusZeroRowNotGuessed { reason: _ } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } }
+                            }
+                            }
                           RedirectionStartedConnectionAccepted => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
                           RedirectionConnecting => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
                         }
@@ -1689,7 +1870,7 @@ fn configuration_row_presenting_reading(
   wire: Int,
   status: MegaRacRedirectionStatus,
 ) -> ConfigurationRowReading {
-  if name == "" {
+  if megarac_media_row_names_no_medium(name: name) {
     ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
   } else {
     ConfigurationRowPresenting {
@@ -1917,9 +2098,14 @@ type ReadinessPhase
   | ReadinessOfPresented
 
 type AttachReadiness
-  = ReadinessStarted { row: PresentingRow }
-  | ReadinessConnecting { row: PresentingRow }
-  | ReadinessStartedUnbound { row: PresentingRow }
+  // THE THREE ROW-BASED ARMS CARRY THE CONFIGURATIONS THEY WERE READ FROM, as the arms below already do.
+  // They are the answers a successful StartMedia produces -- Started, Connecting, Started-with-no-bound-session
+  // -- which is exactly when the interval between the write and the started reading needs its own record.
+  // Without them the pre-ready look runs, decodes into one of these arms, and its body is dropped before any
+  // receipt can commit it: the read happens and nothing is observed.
+  = ReadinessStarted { row: PresentingRow, configurations: String }
+  | ReadinessConnecting { row: PresentingRow, configurations: String }
+  | ReadinessStartedUnbound { row: PresentingRow, configurations: String }
   | ReadinessNotPresented { configurations: String }
   | ReadinessUnanswered { detail: String }
   | ReadinessUncatalogued { image_name: String, unread: MegaRacRedirectionUnread, configurations: String }
@@ -1978,10 +2164,14 @@ fn attach_readiness(
             Present { value: r } =>
               match r.redirection {
                 RedirectionStartedConnectionAccepted =>
-                  if presenting_session_bound(row: r) { ReadinessStarted { row: r } } else { ReadinessStartedUnbound { row: r } }
-                RedirectionStopped => ReadinessConnecting { row: r }
-                RedirectionConnecting => ReadinessConnecting { row: r }
-                RedirectionWireUncatalogued { wire: _ } => ReadinessConnecting { row: r }
+                  if presenting_session_bound(row: r) {
+                    ReadinessStarted { row: r, configurations: body }
+                  } else {
+                    ReadinessStartedUnbound { row: r, configurations: body }
+                  }
+                RedirectionStopped => ReadinessConnecting { row: r, configurations: body }
+                RedirectionConnecting => ReadinessConnecting { row: r, configurations: body }
+                RedirectionWireUncatalogued { wire: _ } => ReadinessConnecting { row: r, configurations: body }
               }
           }
         }
@@ -2000,9 +2190,9 @@ type ReadinessStanding
 // --max-time, or the controller answered 5xx mid-transition) is one miss, not evidence either way.
 fn readiness_standing(look: ReadinessLook, phase: ReadinessPhase) -> ReadinessStanding {
   match look.reading {
-    ReadinessStarted { row: _ } => ReadinessEstablished { look: look }
-    ReadinessConnecting { row: _ } => ReadinessPending
-    ReadinessStartedUnbound { row: _ } => ReadinessPending
+    ReadinessStarted { row: _, configurations: _ } => ReadinessEstablished { look: look }
+    ReadinessConnecting { row: _, configurations: _ } => ReadinessPending
+    ReadinessStartedUnbound { row: _, configurations: _ } => ReadinessPending
     ReadinessUnanswered { detail: _ } => ReadinessPending
     ReadinessNotPresented { configurations: _ } =>
       match phase {
@@ -2068,7 +2258,12 @@ fn megarac_readiness_budget_ms() -> Milliseconds {
 }
 
 type ReadinessWait
-  = ReadinessWaitReady { look: ReadinessLook, looks: Int }
+  // THE READY ARM KEEPS THE FIRST LOOK, not only the one that found the medium started. The interval this
+  // repository needs is between the StartMedia write and the started reading (megarac_start_media_interval's
+  // read_obligation asks for that look by name), and the loop overwrites its look on every pending pass -- so
+  // without this field the one document the wait cannot recompute is gone the moment the medium comes up, and
+  // the success path is exactly the path that never prints a look.
+  = ReadinessWaitReady { look: ReadinessLook, looks: Int, in_interval: ReadinessLook }
   | ReadinessWaitClosed { last: ReadinessLook, deadline: EpochMs, looks: Int }
   | ReadinessWaitRefused { look: ReadinessLook, looks: Int }
   | ReadinessWaitClockUnreadable { detail: String }
@@ -2087,6 +2282,7 @@ fn megarac_await_readiness(
   opened_at: EpochMs,
   previous: EpochMs?,
   looks: Int,
+  in_interval: ReadinessLook?,
 ) -> ReadinessWait
 {
   let got = megarac.Media.GetRemoteConfigurations(
@@ -2099,8 +2295,14 @@ fn megarac_await_readiness(
     ClockUnixMillisRefused { detail: d } => ReadinessWaitClockUnreadable { detail: d }
     ClockUnixMillisObserved { millis: now } => {
       let look = ReadinessLook { observed_at: now, reading: attach_readiness(answered: got.success, body: got.body, image_name: image_name, firmware: firmware) }
+      // The first look of THIS wait: the pending passes carry it forward, so it is never recomputed and
+      // never replaced by the look that happened to find the medium started.
+      let first_look = match in_interval {
+        Absent => look
+        Present { value: earlier } => earlier
+      }
       match readiness_verdict(opened_at: opened_at, budget: megarac_readiness_budget_ms(), previous: previous, look: look, phase: phase, looks: looks + 1) {
-        ReadinessReady { look: l, looks: n } => ReadinessWaitReady { look: l, looks: n }
+        ReadinessReady { look: l, looks: n } => ReadinessWaitReady { look: l, looks: n, in_interval: first_look }
         ReadinessWindowClosed { last: l, deadline: d, looks: n } => ReadinessWaitClosed { last: l, deadline: d, looks: n }
         ReadinessRefusedVerdict { look: l, looks: n } => ReadinessWaitRefused { look: l, looks: n }
         ReadinessClockIncoherent { opened_at: o, previous: p, look: l, looks: n } => ReadinessWaitClockIncoherent { opened_at: o, previous: p, look: l, looks: n }
@@ -2116,6 +2318,7 @@ fn megarac_await_readiness(
             opened_at: opened_at,
             previous: Present { value: now },
             looks: looks + 1,
+            in_interval: Present { value: first_look },
           )
         }
       }
@@ -2147,6 +2350,7 @@ fn megarac_readiness_outcome(
         opened_at: opened_at,
         previous: none,
         looks: 0,
+        in_interval: none,
       )
       let general = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
       readiness_wait_outcome(
@@ -2182,11 +2386,11 @@ fn readiness_wait_outcome(
       MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
     ReadinessWaitRefused { look: l, looks: n } =>
       MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-    ReadinessWaitReady { look: l, looks: n } => {
+    ReadinessWaitReady { look: l, looks: n, in_interval: iv } => {
       let not_ready = MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
       let state_unestablished = MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
       match l.reading {
-        ReadinessStarted { row: r } =>
+        ReadinessStarted { row: r, configurations: _ } =>
           match cd_at_end {
             CdErrorUnread { detail: _ } => state_unestablished
             CdErrorRead { code: _ } =>
@@ -2203,11 +2407,12 @@ fn readiness_wait_outcome(
               cd_before_any_write: cd_before,
               cd_at_ready: cd_at_end,
               general_at_ready: general_at_end,
+              in_interval: iv,
             },
           }
           }
-        ReadinessConnecting { row: _ } => not_ready
-        ReadinessStartedUnbound { row: _ } => not_ready
+        ReadinessConnecting { row: _, configurations: _ } => not_ready
+        ReadinessStartedUnbound { row: _, configurations: _ } => not_ready
         ReadinessNotPresented { configurations: _ } => not_ready
         ReadinessUnanswered { detail: _ } => not_ready
         ReadinessUncatalogued { image_name: _, unread: _, configurations: _ } => not_ready
@@ -2277,7 +2482,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
             ReadinessUnanswered { detail: _ } => PresentationUnobserved { reason: "the configurations read was not answered" }
             ReadinessMalformed { detail: _ } => PresentationUnobserved { reason: "the configurations document could not be read" }
             ReadinessUncatalogued { image_name: _, unread: _, configurations: _ } => PresentationUnobserved { reason: "a configurations row carries an uncatalogued status" }
-            ReadinessStarted { row: _ } =>
+            ReadinessStarted { row: _, configurations: _ } =>
               match cd {
                 CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
                 CdErrorRead { code: _ } =>
@@ -2286,8 +2491,8 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
                     other => PresentationReadyButSessionHeld { held: other }
                   }
               }
-            ReadinessConnecting { row: _ } => no_longer_ready
-            ReadinessStartedUnbound { row: _ } => no_longer_ready
+            ReadinessConnecting { row: _, configurations: _ } => no_longer_ready
+            ReadinessStartedUnbound { row: _, configurations: _ } => no_longer_ready
             ReadinessNotPresented { configurations: _ } =>
               no_longer_ready
             ReadinessDuplicate { configurations: _ } => no_longer_ready

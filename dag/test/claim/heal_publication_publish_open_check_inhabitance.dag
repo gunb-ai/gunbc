@@ -1,0 +1,75 @@
+module test.claim.heal_publication_publish_open_check_inhabitance
+
+// INHABITANCE for the publish "PR still open" check (DESIGN 3 pairing obligation). gunbc.heal_publication
+// .ensure_pull_request_open_wet reads the pull request's state at PUBLISH through the EXISTING
+// authenticated github.Pulls interface, using the job's own GITHUB_TOKEN as auth_token, and refuses with
+// a typed PullRequestNotOpen before mint/write when the pull request is Closed. This claim drives that
+// exact route -- github.Pulls.Get with a job token, the same state match -- against the real PUBLIC
+// gunb-ai/gunbc, once, so the route is witnessed as inhabitated: the credential really authenticates the
+// read, and a genuinely CLOSED pull request is reported as Closed. If github.Pulls.Get were re-declared,
+// or the state shape changed, or the credential stopped resolving, this claim fails.
+//
+// The Open/Closed DECISION itself is gated HERMETICALLY (classify_pull_request_openness's arms in
+// heal_publication_boundary_witness, no network); this claim is the transport+credential half only. So it
+// pins FROZEN merged pull requests, never a live one: #500 merged (state Closed forever) drives the closed
+// arm, and a merged PR drives the route arm, which asserts the read is ANSWERED under the job token and
+// accepts either state -- no pull request is guaranteed to stay open, so pinning "open" here would be both
+// stale-prone and redundant with the hermetic Open arm.
+//
+// Run WITH the job token in the environment (the same GITHUB_TOKEN the emitter gives the publish step).
+
+import extdeps.github.pulls { Open, Closed }
+import extdeps.shell
+import std.types { Secret }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+data publish_inhabitant_owner: String = "gunb-ai"
+data publish_inhabitant_repo: String = "gunbc"
+// #500 merged 2026-04-17, so its state is Closed forever -- a frozen, stable reference for the closed arm.
+data publish_inhabitant_closed_pr: Int = 500
+// #15203 merged; the route arm only needs a real, stably-readable pull request, not a particular state.
+data publish_inhabitant_route_pr: Int = 15203
+
+fn job_token() -> String? {
+  match shell.Env.Get(name: "GITHUB_TOKEN").value {
+    Absent => none
+    Present { value: raw } => if trim(s: raw) == "" { none } else { Present { value: trim(s: raw) } }
+  }
+}
+
+
+fn closed_pr_publish_control() -> ProcessExit {
+  match job_token() {
+    Absent => exit_failure(reason: "publish inhabitance: GITHUB_TOKEN absent; run the publish open-check inhabitance WITH the job token")
+    Present { value: tok } =>
+      match github.Pulls.Get(auth_token: tok as Secret, owner: publish_inhabitant_owner, repo: publish_inhabitant_repo, pull_number: publish_inhabitant_closed_pr) {
+        RestRefused { refusal } => exit_failure(reason: "publish inhabitance: the closed pull request's state could not be read (rate limit / unreachable) -- publish must fail CLOSED on this")
+        RestAnswered { answer: pr } =>
+          match pr.pr.state {
+            Closed => ExitSuccess
+            Open => exit_failure(reason: "publish inhabitance: expected a CLOSED pull request but the read reported Open")
+          }
+      }
+  }
+}
+
+fn authenticated_read_route_control() -> ProcessExit {
+  // The route+credential half: under the job token, github.Pulls.Get must be ANSWERED (not refused). A
+  // refusal here means the credential stopped resolving or the read is rate-limited/unreachable -- exactly
+  // the condition publish must fail CLOSED on. The state value itself is not asserted (either arm proves
+  // the shape matches); the Open/Closed decision is gated hermetically in the boundary witness.
+  match job_token() {
+    Absent => exit_failure(reason: "publish inhabitance: GITHUB_TOKEN absent; run WITH the job token")
+    Present { value: tok } =>
+      match github.Pulls.Get(auth_token: tok as Secret, owner: publish_inhabitant_owner, repo: publish_inhabitant_repo, pull_number: publish_inhabitant_route_pr) {
+        RestRefused { refusal } => exit_failure(reason: "publish inhabitance: the authenticated read was refused -- the job token does not authenticate github.Pulls.Get, or the read is rate-limited/unreachable")
+        RestAnswered { answer: pr } =>
+          match pr.pr.state {
+            Open => ExitSuccess
+            Closed => ExitSuccess
+          }
+      }
+  }
+}

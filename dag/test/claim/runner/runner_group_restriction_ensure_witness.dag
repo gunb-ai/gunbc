@@ -13,12 +13,12 @@ import gunbc.runner.runner_group_restriction_ensure {
   private_heal_publisher_runner_group_name, restricted_runner_groups, qualification_runner_group_subject,
 }
 import gunbc.runner.runner_qualification_ref_pin { qualification_runner_group_name }
-import gunbc.runner.runner_group_restriction_observation { observe_runner_group_restriction }
+import gunbc.runner.runner_group_restriction_observation { observe_runner_group_restriction, MicrovmRunnerGroupStanding }
 import gunbc.ci.deploy_slot_tenancy {
   deploy_slot_runner_group_name, deploy_slot_job_user, deploy_slot_selected_workflow,
   DeploySlotReading, deploy_slot_observed_tenancy, DeploySlotPrivacy, DeploySlotPathsPrivate, DeploySlotPathReachable, DeploySlotPrivacyNotYetObserved,
+  DeploySlotHostRead, DeploySlotHostUnread,
 }
-import gunbc.runner.runner_slot_job_role { srv1_modeled_deploy_slot_reading }
 import gunbc.ci.deploy_route_requirement { srv1_deploy_route_requirement, deploy_route_switch_admitted }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 
@@ -158,29 +158,42 @@ fn deploy_group(id: Int, selected: List<String>) -> OrgRunnerGroupWire {
   group_wire(id: id, name: deploy_slot_runner_group_name as String, restricted: true, selected: selected)
 }
 
-fn deploy_reading_with(groups: List<OrgRunnerGroupWire>, user: NonEmptyStr, privacy: DeploySlotPrivacy) -> DeploySlotReading {
+fn deploy_group_read(groups: List<OrgRunnerGroupWire>) -> MicrovmRunnerGroupStanding {
+  observe_runner_group_restriction(name: deploy_slot_runner_group_name, selected_workflow: deploy_slot_selected_workflow(), listed: listed(groups: groups))
+}
+
+fn deploy_reading_among(groups: List<OrgRunnerGroupWire>, user: NonEmptyStr, others: List<NonEmptyStr>, privacy: DeploySlotPrivacy) -> DeploySlotReading {
   DeploySlotReading {
-    group: observe_runner_group_restriction(name: deploy_slot_runner_group_name, selected_workflow: deploy_slot_selected_workflow(), listed: listed(groups: groups)),
-    deploy_slot_job_user: user,
-    other_slot_job_users: ["ghrunner" as NonEmptyStr],
-    privacy: privacy,
+    group: deploy_group_read(groups: groups),
+    host: DeploySlotHostRead {
+      unit: "actions-runner@srv1-02.service" as NonEmptyStr,
+      deploy_slot_job_user: user,
+      other_slot_job_users: others,
+      privacy: privacy,
+    },
   }
+}
+
+fn deploy_reading_with(groups: List<OrgRunnerGroupWire>, user: NonEmptyStr, privacy: DeploySlotPrivacy) -> DeploySlotReading {
+  deploy_reading_among(groups: groups, user: user, others: ["ghrunner" as NonEmptyStr], privacy: privacy)
 }
 
 fn deploy_reading(groups: List<OrgRunnerGroupWire>, user: NonEmptyStr) -> DeploySlotReading {
   deploy_reading_with(groups: groups, user: user, privacy: DeploySlotPathsPrivate)
 }
 
-// RED TODAY, GREEN WITH THE MODEL. srv1 as read today (no deploy group, one shared uid) leaves the
-// deploy route's switch refused; a deploy group restricted to fleet-converge at main, a uid no other
-// slot runs as, and paths no other uid reaches admit it. Each wall alone still refuses, so none is
-// decoration: the last two rows hold the group and the uid and break only the confidentiality wall.
+// ALL THREE WALLS, OR SHARED. A deploy group restricted to fleet-converge at main, a deploy slot
+// running as ghdeploy that no other slot runs as, and paths no other uid reaches admit the switch.
+// Each wall alone still refuses, so none is decoration: a host that was not read, a deploy slot that
+// runs as another user, another slot running as ghdeploy, and the confidentiality rows each hold the
+// group and break one host wall.
 test fn witness_deploy_slot_admits_the_route_switch_only_when_group_uid_and_privacy_all_hold() -> Bool {
   let wf = deploy_slot_selected_workflow()
   let restricted = [default_group(), deploy_group(id: 31, selected: [wf as String])]
   let admit = r => deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: deploy_slot_observed_tenancy(reading: r))
   (wf as String) == "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main"
-    && !admit(srv1_modeled_deploy_slot_reading())
+    && !admit(DeploySlotReading { group: deploy_group_read(groups: restricted), host: DeploySlotHostUnread { unit: "actions-runner@srv1-02.service" as NonEmptyStr, cause: "systemctl list-units refused" } })
+    && !admit(deploy_reading_among(groups: restricted, user: deploy_slot_job_user, others: ["ghrunner" as NonEmptyStr, deploy_slot_job_user], privacy: DeploySlotPathsPrivate))
     && admit(deploy_reading(groups: restricted, user: deploy_slot_job_user))
     && !admit(deploy_reading(groups: restricted, user: "ghrunner" as NonEmptyStr))
     && !admit(deploy_reading(groups: [default_group()], user: deploy_slot_job_user))

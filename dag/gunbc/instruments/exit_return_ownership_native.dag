@@ -1,0 +1,88 @@
+module gunbc.instruments.exit_return_ownership_native
+
+import std.types { Int, List, String, Bool }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
+
+// THE EXIT-RETURN FIXTURES, ON THE EMITTED PATH. A value returned at an early `return` and again in
+// tail position is moved once on each of two exclusive paths. v1.compiler.ownership refused every such
+// function as `has 2 consumers` (gunbc.recurring_failure_mode an_exit_only_edge_counted_as_a_double_consume).
+// Each fixture is emitted by the seed, compiled by rustc and run with the guard true and false, so the
+// refusal is a compile diagnostic before any case prints, a wrong move is a rustc refusal, and a case
+// is held when the emitted function returns what an independently written reference computes.
+//
+//   nullary    a variant constructor returned at both exits (the #15310 shape).
+//   param      an Int parameter returned at both exits.
+//   heap_list  a List<Int> parameter returned at both exits.
+//   heap_text  a String parameter returned at both exits.
+//   single     one return, the control that always compiled.
+//
+// NOT ON THE REQUIRED PATH: this label runs when invoked.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type Status = Unreadable | Ready
+
+fn nullary(b: Bool) -> Status {
+  if b { return Unreadable }
+  Unreadable
+}
+
+fn nullary_code(s: Status) -> Int {
+  match s {
+    Unreadable => 1
+    Ready => 2
+  }
+}
+
+fn param(b: Bool, x: Int) -> Int {
+  if b { return x }
+  x
+}
+
+fn heap_list(b: Bool, xs: List<Int>) -> List<Int> {
+  if b { return xs }
+  xs
+}
+
+fn heap_text(b: Bool, s: String) -> String {
+  if b { return s }
+  s
+}
+
+fn single(x: Int) -> Int {
+  x
+}
+
+type FixtureCase {
+  name: String
+  observed: Int
+  expected: Int
+}
+
+fn fixture_cases() -> List<FixtureCase> {
+  let items = [3, 5, 8]
+  [
+    FixtureCase { name: "nullary_true", observed: nullary_code(s: nullary(b: true)), expected: 1 },
+    FixtureCase { name: "nullary_false", observed: nullary_code(s: nullary(b: false)), expected: 1 },
+    FixtureCase { name: "param_true", observed: param(b: true, x: 41), expected: 41 },
+    FixtureCase { name: "param_false", observed: param(b: false, x: 41), expected: 41 },
+    FixtureCase { name: "heap_list_true", observed: count(heap_list(b: true, xs: items)) * 1000 + count(items), expected: 3003 },
+    FixtureCase { name: "heap_list_false", observed: count(heap_list(b: false, xs: items)) * 1000 + count(items), expected: 3003 },
+    FixtureCase { name: "heap_text_true", observed: if heap_text(b: true, s: "gunbc") == "gunbc" { 1 } else { 0 }, expected: 1 },
+    FixtureCase { name: "heap_text_false", observed: if heap_text(b: false, s: "gunbc") == "gunbc" { 1 } else { 0 }, expected: 1 },
+    FixtureCase { name: "single", observed: single(x: 9), expected: 9 },
+  ]
+}
+
+fn verdict_word(held: Bool) -> String { if held { "held" } else { "not_held" } }
+
+fn case_line(c: FixtureCase) -> String {
+  concat("case ", c.name, " ", verdict_word(held: c.observed == c.expected), " observed=", to_string(value: c.observed), " expected=", to_string(value: c.expected), "\n")
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = fixture_cases()
+  let failed = count(filter(cases, c => c.observed != c.expected))
+  let terminal = if failed > 0 { NativeClaimNotHeld { reason: concat(to_string(value: failed), " fixture(s) disagree with their reference") } } else { NativeClaimHeld }
+  NativeClaimReport { stdout: concat("roster ", join(map(cases, c => c.name), ","), "\n", join(map(cases, c => case_line(c: c)), "")), terminal: terminal }
+}

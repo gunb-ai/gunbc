@@ -59,9 +59,10 @@ fn deploy_slot_selected_workflow() -> NonEmptyStr {
 // another group name or another workflow, but not the group being deleted and recreated under the same
 // name with a new id. A slot rendered from this row would then register with the old id. The expected
 // answer is that the JIT registration is refused for a group that no longer exists, so the slot fails to
-// register visibly; that is inferred from the API taking a group id, not yet observed. What retires this row is a live read of the slot's group from the
-// org's runner groups (the DeploySlotReading readback, which replaces srv1_modeled_deploy_slot_reading),
-// once that read can be done at render time.
+// register visibly; that is inferred from the API taking a group id, not yet observed. What retires this
+// row is a read of the slot's group from the org's runner groups at render time; the in-job read
+// (gunbc.live_deploy.apply microvm_controller_install_admission_wet) happens after the drop-in is rendered, so it
+// cannot.
 type RunnerGroupEnsureReceipt {
   run_id: NonEmptyStr
   observed_at: NonEmptyStr
@@ -247,28 +248,24 @@ fn deploy_slot_host_reading_line(r: DeploySlotHostReading) -> String {
   }
 }
 
-// What a read of the deploy slot holds: the group's standing as the sealed observer reports it, the
-// uid the deploy slot's jobs run as, the uid of every other slot on the host, and whether those other
-// uids can reach the deploy slot's tree and the listener's state in it.
+// What a read of the deploy slot holds: the group's standing as the sealed observer reports it, and
+// the host half (who the deploy slot and every other runnable slot run as, and whether those users
+// reach the deploy slot's paths). The host half is the one DeploySlotHostReading the converge also
+// prints, so the route's admission and the converge's receipt read one shape.
 type DeploySlotReading {
   group: MicrovmRunnerGroupStanding
-  deploy_slot_job_user: NonEmptyStr
-  other_slot_job_users: List<NonEmptyStr>
-  privacy: DeploySlotPrivacy
+  host: DeploySlotHostReading
 }
 
-// SOLE TENANT ONLY WHEN ALL THREE WALLS HOLD. Anything the observer refused, a uid shared with another
-// slot, or a private path another uid can reach or that was not read, reads as shared: absence of the
-// group is not irrelevance, and an unread path is not a private one.
+// SOLE TENANT ONLY WHEN ALL THREE WALLS HOLD: the group is restricted to this workflow (ADMISSION),
+// and the host walls hold (ISOLATION and CONFIDENTIALITY, deploy_slot_host_walls_hold). Anything the
+// observer refused, an unread host, a uid shared with another slot, or a private path another uid can
+// reach or that was not read, reads as shared: absence of the group is not irrelevance, and an unread
+// path is not a private one.
 fn deploy_slot_observed_tenancy(reading: DeploySlotReading) -> DeployRouteJobTenancy {
   match reading.group {
     RunnerGroupRestrictionRefused { name: _, cause: _ } => SharesJobUidWithPullRequestJobs
     RunnerGroupRestrictedToWorkflow { restriction: _ } =>
-      if count(filter(reading.other_slot_job_users, u => (u as String) == (reading.deploy_slot_job_user as String))) == 0
-        && deploy_slot_privacy_holds(p: reading.privacy) {
-        SoleTenantOfJobUid
-      } else {
-        SharesJobUidWithPullRequestJobs
-      }
+      if deploy_slot_host_walls_hold(r: reading.host) { SoleTenantOfJobUid } else { SharesJobUidWithPullRequestJobs }
   }
 }

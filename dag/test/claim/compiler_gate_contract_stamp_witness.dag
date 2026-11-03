@@ -642,7 +642,7 @@ test fn the_evidence_carrier_declares_its_scaffold_and_trigger_holds() -> Bool {
   )
   string_contains(s: trigger, pattern: "dissolve-on: compiler_gate_contract_stamp_evidence_statements")
     && string_contains(s: trigger, pattern: "instrument_targets")
-    // MATCH, NOT `as String`: this is the corpus idiom (approval_ntfy_converge_witness.dag:158),
+    // MATCH, NOT `as String`: this is the corpus idiom (merge_admission_enforcement_witness.dag:47),
     // and it also pins WHICH KIND of disposition the carrier is -- a Scaffold dissolving to a single
     // authority, bound by DeclarationRef to the fn that emits the shell. Terminal would mean the
     // residual was declared permanent, which is a different claim and a different policy.
