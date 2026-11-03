@@ -1,0 +1,609 @@
+module test.claim.product.p4261_population_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { ampere, volt }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalDesignIdentity, component_identity_eq, component_instance_identity }
+import product.electrical.photograph { BytesNotInStore }
+import product.electrical.continuity { EvidenceRef, OperatorPhotograph, AfterIncidents, BeforeIncidents, BetweenIncidents }
+import product.electrical.bench_session {
+  AssetAlteration,
+  BeforeEvery,
+  BenchRecord,
+  PartRemoved,
+  ThermalInterfaceChanged,
+  no_bench_record,
+  place_against,
+}
+import product.electrical.identification {
+  FootprintUnpopulated,
+  IdentifiedByMarking,
+  InstalledComponent,
+  MarkingReading,
+  PrintedFuseRating,
+  RatingPrintedOnBody,
+  seen_unordered,
+}
+import extdeps.electronic_component.ti_lm5066i { lm5066i_pwp }
+import extdeps.electronic_component.ti_tmp275 { tmp275_dgk }
+import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
+import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
+import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
+import extdeps.electronic_component.types {
+  Designator,
+  ElectronicComponentRow,
+  designator_eq,
+  designator_of,
+  designator_text,
+}
+import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, TranscribedUncited, observed_receipt_ref }
+import extdeps.nvidia.p4261 { p4261_e1, p4261_k1 }
+import extdeps.nvidia.p4261.population {
+  P4261DesignPosition,
+  PartConstrainedToRows,
+  PartRow,
+  PopulatedPart,
+  PopulationClaim,
+  PrintedRatedPart,
+  p4261_e1_positions,
+  p4261_k1_positions,
+  p4261_position,
+  p4261_position_at,
+}
+import product.p4261.carrier {
+  CarrierLayoutObservation,
+  CorrespondenceRefusal,
+  DesignatorReading,
+  MeasuredBoard,
+  NoSuchPosition,
+  PositionListedTwice,
+  SpecimenNotObserved,
+  SpecimenOfAnotherBoard,
+  SpecimenReadUnderTwoDesignators,
+  admit_correspondence,
+}
+import product.p4261.evidence {
+  Contradicted,
+  EvidenceMissing,
+  NoAdmittedReading,
+  NoPopulationClaim,
+  NotAttributable,
+  ObservationsConflict,
+  PopulationOutcome,
+  PositionStanding,
+  RevisionNotEstablishedOnBoard,
+  SupportedOnSpecimen,
+  assess_population,
+  p4261_e1_population_standings,
+  p4261_k1_population_standings,
+}
+import product.p4261.comparison {
+  ComparisonIncomplete,
+  DifferenceUndetermined,
+  DifferentParts,
+  InstallationSnapshot,
+  InstallationUnknown,
+  ObservedRelation,
+  P4261Comparison,
+  PositionComparison,
+  RemovalRefitIndistinguishable,
+  RemovedBy,
+  SameCandidateConstraint,
+  SameIdentifiedPart,
+  SeenWithNoLaterRemoval,
+  compare_boards,
+  p4261_comparison,
+  rows_relation,
+}
+import product.p4261.report { population_comparison_text }
+import product.p4261.e1_b {
+  e1_converter_near,
+  e1_design,
+  e1_f300,
+  e1_q21,
+  e1_u10p2_lift,
+  e1_u1_p5,
+  p4261_e1_layout,
+}
+import product.p4261.k1_a { k1_converter_near, k1_converter_near_footprint, k1_u10p2_lift, k1_u1_p5, p4261_k1_layout }
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
+
+fn with_parts(base: CarrierLayoutObservation, components: List<InstalledComponent>, readings: List<DesignatorReading>) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    asset: base.asset, design: base.design, revision: base.revision, markings: base.markings, module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey, management_io: base.management_io, components: components, measured: base.measured, input: base.input,
+    unresolved: base.unresolved, designator_readings: readings,
+  }
+}
+
+fn as_revision_k1(base: CarrierLayoutObservation) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    asset: base.asset, design: base.design, revision: p4261_k1, markings: base.markings, module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: base.measured, input: base.input,
+    unresolved: base.unresolved, designator_readings: base.designator_readings,
+  }
+}
+
+// A second E1 held under another asset and its own identity space, with the E1-B's records copied.
+fn second_e1(components: List<InstalledComponent>, readings: List<DesignatorReading>) -> CarrierLayoutObservation {
+  let b = p4261_e1_layout
+  CarrierLayoutObservation {
+    asset: "p4261-e1-supplied-second" as PhysicalAssetIdentity, design: "p4261-e1-supplied-second" as ElectricalDesignIdentity, revision: b.revision, markings: b.markings,
+    module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors, j20: b.j20, j20_calipers: b.j20_calipers,
+    edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey, management_io: b.management_io,
+    components: components, measured: Absent, input: Absent, unresolved: b.unresolved, designator_readings: readings,
+  }
+}
+
+// The K1 with its converter's removal recorded as refitted: one event for two changes.
+fn k1_lift_refitted() -> CarrierLayoutObservation {
+  let base = p4261_k1_layout
+  let measured = match base.measured {
+    Absent => Absent
+    Present { value: b } => Present { value: MeasuredBoard {
+      analysis: b.analysis, asset: b.asset, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
+      bench: BenchRecord {
+        incidents: b.bench.incidents, attachments: b.bench.attachments, voltages: b.bench.voltages, resistances: b.bench.resistances,
+        alterations: map(b.bench.alterations, a => AssetAlteration { key: a.key, asset: a.asset, part: a.part, performed_on: a.performed_on, evidence: a.evidence, change: match a.change { PartRemoved { refitted: _ } => PartRemoved { refitted: true }, ThermalInterfaceChanged { removed, applied } => ThermalInterfaceChanged { removed: removed, applied: applied } } }),
+      },
+      phases: b.phases, transitions: b.transitions, pole_closures: b.pole_closures,
+    } }
+  }
+  CarrierLayoutObservation {
+    asset: base.asset, design: base.design, revision: base.revision, markings: base.markings, module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey, management_io: base.management_io, components: base.components, measured: measured, input: base.input,
+    unresolved: base.unresolved, designator_readings: base.designator_readings,
+  }
+}
+
+fn photo() -> EvidenceRef {
+  OperatorPhotograph { citation: BytesNotInStore { taken_on: "supplied", locator: "supplied photograph", obligation: "operator re-supplies the frame so its bytes can be hashed into the store" } }
+}
+
+fn read(c: ComponentInstanceIdentity, d: NonEmptyStr) -> DesignatorReading {
+  DesignatorReading { specimen: c, designator: d, evidence: photo() }
+}
+
+fn e1_at(d: NonEmptyStr) -> P4261DesignPosition {
+  match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
+    Present { value: p } => p
+    Absent => P4261DesignPosition { position: p4261_position(revision: p4261_e1, designator: d), population: Absent }
+  }
+}
+
+fn k1_at(d: NonEmptyStr) -> P4261DesignPosition {
+  match p4261_position_at(positions: p4261_k1_positions, verbatim: d) {
+    Present { value: p } => p
+    Absent => P4261DesignPosition { position: p4261_position(revision: p4261_k1, designator: d), population: Absent }
+  }
+}
+
+fn claimed(p: P4261DesignPosition, part: PopulatedPart) -> P4261DesignPosition {
+  P4261DesignPosition { position: p.position, population: Present { value: PopulationClaim { part: part, standing: TranscribedUncited { read_obligation: "supplied" } } } }
+}
+
+fn assess_on(layout: CarrierLayoutObservation, p: P4261DesignPosition) -> PopulationOutcome {
+  assess_population(position: p, layout: layout, admitted: admit_correspondence(layout: layout).admitted).outcome
+}
+
+fn supported(o: PopulationOutcome) -> Bool {
+  match o {
+    SupportedOnSpecimen { supporting } => count(supporting) > 0
+    _ => false
+  }
+}
+
+fn missing(o: PopulationOutcome) -> Bool {
+  match o {
+    EvidenceMissing { undecided: _, unplaced: _ } => true
+    _ => false
+  }
+}
+
+fn missing_unplaced(o: PopulationOutcome, n: Nat) -> Bool {
+  match o {
+    EvidenceMissing { undecided: _, unplaced } => count(unplaced) == n
+    _ => false
+  }
+}
+
+fn contradicted(o: PopulationOutcome) -> Bool {
+  match o {
+    Contradicted { contradicting, supporting: _ } => count(contradicting) > 0
+    _ => false
+  }
+}
+
+fn conflicting(o: PopulationOutcome) -> Bool {
+  match o {
+    ObservationsConflict { observations } => count(observations) > 1
+    _ => false
+  }
+}
+
+fn gap_is(o: PopulationOutcome, want: Nat) -> Bool {
+  match o {
+    NotAttributable { gap } => match gap {
+      NoPopulationClaim => want == 0
+      NoAdmittedReading => want == 1
+      RevisionNotEstablishedOnBoard => want == 2
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn refused_as(r: CorrespondenceRefusal, want: Nat) -> Bool {
+  match r {
+    SpecimenOfAnotherBoard { reading: _ } => want == 0
+    NoSuchPosition { reading: _ } => want == 1
+    PositionListedTwice { reading: _ } => want == 2
+    SpecimenReadUnderTwoDesignators { reading: _ } => want == 3
+    SpecimenNotObserved { reading: _ } => want == 4
+  }
+}
+
+fn receipt_on(s: CitedFigureStanding, decl: String) -> Bool {
+  match s {
+    ObservedByReceipt { observed } => (observed_receipt_ref(observed: observed).decl_name as String) == decl
+    _ => false
+  }
+}
+
+fn uncited(s: CitedFigureStanding) -> Bool {
+  match s {
+    TranscribedUncited { read_obligation: _ } => true
+    _ => false
+  }
+}
+
+fn standing_at(ss: List<PositionStanding>, d: String) -> PositionStanding? {
+  (filter(ss, s =>
+    (designator_text(designator: s.assessment.position.position.designator) as String) == d
+  )).first()
+}
+
+fn compared_at(c: P4261Comparison, d: String) -> PositionComparison? {
+  (filter(c.positions, p => (designator_text(designator: p.designator) as String) == d)).first()
+}
+
+fn is_same_part(r: ObservedRelation) -> Bool {
+  match r {
+    SameIdentifiedPart { row: _ } => true
+    _ => false
+  }
+}
+
+fn incomplete_on(r: ObservedRelation, boards: Nat) -> Bool {
+  match r {
+    ComparisonIncomplete { boards: bs } => count(bs) == boards
+    _ => false
+  }
+}
+
+fn removed_by(i: InstallationSnapshot, key: NonEmptyStr) -> Bool {
+  match i {
+    RemovedBy { key: k } => (k as String) == (key as String)
+    _ => false
+  }
+}
+
+fn identified(c: ComponentInstanceIdentity, row: ElectronicComponentRow) -> InstalledComponent {
+  InstalledComponent { seen: seen_unordered(), component: c, terminals: [], identification: IdentifiedByMarking { row: row, marking: MarkingReading { text: "supplied", evidence: photo() } } }
+}
+
+fn reseen(cs: List<InstalledComponent>, c: ComponentInstanceIdentity) -> List<InstalledComponent> {
+  map(cs, x => if component_identity_eq(a: x.component, b: c) { InstalledComponent { seen: seen_unordered(), component: x.component, terminals: x.terminals, identification: x.identification } } else { x })
+}
+
+fn rating(amperes: Nat, volts: Nat?) -> PrintedFuseRating {
+  PrintedFuseRating { current: ampere(count: amperes), interrupt_voltage: match volts { Absent => Absent, Present { value: v } => Present { value: volt(count: v) } } }
+}
+
+fn with_rating(cs: List<InstalledComponent>, c: ComponentInstanceIdentity, amperes: Nat, volts: Nat?) -> List<InstalledComponent> {
+  map(cs, x => if component_identity_eq(a: x.component, b: c) { InstalledComponent { seen: x.seen, component: x.component, terminals: x.terminals, identification: RatingPrintedOnBody { rating: rating(amperes: amperes, volts: volts), marking: MarkingReading { text: "supplied", evidence: photo() } } } } else { x })
+}
+
+fn rated(amperes: Nat, volts: Nat?) -> PopulatedPart {
+  PrintedRatedPart { rating: rating(amperes: amperes, volts: volts) }
+}
+
+// ── CORRESPONDENCE ────────────────────────────────────────────────────────────────────────────
+
+// A COMPONENT IS BOUND ONLY TO ITS OWN BOARD'S REVISION, AND NEVER BY THE FIRST OF TWO READINGS. Every
+// reading on both held boards is admitted. On the E1: a K1 component's reading is refused as another
+// board's; a component with no observation on the board is refused; a designator only the K1's
+// catalogue lists names no E1 position; Q21_P5 read also as Q22_P5 has both readings refused.
+test fn a_component_is_bound_only_to_its_own_boards_revision() -> Bool {
+  let e1 = admit_correspondence(layout: p4261_e1_layout)
+  let k1 = admit_correspondence(layout: p4261_k1_layout)
+  let unobserved = component_instance_identity(design: e1_design, local_identity: "supplied component with no observation")
+  let foreign = admit_correspondence(layout: with_parts(base: p4261_e1_layout, components: p4261_e1_layout.components, readings: [read(c: k1_u1_p5, d: "U1_P5")]))
+  let not_seen = admit_correspondence(layout: with_parts(base: p4261_e1_layout, components: p4261_e1_layout.components, readings: [read(c: unobserved, d: "U1_P5")]))
+  let k1_only = admit_correspondence(layout: with_parts(base: p4261_e1_layout, components: p4261_e1_layout.components, readings: [read(c: e1_converter_near, d: "U2_P2")]))
+  let twice = admit_correspondence(layout: with_parts(base: p4261_e1_layout, components: p4261_e1_layout.components, readings: [read(c: e1_q21, d: "Q21_P5"), read(c: e1_q21, d: "Q22_P5"), read(c: e1_u1_p5, d: "U1_P5")]))
+  count(e1.refused) == 0 && count(e1.admitted) == count(p4261_e1_layout.designator_readings)
+    && count(k1.refused) == 0 && count(k1.admitted) == count(p4261_k1_layout.designator_readings)
+    && count(foreign.admitted) == 0 && count(foreign.refused) == 1 && all(foreign.refused, r => refused_as(r: r, want: 0))
+    && count(not_seen.admitted) == 0 && count(not_seen.refused) == 1 && all(not_seen.refused, r => refused_as(r: r, want: 4))
+    && count(k1_only.admitted) == 0 && count(k1_only.refused) == 1 && all(k1_only.refused, r => refused_as(r: r, want: 1))
+    && count(twice.admitted) == 1 && count(twice.refused) == 2 && all(twice.refused, r => refused_as(r: r, want: 3))
+}
+
+// A BOARD RECORDED AGAINST THE WRONG REVISION SUPPORTS NOTHING. The E1 recorded as a K1, its own E1 label
+// and PCB print kept: U1_P5 (on both revisions' silkscreens) is admitted against the K1's catalogue, yet
+// the K1's U1_P5 claim is not attributable to it, since its markings do not establish the K1.
+test fn a_board_recorded_against_the_wrong_revision_supports_nothing() -> Bool {
+  let misfiled = as_revision_k1(base: p4261_e1_layout)
+  count(admit_correspondence(layout: misfiled).admitted) > 0
+    && supported(o: assess_on(layout: p4261_k1_layout, p: k1_at(d: "U1_P5")))
+    && gap_is(o: assess_on(layout: misfiled, p: k1_at(d: "U1_P5")), want: 2)
+}
+
+// ── POPULATION SEMANTICS ──────────────────────────────────────────────────────────────────────
+
+// EACH READING BEARS BY WHAT IT ESTABLISHES. On the E1: U1_P5's matched marking supports its row; D2's
+// code shared by two makers supports the claim constrained to those rows; F300's printed rating
+// supports the rating claim; the converter's candidate marking and Q300's leave their claims missing;
+// U2_P5 carries no claim. On the K1: F300's rating, read only off the seller's listing, does not
+// support; the converter's marking, read before the lift, does, the bare footprint seen after the
+// lift being a later context. Supported claims carry a receipt naming their own board's record; the
+// rest keep their authored standing.
+test fn each_reading_bears_by_what_it_establishes() -> Bool {
+  let e1 = p4261_e1_layout
+  let k1 = p4261_k1_layout
+  let e1s = p4261_e1_population_standings()
+  let k1s = p4261_k1_population_standings()
+  supported(o: assess_on(layout: e1, p: e1_at(d: "U1_P5")))
+    && supported(o: assess_on(layout: e1, p: e1_at(d: "D2")))
+    && supported(o: assess_on(layout: e1, p: e1_at(d: "F300")))
+    && missing(o: assess_on(layout: e1, p: e1_at(d: "U10_P2")))
+    && missing(o: assess_on(layout: e1, p: e1_at(d: "Q300")))
+    && gap_is(o: assess_on(layout: e1, p: e1_at(d: "U2_P5")), want: 0)
+    && missing(o: assess_on(layout: k1, p: k1_at(d: "F300")))
+    && supported(o: assess_on(layout: k1, p: k1_at(d: "U10_P2")))
+    && match standing_at(ss: e1s, d: "U1_P5") { Present { value: s } => receipt_on(s: s.standing, decl: "p4261_e1_layout"), Absent => false }
+    && match standing_at(ss: e1s, d: "U10_P2") { Present { value: s } => uncited(s: s.standing), Absent => false }
+    && match standing_at(ss: k1s, d: "U10_P2") { Present { value: s } => receipt_on(s: s.standing, decl: "p4261_k1_layout"), Absent => false }
+    && match standing_at(ss: k1s, d: "F300") { Present { value: s } => uncited(s: s.standing), Absent => false }
+}
+
+// SETS ARE JUDGED BY ENTAILMENT. D2's two-maker reading supports a claim of those two rows (in any order)
+// and of a wider set with repeats, contradicts a claim disjoint from it, and leaves undecided a claim
+// of one of its rows.
+test fn row_sets_are_judged_by_entailment() -> Bool {
+  let e1 = p4261_e1_layout
+  let d2 = e1_at(d: "D2")
+  supported(o: assess_on(layout: e1, p: claimed(p: d2, part: PartConstrainedToRows { rows: [aos_tvs_5_0smdj60a, tvs_5_0smdj60a] })))
+    && supported(o: assess_on(layout: e1, p: claimed(p: d2, part: PartConstrainedToRows { rows: [tvs_5_0smdj60a, mp2333cgtl, aos_tvs_5_0smdj60a, tvs_5_0smdj60a] })))
+    && contradicted(o: assess_on(layout: e1, p: claimed(p: d2, part: PartConstrainedToRows { rows: [mp2333cgtl, tmp275_dgk] })))
+    && missing(o: assess_on(layout: e1, p: claimed(p: d2, part: PartRow { row: tvs_5_0smdj60a })))
+}
+
+// A RATING IS JUDGED ON THE FIELDS THE CLAIM ASSERTS. A body printing 100 A with its interrupt voltage
+// unread leaves a 100 A / 75 V claim missing, not contradicted; a 100 A / 75 V body supports a bare
+// 100 A claim; a 12 A body contradicts a 100 A claim.
+test fn a_rating_is_judged_on_the_fields_the_claim_asserts() -> Bool {
+  let e1 = p4261_e1_layout
+  let f300 = e1_at(d: "F300")
+  let no_volts = with_parts(base: e1, components: with_rating(cs: e1.components, c: e1_f300, amperes: 100, volts: Absent), readings: e1.designator_readings)
+  let twelve = with_parts(base: e1, components: with_rating(cs: e1.components, c: e1_f300, amperes: 12, volts: Absent), readings: e1.designator_readings)
+  missing(o: assess_on(layout: no_volts, p: claimed(p: f300, part: rated(amperes: 100, volts: Present { value: 75 }))))
+    && supported(o: assess_on(layout: e1, p: claimed(p: f300, part: rated(amperes: 100, volts: Absent))))
+    && contradicted(o: assess_on(layout: twelve, p: claimed(p: f300, part: rated(amperes: 100, volts: Absent))))
+}
+
+// ── SCOPE AND INSTALLATION ────────────────────────────────────────────────────────────────────
+
+// PRESENCE IS READ, NEVER INFERRED FROM THE LEDGER'S SILENCE. The E1's converter, photographed before the
+// lift, is placed before it; both boards' U10_P2 positions are now recorded removed. U1_P5, seen and
+// never removed, is seen with no later removal. Q4_P5, named with no marking read and no removal
+// recorded, has no presence evidence, so a claim there is missing; the K1's U100, likewise unread,
+// has an unknown snapshot where the E1's, its marking read, was seen fitted.
+test fn presence_is_read_never_inferred_from_silence() -> Bool {
+  let e1 = p4261_e1_layout
+  let rec = match e1.measured { Present { value: b } => b.bench, Absent => no_bench_record }
+  let q4 = claimed(p: e1_at(d: "Q4_P5"), part: PartRow { row: tmp275_dgk })
+  let converter = (filter(e1.components, c => component_identity_eq(a: c.component, b: e1_converter_near))).first()
+  let c = compare_boards(e1_layout: e1, k1_layout: p4261_k1_layout, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  match converter {
+    Absent => false
+    Present { value: x } => match place_against(r: rec, asset: e1.asset, seen: x.seen, keys: [e1_u10p2_lift.key]) { BeforeEvery => true, _ => false }
+  }
+    && missing(o: assess_on(layout: e1, p: q4))
+    && match compared_at(c: c, d: "U10_P2") { Present { value: p } => removed_by(i: p.e1.installation, key: e1_u10p2_lift.key) && removed_by(i: p.k1.installation, key: k1_u10p2_lift.key), Absent => false }
+    && match compared_at(c: c, d: "U1_P5") { Present { value: p } => match p.e1.installation { SeenWithNoLaterRemoval => true, _ => false }, Absent => false }
+    && match compared_at(c: c, d: "U100") { Present { value: p } => match p.k1.installation { InstallationUnknown => true, _ => false } && match p.e1.installation { SeenWithNoLaterRemoval => true, _ => false }, Absent => false }
+}
+
+// AN ABSENCE COUNTS ONLY WHERE IT IS PLACED. The K1's bare U10_P2 footprint, seen after the lift, is a
+// later context. Seen before the lift beside the fitted converter, it is the board's own conflict.
+// With its order against the lift unstated, it may be either, so it blocks support. A removal recorded
+// as refitted leaves the converter, seen before it, in scope and still supported; the position's
+// state since is indistinguishable.
+test fn an_absence_counts_only_where_it_is_placed() -> Bool {
+  let k1 = p4261_k1_layout
+  let u10 = k1_at(d: "U10_P2")
+  let before_lift = with_parts(base: k1, components: map(k1.components, x => if component_identity_eq(a: x.component, b: k1_converter_near_footprint) { InstalledComponent { seen: BeforeIncidents { keys: [k1_u10p2_lift.key] }, component: x.component, terminals: x.terminals, identification: x.identification } } else { x }), readings: k1.designator_readings)
+  let unplaced = with_parts(base: k1, components: reseen(cs: k1.components, c: k1_converter_near_footprint), readings: k1.designator_readings)
+  let refit = k1_lift_refitted()
+  let c = compare_boards(e1_layout: p4261_e1_layout, k1_layout: refit, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  supported(o: assess_on(layout: k1, p: u10))
+    && conflicting(o: assess_on(layout: before_lift, p: u10))
+    && missing_unplaced(o: assess_on(layout: unplaced, p: u10), n: 1)
+    && supported(o: assess_on(layout: refit, p: u10))
+    && match compared_at(c: c, d: "U10_P2") { Present { value: p } => match p.k1.installation { RemovalRefitIndistinguishable => true, _ => false }, Absent => false }
+}
+
+// A PART WHOSE ORDER AGAINST ITS OWN REMOVAL IS UNSTATED SUPPLIES NOTHING. Restated with no order against
+// the lift, the K1 converter's marking falls out of scope and its claim to missing.
+test fn a_part_unplaced_against_its_removal_supplies_nothing() -> Bool {
+  let k1 = p4261_k1_layout
+  let unordered = with_parts(base: k1, components: reseen(cs: k1.components, c: k1_converter_near), readings: k1.designator_readings)
+  supported(o: assess_on(layout: k1, p: k1_at(d: "U10_P2")))
+    && missing_unplaced(o: assess_on(layout: unordered, p: k1_at(d: "U10_P2")), n: 1)
+}
+
+// ── SUPPORT IS ON ONE BOARD ───────────────────────────────────────────────────────────────────
+
+// THE E1-B'S SUPPORT IS NOT ANOTHER E1'S. A second E1 with nothing read has no admitted reading; given
+// the E1-B's components and readings copied verbatim, those readings name the E1-B's identity space and
+// are refused, so its outcome is the same -- never the E1-B's support under another asset.
+test fn one_boards_support_is_not_another_of_its_revision() -> Bool {
+  let bare = second_e1(components: [], readings: [])
+  let copied = second_e1(components: p4261_e1_layout.components, readings: p4261_e1_layout.designator_readings)
+  supported(o: assess_on(layout: p4261_e1_layout, p: e1_at(d: "U1_P5")))
+    && gap_is(o: assess_on(layout: bare, p: e1_at(d: "U1_P5")), want: 1)
+    && gap_is(o: assess_on(layout: copied, p: e1_at(d: "U1_P5")), want: 1)
+    && count(admit_correspondence(layout: copied).admitted) == 0
+}
+
+// ── CONFLICT AND CONTRADICTION ────────────────────────────────────────────────────────────────
+
+// READINGS THAT DISAGREE ARE THE BOARD'S CONFLICT, IN EITHER ORDER. A second component admitted at U1_P5
+// reading another row: against the LM5066I claim, and against a claim of either row (which each
+// reading alone would support), the outcome is the conflict, never support, whichever is listed
+// first. A single disagreeing reading contradicts.
+test fn readings_that_disagree_are_the_boards_conflict() -> Bool {
+  let other = component_instance_identity(design: e1_design, local_identity: "supplied second part read at U1_P5")
+  let readings = concat(p4261_e1_layout.designator_readings, [read(c: other, d: "U1_P5")])
+  let after = with_parts(base: p4261_e1_layout, components: concat(p4261_e1_layout.components, [identified(c: other, row: tmp275_dgk)]), readings: readings)
+  let before = with_parts(base: p4261_e1_layout, components: concat([identified(c: other, row: tmp275_dgk)], p4261_e1_layout.components), readings: readings)
+  let either = claimed(p: e1_at(d: "U1_P5"), part: PartConstrainedToRows { rows: [lm5066i_pwp, tmp275_dgk] })
+  conflicting(o: assess_on(layout: after, p: e1_at(d: "U1_P5")))
+    && conflicting(o: assess_on(layout: before, p: e1_at(d: "U1_P5")))
+    && conflicting(o: assess_on(layout: after, p: either))
+    && contradicted(o: assess_on(layout: p4261_e1_layout, p: claimed(p: e1_at(d: "U1_P5"), part: PartRow { row: tmp275_dgk })))
+}
+
+// ── COMPARISON ────────────────────────────────────────────────────────────────────────────────
+
+// SETS ARE COMPARED CONSERVATIVELY, AS SETS. One row each, the same, repeats on either side and either
+// way round: the same part. Disjoint: different parts. Equal shared sets in any order: the same
+// candidate constraint, not the same part. Overlapping unequal sets: undetermined.
+test fn row_sets_are_compared_conservatively() -> Bool {
+  let shared = [tvs_5_0smdj60a, aos_tvs_5_0smdj60a]
+  let a = lm5066i_pwp
+  match rows_relation(a: [a], b: [a, a]) { SameIdentifiedPart { row: _ } => true, _ => false }
+    && match rows_relation(a: [a, a], b: [a]) { SameIdentifiedPart { row: _ } => true, _ => false }
+    && match rows_relation(a: [a, a], b: [a, a, a]) { SameIdentifiedPart { row: _ } => true, _ => false }
+    && match rows_relation(a: [lm5066i_pwp], b: [tmp275_dgk]) { DifferentParts { e1: _, k1: _ } => true, _ => false }
+    && match rows_relation(a: shared, b: [aos_tvs_5_0smdj60a, tvs_5_0smdj60a]) { SameCandidateConstraint { rows: _ } => true, _ => false }
+    && match rows_relation(a: shared, b: [tvs_5_0smdj60a]) { DifferenceUndetermined { e1: _, k1: _ } => true, _ => false }
+}
+
+// OBSERVED AGREEMENT IS KEPT APART FROM THE CLAIMS. Both boards read the LM5066I at U1_P5; claims there of
+// another part are contradicted on each board, and the comparison reports the agreement beside the
+// two contradictions without merging them.
+test fn observed_agreement_is_kept_apart_from_the_claims() -> Bool {
+  let e1_positions = map(p4261_e1_positions, x =>
+    if designator_eq(a: x.position.designator, b: designator_of(verbatim: "U1_P5"))
+    { claimed(p: x, part: PartRow { row: tmp275_dgk }) } else { x }
+  )
+  let k1_positions = map(p4261_k1_positions, x =>
+    if designator_eq(a: x.position.designator, b: designator_of(verbatim: "U1_P5"))
+    { claimed(p: x, part: PartRow { row: tmp275_dgk }) } else { x }
+  )
+  match compared_at(c: compare_boards(e1_layout: p4261_e1_layout, k1_layout: p4261_k1_layout, e1_positions: e1_positions, k1_positions: k1_positions), d: "U1_P5") {
+    Absent => false
+    Present { value: p } => is_same_part(r: p.observed)
+      && match p.e1.assessment { Present { value: a } => contradicted(o: a.outcome), Absent => false }
+      && match p.k1.assessment { Present { value: a } => contradicted(o: a.outcome), Absent => false }
+  }
+}
+
+// THE HELD BOARDS, COMPARED. U1_P5 reads the same LM5066I on both; U10_P2 is incomplete, the E1's marking
+// being a candidate; F300 is incomplete on both, a rating naming no row and the K1's read only off the
+// listing. The E1's side at U1_P5 carries its claim's minted receipt, so the comparison reads the
+// assessment folds, not the authored rows; the rendered comparison carries the conclusions, and the
+// power-path obligation of every GH200 assembly reads it.
+test fn the_held_boards_are_compared_label_by_label() -> Bool {
+  let c = p4261_comparison()
+  let text = population_comparison_text(c: c)
+  match compared_at(c: c, d: "U1_P5") {
+    Absent => false
+    Present { value: p } => is_same_part(r: p.observed)
+      && match p.e1.standing { Present { value: s } => receipt_on(s: s, decl: "p4261_e1_layout"), Absent => false }
+      && match p.e1.assessment { Present { value: a } => supported(o: a.outcome), Absent => false }
+  }
+    && match compared_at(c: c, d: "U10_P2") { Present { value: p } => incomplete_on(r: p.observed, boards: 1), Absent => false }
+    && match compared_at(c: c, d: "F300") { Present { value: p } => incomplete_on(r: p.observed, boards: 2), Absent => false }
+    && text.contains("U1_P5 as received both read Texas Instruments Incorporated")
+    && text.contains("not an established circuit correspondence")
+}
+
+// ── ATTRIBUTION, CHRONOLOGY, SNAPSHOT AND RATING CONSISTENCY ──────────────────────────────────
+
+// AN ASSESSMENT SPEAKS ONLY FOR THE EVIDENCE BESIDE IT. A side's claim assessment is computed from that
+// side's own records, and a receipt is attached only to the held boards' comparison. The second E1, with
+// nothing read: its U1_P5 claim is not attributable, and it carries no standing. The E1-B with an empty
+// footprint also read at U1_P5: its claim assessment is the conflict its own readings show, beside an
+// unknown snapshot -- never the original E1-B's support -- while the held boards' comparison still
+// carries the E1-B's minted receipt.
+test fn an_assessment_speaks_only_for_the_evidence_beside_it() -> Bool {
+  let second = compare_boards(e1_layout: second_e1(components: [], readings: []), k1_layout: p4261_k1_layout, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  let empty_pad = component_instance_identity(design: e1_design, local_identity: "supplied empty footprint read at U1_P5")
+  let both = with_parts(base: p4261_e1_layout, components: concat(p4261_e1_layout.components, [InstalledComponent { seen: seen_unordered(), component: empty_pad, terminals: [], identification: FootprintUnpopulated { evidence: photo() } }]), readings: concat(p4261_e1_layout.designator_readings, [read(c: empty_pad, d: "U1_P5")]))
+  let changed = compare_boards(e1_layout: both, k1_layout: p4261_k1_layout, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  match compared_at(c: second, d: "U1_P5") {
+    Absent => false
+    Present { value: p } => match p.e1.assessment { Present { value: a } => gap_is(o: a.outcome, want: 1), Absent => false } && match p.e1.standing { Absent => true, Present { value: _ } => false }
+  }
+    && match compared_at(c: changed, d: "U1_P5") {
+      Absent => false
+      Present { value: p } => match p.e1.assessment { Present { value: a } => conflicting(o: a.outcome), Absent => false }
+        && match p.e1.standing { Absent => true, Present { value: _ } => false }
+        && match p.e1.installation { InstallationUnknown => true, _ => false }
+    }
+    && match compared_at(c: p4261_comparison(), d: "U1_P5") {
+      Absent => false
+      Present { value: p } => match p.e1.standing { Present { value: s } => receipt_on(s: s, decl: "p4261_e1_layout"), Absent => false }
+    }
+}
+
+// A CONTRADICTORY ORDER PLACES NOTHING. The K1's bare footprint ordered both after and before the lift is
+// neither a later context nor in scope: it is unplaced, and the U10_P2 claim is no longer supported.
+test fn a_contradictory_order_places_nothing() -> Bool {
+  let k1 = p4261_k1_layout
+  let both = BetweenIncidents { after: [k1_u10p2_lift.key], before: [k1_u10p2_lift.key] }
+  let contradictory = with_parts(base: k1, components: map(k1.components, x => if component_identity_eq(a: x.component, b: k1_converter_near_footprint) { InstalledComponent { seen: both, component: x.component, terminals: x.terminals, identification: x.identification } } else { x }), readings: k1.designator_readings)
+  supported(o: assess_on(layout: k1, p: k1_at(d: "U10_P2")))
+    && missing_unplaced(o: assess_on(layout: contradictory, p: k1_at(d: "U10_P2")), n: 1)
+}
+
+// A REMOVAL SAYS "NOW REMOVED" ONLY WITH NOTHING FITTED SEEN AFTER IT. A part admitted at the K1's U10_P2
+// and seen after the lift leaves the snapshot unknown (B1 infers no replacement), while the claim, read
+// on the part as received, stays supported. Present and absent seen together at U1_P5, with no removal,
+// settle nothing either.
+test fn a_removal_is_now_only_with_nothing_fitted_after_it() -> Bool {
+  let k1 = p4261_k1_layout
+  let later_part = component_instance_identity(design: k1.design, local_identity: "supplied part seen at U10_P2 after the lift")
+  let seen_later = InstalledComponent { seen: AfterIncidents { keys: [k1_u10p2_lift.key] }, component: later_part, terminals: [], identification: IdentifiedByMarking { row: mp2333cgtl, marking: MarkingReading { text: "supplied", evidence: photo() } } }
+  let replaced = with_parts(base: k1, components: concat(k1.components, [seen_later]), readings: concat(k1.designator_readings, [read(c: later_part, d: "U10_P2")]))
+  let empty_pad = component_instance_identity(design: e1_design, local_identity: "supplied empty footprint read at U1_P5")
+  let both = with_parts(base: p4261_e1_layout, components: concat(p4261_e1_layout.components, [InstalledComponent { seen: seen_unordered(), component: empty_pad, terminals: [], identification: FootprintUnpopulated { evidence: photo() } }]), readings: concat(p4261_e1_layout.designator_readings, [read(c: empty_pad, d: "U1_P5")]))
+  let c_replaced = compare_boards(e1_layout: p4261_e1_layout, k1_layout: replaced, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  let c_both = compare_boards(e1_layout: both, k1_layout: k1, e1_positions: p4261_e1_positions, k1_positions: p4261_k1_positions)
+  supported(o: assess_on(layout: replaced, p: k1_at(d: "U10_P2")))
+    && match compared_at(c: c_replaced, d: "U10_P2") { Present { value: p } => match p.k1.installation { InstallationUnknown => true, _ => false }, Absent => false }
+    && conflicting(o: assess_on(layout: both, p: e1_at(d: "U1_P5")))
+    && match compared_at(c: c_both, d: "U1_P5") { Present { value: p } => match p.e1.installation { InstallationUnknown => true, _ => false }, Absent => false }
+}
+
+// RATINGS MUST AGREE TOO. A second reading at F300 printing 100 A / 125 V beside the body's 100 A / 75 V
+// is the board's conflict, even against a bare 100 A claim both would satisfy; a second reading with its
+// voltage unread conflicts with nothing.
+test fn ratings_must_agree_too() -> Bool {
+  let e1 = p4261_e1_layout
+  let second = component_instance_identity(design: e1_design, local_identity: "supplied second rating read at F300")
+  let claim = claimed(p: e1_at(d: "F300"), part: rated(amperes: 100, volts: Absent))
+  let other_volts = with_parts(base: e1, components: concat(e1.components, [InstalledComponent { seen: seen_unordered(), component: second, terminals: [], identification: RatingPrintedOnBody { rating: rating(amperes: 100, volts: Present { value: 125 }), marking: MarkingReading { text: "supplied", evidence: photo() } } }]), readings: concat(e1.designator_readings, [read(c: second, d: "F300")]))
+  let unread_volts = with_parts(base: e1, components: concat(e1.components, [InstalledComponent { seen: seen_unordered(), component: second, terminals: [], identification: RatingPrintedOnBody { rating: rating(amperes: 100, volts: Absent), marking: MarkingReading { text: "supplied", evidence: photo() } } }]), readings: concat(e1.designator_readings, [read(c: second, d: "F300")]))
+  conflicting(o: assess_on(layout: other_volts, p: claim))
+    && supported(o: assess_on(layout: unread_volts, p: claim))
+}

@@ -1,0 +1,126 @@
+module test.claim.roadmap.attempt_identity_store_wet_witness
+
+// THE ATTEMPT IDENTITY STORE OVER A REAL DIRECTORY TREE, with the realization broken and restored, and the
+// layout-move rule (gunbc.roadmap.roadmap_attempt_state_layout_move) it is the first row of. No claim maps a
+// refusal to an empty value and asserts over it: every Unready claim names the arm and its detail.
+// On the local-repo wet lane with the exclusion row in gunbc.ci.ci_layer_roots naming the temp-directory write.
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+  dashboard_instance_dispatch_attempt_state_root,
+}
+import gunbc.roadmap.roadmap_attempt_identity_store_root {
+  attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
+  AttemptIdentityClaimed, AttemptIdentityClaimRefused, attempt_identity_slots_path,
+}
+import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { move_plan, MoveNoop, MoveApply, MoveRefused }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_attempt_identity_wet_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["attempt-identity-wet-", tag], "") as NonEmptyStr),
+    instance_id: join(["attempt-identity-wet-", tag], "") as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18105,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn parent_of(i: HostDashboardInstance) -> String {
+  dashboard_instance_dispatch_attempt_state_root(instance: i) as String
+}
+
+fn made(path: String) -> Bool {
+  shell.Mkdir.Parents(path: path as FilePath).success
+}
+
+fn flat_entry(i: HostDashboardInstance) -> String {
+  join([parent_of(i: i), "/", attempt_identity_slots.move.legacy_flat_prefix as String, "wit-node-n1"], "")
+}
+
+fn claims_ordinal(store_reading_ordinal: Int, want: Int) -> Bool {
+  store_reading_ordinal == want
+}
+
+test fn the_mint_is_ready_and_distinct_ordinals_are_claimed_per_node() -> Bool {
+  let i = fresh_instance(tag: "claims")
+  made(path: attempt_identity_slots_path(instance: i) as String) && match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreUnready { detail: _ } => false
+    AttemptIdentityStoreReady { store } =>
+      match attempt_identity_claim(store: store, node_id: "wit-node", minted_at: "t1", ordinal: 1) {
+        AttemptIdentityClaimRefused { detail: _ } => false
+        AttemptIdentityClaimed { ordinal: first } =>
+          match attempt_identity_claim(store: store, node_id: "wit-node", minted_at: "t2", ordinal: 1) {
+            AttemptIdentityClaimRefused { detail: _ } => false
+            AttemptIdentityClaimed { ordinal: second } =>
+              match attempt_identity_claim(store: store, node_id: "other-node", minted_at: "t3", ordinal: 1) {
+                AttemptIdentityClaimRefused { detail: _ } => false
+                AttemptIdentityClaimed { ordinal: other } => first == 1 && second == 2 && other == 1
+              }
+          }
+      }
+  }
+}
+
+test fn the_mint_is_unready_with_the_member_directory_absent_and_ready_with_it_restored() -> Bool {
+  let i = fresh_instance(tag: "broken")
+  let broken = match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreUnready { detail } => string_contains(s: detail, pattern: "could not be listed") || string_contains(s: detail, pattern: "not admissible")
+    AttemptIdentityStoreReady { store: _ } => false
+  }
+  broken && made(path: attempt_identity_slots_path(instance: i) as String) && match attempt_identity_store(instance: i) {
+    AttemptIdentityStoreUnready { detail: _ } => false
+    AttemptIdentityStoreReady { store: _ } => true
+  }
+}
+
+test fn a_leftover_flat_entry_makes_the_mint_refuse_permanently_and_no_ordinal_is_claimed() -> Bool {
+  let i = fresh_instance(tag: "legacy")
+  made(path: attempt_identity_slots_path(instance: i) as String)
+    && Filesystem.Write(path: flat_entry(i: i), content: "minted_at: old\n").success
+    && match attempt_identity_store(instance: i) {
+      AttemptIdentityStoreReady { store: _ } => false
+      AttemptIdentityStoreUnready { detail } =>
+        string_contains(s: detail, pattern: "legacy flat attempt-identity entries")
+          && string_length(s: Filesystem.List(path: attempt_identity_slots_path(instance: i) as String).entries) == 0
+    }
+}
+
+test fn after_the_flat_entry_is_moved_away_the_mint_is_ready_and_claims_ordinal_one() -> Bool {
+  let i = fresh_instance(tag: "moved")
+  made(path: attempt_identity_slots_path(instance: i) as String)
+    && Filesystem.Write(path: flat_entry(i: i), content: "minted_at: old\n").success
+    && Filesystem.Delete(path: flat_entry(i: i)).success
+    && match attempt_identity_store(instance: i) {
+      AttemptIdentityStoreUnready { detail: _ } => false
+      AttemptIdentityStoreReady { store } =>
+        match attempt_identity_claim(store: store, node_id: "wit-node", minted_at: "t", ordinal: 1) {
+          AttemptIdentityClaimRefused { detail: _ } => false
+          AttemptIdentityClaimed { ordinal } => ordinal == 1
+        }
+    }
+}
+
+test fn the_move_plan_is_noop_apply_or_refused_by_the_listings() -> Bool {
+  let row = attempt_identity_slots.move
+  let p = "attempt-identity-a-n1\nattempt-identity-a-n2\nother"
+  let noop = match move_plan(row: row, parent_listing: "other\nx", member_listing: "") { MoveNoop => true, MoveApply { entries: _ } => false, MoveRefused { collision: _ } => false }
+  let apply = match move_plan(row: row, parent_listing: p, member_listing: "b-n1.1") { MoveNoop => false, MoveApply { entries } => length(xs: entries) == 2, MoveRefused { collision: _ } => false }
+  let refused = match move_plan(row: row, parent_listing: p, member_listing: "a-n2.2") { MoveNoop => false, MoveApply { entries: _ } => false, MoveRefused { collision } => collision == "attempt-identity-a-n2" }
+  let converges = match move_plan(row: row, parent_listing: p, member_listing: "a-n2.1") { MoveNoop => false, MoveApply { entries } => length(xs: entries) == 2 && entries.any(fn(e) { e.slot_present }), MoveRefused { collision: _ } => false }
+  noop && apply && refused && converges
+}

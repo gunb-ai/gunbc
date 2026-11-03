@@ -18,6 +18,9 @@
     unused_variables,  // 1
 )]
 
+use crate::v1_interpreter::bounded_shell_host_drain::{
+    default_shell_stderr_capture_policy, drain_stream, StreamCapturePolicy,
+};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
@@ -420,6 +423,7 @@ pub fn run_required_regen_scoped(
         tree_digest_for_basenames(&formatter, &stage0_src, &selected_basenames, "committed")?;
     let candidate_digest = tree_digest_from_map(&formatter, &emitted, &selected_basenames)?;
     v1_rt::trace_mark("regen.digest.done".to_string());
+    report_cgroup_memory_diagnostic("child.after_digest");
 
     let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
     let changed_paths = sync.drifted_paths.clone();
@@ -429,6 +433,7 @@ pub fn run_required_regen_scoped(
         .collect::<Vec<_>>();
     let (basename_to_module, _, _, _, _, _) =
         convergence_surface_roles(&workspace, &convergence_roots)?;
+    report_cgroup_memory_diagnostic("child.after_surface_roles");
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
     // This is the writer's own exact artifact population, including non-Rust products such as
@@ -512,7 +517,33 @@ pub fn run_required_regen_scoped(
         hand.declared_divergent.len(),
         hand.declared_divergent.join(", ")
     );
+    // WHY, PRINTED AT THE COMPARISON POINT. `first_generation_equal` is one bool on the line
+    // above, and the round driver forwards `failures` only when the receipt is `Refused` (see
+    // `round_failures` in the convergence loop), so on this `FirstGeneration` path a false bool
+    // reached a reader with no reason attached: heal's own job log carried
+    // `first_generation_equal=false` and nothing else, on a run whose summary was otherwise
+    // identical to a run that printed `true`. The bool cannot tell "the generated surface moved"
+    // from "a hand-maintained file could not be verified", which are different work for the
+    // reader. These are the SAME strings the caller receives, printed from the one place that
+    // builds them, so there is no second spelling of the drift.
+    if !first_generation_equal {
+        let reasons = if failures.is_empty() {
+            // Cannot happen today -- the flag is false only when one of the loops above pushed a
+            // reason. If that ever stops holding, the reader sees this instead of silence.
+            "required-regen: first_generation_equal=false with no reason recorded".to_string()
+        } else {
+            failures
+                .iter()
+                .map(|failure| {
+                    format!("required-regen: first_generation_equal=false because {failure}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        eprintln!("{reasons}");
+    }
 
+    report_cgroup_memory_diagnostic("child.end");
     Ok(RequiredRegenOutcome { receipt, failures })
 }
 
@@ -2228,6 +2259,53 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// The cgroup diagnostic reads the leaf and walks ancestors to the first level that binds, prints
+    /// a file that does not exist as `absent` and never as a number, and does not walk past the mount
+    /// root. The discriminator is the `absent` field: a default of `0` or `max` would turn it red.
+    #[test]
+    fn the_cgroup_diagnostic_prints_absent_files_and_stops_at_the_first_binding_ancestor() {
+        let root = temp_dir("cgroup-diag");
+        let slice = root.join("system.slice");
+        let unit = slice.join("unit.service");
+        fs::create_dir_all(&unit).expect("create cgroup tree");
+        fs::write(unit.join("memory.current"), "100\n").unwrap();
+        fs::write(unit.join("memory.peak"), "200\n").unwrap();
+        fs::write(unit.join("memory.max"), "300\n").unwrap();
+        fs::write(unit.join("memory.high"), "250\n").unwrap();
+        fs::write(
+            unit.join("memory.events"),
+            "low 0\nhigh 7\nmax 0\noom 0\noom_kill 0\n",
+        )
+        .unwrap();
+        fs::write(unit.join("memory.stat"), "anon 11\nfile 22\nswapcached 0\n").unwrap();
+        // memory.swap.current and memory.swap.max are deliberately NOT written on the leaf.
+        fs::write(slice.join("memory.max"), "max\n").unwrap();
+        fs::write(slice.join("memory.high"), "max\n").unwrap();
+        fs::write(slice.join("memory.swap.max"), "max\n").unwrap();
+        fs::write(root.join("memory.max"), "999\n").unwrap();
+        let line = cgroup_memory_diagnostic_line(&unit, &root, "test.phase", 42);
+        for needle in [
+            "phase=test.phase pid=42",
+            "memory.current=100 memory.peak=200",
+            "memory.swap.current=absent",
+            "memory.events=low 0 high 7 max 0 oom 0 oom_kill 0",
+            "anon=11 file=22",
+            "kernel=absent",
+            "[memory.max=300 memory.high=250 memory.swap.max=absent]",
+            "[memory.max=max memory.high=max memory.swap.max=max]",
+            "[memory.max=999 memory.high=absent memory.swap.max=absent]",
+        ] {
+            assert!(line.contains(needle), "missing `{needle}` in: {line}");
+        }
+        let above_root = cgroup_memory_diagnostic_line(&root, &root, "p", 1);
+        assert_eq!(
+            above_root.matches("memory.max=").count(),
+            1,
+            "the walk must stop at the mount root: {above_root}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
     fn temp_dir(prefix: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2236,6 +2314,136 @@ mod tests {
         let path = std::env::temp_dir().join(format!("{prefix}-{nanos}"));
         fs::create_dir_all(&path).expect("create temp");
         path
+    }
+
+    /// THE CONTROL FOR "FORWARD THE CHILD'S OUTPUT, DO NOT BUFFER AND DROP IT".
+    /// `run_built_seed_regen` used to spawn the rebuilt-seed child with `Command::output()`: its
+    /// stdout and stderr went into two `String`s that nobody read unless a refusal fired, so the
+    /// child's own per-phase `started …`/`… done in …` marks -- which come out of
+    /// `v1_rt::trace_mark`, and that writes with `eprintln!`, i.e. on STDERR -- and every cargo and
+    /// rustc diagnostic were dropped. That is how the one phase whose cost moves (5 minutes on one
+    /// runner, 53 on another) printed nothing at all.
+    ///
+    /// The fixture runs the SAME function production calls, against a child that prints a line on
+    /// stdout, prints a phase line on stderr, writes 20 more stderr lines, sleeps, then fails. Three
+    /// legs, each pinning one way the deliverable can regress:
+    /// ONE (streaming): an observer thread must see the child's phase line in the destination while
+    ///   the child is still alive. A buffer-and-flush-at-exit implementation -- `output()` restored
+    ///   -- cannot satisfy this leg, and nothing else in the tree reads that stream.
+    /// TWO (policy): production's own choice must still be the job log. Move
+    ///   `rebuilt_seed_regen_child_output_policy()` off it and this leg goes red.
+    /// THREE (refusals byte-identical): the bounded tail is the last 12 lines in the child's own
+    ///   order, both refusal texts are spelled exactly as they were before this change, no truncation
+    ///   marker appears on an un-truncated stream, and neither text may fabricate the child's line.
+    #[test]
+    #[cfg(unix)]
+    fn rebuilt_seed_child_output_reaches_the_job_log_before_the_refusal() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = temp_dir("rebuilt-seed-child-forwarding");
+        let script = temp.join("child.sh");
+        let stdout_path = temp.join("child-stdout.log");
+        let stderr_path = temp.join("child-stderr.log");
+        fs::write(
+            &script,
+            "#!/bin/sh\n\
+             echo 'child stdout line'\n\
+             echo 'started round.built_seed_regen child phase line' >&2\n\
+             n=1\n\
+             while [ $n -le 20 ]; do echo \"child stderr line $n\" >&2; n=$((n+1)); done\n\
+             sleep 6\n\
+             exit 7\n",
+        )
+        .expect("write the fixture child");
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
+            .expect("set the execute bit on the fixture child");
+
+        assert!(
+            matches!(
+                rebuilt_seed_regen_child_output_policy(),
+                RebuiltSeedChildOutput::ForwardToJobLog
+            ),
+            "production no longer hands the rebuilt-seed child's output to the job log; the phase \
+             whose cost moves would print nothing again"
+        );
+
+        // ONE: read the destination from another thread while the child is still running. The child
+        // sleeps 6s after printing, so a line seen within 3s of the call starting is strictly before
+        // the child can have exited -- which is the whole claim: the reader sees the child working.
+        let started = std::time::Instant::now();
+        let watched = stderr_path.clone();
+        let observer = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            loop {
+                if fs::read_to_string(&watched)
+                    .unwrap_or_default()
+                    .contains("started round.built_seed_regen child phase line")
+                {
+                    return Some(started.elapsed());
+                }
+                if std::time::Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        });
+        let run = spawn_rebuilt_seed_regen_child(
+            &script,
+            &[],
+            RebuiltSeedChildOutput::ForwardToFiles {
+                stdout: stdout_path.clone(),
+                stderr: stderr_path.clone(),
+            },
+            &temp,
+        )
+        .expect("spawn the fixture child");
+        let observed_at = observer
+            .join()
+            .expect("join the destination observer")
+            .expect("the child's phase line never reached the destination while it was alive");
+        assert_eq!(
+            run.status.code(),
+            Some(7),
+            "the fixture child must fail the way a refused regeneration pass fails"
+        );
+        assert!(
+            observed_at.as_millis() < 6000,
+            "the phase line only appeared after the child could have exited: {observed_at:?}"
+        );
+
+        // THREE: read before anything else can rewrite the destinations.
+        let shown = fs::read_to_string(&stdout_path).expect("the child's stdout destination");
+        assert!(
+            shown.contains("child stdout line"),
+            "the child's stdout never reached the destination the parent handed over: {shown}"
+        );
+        assert!(
+            !run.stderr_truncated,
+            "a 21-line stream must not report a truncated tail"
+        );
+        let expected_tail = (9..=20)
+            .map(|line| format!("child stderr line {line}"))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        assert_eq!(
+            run.stderr_tail, expected_tail,
+            "the tail is not the last 12 lines in the child's own order"
+        );
+        let receipt_path = temp.join("target/stage0-regen-receipt.json");
+        assert_eq!(
+            rebuilt_seed_regen_missing_receipt_refusal(&receipt_path, &run),
+            format!(
+                "rebuilt seed produced no fresh generation receipt at {}; status=exit status: 7 stderr_tail={expected_tail}",
+                receipt_path.display()
+            )
+        );
+        assert_eq!(
+            rebuilt_seed_regen_failed_refusal(&run),
+            "rebuilt seed exited exit status: 7; expected a successful regeneration pass stderr_tail=child stderr line 9 | child stderr line 10 | child stderr line 11 | child stderr line 12 | child stderr line 13 | child stderr line 14 | child stderr line 15 | child stderr line 16 | child stderr line 17 | child stderr line 18 | child stderr line 19 | child stderr line 20"
+        );
+        assert!(
+            !rebuilt_seed_regen_failed_refusal(&run).contains("phase line"),
+            "a refusal must not fabricate the child's output; the child printed it, to the log"
+        );
     }
 
     fn fixture_candidate_manifest() -> RegenCandidateManifest {
@@ -3558,7 +3766,8 @@ fn rebuild_scope_decision_with(
 
 /// The modules the host shell crate declares PLUS the shell's own root, read from the same file:
 /// the rebuild-scope fold owns a mirror through this declaration alone, so the root file is a
-/// fact this read supplies (its stem), not a spelling the fold recognises.
+/// fact this read supplies (its stem), not a spelling the fold recognises. `closure_modules`
+/// reads the declaration transitively, so a hand file a root module declares is owned too.
 fn host_shell_scope_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
     let mut modules = super::emitted_closure_compile_host::closure_modules(lib_rs)?;
     let root = lib_rs
@@ -3655,21 +3864,22 @@ fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String
 
 fn restore_regen_convergence_journal(workspace: &Path) -> Result<usize, String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
-    restore_regen_convergence_journal_for_subject(workspace, &subject)
+    restore_regen_convergence_journal_for_subject(workspace, &subject).map(|paths| paths.len())
 }
 
-/// Return every journalled path to the byte recorded before the round, and report HOW MANY were
-/// put back. The count is returned rather than re-derived by a caller so that the journal keeps
-/// exactly one reader (§3): a round that seeded the base snapshot prints what its rollback restored,
-/// and no second parser of `journal.json` is needed to say so.
+/// Return every journalled path to the byte recorded before the round, and report WHICH were put
+/// back (workspace-relative). The paths are returned rather than re-derived by a caller so that the
+/// journal keeps exactly one reader (§3): a round that seeded the base snapshot prints what its
+/// rollback restored, and the partition-rebuild decision is fed the same list — the paths whose
+/// mtime this restore moved are exactly the ones cargo will see as changed.
 fn restore_regen_convergence_journal_for_subject(
     workspace: &Path,
     subject: &RegenConvergenceCheckpointSubject,
-) -> Result<usize, String> {
+) -> Result<Vec<String>, String> {
     let root = regen_convergence_journal_path(workspace);
     let manifest_path = root.join("journal.json");
     if !manifest_path.is_file() {
-        return Ok(0);
+        return Ok(Vec::new());
     }
     let manifest: RegenConvergenceJournal = serde_json::from_slice(
         &fs::read(&manifest_path).map_err(|e| format!("read {}: {e}", manifest_path.display()))?,
@@ -3728,7 +3938,7 @@ fn restore_regen_convergence_journal_for_subject(
                 .map_err(|e| format!("prepare validated restore {}: {e}", backup.display()))?;
         }
     }
-    let mut restored = 0usize;
+    let mut restored: Vec<String> = Vec::new();
     for entry in &manifest.entries {
         let destination = workspace.join(&entry.relative_path);
         if matches!(
@@ -3751,7 +3961,7 @@ fn restore_regen_convergence_journal_for_subject(
                     destination.display()
                 )
             })?;
-            restored += 1;
+            restored.push(entry.relative_path.clone());
         } else if destination.exists() {
             fs::remove_file(&destination).map_err(|e| {
                 format!(
@@ -5386,58 +5596,346 @@ fn run_built_seed_regen(
             on_disk.display()
         ));
     }
-    let mut command = Command::new(&on_disk);
-    command.arg("--required-regen");
+    let mut argv: Vec<String> = vec!["--required-regen".to_string()];
     if affected_scope {
-        command.arg("--regen-affected-scope");
+        argv.push("--regen-affected-scope".to_string());
     }
-    command
-        .arg("--regen-candidate-dir")
-        .arg(candidate_dir_rel)
-        .arg("--regen-receipt")
-        .arg(receipt_rel)
-        .current_dir(workspace);
+    argv.push("--regen-candidate-dir".to_string());
+    argv.push(candidate_dir_rel.to_string());
+    argv.push("--regen-receipt".to_string());
+    argv.push(receipt_rel.to_string());
     for root in source_roots {
-        command.arg("--source-root").arg(root);
+        argv.push("--source-root".to_string());
+        argv.push(root.clone());
     }
-    let output = command
-        .output()
-        .map_err(|e| format!("spawn rebuilt seed {}: {e}", on_disk.display()))?;
+    // THE CHILD'S OUTPUT IS FORWARDED, NOT BUFFERED-AND-DROPPED. This used to run on
+    // `Command::output()`, which buffers stdout AND stderr in memory and hands them to nobody
+    // unless a refusal fires. The child is another `gunbc --required-regen`, and its per-phase
+    // `started …`/`… done in …` marks come out of `v1_rt::trace_mark` on STDERR -- `eprintln!`,
+    // verified at `src/v1/stage0/src/v1_rt.rs` `trace_mark`, not assumed -- along with every cargo
+    // and rustc diagnostic. Under `output()` all of it sat in two `String`s that only the refusal
+    // arms read (12 stderr lines), and everything else was dropped. That is how a 53-minute phase
+    // could sit completely silent in the job log while the child worked: the lines existed on the
+    // child's stderr and we were throwing that stream away. Both ends are now piped and forwarded
+    // to OUR stderr and stdout AS THEY ARRIVE, through one `drain_stream` call each from
+    // `gunbc.bounded_shell_host_drain` -- the crate's single authority for capture semantics -- so
+    // nothing is buffered on our side, no scratch file is left behind, and the bounded tail the
+    // refusal arms need comes from the same authority's ring rather than a second implementation.
+    let run = spawn_rebuilt_seed_regen_child(
+        &on_disk,
+        &argv,
+        rebuilt_seed_regen_child_output_policy(),
+        workspace,
+    )?;
     // Drift makes --required-regen exit one after it has written the candidate and receipt. The
     // receipt, not the process code, distinguishes ordinary drift from a production refusal.
     if !receipt_path.is_file() {
-        return Err(format!(
-            "rebuilt seed produced no fresh generation receipt at {}; status={} stderr_tail={}",
-            receipt_path.display(),
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-                .lines()
-                .rev()
-                .take(12)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect::<Vec<_>>()
-                .join(" | ")
+        return Err(rebuilt_seed_regen_missing_receipt_refusal(
+            &receipt_path,
+            &run,
         ));
     }
     let receipt = read_first_generation_receipt(&receipt_path);
+    report_cgroup_memory_diagnostic("parent.readback");
     match receipt {
         Ok(value) => Ok(value),
         Err(reason) => Err(format!(
-            "{reason}; rebuilt seed status={} stderr_tail={}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-                .lines()
-                .rev()
-                .take(12)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect::<Vec<_>>()
-                .join(" | ")
+            "{reason}; {}",
+            rebuilt_seed_regen_failed_refusal(&run)
         )),
     }
+}
+/// Where the rebuilt-seed child's two output ends go.
+enum RebuiltSeedChildOutput {
+    /// Production: every byte the child writes is forwarded to OUR stdout and stderr the moment it
+    /// arrives, which is the job log. This is the deliverable -- the child's phase marks live on its
+    /// stderr (`v1_rt::trace_mark` uses `eprintln!`) and were being read by nobody.
+    ForwardToJobLog,
+    /// Test seam: the same forwarding, pointed at two files, so a fixture can assert what the
+    /// parent would have shown and WHEN it showed it. The destination is the only difference.
+    #[cfg(test)]
+    ForwardToFiles { stdout: PathBuf, stderr: PathBuf },
+}
+
+/// What the rebuilt-seed child's output is handed. Named as a function so the fixture test can
+/// assert the CHOICE and not only that the forwarding path works: the two ways this deliverable
+/// regresses are (a) the policy moved off the job log, and (b) the forwarding dropped back to a
+/// buffer nobody reads. One leg of the test goes red for each.
+fn rebuilt_seed_regen_child_output_policy() -> RebuiltSeedChildOutput {
+    RebuiltSeedChildOutput::ForwardToJobLog
+}
+
+/// Read from `source`, write to `sink`, hand the bytes on untouched. A sink that cannot be written
+/// (a log pipe that closed) must not fail the regeneration pass, so write errors are dropped: the
+/// caller is paid to regenerate the seed, not to guarantee a log.
+struct TeeReader<R: std::io::Read> {
+    source: R,
+    sink: Box<dyn std::io::Write + Send>,
+}
+
+impl<R: std::io::Read> std::io::Read for TeeReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.source.read(buf)?;
+        if read > 0 {
+            let _ = self.sink.write_all(&buf[..read]);
+            let _ = self.sink.flush();
+        }
+        Ok(read)
+    }
+}
+
+/// What one rebuilt-seed regeneration pass left behind: the child's exit status, and the bounded
+/// stderr evidence its refusals quote.
+struct RebuiltSeedChildRun {
+    status: std::process::ExitStatus,
+    stderr_tail: String,
+    stderr_truncated: bool,
+}
+
+/// Spawn the rebuilt-seed regeneration child, forward both of its output ends as they arrive, and
+/// wait for it. One function owns both ends, so the fixture test exercises the production call
+/// rather than a copy of it, and the capture semantics come from `bounded_shell_host_drain` -- the
+/// crate's single authority -- rather than a second drain written here.
+fn spawn_rebuilt_seed_regen_child(
+    program: &Path,
+    argv: &[String],
+    output_policy: RebuiltSeedChildOutput,
+    working_dir: &Path,
+) -> Result<RebuiltSeedChildRun, String> {
+    let (stdout_sink, stderr_sink): (
+        Box<dyn std::io::Write + Send>,
+        Box<dyn std::io::Write + Send>,
+    ) = match output_policy {
+        RebuiltSeedChildOutput::ForwardToJobLog => {
+            (Box::new(std::io::stdout()), Box::new(std::io::stderr()))
+        }
+        #[cfg(test)]
+        RebuiltSeedChildOutput::ForwardToFiles { stdout, stderr } => (
+            Box::new(
+                fs::File::create(&stdout)
+                    .map_err(|error| format!("create {}: {error}", stdout.display()))?,
+            ),
+            Box::new(
+                fs::File::create(&stderr)
+                    .map_err(|error| format!("create {}: {error}", stderr.display()))?,
+            ),
+        ),
+    };
+    let mut command = Command::new(program);
+    command
+        .args(argv)
+        .current_dir(working_dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("spawn rebuilt seed {}: {error}", program.display()))?;
+    let stdout_pipe = child.stdout.take();
+    let stderr_pipe = child.stderr.take();
+    // Drain on our side while the child runs: a pipe nobody reads would eventually block it, and
+    // reading here is also what makes the forwarding live rather than post-mortem.
+    let stdout_handle = stdout_pipe.map(|pipe| {
+        std::thread::spawn(move || {
+            drain_stream(
+                TeeReader {
+                    source: pipe,
+                    sink: stdout_sink,
+                },
+                StreamCapturePolicy::Discarded,
+            )
+        })
+    });
+    let stderr_handle = stderr_pipe.map(|pipe| {
+        std::thread::spawn(move || {
+            drain_stream(
+                TeeReader {
+                    source: pipe,
+                    sink: stderr_sink,
+                },
+                default_shell_stderr_capture_policy(),
+            )
+        })
+    });
+    let status = child
+        .wait()
+        .map_err(|error| format!("wait for rebuilt seed {}: {error}", program.display()))?;
+    if let Some(handle) = stdout_handle {
+        handle
+            .join()
+            .map_err(|_| "the rebuilt-seed child's stdout drain panicked".to_string())?
+            .map_err(|error| format!("drain the rebuilt-seed child's stdout: {error}"))?;
+    }
+    let observation = stderr_handle
+        .map(|handle| {
+            handle
+                .join()
+                .map_err(|_| "the rebuilt-seed child's stderr drain panicked".to_string())?
+                .map_err(|error| format!("drain the rebuilt-seed child's stderr: {error}"))
+        })
+        .transpose()?
+        .ok_or("the rebuilt-seed child's stderr pipe is missing")?;
+    Ok(RebuiltSeedChildRun {
+        status,
+        stderr_tail: rebuilt_seed_regen_stderr_tail(&observation),
+        stderr_truncated: observation.truncated,
+    })
+}
+
+/// The bounded tail both refusal arms render, kept as ONE construction so a refusal reads the same
+/// whichever arm fired: the LAST 12 lines the authority's ring retained, in the child's own order.
+/// The double reverse is the spelling the text has always carried and the fixture test pins it. The
+/// ring keeps `DEFAULT_SHELL_STDERR_TAIL_BYTES`; if the tail was cut, `stderr_truncated` says so in
+/// the refusal instead of the reader finding out by counting lines.
+fn rebuilt_seed_regen_stderr_tail(
+    observation: &crate::v1_interpreter::bounded_shell_host_drain::StreamCaptureObservation,
+) -> String {
+    observation
+        .retained_utf8_lossy_trimmed()
+        .lines()
+        .rev()
+        .take(12)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+/// The truncation marker, and only when the authority's ring actually overflowed -- so the ordinary
+/// refusal text stays byte-for-byte what it has always been.
+fn rebuilt_seed_regen_truncation_note(truncated: bool) -> &'static str {
+    if truncated {
+        " stderr_truncated=true"
+    } else {
+        ""
+    }
+}
+
+fn rebuilt_seed_regen_missing_receipt_refusal(
+    receipt_path: &Path,
+    run: &RebuiltSeedChildRun,
+) -> String {
+    format!(
+        "rebuilt seed produced no fresh generation receipt at {}; status={} stderr_tail={}{}",
+        receipt_path.display(),
+        run.status,
+        run.stderr_tail,
+        rebuilt_seed_regen_truncation_note(run.stderr_truncated)
+    )
+}
+
+fn rebuilt_seed_regen_failed_refusal(run: &RebuiltSeedChildRun) -> String {
+    format!(
+        "rebuilt seed exited {}; expected a successful regeneration pass stderr_tail={}{}",
+        run.status,
+        run.stderr_tail,
+        rebuilt_seed_regen_truncation_note(run.stderr_truncated)
+    )
+}
+
+/// `memory.stat` keys the diagnostic prints: the anonymous/file split and the swap-relevant lines.
+/// A key the kernel does not report is printed `absent`, never defaulted.
+const CGROUP_DIAGNOSTIC_STAT_KEYS: &[&str] = &[
+    "anon",
+    "file",
+    "kernel",
+    "slab",
+    "shmem",
+    "file_mapped",
+    "file_dirty",
+    "file_writeback",
+    "swapcached",
+    "inactive_anon",
+    "active_anon",
+    "inactive_file",
+    "active_file",
+    "unevictable",
+];
+
+fn cgroup_stat_field(stat_body: &str, key: &str) -> String {
+    stat_body
+        .lines()
+        .find_map(|line| {
+            let mut parts = line.split_whitespace();
+            match (parts.next(), parts.next()) {
+                (Some(name), Some(value)) if name == key => Some(value.to_string()),
+                _ => None,
+            }
+        })
+        .unwrap_or_else(|| "absent".to_string())
+}
+
+/// The effective limits of one cgroup directory, as one bracketed group.
+fn cgroup_limits_group(dir: &Path) -> String {
+    format!(
+        "{}[memory.max={} memory.high={} memory.swap.max={}]",
+        dir.display(),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.max"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.high"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.swap.max"),
+    )
+}
+
+/// The diagnostic line for the cgroup at `dir`, under `mount_root`. Pure over the filesystem it is
+/// pointed at, so the fixture test drives it over a temporary tree. Limits are printed for `dir`
+/// and then for each ancestor up to and including the first one whose `memory.max` or `memory.high`
+/// is not `max` (the first level that can bind or throttle), or the mount root.
+fn cgroup_memory_diagnostic_line(dir: &Path, mount_root: &Path, phase: &str, pid: u32) -> String {
+    let stat_body = crate::memory_governor::cgroup_file_or_absent(dir, "memory.stat");
+    let stat = CGROUP_DIAGNOSTIC_STAT_KEYS
+        .iter()
+        .map(|key| format!("{key}={}", cgroup_stat_field(&stat_body, key)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let events = crate::memory_governor::cgroup_file_or_absent(dir, "memory.events")
+        .lines()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut limits = vec![cgroup_limits_group(dir)];
+    let mut level = dir.parent();
+    while let Some(ancestor) = level {
+        if !ancestor.starts_with(mount_root) {
+            break;
+        }
+        limits.push(cgroup_limits_group(ancestor));
+        let binds = |file: &str| {
+            let value = crate::memory_governor::cgroup_file_or_absent(ancestor, file);
+            value != "max" && value != "absent"
+        };
+        if binds("memory.max") || binds("memory.high") || ancestor == mount_root {
+            break;
+        }
+        level = ancestor.parent();
+    }
+    format!(
+        "required-regen: cgroup-diag phase={phase} pid={pid} cgroup={} memory.current={} memory.peak={} memory.swap.current={} memory.events={events} memory.stat[{stat}] limits={}",
+        dir.display(),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.current"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.peak"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.swap.current"),
+        limits.join(" > "),
+    )
+}
+
+/// OBSERVATION ONLY: prints the cgroup this process runs in, at a named point of the round. The
+/// parent and the rebuilt-seed child call it with their own `phase` labels; a child spawned without
+/// a cgroup move shares its parent's cgroup, so the two share a `cgroup=` value and the `pid=`
+/// field says which process read it. Nothing reads the line back, no cap moves, nothing refuses.
+fn report_cgroup_memory_diagnostic(phase: &str) {
+    let line = match crate::memory_governor::leaf_cgroup_dir() {
+        Some(dir) => cgroup_memory_diagnostic_line(
+            &dir,
+            Path::new("/sys/fs/cgroup"),
+            phase,
+            std::process::id(),
+        ),
+        None => format!(
+            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent",
+            std::process::id()
+        ),
+    };
+    eprintln!("{line}");
 }
 
 fn convergence_surface_roles(
@@ -5957,6 +6455,7 @@ fn install_convergence_stage(
     stage0_src: &Path,
     candidate_src: &Path,
     basenames: &[String],
+    base_rewritten_mirrors: &[String],
     admitted_manifest: &HashMap<String, RegenCandidateManifestSurface>,
     basename_to_module: &HashMap<String, String>,
     ordinal: usize,
@@ -5973,7 +6472,15 @@ fn install_convergence_stage(
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
     let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
-    let actuation = partition_rebuild_actuation(source_roots, basenames, &declared_shell_modules)?;
+    let changed_mirrors: Vec<String> = basenames
+        .iter()
+        .chain(base_rewritten_mirrors)
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let actuation =
+        partition_rebuild_actuation(source_roots, &changed_mirrors, &declared_shell_modules)?;
     let partition_move = if actuation.partition_generation_move {
         Some(admit_derived_partition_move(source_roots, workspace)?)
     } else {
@@ -6826,9 +7333,10 @@ pub fn run_regen_round_cost(
     // not survive the round. The child reaches here with the parent's journal still on disk (the
     // child restores nothing at startup, and only the end of a round deletes it), so one call
     // unwinds what the parent seeded.
-    if let Some(subject) = round_subject.as_ref() {
+    let base_rewritten_mirrors: Vec<String> = if let Some(subject) = round_subject.as_ref() {
         v1_rt::trace_mark("round.base_snapshot_revert.begin".to_string());
-        let reverted = restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        let rewritten = restore_regen_convergence_journal_for_subject(&workspace, subject)?;
+        let reverted = rewritten.len();
         v1_rt::trace_mark("round.base_snapshot_revert.done".to_string());
         // THE RECEIPT NAMES WHAT IT PUT BACK, so a reader can tell a round that returned the head's
         // bytes from one that quietly kept compiling base's into the candidate. The count is the
@@ -6838,7 +7346,20 @@ pub fn run_regen_round_cost(
             "regen-round-cost: round 1 ended the base snapshot; {reverted} journalled paths were \
              rewritten to the head's own bytes (the rest already held them)"
         );
-    }
+        // THE CHANGED SET THE REBUILD DECISION READS INCLUDES THESE. Round 1 compiled base's
+        // bytes; this restore just moved the head's differing mirrors under the built artifacts, so
+        // cargo sees exactly these paths as changed in round 2. They are taken from the restore's own
+        // return, never inferred from mtimes (RFM
+        // `heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths`).
+        let src_prefix = format!("{STAGE0_CRATE_REL}/src/");
+        rewritten
+            .iter()
+            .filter(|path| path.starts_with(&src_prefix) && path.ends_with(".rs"))
+            .map(|path| emit_path_basename(path).to_string())
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     // Pre-handoff cost joins this image's no-op rebuild: summed once, here, before the
     // ledger rows and the crate count reach the receipt.
@@ -7076,6 +7597,7 @@ pub fn run_regen_round_cost(
             &stage0_src,
             &candidate_src,
             &install_set,
+            &base_rewritten_mirrors,
             &admitted_manifest,
             &basename_to_module,
             generation_ordinal + 1,
@@ -7105,6 +7627,7 @@ pub fn run_regen_round_cost(
         stages.push(stage);
         generation_ordinal += 1;
         v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
+        report_cgroup_memory_diagnostic("parent.begin");
         let next = run_built_seed_regen(
             &workspace,
             candidate_dir_rel,
@@ -7113,6 +7636,7 @@ pub fn run_regen_round_cost(
             affected_scope,
             &current_seed_digest,
         );
+        report_cgroup_memory_diagnostic("parent.end");
         v1_rt::trace_mark("round.built_seed_regen.done".to_string());
         match next {
             Ok(next) => {
@@ -7602,9 +8126,25 @@ mod heal_round_one_base_mirror_tests {
         }
 
         // What a SUCCEEDED round now does before anything observes or publishes the worktree.
-        let put_back =
+        let put_back_paths =
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
                 .expect("the round ends its snapshot");
+        let put_back = put_back_paths.len();
+        // THE DECISION'S CHANGED SET IS THESE PATHS, NOT AN MTIME SCAN (RFM
+        // `heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths`): the restore
+        // names each file it moved under the built artifacts, workspace-relative, so the rebuild
+        // scope can list them. A count alone cannot feed it, and a path the restore skipped (equal
+        // bytes) must not appear.
+        assert!(
+            put_back_paths
+                .iter()
+                .any(|path| path.starts_with(STAGE0_CRATE_REL) && path.ends_with("/std_logic.rs")),
+            "the restore did not name the hand-maintained file it moved: {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths.iter().all(|path| !path.ends_with("/build.rs")),
+            "the restore named a path it never moved (its bytes were identical): {put_back_paths:?}"
+        );
         // The journal covers exactly what the seed MOVED. A path whose base bytes already equal the
         // head's is never written (a rewrite would bump an mtime cargo misreads as a change — the
         // #14876 / #15310 specimen), so it is never journalled and has nothing to put back; a
@@ -7751,7 +8291,8 @@ mod heal_round_one_base_mirror_tests {
         );
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &subject)
-                .expect("the round's teardown restores what the parent seeded"),
+                .expect("the round's teardown restores what the parent seeded")
+                .len(),
             restored.paths_rewritten,
             "the teardown did not return every path the parent seed moved ({}), so the child touched \
              the tree or the journal",
@@ -8268,7 +8809,8 @@ mod heal_round_one_base_mirror_tests {
         // The restore of a journal that moved nothing must also touch nothing.
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
-                .expect("the round's teardown runs"),
+                .expect("the round's teardown runs")
+                .len(),
             0,
             "the teardown wrote back paths the seed never moved"
         );
@@ -10072,5 +10614,54 @@ mod boundary_population_tests {
             boundary_drift_from_producer_report(br#"{"schema":"other","divergent":[]}"#),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod host_shell_scope_modules_tests {
+    use super::host_shell_scope_modules;
+
+    // DISCRIMINATING: `compile_clean` is declared by `cli_run`, not by lib.rs, and `drain` is
+    // reached by a `#[path]` attribute. Reading lib.rs alone left both unowned, so a hand edit to
+    // either refused `MirrorHasNoOwningPackage`. `stray.rs` sits in the same directory but is
+    // declared nowhere, so it must stay unowned (the refusal for a path with no owning package).
+    #[test]
+    fn nested_and_path_attributed_modules_are_owned_and_undeclared_files_are_not() {
+        let dir = std::env::temp_dir().join(format!("host_shell_scope_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("cli_run")).unwrap();
+        std::fs::write(dir.join("lib.rs"), "mod cli_run;\nmod plain;\n").unwrap();
+        std::fs::write(dir.join("plain.rs"), "").unwrap();
+        std::fs::write(
+            dir.join("cli_run.rs"),
+            "mod compile_clean;\n#[path = \"drain_file.rs\"]\nmod drain;\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("cli_run/compile_clean.rs"), "").unwrap();
+        std::fs::write(
+            dir.join("drain_file.rs"),
+            "mod deeper;\n#[path = \"sibling.rs\"]\nmod via_sibling;\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("deeper.rs"), "").unwrap();
+        std::fs::write(dir.join("sibling.rs"), "").unwrap();
+        std::fs::write(dir.join("stray.rs"), "").unwrap();
+        let modules = host_shell_scope_modules(&dir.join("lib.rs")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        for owned in [
+            "cli_run",
+            "plain",
+            "compile_clean",
+            "drain_file",
+            "deeper",
+            "sibling",
+            "lib",
+        ] {
+            assert!(
+                modules.iter().any(|m| m == owned),
+                "{owned} unowned: {modules:?}"
+            );
+        }
+        assert!(!modules.iter().any(|m| m == "stray"), "{modules:?}");
     }
 }

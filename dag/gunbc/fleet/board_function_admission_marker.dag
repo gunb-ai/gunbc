@@ -1,0 +1,12 @@
+module gunbc.fleet.board_function_admission_marker
+
+import std.types { NonEmptyStr }
+
+// THE ADMISSION LATCH: present exactly when this boot's latest board-function converge on the host
+// succeeded. gunbc.fleet.board_function_converge writes it after a converged run and removes it after a
+// refusing one; gunbc.live_deploy.board_function_converge_unit makes each gated workload's start assert it.
+// It is a separate fact from the converge unit's active state, which a failed reload does not change
+// (systemd 255 returns a RemainAfterExit oneshot to active whatever its ExecReload exits with), so the gate
+// reads this latch rather than that state. It lives in /run, which is empty at every boot, so a boot admits
+// no gated workload until that boot's converge has succeeded.
+data board_function_converge_admission_marker: NonEmptyStr = "/run/gunbc-board-function-converged"

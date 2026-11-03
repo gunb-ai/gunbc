@@ -1,6 +1,6 @@
 module gunbc.realization_census_rows_gen
 
-import std.types { Bool, Int, List, Map, NonEmptyStr, String }
+import std.types { Bool, Int, List, Map, NonEmptyStr, String, CommitSha }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { FreeSemigroup, skip, take_prefix, map_insert, map_contains_key, empty_map }
@@ -110,6 +110,7 @@ type CensusRefusalCause
   | CauseReferenceEmpty
   | CauseOutsideVocabulary { vocabulary: CensusVocabulary }
   | CauseEmptyCitation
+  | CauseRevisionEmpty
   | CauseUnknownModule
   | CauseUnknownClass
   | CauseCountDisagrees { projected: Int }
@@ -200,6 +201,7 @@ fn census_refusal_cause_text(c: CensusRefusalCause) -> String {
     CauseReferenceEmpty => "a finding names no module"
     CauseOutsideVocabulary { vocabulary: v } => census_vocabulary_text(v: v)
     CauseEmptyCitation => "an evidence citation is empty"
+    CauseRevisionEmpty => "the revision the census was read at is empty, so a declaration citation could not carry it"
     CauseUnknownModule => "a finding names a module the modules tab does not have"
     CauseUnknownClass => "a finding names a class the classes tab does not have"
     CauseCountDisagrees { projected: n } => concat("the findings naming this class project ", to_string(n))
@@ -384,23 +386,23 @@ fn without_keyword(t: String) -> String {
 
 // A row module named by a path (a Rust seed file) is not a .dag module, so nothing in it is a
 // declaration reference; its citations stay text.
-fn admit_evidence_citation(module: NonEmptyStr, t: String) -> EvidenceCitation? {
+fn admit_evidence_citation(module: NonEmptyStr, revision: CommitSha, t: String) -> EvidenceCitation? {
   let entry = trim(s: t)
   let name = without_keyword(t: entry)
   if string_length(s: entry) == 0 {
     none
   } else if !string_contains(s: module as String, pattern: "/") && is_declaration_name(t: name) {
-    Present { value: EvidenceDeclaration { ref: decl_ref(module_path: module as String, decl_name: name) } }
+    Present { value: EvidenceDeclaration { ref: decl_ref(module_path: module as String, decl_name: name), revision: revision } }
   } else {
     Present { value: EvidenceUncited { text: entry as NonEmptyStr } }
   }
 }
 
-fn admit_evidence_citations(module: NonEmptyStr, t: String) -> List<EvidenceCitation>? {
+fn admit_evidence_citations(module: NonEmptyStr, revision: CommitSha, t: String) -> List<EvidenceCitation>? {
   if string_length(s: t) == 0 {
     Present { value: [] }
   } else {
-    let admitted = split(s: t, delimiter: ";") |> map(part => admit_evidence_citation(module: module, t: part))
+    let admitted = split(s: t, delimiter: ";") |> map(part => admit_evidence_citation(module: module, revision: revision, t: part))
     if count(filter(admitted, a => a == none)) > 0 {
       none
     } else {
@@ -460,7 +462,7 @@ fn admit_dimension_reading(table: CensusTable, row: CensusTableRow, dimension: S
   }
 }
 
-fn admit_module_row(table: CensusTable, row: CensusTableRow) -> CensusRowAdmission<ModuleCensusReading> {
+fn admit_module_row(table: CensusTable, row: CensusTableRow, revision: CommitSha) -> CensusRowAdmission<ModuleCensusReading> {
   match admit_nonempty(t: census_cell(table: table, row: row, column: "module")) {
     Absent => vocab_refusal(table: table, row: row, column: "module", cause: CauseIdentityEmpty)
     Present { value: module } =>
@@ -491,7 +493,7 @@ fn admit_module_row(table: CensusTable, row: CensusTableRow) -> CensusRowAdmissi
                                       match admit_census_phase(t: census_cell(table: table, row: row, column: "phase")) {
                                        Absent => vocab_refusal(table: table, row: row, column: "phase", cause: CauseOutsideVocabulary { vocabulary: VocabPhase })
                                        Present { value: phase } =>
-                                      match admit_evidence_citations(module: module, t: census_cell(table: table, row: row, column: "evidence_symbols")) {
+                                      match admit_evidence_citations(module: module, revision: revision, t: census_cell(table: table, row: row, column: "evidence_symbols")) {
                                        Absent => vocab_refusal(table: table, row: row, column: "evidence_symbols", cause: CauseEmptyCitation)
                                        Present { value: evidence } =>
                                       CensusRowAdmitted {
@@ -721,6 +723,7 @@ fn admit_realization_census_tables(
   modules_table: CensusTable,
   findings_table: CensusTable,
   classes_table: CensusTable,
+  revision: CommitSha,
 ) -> RealizationCensusAdmission {
   let structural = append(append(
     append(census_header_refusals(table: modules_table, expected: realization_census_module_columns), census_width_refusals(table: modules_table)),
@@ -729,7 +732,7 @@ fn admit_realization_census_tables(
   if count(structural) > 0 {
     RealizationCensusRefused { refusals: structural }
   } else {
-    let module_admissions = modules_table.rows |> map(r => admit_module_row(table: modules_table, row: r))
+    let module_admissions = modules_table.rows |> map(r => admit_module_row(table: modules_table, row: r, revision: revision))
     let finding_admissions = findings_table.rows |> map(r => admit_finding_row(table: findings_table, row: r))
     let class_admissions = classes_table.rows |> map(r => admit_class_row(table: classes_table, row: r))
     let modules = census_readings_of(admissions: module_admissions)
@@ -751,7 +754,15 @@ fn admit_realization_census_tables(
   }
 }
 
-fn admit_realization_census_text(modules_tsv: String, findings_tsv: String, classes_tsv: String) -> RealizationCensusAdmission {
+fn admit_realization_census_text(modules_tsv: String, findings_tsv: String, classes_tsv: String, revision: String) -> RealizationCensusAdmission {
+  if string_length(s: trim(s: revision)) == 0 {
+    RealizationCensusRefused { refusals: [census_refusal(table: "revision", line: 0, column: "revision", value: revision, cause: CauseRevisionEmpty)] }
+  } else {
+    admit_realization_census_read(modules_tsv: modules_tsv, findings_tsv: findings_tsv, classes_tsv: classes_tsv, revision: trim(s: revision) as CommitSha)
+  }
+}
+
+fn admit_realization_census_read(modules_tsv: String, findings_tsv: String, classes_tsv: String, revision: CommitSha) -> RealizationCensusAdmission {
   match census_table_of_text(name: "modules.tsv", text: modules_tsv) {
     CensusTableRefused { refusal: r } => RealizationCensusRefused { refusals: [r] }
     CensusTableRead { table: m } =>
@@ -760,7 +771,7 @@ fn admit_realization_census_text(modules_tsv: String, findings_tsv: String, clas
         CensusTableRead { table: f } =>
           match census_table_of_text(name: "classes.tsv", text: classes_tsv) {
             CensusTableRefused { refusal: r } => RealizationCensusRefused { refusals: [r] }
-            CensusTableRead { table: c } => admit_realization_census_tables(modules_table: m, findings_table: f, classes_table: c)
+            CensusTableRead { table: c } => admit_realization_census_tables(modules_table: m, findings_table: f, classes_table: c, revision: revision)
           }
       }
   }
@@ -826,8 +837,8 @@ fn census_phase_constructor(p: CensusPhase) -> String {
 
 fn evidence_citation_constructor(c: EvidenceCitation) -> String {
   match c {
-    EvidenceDeclaration { ref: r } =>
-      concat("EvidenceDeclaration { ref: decl_ref(module_path: ", dag_string_literal(t: r.module_path as String), ", decl_name: ", dag_string_literal(t: r.decl_name as String), ") }")
+    EvidenceDeclaration { ref: r, revision: v } =>
+      concat("EvidenceDeclaration { ref: decl_ref(module_path: ", dag_string_literal(t: r.module_path as String), ", decl_name: ", dag_string_literal(t: r.decl_name as String), "), revision: ", dag_string_literal(t: v as String), " as CommitSha }")
     EvidenceUncited { text: t } => concat("EvidenceUncited { text: ", dag_nonempty_literal(t: t), " }")
   }
 }
@@ -899,7 +910,7 @@ fn class_reading_text(c: ClassCensusReading) -> String {
   ], "")
 }
 
-data realization_census_rows_imports: String = "import std.types { String, NonEmptyStr, List }
+data realization_census_rows_imports: String = "import std.types { String, NonEmptyStr, List, CommitSha }
 import std.optional { Present, Absent }
 import std.algebra { FreeSemigroup }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, StructurallyGuaranteed, StructurallyImpossible }
@@ -969,7 +980,7 @@ fn realization_census_rows_generate(receipt_dir: String, pin: String, census_com
           match read_receipt_file(dir: receipt_dir, name: "classes.tsv") {
             FilesystemReadRefused { error: e } => RealizationCensusGenerationRefused { refusals: [read_refusal(name: "classes.tsv", error: e)] }
             FilesystemReadSucceeded { content: classes_tsv } =>
-              match admit_realization_census_text(modules_tsv: modules_tsv, findings_tsv: findings_tsv, classes_tsv: classes_tsv) {
+              match admit_realization_census_text(modules_tsv: modules_tsv, findings_tsv: findings_tsv, classes_tsv: classes_tsv, revision: pin) {
                 RealizationCensusRefused { refusals: rs } => RealizationCensusGenerationRefused { refusals: rs }
                 RealizationCensusAdmitted { modules: m, findings: f, classes: c } => {
                   let path = "dag/gunbc/realization_census_rows.dag"

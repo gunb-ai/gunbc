@@ -25,7 +25,6 @@ import std.occurrence_identity {
 }
 import v2.compiler.parse { ParseArtifact }
 import v2.compiler.body_lowering_fold {
-  body_lower_deep_unwrap_optional,
   body_lower_field_decl_block_binder_atoms,
   body_lower_generic_params_binder_atoms,
   body_lower_io_block_binder_atoms,
@@ -43,7 +42,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.integer { Int }
 
-import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.compilers.sugar { sugar_deep_unwrap_optional, sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr, parse_production_emitted_identity_optional }
 import v2.std.node {
@@ -208,7 +207,7 @@ fn read_kw_then_ident(captured: Node) -> NameRead {
 // are read as references by that production's own row. So that alternative lawfully has no name here,
 // as a positional argument has none below.
 fn read_field_init_label(captured: Node) -> NameRead {
-  let item = body_lower_deep_unwrap_optional(node: captured)
+  let item = sugar_deep_unwrap_optional(node: captured)
   match parse_production_emitted_identity_optional(node: item) {
     Present { value: id } =>
       if id == ^dag_surface_field_init_string_key {
@@ -242,7 +241,7 @@ fn read_named_arg_label(captured: Node) -> NameRead {
 // always `(name, optional(: pattern))` and the name is the pair's left; a capture that is no pair
 // is not a field pattern this reader knows, and refuses.
 fn read_field_pattern_name(captured: Node) -> NameRead {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+  match sugar_sequence_pair_optional(node: sugar_deep_unwrap_optional(node: captured)) {
     Absent => NameReadRefused
     Present { value: pair } => one_name(atom: body_lower_param_binding_atom_optional(node: pair.left))
   }

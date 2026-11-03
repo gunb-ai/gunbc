@@ -29,6 +29,7 @@ import std.human_intervention { HumanInterventionIdentity }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, FullyQualified, host_name_eq }
 import extdeps.external_authority { FactCitation }
+import gunbc.cloudflare.zone_authorization { zone_routes_unrealized }
 import extdeps.cloudflare.zone {
   CloudflareAccountId, CloudflareZone, ZoneHold,
   R2CustomDomainZoneStanding, r2_custom_domain_zone_admissible,
@@ -412,7 +413,7 @@ fn fleet_gunb_ai_zone_standing() -> FleetGunbAiZoneStanding {
     apex: gunb_ai_apex,
     nameservers: gunb_ai_delegated_nameservers,
     soa: gunb_ai_served_soa,
-    gap: credential_route_gap(),
+    gap: zone_route_gap(),
     observed_at: zone_identity_observed_at,
     basis: r2_custom_domain_requires_zone_citation,
   }
@@ -551,24 +552,19 @@ fn boot_origin_verdict_for_zone(zone: CloudflareZone, observed_at: Rfc3339Timest
 // be built without a remedy, so the runtime length check this declaration used to carry is deleted rather
 // than asserted (review 87595, §4b: rung inflation is worse than sitting low — this is rung 4, honestly).
 type BootOriginBindEffectGap =
-    CloudflareCredentialRouteMissing { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
+    SelectedRouteUnrealized { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
   | CloudflareRecordListUnread { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
   | BindDispatchUnmodeled { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
 
-// The credential-route gap as the ZONE STANDING carries it. Its remedies name both halves of what is
-// missing — the token and the fleet's accessor into Cloudflare — because minting a token without a place
-// to route it would only move the gap.
-fn credential_route_gap() -> BootOriginBindEffectGap {
-  CloudflareCredentialRouteMissing {
-    missing: non_empty_append(
-      left: non_empty_singleton(
-        item: "a Cloudflare API token holding the zone-read and R2 custom-domain scopes, minted and held through the gunbc.auth authorization pattern (WIF federation, or the ntfy approval route, or an explicit refusal) — never pasted by the operator"
-      ),
-      right: non_empty_singleton(
-        item: "the fleet's Cloudflare accessor: the roster and the converge workflow carry bucket, object and token-mint modes and NO zone-read or custom-domain mode"
-      )
-    ),
-    basis: r2_custom_domain_requires_zone_citation,
+// The route gap as the ZONE STANDING carries it, DERIVED from gunbc.cloudflare.zone_authorization: the zone
+// effects' authorization-pattern selection, then the realization standing of the selected route (does the
+// fleet accessor roster carry a cell on the zone token). While that route is unrealized the gap is
+// SelectedRouteUnrealized, naming the token, its container and the accessor cell; once it is realized, what
+// remains is that nobody has read the zone's record list, so the gap is CloudflareRecordListUnread.
+fn zone_route_gap() -> BootOriginBindEffectGap {
+  match zone_routes_unrealized() {
+    Present { value: missing } => SelectedRouteUnrealized { missing: missing, basis: r2_custom_domain_requires_zone_citation }
+    Absent => record_list_gap()
   }
 }
 
@@ -577,7 +573,7 @@ fn credential_route_gap() -> BootOriginBindEffectGap {
 fn record_list_gap() -> BootOriginBindEffectGap {
   CloudflareRecordListUnread {
     missing: non_empty_singleton(
-      item: "a Cloudflare API token scoped to read the zone's DNS records (GET /client/v4/dns/records), obtained through the gunbc.auth authorization pattern"
+      item: "the GET /client/v4/dns/records of the zone and its readback, performed under the already-realized federated route (the accessor cell on the zone token has landed); no run has performed or recorded it"
     ),
     basis: dns_record_api_citation,
   }
@@ -600,7 +596,7 @@ fn bind_dispatch_gap() -> BootOriginBindEffectGap {
 // whoever reports the gap.
 fn boot_origin_bind_gap_names(gap: BootOriginBindEffectGap) -> List<NonEmptyStr> {
   match gap {
-    CloudflareCredentialRouteMissing { missing } => non_empty_to_list(xs: missing)
+    SelectedRouteUnrealized { missing } => non_empty_to_list(xs: missing)
     CloudflareRecordListUnread { missing } => non_empty_to_list(xs: missing)
     BindDispatchUnmodeled { missing } => non_empty_to_list(xs: missing)
   }

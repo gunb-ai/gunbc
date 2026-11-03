@@ -8,6 +8,9 @@ import extdeps.network.ipv4 { ipv4_address }
 import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow,
   ScannedFirstContact,
+  ProvisionedInstall,
+  host_key_provenance_label,
+  fleet_host_key_public_halves_are_unique,
   fleet_host_key_enrollments,
   enrolled_fingerprint_for,
   known_hosts_line,
@@ -102,4 +105,64 @@ test fn witness_enrolled_expectation_moves_wire_from_unenrolled_to_mismatch() ->
       ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } => e == "SHA256:enrolled"
       _ => false
     }
+}
+
+// CLAIM: ONE PUBLIC HALF, ONE ROW -- ACROSS HOSTS AND ACROSS INSTALLS (T2's catalog rule,
+// gunbc.plans.host_trust_provisioned_key). The same key material at two identities is the clone
+// case: a cloned image or a cloned disk putting one private key at two hosts, a second install
+// of ONE host re-enrolling the first install's key, and the same slot stating one half twice
+// (the verbatim paste). All three refuse, whichever provenance arms carry them. The distinct
+// case, one host's key stated at several addresses with corroborating records, and the REAL
+// registry pass, so the rule is a live invariant of the committed catalog, not a fixture-only
+// wish. Fixtures carry ProvisionedInstall provenance to pin the per-install reading: two rows
+// of one host differing only in which attempt installed them still contradict when they share
+// the public half.
+test fn witness_the_same_public_half_enrolled_twice_refuses_the_catalog() -> Bool {
+  let shared = KnownHostKeyRow {
+    host: "srv9t" as HostIdentity,
+    address: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 91)), port: 22),
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    sha256_fingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    provenance: ProvisionedInstall { install_client_mac: mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 11), install_attempt: "attempt-9t-1", authority: "fixture: console capture plus receipt" },
+  }
+  let same_key_other_host = KnownHostKeyRow {
+    host: "srv9u" as HostIdentity,
+    address: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 92)), port: 22),
+    key_type: "ssh-ed25519",
+    public_key_base64: shared.public_key_base64,
+    sha256_fingerprint: shared.sha256_fingerprint,
+    provenance: ProvisionedInstall { install_client_mac: mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 11), install_attempt: "attempt-9u-1", authority: "fixture: console capture plus receipt" },
+  }
+  let same_key_later_install = KnownHostKeyRow {
+    host: shared.host,
+    address: shared.address,
+    key_type: "ssh-ed25519",
+    public_key_base64: shared.public_key_base64,
+    sha256_fingerprint: shared.sha256_fingerprint,
+    provenance: ProvisionedInstall { install_client_mac: mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 11), install_attempt: "attempt-9t-2", authority: "fixture: console capture plus receipt" },
+  }
+  let distinct = KnownHostKeyRow {
+    host: "srv9v" as HostIdentity,
+    address: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 93)), port: 22),
+    key_type: "ssh-ed25519",
+    public_key_base64: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    sha256_fingerprint: "SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    provenance: ProvisionedInstall { install_client_mac: mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 11), install_attempt: "attempt-9v-1", authority: "fixture: console capture plus receipt" },
+  }
+  // The verbatim paste: the SAME ROW twice, the most likely copy-paste mistake, is a
+  // contradiction too -- a check that field-compares two rows waves it through.
+  fleet_host_key_public_halves_are_unique([shared, distinct])
+    && !fleet_host_key_public_halves_are_unique([distinct, distinct])
+    && !fleet_host_key_public_halves_are_unique([shared, same_key_other_host])
+    && !fleet_host_key_public_halves_are_unique([shared, same_key_later_install])
+    && !fleet_host_key_public_halves_are_unique([shared, same_key_other_host, distinct])
+    && fleet_host_key_public_halves_are_unique(fleet_host_key_enrollments)
+}
+
+// CLAIM: THE PROVISIONED ARM RENDERS ITS LABEL -- the catalog speaks of this provenance by name;
+// the label is not the scanned one and not the transcribed one.
+test fn witness_the_provisioned_arm_renders_its_label() -> Bool {
+  host_key_provenance_label(p: ProvisionedInstall { install_client_mac: mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 11), install_attempt: "attempt-x-1", authority: "fixture: record" }) == "provisioned-install"
+    && host_key_provenance_label(p: ProvisionedInstall { install_client_mac: mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 11), install_attempt: "attempt-x-1", authority: "fixture: record" }) != "scanned-first-contact"
 }

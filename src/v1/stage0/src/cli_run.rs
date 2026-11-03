@@ -9253,10 +9253,10 @@ mod closure_edge_demand_tests {
         assert!(modules.contains("frontier.child.consumer"), "{modules:?}");
     }
 
-    /// Unique off-chain declarer: UniqueBinding still accepts, so UniqueBare must emit
-    /// (dropping it is an undercount) and the real resolve path must succeed.
+    /// Unique off-chain declarer with no import: the floor refuses (DESIGN 4b "names resolve"),
+    /// and the producer emits no UniqueBare edge for a binding that has no lexical authority.
     #[test]
-    fn unique_off_chain_bare_name_compiles_and_keeps_its_uniquebare_edge() {
+    fn unique_off_chain_bare_name_is_refused_and_emits_no_edge() {
         let fixture = Fixture::new(&[
             (
                 "decl.dag",
@@ -9267,29 +9267,13 @@ mod closure_edge_demand_tests {
                 "module test.user\nfn use_it() -> Int { shared_fn() }\n",
             ),
         ]);
-        let index = fixture.index();
-        let sources =
-            load_sources_for_entry_with_pool(&index, &fixture.0.join("user.dag").to_string_lossy())
-                .expect("UniqueBinding pulls the census-unique off-chain provider");
-        let compiled = v1_compiler_compile::compile_sources(
-            Rc::new(sources.iter().cloned().collect()),
-            crate::v1_compiler_artifact::RenderTarget::Dag,
-        );
-        assert!(
-            !compiled
-                .diagnostics
-                .iter()
-                .any(|d| { is_interpreter_blocking_diagnostic(d.diagnostic.clone()) }),
-            "resolver-accepted UniqueBinding must compile: {:?}",
-            compiled.diagnostics
-        );
         let roots = vec![fixture.0.to_string_lossy().into_owned()];
         let facts = dependency_resolution_facts(&roots, &roots, &[]);
         assert!(
-            facts
+            !facts
                 .iter()
                 .any(|f| f.path.contains("user.dag") && f.import_module == "test.decl"),
-            "resolver-accepted UniqueBinding must remain a UniqueBare edge: {facts:?}"
+            "an off-chain, import-less bare name has no lexical authority and must emit no edge: {facts:?}"
         );
     }
 
@@ -9538,9 +9522,9 @@ mod closure_edge_demand_tests {
         );
     }
 
-    /// Unique-bare `secret` lives in an unacquired module. Gate one (an unrelated import)
-    /// turns the bare pull off, so fill used to supply Exact for admit_callers. After the
-    /// fill cut, constructor admission must still refuse rather than remap to a no-op.
+    /// Unique-bare `secret` lives in an unacquired module and is not imported. Since #15247
+    /// the bare name refuses as not found in scope (located), never resolving to the sealed
+    /// constructor.
     #[test]
     fn host_reconcile_refuses_unacquired_unique_bare_sealed_constructor() {
         let fixture = Fixture::new(&[
@@ -9572,9 +9556,19 @@ mod closure_edge_demand_tests {
                 .collect::<Vec<_>>()
                 .join("\n"),
         };
+        // #15247 cut the global bare-name fallback: an unimported bare `secret` no longer
+        // resolves to fx.hidden.secret, so it refuses at resolution, located at the call
+        // site, before any admit_callers check. Admission on a RESOLVABLE sealed name is
+        // asserted by host_reconcile_imported_empty_map_still_enforces_admit_callers.
         assert!(
-            err.contains("fx.hidden") && err.contains("secret"),
-            "unacquired unique-bare sealed constructor must refuse naming fx.hidden.secret: {err}"
+            err.contains("ambient.dag:3:")
+                && err.contains("secret")
+                && err.contains("not found in scope"),
+            "unimported bare sealed constructor must refuse located as not found in scope: {err}"
+        );
+        assert!(
+            !err.contains("fx.hidden"),
+            "the unimported bare name must not resolve to fx.hidden.secret: {err}"
         );
     }
 
@@ -11817,7 +11811,6 @@ pub struct MultiEntryIndex {
     intern_table: RefCell<Rc<InternTable>>,
     parse_cache: RefCell<std::collections::HashMap<String, ParseCacheEntry>>,
     normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
-    ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     /// The source roots this index was built from — the tree identities behind the
     /// per-tree bare census layers (a module's bare-name universe is its own tree).
     source_roots: Vec<String>,
@@ -11967,10 +11960,6 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
             index.normalize_diag_cache.borrow().len(),
         ),
         (
-            "ownership_diag_cache",
-            index.ownership_diag_cache.borrow().len(),
-        ),
-        (
             "intern_table_strings",
             index.intern_table.borrow().strings.len(),
         ),
@@ -12026,7 +12015,6 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "module_source_identity" => index.module_source_identity.borrow_mut().clear(),
         "parse_cache" => index.parse_cache.borrow_mut().clear(),
         "normalize_diag_cache" => index.normalize_diag_cache.borrow_mut().clear(),
-        "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
         "pool_parse" => *index.pool_parse.borrow_mut() = None,
         "reference_pool_names" => *index.reference_pool_names.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
@@ -12064,7 +12052,6 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "entry_closure_sources",
         "intern_table",
         "normalize_diag_cache",
-        "ownership_diag_cache",
         "source_hash_by_file",
         "module_source_identity",
     ]
@@ -27067,8 +27054,9 @@ fn on_chain_declarers<'a>(
     out
 }
 
-/// Import-less UniqueBare pick: on-chain unique, else the census-unique declarer the
-/// resolver UniqueBinding-accepts, else nothing (never nearest-prefix among homonyms).
+/// Import-less UniqueBare pick: on-chain unique, else nothing. A census-unique declarer OFF the
+/// chain has no lexical authority (the resolver's UniqueBinding arm now refuses it too), so it
+/// yields no edge; never nearest-prefix among homonyms.
 enum ImportlessBarePick<'a> {
     Unique(&'a String),
     Ambiguous(Vec<&'a String>),
@@ -27083,7 +27071,6 @@ fn pick_importless_bare<'a>(
     match on_chain.len() {
         1 => ImportlessBarePick::Unique(on_chain[0]),
         n if n > 1 => ImportlessBarePick::Ambiguous(on_chain),
-        _ if mods.len() == 1 => ImportlessBarePick::Unique(mods.iter().next().unwrap()),
         _ => ImportlessBarePick::None,
     }
 }
