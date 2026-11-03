@@ -3,6 +3,8 @@ module product.p4261.readings
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat, nat_min }
 import std.measure {
+  Milliampere,
+  milliampere_count,
   Ohm,
   ohm,
   Micrometer,
