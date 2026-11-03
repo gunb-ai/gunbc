@@ -11339,7 +11339,8 @@ fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], mod
         .is_some_and(|info| info.module_name == module)
 }
 
-/// Handler bodies for v2.std.collection map grounding. Roster authority is
+/// Handler bodies for v2.std.collection grounding -- the map primitives over the host map builtins and
+/// the set primitives over the host set builtins, one seam for both families. Roster authority is
 /// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
 /// before this macro matches on the generated enum variant.
 macro_rules! v1_collection_grounding_arms {

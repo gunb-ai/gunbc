@@ -201,7 +201,7 @@ data scope_rank_view_readers: List<ScopeMapReader> = [
     reads: "the scope item_registry, for the entry's module_name",
     demand: ProvenanceTest {
       what_is_read: "info.module_name, compared against the v2 std collection module",
-      decides: "whether a call takes the primitive map grounding instead of evaluating the authored body",
+      decides: "whether a call takes the primitive collection grounding (map or set) instead of evaluating the authored body",
     },
     after_cutover: "same -- the declarer's module is part of the resolution result",
   },

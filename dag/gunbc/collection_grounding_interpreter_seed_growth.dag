@@ -1,0 +1,49 @@
+module gunbc.collection_grounding_interpreter_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the hand-authored interpreter items the collection grounding carries
+// (batch B, the change that grounds the three set primitives beside the three map primitives at the one
+// seam). The change is a WIDENING of an existing seam, not a second one: the site that grounded
+// empty_map, map_insert and map_lookup over the host map builtins now grounds them together with
+// empty_set, set_insert and set_contains over the host set builtins, under one name on both sides. What
+// is NEW in hand Rust is the three set arms of the arm registry and the per-family cause in the seam's
+// refusal. The dispatch shape, the map arms and the roster join are pre-existing; the map side is
+// justified by its own history in this file's lane and is named here only so the boundary is readable.
+//
+// WHY THIS IS HAND RUST AND NOT .dag. An arm matches host Value variants (Value::Set, Value::Str) and
+// calls host builtins (v1_rt::rc_empty_set, rc_set_insert, set_contains over Rc<BTreeSet>), and the
+// refusal builds an InterpError. No .dag program can match a host Value variant or call a host builtin,
+// so the arm body is the irreducible residue of a seam whose INPUTS are .dag: the population of names is
+// a roster (gunbc.v1.v1_interpreter_primitive_surface InterpreterPrimitiveDispatchArm rows) rendered by
+// a registered emitter (gunbc.v1.v1_interpreter_dispatch_emit), and its generated mirror stays the
+// producer's. The refusal cannot be delegated to the caller either: the caller is the builtin tier, whose
+// Ok(None) fall-through past the module lookup IS the divergence this seam closes (see
+// gunbc.recurring_failure_mode.set_element_kind_interpreted_native_divergence), so a caller-side message
+// would be a message about a path the caller does not know it took.
+//
+// WHAT THIS ROW DOES NOT CLAIM. Not that the set arms are correct: at the time of writing they are built
+// and UNEXECUTED, and the three sweep controls registered in src/v2/workflow/roster_import_sweep.dag
+// observe only the roster-side refusal (an un-keyed run refusing a gated site), never the host-side
+// refusal this row justifies; a discriminating control for the host refusal is an open item, not a
+// claim. And not that the roster is complete: as the admission module's own note says, the roster is
+// written by hand, so a helper added to this file by a later change escapes it silently until the
+// census join exists. This row lists the registry and the seam, not each primitive spelling, because a
+// new name is a new arm in the SAME hand Rust -- which is also why adding a name does not dissolve it.
+
+data collection_grounding_interpreter_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "try_v2_std_collection_primitive_grounding", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "v1_collection_grounding_arms", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "v1_collection_grounding_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "v1_collection_grounding_dispatch", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "STD_COLLECTION_GROUNDED_FNS", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "is_v2_std_collection_grounded_fn", field: WholeDeclaration },
+  ],
+  reason: "One seam, two families, so the gate cannot fork: the map primitives and the set primitives are the same kind of claim (a std collection primitive whose realization is a host builtin over a carrier), and giving the set family its own grounding beside the map one would put two names on one fork, which is the error this change exists to avoid. The hand Rust is the arm bodies and the refusal, for the reason above -- a host Value match and a host builtin call, neither reachable from .dag. THE REFUSAL IS PER FAMILY AND EACH CAUSE IS EVIDENCED BY THE ARM IT REPLACES: set_insert and set_contains name the String element realization and the item argument, because their arms match [Value::Set, Value::Str] and answer Ok(None) on any other item shape, and a set is Value::Set(Rc<OrdSet<String>>) so an integer item is not representable on this route at all; empty_set names host misconfiguration, because its builtin tier answers unconditionally and cannot fall through, so reaching the refusal is itself the anomaly; map_insert and map_lookup name a carrier the native map realization cannot carry, because their arms match Value::Map shapes through CanonKey::new and refuse an undecidable key with their own cause -- nothing about them evidences a String element kind. Naming one cause for all four would fabricate a plausible one where the real cause is different, which DESIGN section 5 forbids. ALREADY JUSTIFIED BY THEIR OWN ROWS, and so not repeated here because the roster cites each declaration once: eval_builtin and the module-tier lookup that the fall-through reaches (gunbc.interpreter_eval_correctness_seed_growth), and the emitter-side name derivations (gunbc.v1.v1_interpreter_dispatch_emit is a registered producer, so its mirror is not this row's to carry).",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Dissolves when the interpreter that answers free_call.set_insert, free_call.set_contains and empty_set is the self-emitted one reading the same tree, so no host arm and no host refusal stand between the builtin tier and the module lookup -- at which point the arm registry, the name const and the seam retire together. Equivalently, when element kind becomes a typed groundability claim carried by the roster row itself (an admission-route join over the element type, which this batch does NOT have: the site key is the whole key, so an un-keyed run cannot tell a Set<String> site from a Set<Int> site), so the seam needs no element-kind cause of its own. Adding a primitive spelling to the arm list does NOT dissolve this row -- each spelling is another arm in the same hand Rust. Neither does rewording the refusal, nor widening an exempt list.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs try_v2_std_collection_primitive_grounding, v1_collection_grounding_arms!, v1_collection_grounding_names!, v1_collection_grounding_dispatch!, STD_COLLECTION_GROUNDED_FNS (declared inside the names macro), is_v2_std_collection_grounded_fn; src/v1/stage0/src/v1_rt.rs rc_empty_set, rc_set_insert, set_contains; dag/gunbc/v1/v1_interpreter_primitive_surface.dag InterpreterPrimitiveDispatchArm rows; dag/gunbc/v1/v1_interpreter_dispatch_emit.dag; src/v2/workflow/roster_import_sweep.dag set-cluster controls; dag/gunbc/collection_grounding_interpreter_seed_growth.dag",
+}
