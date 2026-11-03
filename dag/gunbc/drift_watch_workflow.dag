@@ -1,15 +1,12 @@
 module gunbc.drift_watch_workflow
 import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
-
-
-
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { minute_count }
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import extdeps.cron.schedule_model { CronSchedule, CronField, Wildcard, Exact }
 import extdeps.bazel.label { render_label }
-import extdeps.shell_command_render { shell_command_render }
+import extdeps.exec.command { shell_command_render }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
