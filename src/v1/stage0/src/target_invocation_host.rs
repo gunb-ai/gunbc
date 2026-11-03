@@ -321,10 +321,18 @@ const NATIVE_CLAIM_RUNTIME_AUTHORITY_MODULES: [&str; 1] = ["gunbc.instrument_tar
 /// `Mitigatable` with ceiling `StructurallyGuaranteed`. Closes: the dispatch reads ONE copy, so the
 /// hand-written second copy is gone, and a committed table naming a subject this checkout lacks is
 /// refused at dispatch, with a located cause at the instrument contract's exit 2. Does not close: a
-/// table merely BEHIND its roster still compiles and still dispatches the old subject, because the
-/// comparison that would catch it (`registry_matches_rows`) is a `cfg(test)` test no required lane
-/// runs, and heal judges whether a generated file belongs to the population rather than whether it is
-/// stale, and refuses no merge. Staleness here is mitigated, not refused.
+/// table merely BEHIND its roster still compiles and still dispatches the old subject, and NOTHING on
+/// the required path compares the two. The required context is the single `v2-bootstrap` job of
+/// `.github/workflows/witnesses.yml`: it builds the compiler, compiles the v1 unit-test harness with
+/// `cargo test --release -p v1-compiler --lib --no-run` -- a step whose own name says no assertion runs
+/// there, so `registry_matches_rows` is compiled and never executed -- and emits and builds the
+/// self-host and v2-native-cli instruments. The comparison claim this change files,
+/// `test.claim.instrument_registry_artifact_rendering_witness`, is selected by no floor either; it runs
+/// under bounded, operator-authorized runs. That non-execution is not a new gap: it is a member of
+/// `gunbc.rung_drop.v1_required_lanes_withdrawn`, and that row's restoration trigger is the trigger
+/// here. heal is not a reader of staleness either: it judges whether a generated file belongs to the
+/// population, refuses no merge, and is not a required context. Staleness here is mitigated, not
+/// refused.
 fn instrument_registry() -> Vec<(Label, TargetProducer)> {
     crate::instrument_registry_generated::instrument_registry_rows()
 }
