@@ -160,10 +160,25 @@ fn symbol_index_entry_at(index: SymbolIndex, qualified_path: QualifiedName) -> O
   }
 }
 
+// The target is among its claimants AND every other claimant is a member declared UNDER it (the arm
+// alias of a self-spelled single-arm record). A second claimant that is not under the target (an
+// imported or otherwise foreign declaration of the same spelling) leaves the position contested, so
+// no silent pick between two declarations of one kind.
+fn symbol_index_position_owned_by_claimant(
+  claimants: FreeMonoid<QualifiedName>,
+  target: QualifiedName
+) -> Bool {
+  contains(xs: claimants, item: target, eq: fn(a, b) { a == b }) && fold_list(
+    xs: claimants,
+    empty: true,
+    cons: fn(acc, c) { acc && (c == target || qualified_name_init(qn: c) == target) }
+  )
+}
+
 fn symbol_index_lookup(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
   let claimants = symbol_index_bound_declarings(index: index, binding_path: qualified_path)
   if length(xs: claimants) > 1 {
-    if contains(xs: claimants, item: qualified_path, eq: fn(a, b) { a == b }) {
+    if symbol_index_position_owned_by_claimant(claimants: claimants, target: qualified_path) {
       symbol_index_entry_at(index: index, qualified_path: qualified_path)
     } else {
       optional_absent()
@@ -566,7 +581,7 @@ fn symbol_index_declaring_path_of_bound(
 ) -> MentionDeclaringIdentity {
   match symbol_index_declaring_path_of(index: index, target: target) {
     MentionDeclaringContested { claimants: claimants } =>
-      if contains(xs: claimants, item: target, eq: fn(a, b) { a == b }) {
+      if symbol_index_position_owned_by_claimant(claimants: claimants, target: target) {
         MentionDeclaringUnique { declaring: target }
       } else {
         MentionDeclaringContested { claimants: claimants }
