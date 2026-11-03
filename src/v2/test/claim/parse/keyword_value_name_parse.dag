@@ -985,3 +985,14 @@ test fn kvn_lambda_pipe_module_binder_parses_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+// An UNTYPED fn-literal parameter (dag_grammar_untyped_params_helper) reads the same production: `fn(module, s) { ... }`, the corpus shape
+// `fold(xs, init: false, f: fn(acc, s) { ... })` with the first binder named `module`.
+data kvn_fn_literal_module_source: String = "module m.t\ndata d: Int = fold(xs, init: false, f: fn(module, s) { module || s })\n"
+
+test fn kvn_fn_literal_module_param_parses_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_fn_literal_module_source, file: ^probe_kvn_fn_literal_module) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
