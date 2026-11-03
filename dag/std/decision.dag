@@ -1,7 +1,7 @@
 module std.decision
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key, declaration_ref_compare }
 import std.interval { OrderedClosedInterval, degenerate_interval, interval_low, interval_high }
 import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_int_add, checked_int_multiply, checked_int_subtract }
 import std.measure {
@@ -27,8 +27,11 @@ import extdeps.external_authority {
 }
 import std.effect_grant { LifecycleGrade, LifecycleByConstruction, LifecycleByConvention }
 import std.frame_boundary { boundary_grade_meet }
+import std.nat { nat_compare }
+import std.algebra { Equal, Ordering, TotalOrder, list_sort_by_key, zip_eq }
 import std.pareto {
   AxisGoal,
+  axis_goal_compare,
   HigherIsBetter,
   LowerIsBetter,
   AxisComparison,
@@ -771,6 +774,20 @@ type ValuedObjectiveMeasure
 type SelectionPolicy
   = UniqueSurvivorRequired { identity: DeclarationRef }
   | PreferSurvivor { identity: DeclarationRef, preferred: DeclarationRef }
+  // UniqueSurvivorElsePrefer resolves a single survivor on its own merit, and only falls to the
+  // preferred identity when SEVERAL nondominated alternatives survive. A single survivor that is NOT
+  // the preferred one is still selected — a dominating candidate must win, which PreferSurvivor cannot
+  // express (it refuses a dominating non-preferred candidate). Several survivors that exclude the
+  // preferred identity stay SelectionNeedsPolicy rather than refusing, so an unresolved field is never
+  // silently decided. Selecting the preferred among several survivors is an explicit preference among
+  // established nondominated ALTERNATIVES — a tradeoff, not an equality: it does not assert the
+  // survivors are equal on any axis. Interval readings that leave dominance undecided are not
+  // survivors (they are SelectionNeedsEvidence), so this arm never resolves an unmeasured tradeoff.
+  // CONSUMER (declared frontier): gunbc.serving.serving_relocation.decide_relocation — the relocation
+  // decision, where a move wins when it strictly dominates, stay wins only among surviving
+  // alternatives by the declared preference, and an undecided field defers. That consumer lands in the
+  // relocation change, which depends on this one; until it merges the arm has no caller in the tree.
+  | UniqueSurvivorElsePrefer { identity: DeclarationRef, preferred: DeclarationRef }
   | ValuedObjective {
       identity: DeclarationRef
       valuations: List<TermValuation>
@@ -821,10 +838,18 @@ type DecisionScope {
 // THE RECEIPT IS THE SCOPE PLUS THE OUTCOME, and it is still the only thing a SELECTION produces. It
 // loses nothing: every field it carried is still carried, and the six that describe the question now
 // have a name of their own so the refusal arm can carry them too.
+//
+// `applied_policy` records the SEMANTIC policy that was applied — its arm and its behavior-affecting
+// parameters. It REPLACES the old `policy_authority` field: the authority reference (WHO defines the
+// policy) is now projected from the policy itself via policy_identity_of, so the same fact lives in
+// exactly one place and cannot be stored in two disagreeing copies. Without the applied policy,
+// UniqueSurvivorRequired { P } and UniqueSurvivorElsePrefer { P, preferred: B } over the same field
+// produced byte-identical receipts; the applied policy is the caller's own SelectionPolicy value, so it
+// cannot drift from what was actually applied, and policy_equality compares it structurally.
 type SelectionReceipt {
   scope: DecisionScope
   pareto_survivors: List<DeclarationRef>
-  policy_authority: DeclarationRef
+  applied_policy: SelectionPolicy
   selected_identity: DeclarationRef
 }
 
@@ -1167,10 +1192,93 @@ fn scopes_eq(a: DecisionScope, b: DecisionScope) -> Bool {
     && declaration_ref_eq(a: a.evidence_snapshot, b: b.evidence_snapshot)
 }
 
+fn valued_measure_eq(a: ValuedObjectiveMeasure, b: ValuedObjectiveMeasure) -> Bool {
+  match a {
+    NetValue => match b { NetValue => true CostPerAcceptedUnit { unit: _ } => false }
+    CostPerAcceptedUnit { unit: ua } =>
+      match b { NetValue => false CostPerAcceptedUnit { unit: ub } => declaration_ref_eq(a: ua, b: ub) }
+  }
+}
+
+// The TermValuation total order is the SINGLE source for both ordering and equality of a valuation: the
+// structural DeclarationRef order, then scale_micro (nat_compare), then the AxisGoal order (which lives
+// in std.pareto, beside the type). term_valuation_eq is defined from it, so order-equality and equality
+// are one fact (DESIGN 3) and the multiset comparison below is correct by construction, not by a comment.
+fn term_valuation_compare(a: TermValuation, b: TermValuation) -> Ordering {
+  let t = declaration_ref_compare(a: a.term, b: b.term)
+  match t {
+    Equal => {
+      let s = nat_compare(a: money_amount_micro_count(m: a.scale_micro), b: money_amount_micro_count(m: b.scale_micro))
+      match s {
+        Equal => axis_goal_compare(a: a.goal, b: b.goal)
+        other => other
+      }
+    }
+    other => other
+  }
+}
+
+fn term_valuation_total_order() -> TotalOrder<TermValuation> {
+  TotalOrder { compare: term_valuation_compare }
+}
+
+fn term_valuation_eq(a: TermValuation, b: TermValuation) -> Bool {
+  match term_valuation_compare(a: a, b: b) { Equal => true _ => false }
+}
+
+// Occurrence-sensitive, order-independent comparison of two valuation lists: equal as a MULTISET, so
+// multiplicity is preserved and nothing is deduped. A raw SelectionPolicy may carry repeated terms
+// (admission refuses duplicates, but this comparator must be lawful over SelectionPolicy as declared),
+// so membership plus cardinality is not enough: [A,A] and [A,B] have the same membership and the same
+// count yet are different policies, and [A,A,B] and [A,B,B] have the same membership in both directions
+// yet different multiplicities. Sorting both lists under the lawful total order above and comparing
+// elementwise (zip_eq also enforces equal length) decides multiset equality in O(n log n), replacing the
+// quadratic filter-and-count. Because the order's Equal agrees exactly with term_valuation_eq, two equal
+// multisets sort to elementwise-equal lists and vice versa.
+fn valuations_multiset_eq(a: List<TermValuation>, b: List<TermValuation>) -> Bool {
+  zip_eq(
+    a: list_sort_by_key(xs: a, key: fn(v) { v }, order: term_valuation_total_order()),
+    b: list_sort_by_key(xs: b, key: fn(v) { v }, order: term_valuation_total_order()),
+    eq: term_valuation_eq
+  )
+}
+
+// Structural equality of two SelectionPolicy values: same arm, same identity, and same
+// behavior-affecting parameters. This is what lets a receipt distinguish a change of arm, or of the
+// preferred parameter, while every other input is held fixed — the decision authority records WHICH
+// policy ran, not only who authorized it.
+fn policy_equality(a: SelectionPolicy, b: SelectionPolicy) -> Bool {
+  match a {
+    UniqueSurvivorRequired { identity: ia } =>
+      match b { UniqueSurvivorRequired { identity: ib } => declaration_ref_eq(a: ia, b: ib) _ => false }
+    PreferSurvivor { identity: ia, preferred: pa } =>
+      match b {
+        PreferSurvivor { identity: ib, preferred: pb } =>
+          declaration_ref_eq(a: ia, b: ib) && declaration_ref_eq(a: pa, b: pb)
+        _ => false
+      }
+    UniqueSurvivorElsePrefer { identity: ia, preferred: pa } =>
+      match b {
+        UniqueSurvivorElsePrefer { identity: ib, preferred: pb } =>
+          declaration_ref_eq(a: ia, b: ib) && declaration_ref_eq(a: pa, b: pb)
+        _ => false
+      }
+    ValuedObjective { identity: ia, valuations: va, measure: ma, currency: ca } =>
+      match b {
+        ValuedObjective { identity: ib, valuations: vb, measure: mb, currency: cb } =>
+          declaration_ref_eq(a: ia, b: ib)
+            && valued_measure_eq(a: ma, b: mb)
+            && currency_code_eq(a: ca, b: cb)
+            && valuations_multiset_eq(a: va, b: vb)
+        _ => false
+      }
+  }
+}
+
 fn receipts_eq(a: SelectionReceipt, b: SelectionReceipt) -> Bool {
   scopes_eq(a: a.scope, b: b.scope)
     && declaration_refs_same_set(a: a.pareto_survivors, b: b.pareto_survivors)
-    && declaration_ref_eq(a: a.policy_authority, b: b.policy_authority)
+    && policy_equality(a: a.applied_policy, b: b.applied_policy)
     && declaration_ref_eq(a: a.selected_identity, b: b.selected_identity)
 }
 
@@ -1198,13 +1306,13 @@ fn mint_scope(
 fn mint_receipt(
   scope: DecisionScope,
   pareto_survivors: List<DeclarationRef>,
-  policy_authority: DeclarationRef,
+  applied_policy: SelectionPolicy,
   selected_identity: DeclarationRef,
 ) -> SelectionReceipt {
   SelectionReceipt {
     scope: scope,
     pareto_survivors: pareto_survivors,
-    policy_authority: policy_authority,
+    applied_policy: applied_policy,
     selected_identity: selected_identity,
   }
 }
@@ -1580,6 +1688,44 @@ fn admit_term_valuations(valuations: List<TermValuation>, terms: List<ObjectiveT
   )
 }
 
+// The authority reference is derived from the policy itself, never passed separately, so it cannot
+// disagree with the policy that was applied.
+fn policy_identity_of(policy: SelectionPolicy) -> DeclarationRef {
+  match policy {
+    UniqueSurvivorRequired { identity: i } => i
+    PreferSurvivor { identity: i, preferred: _ } => i
+    UniqueSurvivorElsePrefer { identity: i, preferred: _ } => i
+    ValuedObjective { identity: i, valuations: _, measure: _, currency: _ } => i
+  }
+}
+
+// The ONE "look the chosen identity up in the remaining field and mint its receipt" rule, shared by
+// every SelectionPolicy arm so the rule lives once instead of being copied per arm. The defect string
+// names which selection the arm was attempting, so it is passed in; the lookup and the receipt are
+// identical across arms.
+fn select_survivor_receipt(
+  remaining: List<ParetoEntry>,
+  survivors: List<DeclarationRef>,
+  selected: DeclarationRef,
+  policy: SelectionPolicy,
+  scope: DecisionScope,
+  missing_defect: NonEmptyStr,
+) -> RealizationSelectionResult<ParetoEntry> {
+  match entry_by_identity(field: remaining, wanted: selected) {
+    Absent => RealizationSelectionRefused { defects: [missing_defect] }
+    Present { value: cand } =>
+      SelectedWithin {
+        candidate: cand,
+        receipt: mint_receipt(
+          scope: scope,
+          pareto_survivors: survivors,
+          applied_policy: policy,
+          selected_identity: selected,
+        ),
+      }
+  }
+}
+
 fn apply_policy(
   remaining: List<ParetoEntry>,
   survivors: List<DeclarationRef>,
@@ -1602,7 +1748,7 @@ fn apply_policy(
     evidence_snapshot: evidence_snapshot,
   )
   match policy {
-    UniqueSurvivorRequired { identity: pol } =>
+    UniqueSurvivorRequired { identity: _ } =>
       if (survivors |> count) == 1 {
         match survivors.first() {
           Absent => NoFeasibleRealization {
@@ -1610,19 +1756,14 @@ fn apply_policy(
             scope: scope,
           }
           Present { value: sid } =>
-            match entry_by_identity(field: remaining, wanted: sid) {
-              Absent => RealizationSelectionRefused { defects: ["unique survivor missing from remaining field" as NonEmptyStr] }
-              Present { value: cand } =>
-                SelectedWithin {
-                  candidate: cand,
-                  receipt: mint_receipt(
-                    scope: scope,
-                    pareto_survivors: survivors,
-                    policy_authority: pol,
-                    selected_identity: sid,
-                  ),
-                }
-            }
+            select_survivor_receipt(
+              remaining: remaining,
+              survivors: survivors,
+              selected: sid,
+              policy: policy,
+              scope: scope,
+              missing_defect: "unique survivor missing from remaining field" as NonEmptyStr,
+            )
         }
       } else {
         if (survivors |> count) == 0 {
@@ -1634,25 +1775,63 @@ fn apply_policy(
           SelectionNeedsPolicy { survivors: survivors }
         }
       }
-    PreferSurvivor { identity: pol, preferred: pref } =>
+    PreferSurvivor { identity: _, preferred: pref } =>
       if any(survivors, s => declaration_ref_eq(a: s, b: pref)) {
-        match entry_by_identity(field: remaining, wanted: pref) {
-          Absent => RealizationSelectionRefused { defects: ["preferred identity is not a remaining candidate" as NonEmptyStr] }
-          Present { value: cand } =>
-            SelectedWithin {
-              candidate: cand,
-              receipt: mint_receipt(
-                scope: scope,
-                pareto_survivors: survivors,
-                policy_authority: pol,
-                selected_identity: pref,
-              ),
-            }
-        }
+        select_survivor_receipt(
+          remaining: remaining,
+          survivors: survivors,
+          selected: pref,
+          policy: policy,
+          scope: scope,
+          missing_defect: "preferred identity is not a remaining candidate" as NonEmptyStr,
+        )
       } else {
         RealizationSelectionRefused { defects: ["policy preferred a dominated, infeasible, unresolved or absent candidate" as NonEmptyStr] }
       }
-    ValuedObjective { identity: pol, valuations: vals, measure: measure, currency: pol_cur } =>
+    UniqueSurvivorElsePrefer { identity: _, preferred: pref } =>
+      if (survivors |> count) == 1 {
+        // A single survivor wins on its own merit, whether or not it is the preferred identity.
+        match survivors.first() {
+          Absent => NoFeasibleRealization {
+            causes: ["unique-survivor-else-prefer policy over empty survivor set" as NonEmptyStr],
+            scope: scope,
+          }
+          Present { value: sid } =>
+            select_survivor_receipt(
+              remaining: remaining,
+              survivors: survivors,
+              selected: sid,
+              policy: policy,
+              scope: scope,
+              missing_defect: "unique survivor missing from remaining field" as NonEmptyStr,
+            )
+        }
+      } else {
+        if (survivors |> count) == 0 {
+          NoFeasibleRealization {
+            causes: ["no non-dominated feasible realization" as NonEmptyStr],
+            scope: scope,
+          }
+        } else {
+          // Several established nondominated alternatives — a tradeoff, not an equality. The preferred
+          // identity wins only if it is among them; if it is not, the field stays unresolved (needs
+          // policy), never a silent refusal or a fallthrough. Selecting the preferred here records a
+          // preference among incomparable alternatives; it does NOT establish that they are equal.
+          if any(survivors, s => declaration_ref_eq(a: s, b: pref)) {
+            select_survivor_receipt(
+              remaining: remaining,
+              survivors: survivors,
+              selected: pref,
+              policy: policy,
+              scope: scope,
+              missing_defect: "preferred identity is not a remaining candidate" as NonEmptyStr,
+            )
+          } else {
+            SelectionNeedsPolicy { survivors: survivors }
+          }
+        }
+      }
+    ValuedObjective { identity: _, valuations: vals, measure: measure, currency: pol_cur } =>
       let axis_defects = admit_term_valuations(valuations: vals, terms: objective_terms, pareto_axes: axes, measure: measure, policy_currency: pol_cur, constraints: hard_constraints)
       if (axis_defects |> count) > 0 {
         RealizationSelectionRefused { defects: axis_defects }
@@ -1676,19 +1855,14 @@ fn apply_policy(
                 scope: scope,
               }
               Present { value: sid } =>
-                match entry_by_identity(field: remaining, wanted: sid) {
-                  Absent => RealizationSelectionRefused { defects: ["valued pick missing from remaining field" as NonEmptyStr] }
-                  Present { value: cand } =>
-                    SelectedWithin {
-                      candidate: cand,
-                      receipt: mint_receipt(
-                        scope: scope,
-                        pareto_survivors: survivors,
-                        policy_authority: pol,
-                        selected_identity: sid,
-                      ),
-                    }
-                }
+                select_survivor_receipt(
+                  remaining: remaining,
+                  survivors: survivors,
+                  selected: sid,
+                  policy: policy,
+                  scope: scope,
+                  missing_defect: "valued pick missing from remaining field" as NonEmptyStr,
+                )
             }
           }
         }

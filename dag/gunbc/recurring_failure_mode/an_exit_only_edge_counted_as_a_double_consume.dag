@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.an_exit_only_edge_counted_as_a_double_consume
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+
+data an_exit_only_edge_counted_as_a_double_consume: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_exit_only_edge_counted_as_a_double_consume" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: AtCeiling { rung: StructurallyImpossible, ceiling_reason: "the refusal that produced the false positive is deleted, so the invalid state (a located error for a program that moves a value once on every path) has no constructor; the census below is the receipt that no true positive was lost." as NonEmptyStr }
+  },
+
+  receipts: [
+    "INVALID STATE: v1.compiler.compile refused a well-formed function with `ownership: binding 'X' in 'f' has 2 consumers` (OwnershipViolation). EXECUTED, seed binary built 2026-10-29 (head not proven; re-run on a fresh head is the PR's receipt), `gunbc compile --entry`: `fn f(b: Bool) -> Status { if b { return Unreadable } Unreadable }` over `type Status = Unreadable | Ready` refused; the same body returning a bare Status once compiled; and `fn f(b: Bool, x: Int) -> Int { if b { return x } x }` over a REAL parameter was refused too. Seen in production at gunbc#15310 extdeps.tailscale.serve tailscale_serve_status_listener_standing.",
+    "HARM: a loud wrong refusal, not a silent wrong answer: authors rewrote correct code into nested expressions to avoid an early `return`, which is a cost on every later author and on the language's own control flow.",
+    "CAUSE, TWO LINKS. (1) v1.compiler.ownership walk_expr recorded an edge for any ExprVar, including a name that resolves to a variant constructor, a function or a service value, none of which is a binding with an owner; that is the nullary-constructor symptom and is repaired where the use is recorded (record_var_use, names_a_binding), at every position that records an ExprVar use. (2) EARLIEST UNJUSTIFIED BOUNDARY: the refusal itself. Consumed is constructed at exactly one site, walk_expr's ExprVar arm under in_tail, and in_tail is true only for the function body's tail, an ExprReturn operand, and the tail positions of If, Match, Let and Block; calls, arguments, lambdas and loops reset it. Every Consumed edge is therefore an EXIT of the body, exits are mutually exclusive paths, and more than one is each path moving the value once. Consumed > 1 can never be a double consume, so SharedError had no true-positive population and its RED was not authorable (DESIGN 4b: a top-rung check whose forbidden state is expressible nowhere it runs is a decoration). Not introduced by #15041: ExprReturn walking its operand in_tail:true and the tail Consumed predate it.",
+    "THE REPAIR, DELETE-FIRST: SharedError, OwnershipViolation, ownership_diagnostics and the resolve-time ownership_diag_cache are deleted. A binding with more than one exit is Unclassified, so build_movable_set still refuses to move it (it is cloned at each exit), which is the conservative reading it already had.",
+    "THE CONTROL: //gunbc/instruments:exit-return-ownership (gunbc.instruments.exit_return_ownership_native) emits, compiles and runs nullary, param, heap_list, heap_text (each with the guard true and false) and single against independent references. RED, EXECUTED on the pre-fix seed binary (built 2026-10-29, head unproven): `gunbc compile --source-root dag --entry dag/gunbc/instruments/exit_return_ownership_native.dag` refuses exactly four, `ownership: binding 'Unreadable' in 'nullary' has 2 consumers`, and the same for 'x' in 'param', 'xs' in 'heap_list', 's' in 'heap_text', with `single` clean. The accepted-and-run reading at the regenerated head is the PR's receipt.",
+    "RESIDUAL: the `ownership` cost-partition row now measures nothing in the resolve path (the proofs are still computed for emission, at emission); removing the row changes a schema other readers consume and is left as a follow-up.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.ownership", decl_name: "walk_expr"),
+    decl_ref(module_path: "v1.compiler.ownership", decl_name: "record_var_use"),
+    decl_ref(module_path: "v1.compiler.ownership", decl_name: "make_decision"),
+  ],
+}

@@ -1,6 +1,7 @@
 module test.claim.print_preparation_kernel_validation
 import std.measure {micrometer_count}
 import std.process {ProcessExit,exit_failure}
+import gunbc.host_state_root {host_state_tree}
 import product.printing.print_runtime {observe_cad_runtime,CadRuntimeObserved,CadRuntimeRefused}
 import product.printed_chassis.print_preparation {run_kernel,deposited_path_edge_allowance_um}
 import extdeps.languages.json.emit {serialize_json,JsonValue,json_object,json_kv,json_string,json_array}
@@ -95,7 +96,7 @@ fn fixture_settings() -> JsonValue {
  ]))
 }
 fn exercise_kernel(script:String) -> ProcessExit {
- match observe_cad_runtime() {
+ match observe_cad_runtime(tree:host_state_tree()) {
   CadRuntimeRefused {reason:why}=>exit_failure(reason:why)
   CadRuntimeObserved {runtime:c}=>run_kernel(cad_runtime:c,script:script,call:join(["\nrequirements=",serialize_json(v:fixture_settings()),"\nedge_allowance_um=",to_string(micrometer_count(m: deposited_path_edge_allowance_um)),"\n",controls()],""))
  }

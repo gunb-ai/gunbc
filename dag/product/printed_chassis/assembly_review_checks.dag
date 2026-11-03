@@ -5,7 +5,7 @@ import std.algebra { length, empty_map, map_insert, map_lookup }
 import std.measure {micrometer_count,millimeter_count}
 import std.affine_space {Point3,signed_frame_component_count}
 import std.euclidean_geometry {Axis3,Axis3X,Axis3Y,Axis3Z}
-import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,Block,RoundPrism,Printed,Purchased,Metal,Clearance,PrintPlane,LayOnXY,LayOnXZ,LayOnYZ,MechanicalInterface}
+import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,Block,RoundPrism,ProfilePrism,ProfileVertex,Printed,Purchased,Metal,Clearance,PrintPlane,LayOnXY,LayOnXZ,LayOnYZ,MechanicalInterface}
 import extdeps.printing.bambu_lab_a1_mini {a1_mini_build_envelope}
 import extdeps.printing.fdm {build_envelope_x,build_envelope_y,build_envelope_z}
 
@@ -15,13 +15,40 @@ type Bounds {lo_x:Int,lo_y:Int,lo_z:Int,hi_x:Int,hi_y:Int,hi_z:Int}
 fn component(p:Point3,a:Axis3) -> Int {match a {Axis3X=>signed_frame_component_count(c:p.x) Axis3Y=>signed_frame_component_count(c:p.y) Axis3Z=>signed_frame_component_count(c:p.z)}}
 fn dimension(p:Primitive,a:Axis3) -> Int {
  match p {Block {size:s,center:_}=>match a {Axis3X=>micrometer_count(m:s.size_x) Axis3Y=>micrometer_count(m:s.size_y) Axis3Z=>micrometer_count(m:s.size_z)}
- RoundPrism {diameter:d,length:l,axis:axis,center:_}=>if axis_same(a:a,b:axis) {micrometer_count(m:l)} else {micrometer_count(m:d)}}
+ RoundPrism {diameter:d,length:l,axis:axis,center:_}=>if axis_same(a:a,b:axis) {micrometer_count(m:l)} else {micrometer_count(m:d)}
+ ProfilePrism {outline:o,axis:axis,length:l,center:_}=>if axis_same(a:a,b:axis) {micrometer_count(m:l) as Int} else {
+  let e=outline_extent(o:o,u_side:outline_u_is(prism_axis:axis,a:a))
+  e.hi-e.lo}}
+}
+// Which outline coordinate an axis reads, for a prism along prism_axis: the outline's u is the first of the
+// two other axes in X-Y-Z order, its v the second.
+fn outline_u_is(prism_axis:Axis3,a:Axis3) -> Bool {match prism_axis {Axis3X=>axis_same(a:a,b:Axis3Y) Axis3Y=>axis_same(a:a,b:Axis3X) Axis3Z=>axis_same(a:a,b:Axis3X)}}
+type OutlineExtent {lo:Int,hi:Int}
+fn outline_extent(o:List<ProfileVertex>,u_side:Bool) -> OutlineExtent {
+ match o.first() {Absent=>OutlineExtent {lo:0,hi:0} Present {value:f}=>{
+  let start=if u_side {f.u} else {f.v}
+  fold(o,init:OutlineExtent {lo:start,hi:start},f:fn(acc,p){let x=if u_side {p.u} else {p.v}
+   OutlineExtent {lo:smaller(a:acc.lo,b:x),hi:larger(a:acc.hi,b:x)}})
+ }}
 }
 fn axis_same(a:Axis3,b:Axis3) -> Bool {match a {Axis3X=>match b {Axis3X=>true Axis3Y=>false Axis3Z=>false} Axis3Y=>match b {Axis3Y=>true Axis3X=>false Axis3Z=>false} Axis3Z=>match b {Axis3Z=>true Axis3X=>false Axis3Y=>false}}}
-fn center(p:Primitive) -> Point3 {match p {Block {size:_,center:c}=>c RoundPrism {diameter:_,length:_,axis:_,center:c}=>c}}
+fn center(p:Primitive) -> Point3 {match p {Block {size:_,center:c}=>c RoundPrism {diameter:_,length:_,axis:_,center:c}=>c ProfilePrism {outline:_,axis:_,length:_,center:c}=>c}}
 fn smaller(a:Int,b:Int) -> Int {if a<b {a} else {b}}
 fn larger(a:Int,b:Int) -> Int {if a>b {a} else {b}}
 fn primitive_bounds(p:Primitive) -> Bounds {
+ match p {ProfilePrism {outline:o,axis:axis,length:l,center:c}=>prism_bounds(o:o,axis:axis,l:micrometer_count(m:l),c:c) _=>symmetric_bounds(p:p)}
+}
+fn axis_bounds(o:List<ProfileVertex>,prism_axis:Axis3,a:Axis3,l:Int,c:Point3) -> OutlineExtent {
+ let at=2*component(p:c,a:a)
+ if axis_same(a:a,b:prism_axis) {OutlineExtent {lo:at-l,hi:at+l}} else {let e=outline_extent(o:o,u_side:outline_u_is(prism_axis:prism_axis,a:a)) OutlineExtent {lo:at+2*e.lo,hi:at+2*e.hi}}
+}
+fn prism_bounds(o:List<ProfileVertex>,axis:Axis3,l:Int,c:Point3) -> Bounds {
+ let x=axis_bounds(o:o,prism_axis:axis,a:Axis3X,l:l,c:c)
+ let y=axis_bounds(o:o,prism_axis:axis,a:Axis3Y,l:l,c:c)
+ let z=axis_bounds(o:o,prism_axis:axis,a:Axis3Z,l:l,c:c)
+ Bounds {lo_x:x.lo,lo_y:y.lo,lo_z:z.lo,hi_x:x.hi,hi_y:y.hi,hi_z:z.hi}
+}
+fn symmetric_bounds(p:Primitive) -> Bounds {
  let c=center(p:p)
  let x=2*component(p:c,a:Axis3X)
  let y=2*component(p:c,a:Axis3Y)
@@ -52,7 +79,7 @@ fn within_bed(p:AssemblyPart) -> Bool {
 type BoreLine {axis:Axis3,u:Int,v:Int}
 type Bore {owner:String,line:BoreLine,diameter:Int}
 fn bores(p:AssemblyPart,primitives:List<Primitive>) -> List<Bore> {
- flat_map(primitives,q=>match q {Block {size:_,center:_}=>[] RoundPrism {diameter:d,length:_,axis:a,center:c}=>{
+ flat_map(primitives,q=>match q {Block {size:_,center:_}=>[] ProfilePrism {outline:_,axis:_,length:_,center:_}=>[] RoundPrism {diameter:d,length:_,axis:a,center:c}=>{
  let diameter=micrometer_count(m:d)
  if diameter>5000 {[]} else {
  let x=signed_frame_component_count(c:c.x)+signed_frame_component_count(c:p.at.x)

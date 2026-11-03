@@ -1,10 +1,13 @@
 module test.claim.print_runtime_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr }
 import product.printing.cad_runtime_spec { cad_runtime_spec, cad_runtime_spec_text, cad_runtime_spec_digest }
+import extdeps.shell
+import gunbc.host_state_root { isolated_host_state_tree }
+import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStore, CadRuntimeStoreReady, CadRuntimeStoreUnready, cad_environment_interpreter, cad_environment_prefix }
 import product.printing.print_runtime {
   RuntimeJudgement, RuntimeMatches, RuntimeMismatch,
-  judge_cad_probe, judge_host_architecture, cad_environment_interpreter, cad_environment_prefix,
+  judge_cad_probe, judge_host_architecture,
 }
 
 fn matches(j: RuntimeJudgement) -> Bool {
@@ -14,7 +17,18 @@ fn matches(j: RuntimeJudgement) -> Bool {
   }
 }
 
-fn selected() -> String { cad_environment_interpreter(spec: cad_runtime_spec) }
+// The sealed store, minted over an isolated host-state tree (the witnesses' route; the mint ensures its directories).
+fn witness_store() -> CadRuntimeStore? {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_cad_store.XXXXXX").path
+  match cad_runtime_store(tree: isolated_host_state_tree(dir: dir as NonEmptyStr)) {
+    CadRuntimeStoreReady { store: s } => Present { value: s }
+    CadRuntimeStoreUnready { detail: _ } => none
+  }
+}
+
+// A fixed interpreter spelling for the judge claims: judge_cad_probe compares what the interpreter reports with the
+// path it was handed, so these claims need a path, not a store.
+fn selected() -> String { concat("/probe/cad/", cad_runtime_spec_digest(spec: cad_runtime_spec), "/bin/python") }
 
 fn reply(executable: String, tag: String, ocp: String, cq: String) -> String {
   join(["{\"executable\": \"", executable, "\", \"python_tag\": \"", tag, "\", \"distributions\": {\"cadquery-ocp\": \"", ocp, "\", \"cadquery\": \"", cq, "\"}}"], "")
@@ -55,8 +69,9 @@ test fn w_host_architecture_is_the_spec_architecture() -> Bool {
 // The environment is named by the spec: its interpreter sits inside the digest-named prefix, and
 // the spec text carries every pin the digest is taken over.
 test fn w_the_environment_is_named_by_the_spec_digest() -> Bool {
-  let prefix = cad_environment_prefix(spec: cad_runtime_spec)
-  starts_with(s: selected(), prefix: concat(prefix, "/"))
+  let store = match witness_store() { Present { value: st } => st Absent => return false }
+  let prefix = cad_environment_prefix(store: store, spec: cad_runtime_spec)
+  starts_with(s: cad_environment_interpreter(store: store, spec: cad_runtime_spec), prefix: concat(prefix, "/"))
     && string_contains(s: prefix, pattern: cad_runtime_spec_digest(spec: cad_runtime_spec))
     && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "pip:cadquery==2.8.0")
     && string_contains(s: cad_runtime_spec_text(spec: cad_runtime_spec), pattern: "pip:cadquery-ocp==7.9.3.1.1")

@@ -21,17 +21,54 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "K: Clone + serde::Serialize",
+    deserialize = "K: Clone + serde::Deserialize<'de>"
+))]
 pub struct TargetCapabilityShapeRow<K: Clone> {
     pub shape: ReprGroundingDeriveElemShape,
     pub capabilities: Rc<Vec<K>>,
     pub _phantom: std::marker::PhantomData<K>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+impl<K: Clone + std::fmt::Debug> std::fmt::Debug for TargetCapabilityShapeRow<K> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TargetCapabilityShapeRow")
+            .field("shape", &self.shape)
+            .field("capabilities", &self.capabilities)
+            .finish()
+    }
+}
+
+impl<K: Clone + PartialEq> PartialEq for TargetCapabilityShapeRow<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.shape == other.shape && self.capabilities == other.capabilities
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "K: Clone + serde::Serialize",
+    deserialize = "K: Clone + serde::Deserialize<'de>"
+))]
 pub struct TargetCapabilityShapeTable<K: Clone> {
     pub rows: Rc<Vec<Rc<TargetCapabilityShapeRow<K>>>>,
     pub _phantom: std::marker::PhantomData<K>,
+}
+
+impl<K: Clone + std::fmt::Debug> std::fmt::Debug for TargetCapabilityShapeTable<K> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TargetCapabilityShapeTable")
+            .field("rows", &self.rows)
+            .finish()
+    }
+}
+
+impl<K: Clone + PartialEq> PartialEq for TargetCapabilityShapeTable<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.rows == other.rows
+    }
 }
 
 #[derive(

@@ -6,7 +6,7 @@ import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDiv
 import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound, ArithmeticDivideCall, ArithmeticParam, ArithmeticSubtractCall, ChildAccessorCall, CollectionSize, ConstantShrink, Descend, Fold, Forever, ProportionalShrink, Repeat, SameArgumentCall, UnitShrink }
 
 import std.checked_arithmetic { checked_int_add, checked_int_multiply, checked_int_optional }
-import std.algebra { CostShape, ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody, Equal, Greater, Less, Ordering, collection_concat_shape }
+import std.algebra { CostShape, ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody, Equal, Greater, Less, Ordering, collection_concat_shape, list_head }
 import std.types { List }
 
 
@@ -347,7 +347,7 @@ type CostBound
   | ErrorBound
 
 fn sum_bound(terms: List<CostBound>) -> CostBound {
-  match terms |> first {
+  match list_head(xs: terms) {
     Absent => ErrorBound
     Present { value: _ } => SumBound { terms: terms }
   }
@@ -665,7 +665,7 @@ fn cost_bound_to_shape(b: CostBound) -> CostShape? {
     }
   } else {
     if params.length() == 1 {
-      match params.first() {
+      match list_head(xs: params) {
         Absent => none
         Present { value: only } =>
           shape_for_param_growth(growth: cost_bound_growth_in_param(b: b, param: only))

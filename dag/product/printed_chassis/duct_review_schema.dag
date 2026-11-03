@@ -1,0 +1,48 @@
+module product.printed_chassis.duct_review_schema
+
+import std.types { String, NonEmptyStr, List }
+import std.optional { Optional, Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// ═══ THE MANIFEST SCHEMA SPELLING, AND THE DECLARED TRANSITION OFF THE A16'S NAME ═══
+//
+// A name with a different meaning needs a different name (DESIGN section 3). "gunbc.a16-inlet-duct-review.v2"
+// named one card; the manifest it labels is now derived from whichever catalogued card the root names
+// (product.printed_chassis.duct_card_catalog DuctCard), so the old spelling would assert a scope the
+// manifest no longer has. The new spelling is a new version of the same field layout, and the old one is
+// not silently renamed: it is an explicit row below, and a reader of a recorded manifest that still carries it
+// goes through schema_migration rather than treating it as the current schema.
+//
+// Nothing else changes between the two: the A16 manifests differ only in this string.
+// No production path reads a recorded manifest's schema yet (the writer is printable_assembly); the reader
+// is the declared frontier at the foot of this module.
+
+type DuctReviewSchemaTransition { from: NonEmptyStr, to: NonEmptyStr }
+
+data duct_review_schema: NonEmptyStr = "gunbc.printed-duct-review.v3" as NonEmptyStr
+
+data a16_inlet_duct_review_v2_to_v3: DuctReviewSchemaTransition = DuctReviewSchemaTransition {
+  from: "gunbc.a16-inlet-duct-review.v2" as NonEmptyStr,
+  to: duct_review_schema,
+}
+
+data duct_review_schema_transitions: List<DuctReviewSchemaTransition> = [a16_inlet_duct_review_v2_to_v3]
+
+// The current spelling for a recorded one: itself when current, the declared successor for a retired one,
+// and nothing for a spelling no transition names.
+fn schema_migration(recorded: String) -> NonEmptyStr? {
+  if recorded == (duct_review_schema as String) { Present { value: duct_review_schema } }
+  else {
+    fold(duct_review_schema_transitions, init: Absent, f: (found, t) => match found {
+      Present { value: v } => Present { value: v }
+      Absent => if (t.from as String) == recorded { Present { value: t.to } } else { Absent }
+    })
+  }
+}
+
+// DESIGN section 3c declared frontier: schema_migration, duct_review_schema_transitions and
+// a16_inlet_duct_review_v2_to_v3 are read only by test.claim.duct_card_catalog_witness, which exercises them
+// and is not a consumer.
+data duct_review_schema_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the first production reader of a RECORDED printable-assembly manifest (a stored manifest read back by the print-record, review or preparation path rather than written by printable_assembly) passes the schema it finds through schema_migration and refuses a spelling that migrates to nothing. SUFFICIENT FOR: schema_migration, duct_review_schema_transitions and a16_inlet_duct_review_v2_to_v3 have a production consumer." as NonEmptyStr
+)

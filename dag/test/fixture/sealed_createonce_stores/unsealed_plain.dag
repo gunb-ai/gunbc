@@ -1,0 +1,12 @@
+module test.fixture.sealed_createonce_stores.unsealed_plain
+
+import std.types { NonEmptyStr }
+
+// THE STRIPPED TWINS that import nothing from production, so a whole-compile blocking count of 0 is exact (the census
+// carries the importing closure's rows: a fixture that imports HostDashboardInstance reads 1 UnresolvedType:ModeledLexRules
+// from that closure, not from the twin). GrantExceededStore needs the instance type and lives in .unsealed, where only
+// the class-and-subject scoped count is exact.
+
+type StartEvidenceStore { root: NonEmptyStr }
+
+type MicrovmReceiptStore { root: NonEmptyStr }

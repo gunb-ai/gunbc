@@ -288,15 +288,25 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // row's restoration trigger. What the wave now waits on is the remaining pair, and the ACT-0
 // release gate still reads the milestone's standing -- which reads the drop row, so the waves
 // cannot be released while the drop stands.
+// TWO CENSUS EDGES DELETED (operator ruling 2026-10-30, gunbc.design_ruling
+// bad_process_is_worse_than_no_process; V2-GOV-001 Part A). SelfHostRatchetGateEnrolled no longer
+// waits on SelfHostWholeCorpusPopulationDerived, and NamespaceFirstSemanticWave no longer waits on
+// NamespaceBaselineObservationComplete. Both were whole-population observations, and a missing
+// inventory is not grounds to block. The milestone variants and their historical receipts stay. The
+// baseline's oracle job is not dropped: at the wave grain each wave is a row-driven rewrite proven per
+// shard by bounded REDs and controls; at XL6 the acceptance adds, per deleted import root, a bounded
+// differential over the sites that root answered (declaration identity before equals after), cited by
+// grep with its unknowns stated, because a reference can silently rebind to a same-spelled declaration
+// once the roots go (concrete risk recorded by tidy-ant-251, 2026-10-31).
 fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
   match m {
     SelfHostWholeCorpusPopulationDerived => []
     SelfHostCargoPhaseEnrolled => []
     SelfHostRatchetObservationEnrolled => []
-    SelfHostRatchetGateEnrolled => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoPhaseEnrolled, SelfHostRatchetObservationEnrolled]
+    SelfHostRatchetGateEnrolled => [SelfHostCargoPhaseEnrolled, SelfHostRatchetObservationEnrolled]
     NamespaceWaveAdmissionEnrolled => []
     NamespaceBaselineObservationComplete => []
-    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceBaselineObservationComplete]
+    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled]
     NamespaceFixForwardComplete => [NamespaceFirstSemanticWave, SelfHostSeedRetirement]
     NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]

@@ -432,6 +432,12 @@ fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
   match t {
     ReceiverSelf => optional_present(value: collection_roster_carrier_type())
     ReceiverElement => optional_present(value: collection_roster_element_type())
+    // A dual-form position inhabits the carrier OR the element, and this roster states one type per
+    // position -- so it cannot name this one, and the rule above is "answers Absent, never a guess".
+    // No roster row takes a dual-form argument today (`append` is not among `collection_roster_rows`),
+    // so this arm declines a row that does not exist rather than claiming a signature for it; a row
+    // that ever needs it must first give the roster a position that holds two types.
+    ReceiverElementOrSelf => optional_absent()
     ReceiverKey => optional_absent()
     ReceiverValue => optional_absent()
     NamedTemplate { name: n } =>
@@ -500,6 +506,7 @@ fn collection_roster_template_variables(t: AlgebraTypeTemplate, seen: List<Strin
       collection_roster_template_variables(t: r, seen: fold(ps, init: seen, f: fn(acc, p) { collection_roster_template_variables(t: p, seen: acc) }))
     ReceiverSelf => seen
     ReceiverElement => seen
+    ReceiverElementOrSelf => seen
     ReceiverKey => seen
     ReceiverValue => seen
     NamedTemplate { name: _ } => seen

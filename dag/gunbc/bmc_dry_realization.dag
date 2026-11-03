@@ -222,6 +222,14 @@ fn bmc_lift<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S, reply: fn(BmcW
   }
 }
 
+// `sdr elist -v` (SdrElistVerbose, admission-rule capture): NOT REALIZED. A dry reply here would be
+// bytes nobody received - the verbose record shape is vendor output that must come from a committed
+// read, and the thermal-row admission rule is grounded on exactly such a capture (manager
+// msg_4049c507). Fail-closed by construction until then; the wet lane answers the operation.
+fn bmc_sdr_elist_verbose_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplyFault { reason: "SdrElistVerbose has no dry realization: no committed verbose SDR capture exists to ground a reply, and synthesizing vendor record bytes would fabricate the very evidence the admission rule must be grounded on" as NonEmptyStr }
+}
+
 fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<OperationBinding<S>> {
   [
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_status_reply) },
@@ -235,6 +243,7 @@ fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<Op
     OperationBinding { at: bmc_ipmi_operation(operation: "FruPrint"), handler: bmc_lift(get: get, put: put, reply: bmc_fru_print_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "HpmCheck"), handler: bmc_lift(get: get, put: put, reply: bmc_hpm_check_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SdrTypeList"), handler: bmc_lift(get: get, put: put, reply: bmc_sdr_type_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "SdrElistVerbose"), handler: bmc_lift(get: get, put: put, reply: bmc_sdr_elist_verbose_reply) },
   ]
 }
 

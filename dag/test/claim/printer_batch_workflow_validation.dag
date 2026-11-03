@@ -1,7 +1,7 @@
 module test.claim.printer_batch_workflow_validation
 import std.types {String,Bool}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
-import gunbc.fleet.printer_actuation {print_request,print_subject,start_claim_path}
+import gunbc.fleet.printer_actuation {print_request,print_subject,attempt_claim_key}
 import gunbc.fleet.fleet_asset_identity {printer_01,printer_02}
 import test.claim.print_preparation_kernel_validation {exercise_kernel}
 import product.printed_chassis.print_workflow {run}
@@ -9,10 +9,10 @@ import product.printed_chassis.print_workflow {run}
 // Boundary tests are entered individually by the witness runner, never called here.
 // End-to-end local validation entry. The production root is fixed to preparation;
 // this function cannot file an approval or start a printer.
-fn validate_preparation(plan_file:String,output:String,recipe:String,source_revision:String,control_script:String,root:String) -> ProcessExit {
+fn validate_preparation(plan_file:String,recipe:String,source_revision:String,control_script:String,root:String) -> ProcessExit {
  if !approval_changes_with_device_bytes_version_or_attempt() {return exit_failure(reason:"Approval identity did not bind the print inputs")}
  match exercise_kernel(script:control_script) {
-  ExitSuccess=>run(plan_file:plan_file,output:output,recipe:recipe,source_revision:source_revision,root:root)
+  ExitSuccess=>run(plan_file:plan_file,recipe:recipe,source_revision:source_revision,root:root)
   other=>other
  }
 }
@@ -31,7 +31,7 @@ fn approval_changes_with_device_bytes_version_or_attempt() -> Bool {
     Absent => false
     Present { value: original } =>
       original.subject == print_subject(printer:printer_01,digest:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",version:"1",attempt:"batch-a", printer_state: "s") &&
-      start_claim_path(key:original.escalation_id)==concat(concat("/var/lib/gunbc/printer-starts/",original.escalation_id as String),".claimed") &&
+      (attempt_claim_key(attempt:"batch-a") as String)=="printer-attempt-a40c684861eaedf0ba93b24850e7153280225e297566a3c62b7b3db0b8cfcea0" &&
       all(variants, v => match v {
       Absent => false
       Present { value: changed } => original.escalation_id != changed.escalation_id

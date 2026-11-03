@@ -1,0 +1,33 @@
+module extdeps.vendor.monolithic_power_systems
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-10-31 from the company's own datasheets, whose footer names "Monolithic Power Systems,
+// Inc." as the rights holder (MP2333C datasheet Rev. 1.0, 11/16/2018, "(c) 2018 MPS"), and from its
+// website, which trades as MPS; the legal name is the one on the datasheet footer, not read from a
+// filing, which this session did not reach.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.monolithicpower.com"
+  }
+}
+
+data monolithic_power_systems: Vendor<Hardware> = Vendor { legal_name: "Monolithic Power Systems, Inc." }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.monolithic_power_systems",
+      decl_name: "monolithic_power_systems",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [ExternalAuthority { uri: Uri { scheme: Https, locator: "en.wikipedia.org/wiki/Monolithic_Power_Systems" } }]
+}
