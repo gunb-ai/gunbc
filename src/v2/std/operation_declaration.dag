@@ -458,12 +458,14 @@ fn operation_declaration_for(
   declaration: DeclarationRef
 ) -> Optional<OperationDeclaration> {
   match operation_declaration_rows_at(index: operation_declaration_index, declaration: declaration) {
-    Cons { head: row, tail: _ } => Present { value: row }
+    Cons { head: row, tail: Empty } => Present { value: row }
+    Cons { head: _, tail: _ } => Absent
     Empty => Absent
   }
 }
 
-// A key declared by more than one row is AMBIGUOUS: the B0 census promoted ambiguous keys to nothing
+// A key declared by more than one row is AMBIGUOUS and reads Absent (the census's RequiresUndeclared
+// arm blocks it), never the first row: the B0 census promoted ambiguous keys to nothing
 // (the operation stayed Unknown and was counted) rather than pick; the same discipline holds here,
 // and the count is what the census reports. Ambiguity here can only be an authoring error -- keys
 // are declared paths, and one declaration is one operation.
