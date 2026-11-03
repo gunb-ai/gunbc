@@ -116,7 +116,7 @@ import gunbc.provisioning.public_nocloud_seed {
   seed_credential_keys,
 }
 import extdeps.bmc.endpoint { AmiMegaRac, SupermicroAten }
-import test.fixture.boot_delivery_plans { removable_media_solution, pxe_solution, refused_solution, solution_selecting_control, incoherent_pxe_solution }
+import test.fixture.boot_delivery_plans { removable_media_solution, pxe_solution, refused_solution, solution_selecting_control, incoherent_pxe_solution, removable_media_solution_for }
 import gunbc.boot_artifact_delivery { BootDeliverySolution, BootControlTarget, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, BiosX86, UefiArm64, HttpBootArm64 }
 import extdeps.uri { Https, Uri }
@@ -1192,7 +1192,7 @@ test fn the_h11ssl_amd64_seed_renders_from_its_rows() -> Bool {
             credential: PasswordUnset,
             password_read: password_read_for(credential: PasswordUnset),
             locale: EnUsUtf8,
-            solution: removable_media_solution,
+            solution: removable_media_solution_for(architecture: X86_64),
             keyboard: UsLayout,
           ) {
             Absent => false
@@ -6068,6 +6068,36 @@ test fn an_incoherent_plan_yields_no_seed() -> Bool {
   match build_seed_for_solution(solution: incoherent_pxe_solution) {
     Absent => True
     Present { value: _ } => False
+  }
+}
+
+fn seed_for_artifact_architecture(artifact: Architecture, target: ProvisioningTargetAdmission) -> Optional<UbuntuAutoinstallSeed> {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      build_ubuntu_autoinstall_seed(
+        target: target, network: network_posture, install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
+        loadable_modules: [AhciPlatformModule, NvmeBlockModule], late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
+        install_packages: clean_packages, late_packages: [], disk: serial_selector, entry: entry,
+        credential: seeded_handle, password_read: password_read_for(credential: seeded_handle), locale: EnUsUtf8,
+        solution: removable_media_solution_for(architecture: artifact), keyboard: UsLayout,
+      )
+    Absent => Absent
+  }
+}
+
+// RED: an arm64 artifact plan beside an admitted x86_64 target yields no seed (media the target cannot boot).
+test fn an_arm64_plan_for_an_x86_target_yields_no_seed() -> Bool {
+  match seed_for_artifact_architecture(artifact: Aarch64, target: target_x86()) {
+    Absent => True
+    Present { value: _ } => False
+  }
+}
+
+// Positive control for the join: the same builder with matching architectures produces a seed.
+test fn a_plan_and_target_of_one_architecture_build_a_seed() -> Bool {
+  match seed_for_artifact_architecture(artifact: Aarch64, target: target_altra) {
+    Present { value: _ } => True
+    Absent => False
   }
 }
 
