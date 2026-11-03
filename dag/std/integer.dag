@@ -188,12 +188,12 @@ fn qualified_octets(members: List<Int>) -> QualifiedOctets
   admit_callers: [
     decl_ref(module_path: "std.integer", decl_name: "uint8_octets_of_ints"),
     decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets"),
-    decl_ref(module_path: "extdeps.numeric.base16", decl_name: "base16_decode_lower"),
-    // base16_decode_any is admitted on the SAME GROUND as base16_decode_lower and on no weaker one: its fold
-    // mints only the list it has verified in full -- every member is `high * 16 + low` with both digits drawn
-    // from extdeps.numeric.base16's own digit rows, so each is computed in [0, 255] by the operation that
-    // produced it, and the only difference is which column of those rows a code point may come from. It takes
-    // no caller list and returns no value it did not build.
+    // extdeps.numeric.base16 mints through ONE walk, `base16_decode_any`. Its lowercase decoder is that walk
+    // plus the alphabet's own membership test over the text it was given, so it never reaches this gate -- the
+    // module has one minter, not two. The ground is the one `std.machine_word`'s `word_to_octets` stands on:
+    // the fold mints only the list it has verified in full, every member `high * 16 + low` with both digits
+    // drawn from base16's own digit rows, so each is computed in [0, 255] by the operation that produced it.
+    // It takes no caller list and returns no value it did not build.
     decl_ref(module_path: "extdeps.numeric.base16", decl_name: "base16_decode_any"),
     decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_hex")
   ]

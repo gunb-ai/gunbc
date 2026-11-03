@@ -420,3 +420,59 @@ test fn a_path_with_no_mac_node_names_no_nic() -> Bool {
     _ => false
   }
 }
+
+// THE ANNOUNCED COUNT, THREE ANSWERS. A collection that announces no count is still a collection (the
+// control); a count published as a string is a decode refusal naming the property, because an unread count is
+// what lets one committed member stand in for a whole fleet.
+test fn a_collection_that_announces_no_count_is_still_a_collection() -> Bool {
+  match redfish_ethernet_interface_collection_of(body: "{\"Members\": [{\"Id\": \"1\"}], \"Members@odata.count\": 1}") {
+    ObservationEstablished { observed: c } => c.announced_count == Present { value: 1 }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+test fn a_string_announced_count_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_collection_of(body: "{\"Members\": [{\"Id\": \"1\"}], \"Members@odata.count\": \"1\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "Members@odata.count")
+    ObservationEstablished { observed: c } => false
+  }
+}
+
+// THE ERROR ENVELOPE, THREE ANSWERS. A well-formed envelope is the service's own refusal (pinned by
+// `boot_options_error_envelope_is_an_answer_not_a_failure`); no envelope means the resource was served and
+// Members is read next (pinned by `boot_options_collection_reads_every_member_it_publishes`); an envelope
+// that cannot be read -- a code that is a number, or an empty code -- is a failed read, not "no refusal code".
+test fn an_error_envelope_whose_code_is_not_a_string_refuses_rather_than_reading_as_none() -> Bool {
+  match redfish_boot_options_of(body: "{\"error\": {\"code\": 400, \"message\": \"x\"}}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "code") && !string_contains(s: c as String, pattern: "not served")
+    ObservationEstablished { observed: o } => false
+  }
+}
+
+test fn an_error_envelope_with_an_empty_code_refuses_rather_than_reading_as_none() -> Bool {
+  match redfish_boot_options_of(body: "{\"error\": {\"code\": \"\", \"message\": \"x\"}}") {
+    ObservationRefused { cause: c } => string_contains(s: c as String, pattern: "empty code")
+    ObservationEstablished { observed: o } => false
+  }
+}
+
+// A MEMBER THAT PUBLISHES AN ID IT CANNOT READ. The control is the shape the committed captures actually
+// carry -- navigation links with `@odata.id` and no `Id` -- which names no member and keeps its announced
+// count; a member whose `Id` is present but is not a string refuses the collection, it does not disappear
+// from the list.
+test fn a_collection_of_navigation_links_names_no_member_and_keeps_its_count() -> Bool {
+  match redfish_ethernet_interface_collection_of(body: "{\"Members\": [{\"@odata.id\": \"/redfish/v1/Systems/1/EthernetInterfaces/1\"}], \"Members@odata.count\": 1}") {
+    ObservationEstablished { observed: c } => c.member_ids == [] && c.announced_count == Present { value: 1 }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+test fn a_member_publishing_an_unreadable_id_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_collection_of(body: "{\"Members\": [{\"Id\": 7}], \"Members@odata.count\": 1}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "member") && string_contains(s: c as String, pattern: "Id")
+    ObservationEstablished { observed: c } => false
+  }
+}

@@ -253,6 +253,17 @@ fn redfish_network_boot_optional_bool(obj: JsonValue, key: String) -> RedfishOpt
   }
 }
 
+// The same three answers for a JSON number. Reading a numeric field as a string silently yields nothing, and
+// reading a malformed one as absent silently yields the absence -- `Members@odata.count` is the case that
+// matters: the count is what stops one committed member standing in for a whole fleet.
+fn redfish_network_boot_optional_int(obj: JsonValue, key: String) -> RedfishOptionalProperty<Int> {
+  match json_field_int(obj: obj, key: key) {
+    FieldAbsent => PropertyAbsent
+    FieldMalformed { cause: c } => PropertyUndecodable { key: key, cause: c }
+    FieldRead { value: n } => PropertyPublished { value: n }
+  }
+}
+
 // The property's value, once the undecodable case has been refused by the caller: absent and published fill the
 // record's own Optional. The undecodable arm reaching this function is unreachable by contract, and it reports
 // nothing there -- the refusal is what carries that fact.
@@ -335,17 +346,27 @@ fn redfish_ethernet_interface_of(body: String) -> ObservationAttempt<RedfishEthe
   }
 }
 
-// The error envelope a Redfish service returns for a resource it does not serve: `error.code` beside an
+// THE ERROR ENVELOPE a Redfish service returns for a resource it does not serve: `error.code` beside an
 // `@Message.ExtendedInfo` list whose first entry carries the `MessageId`. Both spellings are read because
-// services publish both, and a body carrying neither is not a refusal — it is an unreadable answer.
-fn redfish_network_boot_error_code(doc: JsonValue) -> String? {
+// services publish both. THREE answers, kept apart: no envelope at all (the resource was served, so the
+// caller goes on to read Members); an envelope whose `code` the reader can name (the service's own refusal,
+// an established negative); and an envelope that is present but unreadable — not an object, or carrying no
+// `code`, or an empty one. The Redfish error object REQUIRES `code`, so those last three are a failed read,
+// not "no refusal code": collapsing them is what lets a service that answered badly read as a resource that
+// is simply not there.
+fn redfish_network_boot_error_code(doc: JsonValue) -> RedfishOptionalProperty<String> {
   match json_field(obj: doc, key: redfish_key_error) {
-    FieldAbsent => none
-    FieldMalformed { cause: c } => none
+    FieldAbsent => PropertyAbsent
+    FieldMalformed { cause: c } => PropertyUndecodable { key: redfish_key_error, cause: c }
     FieldRead { value: error } => match json_field_string(obj: error, key: redfish_key_code) {
-      FieldRead { value: code } => if code == "" { none } else { Present { value: code } }
-      FieldAbsent => none
-      FieldMalformed { cause: c } => none
+      FieldRead { value: code } =>
+        if code == "" {
+          PropertyUndecodable { key: redfish_key_code, cause: "the error envelope publishes an empty code" }
+        } else {
+          PropertyPublished { value: code }
+        }
+      FieldAbsent => PropertyUndecodable { key: redfish_key_code, cause: "the error envelope carries no code" }
+      FieldMalformed { cause: c } => PropertyUndecodable { key: redfish_key_code, cause: c }
     }
   }
 }
@@ -357,8 +378,14 @@ fn redfish_boot_options_of(body: String) -> ObservationAttempt<RedfishBootOption
   match redfish_network_boot_document(body: body, what: "BootOptions") {
     ObservationRefused { cause: c } => ObservationRefused { cause: c }
     ObservationEstablished { observed: doc } => match redfish_network_boot_error_code(doc: doc) {
-      Present { value: code } => ObservationEstablished { observed: BootOptionsNotServed { message: code as NonEmptyStr } }
-      Absent => match json_field(obj: doc, key: redfish_key_members) {
+      PropertyPublished { value: code } => ObservationEstablished { observed: BootOptionsNotServed { message: code as NonEmptyStr } }
+      // AN ENVELOPE THAT CANNOT BE READ IS NOT AN ABSENCE OF AN ENVELOPE. The service answered; the reader
+      // could not understand the answer, and that is the acquisition-level refusal, not the established
+      // negative "not served" and not "no boot options".
+      PropertyUndecodable { key: k, cause: c } => ObservationRefused { cause: concat(
+        "the BootOptions error envelope is unreadable: ", concat(k as String, concat(": ", c as String))
+      ) as NonEmptyStr }
+      PropertyAbsent => match json_field(obj: doc, key: redfish_key_members) {
         FieldAbsent => ObservationRefused { cause: "the BootOptions collection carries no Members array" as NonEmptyStr }
         FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
         FieldRead { value: members } => match members {
@@ -541,29 +568,53 @@ fn redfish_ethernet_interface_collection_of(body: String) -> ObservationAttempt<
       FieldAbsent => ObservationRefused { cause: "the EthernetInterfaces collection carries no Members array" as NonEmptyStr }
       FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
       FieldRead { value: members } => match members {
-        JsonArray { elements: elements } => ObservationEstablished { observed: RedfishEthernetInterfaceCollectionRead {
-          member_ids: bmc_redfish_member_ids_of(elements: elements),
-          // The count is a JSON number on the wire: read it as one. Reading it as a string silently yields
-          // `none`, and a collection whose announced count went unread would let a single committed member
-          // stand in for the whole fleet.
-          announced_count: match json_field_int(obj: doc, key: redfish_key_members_odata_count) {
-            FieldRead { value: count } => Present { value: count }
-            FieldAbsent => none
-            FieldMalformed { cause: c } => none
-          },
-        } }
+        JsonArray { elements: elements } =>
+          // THE ANNOUNCED COUNT IS AN OPTIONAL INT, and the three arms stay three answers. Absent is a fact
+          // (a collection may announce no count and still be a collection); a count that is published but is
+          // not a number is a decode refusal naming the property, because a collection whose announced count
+          // went unread would let a single committed member stand in for the whole fleet.
+          let ids = bmc_redfish_member_ids_of(elements: elements)
+          let count = redfish_network_boot_optional_int(obj: doc, key: redfish_key_members_odata_count)
+          match ids {
+            ObservationRefused { cause: c } => ObservationRefused { cause: concat(
+              "the EthernetInterfaces collection publishes a member this reader cannot decode: ", c as String
+            ) as NonEmptyStr }
+            ObservationEstablished { observed: member_ids } => match redfish_undecodable_detail(property: count) {
+              Present { value: detail } => ObservationRefused { cause: concat(
+                "the EthernetInterfaces collection publishes a property this reader cannot decode: ", detail as String
+              ) as NonEmptyStr }
+              Absent => ObservationEstablished { observed: RedfishEthernetInterfaceCollectionRead {
+                member_ids: member_ids,
+                announced_count: redfish_optional_value(property: count),
+              } }
+            }
+          }
         other => ObservationRefused { cause: "the EthernetInterfaces Members value is not an array" as NonEmptyStr }
       }
     }
   }
 }
 
-fn bmc_redfish_member_ids_of(elements: List<JsonValue>) -> List<NonEmptyStr> {
-  let ids: List<NonEmptyStr> = []
-  fold(elements, init: ids, f: (acc, member) => match json_field_string(obj: member, key: redfish_key_id) {
-    FieldRead { value: id } => if id == "" { acc } else { concat(acc, [id as NonEmptyStr]) }
-    FieldAbsent => acc
-    FieldMalformed { cause: c } => acc
+// WHICH MEMBERS THE COLLECTION NAMES. A Redfish collection member is a NAVIGATION LINK: the committed
+// captures publish `{"@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces/1"}` and no `Id` at all
+// (h11ssl-unit1's `redfish_v1_Systems_1_EthernetInterfaces.json`, srv13's `Managers_bmc_EthernetInterfaces.json`),
+// so an absent `Id` is the normal shape and names nothing -- which is exactly why the reader keeps the
+// announced count beside the list instead of treating an empty list as an empty fleet. A member that DOES
+// publish an `Id` and publishes one this reader cannot read is a different external fact: a property arrived
+// and did not decode. That refuses the collection naming the property; the member does not vanish into `acc`.
+fn bmc_redfish_member_ids_of(elements: List<JsonValue>) -> ObservationAttempt<List<NonEmptyStr>, NonEmptyStr> {
+  fold(elements, init: ObservationEstablished { observed: [] }, f: (acc, member) => match acc {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: ids } => match json_field_string(obj: member, key: redfish_key_id) {
+      FieldRead { value: id } =>
+        if id == "" {
+          ObservationRefused { cause: "a collection member publishes an empty Id" as NonEmptyStr }
+        } else {
+          ObservationEstablished { observed: concat(ids, [id as NonEmptyStr]) }
+        }
+      FieldAbsent => ObservationEstablished { observed: ids }
+      FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+    }
   })
 }
 
