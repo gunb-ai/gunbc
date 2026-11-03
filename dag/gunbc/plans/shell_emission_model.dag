@@ -27,6 +27,6 @@ data shell_emission_model_plan: Plan = Plan {
   slug: "shell-emission-model",
   title: "Shell emission model — orchestration intent to bash via emit(intent, Bash)",
   body: shell_emission_model_body(),
-  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when all shell-emit sites route through emit(intent,Bash), host_effect Phase B has dissolved ShellCommand\{script\} onto modeled orchestration intent, and the intent-layer residual census (Categories A–C) is empty. (`program.dag` sidecar deletion is complete — #6831.)")
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when all shell-emit sites route through emit(intent,Bash), host_effect Phase B has dissolved ShellCommand\{script\} onto modeled orchestration intent, and no Category A–C intent-layer site remains in source (a residual census is not a prerequisite: retired by the 2026-10-30 process ruling, `gunbc.design_ruling bad_process_is_worse_than_no_process`; this does not establish corpus-wide coverage). (`program.dag` sidecar deletion is complete — #6831.)")
   }
 }
