@@ -4,6 +4,7 @@ import std.induction {
   InductiveField, RecursionShape,
   DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion
 }
+import std.types { Map }
 
 data compiler_inductive_fields: List<InductiveField> = [
 

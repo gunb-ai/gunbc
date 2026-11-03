@@ -11,6 +11,7 @@ import v1.std.core {
 }
 
 import v1.compiler.resolve { ModuleGraph, ResolvedModule }
+import std.types { Map }
 
 
 

@@ -3,6 +3,7 @@ module extdeps.languages.python.emit
 import std.emit_model { SimpleMethodSpec }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.types { Map }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -3,7 +3,7 @@ module v1.compiler.annotation_bind
 //
 // It is a PURE DOWNSTREAM READER of the parse result. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one.
 
-import std.types { Bool, Int, String, SourceSpan, List }
+import std.types { Bool, Int, String, SourceSpan, List, Map }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIndexEntry,

@@ -19,7 +19,7 @@ import gunbc.crate_partition {
 }
 
 import std.algebra { Empty, fold_list, length, list_push }
-import std.types { NonEmptyStr, List, Bool, String, Int, brand }
+import std.types { NonEmptyStr, List, Bool, String, Int, brand, Map }
 import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
