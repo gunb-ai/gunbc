@@ -6,7 +6,9 @@ import std.content_hash { content_hash_of_value }
 import std.measure { Second, second, second_count }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac
-import extdeps.bmc.megarac { megarac_firmware_0_32, media_row_named_medium }
+import extdeps.bmc.megarac {
+  megarac_firmware_0_32, megarac_firmware_0_45_reported, megarac_no_redirection_session_index,
+}
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
@@ -1664,6 +1666,79 @@ fn unread_row_replaceable(
   }
 }
 
+// HOW THIS CONTROLLER SPELLS "THE ROW NAMES NO MEDIUM", AND WHAT WE MAKE OF IT. The media table's image_name
+// member comes back as the EMPTY STRING for a leftover row that names no image: the controller has no word
+// for absence, so the spelling is the vendor's and the reading of it is ours. Every reading in this repository
+// turns that answer into `none`, and a non-empty answer into `Present`. The distinction is not cosmetic -- the
+// inference below promotes an unread code only for a row that names no medium, so "" must not be able to pose
+// as a name, and one site must spell it for the lane and the witness alike (DESIGN.md §3b: this is an
+// observation this repository makes, so it sits here rather than in extdeps).
+fn megarac_media_row_named_medium(name: String) -> NonEmptyStr? {
+  if name == "" {
+    Absent
+  } else {
+    Present { value: name as NonEmptyStr }
+  }
+}
+
+// WHAT THIS REPOSITORY INFERRED FROM THE ROW IT READ, CARRIED AS WHAT IT IS (DESIGN.md §4d: an inference is a
+// bet: typed as a bet, neither deleted nor promoted; a reader who consumes it as fact is the defect). On the
+// release the controller reports as raw "0.45" the vendor's catalogue names 1 (started) and -- beside the
+// no-session marker -- 16 (stopped, operator-attested); it says NOTHING about 0. Boot run 41573858366 read one
+// leftover CD row at 0: media_type 1, redirection_status 0, session_index the no-session marker, image_name the
+// empty string, recorded in that run's diagnostics by the receipt
+// gunbc.machine_intake.megarac_media_row_reading boot_run_41573858366_end_media_row. Read against the 0.32
+// table, where 0 is Stopped, and against the marker, that row SHAPE resembles an ejected CD. The resemblance
+// is a guess WE made from one reading; it is not a MegaRacRedirectionStatus, no lane acts on it, and the
+// attach lane refuses the row with a cause of its own (RedirectionUnreadInferred) naming the reading that
+// would lift it -- an operator's dated reading of the controller's own UI for a status-0 CD row that names no
+// medium, of the kind gunbc.machine_intake.megarac_media_row_reading mtcollins1_cd_row_ui_attestation is for
+// code 16. Until that reading is committed, nothing may consume this as a state, and
+// test.claim.machine_intake.megarac_media_0_45_3_witness pins both halves: the row that was read is guessed,
+// and every lane that meets the guess refuses it.
+type MegaRacStatusZeroRowInference
+  = MegaRacStatusZeroRowGuessedNotPresenting { firmware: BmcFirmwareReleaseIdentity, wire: Int, session_index: Int }
+  | MegaRacStatusZeroRowNotGuessed { reason: MegaRacStatusZeroRowRefusal }
+
+// WHY NOTHING WAS INFERRED -- one typed cause per separation, each pinned RED in the witness: a code that is
+// not 0, a session that is live, a session index the reading never carried, a row that NAMES a medium (a row
+// naming an image was never read at 0 on this release), and a release this was never read on.
+type MegaRacStatusZeroRowRefusal
+  = ZeroRowWireIsNotZero { wire: Int }
+  | ZeroRowSessionIsActive { session_index: Int }
+  | ZeroRowSessionWasNotRead
+  | ZeroRowNamesAMedium { name: NonEmptyStr }
+  | ZeroRowReleaseWasNeverReadThatWay { firmware: BmcFirmwareReleaseIdentity }
+
+// THE GUARD IS THE EVIDENCE. The guess is drawn only on the exact combination that row was read in -- the
+// release the controller reports, code 0, the no-session marker, and a row naming no medium -- so it cannot
+// leak onto a row nobody read; everything else answers with the typed cause above and the caller falls back to
+// the vendor's own uncatalogued answer.
+fn megarac_status_zero_row_inference(
+  firmware: BmcFirmwareReleaseIdentity,
+  wire: Int,
+  session_index: Int?,
+  image_name: NonEmptyStr?,
+) -> MegaRacStatusZeroRowInference {
+  if !bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_reported) {
+    MegaRacStatusZeroRowNotGuessed { reason: ZeroRowReleaseWasNeverReadThatWay { firmware: firmware } }
+  } else if wire != 0 {
+    MegaRacStatusZeroRowNotGuessed { reason: ZeroRowWireIsNotZero { wire: wire } }
+  } else {
+    match session_index {
+      Absent => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionWasNotRead }
+      Present { value: index } => if index != megarac_no_redirection_session_index {
+        MegaRacStatusZeroRowNotGuessed { reason: ZeroRowSessionIsActive { session_index: index } }
+      } else {
+        match image_name {
+          Present { value: named } => MegaRacStatusZeroRowNotGuessed { reason: ZeroRowNamesAMedium { name: named } }
+          Absent => MegaRacStatusZeroRowGuessedNotPresenting { firmware: firmware, wire: wire, session_index: index }
+        }
+      }
+    }
+  }
+}
+
 type ConfigurationRowReading
   = ConfigurationRowUnreadable { detail: String }
   | ConfigurationRowUncatalogued { image_name: String, unread: MegaRacRedirectionUnread }
@@ -1705,27 +1780,29 @@ fn configuration_row_reading(
                       ConfigurationRowIdle
                     }
                   } else {
-                    // THE MEDIUM THE ROW NAMES, TYPED. The controller answers the empty string when a row
-                    // names no image, and `none` is what this repository keeps for that: the fold below
-                    // promotes an unread code only for a row that names no medium, and that distinction --
-                    // an empty answer versus no medium at all -- is what the byte-level reading of boot run
-                    // 41573858366 actually carried (its row named nothing).
-                    let named_medium = media_row_named_medium(name: name)
+                    // THE MEDIUM THE ROW NAMES, TYPED -- this repository's reading of the controller's empty
+                    // answer, spelled in one place.
+                    let named_medium = megarac_media_row_named_medium(name: name)
                     match megarac_redirection_status_of_row(
                       firmware: firmware,
                       wire: wire,
                       session_index: session_index,
-                      image_name: named_medium,
                     ) {
                       RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadFirmware { firmware: f, wire: w } }
-                      // THE BET REFUSES, AS A BET. Not ConfigurationRowIdle: idle is the answer that lets the
-                      // lane attach and, downstream, call StartMedia on this row. The cause is the point --
-                      // it names the code, the release and the reading that would lift it.
-                      RedirectionStoppedInferred { firmware: f, wire: w } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadInferred { firmware: f, wire: w } }
                       RedirectionStatusKnown { firmware: f, status: status } =>
                         match status {
                           RedirectionStopped => ConfigurationRowIdle
-                          RedirectionWireUncatalogued { wire: w } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } }
+                          // THE VENDOR SAYS NOTHING ABOUT THIS CODE -- SO THE QUESTION IS WHETHER *WE* READ
+                          // THIS ROW. Only if we did, in the one shape we read it in, is there a bet to carry;
+                          // and even then the answer is a refusal with its own cause, never
+                          // ConfigurationRowIdle: idle is what lets the lane attach and, downstream, call
+                          // StartMedia over a row that may be presenting. A row nobody read keeps the plain
+                          // uncatalogued refusal.
+                          RedirectionWireUncatalogued { wire: w } =>
+                            match megarac_status_zero_row_inference(firmware: f, wire: w, session_index: session_index, image_name: named_medium) {
+                              MegaRacStatusZeroRowGuessedNotPresenting { firmware: g, wire: gw, session_index: _ } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadInferred { firmware: g, wire: gw } }
+                              MegaRacStatusZeroRowNotGuessed { reason: _ } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadCode { firmware: f, wire: w } }
+                            }
                           RedirectionStartedConnectionAccepted => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
                           RedirectionConnecting => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
                         }

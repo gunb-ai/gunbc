@@ -57,11 +57,13 @@ data boot_run_40258937016_end_media_row: MegaRacMediaRowReceipt = MegaRacMediaRo
 // THE ROW BOOT RUN 41573858366 (the seventh boot attempt) MET AT THE END OF ITS ATTEMPT, read back at
 // 1793678673678 and quoted verbatim on the line named below: media_type 1, media_index 0, session_index 255,
 // NO medium named, redirection_status 0. This is the FIRST reading of wire 0 on the release the controller
-// reports that this repository holds, and it is the whole of what the 0 arm of
-// extdeps.bmc.megarac.megarac_redirection_status_of_row rests on. That arm returns an INFERENCE, not a
-// state -- RedirectionStoppedInferred -- because what was read is that the row PRESENTS 0 while naming
-// nothing, not that the controller calls 0 stopped on the release it runs. No lane acts on the inference; an
-// operator read of the vendor's own UI for this row is what would settle it. THE ATTEMPT WAS HALTED AT MEDIA ATTACH
+// reports that this repository holds, and it is the whole of what this repository's own inference rests on.
+// The upstream's fold answers 0 as an uncatalogued wire and goes no further -- the vendor's catalogue does not
+// name it (extdeps.bmc.megarac megarac_redirection_status_of_row). What this repository makes of the reading
+// lives with the reading, at gunbc.machine_intake.megarac_media_attach
+// megarac_status_zero_row_inference, and it is an INFERENCE rather than a state, because what was read is that
+// the row PRESENTS 0 while naming nothing, not that the controller calls 0 stopped on the release it runs. No
+// lane acts on the inference; an operator read of the vendor's own UI for this row is what would settle it. THE ATTEMPT WAS HALTED AT MEDIA ATTACH
 // BY THIS ROW: the lane would not stop it (it names no image, so nothing identifies it as this lane's) and 0
 // was not a code this release's catalogue named, so nothing was written, no session was started and the host
 // was never powered on. Committing this reading does not lift that refusal: the row is still unread to the
