@@ -725,6 +725,8 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
+import gunbc.managed_directory { declared_directory_mode_octal }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots }
 import gunbc.roadmap.roadmap_session_placement {
   attempt_worker_unit_observe_for_instance,
   SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores,
@@ -1748,7 +1750,7 @@ fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id
       match session_placement_stores(instance: instance) {
         SessionStoresUnresolved { detail } => BeltPlacementRefused { detail: detail }
         SessionStoresResolved { stores } =>
-          match belt_session_slots_ensure(instance: instance, stores: stores) {
+          match belt_session_slots_ensure(instance: instance) {
             Present { value: why } => BeltPlacementRefused { detail: why }
             Absent =>
               match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key, resume: resume) {
@@ -1763,11 +1765,27 @@ fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id
 // THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, before the settlement
 // pass reads it and before any slot is opened in it, so "the store is missing" never has to be told
 // apart from "the store could not be listed" by reading an error string. Present carries the refusal.
-fn belt_session_slots_ensure(instance: HostDashboardInstance, stores: SessionPlacementStores) -> String? {
+//
+// THIS FUNCTION IS A SCAFFOLD, AND HERE IS ITS END. It is a SECOND creator of the directory that
+// gunbc.roadmap.dashboard_instance_directories now demands (session_attempt_slots_directory), and a second
+// creator conceals a missing demanded directory: on a host whose deploy has not yet carried the new row,
+// the belt still creates the directory at tick time, so the listed-directory admission and the DirectoryRoot
+// readback never see the deficit (DESIGN section 5, never conceal the deficit). It is kept in this carrier
+// retype only because deleting it first would turn a stale deploy into a refusal of every placement and
+// settlement pass -- an outage, not a discovery. DISSOLUTION TRIGGER: once a deploy carrying
+// session_attempt_slots_directory has been applied AND read back as a DirectoryRoot member on every host
+// this belt runs on, delete this function and its four call sites, which is what main already does.
+// The argv mode is DERIVED from the declaration (session_attempt_slots.mode) rather than spelled, so while
+// both creators exist there is one authority for the mode and a later declaration change is not fought by
+// this pass; the derived value dies with the function.
+// Side note, recorded not fixed: reviewer-attempts has NO belt ensure, so its only creator is its demanded
+// row, and on a host that has not been re-deployed the reviewer settlement pass keeps reporting it could not
+// run -- which is the same as today's lab, where nothing creates it.
+fn belt_session_slots_ensure(instance: HostDashboardInstance) -> String? {
   match belt_exec(
     cmd: host_exec_argv(
       program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
-      args: ["-d", "-m", "0700", session_placement_slots_root(instance: instance) as String],
+      args: ["-d", "-m", declared_directory_mode_octal(m: session_attempt_slots.mode), session_placement_slots_root(instance: instance) as String],
     ),
     workdir: belt_observe_workdir as String,
   ) {
@@ -1786,7 +1804,7 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
   match session_placement_stores(instance: instance) {
     SessionStoresUnresolved { detail } => SessionSettlePassRefused { detail: detail }
     SessionStoresResolved { stores } =>
-      match belt_session_slots_ensure(instance: instance, stores: stores) {
+      match belt_session_slots_ensure(instance: instance) {
         Present { value: why } => SessionSettlePassRefused { detail: why }
         Absent => {
           let worker_pass = belt_worktree_claim_ensure(instance: instance, stores: stores, settled: session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores)))
@@ -12857,7 +12875,7 @@ fn belt_reviewer_placement(
   match session_reviewer_placement_stores(instance: instance) {
     SessionStoresUnresolved { detail } => BeltReviewerPlacementRefused { detail: detail }
     SessionStoresResolved { stores } =>
-      match belt_session_slots_ensure(instance: instance, stores: stores) {
+      match belt_session_slots_ensure(instance: instance) {
         Present { value: why } => BeltReviewerPlacementRefused { detail: why }
         Absent =>
           match session_reviewer_placement_settle_pass(instance: instance, stores: stores) {
@@ -12884,7 +12902,7 @@ fn belt_reviewer_settlement_pass(instance: HostDashboardInstance) -> SessionSett
   match session_reviewer_placement_stores(instance: instance) {
     SessionStoresUnresolved { detail } => SessionSettlePassRefused { detail: detail }
     SessionStoresResolved { stores } =>
-      match belt_session_slots_ensure(instance: instance, stores: stores) {
+      match belt_session_slots_ensure(instance: instance) {
         Present { value: why } => SessionSettlePassRefused { detail: why }
         Absent => session_reviewer_placement_settle_pass(instance: instance, stores: stores)
       }
