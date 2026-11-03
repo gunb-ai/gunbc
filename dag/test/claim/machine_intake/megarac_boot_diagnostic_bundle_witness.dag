@@ -14,7 +14,6 @@ import gunbc.machine_intake.megarac_kvm_still { KvmObserverRecord, kvm_observer_
 import std.algebra { string_contains }
 import gunbc.machine_intake.megarac_media_attach {
   AttachReadiness, PresentingRow, ReadinessLook, ReadinessStarted, ReadinessConnecting, ReadinessStartedUnbound,
-  readiness_look_text,
 }
 import extdeps.bmc.megarac { RedirectionStartedConnectionAccepted, RedirectionConnecting }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -76,7 +75,7 @@ import gunbc.host.boot_console_observation {
   console_size_of_stat,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, BootOverrideClears, boot_override_clears_none_found, boot_param5_override_is_pending, megarac_override_release, BootParam5ClearIssued, OverrideClearLeftPending, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly,
+  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, BootOverrideClears, boot_override_clears_none_found, boot_param5_override_is_pending, megarac_override_release, BootParam5ClearIssued, OverrideClearLeftPending, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, processor_anomalies, readiness_look_text, redfish_budget_refusal, redfish_collection_assembly,
 }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_valid_after_bootdev_none,

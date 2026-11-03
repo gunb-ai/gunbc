@@ -1035,14 +1035,19 @@ test fn the_write_verdict_follows_the_exit_code_not_the_stderr_wording() -> Bool
 // reading 0 beside the no-session marker, which decodes into ReadinessConnecting -- one of the three arms that
 // used to drop the document they were decoded from -- so these claims exercise all three layers at once.
 
+// The SAME fixture as ready_outcome(), with the in-interval look as its only variable -- including the
+// general-settings body, which is what makes cd_error_of_raw ANSWER rather than come back unread. An unread
+// code there sends the ready arm to MegaRacMediaStateUnestablished, which renders no evidence at all: these
+// three claims were red for that reason and no other, so the fixture that never reached the arm it claims to
+// exercise was the defect, not the claims.
 fn ready_outcome_with_interval(interval: ReadinessLook) -> MegaRacAttachOutcome {
   readiness_wait_outcome(
     wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4, in_interval: interval },
     image_name: desired_census,
     firmware: megarac_firmware_0_32,
     route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } },
-    cd_before: CdErrorUnread { detail: "not read before the writes" },
-    general_at_end: raw_at(body: "{}"),
+    cd_before: cd_clean,
+    general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported),
   )
 }
 
@@ -1062,12 +1067,15 @@ test fn the_ready_outcome_prints_the_in_interval_configurations() -> Bool {
     && string_contains(s: text, pattern: "\"session_index\":255")
 }
 
-// THE FIRST LOOK, NOT THE READY ONE REPRINTED. Both documents are in the text, and they are different
-// documents; a print that filled the interval from the ready look loses one of these two patterns.
+// THE FIRST LOOK, NOT THE READY ONE REPRINTED. The ready path types its own reading (redirection_status=,
+// session_index=) and prints a configurations DOCUMENT only for the in-interval look, so the two readings are
+// told apart by their JSON markers: the interval reads 0 beside the no-session marker 255, the ready look reads
+// 1 beside a bound 0. If the wait ever filled the interval from the ready look, the interval's marker would be
+// gone and the ready document's "session_index":0 would appear -- this claim goes red on either half alone.
 test fn the_in_interval_look_is_not_the_ready_look_reprinted() -> Bool {
   let text = evidence_text_of(outcome: ready_outcome_with_interval(interval: look(at: 1100, status: "0", session: "255")))
   string_contains(s: text, pattern: "\"redirection_status\":0")
-    && string_contains(s: text, pattern: "\"redirection_status\":1")
+    && !string_contains(s: text, pattern: "\"session_index\":0")
 }
 
 // RED: IF THE IN-INTERVAL LOOK IS EVER DROPPED, THE TEXT COLLAPSES. Same wait, same ready look, two in-interval
