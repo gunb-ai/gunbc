@@ -7750,7 +7750,12 @@ mod heal_round_one_base_mirror_tests {
     /// file, and a hand-maintained directory. HEAD carries the damage the PR came to repair
     /// (the `Nat` refusal spelled in the generated mirror), its own hand-authored repair, and a
     /// mirror base has no form of.
-    fn base_mirror_fixture() -> (PathBuf, PathBuf, String) {
+    /// THE FIXTURE, parameterized by the one shape the bootstrap authority had never seen: a module
+    /// the BASE tracks and the HEAD DELETES. `deleted` is a path relative to the crate's `src`
+    /// directory; when it is `Some`, base carries that file and the head removes it in its own commit,
+    /// which is exactly the PR shape that made round 1 compile a base/head chimera (PR #15418, PR
+    /// #15540). When it is `None` the fixture is byte-for-byte the one every existing test uses.
+    fn base_mirror_fixture_with_deleted(deleted: Option<&str>) -> (PathBuf, PathBuf, String) {
         let root = std::env::temp_dir().join(format!(
             "gunbc-heal-base-mirror-{}-{}",
             std::process::id(),
@@ -7823,6 +7828,25 @@ mod heal_round_one_base_mirror_tests {
             "// base build identity source\n",
         )
         .unwrap();
+        // A MODULE THE HEAD WILL DELETE, in a NESTED directory: the shape of PR #15540, whose lost
+        // path was `src/v1/stage0/src/cli_run/required_lane_resolution_census.rs`. Base's crate is
+        // incomplete without it, and the head's tree is incomplete with it -- which is the whole
+        // difficulty the authority has to get right in both directions.
+        if let Some(retired) = deleted {
+            fs::write(
+                stage0.join(retired),
+                "// base bytes for a module the head deletes\n",
+            )
+            .unwrap();
+            // A SECOND NESTED MODULE THE HEAD KEEPS UNEDITED: the survivor is the control that the
+            // round's journal and restore leave an untouched file alone, bytes AND mtime. A module
+            // the head edits cannot show that, because the round rewrites it in both directions.
+            fs::write(
+                stage0.join("cli_run").join("fixture_survivor.rs"),
+                "// base bytes for a module the head keeps exactly as they are\n",
+            )
+            .unwrap();
+        }
         // The `.dag` sources are OUTSIDE the crate the authority owns: they are what the round
         // regenerates FROM, so the pull request's edits there must survive the bootstrap.
         fs::create_dir_all(root.join("dag")).unwrap();
@@ -7881,7 +7905,146 @@ mod heal_round_one_base_mirror_tests {
         .unwrap();
         git(&["add", "-A"]);
         git(&["commit", "-qm", "head"]);
+        if let Some(retired) = deleted {
+            git(&["rm", "-q", &format!("{STAGE0_SRC_REL}/{retired}")]);
+            git(&["commit", "-qm", "head deletes a module"]);
+        }
         (root, stage0, base_commit)
+    }
+
+    /// The fixture as every existing test has always used it: no head-deleted module.
+    fn base_mirror_fixture() -> (PathBuf, PathBuf, String) {
+        base_mirror_fixture_with_deleted(None)
+    }
+
+    /// The fixture WITH a head-deleted nested module: base tracks it, the head removes it.
+    fn base_mirror_deletion_fixture() -> (PathBuf, PathBuf, String) {
+        base_mirror_fixture_with_deleted(Some("cli_run/fixture_retired.rs"))
+    }
+
+    /// The crate's tracked population AT A COMMIT, read straight from git. A test that reused the
+    /// set the code under test computes could only prove the writer agrees with itself; this reads
+    /// the commit, which is the thing the authority is supposed to agree with.
+    fn fixture_crate_paths_at_commit(root: &Path, commit: &str) -> Vec<String> {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args([
+                "ls-tree",
+                "-r",
+                "--name-only",
+                commit,
+                "--",
+                STAGE0_CRATE_REL,
+            ])
+            .output()
+            .expect("git ls-tree runs");
+        assert!(
+            output.status.success(),
+            "git ls-tree {commit} -- {STAGE0_CRATE_REL}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout)
+            .expect("path list is utf8")
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The blob a commit holds for one path, read straight from git.
+    fn fixture_blob_at_commit(root: &Path, commit: &str, path: &str) -> String {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args(["show", &format!("{commit}:{path}")])
+            .output()
+            .expect("git show runs");
+        assert!(
+            output.status.success(),
+            "git show {commit}:{path}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).expect("blob is utf8")
+    }
+
+    /// THE DELETION SHAPE, ASSERTED IN BOTH DIRECTIONS. Base tracks a nested module the head
+    /// DELETES, plus a second nested module the head keeps byte-for-byte. Round 1 must compile
+    /// BASE's crate — every path base tracks present with base's bytes, the deleted one included —
+    /// and the round's own teardown must put the tree back to HEAD: the deleted module absent
+    /// again, the survivor untouched down to its mtime.
+    ///
+    /// THIS TEST IS ALSO THE CONTROL FOR THE RULE IT REPLACES, and it was written and run against
+    /// that rule BEFORE the rule was changed: there it fails at the first assertion, because the
+    /// old authority restored only the paths base and the worktree shared, a path the head deleted
+    /// is by definition absent from the worktree, so it was never written, and base's restored
+    /// `lib.rs` went on declaring a module with no file. That is the E0583 in the heal runs of PR
+    /// #15418 (run 41605027842, head 5b7b2bc2, base 5ff414e6, `lib.rs` lines 755 and 832) and PR
+    /// #15540 (run 41591786053, head 3be90ce5, base 6e1c65a3, the lost path nested under `cli_run/`).
+    /// The old rule is NOT re-implemented here: a second copy of it would be a second authority,
+    /// and the red comes from the run at the pre-fix revision instead.
+    #[test]
+    fn a_head_deleted_module_is_restored_for_round_one_and_removed_after_it() {
+        let (root, stage0, base_commit) = base_mirror_deletion_fixture();
+        let retired = stage0.join("cli_run").join("fixture_retired.rs");
+        let survivor = stage0.join("cli_run").join("fixture_survivor.rs");
+        let survivor_bytes = read(&survivor);
+        let survivor_mtime = fs::metadata(&survivor)
+            .expect("survivor metadata")
+            .modified()
+            .expect("survivor mtime");
+        assert!(
+            !retired.exists(),
+            "the fixture's head must not carry the module its commit deleted"
+        );
+
+        bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &fixture_subject(&root))
+            .expect("the round-1 bootstrap runs");
+
+        // ROUND 1 SEES BASE'S CRATE, PATH FOR PATH.
+        for path in fixture_crate_paths_at_commit(&root, &base_commit) {
+            let on_disk = root.join(&path);
+            assert!(
+                on_disk.is_file(),
+                "round 1 left {path} absent, so the crate it compiled was neither base's nor                  head's: base declares this path and the tree does not have it"
+            );
+            assert_eq!(
+                read(&on_disk),
+                fixture_blob_at_commit(&root, &base_commit, &path),
+                "round 1 left {path} short of the base commit it claims to compile"
+            );
+        }
+        assert!(
+            retired.is_file(),
+            "round 1 did not restore the module the head deleted"
+        );
+
+        // THE ROUND'S OWN TEARDOWN PUTS THE TREE BACK TO HEAD.
+        let put_back_paths =
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the round ends its snapshot");
+        assert!(
+            !retired.exists(),
+            "a module the head deleted survived the round into the tree the emitter walks:              {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths
+                .iter()
+                .any(|path| path.starts_with(STAGE0_CRATE_REL)
+                    && path.ends_with("/fixture_retired.rs")),
+            "the restore did not name the resurrected path it removed: {put_back_paths:?}"
+        );
+        assert_eq!(
+            read(&survivor),
+            survivor_bytes,
+            "the round changed a module neither base nor the head touched"
+        );
+        assert_eq!(
+            fs::metadata(&survivor)
+                .expect("survivor metadata")
+                .modified()
+                .expect("survivor mtime"),
+            survivor_mtime,
+            "the round rewrote a module neither side touched, bumping an mtime cargo's              path-dependency fingerprint reads as a change (PR #14876): {put_back_paths:?}"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// The subject a round journals under. The three digests are fixed for one fixture: what the
