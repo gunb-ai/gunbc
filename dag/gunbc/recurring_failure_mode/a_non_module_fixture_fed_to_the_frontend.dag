@@ -1,7 +1,7 @@
 module gunbc.recurring_failure_mode.a_non_module_fixture_fed_to_the_frontend
 
 import std.types { NonEmptyStr }
-import gunbc.guarantee_rung { Mitigatable }
+import gunbc.guarantee_rung { MechanicallyPreventable }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, BelowCeiling }
 
@@ -12,7 +12,7 @@ data a_non_module_fixture_fed_to_the_frontend: RecurringFailureMode = RecurringF
     found_at: FoundBelowTheLadder,
     standing: BelowCeiling {
       current: FoundBelowTheLadder,
-      ceiling: Mitigatable,
+      ceiling: MechanicallyPreventable,
       blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
       trigger_capability: "the capability to identify which corpus-collection pass admits src/v1/stage0/tests/fixtures into the whole-tree frontend subject and to bind that pass's corpus-membership predicate to the same tests/fixtures and target exclusion that run_dag_parse_sweep and compiler_tests::discover_dag_files already enforce",
     },
@@ -32,7 +32,7 @@ data a_non_module_fixture_fed_to_the_frontend: RecurringFailureMode = RecurringF
     "DISTINCT FROM a broken subject file: here the file is a CORRECT test fragment, and the corpus is fine; only the collection predicate of the (unconfirmed) pass is too broad.",
 
     "SOURCES: `src/v1/stage0/tests/fixtures/fact_cardinality_split_brace.dag` line 1; `run_dag_parse_sweep` and its restored fixtures exclusion (`src/v1/stage0/src/cli_run.rs`); `compile_clean_whole_tree_sources_and_index` 'dag + src/v2 only' (`src/v1/stage0/src/cli_run/witness_gates.rs`); `compile_clean_source_roots` src/v1 force-add and the seed-fixture note (`src/v1/stage0/src/cli_run/compile_clean.rs`); first observation via srv2 row `ef-15247-ctl-f021` (`census.stderr.log`).",
-    "RUNG READING (this row's rung / ceiling / trigger, DESIGN 4b). FOUND BELOW THE LADDER: the harm is the silent-wrongness shape -- a fragment authored to fail is admitted to a pass whose output is read as 'the corpus parses', so a deliberate failure becomes false noise that can be mistaken for a defect or block a refusal-on-any-error gate -- which DESIGN 4b places below the ladder. The rung is stated WITHOUT a rung number because the FEEDER MECHANISM STAYS UNGROUNDED: which pass admits the fixture is not identified (the two candidate paths are verified NON-feeders; the frontend/refusal source remains an unconfirmed hypothesis, DESIGN 4d), so no GuaranteeRung is asserted. CEILING = mitigatable, a CONSERVATIVE WALL AFTER GROUNDING and NOT structural prevention now: once the feeder is pinned the mitigation is simply to apply the SAME `tests/fixtures/` and `target/` exclusion the parse sweep already enforces to whichever pass is confirmed to admit it; this row claims no structural prevention. BLOCKER = awaits one grounding, grounding authority not yet declared: the climb to that mitigation waits on identifying the admitting pass (GroundingUndeclared). TRIGGER = a capability, NOT 'rerun the instrument': the capability to identify the real feeder's corpus-membership rule and bind it to the existing exclusion predicate (the WHATEVER-THE-FEEDER receipt above states the repair this capability must land).",
+    "RUNG READING (this row's rung / ceiling / trigger, DESIGN 4b). FOUND BELOW THE LADDER: the harm is the silent-wrongness shape -- a fragment authored to fail is admitted to a pass whose output is read as 'the corpus parses', so a deliberate failure becomes false noise that can be mistaken for a defect or block a refusal-on-any-error gate -- which DESIGN 4b places below the ladder. The rung is stated WITHOUT a rung number because the FEEDER MECHANISM STAYS UNGROUNDED: which pass admits the fixture is not identified (the two candidate paths are verified NON-feeders; the frontend/refusal source remains an unconfirmed hypothesis, DESIGN 4d), so no GuaranteeRung is asserted. CEILING = mechanically preventable, and the reason it sits THERE and not lower: once the feeder is identified, admitting the fixture is a DECIDABLE membership error -- the SAME `tests/fixtures/` and `target/` exclusion the parse sweep already enforces supplies the predicate, and a discriminating fixture plus a positive module routed through the real feeder would mechanically block the mis-admission. A missing grounding belongs in the BLOCKER, it does NOT lower the ceiling; and this row claims NO structurally-guaranteed/impossible rung -- the prevention is mechanical (a decidable exclusion the instrument applies), not a structural impossibility. BLOCKER = awaits one grounding, grounding authority not yet declared: the climb to that mitigation waits on identifying the admitting pass (GroundingUndeclared). TRIGGER = a capability, NOT 'rerun the instrument': the capability to identify the real feeder's corpus-membership rule and bind it to the existing exclusion predicate (the WHATEVER-THE-FEEDER receipt above states the repair this capability must land).",
   ],
 
   evidence: [],
