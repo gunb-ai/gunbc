@@ -12,7 +12,11 @@ import gunbc.auth.request_authentication { TailnetReadbackNotDemanded }
 import extdeps.ietf.http_semantics { POST }
 import extdeps.http.server { ServeHttpRequest }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_slots }
+import test.claim.fabric.fabric_storage_fixture {
+  fabric_wet_scenario, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_store,
+  FabricWetStoreReady, FabricWetStoreUnready,
+}
 import test.claim.runner.workspace_owner_access_witness { witness_single_owner_policy }
 import gunbc.roadmap.workspace_allocation_http { workspace_http_reason }
 import gunbc.roadmap.workspace_allocation_routes { workspace_route_release_over }
@@ -26,11 +30,16 @@ import gunbc.principal_projection { principal_ref_eq }
 // and expiry are the server's terms. Before it, the same request without the reading is answered
 // unavailable and the ledger stays empty; after it, the release route retires that allocation.
 test fn seam_admitted_create_and_release_land_in_the_store() -> Bool {
-  let directory = shell.Mktemp.Dir()
-  let root = fabric_storage_file_root(root: directory.path)
-  let store = FabricStorageLocalFiles { root: root }
-  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
-    FabricStorageRootReady => match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
+  // THE STORE IS OPENED THROUGH THE ONE MINT over the declared chain and an isolated instance of a temporary
+  // directory -- the recorded witness route.
+  let scenario = fabric_wet_scenario(template: "/tmp/gunbc_write_seam.XXXXXX" as NonEmptyStr)
+  let passed = match scenario {
+    FabricWetScenarioUnready { detail: _ } => false
+    FabricWetScenarioReady { instance: scenario_instance, root: _ } => match fabric_wet_store(members: fabric_storage_slots, instance: scenario_instance) {
+      FabricWetStoreUnready { area: _, detail: _ } => false
+      FabricWetStoreReady { store: ledger_ops } => {
+        let store = FabricStorageLocalFiles { operations: ledger_ops }
+        match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
       SessionRefused { cause: _ } => false
       SessionMinted { session } => {
         let good_path = seam_security(session: session, header: seam_tailnet_login, readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
@@ -65,8 +74,12 @@ test fn seam_admitted_create_and_release_land_in_the_store() -> Bool {
         refused.status == 503 && empty_after_refusal && created.status == 200 && landed && released.status == 200 && retired
       }
     }
-    other => false
-  } }
-  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
-  passed && cleaned.success
+      }
+    }
+  }
+  let cleaned = match scenario {
+    FabricWetScenarioUnready { detail: _ } => true
+    FabricWetScenarioReady { instance: _, root: r } => shell.Remove.RecursiveForce(path: r as FilePath).success
+  }
+  passed && cleaned
 }

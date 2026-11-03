@@ -598,6 +598,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => {
             "DeclaredTypeInhabitanceUnmodeled"
         }
+        CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => "ArithmeticWithoutCarrier",
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => "ArithmeticAmbiguousCarrier",
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { .. } => "ArithmeticUndecidedCarrier",
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => {
             "DeclaredTypeInhabitanceUndecided"
         }
@@ -727,6 +730,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { position, .. } => position.clone(),
+        CompilerDiagnostic::ArithmeticWithoutCarrier { operation, .. } => operation.clone(),
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { operation, .. } => operation.clone(),
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { operation, .. } => operation.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
@@ -843,6 +849,9 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => None,
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => None,
         CompilerDiagnostic::DeclaredTypeInhabitanceUnmodeled { .. } => None,
+        CompilerDiagnostic::ArithmeticWithoutCarrier { .. } => None,
+        CompilerDiagnostic::ArithmeticAmbiguousCarrier { .. } => None,
+        CompilerDiagnostic::ArithmeticUndecidedCarrier { .. } => None,
         CompilerDiagnostic::DeclaredTypeNotInhabited { expected, got, .. } => {
             Some((expected.clone(), got.clone()))
         }

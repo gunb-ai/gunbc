@@ -16,7 +16,7 @@ import extdeps.electronic_component.types {
   VoltageWithstandKind,
 }
 import product.electrical.connectivity { ComponentInstanceIdentity, TerminalIdentity }
-import product.electrical.continuity { EvidenceRef }
+import product.electrical.continuity { EvidenceRef, OrderUnrecorded, ReadingOrder }
 
 // HOW AN INSTALLED PART IS IDENTIFIED, for any board read at the bench. A part credits its
 // datasheet row (extdeps.electronic_component) only once its marking is read and matched; until then it
@@ -54,10 +54,45 @@ type ComponentIdentification
   | MarkingUnresolved { marking: MarkingReading?, discriminator: NonEmptyStr }
   | FootprintUnpopulated { evidence: EvidenceRef }
 
+// WHEN THE COMPONENT WAS SEEN. seen is the observation's order against the board's dividing events, in
+// the vocabulary its readings use (product.electrical.continuity ReadingOrder). A part removed from the
+// board later is still the part that was seen fitted before, and only an order stated against that
+// removal says which side of it the observation fell on (product.electrical.bench_session
+// place_against). Whether a part was there at all is what the observation saw (observed_presence), and
+// whether it has been removed is the board's alteration ledger: neither is authored here.
 type InstalledComponent {
   component: ComponentInstanceIdentity
   terminals: List<TerminalIdentity>
   identification: ComponentIdentification
+  seen: ReadingOrder
+}
+
+// WHAT AN OBSERVATION ESTABLISHES ABOUT PRESENCE. A part read in any way -- a matched, shared,
+// candidate or unresolved marking, a printed rating, a resistance code -- was seen on the board; an
+// empty footprint was seen without one. An entry with no marking read and no other reading records a
+// part named in the session, not one seen: its presence is unobserved, and the entry's type name is
+// not evidence.
+type ObservedPresence
+  = PartPresent
+  | PartAbsent
+  | PresenceUnobserved
+
+fn observed_presence(i: ComponentIdentification) -> ObservedPresence {
+  match i {
+    IdentifiedByMarking { row: _, marking: _ } => PartPresent
+    MarkingSharedByMakers { rows: _, marking: _ } => PartPresent
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => PartPresent
+    RatingPrintedOnBody { rating: _, marking: _ } => PartPresent
+    ResistanceCodeRead { milliohms: _, marking: _ } => PartPresent
+    MarkingUnresolved { marking, discriminator: _ } => match marking { Present { value: _ } => PartPresent, Absent => PresenceUnobserved }
+    FootprintUnpopulated { evidence: _ } => PartAbsent
+  }
+}
+
+// An observation whose order against the board's dividing events was not stated: it is placed against
+// none of them, so it can never stand for a state that follows a removal of its own part.
+fn seen_unordered() -> ReadingOrder {
+  OrderUnrecorded { relative_to: [] }
 }
 
 fn names(ns: List<NonEmptyStr>) -> List<TerminalIdentity> {
@@ -118,6 +153,24 @@ fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
   }
 }
 
+// WHETHER AN IDENTIFICATION ESTABLISHES WHAT THE PART IS, decided on its arm and never on its text. A
+// candidate stays a candidate however well it reads: its text exists to say what would settle it, and
+// a finding that asked "is there text?" took that explanation for the identification (the
+// candidate-as-identified defect). A marking several makers share names the part's rows and leaves only
+// the maker open, so it identifies the part. A printed rating or a resistor code is the value the
+// part carries, read off its body. An unresolved marking and a bare footprint identify nothing.
+fn identification_established(i: ComponentIdentification) -> Bool {
+  match i {
+    IdentifiedByMarking { row: _, marking: _ } => true
+    MarkingSharedByMakers { rows: _, marking: _ } => true
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => false
+    RatingPrintedOnBody { rating: _, marking: _ } => true
+    ResistanceCodeRead { milliohms: _, marking: _ } => true
+    MarkingUnresolved { marking: _, discriminator: _ } => false
+    FootprintUnpopulated { evidence: _ } => false
+  }
+}
+
 // A converter pin's terminal is named from its row, so a reading and the row join on one spelling.
 fn pin_terminal_name(number: Nat, name: NonEmptyStr) -> NonEmptyStr {
   join(["pin ", to_string(number), " (", name as String, ")"], "") as NonEmptyStr
@@ -134,8 +187,9 @@ fn regulator_pins(row: ElectronicComponentRow) -> List<RegulatorPin> {
 // state from the lead read with the part fitted, so each lifted converter's footprint is a component of
 // its own (FootprintUnpopulated), its pads named from the row's pin order like the leads were, and every
 // reading at it is ordered after the lift. Nothing in the record joins a pad to the lead that sat on it,
-// so no netlist combines the intact board's readings with the bare footprint's by terminal identity;
-// selecting readings by physical state is the follow-up change the split lane owns.
+// so no netlist combines the intact board's readings with the bare footprint's by terminal identity,
+// and a netlist reads one physical state of the board in any case (product.electrical.bench_session
+// SpecimenState): the lift is a boundary, and the footprint's readings are of the state after it.
 fn pad_terminal_name(number: Nat, name: NonEmptyStr) -> NonEmptyStr {
   join(["pad ", to_string(number), " (", name as String, ")"], "") as NonEmptyStr
 }

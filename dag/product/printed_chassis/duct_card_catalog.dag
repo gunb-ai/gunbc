@@ -10,7 +10,8 @@ import extdeps.gpu.nvidia_t4 { t4_card_row }
 import extdeps.gpu.nvidia_a2 { a2_card_row }
 import extdeps.fans.noctua { noctua_nf_a9_pwm_mounting_pattern, noctua_nf_a9_pwm_frame_depth }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy }
-import product.printed_chassis.gpu_duct { EndFaceMeasurement, CardEnvelope, GpuDuctDesign, BlowerDuctDesign, a16_end_face, card_envelope_of, duct_design, blower_duct_design_of }
+import product.printed_chassis.gpu_duct { EndFaceMeasurement, CardEnvelope, GpuDuctDesign, BlowerDuctDesign, card_envelope_of, duct_design, blower_duct_design_of, screwed_end_cap_of, ScrewedEndCap, ScrewedEndCapMissing }
+import product.printed_chassis.card_end_interface { CardEndInterface, a16_card_end, a2_card_end }
 
 // ═══ THE CARDS A DUCT IS PRINTED FOR: A VENDOR ROW JOINED TO WHAT THIS REPOSITORY HAS READ ON THE CARD ═══
 //
@@ -26,7 +27,7 @@ import product.printed_chassis.gpu_duct { EndFaceMeasurement, CardEnvelope, GpuD
 // obligation of THIS layer: the vendor row stays what the vendor published.
 
 type EndFaceStanding
-  = EndFaceRead { face: EndFaceMeasurement }
+  = EndFaceRead { face: CardEndInterface }
   | EndFaceNeedsReading { read_obligation: NonEmptyStr }
 
 type DuctCard { row: CardRow, end_face: EndFaceStanding }
@@ -37,10 +38,13 @@ fn end_face_obligation(card: NonEmptyStr) -> NonEmptyStr {
 
 // The A16's face was read on 2026-10-23, and the fit ring printed from it seats on the card
 // (product.printed_chassis.fit_observations plug_fit_ring_fit).
-data a16_duct_card: DuctCard = DuctCard { row: a16_card_row, end_face: EndFaceRead { face: a16_end_face } }
+data a16_duct_card: DuctCard = DuctCard { row: a16_card_row, end_face: EndFaceRead { face: a16_card_end } }
 data t10_duct_card: DuctCard = DuctCard { row: t10_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA Tesla T10") } }
 data t4_duct_card: DuctCard = DuctCard { row: t4_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA T4") } }
-data a2_duct_card: DuctCard = DuctCard { row: a2_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA A2") } }
+// The A2's intake end was read on 2026-11-02 (product.printed_chassis.card_end_interface a2_card_end). It has
+// no end-cap inserts and no end-face header, so the ducts that screw into inserts refuse it by name; a duct
+// that seats on the A2 is a different realization.
+data a2_duct_card: DuctCard = DuctCard { row: a2_card_row, end_face: EndFaceRead { face: a2_card_end } }
 
 data duct_cards: List<DuctCard> = [a16_duct_card, t10_duct_card, t4_duct_card, a2_duct_card]
 
@@ -54,7 +58,10 @@ fn end_face_is_read(card: DuctCard) -> Bool {
 
 fn end_face_unread(card: DuctCard) -> List<String> {
   match card.end_face {
-    EndFaceRead { face: _ } => []
+    EndFaceRead { face: i } => match screwed_end_cap_of(i: i) {
+      ScrewedEndCap { face: _ } => []
+      ScrewedEndCapMissing { features: fs } => map(fs, x => join(["these ducts screw into end-cap inserts and keep clear of an end-face header; ", x], ""))
+    }
     EndFaceNeedsReading { read_obligation: o } => [join(["end face: ", o as String], "")]
   }
 }
@@ -68,12 +75,15 @@ type DuctCardDims { face: EndFaceMeasurement, card: CardEnvelope, wall: GpuDuctD
 
 fn duct_card_dims(card: DuctCard) -> DuctCardDims? {
   match card.end_face {
-    EndFaceRead { face: f } => match card_envelope_of(row: card.row) {
+    EndFaceRead { face: i } => match screwed_end_cap_of(i: i) {
+      ScrewedEndCapMissing { features: _ } => Absent
+      ScrewedEndCap { face: f } => match card_envelope_of(row: card.row) {
       Present { value: l } => match blower_duct_design_of(row: card.row) {
         Present { value: b } => Present { value: DuctCardDims { face: f, card: l, wall: duct_design(fan: noctua_nf_a9_pwm_mounting_pattern, fan_depth: noctua_nf_a9_pwm_frame_depth, policy: plug_and_flange_print_policy), fan: b } }
         Absent => Absent
       }
       Absent => Absent
+    }
     }
     EndFaceNeedsReading { read_obligation: _ } => Absent
   }
