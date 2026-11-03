@@ -67,6 +67,9 @@ import gunbc.boot_artifact_delivery {
   RedfishVirtualMediaPull,
   SelectedFromNetworkBootEstablishment,
   SelectedFromProfileIntersection,
+  SelectedFromUefiHttpEvidence,
+  UefiHttpBoot,
+  UefiHttpBootParams,
 }
 
 // Shared boot-delivery fixtures: the intake subject, artifact and network target, the established
@@ -304,5 +307,21 @@ fn network_solution_selecting_control(control: BootControlTarget, arch: DhcpProc
         boot_control_route: observing_pxe.boot_control_route,
         eligibility: observing_pxe.eligibility,
       } }
+  }
+}
+
+fn uefi_http_plan_serving(digest: ContentHash) -> BootDeliveryPlan {
+  BootDeliveryPlan {
+    target: network_target,
+    artifact: intake_artifact,
+    delivery: UefiHttpBoot { params: UefiHttpBootParams { image: Uri { scheme: Https, locator: "boot.example.test/image" }, artifact_digest: digest } },
+    boot_control: BootFromUefiHttp,
+    boot_control_route: BootControlByFirmwareBootOrder,
+    eligibility: BootDeliveryEligibilityProvenance {
+      profile_provenance: none,
+      evidence_manifest: [],
+      selected: SelectedFromUefiHttpEvidence { evidence: [] },
+      considered: [],
+    },
   }
 }

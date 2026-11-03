@@ -609,6 +609,17 @@ fn selected_evidence_is_the_deliverys(delivery: BootArtifactDelivery, selected: 
   }
 }
 
+// The solver's own digest relation (staged_digest_standing): a UEFI HTTP delivery serves the plan's
+// artifact. The other evidence-bearing arms carry no params-side fact the plan retains to compare (their
+// selected evidence is keyed to the target at a standing the plan does not keep); that residual is the
+// rung drop's, closed by the plan indexed by delivery family.
+fn delivery_params_serve_the_artifact(plan: BootDeliveryPlan) -> Bool {
+  match plan.delivery {
+    UefiHttpBoot { params: p } => p.artifact_digest == plan.artifact.digest
+    _ => true
+  }
+}
+
 fn plan_provenance_matches_target(plan: BootDeliveryPlan) -> Bool {
   let has_provenance = match plan.eligibility.profile_provenance {
     Present { value: _ } => true
@@ -628,7 +639,7 @@ fn admit_boot_delivery_plan(plan: BootDeliveryPlan) -> BootDeliveryPlanAdmission
     BootDeliveryPlanIncoherent { cause: PlanControlRouteNotTheTargets { target: plan.target } }
   } else if boot_artifact_delivery_needs_controller(delivery: plan.delivery) && boot_delivery_target_has_controller(target: plan.target) == false {
     BootDeliveryPlanIncoherent { cause: PlanControllerDeliveryWithoutController { target: plan.target } }
-  } else if selected_evidence_is_the_deliverys(delivery: plan.delivery, selected: plan.eligibility.selected) == false {
+  } else if (selected_evidence_is_the_deliverys(delivery: plan.delivery, selected: plan.eligibility.selected) == false || delivery_params_serve_the_artifact(plan: plan) == false) {
     BootDeliveryPlanIncoherent { cause: PlanEligibilityNotTheDeliverys { selected: plan.eligibility.selected } }
   } else if plan_provenance_matches_target(plan: plan) == false {
     BootDeliveryPlanIncoherent { cause: PlanProfileProvenanceNotTheTargets { target: plan.target } }
