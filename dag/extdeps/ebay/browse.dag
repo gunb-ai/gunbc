@@ -1,4 +1,5 @@
 module extdeps.ebay.browse
+import std.types { Bearer }
 import std.resources { Network }
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
