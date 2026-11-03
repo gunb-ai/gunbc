@@ -12,6 +12,7 @@ import v2.extdeps.languages.bash {
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
   bash_build_negation,
+  bash_build_assign,
   bash_build_assign_lit,
   bash_build_assign_var,
   bash_build_command_from_lits,
@@ -22,6 +23,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_pipe,
   bash_build_subshell_from_stmts,
   bash_build_word_cmdsubst,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
   bash_build_with_redir,
   bash_build_with_redir_to_file,
   bash_build_with_redir_from_file,
@@ -53,7 +56,9 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_target_model_for_emitted_witness,
   bash_fold_with_redir_wrong_target_model_witness
 }
-import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
+import v2.workflow.bash_command_fold_serialize {
+  bash_fold_serialize_stmt, bash_fold_serialize_word, bash_fold_serialize_stmts_semi
+}
 import v2.workflow.bash_emit {
   BashEmitStmt,
   bash_emit_env_prefixed,
@@ -723,10 +728,13 @@ test fn bash_fold_raw_line_cmdsubst_holds() -> Bool {
 // 41593920495 and 41593920470, 2026-11-03); no gunbc emission could show it, because only
 // a mirror row composes an overlay. Repairing only that call site would leave the shape
 // reachable for the next emitter -- DESIGN §6b puts the fault in `b` (the renderer), where
-// patching the call site would encode an undeclared fact about it. The fold therefore
-// refuses the shape at `bash_fold_serialize_node`, the one gate every statement passes,
-// and these controls execute the refusal on the entry point the emitters themselves use,
-// so it is a refusal on the real acceptance path and not a decoration.
+// patching the call site would encode an undeclared fact about it. The refusal therefore
+// lives in v2.workflow.bash_command_fold_serialize: once as a walk of the script at
+// bash_fold_serialize_program, the entry every emitter uses, and once per word/node at the
+// arms that spell a word from a row (the substitution itself, a command, an assignment),
+// which is what covers the callers that serialize a single statement directly. Each row
+// below pins ONE of those places: removing that one turns that row red. Spelling tricks --
+// `$(( ` -- are deliberately not offered, so the refusal is on the real acceptance path.
 fn cmdsubst_subshell_assignment() -> Node {
   bash_build_assign(
     name: "PRIVATE_ROOT",
@@ -771,9 +779,9 @@ test fn bash_fold_cmdsubst_body_subshell_refused_in_assignment_holds() -> Bool {
   )
 }
 
-// THE LEAF PATH. A command serializes from its row and never visits the word arms, so a rule
-// written only inside the substitution's word arm would be bypassed here; this is the row that
-// keeps the rule at the gate rather than in one arm behind it.
+// THE COMMAND ROW. A command serializes from its row and never visits the word arms, so a rule
+// written only inside the substitution's word arm would be bypassed here. Red when the test over a
+// command's own words is removed.
 test fn bash_fold_cmdsubst_body_subshell_refused_in_command_holds() -> Bool {
   cmdsubst_subshell_refuses(
     text: bash_emit_stmts(statements: [cmdsubst_subshell_command()], set_e: false)
@@ -801,6 +809,127 @@ test fn bash_fold_cmdsubst_operand_command_renders_holds() -> Bool {
       !(string_contains(s: text, pattern: "$(("))
     Rejected { diagnostics: _ } => false
   }
+}
+
+// A SUBSTITUTION HIDDEN IN A CONCATENATED WORD. `X=a$(…)b` never reaches the substitution's arm as
+// the top word, and the concatenation flattens its parts, so only the walk over the words -- and the
+// walk at the entry -- can see it. Its existence is why the word test descends through concatenations
+// at all; without a row for it that descent would be machinery for a state nothing can produce.
+fn cmdsubst_subshell_concat() -> Node {
+  bash_build_assign(
+    name: "X",
+    value: bash_build_word_concat_from_nodes(
+      parts: [
+        bash_build_word_lit(text: "a"),
+        bash_build_word_cmdsubst(
+          body: bash_build_subshell_from_stmts(
+            stmts: [
+              bash_build_command_from_lits(lits: ["cd", ".."]),
+              bash_build_command_from_lits(lits: ["pwd"])
+            ]
+          )
+        ),
+        bash_build_word_lit(text: "b")
+      ]
+    )
+  )
+}
+
+test fn bash_fold_cmdsubst_body_subshell_refused_in_concat_holds() -> Bool {
+  cmdsubst_subshell_refuses(
+    text: bash_emit_stmts(statements: [cmdsubst_subshell_concat()], set_e: false)
+  )
+}
+
+// THE DISCRIMINATOR FOR THE CONCATENATION: the same shape carrying a legitimate substitution still
+// renders, so the row above is not satisfied by refusing concatenated words.
+test fn bash_fold_cmdsubst_operand_command_renders_in_concat_holds() -> Bool {
+  match bash_emit_stmts(
+    statements: [
+      bash_build_command_from_word_nodes(
+        words: [
+          bash_build_word_concat_from_nodes(
+            parts: [
+              bash_build_word_lit(text: "a"),
+              bash_build_word_cmdsubst(
+                body: bash_build_command_from_lits(lits: ["realpath", ".."])
+              ),
+              bash_build_word_lit(text: "b")
+            ]
+          )
+        ]
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: text, diagnostics: _ } =>
+      string_contains(s: text, pattern: "$(") &&
+      !(string_contains(s: text, pattern: "$(("))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A SUBSTITUTION IN A CONDITION. An `if` spells its condition from its own row: no word arm, no
+// command node, no assignment node sees it. This is the case only the walk at the entry catches, and
+// the row is what keeps that walk from being decoration.
+test fn bash_fold_cmdsubst_body_subshell_refused_in_condition_holds() -> Bool {
+  cmdsubst_subshell_refuses(
+    text: bash_emit_stmts(
+      statements: [
+        bash_build_if_from_stmts(
+          cond: bash_build_word_cmdsubst(
+            body: bash_build_subshell_from_stmts(
+              stmts: [
+                bash_build_command_from_lits(lits: ["cd", ".."]),
+                bash_build_command_from_lits(lits: ["pwd"])
+              ]
+            )
+          ),
+          then_stmts: [bash_build_command_from_lits(lits: ["true"])]
+        )
+      ],
+      set_e: false
+    )
+  )
+}
+
+// THE OTHER ENTRIES. `bash_fold_serialize_program` is not the only door: four call sites
+// (gunbc.shell_command_text, gunbc.dispatch_pipe_pane_emit, gunbc.live_deploy.emit,
+// v2.workflow.effect_plan_bash_materialize) spell ONE statement, two
+// (gunbc.shell_command_text, gunbc.fleet.fleet_converge_plan) spell a LIST joined by `;`, and word
+// spellers come in at word arity. Each of those doors carries the walk itself, so a rule held at the
+// renderer cannot be dodged by choosing an arity -- and each row below is red exactly when the walk is
+// removed from the entry it names, which is what makes each entry's copy of the walk load-bearing rather
+// than a fourth path beside the first.
+test fn bash_fold_cmdsubst_body_subshell_refused_via_stmt_entry_command_holds() -> Bool {
+  cmdsubst_subshell_refuses(text: bash_fold_serialize_stmt(stmt: cmdsubst_subshell_command()))
+}
+
+test fn bash_fold_cmdsubst_body_subshell_refused_via_stmt_entry_assignment_holds() -> Bool {
+  cmdsubst_subshell_refuses(text: bash_fold_serialize_stmt(stmt: cmdsubst_subshell_assignment()))
+}
+
+// THE STATEMENT-LIST ENTRY, the door gunbc.shell_command_text and gunbc.fleet.fleet_converge_plan spell
+// through. Same rule, asked once for the list.
+test fn bash_fold_cmdsubst_body_subshell_refused_via_stmts_semi_holds() -> Bool {
+  cmdsubst_subshell_refuses(
+    text: bash_fold_serialize_stmts_semi(stmts: [cmdsubst_subshell_command(), cmdsubst_subshell_assignment()])
+  )
+}
+
+test fn bash_fold_cmdsubst_body_subshell_refused_via_word_entry_holds() -> Bool {
+  cmdsubst_subshell_refuses(
+    text: bash_fold_serialize_word(
+      word: bash_build_word_cmdsubst(
+        body: bash_build_subshell_from_stmts(
+          stmts: [
+            bash_build_command_from_lits(lits: ["cd", ".."]),
+            bash_build_command_from_lits(lits: ["pwd"])
+          ]
+        )
+      )
+    )
+  )
 }
 
 test fn bash_fold_raw_line_paren_holds() -> Bool {

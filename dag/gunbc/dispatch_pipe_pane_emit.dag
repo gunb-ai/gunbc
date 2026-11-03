@@ -3,7 +3,7 @@ module gunbc.dispatch_pipe_pane_emit
 import std.types { String, NonEmptyStr }
 import extdeps.tmux { TmuxPipeCommand }
 import v2.extdeps.languages.bash_build { bash_build_command_from_lits }
-import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmt }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node }
 
@@ -48,7 +48,7 @@ fn dispatch_event_pipe_emission(
   tee_program: String,
   events_path: String,
 ) -> PipePaneEmission {
-  match bash_fold_serialize_node(
+  match bash_fold_serialize_stmt(
     stmt: dispatch_event_pipe_intent(
       tee_program: tee_program,
       events_path: events_path,
