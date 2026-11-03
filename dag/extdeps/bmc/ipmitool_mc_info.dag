@@ -89,8 +89,12 @@ type IpmiMcInfoReading
 // The label column width ipmitool pads to (lib/ipmi_mc.c prints each label in a 26-column field).
 data ipmitool_mc_info_label_columns: Int = 26
 
-fn ipmitool_mc_info_yes_no(stdout: String, label: String) -> Bool? {
-  match ipmitool_labelled_value(stdout: stdout, label: label) {
+// THE LABEL IS THE SUM, NOT ITS SPELLING. Every helper below takes an `IpmiMcInfoLabel`; the text spelling is
+// produced only where the wire format needs it — at the shared labelled-line lookup and at the printed line.
+// A `String` formal here would let a caller ask for a label this parser has never declared (DESIGN §2: a String
+// leaf hiding named parts is anemic modeling).
+fn ipmitool_mc_info_yes_no(stdout: String, label: IpmiMcInfoLabel) -> Bool? {
+  match ipmitool_labelled_value(stdout: stdout, label: ipmitool_mc_info_label_text(label: label)) {
     Absent => none
     Present { value: v } =>
       if v == "yes" {
@@ -104,8 +108,8 @@ fn ipmitool_mc_info_yes_no(stdout: String, label: String) -> Bool? {
 // The value of a numeric label: ipmitool prints the decimal value and, for some fields, the same value in
 // parentheses after it (`Product ID : 6659 (0x1a03)`). The decimal head is the value; the parenthetical is
 // ipmitool's own rendering of it and is not re-parsed.
-fn ipmitool_mc_info_int(stdout: String, label: String) -> Int? {
-  match ipmitool_labelled_value(stdout: stdout, label: label) {
+fn ipmitool_mc_info_int(stdout: String, label: IpmiMcInfoLabel) -> Int? {
+  match ipmitool_labelled_value(stdout: stdout, label: ipmitool_mc_info_label_text(label: label)) {
     Absent => none
     Present { value: v } => match first(split(s: trim(s: v), delimiter: " ")) {
       Absent => none
@@ -142,8 +146,8 @@ fn ipmitool_mc_info_firmware_revision(stdout: String) -> IpmiMcInfoFirmwareRevis
   }
 }
 
-fn ipmitool_mc_info_name(stdout: String, label: String) -> String? {
-  match ipmitool_labelled_value(stdout: stdout, label: label) {
+fn ipmitool_mc_info_name(stdout: String, label: IpmiMcInfoLabel) -> String? {
+  match ipmitool_labelled_value(stdout: stdout, label: ipmitool_mc_info_label_text(label: label)) {
     Absent => none
     Present { value: v } => if trim(s: v) == "" { none } else { Present { value: v } }
   }
@@ -155,15 +159,15 @@ fn ipmitool_mc_info_name(stdout: String, label: String) -> String? {
 // that is present and whole. What is missing is decided label by label, below.
 fn ipmitool_mc_info_fields_of(stdout: String) -> IpmiMcInfoFields {
   IpmiMcInfoFields {
-    device_id: ipmitool_mc_info_int(stdout: stdout, label: ipmitool_mc_info_label_text(label: DeviceId)),
-    device_revision: ipmitool_mc_info_int(stdout: stdout, label: ipmitool_mc_info_label_text(label: DeviceRevision)),
+    device_id: ipmitool_mc_info_int(stdout: stdout, label: DeviceId),
+    device_revision: ipmitool_mc_info_int(stdout: stdout, label: DeviceRevision),
     firmware: ipmitool_mc_info_firmware_revision(stdout: stdout),
-    manufacturer_id: ipmitool_mc_info_int(stdout: stdout, label: ipmitool_mc_info_label_text(label: ManufacturerId)),
-    manufacturer_name: ipmitool_mc_info_name(stdout: stdout, label: ipmitool_mc_info_label_text(label: ManufacturerName)),
-    product_id: ipmitool_mc_info_int(stdout: stdout, label: ipmitool_mc_info_label_text(label: ProductId)),
-    product_name: ipmitool_mc_info_name(stdout: stdout, label: ipmitool_mc_info_label_text(label: ProductName)),
-    device_available: ipmitool_mc_info_yes_no(stdout: stdout, label: ipmitool_mc_info_label_text(label: DeviceAvailable)),
-    provides_device_sdrs: ipmitool_mc_info_yes_no(stdout: stdout, label: ipmitool_mc_info_label_text(label: ProvidesDeviceSdrs)),
+    manufacturer_id: ipmitool_mc_info_int(stdout: stdout, label: ManufacturerId),
+    manufacturer_name: ipmitool_mc_info_name(stdout: stdout, label: ManufacturerName),
+    product_id: ipmitool_mc_info_int(stdout: stdout, label: ProductId),
+    product_name: ipmitool_mc_info_name(stdout: stdout, label: ProductName),
+    device_available: ipmitool_mc_info_yes_no(stdout: stdout, label: DeviceAvailable),
+    provides_device_sdrs: ipmitool_mc_info_yes_no(stdout: stdout, label: ProvidesDeviceSdrs),
   }
 }
 
@@ -203,25 +207,25 @@ fn ipmitool_mc_info_label_text(label: IpmiMcInfoLabel) -> String {
 // arrive). The completeness check names labels by walking these rows, and a modeled controller's answer is
 // printed from the same rows, so the read side and the render side cannot disagree about which labels exist or
 // in what order. The order is the upstream's own, so a refusal reads in the order a human reads the report.
-type IpmiMcInfoFieldRow { label: String, text: String? }
+type IpmiMcInfoFieldRow { label: IpmiMcInfoLabel, text: String? }
 
 fn ipmitool_mc_info_rows(fields: IpmiMcInfoFields) -> List<IpmiMcInfoFieldRow> {
   [
-    IpmiMcInfoFieldRow { label: ipmitool_mc_info_label_text(label: DeviceId), text: ipmitool_mc_info_int_text(value: fields.device_id) },
-    IpmiMcInfoFieldRow { label: ipmitool_mc_info_label_text(label: DeviceRevision), text: ipmitool_mc_info_int_text(value: fields.device_revision) },
-    IpmiMcInfoFieldRow { label: ipmitool_mc_info_label_text(label: FirmwareRevision), text: ipmitool_mc_info_firmware_text_of(firmware: fields.firmware) },
-    IpmiMcInfoFieldRow { label: ipmitool_mc_info_label_text(label: ManufacturerId), text: ipmitool_mc_info_int_text(value: fields.manufacturer_id) },
-    IpmiMcInfoFieldRow { label: ipmitool_mc_info_label_text(label: ManufacturerName), text: ipmitool_mc_info_name_text(value: fields.manufacturer_name) },
-    IpmiMcInfoFieldRow { label: ipmitool_mc_info_label_text(label: ProductId), text: ipmitool_mc_info_int_text(value: fields.product_id) },
-    IpmiMcInfoFieldRow { label: ipmitool_mc_info_label_text(label: ProductName), text: ipmitool_mc_info_name_text(value: fields.product_name) },
-    IpmiMcInfoFieldRow { label: ipmitool_mc_info_label_text(label: DeviceAvailable), text: ipmitool_mc_info_available_text(value: fields.device_available) },
-    IpmiMcInfoFieldRow { label: ipmitool_mc_info_label_text(label: ProvidesDeviceSdrs), text: ipmitool_mc_info_available_text(value: fields.provides_device_sdrs) },
+    IpmiMcInfoFieldRow { label: DeviceId, text: ipmitool_mc_info_int_text(value: fields.device_id) },
+    IpmiMcInfoFieldRow { label: DeviceRevision, text: ipmitool_mc_info_int_text(value: fields.device_revision) },
+    IpmiMcInfoFieldRow { label: FirmwareRevision, text: ipmitool_mc_info_firmware_text_of(firmware: fields.firmware) },
+    IpmiMcInfoFieldRow { label: ManufacturerId, text: ipmitool_mc_info_int_text(value: fields.manufacturer_id) },
+    IpmiMcInfoFieldRow { label: ManufacturerName, text: ipmitool_mc_info_name_text(value: fields.manufacturer_name) },
+    IpmiMcInfoFieldRow { label: ProductId, text: ipmitool_mc_info_int_text(value: fields.product_id) },
+    IpmiMcInfoFieldRow { label: ProductName, text: ipmitool_mc_info_name_text(value: fields.product_name) },
+    IpmiMcInfoFieldRow { label: DeviceAvailable, text: ipmitool_mc_info_available_text(value: fields.device_available) },
+    IpmiMcInfoFieldRow { label: ProvidesDeviceSdrs, text: ipmitool_mc_info_available_text(value: fields.provides_device_sdrs) },
   ]
 }
 
 fn ipmitool_mc_info_missing_labels(fields: IpmiMcInfoFields) -> List<NonEmptyStr> {
   filter(ipmitool_mc_info_rows(fields: fields), row => match row.text { Present { value: _ } => false Absent => true })
-    |> map(row => row.label as NonEmptyStr)
+    |> map(row => ipmitool_mc_info_label_text(label: row.label) as NonEmptyStr)
 }
 
 fn ipmitool_mc_info_cause(missing: List<NonEmptyStr>) -> NonEmptyStr {
@@ -317,9 +321,10 @@ fn ipmitool_mc_info_report_from(fields: IpmiMcInfoFields) -> IpmiMcInfoReport? {
 // 26-column field followed by ` : ` and the value; the identity fields print in the upstream's order and the
 // two yes/no claims last. This is what a dry controller answers `mc info` with — a rendering of the report it
 // is given, never a stored controller reply.
-fn ipmitool_mc_info_line(label: String, value: String) -> String {
-  let pad = ipmitool_mc_info_label_columns - string_length(s: label)
-  join([label, repeat_string(s: " ", n: pad), " : ", value, "\n"], "")
+fn ipmitool_mc_info_line(label: IpmiMcInfoLabel, value: String) -> String {
+  let text = ipmitool_mc_info_label_text(label: label)
+  let pad = ipmitool_mc_info_label_columns - string_length(s: text)
+  join([text, repeat_string(s: " ", n: pad), " : ", value, "\n"], "")
 }
 
 // THE FIRMWARE TEXT, in the upstream's own spelling: the two decimal parts joined by a dot. ONE declaration
