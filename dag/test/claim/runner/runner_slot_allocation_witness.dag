@@ -7,7 +7,7 @@ import gunbc.runner.runner_host_deploy {
 }
 import std.nat { Nat }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv3, operator_host_mtcollins1, operator_host_183527, operator_host_3dde7f }
 import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, srv3_host, fleet_intent_cpu }
 import extdeps.cpu.types { CpuFacts }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
@@ -72,8 +72,16 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
     && standing_count_for(host: operator_host_srv2) == 1
     && standing_count_for(host: operator_host_srv3) == 1
     && standing_count_for(host: operator_host_srv4) == 1
+    && standing_count_for(host: operator_host_mtcollins1) == 1
+    && standing_count_for(host: operator_host_183527) == 1
+    && standing_count_for(host: operator_host_3dde7f) == 1
     && standing_count_for(host: "srv-does-not-exist") == 0
-    && (gunbc_admitted_runner_slot_allocations() |> count) == 3
+    // DERIVED BY HAND FROM THE ENROLLMENT ROSTER (gunbc.fleet.fleet_enrollment, CI participation: 7 hosts):
+    // admitted = srv1, srv3, srv4 (session reservation established, offer present) + mtcollins1 (no
+    // session reservation, offer at gunbc.ci.ci_fleet) = 4. NOT admitted: srv2 (session denominator
+    // unestablished) and the two cax41 guests (no compute offer, so CpuWidthOfferAbsent). The former
+    // literal 3 predates mtcollins1's enrollment.
+    && (gunbc_admitted_runner_slot_allocations() |> count) == 4
 }
 
 // MEMORY ADMISSIONS AND COMMITTED WIDTHS ARE PINNED SEPARATELY, AND AS OF 2026-08-23 THEY FINALLY
