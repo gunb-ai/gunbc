@@ -569,10 +569,25 @@ fn spool_role_path(store: SpoolStore, role: SpoolRole) -> Optional<String> {
   }
 }
 
+// THE ONE KIND ADMISSION. A key carries the spool kind it was minted for and a store carries the kind it opens; the
+// directory comes from the store and the wire name from the key, so a pair that disagrees addresses an entry that
+// neither spool declares. Every path, and so every observe, create, claim, complete and requeue, is built here.
+fn spool_key_kind_refusal(store: SpoolStore, key: SpoolEntryKey) -> String? {
+  if key.kind == store.kind {
+    Absent
+  } else {
+    Present { value: join(["a key minted for one spool kind was presented to a store of another kind: ", key.name as String], "") }
+  }
+}
+
 fn spool_entry_path(store: SpoolStore, role: SpoolRole, key: SpoolEntryKey) -> Optional<String> {
-  match spool_role_path(store: store, role: role) {
-    Present { value: d } => Present { value: join([d, "/", spool_entry_wire_name(key: key)], "") }
-    Absent => Absent
+  match spool_key_kind_refusal(store: store, key: key) {
+    Present { value: _ } => Absent
+    Absent =>
+      match spool_role_path(store: store, role: role) {
+        Present { value: d } => Present { value: join([d, "/", spool_entry_wire_name(key: key)], "") }
+        Absent => Absent
+      }
   }
 }
 
@@ -642,6 +657,13 @@ fn spool_role_dirs(kind: SpoolKind, instance_root: String, roles: List<SpoolRole
 // OBSERVE one key across every role that has a directory. An unreadable role makes the whole observation
 // unavailable (it is never read as absent); two roles holding the key is Ambiguous.
 fn spool_queue_observe(store: SpoolStore, key: SpoolEntryKey) -> SpoolEntryState {
+  match spool_key_kind_refusal(store: store, key: key) {
+    Present { value: why } => EntryObservationUnavailable { detail: why }
+    Absent => spool_queue_observe_admitted(store: store, key: key)
+  }
+}
+
+fn spool_queue_observe_admitted(store: SpoolStore, key: SpoolEntryKey) -> SpoolEntryState {
   let seen = spool_declared_roles(kind: store.kind) |> map(r => spool_role_presence(store: store, role: r, key: key))
   let unknown = seen |> flat_map(p => match p {
     PresenceUnknown { detail } => [detail]

@@ -19,6 +19,10 @@ import gunbc.spool_queue {
   spool_claim_assess, spool_stale_assess, StaleNotApplicable, StaleClaimantLive, StaleStopTheLine, StaleRefused,
   ClaimantObservedDead, ClaimantUnobservable, spool_entry_key_parts, spool_entry_key, spool_entry_key_of_name, spool_entry_wire_name, spool_entry_key_of_wire_name, SpoolKeyMinted, SpoolKeyRefused,
 }
+import gunbc.spool_queue {
+  spool_open, spool_entry_path, spool_queue_observe, spool_queue_enqueue, spool_queue_claim, spool_queue_complete, spool_queue_requeue_on_evidence,
+  SpoolEnqueueNotDone, SpoolClaimNotDone, SpoolCompleteNotDone, SpoolRequeueNotDone, EntryObservationUnavailable, CompleteRefused,
+}
 
 // THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue). Every claim here is a permanent
 // control. The effects RESOLVE (their stripped twins are the MissingExport probes for the operations that must not
@@ -445,6 +449,92 @@ test fn a_hyphenated_node_id_round_trips_and_the_on_disk_name_parses() -> Proces
       match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: "adhoc-ec4fbad6-dec+attempt-1") {
         SpoolKeyRefused { detail: d } => exit_failure(reason: d)
         SpoolKeyMinted { key: k2 } => if (k == k2) && ((k.name as String) == "adhoc-ec4fbad6-dec+attempt-1") && (spool_entry_key_parts(key: k) == ["adhoc-ec4fbad6-dec", "attempt-1"]) { ExitSuccess } else { exit_failure(reason: "a hyphenated node id did not round-trip through the on-disk name") }
+      }
+    }
+  }
+}
+
+// THE KIND ADMISSION CONTROL. A lawful key of one spool kind (a publication request) against a lawful store of another
+// (the attempt-unit spool), over a root that does not exist: nothing is created or moved whatever the outcome, and the
+// outcome must be the typed kind refusal, not absence, which is what the same pair reads as without the boundary
+// (the BROKEN twin removes spool_key_kind_refusal and these claims then read EntryAbsent / ClaimAbsent / NotClaimed).
+data cross_kind_root: String = "/nonexistent-spool-kind-admission-control"
+
+data cross_kind_detail: String = "a key minted for one spool kind was presented to a store of another kind: req"
+
+test fn a_key_of_another_kind_cannot_address_a_path_in_the_store() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_entry_path(store: st, role: RolePending, key: k) {
+        Absent => ExitSuccess
+        Present { value: _ } => exit_failure(reason: "a cross-kind key addressed a path")
+      }
+    }
+  }
+}
+
+test fn a_key_of_another_kind_cannot_be_observed() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_queue_observe(store: st, key: k) {
+        EntryObservationUnavailable { detail: _ } => ExitSuccess
+        other => exit_failure(reason: "a cross-kind key was observed as an entry state")
+      }
+    }
+  }
+}
+
+test fn a_key_of_another_kind_cannot_be_created() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_queue_enqueue(store: st, key: k) {
+        SpoolEnqueueNotDone { detail: d } => if d == cross_kind_detail { ExitSuccess } else { exit_failure(reason: d) }
+        other => exit_failure(reason: "a cross-kind key was enqueued or reached the create step")
+      }
+    }
+  }
+}
+
+test fn a_key_of_another_kind_cannot_be_claimed() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_queue_claim(store: st, key: k) {
+        SpoolClaimNotDone { assessment: ClaimRefused { detail: _ } } => ExitSuccess
+        other => exit_failure(reason: "a cross-kind key was claimed or read as absent")
+      }
+    }
+  }
+}
+
+test fn a_key_of_another_kind_cannot_be_completed() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_queue_complete(store: st, key: k, outcome: SpoolOutcomeDone) {
+        SpoolCompleteNotDone { assessment: CompleteRefused { detail: _ } } => ExitSuccess
+        other => exit_failure(reason: "a cross-kind key was completed or read as not claimed")
+      }
+    }
+  }
+}
+
+test fn a_key_of_another_kind_cannot_be_requeued() -> ProcessExit {
+  match spool_entry_key(kind: SpoolPublication, parts: ["req"]) {
+    SpoolKeyRefused { detail: d } => exit_failure(reason: d)
+    SpoolKeyMinted { key: k } => {
+      let st = spool_open(kind: SpoolAttemptUnit, instance_root: cross_kind_root)
+      match spool_queue_requeue_on_evidence(store: st, key: k, evidence: BootsObserved { claim_boot_id: "a" as NonEmptyStr, current_boot_id: "b" as NonEmptyStr }) {
+        SpoolRequeueNotDone { assessment: RequeueNotClaimed { state: EntryObservationUnavailable { detail: _ } } } => ExitSuccess
+        other => exit_failure(reason: "a cross-kind key was requeued or read as absent")
       }
     }
   }
