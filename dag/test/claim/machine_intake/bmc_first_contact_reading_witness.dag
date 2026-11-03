@@ -11,7 +11,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac, SupermicroAten }
 import extdeps.bmc.capability {
   BmcCapability, CapabilityVirtualMedia, CapabilitySerialConsole, CapabilityOemRemoteMedia, CapabilityNbdProxyVirtualMedia,
-  BmcFirmwareReleaseIdentity, BmcFirmwareReleaseCapabilityRow,
+  BmcFirmwareReleaseIdentity, BmcFirmwareReleaseCapabilityRow, bmc_firmware_release_identity_of_wire,
 }
 import extdeps.bmc.ipmi { IpmiDeviceIdentity }
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoReport, IpmiMcInfoFields, IpmiMcInfoFirmwareRevision, render_ipmitool_mc_info }
@@ -23,7 +23,9 @@ import extdeps.bmc.redfish_network_boot {
   BootOptionsListed, BootOptionsNotServed,
   render_redfish_ethernet_interface, render_redfish_boot_options, render_redfish_boot_options_not_served,
 }
-import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, TranscribedUncited, CitedToAuthority }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyObserved, FamilyUnobserved }
 import gunbc.machine_intake.bmc_first_contact_reading {
   BmcReadSource, CommittedCaptureSet, ModeledController,
@@ -32,7 +34,9 @@ import gunbc.machine_intake.bmc_first_contact_reading {
   BmcReadOutcome, HttpStatusRecorded, CommandExitRecorded, OutcomeNotRecorded,
   BmcFirstContactReading, BmcBatteryRequest, BmcReadingStandings,
   FirstContactReading, ReadingEstablished, ReadingRefused, ReadingNotTaken,
-  FirmwareIdentityReading, BmcCapabilityBinding, BindingCatalogued, BindingAbsent,
+  FirmwareIdentityReading, FirmwareIdentityEvidence, ExactFirmwareIdentityEvidence, PartialFirmwareIdentityEvidence,
+  CapabilityReading, CapabilitiesEstablished, CapabilitiesOwed, CapabilitiesRefused,
+  BmcCapabilityBinding, BindingCatalogued, BindingAbsent,
   BmcCapabilityEvidence, CapabilityEvidenceBasis, Catalogued, SurfaceOffered,
   SensorTypingObservation, IpmiSdrTyping, RedfishThermalTyping,
   ConsoleRouteReading, ConsoleConfigured, ConsoleServiceAdvertised, ConsoleSessionObservedHistorically,
@@ -41,6 +45,9 @@ import gunbc.machine_intake.bmc_first_contact_reading {
   BootNicCandidate, HostBootNicEvidence,
   BmcAcquisitionFold, BmcRecordsRead, BmcAcquisitionRefused,
   bmc_first_contact_reading_of, bmc_read_manifest, bmc_modeled_standings, bmc_modeled_controller_of_world,
+  bmc_capability_evidence_of, bmc_firmware_identity_of, bmc_evidence_disagrees, bmc_established_release,
+  bmc_component, bmc_identity_components, bmc_exact_release_obligation,
+  FirmwareIdentitySourceName, McInfoSource, RedfishManagerSource, SupermicroCgiGenericInfoSource,
   bmc_mc_info_read, bmc_redfish_manager_read, bmc_supermicro_cgi_generic_info_read,
   bmc_ipmi_sdr_elist_read, bmc_redfish_thermal_read, bmc_redfish_sensors_read,
   bmc_ipmi_sol_info_read, bmc_redfish_serial_interfaces_read,
@@ -189,8 +196,14 @@ fn binding_of(capabilities: List<BmcCapability>) -> BmcCapabilityBinding {
       capabilities: capabilities,
     }],
     catalogued_in: "test.claim.machine_intake.bmc_first_contact_reading_witness" as NonEmptyStr,
+    // THE CATALOGUE FACT'S OWN STANDING, supplied by the owner of the fixture catalogue. It is deliberately
+    // weaker than any standing a hardware read would carry: the row is typed out here, and no capture grounds it.
+    standing: TranscribedUncited { read_obligation: c1_fixture_catalogue_obligation },
   }
 }
+
+data c1_fixture_catalogue_obligation: NonEmptyStr =
+  "the fixture capability row is typed out in this witness, not read from a cited catalogue" as NonEmptyStr
 
 fn dry_semantic() -> FirmwareSemanticVersion {
   FirmwareSemanticVersion { major: 3, minor: 22, patch: 0 }
@@ -543,14 +556,14 @@ fn bmc_boot_nic_is_configured_selection(reading: BmcFirstContactReading) -> Bool
 
 fn bmc_capabilities_established(reading: BmcFirstContactReading) -> Bool {
   match reading.capabilities {
-    ReadingEstablished { value: evidence, standing: standing } => count(evidence) > 0
+    CapabilitiesEstablished { evidence: evidence } => count(evidence) > 0
     _ => false
   }
 }
 
 fn bmc_capability_evidence_of(reading: BmcFirstContactReading) -> List<BmcCapabilityEvidence> {
   match reading.capabilities {
-    ReadingEstablished { value: evidence, standing: standing } => evidence
+    CapabilitiesEstablished { evidence: evidence } => evidence
     _ => []
   }
 }
@@ -694,7 +707,7 @@ fn owed_readings(reading: BmcFirstContactReading) -> Bool {
   match reading.sensor_typing {
     ReadingNotTaken { obligation: _ } => match reading.boot_nic {
       ReadingNotTaken { obligation: _ } => match reading.capabilities {
-        ReadingNotTaken { obligation: _ } => true
+        CapabilitiesOwed { obligation: _ } => true
         _ => false
       }
       _ => false
@@ -890,7 +903,7 @@ fn srv13_claims(reading: BmcFirstContactReading) -> Bool {
     // srv13's release is not in the capability catalogue, so R2 is an obligation naming that fact — the bare
     // rows elsewhere in the tree are not consumed to fill it.
     && match reading.capabilities {
-         ReadingNotTaken { obligation: obligation } => string_contains(s: obligation as String, pattern: "capability row")
+         CapabilitiesOwed { obligation: obligation } => string_contains(s: obligation as String, pattern: "capability row")
          _ => false
        }
     && bmc_sensor_typing_has(reading: reading)
@@ -986,7 +999,7 @@ fn h11ssl_unit1_claims(reading: BmcFirstContactReading) -> Bool {
     // No catalogue row names an ATEN 01.52.25 release, so R2 stays an obligation: the offered VirtualMedia
     // service is evidence, not a capability the fold minted on its own.
     && match reading.capabilities {
-         ReadingNotTaken { obligation: obligation } => string_contains(s: obligation as String, pattern: "no capability row")
+         CapabilitiesOwed { obligation: obligation } => string_contains(s: obligation as String, pattern: "no capability row")
          _ => false
        }
 }
@@ -1008,7 +1021,7 @@ fn unit2_claims(reading: BmcFirstContactReading) -> Bool {
          ReadingRefused { cause: cause } => string_contains(s: cause as String, pattern: "family")
          _ => false
        }
-    && match reading.capabilities { ReadingNotTaken { obligation: obligation } => true  _ => false }
+    && match reading.capabilities { CapabilitiesOwed { obligation: obligation } => true  _ => false }
     && match reading.sensor_typing { ReadingNotTaken { obligation: obligation } => true  _ => false }
     && match reading.console { ReadingNotTaken { obligation: obligation } => true  _ => false }
     && match reading.boot_nic { ReadingNotTaken { obligation: obligation } => true  _ => false }
@@ -1029,7 +1042,7 @@ fn mtcollins1_claims(reading: BmcFirstContactReading) -> Bool {
              ReadingRefused { cause: cause } => string_contains(s: cause as String, pattern: "family")
              _ => false
            }
-        && match reading.capabilities { ReadingNotTaken { obligation: obligation } => true  _ => false }
+        && match reading.capabilities { CapabilitiesOwed { obligation: obligation } => true  _ => false }
         && match reading.console { ReadingNotTaken { obligation: obligation } => true  _ => false }
         && match reading.boot_nic { ReadingNotTaken { obligation: obligation } => true  _ => false }
     _ => false
@@ -1085,5 +1098,337 @@ test fn a_capture_is_never_reused_for_another_board_or_another_moment() -> Bool 
         && match other_board.firmware { ReadingEstablished { value: borrowed, standing: s } => false  _ => true }
         && match other_moment.firmware { ReadingEstablished { value: borrowed, standing: s } => false  _ => true }
     _ => false
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════
+// P1 CONTROLS, side chat review of 460637f. Three defects were repaired in the model; each block below is a
+// RED that fails on the defective shape plus the positive control that shows the repair is not a rename.
+//   (1) standing sits on the capability fact, not on the list R2 returns;
+//   (2) a partial firmware observation is partial: it corroborates an exact release, it never competes with one,
+//       and the release R2 binds against does not depend on the order the sources arrived in;
+//   (3) a malformed Redfish property is a decode refusal, never an absent property, an empty candidate list, or
+//       a weaker success.
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ── (1) THE STANDING SITS ON THE CAPABILITY FACT, NOT ON THE LIST ──────────────────────────────────────
+// The defect: R2 used to hand its capability list back under ONE standing copied from R1, so a capability whose
+// only basis was a hand-written catalogue row inherited the firmware read's standing. The witness cannot mint an
+// ObservedByReceipt standing for R1 -- extdeps.external_authority gates `observed_receipt` to the battery's own
+// committed folds -- so the strong standing here is CitedToAuthority. The defect is the COPY, and any copy is
+// caught: the release's own standing is asserted strong, and no capability fact may carry it.
+test fn a_capability_bound_from_a_catalogue_carries_the_catalogues_standing_not_the_releases() -> Bool {
+  let release_reading = bmc_firmware_identity_of(evidences: [c1_manager_evidence(wire: "3.22")], refused: [], owed: [])
+  match bmc_capability_evidence_of(
+    from_release: release_reading,
+    binding: binding_of([CapabilityVirtualMedia, CapabilitySerialConsole]),
+    source: dry_source(responses: dry_responses()),
+    controller: "ac:1f:6b:e3:f6:b0" as NonEmptyStr,
+    observed_at: "2026-11-02T00:00:00Z" as NonEmptyStr,
+    standings: bmc_modeled_standings(),
+  ) {
+    CapabilitiesEstablished { evidence: items } =>
+      // CONTROL: the release R2 bound against IS established, on a cited authority, by one exact observation.
+      match release_reading {
+        ReadingEstablished { value: firmware, standing: CitedToAuthority { authority: authority } } => count(firmware.exact) == 1
+        _ => false
+      }
+      // ...and NONE of the capability facts carries that standing.
+      && count(filter(items, item => match item.standing { CitedToAuthority { authority: authority } => true  _ => false })) == 0
+      // ...while every catalogue-bound fact carries the catalogue's own standing, named by the catalogue's owner.
+      && count(filter(items, item => match item.basis {
+           Catalogued { catalogued_in: catalogue } => match item.standing {
+             TranscribedUncited { read_obligation: obligation } => obligation == c1_fixture_catalogue_obligation
+             _ => false
+           }
+           _ => false
+         })) == 2
+    CapabilitiesRefused { cause: cause } => false
+    CapabilitiesOwed { obligation: obligation } => false
+  }
+}
+
+// THE OTHER GRAIN, same list: a capability the controller itself offered by publishing a surface carries the
+// standing of THAT read, not the catalogue's -- even where the catalogue row names the same capability, which is
+// what makes the two grains visible as two different standings rather than one standing copied twice.
+test fn a_surface_offered_capability_carries_the_standing_of_the_read_that_offered_it() -> Bool {
+  let release_reading = bmc_firmware_identity_of(evidences: [c1_manager_evidence(wire: "3.22")], refused: [], owed: [])
+  match bmc_capability_evidence_of(
+    from_release: release_reading,
+    binding: binding_of([CapabilityVirtualMedia]),
+    source: dry_source(responses: dry_responses()),
+    controller: "ac:1f:6b:e3:f6:b0" as NonEmptyStr,
+    observed_at: "2026-11-02T00:00:00Z" as NonEmptyStr,
+    standings: bmc_modeled_standings(),
+  ) {
+    CapabilitiesEstablished { evidence: items } =>
+      count(filter(items, item => match item.basis {
+        SurfaceOffered { read: read } =>
+          read == bmc_ipmi_sol_info_read
+            && match item.standing {
+                 TranscribedUncited { read_obligation: obligation } => obligation != c1_fixture_catalogue_obligation
+                 _ => false
+               }
+        _ => false
+      })) == 1
+      && count(filter(items, item => match item.basis {
+           Catalogued { catalogued_in: catalogue } => match item.standing {
+             TranscribedUncited { read_obligation: obligation } => obligation == c1_fixture_catalogue_obligation
+             _ => false
+           }
+           _ => false
+         })) == 1
+    _ => false
+  }
+}
+
+// ── (2) A PARTIAL OBSERVATION IS PARTIAL ───────────────────────────────────────────────────────────────
+// `mc info` states a major and a minor; a Managers resource states major, minor and patch. The repaired
+// predicate compared component lists only, so 1.52 and 01.52.25 "agreed" and R2 then bound the capability row of
+// whichever evidence came FIRST. These claims pin the repair: the widest source supplies the release, the partial
+// corroborates it, and the order of the list changes nothing.
+test fn a_partial_release_observation_corroborates_and_never_becomes_the_bound_release() -> Bool {
+  match bmc_firmware_identity_of(
+    evidences: [c1_mc_info_evidence(wire: "1.52", major: 1, minor: 52), c1_manager_evidence(wire: "01.52.25")],
+    refused: [],
+    owed: [],
+  ) {
+    ReadingEstablished { value: firmware, standing: standing } =>
+      count(firmware.exact) == 1
+        && c1_bound_release_text(firmware: firmware) == "01.52.25"
+        && count(firmware.partials) == 1
+        // the corroborating set holds both sources: the partial is not dropped, it is just not the release.
+        && count(firmware.agreed) == 2
+        && count(firmware.refused) == 0
+    _ => false
+  }
+}
+
+// THE ORDER CONTROL the repair was asked for: the same two sources, reversed, bind the same release. If R2 took
+// the first evidence in a list, this claim and the one above could not both hold.
+test fn reversing_the_order_of_the_firmware_sources_binds_the_same_release() -> Bool {
+  let forward = bmc_firmware_identity_of(
+    evidences: [c1_mc_info_evidence(wire: "1.52", major: 1, minor: 52), c1_manager_evidence(wire: "01.52.25")],
+    refused: [],
+    owed: [],
+  )
+  let reversed = bmc_firmware_identity_of(
+    evidences: [c1_manager_evidence(wire: "01.52.25"), c1_mc_info_evidence(wire: "1.52", major: 1, minor: 52)],
+    refused: [],
+    owed: [],
+  )
+  c1_established_text_of(reading: forward) == "01.52.25"
+    && c1_established_text_of(reading: reversed) == "01.52.25"
+    && c1_established_text_of(reading: forward) == c1_established_text_of(reading: reversed)
+}
+
+// TWO FULL RELEASE IDENTITIES, DIFFERENT RELEASES. The component lists agree (01 and 1 both parse to major 1),
+// which is exactly why the component comparison used to wave this through: the releases are different, and R2
+// must not be handed a choice. Refused, naming both.
+test fn two_sources_naming_different_full_releases_refuse_rather_than_competing() -> Bool {
+  match bmc_firmware_identity_of(
+    evidences: [c1_manager_evidence(wire: "01.52.25"), c1_cgi_evidence(wire: "1.52.25")],
+    refused: [],
+    owed: [],
+  ) {
+    ReadingRefused { cause: cause } => string_contains(s: cause as String, pattern: "more than one exact release identity")
+    ReadingEstablished { value: firmware, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// ONE SOURCE, TWO ANSWERS. A second reading from the SAME source is not a second opinion; it is a broken
+// acquisition, and it refuses. This is reachable -- a manifest that lists one read twice, or a family with two
+// readers under one name -- and the committed manifests avoid it only by not repeating a read.
+test fn one_source_reading_one_controller_twice_with_different_answers_refuses() -> Bool {
+  match bmc_firmware_identity_of(
+    evidences: [c1_manager_evidence(wire: "01.52.25"), c1_manager_evidence(wire: "1.52.25")],
+    refused: [],
+    owed: [],
+  ) {
+    ReadingRefused { cause: cause } => string_contains(s: cause as String, pattern: "the firmware sources disagree")
+    ReadingEstablished { value: firmware, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// THE PREDICATE ITSELF, so the refusal above cannot be re-established by a different route: two observations
+// from one source are never treated as corroboration, and two from different sources naming one release are.
+test fn two_readings_from_one_source_are_never_treated_as_corroboration() -> Bool {
+  bmc_evidence_disagrees(
+    a: c1_manager_evidence(wire: "01.52.25"),
+    b: c1_manager_evidence(wire: "1.52.25"),
+  )
+  && bmc_evidence_disagrees(
+    a: c1_manager_evidence(wire: "01.52.25"),
+    b: c1_cgi_evidence(wire: "1.52.25"),
+  ) == false
+}
+
+// NOTHING STATED A WHOLE RELEASE. The reading is still established -- one source spoke, and saying so is what
+// the reading is for -- but it states no release, so R2 owes the read that would state one rather than binding a
+// capability row against a partial observation.
+test fn a_release_no_source_stated_in_full_owes_the_read_that_would_state_it() -> Bool {
+  let reading = bmc_firmware_identity_of(evidences: [c1_mc_info_evidence(wire: "1.52", major: 1, minor: 52)], refused: [], owed: [])
+  match reading {
+    ReadingEstablished { value: firmware, standing: standing } =>
+      count(firmware.exact) == 0
+        && count(firmware.partials) == 1
+        && bmc_named_sources_include(sources: firmware.owed, wanted: bmc_exact_release_obligation)
+    _ => false
+  }
+  && match bmc_capability_evidence_of(
+    from_release: reading,
+    binding: binding_of([CapabilityVirtualMedia]),
+    source: dry_source(responses: dry_responses()),
+    controller: "ac:1f:6b:e3:f6:b0" as NonEmptyStr,
+    observed_at: "2026-11-02T00:00:00Z" as NonEmptyStr,
+    standings: bmc_modeled_standings(),
+  ) {
+    CapabilitiesOwed { obligation: obligation } => string_contains(s: obligation as String, pattern: "partial observation")
+    CapabilitiesEstablished { evidence: items } => false
+    CapabilitiesRefused { cause: cause } => false
+  }
+}
+
+// ── (3) A MALFORMED PROPERTY IS NOT AN ABSENT ONE ──────────────────────────────────────────────────────
+// R5 used to fold a malformed or refused read into "no candidate" / "no selection", which has the same shape as
+// never having read at all. Each pair below runs the malformed body and the valid absent-property body through
+// the SAME battery on the SAME controller, and the two refusals must name different facts.
+fn c1_nic_responses(body: String) -> List<BmcModeledResponse> {
+  map(dry_responses(), response => if response.read == bmc_redfish_ethernet_interface_read {
+    BmcModeledResponse { read: response.read, operation: response.operation, outcome: response.outcome, body: body }
+  } else {
+    response
+  })
+}
+
+fn c1_boot_options_responses(body: String) -> List<BmcModeledResponse> {
+  map(dry_responses(), response => if response.read == bmc_redfish_boot_options_read {
+    BmcModeledResponse { read: response.read, operation: response.operation, outcome: response.outcome, body: body }
+  } else {
+    response
+  })
+}
+
+// The property is PRESENT and the wire shape is wrong: a decode refusal that names the property.
+test fn a_malformed_mac_address_refuses_and_names_the_property() -> Bool {
+  match battery(responses: c1_nic_responses(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\", \"MACAddress\": 12345}"), binding: no_binding()).boot_nic {
+    ReadingRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "MACAddress")
+        && string_contains(s: cause as String, pattern: "cannot decode")
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// The property is ABSENT: the port exists and the service chose not to publish its MAC. That is a different
+// refusal, with a different cause, and it is not a decode failure.
+test fn an_interface_publishing_no_mac_address_refuses_with_its_own_cause() -> Bool {
+  match battery(responses: c1_nic_responses(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\"}"), binding: no_binding()).boot_nic {
+    ReadingRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "publishes no MACAddress")
+        && string_contains(s: cause as String, pattern: "cannot decode") == false
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// A malformed BootOption property refuses the whole BootOptions read, and R5 propagates it: one unreadable
+// member is not a shorter list, and it never leaves an inventoried candidate standing as if the read had worked.
+test fn a_malformed_boot_option_property_refuses_and_names_the_property() -> Bool {
+  match battery(responses: c1_boot_options_responses(body: "{\"Members\": [{\"Id\": \"Boot0001\", \"DisplayName\": \"UEFI: PXE IPv4 Realtek\", \"UefiDevicePath\": \"PciRoot(0x0)/Pci(0x1C,0x4)/MAC(ac1f6be3f6b0,0x0)\", \"BootOptionEnabled\": \"yes\"}]}"), binding: no_binding()).boot_nic {
+    ReadingRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "BootOptionEnabled")
+        && string_contains(s: cause as String, pattern: "cannot decode")
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// The same member with the property simply ABSENT: the option is not enabled, the join finds nothing, and the
+// successfully read inventory still speaks -- an established candidate, which is the honest weaker outcome.
+test fn an_absent_boot_option_enabled_property_leaves_the_inventory_to_speak() -> Bool {
+  match battery(responses: c1_boot_options_responses(body: "{\"Members\": [{\"Id\": \"Boot0001\", \"DisplayName\": \"UEFI: PXE IPv4 Realtek\", \"UefiDevicePath\": \"PciRoot(0x0)/Pci(0x1C,0x4)/MAC(ac1f6be3f6b0,0x0)\"}]}"), binding: no_binding()).boot_nic {
+    ReadingEstablished { value: selection, standing: standing } => match selection {
+      InventoriedCandidate { candidate: candidate } => candidate.mac_address == "ac:1f:6b:e3:f6:b0" as NonEmptyStr
+      ConfiguredBootSelection { candidate: candidate, boot_option: option, device_path: path } => false
+      ObservedBootUseHistorical { candidate: _, evidence: _ } => false
+    }
+    ReadingRefused { cause: cause } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// A malformed UEFI device path is refused the same way, and the refusal names THAT property rather than the
+// enabled flag -- the two malformed properties must not collapse into one undifferentiated "bad BootOptions".
+test fn a_malformed_uefi_device_path_names_that_property_not_another() -> Bool {
+  match battery(responses: c1_boot_options_responses(body: "{\"Members\": [{\"Id\": \"Boot0001\", \"UefiDevicePath\": 7, \"BootOptionEnabled\": true}]}"), binding: no_binding()).boot_nic {
+    ReadingRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "UefiDevicePath")
+        && string_contains(s: cause as String, pattern: "BootOptionEnabled") == false
+    ReadingEstablished { value: reading, standing: standing } => false
+    ReadingNotTaken { obligation: obligation } => false
+  }
+}
+
+// ── FIXTURES FOR THE P1 CONTROLS ───────────────────────────────────────────────────────────────────────
+// One cited standing, spelled once: the strong end of the standing comparison in (1).
+fn c1_cited_standing() -> CitedFigureStanding {
+  CitedToAuthority { authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "example.invalid/c1-fixture" } } }
+}
+
+// A Managers-resource observation of a release, spelled the way the reader spells it: the components come from
+// the dotted FirmwareVersion, and so does the identity.
+fn c1_manager_evidence(wire: String) -> FirmwareIdentityEvidence {
+  FirmwareIdentityEvidence {
+    source: bmc_redfish_manager_read,
+    named: RedfishManagerSource,
+    identified: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: wire as NonEmptyStr),
+    components: bmc_identity_components(wire: wire as NonEmptyStr),
+    standing: c1_cited_standing(),
+    device_available: none,
+  }
+}
+
+// The Supermicro CGI arm states a three-part release too, under a DIFFERENT source name -- which is what makes
+// the two-exact-identities case reachable without tripping the same-source rule first.
+fn c1_cgi_evidence(wire: String) -> FirmwareIdentityEvidence {
+  FirmwareIdentityEvidence {
+    source: bmc_supermicro_cgi_generic_info_read,
+    named: SupermicroCgiGenericInfoSource,
+    identified: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: wire as NonEmptyStr),
+    components: bmc_identity_components(wire: wire as NonEmptyStr),
+    standing: c1_cited_standing(),
+    device_available: none,
+  }
+}
+
+// An `mc info` observation: the report's own two fields, which is all the report states. The wire text is the
+// release the report names, spelled as ipmitool spells it.
+fn c1_mc_info_evidence(wire: String, major: Int, minor: Int) -> FirmwareIdentityEvidence {
+  FirmwareIdentityEvidence {
+    source: bmc_mc_info_read,
+    named: McInfoSource,
+    identified: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: wire as NonEmptyStr),
+    components: [bmc_component(part: "major", value: major), bmc_component(part: "minor", value: minor)],
+    standing: c1_cited_standing(),
+    device_available: Present { value: true },
+  }
+}
+
+// THE RELEASE R2 WOULD BIND AGAINST, read the way R2 reads it.
+fn c1_bound_release_text(firmware: FirmwareIdentityReading) -> String {
+  match bmc_established_release(reading: firmware) {
+    Present { value: identity } => identity.raw_version as String
+    Absent => "(none)"
+  }
+}
+
+fn c1_established_text_of(reading: FirstContactReading<FirmwareIdentityReading>) -> String {
+  match reading {
+    ReadingEstablished { value: firmware, standing: standing } => c1_bound_release_text(firmware: firmware)
+    ReadingRefused { cause: cause } => "(refused)"
+    ReadingNotTaken { obligation: obligation } => "(owed)"
   }
 }

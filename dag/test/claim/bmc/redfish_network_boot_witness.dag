@@ -12,6 +12,10 @@ import extdeps.bmc.redfish_network_boot {
   redfish_ethernet_interface_of,
   redfish_boot_options_of,
   redfish_ethernet_interface_collection_of,
+  redfish_network_boot_document, redfish_network_boot_optional_string,
+  redfish_undecodable_detail, redfish_optional_value,
+  redfish_key_mac_address, redfish_key_link_status,
+  RedfishOptionalProperty, PropertyAbsent, PropertyPublished, PropertyUndecodable,
   render_redfish_ethernet_interface,
   render_redfish_boot_options,
   render_redfish_boot_options_not_served,
@@ -174,4 +178,91 @@ test fn rendered_not_served_envelope_reads_back_as_not_served() -> Bool {
     ObservationEstablished { observed: BootOptionsListed { options: listed } } => false
     ObservationRefused { cause: c } => false
   }
+}
+
+// ── P1 CONTROL, side chat review of 460637f: AN ABSENT PROPERTY AND AN UNDECODABLE ONE ARE DIFFERENT ────
+// The optional-property helpers used to answer BOTH with `none`, which made a present-but-malformed property
+// indistinguishable from a property the service never published -- and let a decode failure flow onward as a
+// shorter, successful read. Each RED below is paired with the valid absent-property case beside it, on the same
+// reader, so the pair shows the two facts are reported differently rather than one of them being renamed.
+test fn ethernet_interface_with_a_non_string_mac_address_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\", \"MACAddress\": 12345}") {
+    ObservationEstablished { observed: read } => false
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "MACAddress")
+        && string_contains(s: c as String, pattern: "cannot decode")
+        // CONTROL: the same resource with the property ABSENT is a successful read that leaves the MAC absent.
+        && match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\"}") {
+             ObservationEstablished { observed: absent_case } =>
+               absent_case.id == "1" as NonEmptyStr && absent_case.mac_address == none && absent_case.name == Present { value: "OnBoard LAN 1" }
+             ObservationRefused { cause: other } => false
+           }
+  }
+}
+
+test fn boot_option_with_a_non_string_enabled_flag_refuses_naming_the_property() -> Bool {
+  match redfish_boot_options_of(body: raw_boot_options_body(members: "{\"Id\": \"Boot0001\", \"UefiDevicePath\": \"PciRoot(0x0)/MAC(ac1f6be3f6b0,0x0)\", \"BootOptionEnabled\": \"yes\"}")) {
+    ObservationEstablished { observed: read } => false
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "BootOptionEnabled")
+        && string_contains(s: c as String, pattern: "cannot decode")
+        // CONTROL: the same member with the flag ABSENT reads successfully, and leaves the flag absent -- which
+        // the battery reads as "not enabled", never as "unreadable".
+        && match redfish_boot_options_of(body: raw_boot_options_body(members: "{\"Id\": \"Boot0001\", \"UefiDevicePath\": \"PciRoot(0x0)/MAC(ac1f6be3f6b0,0x0)\"}")) {
+             ObservationEstablished { observed: BootOptionsListed { options: listed } } =>
+               count(listed) == 1
+                 && match listed.first() {
+                      Present { value: option } => option.enabled == none && option.id == "Boot0001" as NonEmptyStr
+                      Absent => false
+                    }
+             ObservationEstablished { observed: BootOptionsNotServed { message: m } } => false
+             ObservationRefused { cause: other } => false
+           }
+  }
+}
+
+test fn boot_option_with_a_non_string_uefi_device_path_names_that_property_not_another() -> Bool {
+  match redfish_boot_options_of(body: raw_boot_options_body(members: "{\"Id\": \"Boot0001\", \"UefiDevicePath\": 7, \"BootOptionEnabled\": true}")) {
+    ObservationEstablished { observed: read } => false
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "UefiDevicePath")
+        // the refusal names the property that is actually wrong: two malformed properties do not collapse into
+        // one undifferentiated "bad BootOptions", and a valid flag is not reported as a defect.
+        && string_contains(s: c as String, pattern: "BootOptionEnabled") == false
+    ObservationEstablished { observed: other } => false
+  }
+}
+
+// THE OPTIONAL PROPERTY ITSELF, at the grain the reader reports it: undecodable, absent and published are three
+// answers, and the reader's refusal text names the undecodable one by key while the absent one stays silent.
+test fn an_undecodable_optional_property_is_not_the_same_answer_as_an_absent_one() -> Bool {
+  match redfish_network_boot_document(body: "{\"Id\": \"1\", \"MACAddress\": 12345}", what: "EthernetInterface") {
+    ObservationRefused { cause: c } => false
+    ObservationEstablished { observed: doc } =>
+      match redfish_network_boot_optional_string(obj: doc, key: redfish_key_mac_address) {
+        PropertyAbsent => false
+        PropertyPublished { value: v } => false
+        PropertyUndecodable { key: k, cause: c } => k == redfish_key_mac_address
+      }
+      && match redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status) {
+           PropertyAbsent => match redfish_undecodable_detail(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status)) {
+             Absent => match redfish_optional_value(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status)) {
+               Absent => true
+               Present { value: v } => false
+             }
+             Present { value: detail } => false
+           }
+           _ => false
+         }
+      && match redfish_undecodable_detail(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_mac_address)) {
+           Absent => false
+           Present { value: detail } => string_contains(s: detail as String, pattern: "MACAddress")
+         }
+  }
+}
+
+// A raw Members list, for the malformed-member cases: the renderer only ever prints a well-formed option, so a
+// malformed one has to be written out. Nothing here duplicates a rendered body -- these bodies are the point.
+fn raw_boot_options_body(members: String) -> String {
+  concat(concat("{\"Members\": [", members), "]}")
 }

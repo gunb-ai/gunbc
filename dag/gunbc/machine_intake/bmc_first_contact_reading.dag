@@ -473,6 +473,16 @@ type FirmwareIdentitySourceName
 // `device_available` is kept only where the source is `mc info`, because only that report claims the controller
 // is ready to answer: an identity taken while the controller says it is mid-initialization is not an identity
 // to store.
+// WHAT ONE SOURCE SAYS ABOUT THE RELEASE, and how strongly it says it.
+//
+// `identified` and `components` are NOT two spellings of one fact, and keeping them side by side without saying
+// so is what let a two-component source masquerade as an exact release. They state different things:
+//   - `components` is what the source actually measured -- `mc info` publishes a major and a minor and nothing
+//     else, so its list has two entries and states no patch.
+//   - `identified` is a release identity: the release the source named, spelled as that source spelled it.
+// Whether the source stated the WHOLE release is decided once, by `bmc_component_width` over the set of sources
+// (see `bmc_exact_evidence`), and `bmc_exact_evidence` / `bmc_partial_evidence` partition on that and nothing
+// else.
 type FirmwareIdentityEvidence {
   source: NonEmptyStr
   named: FirmwareIdentitySourceName
@@ -507,21 +517,83 @@ fn bmc_components_concur(a: List<BmcVersionComponent>, b: List<BmcVersionCompone
   count(filter(a, left => bmc_component_conflicts(left: left, others: b))) == 0
 }
 
+// HOW MANY COMPONENTS THE WIDEST SOURCE STATES. Exactness is a property of the SET, not of one read: `mc info`
+// states a major and a minor and nothing else, which on its own is a complete statement, but beside a Managers
+// resource that states major, minor AND patch it is the partial one. The width is what the sources state between
+// them, and it does not depend on the order they arrive in -- which is what makes the release R2 binds against
+// independent of list order.
+fn bmc_component_width(evidences: List<FirmwareIdentityEvidence>) -> Int {
+  fold(evidences, init: 0, f: (acc, evidence) => if count(evidence.components) > acc { count(evidence.components) } else { acc })
+}
+
+// THE EXACT OBSERVATIONS: the sources that stated as many components as any source states.
+fn bmc_exact_evidence(evidences: List<FirmwareIdentityEvidence>) -> List<ExactFirmwareIdentityEvidence> {
+  let width = bmc_component_width(evidences: evidences)
+  let some = map(filter(evidences, evidence => count(evidence.components) == width), evidence => ExactFirmwareIdentityEvidence { evidence: evidence })
+  let empty: List<ExactFirmwareIdentityEvidence> = []
+  fold(some, init: empty, f: (acc, exact) => if bmc_exact_identity_collected(exact: exact, others: acc) { acc } else { concat(acc, [exact]) })
+}
+
+// A REPEAT OF AN IDENTITY ALREADY COLLECTED. Two sources naming one release contribute one candidate, not two.
+fn bmc_exact_identity_collected(exact: ExactFirmwareIdentityEvidence, others: List<ExactFirmwareIdentityEvidence>) -> Bool {
+  count(filter(others, other => bmc_firmware_release_identity_eq(a: other.evidence.identified, b: exact.evidence.identified))) > 0
+}
+
+// THE PARTIAL OBSERVATIONS: the sources that stated fewer components than the widest. They corroborate or
+// conflict; they never become the release a capability row is bound against.
+fn bmc_partial_evidence(evidences: List<FirmwareIdentityEvidence>) -> List<PartialFirmwareIdentityEvidence> {
+  let width = bmc_component_width(evidences: evidences)
+  map(filter(evidences, evidence => count(evidence.components) < width), evidence => PartialFirmwareIdentityEvidence { evidence: evidence })
+}
+
+// DOES A PARTIAL OBSERVATION FIT THE EXACT RELEASE? Only components both sources state are compared: a source
+// that never stated a patch neither contradicts a patch nor confirms it.
+fn bmc_evidence_concur(partial: FirmwareIdentityEvidence, exact: FirmwareIdentityEvidence) -> Bool {
+  bmc_components_concur(a: partial.components, b: exact.components)
+}
+
 fn bmc_component_conflicts(left: BmcVersionComponent, others: List<BmcVersionComponent>) -> Bool {
   count(filter(others, right => right.part == left.part && right.value != left.value)) > 0
 }
 
-// THE R1 VALUE: what agreed, what refused, what is owed. All three lists are carried so a consumer can tell
-// "one source, corroborated by nobody" from "three sources, all agreeing" without re-running the fold, and so a
-// failed source is visible instead of silently shrinking the list.
+// THE R1 VALUE: the release the sources ESTABLISHED, the partial observations that corroborate it, what
+// refused, what is owed. All four are carried so a consumer can tell "one source, corroborated by nobody" from
+// "three sources, all agreeing" without re-running the fold, and so a failed source is visible instead of
+// silently shrinking the list.
+//
+// `exact` holds AT MOST ONE element, and that is the whole point of the split: R2 binds capability rows by exact
+// release identity, so the release it binds against must come from a source that stated one, and there must not
+// be two candidates for it. `agreed` is the corroborating set -- the exact evidence plus every partial that
+// shares its components -- and it is what a consumer reads to see how many sources spoke.
 type FirmwareIdentityReading {
+  exact: List<ExactFirmwareIdentityEvidence>
+  partials: List<PartialFirmwareIdentityEvidence>
   agreed: List<FirmwareIdentityEvidence>
   refused: List<NonEmptyStr>
   owed: List<NonEmptyStr>
 }
 
+// AN EXACT OBSERVATION: the source stated a whole release identity.
+type ExactFirmwareIdentityEvidence { evidence: FirmwareIdentityEvidence }
+
+// A PARTIAL OBSERVATION: the source stated some components and no release. It may corroborate an exact
+// observation and it may conflict with one; it can never be the release a capability row is bound against.
+type PartialFirmwareIdentityEvidence { evidence: FirmwareIdentityEvidence }
+
+// NO EXACT RELEASE, AND WHY. Two exact identities is a refusal of its own, not a shorter agreed list: the
+// alternative is letting the order of a list decide which release R2 binds against.
+type FirmwareIdentityReadingRefused { cause: NonEmptyStr }
+
+// NOTHING ESTABLISHED ANYTHING: the coverage obligation, spelled from what was refused and what was never read.
+type FirmwareIdentityReadingOwed { obligation: NonEmptyStr }
+
 // `mc info` → a release identity, spelled as ipmitool spells it. The identity is the report's Firmware Revision
 // through the upstream's own rendering, so the comparison key is the tool's output and not a re-derivation.
+//
+// THIS SOURCE IS PARTIAL. `mc info` publishes a major and a minor and nothing else, so the component list has
+// two entries, and `bmc_firmware_release_identity_of_wire` yields no `semantic_version` for a two-part wire
+// text: the evidence lands in `partials` and never becomes the release R2 binds against. That is not a defect
+// of the read -- it is what the read states, and the type says so.
 fn bmc_mc_info_evidence(
   read: NonEmptyStr,
   report: IpmiMcInfoReport,
@@ -566,40 +638,137 @@ fn bmc_disagreeing_with(head: FirmwareIdentityEvidence, others: List<FirmwareIde
   }
 }
 
+// DO THESE TWO OBSERVATIONS CONTRADICT EACH OTHER? Components in common, different values: yes. Two exact
+// observations naming different releases: yes, even when their component lists happen to agree -- the component
+// list is a lossy view of the release, and the release is what R2 binds against.
+//
+// Two observations from the SAME source are not a contradiction between sources, and this refuses them anyway:
+// a source that yields two different readings of one controller is a broken acquisition, and the honest outcome
+// is a refusal naming it. That is reachable -- a manifest that lists the same read twice, or a family with two
+// readers of one name -- and the fold never sees it today only because the committed manifests do not repeat a
+// read.
 fn bmc_evidence_disagrees(a: FirmwareIdentityEvidence, b: FirmwareIdentityEvidence) -> Bool {
-  if a.source == b.source {
-    false
+  if bmc_components_concur(a: a.components, b: b.components) == false {
+    true
   } else {
-    bmc_components_concur(a: a.components, b: b.components) == false
+    if a.named == b.named && bmc_firmware_release_identity_eq(a: a.identified, b: b.identified) == false {
+      true
+    } else {
+      if a.source == b.source && bmc_firmware_release_identity_eq(a: a.identified, b: b.identified) == false {
+        true
+      } else {
+        false
+      }
+    }
   }
 }
 
+// WHAT THE SOURCES ADD UP TO, and what this function actually enforces, in the order it enforces it:
+//   1. any two observations that contradict each other (different values for a component both state, or two
+//      different release identities, or two different readings from one source) REFUSE the reading, naming both
+//      sources and both spellings;
+//   2. more than one distinct EXACT release identity REFUSES the reading -- never a silent pick, because R2
+//      binds capability rows by exact identity and a list order must not decide which one it uses;
+//   3. with one exact release, every partial must fit it (a partial that contradicts it was refused at 1);
+//   4. with no exact release but at least one partial, the reading is established on the partials and R2 is
+//      owed an obligation naming the read that would state a release;
+//   5. with nothing established, the reading is a refusal if anything was attempted and refused, and the
+//      coverage obligation if nothing was.
+// The standing carried is the WEAKEST among the sources that spoke: a hardware capture corroborated by a dry
+// rendering is only as good as the rendering, because a rendering says nothing about hardware.
 fn bmc_firmware_identity_of(
   evidences: List<FirmwareIdentityEvidence>,
   refused: List<NonEmptyStr>,
   owed: List<NonEmptyStr>,
 ) -> FirstContactReading<FirmwareIdentityReading> {
+  let exact = bmc_exact_evidence(evidences: evidences)
+  let partials = bmc_partial_evidence(evidences: evidences)
   match bmc_first_disagreement(evidences: evidences) {
     Present { value: pair } => reading_refused(concat(
       "the firmware sources disagree: ", pair.left.source as String, " says ",
       pair.left.identified.raw_version as String, " while ", pair.right.source as String, " says ",
       pair.right.identified.raw_version as String,
     ) as NonEmptyStr)
-    Absent =>
-      if count(evidences) > 0 {
-        ReadingEstablished {
-          value: FirmwareIdentityReading { agreed: evidences, refused: refused, owed: owed },
+    Absent => match bmc_exact_evidence_refusal(exact: exact) {
+      Present { value: cause } => reading_refused(cause)
+      Absent => match bmc_exact_evidence_of(exact: exact) {
+        Present { value: winner } => ReadingEstablished {
+          value: FirmwareIdentityReading {
+            exact: [winner],
+            partials: partials,
+            agreed: bmc_agreeing_evidence(evidences: evidences, winner: winner),
+            refused: refused,
+            owed: bmc_partial_only_owed(partials: partials, owed: owed),
+          },
           standing: bmc_evidences_standing(evidences: evidences),
         }
-      } else {
-        if count(refused) > 0 {
-          reading_refused(join(map(refused, cause => cause as String), "; ") as NonEmptyStr)
-        } else {
-          reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
-        }
+        Absent =>
+          if count(partials) > 0 {
+            ReadingEstablished {
+              value: FirmwareIdentityReading { exact: [], partials: partials, agreed: evidences, refused: refused, owed: bmc_partial_only_owed(partials: partials, owed: owed) },
+              standing: bmc_evidences_standing(evidences: evidences),
+            }
+          } else {
+            if count(refused) > 0 {
+              reading_refused(join(map(refused, cause => cause as String), "; ") as NonEmptyStr)
+            } else {
+              reading_not_taken(join(map(owed, obligation => obligation as String), "; ") as NonEmptyStr)
+            }
+          }
       }
+    }
   }
 }
+
+// THE ONE EXACT OBSERVATION, when there is exactly one.
+fn bmc_exact_evidence_of(exact: List<ExactFirmwareIdentityEvidence>) -> ExactFirmwareIdentityEvidence? {
+  if count(exact) == 1 {
+    match exact.first() {
+      Present { value: winner } => Present { value: winner }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+// TWO DISTINCT EXACT IDENTITIES: refuse, and name them. This is the case the component comparison used to wave
+// through (1.52 and 01.52.25 share their major and minor), and it is the case in which a list order would
+// otherwise pick the release R2 binds against.
+// TWO DISTINCT EXACT IDENTITIES: refuse, and name them. `bmc_exact_evidence` already collapsed repeats of one
+// identity, so what is left is exactly the distinct candidates -- counting them here rather than re-deriving a
+// distinctness rule keeps one identity comparison in the module.
+fn bmc_exact_evidence_refusal(exact: List<ExactFirmwareIdentityEvidence>) -> NonEmptyStr? {
+  if count(exact) > 1 {
+    Present { value: concat("the sources state more than one exact release identity: ", bmc_exact_identity_texts(exact: exact)) as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+fn bmc_exact_identity_texts(exact: List<ExactFirmwareIdentityEvidence>) -> NonEmptyStr {
+  join(map(exact, item => concat(item.evidence.source as String, " says ", item.evidence.identified.raw_version as String)), "; ") as NonEmptyStr
+}
+
+// THE CORROBORATING SET: the exact observation, plus every partial that fits it. A partial that contradicts the
+// exact release never reaches here -- step 1 refused the reading.
+fn bmc_agreeing_evidence(evidences: List<FirmwareIdentityEvidence>, winner: ExactFirmwareIdentityEvidence) -> List<FirmwareIdentityEvidence> {
+  let width = bmc_component_width(evidences: evidences)
+  concat([winner.evidence], filter(evidences, evidence => count(evidence.components) < width && bmc_evidence_concur(partial: evidence, exact: winner.evidence)))
+}
+
+// A PARTIAL-ONLY ESTABLISHMENT OWES THE READ THAT WOULD STATE A RELEASE. Spelled once, because a fold that
+// typed its own version of this sentence could quietly owe less.
+fn bmc_partial_only_owed(partials: List<PartialFirmwareIdentityEvidence>, owed: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  if count(partials) > 0 {
+    concat(owed, [bmc_exact_release_obligation])
+  } else {
+    owed
+  }
+}
+
+data bmc_exact_release_obligation: NonEmptyStr =
+  "no source stated a full release identity: the sources that spoke published firmware components only, and a capability row cannot be bound against a partial observation -- the read that would state the release is owed" as NonEmptyStr
 
 // THE STANDING LATTICE, ordered by what a standing licenses: an observation receipt licenses a statement about
 // hardware, a citation licenses a transcription of an upstream document, and `TranscribedUncited` licenses
@@ -827,17 +996,52 @@ type CapabilityEvidenceBasis
   | SurfaceOffered { read: NonEmptyStr }
   | OperationExercised { receipt: ObservedReceipt }
 
+// A CAPABILITY FACT AND THE EVIDENCE THAT ESTABLISHES IT, as one value. The standing travels with the pair.
+//
+// It cannot sit on the list R2 returns, and it cannot be borrowed from R1. Three bases, three different
+// strengths: a capability whose basis is a catalogue row is established by the CATALOGUE FACT (its standing
+// comes from the binding, which the catalogue's owner supplies); a capability whose basis is a surface the
+// controller itself published is established by THAT SURFACE READ (its standing is that read's standing); a
+// capability whose basis is an operation actually exercised is established by that operation's receipt. One
+// standing over a list that mixes them would let a hardware-observed firmware identity lend its
+// ObservedByReceipt to a capability whose only basis is a hand-written catalogue row -- the overclaim the
+// accepted v2 note removed, and the reason the standing is a field of the pair and not of the reading.
 type BmcCapabilityEvidence {
   capability: BmcCapability
   basis: CapabilityEvidenceBasis
+  standing: CitedFigureStanding
 }
+
+// THE ONE WAY AN EXERCISED OPERATION BECOMES EVIDENCE: the basis and the standing are read off the same receipt,
+// so they cannot disagree. No realization in this PR supplies this basis -- the live reader (the declared
+// frontier `bmc_read_plan` names it) is its consumer; it is spelled here because the alternative is a caller
+// pairing a receipt with whatever standing it liked.
+fn bmc_exercised_capability_evidence(capability: BmcCapability, receipt: ObservedReceipt) -> BmcCapabilityEvidence {
+  BmcCapabilityEvidence {
+    capability: capability,
+    basis: OperationExercised { receipt: receipt },
+    standing: ObservedByReceipt { observed: receipt },
+  }
+}
+
+// R2'S OWN CARRIER, rather than FirstContactReading<List<BmcCapabilityEvidence>>. The other four readings rest
+// on one acquisition each, so one standing describes the whole reading; R2 does not, and the accepted repair is
+// a list of individually-standing facts rather than one standing over a heterogeneous list. The three arms are
+// the same three states the other readings use -- established, refused, owed -- spelled out here because the
+// established arm has nowhere honest to put a standing.
+type CapabilityReading
+  = CapabilitiesEstablished { evidence: List<BmcCapabilityEvidence> }
+  | CapabilitiesRefused { cause: NonEmptyStr }
+  | CapabilitiesOwed { obligation: NonEmptyStr }
 
 // THE CATALOGUE BINDING, supplied by the consumer that owns the catalogue (MegaRAC rows come from
 // gunbc.host.bmc_release_capability_catalog, ASRock rows from extdeps.boards.asrock_rack). It is handed in
 // rather than looked up here so that the battery's closure does not decide which board's catalogue is
-// authoritative, and so a release that is simply NOT in any catalogue says so as an obligation.
+// authoritative, and so a release that is simply NOT in any catalogue says so as an obligation. The binding
+// carries the CATALOGUE FACT'S OWN STANDING for the same reason: the battery does not decide how well-cited
+// somebody else's catalogue is, and it must not upgrade it by association with a hardware read.
 type BmcCapabilityBinding
-  = BindingCatalogued { rows: List<BmcFirmwareReleaseCapabilityRow>, catalogued_in: NonEmptyStr }
+  = BindingCatalogued { rows: List<BmcFirmwareReleaseCapabilityRow>, catalogued_in: NonEmptyStr, standing: CitedFigureStanding }
   | BindingAbsent { obligation: NonEmptyStr }
 
 // WHAT A CONTROLLER WITH NO CATALOGUE ROW OWES. Stated once, because every committed fold that has no row for
@@ -852,48 +1056,63 @@ fn bmc_capability_evidence_of(
   controller: NonEmptyStr,
   observed_at: NonEmptyStr,
   standings: BmcReadingStandings,
-) -> FirstContactReading<List<BmcCapabilityEvidence>> uses fs: std.resources.Filesystem {
+) -> CapabilityReading uses fs: std.resources.Filesystem {
   match from_release {
-    ReadingRefused { cause: cause } => reading_not_taken(concat("capabilities: no established release identity to bind a capability row against (", concat(cause as String, "); no catalogue row names this release until an identity is agreed")) as NonEmptyStr)
-    ReadingNotTaken { obligation: obligation } => reading_not_taken(concat("capabilities: ", obligation as String) as NonEmptyStr)
+    ReadingRefused { cause: cause } => CapabilitiesOwed { obligation: concat("capabilities: no established release identity to bind a capability row against (", concat(cause as String, "); no catalogue row names this release until an identity is agreed")) as NonEmptyStr }
+    ReadingNotTaken { obligation: obligation } => CapabilitiesOwed { obligation: concat("capabilities: ", obligation as String) as NonEmptyStr }
     ReadingEstablished { value: reading, standing: standing } =>
-      match bmc_release_row_for(rows: bmc_binding_rows(binding: binding), wanted: bmc_first_agreed_release(reading: reading)) {
+      match bmc_release_row_for(rows: bmc_binding_rows(binding: binding), wanted: bmc_established_release(reading: reading)) {
         Absent =>
           match binding {
-            BindingAbsent { obligation: obligation } => reading_not_taken(obligation)
-            BindingCatalogued { rows: rows, catalogued_in: catalogue } => reading_not_taken(
-              concat("no capability row in ", catalogue as String, " names release ", bmc_first_release_text(reading: reading), "; the release is uncatalogued") as NonEmptyStr
-            )
+            BindingAbsent { obligation: obligation } => CapabilitiesOwed { obligation: obligation }
+            BindingCatalogued { rows: rows, catalogued_in: catalogue, standing: catalogue_standing } => CapabilitiesOwed { obligation: bmc_uncatalogued_release_obligation(catalogue: catalogue, reading: reading) }
           }
-        Present { value: row } => ReadingEstablished {
-          value: concat(
-            bmc_catalogued_evidence_of(row: row, binding: binding),
-            bmc_offered_evidence_of(source: source, controller: controller, observed_at: observed_at, standings: standings),
-          ),
-          standing: standing,
-        }
+        // NO STANDING ON THE READING: each element of the list carries its own, from its own basis. The release
+        // identity is what the row was looked up with; it is not evidence for any capability.
+        Present { value: row } => CapabilitiesEstablished { evidence: concat(
+          bmc_catalogued_evidence_of(row: row, binding: binding),
+          bmc_offered_evidence_of(source: source, controller: controller, observed_at: observed_at, standings: standings),
+        ) }
       }
   }
 }
 
 fn bmc_binding_rows(binding: BmcCapabilityBinding) -> List<BmcFirmwareReleaseCapabilityRow> {
   match binding {
-    BindingCatalogued { rows: rows, catalogued_in: catalogue } => rows
+    BindingCatalogued { rows: rows, catalogued_in: catalogue, standing: standing } => rows
     BindingAbsent { obligation: obligation } => []
   }
 }
 
-fn bmc_first_agreed_release(reading: FirmwareIdentityReading) -> BmcFirmwareReleaseIdentity? {
-  match reading.agreed.first() {
+// THE STANDING OF THE CATALOGUE FACT, as the catalogue's owner supplied it. A binding that is absent has no
+// catalogue fact to stand on, and no capability may be established on it.
+fn bmc_binding_standing(binding: BmcCapabilityBinding) -> CitedFigureStanding? {
+  match binding {
+    BindingCatalogued { rows: rows, catalogued_in: catalogue, standing: standing } => Present { value: standing }
+    BindingAbsent { obligation: obligation } => none
+  }
+}
+
+// THE RELEASE R2 BINDS AGAINST: the one exact identity R1 established. It is not "the first evidence" -- an
+// agreed set holds at most one exact identity by construction (bmc_firmware_identity_of refuses on two), and
+// partials are not candidates because they do not state a release.
+fn bmc_established_release(reading: FirmwareIdentityReading) -> BmcFirmwareReleaseIdentity? {
+  match reading.exact.first() {
     Present { value: evidence } => Present { value: evidence.identified }
     Absent => none
   }
 }
 
-fn bmc_first_release_text(reading: FirmwareIdentityReading) -> String {
-  match bmc_first_agreed_release(reading: reading) {
+// THE RELEASE IS ESTABLISHED AND NO ROW IN THE SUPPLIED CATALOGUE NAMES IT: an obligation naming the release,
+// not a capability. Spelled once so a fold cannot type its own version of the sentence and owe less.
+fn bmc_uncatalogued_release_obligation(catalogue: NonEmptyStr, reading: FirmwareIdentityReading) -> NonEmptyStr {
+  concat("no capability row in ", concat(catalogue as String, concat(" names release ", concat(bmc_established_release_text(reading: reading), "; the release is uncatalogued")))) as NonEmptyStr
+}
+
+fn bmc_established_release_text(reading: FirmwareIdentityReading) -> String {
+  match bmc_established_release(reading: reading) {
     Present { value: identified } => identified.raw_version as String
-    Absent => "(no agreed release)"
+    Absent => "(no established release)"
   }
 }
 
@@ -914,13 +1133,17 @@ fn bmc_release_row_for(rows: List<BmcFirmwareReleaseCapabilityRow>, wanted: BmcF
 // because "which catalogue, and where is its citation" is the question a reviewer asks of a capability list.
 fn bmc_catalogued_evidence_of(row: BmcFirmwareReleaseCapabilityRow, binding: BmcCapabilityBinding) -> List<BmcCapabilityEvidence> {
   let catalogue = match binding {
-    BindingCatalogued { rows: rows, catalogued_in: catalogued_in } => catalogued_in
+    BindingCatalogued { rows: rows, catalogued_in: catalogued_in, standing: standing } => catalogued_in
     BindingAbsent { obligation: obligation } => "an unknown catalogue" as NonEmptyStr
   }
-  map(row.capabilities, capability => BmcCapabilityEvidence {
-    capability: capability,
-    basis: Catalogued { catalogued_in: catalogue },
-  })
+  match bmc_binding_standing(binding: binding) {
+    Absent => []
+    Present { value: carried } => map(row.capabilities, capability => BmcCapabilityEvidence {
+      capability: capability,
+      basis: Catalogued { catalogued_in: catalogue },
+      standing: carried,
+    })
+  }
 }
 
 // THE SURFACES THE CONTROLLER ITSELF OFFERED. Two reads can offer a surface: the virtual-media service (the
@@ -948,6 +1171,7 @@ fn bmc_virtual_media_surface(body: BmcBodyAttempt) -> BmcCapabilityEvidence? {
         ObservationEstablished { observed: offer } => Present { value: BmcCapabilityEvidence {
           capability: CapabilityVirtualMedia,
           basis: SurfaceOffered { read: bmc_redfish_virtual_media_read },
+          standing: standing,
         } }
         ObservationRefused { cause: cause } => none
       }
@@ -965,6 +1189,7 @@ fn bmc_sol_surface(body: BmcBodyAttempt) -> BmcCapabilityEvidence? {
             Present { value: BmcCapabilityEvidence {
               capability: CapabilitySerialConsole,
               basis: SurfaceOffered { read: bmc_ipmi_sol_info_read },
+              standing: standing,
             } }
           } else {
             none
@@ -1379,6 +1604,298 @@ fn bmc_console_missing(sol: BmcBodyAttempt, advertised: BmcBodyAttempt) -> First
   }
 }
 
+// ── WHAT THE R5 READS COME BACK AS ───────────────────────────────────────────────────────────────────────
+// Four sums, because each of R5's reads has four outcomes and the reading has to report the one that happened.
+// The acquisition contract says attempted-plus-undecodable is a REFUSAL and never-scheduled is an OBLIGATION;
+// a reading that turns a refusal into an empty list, or an obligation into an absence, breaks that contract at
+// the grain of a single resource. These types keep the four apart end to end, and the driver below consults
+// them in that order: a refusal first, then the service's own negative answer, then the inventory, and an
+// obligation only when nothing was attempted.
+
+// ONE ETHERNETINTERFACE MEMBER READ. A port with a published MAC is a candidate. A port the service published
+// WITHOUT a MAC this reading can name is not an absent port: the read succeeded and the fact is unusable for a
+// boot NIC, so it refuses with a cause that says which. A read attempted and refused (fetch or decode) refuses.
+// A read never scheduled owes.
+type BmcPortReading
+  = PortCandidate { candidate: BootNicCandidate }
+  | PortUnusable { read: NonEmptyStr, detail: NonEmptyStr }
+  | PortRefused { read: NonEmptyStr, cause: NonEmptyStr }
+  | PortOwed { read: NonEmptyStr, obligation: NonEmptyStr }
+
+// THE BootOptions COLLECTION READ: listed; answered negatively by the service itself, which is an ESTABLISHED
+// negative observation and not a failure (srv13's committed capture is that arm); refused; or owed.
+type BmcBootOptionsAttempt
+  = OptionsListed { options: List<RedfishBootOptionRead> }
+  | OptionsAnsweredNotServed { message: NonEmptyStr }
+  | OptionsRefused { cause: NonEmptyStr }
+  | OptionsOwed { obligation: NonEmptyStr }
+
+// THE EthernetInterfaces COLLECTION READ: the count it announced, refused, or owed. The announced count is what
+// makes a collection longer than the members read a refusal rather than a short list, so a refused collection
+// read cannot be treated as "no announcement" and let a short inventory through.
+type BmcCollectionAttempt
+  = CollectionAnnounced { count: Int }
+  | CollectionRefused { cause: NonEmptyStr }
+  | CollectionOwed { obligation: NonEmptyStr }
+
+// THE JOIN of an enabled BootOption to an inventoried candidate: exactly one pair (a selection), more than one
+// (an ambiguity the reading refuses rather than resolves by taking the first), or none (no selection, which is
+// not a failure and leaves the inventory to speak).
+type BmcBootOptionJoin
+  = JoinSelected { candidate: BootNicCandidate, boot_option: NonEmptyStr, device_path: NonEmptyStr }
+  | JoinAmbiguous { detail: NonEmptyStr }
+  | JoinNone
+
+fn bmc_port_readings(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+  interface_reads: List<NonEmptyStr>,
+) -> List<BmcPortReading> uses fs: std.resources.Filesystem {
+  let empty: List<BmcPortReading> = []
+  fold(interface_reads, init: empty, f: (acc, read) => concat(acc, [bmc_port_reading_of(
+    source: source,
+    controller: controller,
+    observed_at: observed_at,
+    standings: standings,
+    read: read,
+  )]))
+}
+
+fn bmc_port_reading_of(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+  read: NonEmptyStr,
+) -> BmcPortReading uses fs: std.resources.Filesystem {
+  match bmc_body_of(source: source, request: bmc_request_for(read: read), controller: controller, observed_at: observed_at, standings: standings) {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_ethernet_interface_of(body: text) {
+        ObservationEstablished { observed: interface } => match interface.mac_address {
+          // A published but empty MACAddress is a fact, not an absence, and it names no interface: refuse and
+          // say so, rather than inventing a candidate or reporting no port.
+          Present { value: mac } => if mac == "" {
+            PortUnusable {
+              read: read,
+              detail: "the EthernetInterface resource publishes an empty MACAddress, which names no interface" as NonEmptyStr,
+            }
+          } else {
+            PortCandidate { candidate: BootNicCandidate {
+              name: match interface.name {
+                Present { value: name } => if name == "" { interface.id } else { name as NonEmptyStr }
+                Absent => interface.id
+              },
+              mac_address: mac as NonEmptyStr,
+              source: read,
+            } }
+          }
+          // The property is absent: the port exists and the service chose not to publish its MAC. For a boot
+          // NIC that is a refusal with a different cause from a malformed MAC -- the distinction the reader
+          // above keeps, kept here too.
+          Absent => PortUnusable {
+            read: read,
+            detail: "the EthernetInterface resource publishes no MACAddress, so no boot NIC can be named from it" as NonEmptyStr,
+          }
+        }
+        ObservationRefused { cause: cause } => PortRefused { read: read, cause: cause }
+      }
+    BodyRefused { cause: cause } => PortRefused { read: read, cause: cause }
+    BodyOwed { obligation: obligation } => PortOwed { read: read, obligation: obligation }
+  }
+}
+
+// THE CANDIDATES AMONG THE PORT READS. Refusals and unusable ports drop out HERE ONLY because the driver has
+// already refused on them (`bmc_port_readings_refusal` runs first, and so does the collection check); no caller
+// may use this list as a way to step past a failed read.
+fn bmc_port_candidates(ports: List<BmcPortReading>) -> List<BootNicCandidate> {
+  let empty: List<BootNicCandidate> = []
+  fold(ports, init: empty, f: (acc, port) => match port {
+    PortCandidate { candidate: candidate } => concat(acc, [candidate])
+    _ => acc
+  })
+}
+
+// THE FIRST WORD THE PORT READS GET. If any member read was attempted and refused, or decoded a port that
+// cannot be named, the boot-NIC reading refuses and says which read and why -- before any inventory or
+// selection is considered. This is the acquisition contract at this reading's grain.
+fn bmc_port_readings_refusal(ports: List<BmcPortReading>) -> NonEmptyStr? {
+  let details = map(filter(ports, port => match port {
+    PortRefused { read: read, cause: cause } => true
+    PortUnusable { read: read, detail: detail } => true
+    _ => false
+  }), port => match port {
+    PortRefused { read: read, cause: cause } => concat(read as String, concat(": ", cause as String))
+    PortUnusable { read: read, detail: detail } => concat(read as String, concat(": ", detail as String))
+    _ => ""
+  })
+  if count(details) == 0 {
+    none
+  } else {
+    Present { value: concat("an EthernetInterface member read: ", join(details, "; ") as NonEmptyStr) }
+  }
+}
+
+fn bmc_boot_options_attempt(body: BmcBodyAttempt) -> BmcBootOptionsAttempt {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_boot_options_of(body: text) {
+        ObservationEstablished { observed: BootOptionsListed { options: options } } => OptionsListed { options: options }
+        ObservationEstablished { observed: BootOptionsNotServed { message: message } } => OptionsAnsweredNotServed { message: message }
+        ObservationRefused { cause: cause } => OptionsRefused { cause: cause }
+      }
+    BodyRefused { cause: cause } => OptionsRefused { cause: cause }
+    BodyOwed { obligation: obligation } => OptionsOwed { obligation: obligation }
+  }
+}
+
+fn bmc_collection_attempt(body: BmcBodyAttempt) -> BmcCollectionAttempt {
+  match body {
+    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
+      match redfish_ethernet_interface_collection_of(body: text) {
+        ObservationEstablished { observed: collection } => match collection.announced_count {
+          Present { value: announced } => CollectionAnnounced { count: announced }
+          Absent => CollectionOwed { obligation: "the EthernetInterfaces collection answers without a Members@odata.count, so no port count is known" as NonEmptyStr }
+        }
+        ObservationRefused { cause: cause } => CollectionRefused { cause: cause }
+      }
+    BodyRefused { cause: cause } => CollectionRefused { cause: cause }
+    BodyOwed { obligation: obligation } => CollectionOwed { obligation: obligation }
+  }
+}
+
+fn bmc_selection_from(options: List<RedfishBootOptionRead>, candidates: List<BootNicCandidate>) -> BmcBootOptionJoin {
+  let matches: List<BootOptionMatch> = []
+  let joined = fold(options, init: matches, f: (acc, option) => concat(acc, bmc_option_matches(option: option, candidates: candidates)))
+  if count(joined) == 1 {
+    match joined.first() {
+      Present { value: pair } => JoinSelected {
+        candidate: pair.candidate,
+        boot_option: pair.option.id,
+        device_path: match pair.option.uefi_device_path { Present { value: path } => path Absent => "the enabled BootOption names no UEFI device path" as NonEmptyStr },
+      }
+      Absent => JoinNone
+    }
+  } else {
+    if count(joined) > 1 {
+      JoinAmbiguous { detail: concat("more than one enabled BootOption names an inventoried interface: ", bmc_join_pair_texts(pairs: joined)) }
+    } else {
+      JoinNone
+    }
+  }
+}
+
+fn bmc_join_pair_texts(pairs: List<BootOptionMatch>) -> NonEmptyStr {
+  join(map(pairs, pair => concat(
+    pair.option.id as String,
+    concat(" names ", concat(pair.candidate.mac_address as String, concat(" (", concat(pair.candidate.name as String, ")")))),
+  )), "; ") as NonEmptyStr
+}
+
+fn bmc_boot_nic_reading(
+  source: BmcReadSource,
+  controller: NonEmptyStr,
+  observed_at: NonEmptyStr,
+  standings: BmcReadingStandings,
+  interface_reads: List<NonEmptyStr>,
+  observed_boot_use: HostBootNicEvidence?,
+) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
+  let ports = bmc_port_readings(source: source, controller: controller, observed_at: observed_at, standings: standings, interface_reads: interface_reads)
+  let options_body = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_boot_options_read), controller: controller, observed_at: observed_at, standings: standings)
+  let options = bmc_boot_options_attempt(body: options_body)
+  let collection = bmc_collection_attempt(body: bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_ethernet_interfaces_collection_read), controller: controller, observed_at: observed_at, standings: standings))
+  let systems_body = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_systems_read), controller: controller, observed_at: observed_at, standings: standings)
+  match bmc_admitted_boot_use(source: source, controller: controller, observed_at: observed_at, observed: observed_boot_use) {
+    Present { value: historical } => ReadingEstablished {
+      value: ObservedBootUseHistorical { candidate: historical.candidate, evidence: historical.evidence },
+      standing: bmc_body_standing(body: bmc_body_of(source: source, request: bmc_request_for(read: historical.from_read), controller: controller, observed_at: observed_at, standings: standings)),
+    }
+    Absent => match bmc_port_readings_refusal(ports: ports) {
+      Present { value: cause } => reading_refused(cause)
+      Absent => match options {
+        OptionsRefused { cause: cause } => reading_refused(concat("the BootOptions read: ", cause as String) as NonEmptyStr)
+        OptionsAnsweredNotServed { message: message } => bmc_boot_nic_without_selection(
+          ports: ports, options: options, collection: collection, systems_body: systems_body,
+          source: source, controller: controller, observed_at: observed_at, standings: standings,
+        )
+        OptionsOwed { obligation: obligation } => bmc_boot_nic_without_selection(
+          ports: ports, options: options, collection: collection, systems_body: systems_body,
+          source: source, controller: controller, observed_at: observed_at, standings: standings,
+        )
+        OptionsListed { options: entries } => match bmc_selection_from(options: bmc_enabled_options(options: entries), candidates: bmc_port_candidates(ports: ports)) {
+          JoinSelected { candidate: candidate, boot_option: option, device_path: path } => ReadingEstablished {
+            value: ConfiguredBootSelection { candidate: candidate, boot_option: option, device_path: path },
+            standing: bmc_body_standing(body: options_body),
+          }
+          JoinAmbiguous { detail: detail } => reading_refused(detail)
+          JoinNone => bmc_boot_nic_without_selection(
+            ports: ports, options: options, collection: collection, systems_body: systems_body,
+            source: source, controller: controller, observed_at: observed_at, standings: standings,
+          )
+        }
+      }
+    }
+  }
+}
+
+fn bmc_boot_nic_without_selection(ports: List<BmcPortReading>, options: BmcBootOptionsAttempt, collection: BmcCollectionAttempt, systems_body: BmcBodyAttempt, source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, standings: BmcReadingStandings) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
+  let candidates = bmc_port_candidates(ports: ports)
+  if count(candidates) == 0 {
+    reading_not_taken(bmc_boot_nic_obligation(options: options, systems_body: systems_body))
+  } else { match collection {
+    CollectionRefused { cause: cause } => reading_refused(concat("the EthernetInterfaces collection read: ", cause as String) as NonEmptyStr)
+    CollectionAnnounced { count: announced } =>
+      if announced > count(candidates) {
+        reading_refused(concat(
+          "the EthernetInterfaces collection announces ", int_to_decimal_string(value: announced),
+          " port(s) and only ", int_to_decimal_string(value: count(candidates)),
+          " member resource(s) with a published MAC have been read: ", bmc_candidate_text(candidates: candidates),
+        ) as NonEmptyStr)
+      } else {
+        bmc_boot_nic_from_candidates(candidates: candidates, options: options, systems_body: systems_body, source: source, controller: controller, observed_at: observed_at, standings: standings)
+      }
+    CollectionOwed { obligation: obligation } =>
+      bmc_boot_nic_from_candidates(candidates: candidates, options: options, systems_body: systems_body, source: source, controller: controller, observed_at: observed_at, standings: standings)
+  } }
+}
+
+fn bmc_boot_nic_from_candidates(candidates: List<BootNicCandidate>, options: BmcBootOptionsAttempt, systems_body: BmcBodyAttempt, source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, standings: BmcReadingStandings) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
+  if count(candidates) == 1 {
+    match candidates.first() {
+      Present { value: candidate } => ReadingEstablished {
+        value: InventoriedCandidate { candidate: candidate },
+        standing: bmc_candidate_standing(candidate: candidate, source: source, controller: controller, observed_at: observed_at, standings: standings),
+      }
+      Absent => reading_not_taken("no EthernetInterface resource has been read for this controller" as NonEmptyStr)
+    }
+  } else {
+    if count(candidates) > 1 {
+      reading_refused(concat(
+        "the boot NIC is ambiguous: ", int_to_decimal_string(value: count(candidates)),
+        " interfaces are inventoried and no enabled BootOption joins one of them: ",
+        bmc_candidate_text(candidates: candidates),
+      ) as NonEmptyStr)
+    } else {
+      reading_not_taken(bmc_boot_nic_obligation(options: options, systems_body: systems_body))
+    }
+  }
+}
+
+fn bmc_boot_nic_obligation(options: BmcBootOptionsAttempt, systems_body: BmcBodyAttempt) -> NonEmptyStr {
+  let no_nic = "no EthernetInterface resource with a published MAC has been read for this controller" as NonEmptyStr
+  match bmc_boot_nic_override_note(systems_body: systems_body) {
+    Present { value: note } => match options {
+      OptionsOwed { obligation: obligation } => concat(obligation, note)
+      _ => concat(no_nic, note)
+    }
+    Absent => match options {
+      OptionsOwed { obligation: obligation } => obligation
+      _ => no_nic
+    }
+  }
+}
+
 fn bmc_body_standing(body: BmcBodyAttempt) -> CitedFigureStanding {
   match body {
     BodyAvailable { body: text, standing: standing, provenance: provenance } => standing
@@ -1450,98 +1967,16 @@ type HostBootNicEvidence {
   from_read: NonEmptyStr
 }
 
-fn bmc_boot_nic_reading(
-  source: BmcReadSource,
-  controller: NonEmptyStr,
-  observed_at: NonEmptyStr,
-  standings: BmcReadingStandings,
-  interface_reads: List<NonEmptyStr>,
-  observed_boot_use: HostBootNicEvidence?,
-) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
-  let candidates = bmc_inventoried_candidates(source: source, controller: controller, observed_at: observed_at, standings: standings, interface_reads: interface_reads)
-  let options_body = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_boot_options_read), controller: controller, observed_at: observed_at, standings: standings)
-  let collection_body = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_ethernet_interfaces_collection_read), controller: controller, observed_at: observed_at, standings: standings)
-  let systems_body = bmc_body_of(source: source, request: bmc_request_for(read: bmc_redfish_systems_read), controller: controller, observed_at: observed_at, standings: standings)
-  match bmc_admitted_boot_use(source: source, controller: controller, observed_at: observed_at, observed: observed_boot_use) {
-    Present { value: historical } => ReadingEstablished {
-      value: ObservedBootUseHistorical { candidate: historical.candidate, evidence: historical.evidence },
-      standing: bmc_body_standing(body: bmc_body_of(source: source, request: bmc_request_for(read: historical.from_read), controller: controller, observed_at: observed_at, standings: standings)),
-    }
-    Absent => match bmc_configured_selection(options_body: options_body, candidates: candidates) {
-      Present { value: selection } => ReadingEstablished {
-        value: selection,
-        standing: bmc_body_standing(body: options_body),
-      }
-      Absent => bmc_boot_nic_without_selection(
-        candidates: candidates,
-        options_body: options_body,
-        collection: collection_body,
-        systems_body: systems_body,
-        source: source,
-        controller: controller,
-        observed_at: observed_at,
-        standings: standings,
-      )
-    }
-  }
-}
 
 // EVERY REQUESTED MEMBER RESOURCE, read and decoded. A member that publishes no MAC is not a candidate (a port
 // that cannot be named cannot be joined), and a member whose read is owed is not silently skipped — the
 // obligation is what makes the inventory honest.
-fn bmc_inventoried_candidates(
-  source: BmcReadSource,
-  controller: NonEmptyStr,
-  observed_at: NonEmptyStr,
-  standings: BmcReadingStandings,
-  interface_reads: List<NonEmptyStr>,
-) -> List<BootNicCandidate> uses fs: std.resources.Filesystem {
-  let empty: List<BootNicCandidate> = []
-  fold(interface_reads, init: empty, f: (acc, read) => concat(acc, bmc_candidate_of(source: source, controller: controller, observed_at: observed_at, standings: standings, read: read)))
-}
 
-fn bmc_candidate_of(
-  source: BmcReadSource,
-  controller: NonEmptyStr,
-  observed_at: NonEmptyStr,
-  standings: BmcReadingStandings,
-  read: NonEmptyStr,
-) -> List<BootNicCandidate> uses fs: std.resources.Filesystem {
-  match bmc_body_of(source: source, request: bmc_request_for(read: read), controller: controller, observed_at: observed_at, standings: standings) {
-    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
-      match redfish_ethernet_interface_of(body: text) {
-        ObservationEstablished { observed: interface } => match interface.mac_address {
-          Present { value: mac } => [BootNicCandidate {
-            name: match interface.name { Present { value: n } => n as NonEmptyStr Absent => interface.id },
-            mac_address: mac as NonEmptyStr,
-            source: read,
-          }]
-          Absent => []
-        }
-        ObservationRefused { cause: cause } => []
-      }
-    BodyRefused { cause: cause } => []
-    BodyOwed { obligation: obligation } => []
-  }
-}
 
 // THE JOIN. Only an ENABLED boot option whose device path names a MAC counts, and the MAC must match exactly
 // one inventoried candidate. Two enabled options naming different MACs, or one option naming a MAC nobody
 // inventories, refuses with the candidates and the paths in the cause: the reader can see what did not join,
 // which is the only way an operator can fix it.
-fn bmc_configured_selection(options_body: BmcBodyAttempt, candidates: List<BootNicCandidate>) -> BootNicReading? {
-  match options_body {
-    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
-      match redfish_boot_options_of(body: text) {
-        ObservationEstablished { observed: BootOptionsListed { options: options } } =>
-          bmc_selection_from(options: bmc_enabled_options(options: options), candidates: candidates)
-        ObservationEstablished { observed: BootOptionsNotServed { message: message } } => none
-        ObservationRefused { cause: cause } => none
-      }
-    BodyRefused { cause: cause } => none
-    BodyOwed { obligation: obligation } => none
-  }
-}
 
 fn bmc_enabled_options(options: List<RedfishBootOptionRead>) -> List<RedfishBootOptionRead> {
   filter(options, option => match option.enabled {
@@ -1554,22 +1989,6 @@ fn bmc_enabled_options(options: List<RedfishBootOptionRead>) -> List<RedfishBoot
   })
 }
 
-fn bmc_selection_from(options: List<RedfishBootOptionRead>, candidates: List<BootNicCandidate>) -> BootNicReading? {
-  let matches: List<BootOptionMatch> = []
-  let joined = fold(options, init: matches, f: (acc, option) => concat(acc, bmc_option_matches(option: option, candidates: candidates)))
-  if count(joined) == 1 {
-    match joined.first() {
-      Present { value: pair } => Present { value: ConfiguredBootSelection {
-        candidate: pair.candidate,
-        boot_option: pair.option.id,
-        device_path: match pair.option.uefi_device_path { Present { value: path } => path Absent => "the enabled BootOption names no UEFI device path" as NonEmptyStr },
-      } }
-      Absent => none
-    }
-  } else {
-    none
-  }
-}
 
 type BootOptionMatch { option: RedfishBootOptionRead, candidate: BootNicCandidate }
 
@@ -1638,62 +2057,11 @@ fn bmc_candidate_standing(candidate: BootNicCandidate, source: BmcReadSource, co
 // THE COVERAGE CHECK, BEFORE ANY SINGLE-CANDIDATE CLAIM. A collection that announces more ports than were read
 // makes a one-candidate inventory claim false: the service said there are more, and one of them may be the boot
 // port. The reading refuses naming both numbers, so the gap in the capture set is the thing on the record.
-fn bmc_announced_ports(body: BmcBodyAttempt) -> Int? {
-  match body {
-    BodyAvailable { body: text, standing: standing, provenance: provenance } =>
-      match redfish_ethernet_interface_collection_of(body: text) {
-        ObservationEstablished { observed: collection } => collection.announced_count
-        ObservationRefused { cause: cause } => none
-      }
-    BodyRefused { cause: cause } => none
-    BodyOwed { obligation: obligation } => none
-  }
-}
 
 // NO CONFIGURED SELECTION: either one inventoried candidate (an inventory claim, which is what the service
 // actually published), or a refusal naming every candidate so the ambiguity is on the record, or the coverage
 // obligation when nothing was ever read.
-fn bmc_boot_nic_without_selection(candidates: List<BootNicCandidate>, options_body: BmcBodyAttempt, collection: BmcBodyAttempt, systems_body: BmcBodyAttempt, source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, standings: BmcReadingStandings) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
-  if count(candidates) == 0 {
-    reading_not_taken(bmc_boot_nic_obligation(options_body: options_body, systems_body: systems_body))
-  } else {
-    match bmc_announced_ports(body: collection) {
-      Present { value: announced } =>
-        if announced > count(candidates) {
-          reading_refused(concat(
-            "the EthernetInterfaces collection announces ", int_to_decimal_string(value: announced),
-            " port(s) and only ", int_to_decimal_string(value: count(candidates)),
-            " member resource(s) with a published MAC have been read: ", bmc_candidate_text(candidates: candidates),
-          ) as NonEmptyStr)
-        } else {
-          bmc_boot_nic_from_candidates(candidates: candidates, options_body: options_body, systems_body: systems_body, source: source, controller: controller, observed_at: observed_at, standings: standings)
-        }
-      Absent => bmc_boot_nic_from_candidates(candidates: candidates, options_body: options_body, systems_body: systems_body, source: source, controller: controller, observed_at: observed_at, standings: standings)
-    }
-  }
-}
 
-fn bmc_boot_nic_from_candidates(candidates: List<BootNicCandidate>, options_body: BmcBodyAttempt, systems_body: BmcBodyAttempt, source: BmcReadSource, controller: NonEmptyStr, observed_at: NonEmptyStr, standings: BmcReadingStandings) -> FirstContactReading<BootNicReading> uses fs: std.resources.Filesystem {
-  if count(candidates) == 1 {
-    match candidates.first() {
-      Present { value: candidate } => ReadingEstablished {
-        value: InventoriedCandidate { candidate: candidate },
-        standing: bmc_candidate_standing(candidate: candidate, source: source, controller: controller, observed_at: observed_at, standings: standings),
-      }
-      Absent => reading_not_taken("no EthernetInterface resource has been read for this controller" as NonEmptyStr)
-    }
-  } else {
-    if count(candidates) > 1 {
-      reading_refused(concat(
-        "the boot NIC is ambiguous: ", int_to_decimal_string(value: count(candidates)),
-        " interfaces are inventoried and no enabled BootOption joins one of them: ",
-        bmc_candidate_text(candidates: candidates),
-      ) as NonEmptyStr)
-    } else {
-      reading_not_taken(bmc_boot_nic_obligation(options_body: options_body, systems_body: systems_body))
-    }
-  }
-}
 
 // The obligation names what would close it, and — where the Systems resource WAS read — what the controller
 // itself already said about boot selection. The Boot object's override state is reported as the controller's
@@ -1721,21 +2089,6 @@ fn bmc_boot_nic_override_note(systems_body: BmcBodyAttempt) -> NonEmptyStr? {
 // itself already said about boot selection. The Boot object's override state is reported as the controller's
 // own fact; it is never promoted into a boot NIC, and an override target stays a target, not a capability
 // (DESIGN: PXE is not a BmcCapability).
-fn bmc_boot_nic_obligation(options_body: BmcBodyAttempt, systems_body: BmcBodyAttempt) -> NonEmptyStr {
-  let no_nic = "no EthernetInterface resource with a published MAC has been read for this controller" as NonEmptyStr
-  match bmc_boot_nic_override_note(systems_body: systems_body) {
-    Present { value: note } => match options_body {
-      BodyOwed { obligation: obligation } => concat(obligation, note)
-      BodyAvailable { body: text, standing: standing, provenance: provenance } => concat(no_nic, note)
-      BodyRefused { cause: cause } => concat(no_nic, note)
-    }
-    Absent => match options_body {
-      BodyOwed { obligation: obligation } => obligation
-      BodyAvailable { body: text, standing: standing, provenance: provenance } => no_nic
-      BodyRefused { cause: cause } => no_nic
-    }
-  }
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // THE CARRIER: what one first-contact battery run produces for one controller.
@@ -1751,7 +2104,7 @@ type BmcFirstContactReading {
   source: BmcReadSource
   family: BmcFirmwareFamilyStanding
   firmware: FirstContactReading<FirmwareIdentityReading>
-  capabilities: FirstContactReading<List<BmcCapabilityEvidence>>
+  capabilities: CapabilityReading
   sensor_typing: FirstContactReading<List<SensorTypingObservation>>
   console: FirstContactReading<ConsoleRouteReading>
   boot_nic: FirstContactReading<BootNicReading>

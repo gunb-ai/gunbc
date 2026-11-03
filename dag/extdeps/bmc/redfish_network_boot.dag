@@ -105,21 +105,75 @@ fn redfish_network_boot_document(body: String, what: String) -> ObservationAttem
 }
 
 // The optional string member, kept absent when the service omits it.
-fn redfish_network_boot_optional_string(obj: JsonValue, key: String) -> String? {
+// AN OPTIONAL PROPERTY, AS THE WIRE REPORTS IT. Three outcomes, not two: the service did not publish the
+// property; it published it with a value this reader can read; or it published it in a shape this reader cannot
+// read. The third is NOT the first. A property that is present and undecodable is a failed decode of the
+// resource that carried it, and the reader above refuses that resource rather than reporting it as though the
+// property had not been there (DESIGN section 5: stop visibly, never conceal the deficit). An empty string is a
+// PUBLISHED value: this module reports what the service sent and does not decide whether "" is meaningful for a
+// given property -- that is the reader above's judgement, and it is stated there.
+type RedfishOptionalProperty<T>
+  = PropertyAbsent
+  | PropertyPublished { value: T }
+  | PropertyUndecodable { key: String, cause: String }
+
+fn redfish_network_boot_optional_string(obj: JsonValue, key: String) -> RedfishOptionalProperty<String> {
   match json_field_string(obj: obj, key: key) {
-    FieldAbsent => none
-    FieldMalformed { cause: c } => none
-    FieldRead { value: s } => if s == "" { none } else { Present { value: s } }
+    FieldAbsent => PropertyAbsent
+    FieldMalformed { cause: c } => PropertyUndecodable { key: key, cause: c }
+    FieldRead { value: s } => PropertyPublished { value: s }
   }
 }
 
-fn redfish_network_boot_optional_bool(obj: JsonValue, key: String) -> Bool? {
+fn redfish_network_boot_optional_bool(obj: JsonValue, key: String) -> RedfishOptionalProperty<Bool> {
   match json_field_bool(obj: obj, key: key) {
-    FieldAbsent => none
-    FieldMalformed { cause: c } => none
-    FieldRead { value: b } => Present { value: b }
+    FieldAbsent => PropertyAbsent
+    FieldMalformed { cause: c } => PropertyUndecodable { key: key, cause: c }
+    FieldRead { value: b } => PropertyPublished { value: b }
   }
 }
+
+// The property's value, once the undecodable case has been refused by the caller: absent and published fill the
+// record's own Optional. The undecodable arm reaching this function is unreachable by contract, and it reports
+// nothing there -- the refusal is what carries that fact.
+fn redfish_optional_value<T>(property: RedfishOptionalProperty<T>) -> T? {
+  match property {
+    PropertyPublished { value: v } => Present { value: v }
+    PropertyAbsent => none
+    PropertyUndecodable { key: k, cause: c } => none
+  }
+}
+
+// What an undecodable property is worth to a refusal: the property's own name and what the wire said, so the
+// refusal names the field that failed rather than the whole document.
+fn redfish_undecodable_detail<T>(property: RedfishOptionalProperty<T>) -> String? {
+  match property {
+    PropertyUndecodable { key: k, cause: c } => Present { value: concat(k as String, concat(": ", c as String)) }
+    PropertyPublished { value: v } => none
+    PropertyAbsent => none
+  }
+}
+
+// Every undecodable property of one resource, named together: a document with two bad fields reports both,
+// because a reader that stops at the first one makes the author fix the document twice.
+fn redfish_undecoded_details(details: List<String?>) -> String? {
+  let found = filter(details, detail => match detail {
+    Present { value: t } => true
+    Absent => false
+  })
+  if count(found) == 0 {
+    none
+  } else {
+    Present {
+      value: join(map(found, detail => match detail {
+        Present { value: t } => t
+        Absent => ""
+      }), "; ") as NonEmptyStr
+    }
+  }
+}
+
+
 
 // ONE EthernetInterface resource body. A resource with no `Id` is refused rather than anonymous: an
 // anonymous member cannot be joined to a boot option, and a silent default `Id` would fabricate the join key.
@@ -133,12 +187,24 @@ fn redfish_ethernet_interface_of(body: String) -> ObservationAttempt<RedfishEthe
         if id == "" {
           ObservationRefused { cause: "the EthernetInterface resource has an empty Id" as NonEmptyStr }
         } else {
-          ObservationEstablished { observed: RedfishEthernetInterfaceRead {
-            id: id as NonEmptyStr,
-            name: redfish_network_boot_optional_string(obj: doc, key: redfish_key_name),
-            mac_address: redfish_network_boot_optional_string(obj: doc, key: redfish_key_mac_address),
-            link_status: redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status),
-          } }
+          let name = redfish_network_boot_optional_string(obj: doc, key: redfish_key_name)
+          let mac = redfish_network_boot_optional_string(obj: doc, key: redfish_key_mac_address)
+          let link = redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status)
+          match redfish_undecoded_details(details: [
+            redfish_undecodable_detail(property: name),
+            redfish_undecodable_detail(property: mac),
+            redfish_undecodable_detail(property: link),
+          ]) {
+            Present { value: detail } => ObservationRefused { cause: concat(
+              "the EthernetInterface ", concat(id as String, concat(" publishes a property this reader cannot decode: ", detail as String))
+            ) as NonEmptyStr }
+            Absent => ObservationEstablished { observed: RedfishEthernetInterfaceRead {
+              id: id as NonEmptyStr,
+              name: redfish_optional_value(property: name),
+              mac_address: redfish_optional_value(property: mac),
+              link_status: redfish_optional_value(property: link),
+            } }
+          }
         }
     }
   }
@@ -193,12 +259,24 @@ fn redfish_boot_option_of_member(member: JsonValue) -> ObservationAttempt<Redfis
       if id == "" {
         ObservationRefused { cause: "a BootOption member has an empty Id" as NonEmptyStr }
       } else {
-        ObservationEstablished { observed: RedfishBootOptionRead {
-          id: id as NonEmptyStr,
-          display_name: redfish_network_boot_optional_string(obj: member, key: redfish_key_display_name),
-          uefi_device_path: redfish_network_boot_optional_string(obj: member, key: redfish_key_uefi_device_path),
-          enabled: redfish_network_boot_optional_bool(obj: member, key: redfish_key_boot_option_enabled),
-        } }
+        let display = redfish_network_boot_optional_string(obj: member, key: redfish_key_display_name)
+        let path = redfish_network_boot_optional_string(obj: member, key: redfish_key_uefi_device_path)
+        let enabled = redfish_network_boot_optional_bool(obj: member, key: redfish_key_boot_option_enabled)
+        match redfish_undecoded_details(details: [
+          redfish_undecodable_detail(property: display),
+          redfish_undecodable_detail(property: path),
+          redfish_undecodable_detail(property: enabled),
+        ]) {
+          Present { value: detail } => ObservationRefused { cause: concat(
+            "the BootOption ", concat(id as String, concat(" carries a property this reader cannot decode: ", detail as String))
+          ) as NonEmptyStr }
+          Absent => ObservationEstablished { observed: RedfishBootOptionRead {
+            id: id as NonEmptyStr,
+            display_name: redfish_optional_value(property: display),
+            uefi_device_path: redfish_optional_value(property: path),
+            enabled: redfish_optional_value(property: enabled),
+          } }
+        }
       }
   }
 }
