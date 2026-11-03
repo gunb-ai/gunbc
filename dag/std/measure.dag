@@ -297,6 +297,20 @@ fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
 
 type ByteSize = Measure<Memory, One, Nat>
 
+// A ByteSize known to be more than nothing, for a field where a zero would be a lie rather than a
+// measurement: the length of a document a store holds, the payload a receipt reports. The quantity
+// stays std.measure's own ByteSize, so a file's length and a drive's capacity are the same kind of
+// number under one scale table; what the wrapper adds is that no consumer has to ask whether the
+// count is zero before dividing by it. Positivity comes from the Peano count beside it, never from
+// a check a caller might skip -- which is why there is no `Nat` constructor here.
+type PositiveByteSize {
+  size: ByteSize
+}
+
+type PositiveByteSizeBuild
+  = PositiveByteSizeBuilt { size: PositiveByteSize }
+  | PositiveByteSizeRefused { cause: PositiveMeasureCountNonPositive }
+
 type Kibibyte = Measure<Memory, Kibi, Nat>
 
 type Mebibyte = Measure<Memory, Mebi, Nat>
@@ -1383,6 +1397,26 @@ fn byte_size(count: Nat) -> ByteSize {
 
 fn byte_size_count(b: ByteSize) -> Nat {
   measure_count(b)
+}
+
+// A positive byte size from the positive count that makes it positive. The Int path arrives
+// through the Build, which says which way it went, so a receipt read off a wire never silently
+// becomes a length.
+fn positive_byte_size_from_count(count: PositiveMeasureCount) -> PositiveByteSize {
+  PositiveByteSize { size: byte_size(count: positive_measure_count_nat(count)) }
+}
+
+fn positive_byte_size(count: Int) -> PositiveByteSizeBuild {
+  match positive_measure_count_from_int(count: count) {
+    PositiveMeasureCountBuilt { count: positive } =>
+      PositiveByteSizeBuilt { size: positive_byte_size_from_count(count: positive) }
+    PositiveMeasureCountRefused { cause: cause } =>
+      PositiveByteSizeRefused { cause: cause }
+  }
+}
+
+fn positive_byte_size_bytes(size: PositiveByteSize) -> Nat {
+  byte_size_count(size.size)
 }
 
 fn bit_width(count: Nat) -> BitWidth {

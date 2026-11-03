@@ -4,7 +4,7 @@ import std.list { first_where }
 import std.optional { Absent, Present }
 import std.types { List, NonEmptyStr }
 import product.electrical.photograph { Photograph }
-import product.placement_supply { PhysicalAssetIdentity }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
 import product.p4261.e1_photographs { e1_photographs }
 
@@ -54,12 +54,37 @@ data p4261_photograph_stores: List<BoardPhotographStore> = [p4261_e1_photograph_
 
 type PhotographStoreForBoard
   = StoreHeld { store: BoardPhotographStore }
+  // A STORE ROW THAT IS WRONG ABOUT WHICH BOARD IT PICTURES. The digest says which BYTES, not which
+  // specimen they depict; `Photograph.board` is the specimen, so a frame attributed to another board cannot
+  // ground a reading about this one. Such a row is not filtered away on the way to a verdict -- a store that
+  // says E1 and holds K1 frames is broken evidence, and the only honest thing a lookup can do with it is
+  // refuse and name the foreign rows, so the person who assembled the store sees exactly which rows to fix
+  // (DESIGN §4d: a defect stays visible rather than being smoothed into a passing check).
+  | StoreRowHoldsForeignFrames { board: PhysicalAssetIdentity, foreign: List<Photograph> }
   | NoStoreForBoard { board: PhysicalAssetIdentity, obligation: NonEmptyStr }
 
-// The one lookup. Consumers ask this; none of them carries a frame list of its own.
+// The frames a store row carries that do not belong to the board the row names. Identity is compared by the
+// asset's own equality, never by casting an identity to a string (a cast that succeeds on a lookalike is how
+// two assets start sharing evidence).
+fn frames_of_another_board(store: BoardPhotographStore) -> List<Photograph> {
+  filter(store.frames, f => !physical_asset_identity_eq(a: f.board, b: store.board))
+}
+
+// The one lookup. Consumers ask this; none of them carries a frame list of its own. A store whose frames
+// are not all its own board's is refused here, so no caller has to remember to check.
+// A row is only held if every frame in it is a picture of the board the row names.
+fn store_row_judgment(held: BoardPhotographStore) -> PhotographStoreForBoard {
+  let foreign = frames_of_another_board(store: held)
+  if count(foreign) > 0 {
+    StoreRowHoldsForeignFrames { board: held.board, foreign: foreign }
+  } else {
+    StoreHeld { store: held }
+  }
+}
+
 fn photograph_store_for(board: PhysicalAssetIdentity) -> PhotographStoreForBoard {
-  match first_where(p4261_photograph_stores, s => (s.board as String) == (board as String)) {
-    Present { value } => StoreHeld { store: value }
+  match first_where(p4261_photograph_stores, s => physical_asset_identity_eq(a: s.board, b: board)) {
+    Present { value: held } => store_row_judgment(held: held)
     Absent => NoStoreForBoard {
       board: board,
       obligation: "hash this board's photographs from its atlas receipts and add its row to p4261_photograph_stores; product.p4261.e1_photographs is the pattern the E1 store was generated from",

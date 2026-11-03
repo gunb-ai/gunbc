@@ -19,8 +19,9 @@ import extdeps.nvidia.p4261.population {
 import extdeps.electronic_component.types { ElectronicComponentRow, electronic_component_row_eq }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, component_identity_eq, component_local_label }
-import product.electrical.photograph { BytesNeverStored, CheckableAgainstStoredBytes, CitationStanding, DigestNotInStore, FrameIsOurOwnDrawing, Photograph, PhotographCitation, cite }
-import product.p4261.photograph_store { NoStoreForBoard, StoreHeld, photograph_store_for }
+import product.electrical.photograph { Broken, Checkable, CitationStanding, CitationVerdict, Gap, Photograph, PhotographCitation, citation_verdict, cite }
+import product.p4261.photograph_store { NoStoreForBoard, StoreHeld, StoreRowHoldsForeignFrames, photograph_store_for }
+import product.placement_supply { physical_asset_identity_eq }
 import product.electrical.continuity { ContinuityObservation, EvidenceRef, ModuleState, OperatorStatement, OperatorPhotograph, ReachabilityGraph, SellerListingPhotograph, is_reachability_contradicted, is_reachable, reach, supporting_readings }
 import std.measure { ampere_count, volt_count }
 import product.electrical.bench_session {
@@ -1117,15 +1118,18 @@ fn net_assessment(layout: CarrierLayoutObservation, key: NonEmptyStr) -> NetProp
 // the verdict. Those consumers call `judge_board_image_readings`, which asks
 // product.p4261.photograph_store which frames we hold for the board. One fact, one home (DESIGN §3).
 //
-// FOUR STANDINGS, DISTINCT IN THE TYPE, BECAUSE THEY NEED DIFFERENT WORK. `CheckableAgainstStoredBytes` is
+// FIVE STANDINGS, DISTINCT IN THE TYPE, BECAUSE THEY NEED DIFFERENT WORK. `CheckableAgainstStoredBytes` is
 // re-readable now. `BytesNeverStored` is a declared gap with the obligation that closes it (every
 // 2026-10-15..11-01 chat frame is here: the operator must re-supply the uploads, and a guessed digest would
 // turn a known gap into a permanent lie). `DigestNotInStore` is a BROKEN record -- it claims bytes the store
-// does not have, so either the store is missing a row or the record is wrong. And `FrameIsOurOwnDrawing`
-// refuses the atlas's own trap: its `derived/` overviews are stitched from the readings they would
-// corroborate, and the type says so rather than leaving it to a reviewer's memory. The filters below match
-// EVERY standing with no `_`, so a fifth cannot fall into none of them and leave a board of unread rows
-// looking grounded; establishment is derived as `checkable == read`, never as "not in the other lists".
+// does not have, so either the store is missing a row or the record is wrong. `FrameIsOurOwnDrawing` refuses
+// the atlas's own trap: its `derived/` overviews are stitched from the readings they would corroborate, and
+// the type says so rather than leaving it to a reviewer's memory. `FrameDepictsAnotherBoard` refuses the
+// subtler one: a digest identifies BYTES, not the specimen they picture, so a row that resolves but names
+// another board cannot corroborate a reading taken off this one -- `Photograph.board` is the specimen and
+// this is the consumer that makes it execute. The filters below match EVERY standing with no `_`, so a sixth
+// cannot fall into none of them and leave a board of unread rows looking grounded; establishment is derived
+// as `checkable == read`, never as "not in the other lists".
 //
 // WHY A ROW WITH NO PHOTOGRAPH IS NOT COUNTED AS A GAP. An `OperatorStatement` or a seller's listing is a
 // different kind of claim, and `evidence_is_ours` / `observation_is_falsifiable` already carry those.
@@ -1170,40 +1174,29 @@ fn board_image_readings(layout: CarrierLayoutObservation) -> List<BoardImageRead
 // to, so a broken digest or an unhashed locator is a work item with a designator on it and not an
 // anonymous count.
 fn reading_groundings(store: List<Photograph>, layout: CarrierLayoutObservation) -> List<ReadingGrounding> {
-  map(board_image_readings(layout), r => ReadingGrounding { read_of: r.read_of, standing: cite(store: store, citation: r.citation) })
+  map(board_image_readings(layout), r => ReadingGrounding { read_of: r.read_of, standing: cite(store: store, citation: r.citation, judged: layout.asset) })
 }
 
-// The three partitions, each an EXHAUSTIVE match: no `_`, so adding a standing forces a decision in all
-// three instead of letting a row go uncounted.
+// THE THREE PARTITIONS. Each selects on the ONE fold, product.electrical.photograph's
+// `citation_verdict` -- which is an exhaustive match over the standings with no `_`, so a fifth
+// standing forces a decision there rather than slipping between these filters uncounted. There is no
+// second copy of "can this citation carry a reading" anywhere: not here, and not in a predicate a
+// witness tests on its own.
 fn checkable_groundings(gs: List<ReadingGrounding>) -> List<ReadingGrounding> {
-  filter(gs, g => match g.standing {
-    CheckableAgainstStoredBytes { surface: _, region: _ } => true
-    BytesNeverStored { taken_on: _, locator: _, obligation: _ } => false
-    DigestNotInStore { content: _ } => false
-    FrameIsOurOwnDrawing { depicts: _, obligation: _ } => false
-  })
+  filter(gs, g => citation_verdict(standing: g.standing) == Checkable)
 }
 
-// Rows whose record is BROKEN rather than thin: a digest the store does not hold, or a citation to an image
-// we generated ourselves. Neither is evidence of anything until it is fixed, and a board report that lumped
-// them into "no photo yet" would be reporting a coverage gap where there is a defect.
+// Rows whose record is BROKEN rather than thin: a digest the store does not hold, or a citation to an
+// image we generated ourselves. Neither is evidence of anything until it is fixed, and a board report
+// that lumped them into "no photo yet" would be reporting a coverage gap where there is a defect.
 fn broken_groundings(gs: List<ReadingGrounding>) -> List<ReadingGrounding> {
-  filter(gs, g => match g.standing {
-    CheckableAgainstStoredBytes { surface: _, region: _ } => false
-    BytesNeverStored { taken_on: _, locator: _, obligation: _ } => false
-    DigestNotInStore { content: _ } => true
-    FrameIsOurOwnDrawing { depicts: _, obligation: _ } => true
-  })
+  filter(gs, g => citation_verdict(standing: g.standing) == Broken)
 }
 
-// Rows honestly declared as gaps: the bytes were never in the store, and the obligation says what closes them.
+// Rows honestly declared as gaps: the bytes were never in the store, and the standing carries the
+// locator and the obligation that closes them.
 fn gap_groundings(gs: List<ReadingGrounding>) -> List<ReadingGrounding> {
-  filter(gs, g => match g.standing {
-    CheckableAgainstStoredBytes { surface: _, region: _ } => false
-    BytesNeverStored { taken_on: _, locator: _, obligation: _ } => true
-    DigestNotInStore { content: _ } => false
-    FrameIsOurOwnDrawing { depicts: _, obligation: _ } => false
-  })
+  filter(gs, g => citation_verdict(standing: g.standing) == Gap)
 }
 
 // THE PER-BOARD JUDGEMENT. `checkable == read` is how it is derived -- never "broken is empty and gaps are
@@ -1221,11 +1214,17 @@ type ImageReadingGrounding
       gaps: List<ReadingGrounding>
     }
   | NoPhotographStore { board: PhysicalAssetIdentity, obligation: NonEmptyStr }
+  // THE STORE IS WRONG ABOUT WHICH BOARD IT PICTURES, so nothing in it can ground a reading about this one.
+  // Named rather than filtered: the digest says which bytes, not what they depict, and `Photograph.board` is
+  // the specimen. Establishing coverage off another board's photographs would be the model certifying a
+  // reading from a picture of a different object; the foreign rows are carried out so the fix is visible.
+  | StoreHoldsAnotherBoardsFrames { board: PhysicalAssetIdentity, foreign: List<Photograph> }
 
 fn image_readings_rest_on_stored_bytes(grounding: ImageReadingGrounding) -> Bool {
   match grounding {
     FromStore { read, checkable, broken: _, gaps: _ } => read > 0 && checkable == read
     NoPhotographStore { board: _, obligation: _ } => false
+    StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
   }
 }
 
@@ -1239,9 +1238,25 @@ fn judge_image_readings(store: List<Photograph>, layout: CarrierLayoutObservatio
 // The judgement on this board's OWN store, from the one module that knows which frames we hold. This is
 // what product.p4261.findings consumes: no consumer carries a frame list, so none can establish coverage
 // by naming one.
+// The frames that ground THIS layout must be pictures of THIS layout's board. Reaching the `foreign`
+// branch here means the store row and the layout disagree about the board even though the lookup matched
+// one -- a malformed pairing, and it judges as such rather than borrowing another board's pixels.
+fn store_or_misattribution(store: BoardPhotographStore, layout: CarrierLayoutObservation) -> ImageReadingGrounding {
+  let foreign = filter(store.frames, f => !physical_asset_identity_eq(a: f.board, b: layout.asset))
+  if count(foreign) > 0 {
+    StoreHoldsAnotherBoardsFrames { board: layout.asset, foreign: foreign }
+  } else {
+    judge_image_readings(store: store.frames, layout: layout)
+  }
+}
+
 fn board_image_reading_grounding(layout: CarrierLayoutObservation) -> ImageReadingGrounding {
   match photograph_store_for(board: layout.asset) {
-    StoreHeld { store } => judge_image_readings(store: store.frames, layout: layout)
+    StoreHeld { store } => store_or_misattribution(store: store, layout: layout)
     NoStoreForBoard { board, obligation } => NoPhotographStore { board: board, obligation: obligation }
+    // A store row that is wrong about the specimen: judged against the board we are actually looking at,
+    // so what surfaces names THIS board and the frames in it that are somebody else's.
+    StoreRowHoldsForeignFrames { board: _, foreign: foreign } =>
+      StoreHoldsAnotherBoardsFrames { board: layout.asset, foreign: foreign }
   }
 }

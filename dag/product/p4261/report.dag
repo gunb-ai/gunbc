@@ -166,9 +166,11 @@ import product.p4261.comparison {
   ComparisonIncomplete,
   BoardReadingsDisagree,
 }
+import product.electrical.photograph { Photograph, citation_explanation }
 import product.p4261.evidence {
   FromStore,
   NoPhotographStore,
+  StoreHoldsAnotherBoardsFrames,
   ReadingGrounding,
   NetGap,
   OccupantNotPresentInState,
@@ -1411,6 +1413,12 @@ fn judgment_words(j: FindingJudgment, established: Bool) -> String {
       NoPhotographStore { board, obligation } => join([
         "no photograph store is held for '", (board as String), "': no image-reading on this carrier is checkable. ",
         (obligation as String)], "")
+      // Named, not filtered: the store row disagrees with itself about which board it pictures, so nothing
+      // in it grounds this carrier. The foreign digests are printed because the fix is to correct those rows.
+      StoreHoldsAnotherBoardsFrames { board, foreign } => join([
+        "the photograph store held for '", (board as String), "' carries ", to_string(count(foreign)),
+        " frame(s) attributed to another board (", foreign_frame_digests(rows: foreign),
+        "); nothing in it is taken as grounding for this carrier until those store rows are corrected"], "")
     }
     NetPropositionJudged { key, assessment } => match assessment {
       Absent => join(["no reconstructed wiring proposition '", key as String, "'"], "")
@@ -1419,10 +1427,18 @@ fn judgment_words(j: FindingJudgment, established: Bool) -> String {
   }
 }
 
-// The designators behind broken rows, in parentheses; empty when there are none, so a clean census reads as
-// a sentence and not as a sentence with an empty bracket on it.
+// The designators behind broken rows, each with why its citation cannot carry the reading -- the digest to
+// go look up, or the fact that the frame is our own drawing. product.electrical.photograph's
+// `citation_explanation` writes that reason so that no consumer reaches into a standing for it. Empty when
+// there are none, so a clean census reads as a sentence and not as a sentence with an empty bracket on it.
+// The digests of frames a store row carries that belong to no board it names, so the sheet can point at the
+// exact rows to fix rather than at a count.
+fn foreign_frame_digests(rows: List<Photograph>) -> String {
+  join(map(rows, f => f.content.hex as String), ", ")
+}
+
 fn grounding_row_names(gs: List<ReadingGrounding>) -> String {
-  if count(gs) == 0 { "" } else { join([" (", join(map(gs, g => g.read_of as String), ", "), ")"], "") }
+  if count(gs) == 0 { "" } else { join([" (", join(map(gs, g => join([g.read_of as String, ": ", citation_explanation(standing: g.standing)], "")), ", "), ")"], "") }
 }
 
 fn render_finding(j: FindingJudgment) -> FindingStanding {

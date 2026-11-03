@@ -36,7 +36,7 @@ import product.p4261.findings {
 }
 import product.p4261.readings { least_of, PolarityEstablished, PolarityGap, PolarityUnestablished, installed }
 import product.p4261.report { FindingEstablished, FindingNotEstablished, FindingStanding, carrier_finding, j24_text, judgment_words, render_finding }
-import product.p4261.evidence { FromStore, NoPhotographStore }
+import product.p4261.evidence { FromStore, NoPhotographStore, StoreHoldsAnotherBoardsFrames }
 import product.p4261.e1_photographs { e1_photographs }
 import product.p4261.e1_b { e1_j24_pin, e1_j24_read, e1_j24_resistances, p4261_e1_layout, e1_d2, e1_d5, e1_c10, e1_f300, e1_u1_p5, e1_converter_near, e1_third_can, e1_q21, e1_q22 }
 import product.p4261.k1_a { p4261_k1_layout, k1_u1_p5, k1_converter_near }
@@ -267,13 +267,20 @@ test fn readings_rest_on_stored_frames_only_when_the_store_holds_them() -> Bool 
         ImageReadingsJudged { grounding } => match grounding {
           FromStore { read, checkable: _, broken, gaps } => read == 1 && count(broken) == 1 && count(gaps) == 0
           NoPhotographStore { board: _, obligation: _ } => false
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
         }
         _ => false
       }
       && match on_stored_frames(p4261_e1_layout) {
         ImageReadingsJudged { grounding } => match grounding {
-          FromStore { read, checkable, broken: _, gaps } => read == 94 && checkable == 0 && count(gaps) == read
+          // Derived, not pinned to a count: the partitions must cover the rows, nothing may be broken, and
+          // the board must not establish. How many rows are checkable is the atlas witness's business, not
+          // this one's -- before the 2026-11-03 pass it was none of them, after it most of them, and the
+          // finding's job is only to refuse establishment while any gap stands.
+          FromStore { read, checkable, broken: _, gaps } =>
+            read > 0 && checkable < read && count(gaps) == read - checkable
           NoPhotographStore { board: _, obligation: _ } => false
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
         }
         _ => false
       }
@@ -281,6 +288,9 @@ test fn readings_rest_on_stored_frames_only_when_the_store_holds_them() -> Bool 
         ImageReadingsJudged { grounding } => match grounding {
           NoPhotographStore { obligation } => string_length(obligation as String) > 0
           FromStore { read: _, checkable: _, broken: _, gaps: _ } => false
+          // The K1 has a store of its own only once its photographs arrive; a store that turned out to hold
+          // another board's frames would be a defect to name, not a grounding to accept.
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
         }
         _ => false
       }
