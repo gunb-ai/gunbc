@@ -215,9 +215,21 @@ fn then_branch_record_tree_shape() -> Bool {
   }
 }
 
-// The dot-condition: exactly one postfix chain under the if (the `.d` suffix consumed by the
-// condition) and exactly one fn_body (the if's block) -- the braces belong to the if, and the
-// tail is a separate statement (module stmt total 3).
+// The dot-condition, shape DERIVED from the grammar rows (not copied from any tree):
+// below the dag_surface_if_expr node the condition slot is nonterminal(^dag_production_condition_expr),
+// which nests condition_expr (emits dag_surface_expr) -> condition_binary_expr (dag_surface_binary_expr)
+// -> condition_unary_expr (dag_surface_unary_expr) -> condition_postfix_expr (dag_surface_postfix_expr)
+// -> condition_primary_expr (dag_surface_primary_expr); the `.d` suffix contributes NO production node
+// (dag_grammar_postfix_dot_suffix_builder is dot head + binding name + ident suffix, all terminals and
+// optionals). The if's block slot is nonterminal(^dag_production_fn_body) (one dag_surface_fn_body),
+// whose stmt_seq holds one nonterminal(^dag_production_stmt) (one dag_surface_stmt), and that bare
+// statement `i` runs the ORDINARY chain stmt -> expr -> binary_expr -> unary_expr -> postfix_expr ->
+// primary_expr -- a postfix_expr node exists for EVERY expression, bare idents included. So the
+// derived counts below the if are: postfix_expr 2 (condition chain + block statement), fn_body 1,
+// stmt 1; module stmt total 3 (fn-body if-stmt, fn-body tail stmt, block stmt). The original witness
+// asserted postfix_expr 1, omitting the block statement's own chain node; fn_body and stmt were right.
+// The shape witnesses the fix: the braces are an fn_body under the if (a record reading would leave
+// fn_body 0 and refuse the module), and the condition is a postfix chain, not a record arm.
 fn dotcond_with_tail_tree_shape() -> Bool {
   match g_tokenize_parse(text: dotcond_with_tail_source, file: ^dotcond_probe) {
     Rejected { diagnostics: _ } => false
@@ -226,7 +238,7 @@ fn dotcond_with_tail_tree_shape() -> Bool {
       match g_find_production(root: root, emitted: ^dag_surface_if_expr) {
         Absent => false
         Present { value: if_node } =>
-          g_count_production_below(root: if_node, emitted: ^dag_surface_postfix_expr) == 1 &&
+          g_count_production_below(root: if_node, emitted: ^dag_surface_postfix_expr) == 2 &&
           g_count_production_below(root: if_node, emitted: ^dag_surface_fn_body) == 1 &&
           g_count_production_below(root: if_node, emitted: ^dag_surface_stmt) == 1
       }
