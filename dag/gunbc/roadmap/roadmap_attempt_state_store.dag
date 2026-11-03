@@ -1,42 +1,22 @@
 module gunbc.roadmap.roadmap_attempt_state_store
 
-import std.types { String, NonEmptyStr, FilePath, Int, List, Bool }
+import std.types { String, NonEmptyStr, Int, List }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.materialization_ladder { string_list_contains }
 import std.decl_ref { decl_ref }
 import std.dissolution { retires_dissolution }
-import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome,
-  FilesystemWriteOutcome, FilesystemWritten, FilesystemWriteRefused, filesystem_write_outcome,
-  FilesystemFileObservation, FilesystemFileIndeterminate, filesystem_file_observation,
-  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
-  filesystem_listing_observation,
-  FilesystemEntryPresence, filesystem_entry_presence,
-  FilesystemCreateNew, FilesystemCreateRefused, FilesystemNotFound, filesystem_create_new,
-  FilesystemEntrySubjectRefused, FilesystemEntryPresenceIndeterminate, FilesystemEntryAbsent, FilesystemEntryListed,
-  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, FilesystemFileAbsent, FilesystemFileRead,
-}
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadOutcome, FilesystemReadRefused, filesystem_read_outcome, FilesystemWriteOutcome, FilesystemWriteRefused, filesystem_write_outcome, FilesystemFileObservation, FilesystemFileIndeterminate, filesystem_file_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_observation, FilesystemEntryPresence, filesystem_entry_presence, FilesystemCreateNew, FilesystemCreateRefused, FilesystemNotFound, filesystem_create_new, FilesystemEntrySubjectRefused, FilesystemEntryPresenceIndeterminate, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, FilesystemFileAbsent, FilesystemFileRead }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import std.optional { Present, Absent }
-import extdeps.filesystem.filesystem_io { FilesystemDirectoryListing, filesystem_listing_entry_names, filesystem_listing_observation, FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
-import gunbc.durable_append_log_store {
-  AppendLogParent, AppendLogStore, AppendLogSlot, AppendLogMinting, AppendLogReady, AppendLogUnready,
-  AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, append_log_member_census,
-  append_log_census_slot, MemberCensusRow,
-}
+import extdeps.filesystem.filesystem_io { filesystem_listing_entry_names, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import gunbc.durable_append_log_store { AppendLogParent, AppendLogSlot, AppendLogReady, AppendLogUnready, AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, sandbox_provider, attempt_worker_principal_role }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, WorkerIsServiceUser, WorkerDedicatedAccount }
-import std.durable_append_log { MemberWriterPolicy, HostCreatesThenSandboxWrites, AppendWriter, HostWriter, AppendWriteIntent, IntentCreateEmpty, AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused, AppendWriteRefusal, AppendWriterStanding, WriterWindowReleased, append_write_admission }
+import std.durable_append_log { AppendFraming, NewlineDelimitedStream, HostCreatesThenSandboxWrites, HostWriter, IntentCreateEmpty, AppendWriteAdmitted, AppendWriteRefused, AppendWriteRefusal, WriterWindowReleased, append_write_admission }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
-import gunbc.roadmap.roadmap_verification_receipt {
-  verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename,
-  CurrentVerificationSelectionObservation, SelectionUnreadable, SelectionAbsent, current_verification_selection_decode_document,
-  ExactVerificationReceiptSource, ExactVerificationReceiptUnreadable, ExactVerificationReceiptAbsent, ExactVerificationReceiptPresent,
-}
+import gunbc.roadmap.roadmap_verification_receipt { verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename, CurrentVerificationSelectionObservation, SelectionUnreadable, SelectionAbsent, current_verification_selection_decode_document, ExactVerificationReceiptSource, ExactVerificationReceiptUnreadable, ExactVerificationReceiptAbsent, ExactVerificationReceiptPresent }
 import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.owned_directory { OwnedDirectoryTarget }
 
 // THE PER-ATTEMPT DISPATCH STATE STORE (inventory row Seeadecb2). One attempt's state is one directory
 // `<node>-a<attempt_key>` directly under the instance's dispatch attempt-state root, plus the node's
@@ -116,11 +96,13 @@ type AttemptStateMember
 // single-shot attempt_state_write -- which takes AttemptStateMember -- can never be handed one: a caller that
 // tries is refused by the type checker on the real acceptance path (the claim), while plain members stay
 // accepted. They are reached only through gunbc.durable_append_log_store, whose owning store mints each
-// member's writer window and the sandboxed worker appends under it. Each variant is keyed to its census row
-// by attempt_append_log_member_census_key. The match being exhaustive only guarantees that EVERY VARIANT YIELDS
-// A KEY -- that is the whole compile-time part. The census is data: a missing or renamed row still resolves at
-// runtime, the join returns Absent, and the caller gets the typed Unready. Nothing here proves a row exists
-// (review 90228). The AppendLogSlot the join does return carries the member name from the census itself.
+// member's writer window and the sandboxed worker appends under it. Each variant's slot is declared by a TOTAL
+// match over this type (attempt_append_log_member_slot): every variant yields a slot or the module does not
+// typecheck, which is the whole compile-time guarantee (review 90228). What lives in a slot is DATA -- the
+// on-disk file name from attempt_log_member_name, the framing, the writer policy -- and the type system does not
+// prove the live host names the file the same way. The executed agreement with the host's bytes is the old-bytes
+// readback control in test.claim.roadmap.attempt_append_log_srv1_host_shape_witness; the executed agreement with
+// the framing is the legacy-generation refusal in test.claim.attempt_append_log_host_create_wet_witness.
 type AttemptLogMember
   = AttemptWorkerLog
   | AttemptWorkerEvents
@@ -592,59 +574,46 @@ data attempt_directory_wire_frontier_rows: List<FrontierRow> = [frontier_row_dec
 )]
 
 
-// Single authority mapping each AttemptLogMember variant to its census key. Exhaustive match: a new
-// variant without a case is a compile error. The returned NonEmptyStr is the census member field value.
-fn attempt_append_log_member_census_key(member: AttemptLogMember) -> NonEmptyStr {
+// THE SLOT TABLE FOR THE EIGHT LOG MEMBERS, keyed by the VARIANT ITSELF. A closed set gets one spelling
+// (DESIGN 3), so there is no census key, no second table of names and no string-equality join (review 90246):
+// the match below is TOTAL over AttemptLogMember, which means a renamed variant does not resolve and a new
+// variant has no arm -- both are compile errors on the real path, not a runtime Unready. A helper takes the
+// framing so the writer policy is spelled once; it is not a second authority, it is the only place a slot is
+// built. The framing and writer-policy TYPES are main's (gunbc.durable_append_log_store re-exports
+// std.durable_append_log's); the VALUES are declared here, in the module that declares the members. The slot's
+// member field is the ON-DISK FILE NAME, from the one name authority (attempt_log_member_name) -- that is what
+// the mint's claimant and generation scans must see (review 90137). The eight rows this replaces in
+// gunbc.durable_append_log_store.append_log_member_census are deleted with it; no copy is left behind to drift.
+fn attempt_append_log_member_slot_with(member: AttemptLogMember, framing: AppendFraming) -> AppendLogSlot {
+  AppendLogSlot {
+    member: attempt_log_member_name(member: member) as NonEmptyStr,
+    framing: framing,
+    writers: HostCreatesThenSandboxWrites { principal: sandbox_provider(owner: attempt_worker_principal_role) },
+  }
+}
+
+fn attempt_append_log_member_slot(member: AttemptLogMember) -> AppendLogSlot {
   match member {
-    AttemptWorkerEvents => "AttemptWorkerEvents" as NonEmptyStr
-    AttemptWorkerLog => "AttemptWorkerLog" as NonEmptyStr
-    AttemptReviewEvents { criterion_key: _, head_sha: _ } => "AttemptReviewEvents" as NonEmptyStr
-    AttemptReviewLog { criterion_key: _ } => "AttemptReviewLog" as NonEmptyStr
-    AttemptAuditEvents { head_sha: _ } => "AttemptAuditEvents" as NonEmptyStr
-    AttemptAuditLog => "AttemptAuditLog" as NonEmptyStr
-    AttemptSupervisorEvents { turn: _ } => "AttemptSupervisorEvents" as NonEmptyStr
-    AttemptSupervisorLog => "AttemptSupervisorLog" as NonEmptyStr
+    AttemptWorkerLog => attempt_append_log_member_slot_with(member: member, framing: NewlineDelimitedStream {})
+    AttemptWorkerEvents => attempt_append_log_member_slot_with(member: member, framing: NewlineDelimitedStream {})
+    AttemptReviewEvents { criterion_key: _, head_sha: _ } => attempt_append_log_member_slot_with(member: member, framing: NewlineDelimitedStream {})
+    AttemptReviewLog { criterion_key: _ } => attempt_append_log_member_slot_with(member: member, framing: NewlineDelimitedStream {})
+    AttemptAuditEvents { head_sha: _ } => attempt_append_log_member_slot_with(member: member, framing: NewlineDelimitedStream {})
+    AttemptAuditLog => attempt_append_log_member_slot_with(member: member, framing: NewlineDelimitedStream {})
+    AttemptSupervisorEvents { turn: _ } => attempt_append_log_member_slot_with(member: member, framing: NewlineDelimitedStream {})
+    AttemptSupervisorLog => attempt_append_log_member_slot_with(member: member, framing: NewlineDelimitedStream {})
   }
 }
-
-// Census lookup keyed on the variant, not on a caller-supplied string (DESIGN §3: no nicknaming, no string
-// join at the call site). The census row's member field is the CENSUS KEY -- the name of the row. The slot's
-// member field is the ON-DISK FILE NAME. Those are two different facts and must not be conflated: a slot
-// carrying the key makes the mint's claimant/generation scan inspect "AttemptWorkerEvents.<n>" and never the
-// real generations (review 90137). So the join is by key, and the returned slot is rebuilt with the file name
-// from the one file-name authority (attempt_log_member_name).
-fn attempt_append_log_census_slot_from(rows: List<MemberCensusRow>, key: NonEmptyStr) -> AppendLogSlot? {
-  match rows {
-    Empty {} => Absent
-    Cons { head: r, tail: rest } =>
-      if r.member == key { append_log_census_slot(row: r) }
-      else { attempt_append_log_census_slot_from(rows: rest, key: key) }
-  }
-}
-
-fn attempt_append_log_census_slot(member: AttemptLogMember) -> AppendLogSlot? {
-  match attempt_append_log_census_slot_from(rows: append_log_member_census, key: attempt_append_log_member_census_key(member: member)) {
-    Absent => Absent
-    Present { value: row_slot } =>
-      Present { value: AppendLogSlot { member: attempt_log_member_name(member: member) as NonEmptyStr, framing: row_slot.framing, writers: row_slot.writers } }
-  }
-}
-
 
 // Mints the sealed store over a listing that was OBTAINED (never fabricated). An empty list here means the
 // directory was positively listed as having no relevant entries -- the caller never projects a refused listing
 // into an empty list (no-refusal-projected-to-empty is upheld by the caller's use of FilesystemDirectoryListed).
 fn attempt_append_log_mint_listing(store: AttemptState, node: String, attempt_key: String, member: AttemptLogMember, member_dir: String, names: List<String>) -> AttemptAppendLogReading {
-  match attempt_append_log_census_slot(member: member) {
-    Absent => AttemptAppendLogUnready { detail: "no census slot for this AttemptLogMember variant" }
-    Present { value: slot } => {
-      let file_name = attempt_log_member_name(member: member) as NonEmptyStr
-      match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
-        AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: file_name, directory: s.parent, slot: slot } }
-        AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
-        AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
-      }
-    }
+  let slot = attempt_append_log_member_slot(member: member)
+  match append_log_store_mint(parent: AppendLogParent { directory: member_dir as NonEmptyStr }, slot: slot, listing: Present { value: names }) {
+    AppendLogReady { store: s } => AttemptAppendLogReady { store: AttemptAppendLogStore { instance: store.instance, node: node, attempt_key: attempt_key, member_name: slot.member, directory: s.parent, slot: slot } }
+    AppendLogUnready { detail } => AttemptAppendLogUnready { detail: detail }
+    AppendLogLegacyRefused { cause } => AttemptAppendLogLegacyRefused { cause: cause }
   }
 }
 

@@ -5,6 +5,10 @@ import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.optional { Present, Absent }
 import gunbc.durable_append_log_store { AppendLogSlot, AppendLogListingVerdict, ListingClean, ListingUnlisted, ListingLegacy, AppendLogLegacyCause, LegacyFramingMismatch, LegacyDuplicateClaim, append_log_listing_verdict, append_log_census_slots }
+import gunbc.roadmap.roadmap_attempt_state_store {
+  AttemptLogMember, AttemptWorkerLog, AttemptWorkerEvents, AttemptReviewEvents, AttemptReviewLog,
+  AttemptAuditEvents, AttemptAuditLog, AttemptSupervisorEvents, AttemptSupervisorLog, attempt_append_log_member_slot,
+}
 import std.process { ProcessExit }
 import gunbc.compile_census_probe { census_delta_verdict, census_exit, total_blocking_census, CensusVerdict, deleted_callable_route_is_gone }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, SectionObservedComplete, SectionCompletionUnobservable }
@@ -247,10 +251,29 @@ fn census_slot_mint_unclean(slot: AppendLogSlot) -> Bool {
   }
 }
 
-// The census has a consumer: every slot it declares mints clean over an empty listing and admits its own
-// principal's append inside the window (the policy is built by the census, not written per row).
-test fn every_census_slot_mints_clean_over_an_empty_listing() -> Bool {
-  match filter(append_log_census_slots(), sl => census_slot_mint_unclean(slot: sl)) {
+// EVERY LOG MEMBER'S SLOT, over the whole closed set: each mints clean over an empty listing and admits its own
+// principal's append inside the window. The slots come from the TOTAL match in the declaring module (review 90246),
+// not from a string-keyed census row -- a variant without a slot does not compile, so this control's job is the
+// VALUE of each slot (framing and writer policy), not whether it exists. The sample list feeds that fn one
+// argument per variant; it is not a second authority, the fn is.
+fn attempt_log_member_samples() -> List<AttemptLogMember> {
+  [
+    AttemptWorkerLog,
+    AttemptWorkerEvents,
+    AttemptReviewEvents { criterion_key: "c", head_sha: "h" },
+    AttemptReviewLog { criterion_key: "c" },
+    AttemptAuditEvents { head_sha: "h" },
+    AttemptAuditLog,
+    AttemptSupervisorEvents { turn: 3 },
+    AttemptSupervisorLog,
+  ]
+}
+
+test fn every_declared_log_member_slot_mints_clean_over_an_empty_listing() -> Bool {
+  match filter(
+    map(attempt_log_member_samples(), m => attempt_append_log_member_slot(member: m)),
+    sl => census_slot_mint_unclean(slot: sl),
+  ) {
     Empty {} => true
     _ => false
   }
