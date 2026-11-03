@@ -314,10 +314,17 @@ const NATIVE_CLAIM_RUNTIME_AUTHORITY_MODULES: [&str; 1] = ["gunbc.instrument_tar
 /// one subject, with the dispatch reading the copy no authority owns, is DESIGN §3's fork: a row here
 /// could go stale and nothing consulted the model, which is the class PR 15298 is the specimen of.
 /// The rows are now rendered from the roster by `gunbc.instruments.instrument_registry_emit` into
-/// `instrument_registry_generated.rs`, which is a seed-build artifact
-/// (`gunbc.seed_build_artifact_emit` `seed_build_artifacts`), so heal regenerates it and refuses on
-/// drift. An instrument that loses its binding row loses its entry here too: one rendering, one
-/// authority, and the gap is a compile failure rather than a silent miss.
+/// `instrument_registry_generated.rs`, a seed-build artifact
+/// (`gunbc.seed_build_artifact_emit` `seed_build_artifacts`). What that closes, and what it does not,
+/// is stated at the rung the ledger records --
+/// `gunbc.recurring_failure_mode.instrument_subject_bound_twice_the_registry_reads_the_unbound_copy`,
+/// `Mitigatable` with ceiling `StructurallyGuaranteed`. Closes: the dispatch reads ONE copy, so the
+/// hand-written second copy is gone, and a committed table naming a subject this checkout lacks is
+/// refused at dispatch, with a located cause at the instrument contract's exit 2. Does not close: a
+/// table merely BEHIND its roster still compiles and still dispatches the old subject, because the
+/// comparison that would catch it (`registry_matches_rows`) is a `cfg(test)` test no required lane
+/// runs, and heal judges whether a generated file belongs to the population rather than whether it is
+/// stale, and refuses no merge. Staleness here is mitigated, not refused.
 fn instrument_registry() -> Vec<(Label, TargetProducer)> {
     crate::instrument_registry_generated::instrument_registry_rows()
 }
