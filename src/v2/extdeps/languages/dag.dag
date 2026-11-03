@@ -2049,21 +2049,44 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
 // DELIBERATELY EXCLUDED, matching the seed's set exactly; any widening is a stated divergence
 // needing per-head claims (grammar-owner review).
 fn dag_grammar_expr_continuation_head_expr() -> GrammarExpr {
-  match dag_grammar_expr_continuation_head_non_minus_rows_expr(rows: dag_infix_operators()) {
-    Absent =>
-      dag_grammar_choice(
+  fold(
+    dag_infix_operators(),
+    init: dag_grammar_choice(
+      left: dag_grammar_choice(
         left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
         right: dag_grammar_expr_continuation_minus_head_expr()
+      ),
+      right: dag_grammar_choice(
+        left: dag_grammar_terminal(token_class: ^dag_token_dot),
+        right: dag_grammar_choice(
+          left: dag_grammar_terminal(token_class: ^dag_token_kw_as),
+          right: dag_grammar_choice(
+            left: dag_grammar_terminal(token_class: ^dag_token_kw_is),
+            right: dag_grammar_expr_continuation_lbracket_head_expr()
+          )
+        )
       )
-    Present { value: ops } =>
-      dag_grammar_choice(
-        left: dag_grammar_choice(
-          left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
-          right: dag_grammar_expr_continuation_minus_head_expr()
-        ),
-        right: ops
-      )
-  }
+    ),
+    f: fn(acc, row) {
+      if grammar_infix_row_class(row: row) == ^dag_token_minus {
+        acc
+      } else {
+        dag_grammar_choice(left: acc, right: dag_grammar_terminal(token_class: grammar_infix_row_class(row: row)))
+      }
+    }
+  )
+}
+
+// The `[` head carries the SAME newline guard the index suffix carries (dag_grammar_postfix_-
+// index_suffix_expr): a line-initial `[` never continues the operand, so it must not admit a
+// record either.
+fn dag_grammar_expr_continuation_lbracket_head_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: grammar_expr_not_predicate(
+      element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_lbracket))
+    ),
+    right: dag_grammar_terminal(token_class: ^dag_token_lbracket)
+  )
 }
 
 // The `-` row of the continuation set carries the SAME newline guard the infix table carries
@@ -2077,46 +2100,6 @@ fn dag_grammar_expr_continuation_minus_head_expr() -> GrammarExpr {
     ),
     right: dag_grammar_terminal(token_class: ^dag_token_minus)
   )
-}
-
-// The infix rows as a choice (the grammar_infix_operator_choice idiom), minus the `-` row
-// (handled by the newline-aware arm above). Optional so the caller adds no neutral element.
-fn dag_grammar_expr_continuation_head_non_minus_rows_expr(
-  rows: List<InfixOperatorRow>
-) -> std.optional.Optional<GrammarExpr> {
-  match list_head(xs: rows) {
-    Absent => optional_absent()
-    Present { value: row } =>
-      match list_tail(xs: rows) {
-        Absent => dag_grammar_expr_continuation_row_rest_expr(row: row, rest: optional_absent())
-        Present { value: tail } =>
-          dag_grammar_expr_continuation_row_rest_expr(
-            row: row,
-            rest: dag_grammar_expr_continuation_head_non_minus_rows_expr(rows: tail)
-          )
-      }
-  }
-}
-
-// One minus-test for the whole filter: the `-` row contributes nothing of its own (its arm is the
-// newline-aware one built separately); every other row contributes its terminal, choice-chained
-// onto whatever the rest of the rows yield.
-fn dag_grammar_expr_continuation_row_rest_expr(
-  row: InfixOperatorRow,
-  rest: std.optional.Optional<GrammarExpr>
-) -> std.optional.Optional<GrammarExpr> {
-  if grammar_infix_row_class(row: row) == ^dag_token_minus {
-    rest
-  } else {
-    match rest {
-      Absent => optional_present(value: dag_grammar_terminal(token_class: grammar_infix_row_class(row: row)))
-      Present { value: others } =>
-        optional_present(value: dag_grammar_choice(
-          left: dag_grammar_terminal(token_class: grammar_infix_row_class(row: row)),
-          right: others
-        ))
-    }
-  }
 }
 
 // THE CONDITION-POSITION IDENT SUFFIX: same optional call-or-record shape as

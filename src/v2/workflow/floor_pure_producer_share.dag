@@ -1699,6 +1699,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "record_chain_condition_still_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "record_let_head_still_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "record_match_scrutinee_still_parses_holds", standing: ActiveFillDebt },
+
+      SingleClaimFillDebtClaim { claim: "record_scrutinee_dot_still_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "then_branch_record_parses_holds", standing: ActiveFillDebt }
     ]
   },
