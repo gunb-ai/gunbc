@@ -87,13 +87,13 @@ fn member_face(first: InstalledCard, m: InstalledCard) -> GroupMemberFace? {
       Absent => Absent
       Present { value: b } => match feature_value(f: b.taper) {
         Absent => Absent
-        Present { value: tp } => match card_separation(from: first, to: m) {
+        Present { value: tp } => if !taper_holds_grip(tp: tp) { Absent } else { match card_separation(from: first, to: m) {
           Absent => Absent
           Present { value: s } => match card_envelope_of(row: m.instance.card.row) {
             Absent => Absent
             Present { value: c } => Present { value: GroupMemberFace { member: m, face: f, bands: b, taper: tp, offset: s.across, length: c.length } }
           }
-        }
+        } }
       }
     }
   }
@@ -106,13 +106,21 @@ fn member_unfit_reason(first: InstalledCard, m: InstalledCard) -> String {
       Absent => join(missing_feature(name: "fin-free bands (the tabs grip there)", f: f.fin_free_bands), "; ")
       Present { value: b } => match feature_value(f: b.taper) {
         Absent => join(missing_feature(name: "the fin-free bands' taper (the tabs follow it)", f: b.taper), "; ")
-        Present { value: _ } => match card_envelope_of(row: m.instance.card.row) {
+        Present { value: tp } => if !taper_holds_grip(tp: tp) { taper_too_shallow_reason(tp: tp) } else { match card_envelope_of(row: m.instance.card.row) {
           Absent => "the card row states no length to draw its envelope from"
           Present { value: _ } => "no separation from the group's first card: its slot is not recorded"
-        }
+        } }
       }
     }
   }
+}
+
+// A tab follows the read slope for `tab_grip_depth`, so the slope must have depth and be at least that deep;
+// a tab is never drawn past the geometry that was read.
+fn taper_holds_grip(tp: BandTaper) -> Bool { um(m: tp.slope_depth) > 0 && um(m: tab_grip_depth) <= um(m: tp.slope_depth) }
+
+fn taper_too_shallow_reason(tp: BandTaper) -> String {
+  join(["the band taper's slope is read as ", to_string(value: um(m: tp.slope_depth)), " um deep, and the tabs follow it for ", to_string(value: um(m: tab_grip_depth)), " um"], "")
 }
 
 // The plate covers the member's whole end face. Only a header OBSERVED absent is clear of it.
@@ -163,12 +171,15 @@ fn admit_group_member_faces(p: GroupDuctPlan, chosen: CardGroup?) -> GroupFitPla
 
 fn um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
 
-// THE TAB IS THE BAND'S OWN SHAPE (second fit plate, after product.printed_chassis.fit_observations
-// a2_row_fit_plate_fit: the first plate's thin tabs struck the slope). Each tab is the band's section offset
-// clear of it: straight in past the lip, along the slope to the flat, and across the flat into the gap before
-// the first fin, stopping short of the fin. The slope is where it grips.
+// THE TAB GRIPS THE START OF THE SLOPE ONLY (third fit plate). The first plate's thin tabs struck the slope;
+// the second plate's tabs were each band's whole section, reaching to within 0.3 mm of the first fin, and one
+// struck the fins (product.printed_chassis.fit_observations a2_row_fit_plate_fit, a2_row_fit_plate_second_fit).
+// So the band readings do not place a tab to a fraction of a millimetre. Each tab now follows the band's
+// section straight in past the lip and then along the slope for `tab_grip_depth` only, and stops there: at
+// the read taper it reaches about 2 mm along the face from the opening's edge, leaving about 3.9 mm to the
+// first fin, so an error of a millimetre or two in the readings still clears the fins.
 data tab_slope_clearance: Micrometer = micrometer(count: 200)
-data tab_fin_clearance: Micrometer = micrometer(count: 300)
+data tab_grip_depth: Micrometer = micrometer(count: 1500)
 data tab_width_inset: Micrometer = micrometer(count: 1000)
 
 // THE LIP CLEARANCE, per side, around the outside of the row. 0.3 mm (the unqualified sleeve allowance) was
@@ -180,33 +191,32 @@ fn opening_top_x(f: CardEndInterface) -> Int { um(m: f.face_length) / 2 - um(m: 
 fn opening_bottom_x(f: CardEndInterface) -> Int { opening_top_x(f: f) - um(m: f.window_length) }
 fn opening_low_y(mf: GroupMemberFace) -> Int { um(m: mf.offset) + um(m: mf.face.window_from_back) }
 
-// The finned part of the opening, less the strip each tab reaches into past its band: the bands are fin-free,
-// so covering them with plate costs no fin area, and the plate under them is what the tabs stand on.
-fn tab_reach_past_band(mf: GroupMemberFace) -> Int { um(m: mf.taper.fin_gap) - um(m: tab_fin_clearance) }
-
+// The finned part of the opening: the bands are fin-free, so covering them with plate costs no fin area, and
+// the plate under them is what the tabs stand on.
 fn fin_window_cut(mf: GroupMemberFace, plate: Micrometer) -> Primitive {
   let t = um(m: plate)
-  let top = opening_top_x(f: mf.face) - um(m: mf.bands.top) - tab_reach_past_band(mf: mf)
-  let bottom = opening_bottom_x(f: mf.face) + um(m: mf.bands.bottom) + tab_reach_past_band(mf: mf)
+  let top = opening_top_x(f: mf.face) - um(m: mf.bands.top)
+  let bottom = opening_bottom_x(f: mf.face) + um(m: mf.bands.bottom)
   let wd = um(m: mf.face.window_depth)
   block(w: top - bottom, h: wd, d: t + 2000, x: (top + bottom) / 2, y: opening_low_y(mf: mf) + wd / 2, z: 0 - t / 2)
 }
 
-// One wedge in each band, its section in (X, Z) extruded across the opening's width, narrower than the
-// opening so it clears the pitched sides. `sign` is +1 for the top band (the edge at the top, the band running
-// toward -X) and -1 for the bottom band. It stands on the plate from Z = -t.
+// One tab in each band, its section in (X, Z) extruded across the opening's width, narrower than the opening
+// so it clears the pitched sides. `sign` is +1 for the top band (the edge at the top, the band running toward
+// -X) and -1 for the bottom band. It stands on the plate from Z = -t. The slope closes the band's length over
+// its depth, so `tab_grip_depth` into it the tab has moved band * grip / slope along the face from the edge;
+// its inner side runs straight back to the plate from there.
 fn band_wedge(mf: GroupMemberFace, edge: Int, band: Int, sign: Int, t: Int) -> Primitive {
   let c = um(m: tab_slope_clearance)
   let lip = um(m: mf.taper.lip_depth)
-  let deep = lip + um(m: mf.taper.slope_depth)
-  let inner = edge - sign * (band + tab_reach_past_band(mf: mf))
+  let grip = um(m: tab_grip_depth)
+  let inner = edge - sign * (band * grip / um(m: mf.taper.slope_depth) + c)
   let w = um(m: mf.face.window_depth) - 2 * um(m: tab_width_inset)
   let y = opening_low_y(mf: mf) + um(m: mf.face.window_depth) / 2
   prism(outline: [
     ProfileVertex { u: edge - sign * c, v: 0 - t },
     ProfileVertex { u: edge - sign * c, v: lip },
-    ProfileVertex { u: edge - sign * (band + c), v: deep },
-    ProfileVertex { u: inner, v: deep },
+    ProfileVertex { u: inner, v: lip + grip },
     ProfileVertex { u: inner, v: 0 - t },
   ], axis: Axis3Y, length: w, x: 0, y: y, z: 0)
 }
