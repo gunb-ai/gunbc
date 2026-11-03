@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { StructurallyGuaranteed, StructurallyImpossible }
 import gunbc.rung_climb { ClimbableButUnbuilt }
@@ -23,10 +24,17 @@ data a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder: R
 
     "RESIDUAL, AND WHY IT IS NOT SILENT WRONGNESS: a misspelling over a SINGLETON remainder is Accepted and behaves exactly as the intended program. What is lost is only the name's honesty (the source spells a binder where a constructor was meant), which explicit binder syntax would restore.",
 
-    "RUNG: found BELOW the ladder (by #15125's first revision). Now structurally guaranteed: no Accepted program contains a misspelling that widens a match. Ceiling structurally impossible, via explicit binder syntax (not staffed).",
+    "IT REAPPEARS WHERE A SECOND READING OF THE SAME SPELLING WAS ADDRESSED: an authored construct TAG in a value or a pattern position is now read against the EXPECTED TYPE's declared constructor set (v2.compiler.resolve resolve_construct_tag_under_expected_constructor_set, resolve_pattern_atom_constructor_reading -- valiant-deer-27, v2/construct-tag-expected-type, 2026-11-03). That makes two readings of one bare name, and they are ASYMMETRIC by ruling (tidy-ant-251, 2026-11-03, on that PR): a tag the expected set does not declare REFUSES with resolve_construct_tag_not_in_expected_type, while a pattern ATOM no arm of a readable expected set carries still falls through to a binder, because this row's own atom rule (name a declared payload, else binder, case-blind, last) was NOT changed and uppercase-refusal was considered and not adopted. So a misspelled constructor spelling in a FIELD SUB-PATTERN -- `Boxed { behavior: Absnet }` where `behavior: Behavior = Value | Call` -- binds the whole field domain, and the compensating gate covers only a top-level arm binder its arm body never reads: a field-position binder the body reads is uncovered. That asymmetry is stated in the PR body of v2/construct-tag-expected-type and pinned by v2.test.claim.name_resolve.construct_tag_expected_type an_atom_outside_the_expected_set_binds_as_a_catch_all_binder.",
 
-    "REVIEW TELL: a match whose last arm is a bare name that is not a variant of the scrutinee's type.",
+    "PENDING, AND IT MOVES THE STANDING BELOW IF IT READS AS PREDICTED: the shape above is executed by that claim. Its earlier form asserted a refusal and read RED at row cc2-15671-ctag10 (2026-11-03, head 75dd1d4d): the module is not refused for the unbound name. Whether the widening gate above catches a SUB-PATTERN binder instead is NOT yet executed -- that gate counts the alternatives a match's EARLIER ARMS leave a binder, and a sub-pattern binder has no earlier arms at its level. The claim in its accepted form, run at the row that lands this PR, decides it: if it accepts, `current` below is false at that position and must read FoundBelowTheLadder there, and the review tell must widen from a match's last arm to any sub-pattern atom whose spelling no arm of the field's declared type carries. Changing the atom precedence so a sub-pattern atom outside the readable set refuses, as the tag rule already does, is jolly-cat-271's decision to rule, not a change that PR makes; this row is where such a ruling is recorded.",
+
+    "RUNG: found BELOW the ladder (by #15125's first revision). Now structurally guaranteed AT THE TOP-LEVEL ARM POSITION: no Accepted program contains a misspelling that widens a match THERE. Ceiling structurally impossible, via explicit binder syntax (not staffed). The sub-pattern position carries its own pending datum, above.",
+
+    "REVIEW TELL: a match whose last arm is a bare name that is not a variant of the scrutinee's type -- and, under the pending datum above, a field sub-pattern atom that is not a variant of the field's declared type.",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.name_resolve.construct_tag_expected_type", decl_name: "an_atom_outside_the_expected_set_binds_as_a_catch_all_binder", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_pattern_atom_constructor_reading", field: WholeDeclaration },
+  ],
 }

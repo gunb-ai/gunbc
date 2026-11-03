@@ -109,6 +109,13 @@ data ctee_scrutinee_field_source: String = "module v2.test.ctee.scrutinee_field\
 data ctee_scrutinee_wrong_source: String = "module v2.test.ctee.scrutinee_wrong\n\nimport v2.test.ctee.types { Cell, Wrapper }\nimport v2.test.ctee.other { Payload }\nfn read(w: Wrapper) -> Int {\n  match w.inner {\n    Payload { flag: b } => b\n  }\n}\n"
 data ctee_scrutinee_param_source: String = "module v2.test.ctee.scrutinee_param\n\nimport v2.test.ctee.types { Cell }\nfn read<T>(v: T) -> Int {\n  match v {\n    CellA { a: n } => n\n    CellB { b: m } => m\n  }\n}\n"
 
+// THE DIFFERENTIAL FOR THE ARMS-PATTERN CLAIMS: the shape of scrutinee_field with the PROJECTION STEP
+// REMOVED -- the scrutinee is the formal itself, of an authored coproduct type, and the arm tags are not
+// imported. Read with scrutinee_field's elimination arms this says WHERE the expected type stops
+// reaching a pattern: formal accepted and field unbound leaves the projection's declared type as what is
+// lost; formal unbound too means an arm pattern never takes a scrutinee type at all.
+data ctee_scrutinee_formal_source: String = "module v2.test.ctee.scrutinee_formal\n\nimport v2.test.ctee.types { Cell }\nfn read(c: Cell) -> Int {\n  match c {\n    CellA { a: n } => n\n    CellB { b: m } => m\n  }\n}\n"
+
 data ctee_coinciding_source: String = "module v2.test.ctee.coinciding\n\nimport v2.test.ctee.types { Tree }\nimport v2.test.ctee.node_record { Node }\nfn make() -> Tree { Node { child: 1 } }\n"
 
 // The pair's other half: nothing named Node is visible, so the expected type's own arm answers.
@@ -168,6 +175,7 @@ fn ctee_context() -> Outcome<NativeTestContext> {
     ctee_read(text: ctee_scrutinee_field_source, id: ^ctee_scrutinee_field, path: "src/v2/test/fixture/ctee/scrutinee_field.dag"),
     ctee_read(text: ctee_scrutinee_wrong_source, id: ^ctee_scrutinee_wrong, path: "src/v2/test/fixture/ctee/scrutinee_wrong.dag"),
     ctee_read(text: ctee_scrutinee_param_source, id: ^ctee_scrutinee_param, path: "src/v2/test/fixture/ctee/scrutinee_param.dag"),
+    ctee_read(text: ctee_scrutinee_formal_source, id: ^ctee_scrutinee_formal, path: "src/v2/test/fixture/ctee/scrutinee_formal.dag"),
     ctee_read(text: ctee_coinciding_unimported_source, id: ^ctee_coinciding_unimported, path: "src/v2/test/fixture/ctee/coinciding_unimported.dag"),
     ctee_read(text: ctee_type_param_source, id: ^ctee_type_param, path: "src/v2/test/fixture/ctee/type_param.dag"),
     ctee_read(text: ctee_nullary_source, id: ^ctee_nullary, path: "src/v2/test/fixture/ctee/nullary.dag"),
@@ -195,6 +203,7 @@ type CteeVerdicts {
   scrutinee_field: NativeModuleResolveVerdict
   scrutinee_wrong: NativeModuleResolveVerdict
   scrutinee_param: NativeModuleResolveVerdict
+  scrutinee_formal: NativeModuleResolveVerdict
   coinciding_unimported: NativeModuleResolveVerdict
   type_param: NativeModuleResolveVerdict
   nullary: NativeModuleResolveVerdict
@@ -226,6 +235,7 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
         let scrutinee_field = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.scrutinee_field", path: ^ctee_scrutinee_field)
         let scrutinee_wrong = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.scrutinee_wrong", path: ^ctee_scrutinee_wrong)
         let scrutinee_param = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.scrutinee_param", path: ^ctee_scrutinee_param)
+        let scrutinee_formal = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.scrutinee_formal", path: ^ctee_scrutinee_formal)
         let coinciding_unimported = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.coinciding_unimported", path: ^ctee_coinciding_unimported)
         let type_param = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.type_param", path: ^ctee_type_param)
         let nullary = native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.ctee.nullary", path: ^ctee_nullary)
@@ -250,6 +260,7 @@ fn ctee_verdicts() -> Optional<CteeVerdicts> {
           scrutinee_field: scrutinee_field.verdict,
           scrutinee_wrong: scrutinee_wrong.verdict,
           scrutinee_param: scrutinee_param.verdict,
+          scrutinee_formal: scrutinee_formal.verdict,
           coinciding_unimported: coinciding_unimported.verdict,
           type_param: type_param.verdict,
           nullary: nullary.verdict,
@@ -380,11 +391,19 @@ test fn a_pure_renaming_alias_reaches_the_aliased_constructor() -> Bool {
 // THE NEW REFUSAL, STATED: an authored record in an Optional position. The set is {Present, Absent};
 // the record name is not in it. The flip introduces this refusal at a declared-return site, so it is a
 // claim here rather than a discovery in the diff.
-test fn an_authored_record_under_an_optional_expectation_refuses_with_the_new_cause() -> Bool {
+// THE UNREADABLE SET, AS RULED (tidy-ant-251, 2026-11-03): a kernel generic the storage lookup declines
+// (`Opt<T>` is not in the repository), so no authored constructor set can be read, and the name door
+// answers exactly as it did before this PR -- the site still REFUSES, it does not silently accept. The
+// code does not invent a refusal it has no stated warrant for (DESIGN 5); the fail-closed cause
+// resolve_reason_pattern_atom_constructor_type_unresolved fires only where the atom position already
+// went through the expected-type reading and the set could not be read, which the two claims on
+// atom_unresolved below pin. What is NOT closed here is a finding, not a pass: an unreadable set under a
+// kernel generic argument is a rung ceiling, recorded in gunbc.recurring_failure_mode
+// a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder.
+test fn an_authored_record_under_an_optional_expectation_refuses_as_an_unbound_name() -> Bool {
   match ctee_verdicts() {
     Absent => false
-    Present { value: vs } =>
-      ctee_refuses_with(v: vs.optional_position, reason: ^resolve_construct_tag_not_in_expected_type)
+    Present { value: vs } => ctee_refuses_with(v: vs.optional_position, reason: ^resolve_reason_unbound_symbol)
   }
 }
 
@@ -439,6 +458,16 @@ test fn a_scrutinee_typed_by_a_type_parameter_keeps_the_name_door() -> Bool {
     Absent => false
     Present { value: vs } =>
       ctee_refuses_with(v: vs.scrutinee_param, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+// The arm shape above with the projection removed: a formal of an authored coproduct type, arm tags not
+// imported. ROUND 1b MEASUREMENT EXPECTATION: accepted -- pattern_user's module already accepts a tag
+// arm of the scrutinee's declared type when the scrutinee is a formal -- which would leave the
+// projection step as the position where the scrutinee's declared type stops reaching the pattern.
+test fn an_arm_pattern_tag_of_a_declared_formal_scrutinee_resolves() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.scrutinee_formal)
   }
 }
 
@@ -541,9 +570,21 @@ test fn a_fresh_lowercase_binder_in_a_field_pattern_stays_a_binder() -> Bool {
   match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.atom_binder) }
 }
 
-test fn an_atom_outside_the_expected_set_refuses_as_an_unbound_name_not_a_binder() -> Bool {
-  match ctee_verdicts() { Absent => false Present { value: vs } =>
-    ctee_refuses_with(v: vs.atom_misspelled, reason: ^resolve_reason_unbound_symbol) }
+// THE ASYMMETRY, STATED AND PINNED (rule kept by tidy-ant-251, 2026-11-03; jolly-cat-271's pattern
+// precedence, gunbc.rung_claim_seam_debt bare_atom_match_arm_pattern_bind). A CONSTRUCT TAG outside the
+// expected set refuses with the new cause (the claim above on wrong_tag); a pattern ATOM outside it binds
+// as a catch-all, in a field position exactly as in an arm position -- case-blind, last, even though the
+// readable set is in hand and lacks the spelling. Refusing it was considered and NOT adopted, and the
+// compensating refusal resolve_catch_all_binder_read_gate covers only a top-level arm catch-all its body
+// never reads, so a field-position binder the body reads is uncovered: the misspelling is silently
+// catch-all. That residual is declared, with this module as a receipt, in
+// gunbc.recurring_failure_mode a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder.
+// This claim is the executable pin for the shipped rule, and it FLIPS if the precedence change is ruled.
+test fn an_atom_outside_the_expected_set_binds_as_a_catch_all_binder() -> Bool {
+  match ctee_verdicts() {
+    Absent => false
+    Present { value: vs } => ctee_accepted(v: vs.atom_misspelled)
+  }
 }
 
 test fn an_atom_naming_a_visible_nullary_constructor_under_an_unreadable_expectation_refuses() -> Bool {
@@ -557,4 +598,56 @@ test fn an_atom_naming_a_visible_nullary_constructor_under_an_unreadable_expecta
 // (resolve_catch_all_binder_read_gate) before this rule could be seen, so the fixture reads its position.
 test fn an_atom_naming_no_constructor_under_an_unreadable_expectation_binds_as_today() -> Bool {
   match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.atom_unresolved_binder) }
+}
+
+// ROUND 1b MEASUREMENT (this head changes no compiler code). Four exhaustive outcomes -- unbound (no
+// expected type reached the site), ambiguous, the new cause, or accepted (no refusal at all) -- at each
+// of the three arms-pattern sites, so the FIRST fatal at each is located without naming a producer from
+// a reading. Removed once the fix head makes the two claims above carry it.
+test fn probe_scrutinee_formal_fatal_is_unbound() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.scrutinee_formal, reason: ^resolve_reason_unbound_symbol) }
+}
+
+test fn probe_scrutinee_formal_fatal_is_ambiguous() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.scrutinee_formal, reason: ^resolve_reason_ambiguous_symbol) }
+}
+
+test fn probe_scrutinee_formal_fatal_is_new_cause() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.scrutinee_formal, reason: ^resolve_construct_tag_not_in_expected_type) }
+}
+
+test fn probe_scrutinee_formal_is_accepted() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.scrutinee_formal) }
+}
+
+test fn probe_scrutinee_field_fatal_is_unbound() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.scrutinee_field, reason: ^resolve_reason_unbound_symbol) }
+}
+
+test fn probe_scrutinee_field_fatal_is_ambiguous() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.scrutinee_field, reason: ^resolve_reason_ambiguous_symbol) }
+}
+
+test fn probe_scrutinee_field_fatal_is_new_cause() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.scrutinee_field, reason: ^resolve_construct_tag_not_in_expected_type) }
+}
+
+test fn probe_scrutinee_field_is_accepted() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.scrutinee_field) }
+}
+
+test fn probe_scrutinee_wrong_fatal_is_unbound() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.scrutinee_wrong, reason: ^resolve_reason_unbound_symbol) }
+}
+
+test fn probe_scrutinee_wrong_fatal_is_ambiguous() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.scrutinee_wrong, reason: ^resolve_reason_ambiguous_symbol) }
+}
+
+test fn probe_scrutinee_wrong_fatal_is_new_cause() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_refuses_with(v: vs.scrutinee_wrong, reason: ^resolve_construct_tag_not_in_expected_type) }
+}
+
+test fn probe_scrutinee_wrong_is_accepted() -> Bool {
+  match ctee_verdicts() { Absent => false Present { value: vs } => ctee_accepted(v: vs.scrutinee_wrong) }
 }
