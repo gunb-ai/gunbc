@@ -2438,7 +2438,7 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_match),
     right: dag_grammar_sequence(
-      left: dag_grammar_nonterminal(production: ^dag_production_condition_binary_expr),
+      left: dag_grammar_nonterminal(production: ^dag_production_binary_expr),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
@@ -2633,7 +2633,7 @@ fn dag_grammar_if_expr_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_if),
     right: dag_grammar_sequence(
-      left: dag_grammar_nonterminal(production: ^dag_production_condition_expr),
+      left: dag_grammar_nonterminal(production: ^dag_production_expr),
       right: dag_grammar_choice(
         left: dag_grammar_if_then_form_expr(),
         right: dag_grammar_if_block_form_expr()
