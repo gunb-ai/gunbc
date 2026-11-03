@@ -4,8 +4,10 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import product.placement_supply { PhysicalAssetIdentity }
 import product.electrical.connectivity { ElectricalDesignIdentity, TerminalIdentity, component_instance_identity }
+import product.electrical.photograph { BytesNotInStore }
 import product.electrical.continuity { EvidenceRef, OperatorPhotograph, SellerListingPhotograph }
 import extdeps.external_authority { TranscribedUncited }
+import extdeps.electronic_component.types { designator_eq, designator_of }
 import extdeps.nvidia.p4261 { p4261_e1 }
 import extdeps.nvidia.p4261.population { p4261_position }
 import extdeps.nvidia.p4261.connectors { P4261ContactInventory, p4261_contact_inventories }
@@ -86,7 +88,7 @@ fn second_e1() -> CarrierLayoutObservation {
 }
 
 fn photo() -> EvidenceRef {
-  OperatorPhotograph { taken_on: "supplied", locator: "supplied photograph" }
+  OperatorPhotograph { citation: BytesNotInStore { taken_on: "supplied", locator: "supplied photograph", obligation: "operator re-supplies the frame so its bytes can be hashed into the store" } }
 }
 
 fn listing() -> EvidenceRef {
@@ -115,7 +117,10 @@ fn extra_latch(n: Nat) -> HousingPosition {
 }
 
 fn e1_claim() -> P4261ContactInventory {
-  match (filter(p4261_contact_inventories, c => (c.position.designator as String) == "J20")).first() {
+  match (filter(
+    p4261_contact_inventories,
+    c => designator_eq(a: c.position.designator, b: designator_of(verbatim: "J20"))
+  )).first() {
     Present { value: c } => c
     Absent => P4261ContactInventory { position: p4261_position(revision: p4261_e1, designator: "J20"), latch_row_positions: 0, away_row_positions: 0, standing: TranscribedUncited { read_obligation: "missing" } }
   }

@@ -9537,9 +9537,9 @@ mod closure_edge_demand_tests {
         );
     }
 
-    /// Unique-bare `secret` lives in an unacquired module. Gate one (an unrelated import)
-    /// turns the bare pull off, so fill used to supply Exact for admit_callers. After the
-    /// fill cut, constructor admission must still refuse rather than remap to a no-op.
+    /// Unique-bare `secret` lives in an unacquired module and is not imported. Since #15247
+    /// the bare name refuses as not found in scope (located), never resolving to the sealed
+    /// constructor.
     #[test]
     fn host_reconcile_refuses_unacquired_unique_bare_sealed_constructor() {
         let fixture = Fixture::new(&[
@@ -9571,9 +9571,19 @@ mod closure_edge_demand_tests {
                 .collect::<Vec<_>>()
                 .join("\n"),
         };
+        // #15247 cut the global bare-name fallback: an unimported bare `secret` no longer
+        // resolves to fx.hidden.secret, so it refuses at resolution, located at the call
+        // site, before any admit_callers check. Admission on a RESOLVABLE sealed name is
+        // asserted by host_reconcile_imported_empty_map_still_enforces_admit_callers.
         assert!(
-            err.contains("fx.hidden") && err.contains("secret"),
-            "unacquired unique-bare sealed constructor must refuse naming fx.hidden.secret: {err}"
+            err.contains("ambient.dag:3:")
+                && err.contains("secret")
+                && err.contains("not found in scope"),
+            "unimported bare sealed constructor must refuse located as not found in scope: {err}"
+        );
+        assert!(
+            !err.contains("fx.hidden"),
+            "the unimported bare name must not resolve to fx.hidden.secret: {err}"
         );
     }
 
