@@ -5470,6 +5470,32 @@ pub fn equality_leaf_admission(
             scope.module_name.clone(),
         );
         let resolved_identity = type_reference_identity(resolved.clone(), source_indices);
+        if std::env::var_os("EQ_ALIAS_PROBE_DIAG").is_some() {
+            let inferred_kind = match peeled.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => format!(
+                    "Resolved(rt.connective={:?} rt.children={} rt_ident={:?})",
+                    rt.connective,
+                    rt.children.len(),
+                    crate::v1_compiler_infer_types::node_declaration_identity(
+                        rt.clone(),
+                        scope.type_env.source_indices.clone()
+                    )
+                ),
+                Some(_) => "NonResolved".to_string(),
+                None => "None".to_string(),
+            };
+            eprintln!(
+                "DIAG-LEAF name={:?} peeled.conn={:?} peeled.children={} peeled_ident={:?} | resolved.conn={:?} resolved.children={} resolved_ident={:?} | inferred={}",
+                name,
+                peeled.connective,
+                peeled.children.len(),
+                ident_key,
+                resolved.connective,
+                resolved.children.len(),
+                resolved_identity,
+                inferred_kind
+            );
+        }
         if (((resolved.connective.clone() != Connective::NoConnective)
             || (resolved_identity.clone() != ident_key.clone()))
             || ((resolved.children.clone().len() as i64) != (peeled.children.clone().len() as i64)))
@@ -5687,8 +5713,21 @@ pub fn equality_resolved_declaration_structure(
                         v1_rt::int_add(depth.clone(), 1),
                     )
                 } else {
+                    let exposure = expected_type_head_exposure(peeled.clone(), scope.clone());
+                    if std::env::var_os("EQ_ALIAS_PROBE_DIAG").is_some() {
+                        eprintln!(
+                            "DIAG-STRUCT-ELSE name={:?} rt.connective={:?} rt.children={} rt_ident={:?} peeled_ident={:?} depth={} exposure={:?}",
+                            name,
+                            rt.connective,
+                            rt.children.len(),
+                            crate::v1_compiler_infer_types::node_declaration_identity(rt.clone(), scope.type_env.source_indices.clone()),
+                            crate::v1_compiler_infer_types::node_declaration_identity(peeled.clone(), scope.type_env.source_indices.clone()),
+                            depth,
+                            exposure
+                        );
+                    }
                     equality_exposure_refusal(
-                        expected_type_head_exposure(peeled.clone(), scope.clone()),
+                        exposure,
                         name.clone(),
                         (depth.clone() == 0),
                     )

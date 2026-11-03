@@ -33,6 +33,8 @@ fn report(label: &str, source: &str) {
 
 #[test]
 fn probe_alias_equality_base_behaviour() {
+    // SAFETY: single-threaded test entry; the flag only gates diagnostic eprintlns.
+    unsafe { std::env::set_var("EQ_ALIAS_PROBE_DIAG", "1") };
     report("BASE_FN_RECORD", BASE_FN_RECORD);
     report("A4_ALIAS_FN_RECORD", A4_ALIAS_FN_RECORD);
     report("A3_LOCAL_GENERIC_FN_CELL", A3_LOCAL_GENERIC_FN_CELL);
