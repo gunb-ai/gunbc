@@ -5529,13 +5529,62 @@ pub fn equality_leaf_admission(
                         depth.clone(),
                     )
                 }
-                _ => equality_unresolved_leaf_admission(
-                    peeled.clone(),
-                    name.clone(),
-                    scope.clone(),
-                    visited.clone(),
-                    depth.clone(),
-                ),
+                _ => {
+                    // DESIGN 5 (XL-0E): admission is derived from the COMPLETE RESOLVED TYPE,
+                    // never from a leaf spelling. A nominal ALIAS operand can reach here with
+                    // inferred=None when the env cannot resolve it by name (expand_nominal_alias_rhs
+                    // returned the shell), and the old path admitted it as an opaque brand without
+                    // judging its expansion's members. Ask the resolver (a broader authority than
+                    // lookup_type_for) for the complete type and judge its structure; only when that
+                    // still yields no judgeable structure (a genuine opaque brand or generic parameter)
+                    // do we fall through to the unresolved-leaf boundary.
+                    let resolved_complete = crate::v1_compiler_infer_resolve::resolve_node_bounded(
+                        peeled.clone(),
+                        scope.type_env.clone(),
+                        scope.module_name.clone(),
+                        0,
+                        false,
+                    )
+                    .resolved
+                    .clone();
+                    let complete_is_structure =
+                        matches!(resolved_complete.connective.clone(), Connective::Conj | Connective::Disj | Connective::Arrow);
+                    let complete_differs = complete_is_structure
+                        && (crate::v1_compiler_infer_types::node_declaration_identity(
+                            resolved_complete.clone(),
+                            scope.type_env.source_indices.clone(),
+                        ) != crate::v1_compiler_infer_types::node_declaration_identity(
+                            peeled.clone(),
+                            scope.type_env.source_indices.clone(),
+                        ));
+                    if std::env::var_os("EQ_ALIAS_PROBE_DIAG").is_some() {
+                        eprintln!(
+                            "DIAG-RESOLVE name={:?} complete.conn={:?} complete.children={} complete_ident={:?} is_structure={} differs={}",
+                            name,
+                            resolved_complete.connective,
+                            resolved_complete.children.len(),
+                            crate::v1_compiler_infer_types::node_declaration_identity(resolved_complete.clone(), scope.type_env.source_indices.clone()),
+                            complete_is_structure,
+                            complete_differs
+                        );
+                    }
+                    if complete_differs {
+                        equality_operand_admission(
+                            resolved_complete.clone(),
+                            scope.clone(),
+                            visited.clone(),
+                            v1_rt::int_add(depth.clone(), 1),
+                        )
+                    } else {
+                        equality_unresolved_leaf_admission(
+                            peeled.clone(),
+                            name.clone(),
+                            scope.clone(),
+                            visited.clone(),
+                            depth.clone(),
+                        )
+                    }
+                }
             }
         }
     }
