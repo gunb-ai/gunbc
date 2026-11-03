@@ -14,6 +14,7 @@ import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_un
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.host.bmc_release_capability_catalog { megarac_committed_hpm_check_identity }
+import gunbc.machine_intake.megarac_media_row_reading { boot_run_41573858366_end_media_row }
 import gunbc.machine_intake.mount_establishment {
   MediaImageAbsentFromListing,
   MediaImageListed,
@@ -1646,7 +1647,7 @@ fn unread_row_replaceable(
     Present { value: stems } =>
       if unread_code_on_the_evidenced_release(unread: unread) == false {
         UnreadRowNotStoppable { refusal: UnreadStopReleaseNotEvidenced { unread: unread } }
-      } else if image_name == "" {
+      } else if megarac_media_row_names_no_medium(name: image_name) {
         UnreadRowNotStoppable { refusal: UnreadStopRowUnnamed }
       } else if image_name == (desired as String) {
         UnreadRowNotStoppable { refusal: UnreadStopRowIsTheWantedImage }
@@ -1671,13 +1672,24 @@ fn unread_row_replaceable(
 // for absence, so the spelling is the vendor's and the reading of it is ours. Every reading in this repository
 // turns that answer into `none`, and a non-empty answer into `Present`. The distinction is not cosmetic -- the
 // inference below promotes an unread code only for a row that names no medium, so "" must not be able to pose
-// as a name, and one site must spell it for the lane and the witness alike (DESIGN.md §3b: this is an
-// observation this repository makes, so it sits here rather than in extdeps).
+// as a name, and ONE SITE spells it: the two functions below are the only readings of the member in this
+// module, and every test of it -- the stoppability of an unread row, the presenting reading, and the inference
+// -- is written from them (DESIGN.md §3b: this is an observation this repository makes, so it sits here rather
+// than in extdeps).
 fn megarac_media_row_named_medium(name: String) -> NonEmptyStr? {
   if name == "" {
     Absent
   } else {
     Present { value: name as NonEmptyStr }
+  }
+}
+
+// THE TEST FORM OF THE SAME READING, so a fold that only needs to know whether the row named anything does not
+// re-spell the vendor's empty answer.
+fn megarac_media_row_names_no_medium(name: String) -> Bool {
+  match megarac_media_row_named_medium(name: name) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -1857,7 +1869,7 @@ fn configuration_row_presenting_reading(
   wire: Int,
   status: MegaRacRedirectionStatus,
 ) -> ConfigurationRowReading {
-  if name == "" {
+  if megarac_media_row_names_no_medium(name: name) {
     ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
   } else {
     ConfigurationRowPresenting {

@@ -24,6 +24,7 @@ import extdeps.bmc.megarac {
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq }
 import extdeps.board_authority { BoardFruObservation, BoardFruRead, BoardFruNotRead }
+import extdeps.languages.json.emit { json_object, json_kv, JsonNumber, JsonString }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import extdeps.bmc.ipmitool_observed_output {
