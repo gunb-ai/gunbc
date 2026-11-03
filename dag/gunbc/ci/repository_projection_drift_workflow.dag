@@ -71,7 +71,7 @@ import gunbc.ci.repository_seed_steps {
   seed_pin_verifier_job,
 
   record_seed_revision_step,
-  toolchain_install_step
+  SeedToolchainLane, seed_toolchain_lane, seed_toolchain_lane_steps
 }
 
 // repository_projection_drift_workflow.dag — THE ONE drift-check emitter, for a repository whose
@@ -309,16 +309,20 @@ fn projection_drift_steps(
         Absent => []
       }
         concat(
-          [
-          repository_checkout_step(step_name: program.checkout_step_name),
-          seed_lane.guard,
-          seed_lane.checkout,
-          record_step,
-          toolchain_install_step(step_name: program.toolchain_step_name),
-          build_step,
-          check_step
-          ],
-          seal_steps
+          concat(
+            [
+              repository_checkout_step(step_name: program.checkout_step_name),
+              seed_lane.guard,
+              seed_lane.checkout,
+              record_step
+            ],
+            // THE TOOLCHAIN LANE AS ONE UNIT (isolation, install, pin), owned by
+            // gunbc.ci.repository_seed_steps: this job seals candidates on the repository's own runner
+            // group, and a toolchain installed into a home that persists across jobs is the defect
+            // gunbc.toolchain_home_standing exists to refuse.
+            seed_toolchain_lane_steps(lane: seed_toolchain_lane(step_name: program.toolchain_step_name))
+          ),
+          concat([build_step, check_step], seal_steps)
         )
 }
 
