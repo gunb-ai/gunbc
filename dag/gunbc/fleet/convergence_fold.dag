@@ -611,6 +611,7 @@ type LegBudget sole_constructor {
 fn leg_budget(leg: DeclarationRef, budget: PositiveMillisecond) -> LegBudget
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "prior_life_archive_write_budget"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "prior_life_forced_write_budget"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
@@ -629,6 +630,7 @@ type LegDeadline sole_constructor {
 fn effect_leg_deadline(budget: LegBudget, started: ObserverClockInstant) -> LegDeadline
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_leg"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
@@ -663,6 +665,7 @@ type LegCompletion
 fn complete_effect_leg(deadline: LegDeadline, finished: ObserverClockRead) -> LegCompletion
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "forced_first_rotation_write_leg"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {

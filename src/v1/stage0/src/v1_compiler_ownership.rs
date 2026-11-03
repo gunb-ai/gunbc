@@ -91,25 +91,13 @@ pub fn binding_fan_out(usage: Rc<BindingUsage>) -> i64 {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OwnershipDecision {
-    SoleOwner {
-        binding: String,
-        site: String,
-    },
-    SharedError {
-        binding: String,
-        consumer_count: i64,
-        sites: Rc<Vec<String>>,
-    },
-    Unclassified {
-        binding: String,
-        reason: String,
-    },
+    SoleOwner { binding: String, site: String },
+    Unclassified { binding: String, reason: String },
 }
 impl OwnershipDecision {
     pub fn binding(&self) -> String {
         match self {
             OwnershipDecision::SoleOwner { binding: __val, .. } => __val.clone(),
-            OwnershipDecision::SharedError { binding: __val, .. } => __val.clone(),
             OwnershipDecision::Unclassified { binding: __val, .. } => __val.clone(),
         }
     }
@@ -231,6 +219,39 @@ pub fn record_use_at(
             }
             __rb_h
         }
+    }
+}
+
+pub fn names_a_binding(kind: Option<Rc<VarBindingKind>>) -> bool {
+    match kind.clone().as_deref().cloned() {
+        Some(VarBindingKind::FunctionValueBinding) => false,
+        Some(VarBindingKind::VariantValueBinding { .. }) => false,
+        Some(VarBindingKind::ServiceValueBinding) => false,
+        _ => true,
+    }
+}
+
+pub fn record_var_use(
+    accum: Rc<UsageAccum>,
+    name: String,
+    kind: EdgeKind,
+    site: String,
+    binding_kind: Option<Rc<VarBindingKind>>,
+    span_start: i64,
+    occurrence: Option<OccurrenceId>,
+) -> Rc<UsageAccum> {
+    if names_a_binding(binding_kind.clone()) {
+        record_use_at(
+            accum,
+            name,
+            kind,
+            site,
+            binding_kind.clone(),
+            span_start,
+            occurrence,
+        )
+    } else {
+        accum.clone()
     }
 }
 
@@ -430,22 +451,24 @@ pub fn walk_expr(
             } => {
                 let n = crate::v1_std_core::expr_var_name_at(texpr.clone(), si.clone());
                 if in_tail.clone() {
-                    record_use(
+                    record_var_use(
                         accum.clone(),
                         n.clone(),
                         EdgeKind::Consumed,
                         "return".to_string(),
                         bk.clone(),
                         texpr.span.start.clone(),
+                        std::option::Option::None,
                     )
                 } else {
-                    record_use(
+                    record_var_use(
                         accum.clone(),
                         n.clone(),
                         EdgeKind::Read,
                         "read".to_string(),
                         bk.clone(),
                         texpr.span.start.clone(),
+                        std::option::Option::None,
                     )
                 }
             }
@@ -461,13 +484,14 @@ pub fn walk_expr(
                             crate::v1_std_core::expr_var_name_at(base_node.clone(), si.clone());
                         let f =
                             crate::v1_std_core::field_access_field_at(texpr.clone(), si.clone());
-                        record_use(
+                        record_var_use(
                             accum.clone(),
                             vn.clone(),
                             EdgeKind::Projected,
                             v1_rt::concat(".".to_string(), f.clone()),
                             bk.clone(),
                             texpr.span.start.clone(),
+                            std::option::Option::None,
                         )
                     }
                     _ => walk_expr(accum.clone(), base_node.clone(), false, si.clone()),
@@ -509,13 +533,14 @@ pub fn walk_expr(
                                             ia_val.clone(),
                                             si.clone(),
                                         );
-                                        record_use(
+                                        record_var_use(
                                             called.clone(),
                                             vn.clone(),
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
                                             ia_val.span.start.clone(),
+                                            std::option::Option::None,
                                         )
                                     }
                                     _ => {
@@ -592,13 +617,14 @@ pub fn walk_expr(
                                             ia_val.clone(),
                                             si.clone(),
                                         );
-                                        record_use(
+                                        record_var_use(
                                             recv_accum.clone(),
                                             vn.clone(),
                                             EdgeKind::Threaded,
                                             "fold_init".to_string(),
                                             bk.clone(),
                                             ia_val.span.start.clone(),
+                                            std::option::Option::None,
                                         )
                                     }
                                     _ => walk_expr(
@@ -829,7 +855,7 @@ pub fn walk_call_argument(
     match (*arg.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: bk, ..
-        } => record_use_at(
+        } => record_var_use(
             accum.clone(),
             crate::v1_std_core::expr_var_name_at(arg.clone(), si.clone()),
             EdgeKind::PassedByValue,
@@ -870,34 +896,10 @@ pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
             }
         } else {
             if (sc.clone() > 1) {
-                {
-                    let sites = Rc::new({
-                        let mut __result = Vec::new();
-                        for c in Rc::new({
-                            let mut __result = Vec::new();
-                            for c in usage.consumers.clone().iter().cloned() {
-                                if match c.kind.clone() {
-                                    EdgeKind::Consumed => true,
-                                    _ => false,
-                                } {
-                                    __result.push(c);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.push(c.site.clone());
-                        }
-                        __result
-                    });
-                    Rc::new(OwnershipDecision::SharedError {
-                        binding: usage.name.clone(),
-                        consumer_count: sc.clone(),
-                        sites: sites.clone(),
-                    })
-                }
+                Rc::new(OwnershipDecision::Unclassified {
+                    binding: usage.name.clone(),
+                    reason: "consumed at more than one exit".to_string(),
+                })
             } else {
                 Rc::new(OwnershipDecision::Unclassified {
                     binding: usage.name.clone(),

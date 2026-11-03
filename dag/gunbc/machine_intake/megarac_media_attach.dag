@@ -1576,9 +1576,11 @@ fn unread_code_on_the_evidenced_release(unread: MegaRacRedirectionUnread) -> Boo
 // WHY AN UNREAD ROW WAS NOT STOPPED, ONE ARM PER CONDITION, checked in this order so the refusal names the
 // first condition that failed rather than a disjunction of them. The order runs from the read itself (a
 // readiness look never writes; the release must be the evidenced one) to the row (named, not the wanted
-// image, recognised as this lane's). Boot run 40070230626 refused on the release arm -- its controller is
-// admitted as 0.32 under gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation
-// -- while the text it printed named the image as foreign; that is the defect these arms remove.
+// image, recognised as this lane's). Boot run 40070230626 refused on the release arm -- its controller was
+// then admitted as 0.32 under
+// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation, the drop the
+// 2026-11-01 cutover retired -- while the text it printed named the image as foreign; that is the defect
+// these arms remove.
 type UnreadRowStopRefusal
   = UnreadStopOnReadOnlyLook
   | UnreadStopReleaseNotEvidenced { unread: MegaRacRedirectionUnread }
