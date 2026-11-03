@@ -138,6 +138,39 @@ data newline_minus_after_if_source: String = "module probe.nl_minus\n\nfn probe_
 
 fn newline_minus_after_if_parses() -> Bool { g_parse_accepted(text: newline_minus_after_if_source, file: ^nl_minus_probe) }
 
+// SITE DIAGNOSTICS (temporary; cc2-15695c-acb4 measured newline_minus_after_if_parses_holds
+// FAIL at acb4c89c -- the text refuses somewhere, and the engine datum says the infix guard
+// CANNOT abort (parse_expr_infix_continue: guard-reject ends the table cleanly). These arms
+// localize the refusing site; the battery collapses to one assertion once the site is known.)
+// D1: the if-block form alone -- does the if production stop at its block when the NEXT line
+// starts with `-`?
+data nl_minus_if_only_source: String = "module probe.nl_minus_if\n\nfn probe_nl(c: Bool, x: Int, y: Int) -> Int {\n  if c { x }\n -y\n}\n"
+
+fn nl_minus_if_block_form_parses() -> Bool {
+  match g_parse_at_production(text: nl_minus_if_only_source, file: ^nl_minus_if_probe, production: ^dag_production_if_expr) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// D2: the condition alone -- does the condition chain stop at `c` (bare) on this text?
+fn nl_minus_condition_is_bare_c() -> Bool {
+  match g_parse_at_production(text: nl_minus_if_only_source, file: ^nl_minus_if_probe, production: ^dag_production_condition_expr) {
+    Absent => false
+    Present { value: cond } => g_count_production(root: cond, emitted: ^dag_surface_primary_expr) == 1
+  }
+}
+
+// D3: a unary-minus statement with no if at all -- is the statement itself admissible?
+data unary_stmt_only_source: String = "module probe.unary_only\n\nfn probe_u(x: Int, y: Int) -> Int {\n  x\n -y\n}\n"
+
+fn unary_minus_statement_parses() -> Bool { g_parse_accepted(text: unary_stmt_only_source, file: ^unary_only_probe) }
+
+// D4: newline statement tail WITHOUT minus -- isolates the minus from the line break.
+data newline_tail_no_minus_source: String = "module probe.nl_tail\n\nfn probe_nl(c: Bool, x: Int, y: Int) -> Int {\n  if c { x }\n y\n}\n"
+
+fn newline_tail_without_minus_parses() -> Bool { g_parse_accepted(text: newline_tail_no_minus_source, file: ^nl_tail_probe) }
+
 fn labeled_call_block_condition_still_parses() -> Bool { g_parse_accepted(text: labeled_call_block_condition_source, file: ^cond_labeled_call_probe) }
 
 fn paren_record_condition_still_parses() -> Bool { g_parse_accepted(text: paren_record_condition_source, file: ^paren_record_probe) }
@@ -259,6 +292,14 @@ test fn record_call_arg_still_parses_holds() -> Bool { record_call_arg_still_par
 test fn dotcond_with_tail_parses_holds() -> Bool { dotcond_with_tail_parses() }
 
 test fn newline_minus_after_if_parses_holds() -> Bool { newline_minus_after_if_parses() }
+
+test fn nl_minus_if_block_form_parses_holds() -> Bool { nl_minus_if_block_form_parses() }
+
+test fn nl_minus_condition_is_bare_c_holds() -> Bool { nl_minus_condition_is_bare_c() }
+
+test fn unary_minus_statement_parses_holds() -> Bool { unary_minus_statement_parses() }
+
+test fn newline_tail_without_minus_parses_holds() -> Bool { newline_tail_without_minus_parses() }
 
 test fn labeled_call_block_condition_still_parses_holds() -> Bool { labeled_call_block_condition_still_parses() }
 
