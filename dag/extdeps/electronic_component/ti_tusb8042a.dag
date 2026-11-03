@@ -56,7 +56,7 @@ data tusb8042a_rgc: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "TUSB8042A",
   package: "VQFN (RGC), 64 pins",
-  top_marking: "TUSB8042A",
+  top_marking: Present { value: "TUSB8042A" },
   specification: UsbHubSpec { hub: UsbHubSpecification {
     downstream_ports: 4,
     upstream_ports: 1,

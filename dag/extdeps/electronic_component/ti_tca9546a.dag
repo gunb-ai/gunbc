@@ -58,7 +58,7 @@ data tca9546a_pw: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "TCA9546APWR",
   package: "TSSOP (PW), 16 pins",
-  top_marking: "PW546A",
+  top_marking: Present { value: "PW546A" },
   specification: BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification {
     channels: 4,
     // One candidate per channel: this is a 1:1 translating switch per bus, not a 2:1 mux. It is the

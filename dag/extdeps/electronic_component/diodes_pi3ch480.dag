@@ -17,21 +17,27 @@ import extdeps.electronic_component.types { BusMultiplexerSpec, BusMultiplexerSp
 // pad tied to GND. Four channels, each choosing between two inputs: that is what the pin names say, and it
 // is what the specification below carries.
 //
-// WHY OUR BOARDS' U66, U67, U535 AND U536 POINT HERE. All four are marked "PI3CH" over "480QE" over a
-// traceability code (the readings are on the observation side, product.p4261.e1_b, each citing its frame and
-// box). "PI3CH480" is the part number; the "QE" line is the package/finish code, which matches the Q (QSOP)
-// orderable PI3CH480QEX rather than the LEX or ZHDEX.
+// WHERE THE BOARD OBSERVATIONS LIVE. The four bodies this repository holds were read as "PI3CH" over
+// "480QE" over a traceability code. Those are observations THIS REPOSITORY made, so they are receipts on
+// the observing side -- product.p4261.e1_b records each as an InstalledComponent's MarkingReading, citing
+// the frame and the box it was read from -- and not facts of this module (DESIGN §3). What this module
+// contributes is the document's half of the match: "PI3CH480" is the part number this document publishes,
+// and "QE" is the package/finish field of its ordering code, whose Q entry is the QSOP-16 body listed as
+// PI3CH480QEX.
 //
-// WHAT THIS ROW OWES A RE-READ. Two things, both named rather than papered over. (1) The data sheet's
-// customer-marking table did not extract legibly with the tool available here -- its runs are set in a font
-// this extractor cannot decode -- so `top_marking` below records what is PRINTED ON OUR BODIES, not a
-// manufacturer's marking table read from the document. Closing this means reading that table and either
-// confirming "PI3CH480QE" or correcting the row. (2) The package attribution to QSOP rests on the "QE" line
-// and on the body style, not on a marking table; if the re-read says the TSSOP (LEX) part carries the same
-// mark, this row becomes one of a constrained set (PopulatedPart.PartConstrainedToRows) rather than a single
-// row. The prose sections (description, features) are in the same undecodable font, so nothing is quoted
-// from them; the two sentences under `vendor_application_statements` are the enable description, which DID
-// extract, reassembled across the column break in the pin table.
+// WHAT THIS ROW OWES A RE-READ, AND WHERE THAT IS CARRIED. Two things, both named rather than papered
+// over. Both are coverage obligations on the CLAIMS that use this row, carried in their TranscribedUncited
+// standing in extdeps.nvidia.p4261.population (the four e1_part_owing rows name them), not properties of
+// this upstream row. (1) This document's customer-marking table has NOT been read: its runs are set in a
+// font the extractor available here cannot decode. So `top_marking` below is `Absent` -- a row states a
+// mark only where the cited document publishes one, never what our own bodies print -- and closing the gap
+// means reading that table and filling the field, or correcting the row. (2) The attribution to the Q
+// (QSOP) body rests on the ordering-code field and on the observed body style, not on a marking table; if
+// the re-read shows the TSSOP (LEX) part carries the same mark, the four positions become one of a
+// constrained set (PopulatedPart.PartConstrainedToRows) rather than this single row. The prose sections
+// (description, features) are in the same undecodable font, so nothing is quoted from them; the two
+// sentences under `vendor_application_statements` are the enable description, which DID extract,
+// reassembled across the column break in the pin table.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -55,7 +61,7 @@ data pi3ch480_qex: ElectronicComponentRow = ElectronicComponentRow {
   vendor: diodes_incorporated,
   ordering_code: "PI3CH480QEX",
   package: "QSOP-16 (Q), 150 mil body; exposed pad tied to GND",
-  top_marking: "PI3CH480QE (as printed on our four bodies; the data sheet's marking table is unread, see above)",
+  top_marking: Absent,
   specification: BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification {
     channels: 4,
     inputs_per_channel: 2,

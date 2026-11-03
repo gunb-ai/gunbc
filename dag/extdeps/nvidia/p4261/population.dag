@@ -114,6 +114,25 @@ fn e1_part(designator: NonEmptyStr, row: ElectronicComponentRow) -> P4261DesignP
   reconstructed(revision: p4261_e1, designator: designator, part: PartRow { row: row })
 }
 
+// A claim can owe more than NVIDIA's bill of materials. Where the vendor's own document left a table
+// unread, the gap is carried HERE -- on the reconstruction that uses the row -- and not as a placeholder
+// inside the upstream row (DESIGN §3: an unread source is a downstream coverage obligation). The four
+// PI3CH480 positions are the case today: this document's customer-marking table did not extract, so the
+// row publishes no mark and the Q-body attribution rests on the ordering-code field and the observed body.
+fn e1_part_owing(designator: NonEmptyStr, row: ElectronicComponentRow, owes: NonEmptyStr) -> P4261DesignPosition {
+  P4261DesignPosition {
+    position: p4261_position(revision: p4261_e1, designator: designator),
+    population: Present { value: PopulationClaim {
+      part: PartRow { row: row },
+      standing: TranscribedUncited { read_obligation: join([bom_obligation(revision: p4261_e1, designator: designator) as String, "; and ", owes as String], "") as NonEmptyStr },
+    } },
+  }
+}
+
+fn pi3ch480_marking_table_obligation() -> NonEmptyStr {
+  "read the customer-marking table of Diodes Incorporated's PI3CH480 data sheet (Document Number DS40329 Rev 5.2, December 2021) and either publish the mark it gives on extdeps.electronic_component.diodes_pi3ch480.pi3ch480_qex or correct that row, and confirm the Q (QSOP-16) entry rather than the L (TSSOP-16) or ZD (UQFN 3x3) one"
+}
+
 fn e1_unclaimed(designator: NonEmptyStr) -> P4261DesignPosition {
   unclaimed(revision: p4261_e1, designator: designator)
 }
@@ -331,8 +350,8 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   e1_unclaimed(designator: "U60_P2"),
   e1_part(designator: "U48", row: sn74lv165a_pw),
   e1_part(designator: "U86", row: sn74lv165a_pw),
-  e1_part(designator: "U66", row: pi3ch480_qex),
-  e1_part(designator: "U67", row: pi3ch480_qex),
+  e1_part_owing(designator: "U66", row: pi3ch480_qex, owes: pi3ch480_marking_table_obligation()),
+  e1_part_owing(designator: "U67", row: pi3ch480_qex, owes: pi3ch480_marking_table_obligation()),
   e1_unclaimed(designator: "Q1_2"),
   e1_unclaimed(designator: "D3_3"),
   e1_unclaimed(designator: "Q1_3"),
@@ -384,8 +403,8 @@ data p4261_e1_positions: List<P4261DesignPosition> = [
   e1_unclaimed(designator: "Q9_P2"),
   e1_unclaimed(designator: "Q11_P2"),
   e1_unclaimed(designator: "Q12_P2"),
-  e1_part(designator: "U535", row: pi3ch480_qex),
-  e1_part(designator: "U536", row: pi3ch480_qex),
+  e1_part_owing(designator: "U535", row: pi3ch480_qex, owes: pi3ch480_marking_table_obligation()),
+  e1_part_owing(designator: "U536", row: pi3ch480_qex, owes: pi3ch480_marking_table_obligation()),
   e1_unclaimed(designator: "Q2_2"),
   e1_unclaimed(designator: "U4_2"),
   e1_unclaimed(designator: "D3_5"),

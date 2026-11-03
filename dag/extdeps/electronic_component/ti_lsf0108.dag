@@ -71,7 +71,7 @@ data lsf0108_pw: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "LSF0108PWR",
   package: "TSSOP (PW), 20 pins",
-  top_marking: "LSF0108",
+  top_marking: Present { value: "LSF0108" },
   specification: LevelTranslatorSpec { translator: LevelTranslatorSpecification {
     channels: 8,
     supply_a: MillivoltRange { minimum: millivolt(count: 950), maximum: millivolt(count: 5500) },

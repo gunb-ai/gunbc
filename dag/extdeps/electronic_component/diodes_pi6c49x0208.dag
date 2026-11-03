@@ -59,7 +59,7 @@ data pi6c49x0208_zhie: ElectronicComponentRow = ElectronicComponentRow {
   vendor: diodes_incorporated,
   ordering_code: "PI6C49X0208ZHIEX",
   package: "W-QFN5050-32 (ZH), 32 pins",
-  top_marking: "PI6C49X / 0208ZHIE / YYWWXX",
+  top_marking: Present { value: "PI6C49X / 0208ZHIE / YYWWXX" },
   specification: ClockFanoutSpec { clock: ClockFanoutSpecification {
     inputs: 3,
     outputs: 8,

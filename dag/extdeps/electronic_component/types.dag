@@ -506,11 +506,17 @@ type ClockFanoutSpecification {
   pins: List<NonEmptyStr>?
 }
 
+/// The manufacturer's own top mark, as the cited document PUBLISHES it (its marking table, orderable
+/// information, or marking figure). `Absent` means the cited document's marking table has not been read
+/// -- it is never filled with what this repository's own bodies print: an observation this repository
+/// makes is a receipt in the observing layer (product.electrical.identification's MarkingReading, or the
+/// board's per-position receipts), and the unread table is a coverage obligation carried by the claim
+/// that uses the row, naming the document and the table to read (DESIGN §3).
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
   ordering_code: NonEmptyStr
   package: NonEmptyStr
-  top_marking: NonEmptyStr
+  top_marking: NonEmptyStr?
   specification: ComponentSpecification
   vendor_application_statements: List<NonEmptyStr>
 }

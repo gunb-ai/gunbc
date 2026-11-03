@@ -38,7 +38,7 @@ data sn74lv165a_pw: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "SN74LV165APWR",
   package: "TSSOP-16 (PW)",
-  top_marking: "LV165A",
+  top_marking: Present { value: "LV165A" },
   specification: ShiftRegisterSpec { register: ShiftRegisterSpecification {
     bits: 8,
     supply: MillivoltRange { minimum: millivolt(count: 2000), maximum: millivolt(count: 5500) },

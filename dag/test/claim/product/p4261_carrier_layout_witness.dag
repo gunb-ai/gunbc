@@ -810,7 +810,7 @@ fn low_can_row() -> ElectronicComponentRow {
     vendor: eeh_zu1j151.vendor,
     ordering_code: "supplied 16 V can",
     package: "supplied",
-    top_marking: "supplied",
+    top_marking: Present { value: "supplied" },
     specification: CapacitorSpec { capacitor: CapacitorSpecification { capacitance_microfarads: 100, rated_voltage: volt(count: 16) } },
     vendor_application_statements: [],
   }

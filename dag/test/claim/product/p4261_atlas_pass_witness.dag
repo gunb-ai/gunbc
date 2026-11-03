@@ -37,15 +37,19 @@ import product.electrical.identification {
   IdentifiedByMarking,
   InstalledComponent,
   MarkingCandidate,
+  MarkingReading,
   MarkingUnresolved,
 }
 import extdeps.nvidia.p4261.population {
   PopulatedPart,
+  PopulationClaim,
   PartRow,
   p4261_e1_positions,
   p4261_k1_positions,
   p4261_position_at,
 }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.electronic_component.diodes_pi3ch480 { pi3ch480_qex }
 import extdeps.electronic_component.types { designator_eq, designator_of, designator_text }
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
 import product.p4261.e1_position_receipts {
@@ -388,4 +392,51 @@ test fn no_component_instance_is_recorded_twice() -> Bool {
   p4261_e1_layout.components.all(c =>
     count(filter(p4261_e1_layout.components, d =>
       component_identity_eq(a: c.component, b: d.component))) == 1)
+}
+
+
+// ─── an unread vendor table is an obligation, never an upstream fact (review 90420) ──────────────
+/// Piece 3's fifth control, asked for by review 90420. DESIGN §3: "Observations this repository makes
+/// are receipts in the observing layer, not facts of the observed upstream; a missing observation is a
+/// downstream coverage obligation, never an `Unobserved` property inside the upstream module." The
+/// PI3CH480 data sheet's customer-marking table could not be read here, so the row must publish NO mark,
+/// the read obligation must sit on the four claims that use the row, and the print our bodies carry must
+/// sit on the observing side. Pinned all three ways; `a_candidate_never_became_an_identification` covers
+/// the other four new rows, whose marking tables WERE read and whose marks are therefore published.
+fn pi3ch480_positions() -> List<NonEmptyStr> {
+  ["U66", "U67", "U535", "U536"]
+}
+
+fn claim_obligation(d: NonEmptyStr) -> NonEmptyStr? {
+  match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
+    Present { value: p } => match p.population {
+      Present { value: PopulationClaim { standing: TranscribedUncited { read_obligation: o } } } => Present { value: o }
+      _ => Absent { }
+    }
+    Absent { } => Absent { }
+  }
+}
+
+fn print_is_an_observing_receipt(d: NonEmptyStr) -> Bool {
+  count(component_rows(d), c => match c.identification {
+    IdentifiedByMarking { marking: MarkingReading { text: t, evidence: OperatorPhotograph { citation } } } =>
+      (t as String).contains("PI3CH")
+        && match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
+             Checkable { } => true
+             _ => false
+           }
+    _ => false
+  }) == 1
+}
+
+test fn an_unread_vendor_table_is_a_downstream_obligation() -> Bool {
+  match pi3ch480_qex.top_marking {
+    Present { value: _ } => false
+    Absent { } => true
+  }
+    && all(pi3ch480_positions(), d => match claim_obligation(d: d) {
+         Present { value: o } => (o as String).contains("customer-marking table")
+         Absent { } => false
+       })
+    && all(pi3ch480_positions(), d => print_is_an_observing_receipt(d: d))
 }
