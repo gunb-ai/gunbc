@@ -10,6 +10,8 @@ import std.measure {
   volt,
 }
 import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_e1_b }
+import product.electrical.photograph { BytesNotInStore }
+import std.optional { Absent, Present }
 import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_10cx085yf672e6g }
 import extdeps.electronic_component.microchip_cec1736 { cec1736 }
 import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
@@ -243,8 +245,23 @@ fn e1_component(local: NonEmptyStr) -> ComponentInstanceIdentity {
   component_instance_identity(design: e1_design, local_identity: local)
 }
 
-fn e1_photo(taken_on: NonEmptyStr, locator: NonEmptyStr) -> EvidenceRef {
-  OperatorPhotograph { taken_on: taken_on, locator: locator }
+// Every frame the 2026-10-15 to 11-01 bench sessions sent into the chat is cited as a gap: the date and the
+// locator are what the session recorded, and the bytes never reached the store, so nothing here can say a
+// reading is checkable against them. The obligation names what would -- re-supply the upload, hash it into
+// product.p4261.e1_photographs, and repoint the citation at the row. No digest is guessed: a hash nobody
+// computed would make an unverifiable reading look verifiable, which is the one thing this is for.
+data e1_unstored_bytes_obligation: NonEmptyStr = "the operator re-supplies the frame from the originating session's uploads; it is hashed into product.p4261.e1_photographs and this citation repoints at the stored row"
+
+// A citation of a frame whose bytes the store does not hold. Named for what it is, so a reader of a receipt
+// sees the gap at the call site and not only in the type.
+fn e1_unstored_photo(taken_on: NonEmptyStr, locator: NonEmptyStr) -> EvidenceRef {
+  OperatorPhotograph {
+    citation: BytesNotInStore {
+      taken_on: taken_on,
+      locator: locator,
+      obligation: e1_unstored_bytes_obligation,
+    }
+  }
 }
 
 data e1_j20: ComponentInstanceIdentity = e1_component(local: "J20")
@@ -299,7 +316,7 @@ data e1_j20_housing: ConnectorHousing = ConnectorHousing {
   component: e1_j20,
   positions: concat(j20_row(side: latch_side()), j20_row(side: away_side())),
   coverage: EveryPositionMapped,
-  sides_evidence: e1_photo(taken_on: "2026-10-16", locator: "J20 photograph annotated RAIL (row by F1 and D2) and GROUND (latch-side row), sent in the session"),
+  sides_evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "J20 photograph annotated RAIL (row by F1 and D2) and GROUND (latch-side row), sent in the session"),
 }
 
 fn e1_terminal(c: ComponentInstanceIdentity, name: NonEmptyStr) -> ElectricalTerminalRef {
@@ -495,9 +512,9 @@ data e1_ground_ring: ComponentInstanceIdentity = e1_component(local: "copper mou
 
 data e1_01b: ComponentInstanceIdentity = e1_component(local: "01B resistor below D5_P5 (back side)")
 
-data e1_back_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "https://drive.google.com/open?id=1dENn7_kYwOHHLdflkGU4gxcwa-cmTh2r (back side behind U1_P5, the pin 7 pad arrowed)")
+data e1_back_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-19", locator: "https://drive.google.com/open?id=1dENn7_kYwOHHLdflkGU4gxcwa-cmTh2r (back side behind U1_P5, the pin 7 pad arrowed)")
 
-data e1_u1_closeup_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "https://drive.google.com/open?id=1xNIV61IHgIy_s8mNq_z1D9KYJaciscui (U1_P5 close-up, the pin 1 triangle at the top left)")
+data e1_u1_closeup_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-19", locator: "https://drive.google.com/open?id=1xNIV61IHgIy_s8mNq_z1D9KYJaciscui (U1_P5 close-up, the pin 1 triangle at the top left)")
 
 data e1_twenty_k_hedge: StatementCertainty = StatedHedged { verbatim: "i think 20kohm yeah" }
 
@@ -722,7 +739,7 @@ data e1_rp1: ComponentInstanceIdentity = e1_component(local: "RP1: round pad wit
 
 data e1_rp1_pad: ElectricalTerminalRef = e1_terminal(c: e1_rp1, name: "pad")
 
-data e1_rp1_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload c8eee6bb, U1_P5 with the second wire; RP1 circled in the reply (not on Drive)")
+data e1_rp1_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-19", locator: "bench-session upload c8eee6bb, U1_P5 with the second wire; RP1 circled in the reply (not on Drive)")
 
 data e1_rp1_resistances: List<ResistanceObservation> = [
   e1_wire_read(to: e1_rp1_pad, record: second_point_inferred(basis: "'its the circle you pointed to': the ringed point asked about, which the wire read near zero to"), polarity: PolarityUnrecorded, placed: [], range: RangeUnrecorded, display: DisplayZeroWithoutBaseline { reported: "its the circle you pointed to" }, certainty: StatedPlainly, said: "the two boards seem electrically different here: on the E1, its the circle you pointed to"),
@@ -776,7 +793,7 @@ data e1_w2_resistances: List<ResistanceObservation> = [
 // between leads 1 and 10.
 data e1_leads_said: NonEmptyStr = "pin 7 is 0v, pin 8 is ~1.8v"
 
-data e1_leads_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 64ce6dce, U1_P5 upright and straight down, no wire, leads 1 to 14 of the left-hand row (not on Drive)")
+data e1_leads_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-19", locator: "bench-session upload 64ce6dce, U1_P5 upright and straight down, no wire, leads 1 to 14 of the left-hand row (not on Drive)")
 
 data e1_pin7_return_said: NonEmptyStr = "ok so basically, when black is on p7 ,and red is on J20ground, I see ~535, and reverse its >2k"
 
@@ -824,7 +841,7 @@ data e1_w4_said: NonEmptyStr = "ok i got a wire on pin 7 - it reads 11k to groun
 
 data e1_back_cluster: ComponentInstanceIdentity = e1_component(local: "bare pad cluster on the back beside Q5_P5 and D5_P5, behind U1_P5 (pads P1 to P10 as labelled)")
 
-data e1_back_cluster_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 75c33d9a, the back behind U1_P5 with P5 to P7 circled; labelled crop e1_back_pads_labeled (not on Drive)")
+data e1_back_cluster_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-19", locator: "bench-session upload 75c33d9a, the back behind U1_P5 with P5 to P7 circled; labelled crop e1_back_pads_labeled (not on Drive)")
 
 data e1_back_pads_said: NonEmptyStr = "I got a reading of 0 ohms to these three pads , everything else is consistent - to the known pin 8 pad is 16k, ground is still 12k"
 
@@ -915,7 +932,7 @@ data e1_q300_lone_lead: ElectricalTerminalRef = e1_terminal(c: e1_q300, name: "l
 
 data e1_q300_lead_a: ElectricalTerminalRef = e1_terminal(c: e1_q300, name: "lead a: two-lead side, away from the silkscreen triangle")
 
-data e1_k38_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 42ffb97b, Q300 and Q301 both marked K38, and the resistor beside Q301 with its marking, first read as 180 (not on Drive)")
+data e1_k38_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-19", locator: "bench-session upload 42ffb97b, Q300 and Q301 both marked K38, and the resistor beside Q301 with its marking, first read as 180 (not on Drive)")
 
 // Q300 and Q301 carry 'K38', Diodes Incorporated's BSS138 product marking code (DS30144). Another maker
 // may use the same code, and the photograph shows no date-code line, so the identification is a
@@ -927,7 +944,7 @@ data e1_k38_candidate: ComponentIdentification = MarkingCandidate {
   discriminator: "the maker's date-code line, or another maker's marking table, read against Diodes Incorporated's BSS138 table",
 }
 
-data e1_q300_q301_photo: EvidenceRef = e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 9d88e42f, Q300 and Q301 on the back; leads labelled in the crop q300_q301_labeled (not on Drive)")
+data e1_q300_q301_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-19", locator: "bench-session upload 9d88e42f, Q300 and Q301 on the back; leads labelled in the crop q300_q301_labeled (not on Drive)")
 
 data e1_q300_q301_said: NonEmptyStr = "Q301-a J20black: 0ohm, Q301-b to Q300 lone: 0.00ohm, Q300-a to J20 black: 0.00ohm"
 
@@ -952,8 +969,8 @@ data e1_route_toward_j1: ElectricalTerminalRef = e1_terminal(c: e1_component(loc
 data e1_route_said: NonEmptyStr = "Z2: the R other end traces back to this thing on the front - it also traces back towards J1 (2k ohms - 0 ohms until ~U2_P5) - I think there are two sides, one is the normal backplane -> j1, and one is towards j20"
 
 data e1_route_photos: List<EvidenceRef> = [
-  e1_photo(taken_on: "2026-10-19", locator: "bench-session upload a965dc18, the front under Q21_P5 / Q22_P5 with the far end's route drawn toward D5 (not on Drive)"),
-  e1_photo(taken_on: "2026-10-19", locator: "bench-session upload 1cad7388, the front's left edge with the far end's route drawn past U2_P5 toward U1_TSE and J1 (not on Drive)"),
+  e1_unstored_photo(taken_on: "2026-10-19", locator: "bench-session upload a965dc18, the front under Q21_P5 / Q22_P5 with the far end's route drawn toward D5 (not on Drive)"),
+  e1_unstored_photo(taken_on: "2026-10-19", locator: "bench-session upload 1cad7388, the front's left edge with the far end's route drawn past U2_P5 toward U1_TSE and J1 (not on Drive)"),
 ]
 
 fn e1_route_read(to: ElectricalTerminalRef, display: ResistanceDisplay, certainty: StatementCertainty) -> ResistanceObservation {
@@ -1029,7 +1046,7 @@ data e1_q300_lead_b: ElectricalTerminalRef = e1_terminal(c: e1_q300, name: "lead
 
 data e1_zb_baseline_said: NonEmptyStr = "ZB0: .005 / ZB0: .03 or something at 2k"
 
-data e1_resistor_marking_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session upload 40bc2a29, Q300, Q301 and the resistor between them; the resistor's marking enlarged in the reply, and the points V3 and ZV2 marked (not on Drive)")
+data e1_resistor_marking_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session upload 40bc2a29, Q300, Q301 and the resistor between them; the resistor's marking enlarged in the reply, and the points V3 and ZV2 marked (not on Drive)")
 
 fn e1_zb_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, display: ResistanceDisplay, said: NonEmptyStr) -> ResistanceObservation {
   ResistanceObservation {
@@ -1070,7 +1087,7 @@ data e1_u51_pins_said: NonEmptyStr = "reading all of these on 20k ohms: 8: 2.5 /
 
 data e1_u51_swapped_said: NonEmptyStr = "ZB15: at 20k, red on pin 8, black on Q300: 1800 ohms / R4b: 2.5k ohms"
 
-data e1_u51_pins_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session upload, U51 with its pins numbered 1 to 8 along the row nearer Q300's trace in the crop u51_pins (not on Drive)")
+data e1_u51_pins_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session upload, U51 with its pins numbered 1 to 8 along the row nearer Q300's trace in the crop u51_pins (not on Drive)")
 
 fn e1_u51_pin(n: NonEmptyStr) -> ElectricalTerminalRef {
   e1_terminal(c: e1_u51, name: n)
@@ -1181,7 +1198,7 @@ data e1_u55_resistances: List<ResistanceObservation> = concat([
   e1_u55_read(a: e1_u55_right_pad, b: e1_u55_pin(n: "pin 8"), display: DisplayOverRange, certainty: StatedPlainly),
 ], map(e1_u55_data_ports, n => e1_u55_read(a: e1_q300_lead_b, b: e1_u55_pin(n: n), display: DisplayValue { ohms: 1500, approximate: true }, certainty: StatedHedged { verbatim: "most of these are all 1500" })))
 
-data e1_u55_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads de4b3131, a5fed232, 19a48d02 and 6320a44a: U55 beside U92 and U93 with the FCC mark and MODEL:P4261 below, the triangle at its left, two bare pads under it; the marking 'ZVK' over '22J' legible in the last (not on Drive)")
+data e1_u55_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads de4b3131, a5fed232, 19a48d02 and 6320a44a: U55 beside U92 and U93 with the FCC mark and MODEL:P4261 below, the triangle at its left, two bare pads under it; the marking 'ZVK' over '22J' legible in the last (not on Drive)")
 
 // THE FRONT-SIDE 500 OHM CHAIN, U43, Y50 AND U500 (2026-10-20, unpowered, 2k range, red on Q300's lead b).
 // Following the gate network on the front, the operator finds a run of points that each read about
@@ -1220,7 +1237,7 @@ data e1_u43_leads: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin
 
 data e1_y50_pads: List<NonEmptyStr> = ["pad 1", "pad 2", "pad 3", "pad 4"]
 
-data e1_u500_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads be91d8be, the pair 29/30, 2cecb409 and 488510ac: Y50 ('T327K / EV13'), U500 ('FZ' over 'YY', a corner dot, eight contacts), U43 above with its triangle, the small resistor and capacitor beside U43, the two-terminal part above U500 with a trace to U500's upper-right contact; the operator's 500 and 800 marks (not on Drive)")
+data e1_u500_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads be91d8be, the pair 29/30, 2cecb409 and 488510ac: Y50 ('T327K / EV13'), U500 ('FZ' over 'YY', a corner dot, eight contacts), U43 above with its triangle, the small resistor and capacitor beside U43, the two-terminal part above U500 with a trace to U500's upper-right contact; the operator's 500 and 800 marks (not on Drive)")
 
 // THE MODULE SITE (2026-10-20). J3 and J4 are the carrier's two module receptacles, the long
 // high-density connectors the module's two mate with. U3 is a six-lead small-outline part on the back,
@@ -1247,7 +1264,7 @@ data e1_u3: ComponentInstanceIdentity = e1_component(local: "U3")
 // the Intel logo, so the row is identified, not a candidate. Its 672 balls are not named as terminals.
 data e1_u4: ComponentInstanceIdentity = e1_component(local: "U4")
 
-data e1_u4_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session uploads e39a6d7c (U4 with its neighbours: 4R7 and 2R2 inductors, U10_P2, U9_P2, Q6_P2, U100 above; U21, Q1_2, U108, Y2 and Y361 around) and ddbe372b (the marking close up: intel / Cyclone 10 / 10CX085YF672E6G / P CBABF2243A / TAIWAN / S241AK47 / 305PA2U0D / e1) (not on Drive)")
+data e1_u4_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session uploads e39a6d7c (U4 with its neighbours: 4R7 and 2R2 inductors, U10_P2, U9_P2, Q6_P2, U100 above; U21, Q1_2, U108, Y2 and Y361 around) and ddbe372b (the marking close up: intel / Cyclone 10 / 10CX085YF672E6G / P CBABF2243A / TAIWAN / S241AK47 / 305PA2U0D / e1) (not on Drive)")
 
 data e1_u4_heatsink_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-21", verbatim: "basically the plastic clips are very easy to push in put kind of expand and will not pull out no matter what i tried / The pad ripped so I scraped it and cleaned it off the heatsink, I have plenty of thermal paste here / Sorry - I put the heatsink on already, do you want me to take it off again?" }
 
@@ -1292,7 +1309,7 @@ data e1_j24_positions: List<NonEmptyStr> = ["A1", "A2", "A3 (keyed; read at the 
 // pitch and never a connector-standard match; a caliper span replaces it.
 data e1_j24_pitch: PhotographicSpan = PhotographicSpan { along_row_tenths_mm: 13, between_rows_tenths_mm: 25, tolerance_tenths_mm: 3, basis: e1_j24_tape_photo }
 
-data e1_j24_tape_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session uploads 3667d943 (J24 close, the tape along the board edge below it) and 2939aa04 (both carriers side by side, the tape along the gap, J24 near its 6 3/4 inch mark) (not on Drive)")
+data e1_j24_tape_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session uploads 3667d943 (J24 close, the tape along the board edge below it) and 2939aa04 (both carriers side by side, the tape along the gap, J24 near its 6 3/4 inch mark) (not on Drive)")
 
 data e1_j24_said: NonEmptyStr = "A3 doesn't help much with numbering because, its in the middle and the pin is symettric - so, the pin innermost to the board on the A3 column (row?) is A1 - at 2k range: A1: 428 A2: 420 A3: 405 (plugged though - i'm reading at the base) A4: 405 A5: high B1: 485 B2: 484 B3: 484 B4: 484 B5: high"
 
@@ -1348,19 +1365,19 @@ data e1_ds1_2_resistances: List<ResistanceObservation> = [
   },
 ]
 
-data e1_j24_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session uploads 76936961 and 1d24f35f (the second with a tape measure along the board edge): J24, a two-row five-position shrouded female receptacle between J68 and U53 with the middle position of one row plugged as a key, nine live positions; U21, U69 and U53 (eight-lead parts) around it; U1_2, U100, the 4R7 and 2R2 inductors and the 330 capacitors above (not on Drive)")
+data e1_j24_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session uploads 76936961 and 1d24f35f (the second with a tape measure along the board edge): J24, a two-row five-position shrouded female receptacle between J68 and U53 with the middle position of one row plugged as a key, nine live positions; U21, U69 and U53 (eight-lead parts) around it; U1_2, U100, the 4R7 and 2R2 inductors and the 330 capacitors above (not on Drive)")
 
-data e1_erot_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session uploads db5163ea and 914927cc (U5_2 'CEC1736 / BAS723G / 2242QB1' with the Microchip logo; U3_2 and U2_2 '2NA17 / RW188', a third BGA '2RA17 / RW251'; Q1_2, U21, U69, U104, U105, DS1_2 around), dda6b3a6 (energized: DS1_2 lit beside U5_2, U1_TFP below, the DS1x group lit at the right), d0a17790 (unpowered: the U5_2 designator read plainly, DS1_2 below-right of it, Q1_2, U104, U1_TFP) and 52e248d1 (unpowered: U3_2 and U2_2 with their corner dots, the 'U39' label beside a small two-terminal part between them, U105, U104, DS1_2, DS7, and the lamp row labelled DS10, DS11, DS13, DS12) (not on Drive)")
+data e1_erot_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session uploads db5163ea and 914927cc (U5_2 'CEC1736 / BAS723G / 2242QB1' with the Microchip logo; U3_2 and U2_2 '2NA17 / RW188', a third BGA '2RA17 / RW251'; Q1_2, U21, U69, U104, U105, DS1_2 around), dda6b3a6 (energized: DS1_2 lit beside U5_2, U1_TFP below, the DS1x group lit at the right), d0a17790 (unpowered: the U5_2 designator read plainly, DS1_2 below-right of it, Q1_2, U104, U1_TFP) and 52e248d1 (unpowered: U3_2 and U2_2 with their corner dots, the 'U39' label beside a small two-terminal part between them, U105, U104, DS1_2, DS7, and the lamp row labelled DS10, DS11, DS13, DS12) (not on Drive)")
 
-data e1_j30_area_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session upload 5b324555: J30 (two pins seen, a third position beside them), U210, D7_P2, U483, U41 'PW546A / 26KG4 / C7HE', U22 'P617A / 01.14 / 226', U60_P2 with the 2R2 inductor, U145, Q2_P2, Q4_P2, D4_P2, U33, Q56, Y360, U67, U66, U44, U98, U14 (not on Drive)")
+data e1_j30_area_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session upload 5b324555: J30 (two pins seen, a third position beside them), U210, D7_P2, U483, U41 'PW546A / 26KG4 / C7HE', U22 'P617A / 01.14 / 226', U60_P2 with the 2R2 inductor, U145, Q2_P2, Q4_P2, D4_P2, U33, Q56, Y360, U67, U66, U44, U98, U14 (not on Drive)")
 
-data e1_j68_area_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session uploads 06062ffb and 4e89938f: J68 as a populated 2 x 5 header beside DS3 to DS6 (an orange and a green lamp lit), J24 (a keyed two-row five-position shrouded receptacle) beside U53, U1_TNE, U1_2, U21, U93, U95, U10_P2, U100, Q5_P2, Q6_P2, U2_P2, two 4R7 and one 1R0 inductors, three 330 capacitors; wider: J22 (two pins by the HF mark), U15, Q72, U50, U550, U551, U541, U540, U85, Q25, U140, S1, J540; and b63328ac (unpowered: J68's ten pins, the lamp row labelled DS3, DS4, DS5, DS6 left to right with J68 to their right, U95, U1_TNE, U71, U540, U550, U50, D6_P2, U70, J540's edge) (not on Drive)")
+data e1_j68_area_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session uploads 06062ffb and 4e89938f: J68 as a populated 2 x 5 header beside DS3 to DS6 (an orange and a green lamp lit), J24 (a keyed two-row five-position shrouded receptacle) beside U53, U1_TNE, U1_2, U21, U93, U95, U10_P2, U100, Q5_P2, Q6_P2, U2_P2, two 4R7 and one 1R0 inductors, three 330 capacitors; wider: J22 (two pins by the HF mark), U15, Q72, U50, U550, U551, U541, U540, U85, Q25, U140, S1, J540; and b63328ac (unpowered: J68's ten pins, the lamp row labelled DS3, DS4, DS5, DS6 left to right with J68 to their right, U95, U1_TNE, U71, U540, U550, U50, D6_P2, U70, J540's edge) (not on Drive)")
 
-data e1_blink_videos: EvidenceRef = OperatorPhotograph { taken_on: "2026-10-21", locator: "bench-session video uploads 563c426c (6.0 s, close on U5_2 and DS1_2) and 12b8c869 (15.9 s, from U4 to J68); measured frame by frame at 26.75 frames per second by colour-blob tracking, the heatsink fins excluded (not on Drive)" }
+data e1_blink_videos: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session video uploads 563c426c (6.0 s, close on U5_2 and DS1_2) and 12b8c869 (15.9 s, from U4 to J68); measured frame by frame at 26.75 frames per second by colour-blob tracking, the heatsink fins excluded (not on Drive)")
 
 data e1_u3_leads: List<NonEmptyStr> = ["upper-left lead", "upper-middle lead", "upper-right lead", "lower-right lead", "lower-middle lead", "lower-left lead"]
 
-data e1_module_site_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads 9da5383c (J4, H2, U4), 9cd281be (J3), 1749253a and fe0f5816 (U3 on the back below Q300 and Q301, with the pad group below it) and 376b5588 (U43, Y50 and U500 at the site's corner beside U51 and U49); e8c5473a and its repeat, the operator's 500 marks on the cluster beside J3 (not on Drive)")
+data e1_module_site_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads 9da5383c (J4, H2, U4), 9cd281be (J3), 1749253a and fe0f5816 (U3 on the back below Q300 and Q301, with the pad group below it) and 376b5588 (U43, Y50 and U500 at the site's corner beside U51 and U49); e8c5473a and its repeat, the operator's 500 marks on the cluster beside J3 (not on Drive)")
 
 data e1_site_clusters_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "both of the J3/J4 sites have similar clusters under them that both read 500 - there are many pins that i.e. read 500 in that cluster - do you need the exact? my goal isn't to build an exact netlist, unless we really have to -" }
 
@@ -1369,7 +1386,7 @@ data e1_site_clusters_said: EvidenceRef = OperatorStatement { stated_on: "2026-1
 // the photograph is on the lead), 500 ohm from Q300's lead b on the 2k range.
 data e1_u3_reference_said: NonEmptyStr = "that Q300 lead b to the U3 \"pad\" (I see a resistor) is 500ohms"
 
-data e1_u3_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session upload 049a64e1: U3, on the back below Q300 and Q301, a six-lead part marked 'B5' and more, with a via and passives above it, the operator's circle on its lower-right lead and the pad below, marked 500 (not on Drive)")
+data e1_u3_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session upload 049a64e1: U3, on the back below Q300 and Q301, a six-lead part marked 'B5' and more, with a via and passives above it, the operator's circle on its lower-right lead and the pad below, marked 500 (not on Drive)")
 
 data e1_site_resistances: List<ResistanceObservation> = [
   ResistanceObservation {
@@ -1381,7 +1398,7 @@ data e1_site_resistances: List<ResistanceObservation> = [
   },
 ]
 
-data e1_u43_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session upload 6b6630a5: U43 with its marking read as WEJ (first as 1WEJ or IWEJ), the triangle at its lower right, the capacitor at its right, Y50 and U500 below (not on Drive)")
+data e1_u43_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session upload 6b6630a5: U43 with its marking read as WEJ (first as 1WEJ or IWEJ), the triangle at its lower right, the capacitor at its right, Y50 and U500 below (not on Drive)")
 
 data e1_u43_chain_said: NonEmptyStr = "This point is 500 / Sorry - the 400 is the point BELOW the resistor - the one its pointing to in the picture is 800 ground / Sorry - i can't reproduce the 400 consistently - the point i thought it was is now reading 800 / U43, the resistor thing there, is 500 ohms on both sides basicaly"
 
@@ -1498,7 +1515,7 @@ data e1_j68_points: List<NonEmptyStr> = ["L1", "L2", "L3", "L4", "L5", "R1", "R2
 // The operator's labelled photographs (2026-10-21) fix the positions: J68's left column L1 to L5 and
 // right column R1 to R5, top to bottom as photographed, labelled 'positions (not pin numbers)'; J30's
 // A, B, C left to right. Every J68 and J30 reading from here on uses these.
-data e1_j68_labelled_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session upload: J68 with L1 to L5 down the left column and R1 to R5 down the right, captioned 'J68 positions (not pin numbers)'; and J30 with A, B, C marked left to right (not on Drive)")
+data e1_j68_labelled_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session upload: J68 with L1 to L5 down the left column and R1 to R5 down the right, captioned 'J68 positions (not pin numbers)'; and J30 with A, B, C marked left to right (not on Drive)")
 
 data e1_j68_ohms_said: NonEmptyStr = "All at 2k / R1 at 0.00 R2: 0.057 R3: high R4: high R5: ground / L1: .937 L2: .538 L3: 1.153 L4: high L5: 1.153"
 
@@ -1540,15 +1557,15 @@ data e1_j68_low_points: List<NonEmptyStr> = ["L1", "R2", "R3", "R4", "R5"]
 
 data e1_j30_points: List<NonEmptyStr> = ["A", "B", "C"]
 
-data e1_switch_event_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads: the source's display at 54.00 V / 0.085 A / 4.587 W with CV lit, and the lit indicator groups beside the heatsinked control region and at the board edge (not on Drive)")
+data e1_switch_event_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads: the source's display at 54.00 V / 0.085 A / 4.587 W with CV lit, and the lit indicator groups beside the heatsinked control region and at the board edge (not on Drive)")
 
-data e1_switch_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads: S1 beside J540 and DS3 to DS6, and S2 near the large high-density connectors, each a two-pole package with a printed ON legend (not on Drive)")
+data e1_switch_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads: S1 beside J540 and DS3 to DS6, and S2 near the large high-density connectors, each a two-pole package with a printed ON legend (not on Drive)")
 
-data e1_settled_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads: the settled state's indicators, the top group beside DS10 to DS13, DS1_2, and the bottom group DS3 to DS6 (not on Drive)")
+data e1_settled_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads: the settled state's indicators, the top group beside DS10 to DS13, DS1_2, and the bottom group DS3 to DS6 (not on Drive)")
 
-data e1_j68_held_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session upload: J68 bridged and held, every indicator dark (not on Drive)")
+data e1_j68_held_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session upload: J68 bridged and held, every indicator dark (not on Drive)")
 
-data e1_lv165a_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads: U49 and U51 close enough to read 'LV165A / 2BKG4 / AEC0' on each (not on Drive)")
+data e1_lv165a_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session uploads: U49 and U51 close enough to read 'LV165A / 2BKG4 / AEC0' on each (not on Drive)")
 
 data e1_switch_event_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "I tried to trace over to the side of the board where Q30 leads, and found some literal on off switches - the current jumped a bit and some lights turned on." }
 
@@ -1647,7 +1664,7 @@ data e1_inductor_volts: List<PhaseNodeVoltage> = [e1_l_volt(c: e1_l_4r7_near, mi
 // 'C3U / S22 / 25' beside the inductor (e1_u100_photo).
 // Which inductor pad is the switch node and which the output, which of the ceramics sit on the output,
 // and which loads the rail supplies are unread until that converter is identified. Markings unread.
-data e1_near_4r7_area_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session upload efd0d163: the 4R7 nearest U4 after the short, with U21 and U69 above it, four ceramics beside and below it, a 6-lead package below-left, U4's heatsink edge at the left and 'U1_2' at the right edge")
+data e1_near_4r7_area_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session upload efd0d163: the 4R7 nearest U4 after the short, with U21 and U69 above it, four ceramics beside and below it, a 6-lead package below-left, U4's heatsink edge at the left and 'U1_2' at the right edge")
 
 data e1_u21: ComponentInstanceIdentity = e1_component(local: "U21")
 
@@ -1661,9 +1678,9 @@ data e1_u69: ComponentInstanceIdentity = e1_component(local: "U69")
 // the 6-lead SOT-23 beside the inductor with a pin-1 dot, reads 'C3U / S22 / 25', a top-marking code
 // no table read so far decodes; it is the converter candidate for the inductor by its place and its
 // package, and its pins are mapped on the K1 before any datasheet is assumed.
-data e1_u21_marking_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session upload c1405100: the 4R7 nearest U4 with U21 ('P617A / 01 14 / 226'), U53 (the same marking), U69's neighbour, U100 and the U10_P2 silkscreen, J24 and J68 at the frame's foot")
+data e1_u21_marking_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session upload c1405100: the 4R7 nearest U4 with U21 ('P617A / 01 14 / 226'), U53 (the same marking), U69's neighbour, U100 and the U10_P2 silkscreen, J24 and J68 at the frame's foot")
 
-data e1_u100_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session upload cbc94a7e: U100 ('C3U / S22 / 25', pin-1 dot) beside the 4R7 nearest U4, two '330' polymers at the left, a 5-lead package marked 'DFP 528' below the inductor, U21 at the top right")
+data e1_u100_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-21", locator: "bench-session upload cbc94a7e: U100 ('C3U / S22 / 25', pin-1 dot) beside the 4R7 nearest U4, two '330' polymers at the left, a 5-lead package marked 'DFP 528' below the inductor, U21 at the top right")
 
 data e1_u53: ComponentInstanceIdentity = e1_component(local: "U53")
 
@@ -1731,7 +1748,7 @@ data e1_after_short_resistances: List<ResistanceObservation> = [
 // likely read over range, and the meter's model is unrecorded.
 data converter_said_1023_e1: EvidenceRef = OperatorStatement { stated_on: "2026-10-23", verbatim: "Ok all the pins on the dot side are 1 ohm, the bottom two on the left are 900 ohms, the top two on the left are 5.5k ohms - all done with the fluke auto mode" }
 
-data e1_converter_area_photo_1031: EvidenceRef = e1_photo(taken_on: "2026-10-31", locator: "Andonstar frame, upload ca51a451: the 4R7 nearest U4 with the 8-lead converter to its right, leads in a top and a bottom row, two large ceramics at the top right, two 0603 parts fitted under the inductor, the U10_P2 silkscreen at the bottom right; cleaned, nothing broken or singed")
+data e1_converter_area_photo_1031: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-31", locator: "Andonstar frame, upload ca51a451: the 4R7 nearest U4 with the 8-lead converter to its right, leads in a top and a bottom row, two large ceramics at the top right, two 0603 parts fitted under the inductor, the U10_P2 silkscreen at the bottom right; cleaned, nothing broken or singed")
 
 data e1_converter_near: ComponentInstanceIdentity = e1_component(local: "8-lead converter beside the 4R7 nearest U4 (the U10_P2 silkscreen beside it)")
 
@@ -1765,7 +1782,7 @@ data e1_converter_lead_resistances: List<ResistanceObservation> = [
   converter_lead_read_e1(number: 8, name: "FB", basis: b4_basis, display: DisplayValue { ohms: 50000, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly),
 ]
 
-data e1_converter_lead_row_photos_1031: EvidenceRef = e1_photo(taken_on: "2026-10-31", locator: "two Andonstar frames at higher magnification, uploads 0b80e48e and 77dc6ca0 (the second with the operator's red line drawn along the row of inductor-side leads to the via at its right): the converter's body with its marking unreadable at this light, the four inductor-side leads with a small yellow ceramic above them and a large brown one above that, a round via with a white ring to the right of the leads and a white line down the chip's right side, both silkscreen print (the K1's chip shows them identically, k1_converter_lead_row_photo_1031); the line under the leads is what the operator feels")
+data e1_converter_lead_row_photos_1031: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-31", locator: "two Andonstar frames at higher magnification, uploads 0b80e48e and 77dc6ca0 (the second with the operator's red line drawn along the row of inductor-side leads to the via at its right): the converter's body with its marking unreadable at this light, the four inductor-side leads with a small yellow ceramic above them and a large brown one above that, a round via with a white ring to the right of the leads and a white line down the chip's right side, both silkscreen print (the K1's chip shows them identically, k1_converter_lead_row_photo_1031); the line under the leads is what the operator feels")
 
 data e1_converter_near_footprint: ComponentInstanceIdentity = e1_component(local: "U10_P2 footprint below the 4R7 nearest U4, part lifted 2026-11-01")
 
@@ -1798,7 +1815,7 @@ data e1_footprint_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-01
 
 data e1_sw_out_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-01", verbatim: "2. OK, its like .03 3. its also like .03 - the fluke isn't very stable, because its on auto, but it always trends to the same number" }
 
-data e1_footprint_photos_1101: EvidenceRef = e1_photo(taken_on: "2026-11-01", locator: "two Andonstar frames, uploads 250ddd68 and 4ba68d1e: the E1's U10_P2 footprint after the lift and cleaning, eight pads in two rows of four, every gap showing solder mask, the pads dull with removal-alloy residue, two lint fibres, and a ridge in the mask just below the inductor-side row where the part's body sat")
+data e1_footprint_photos_1101: EvidenceRef = e1_unstored_photo(taken_on: "2026-11-01", locator: "two Andonstar frames, uploads 250ddd68 and 4ba68d1e: the E1's U10_P2 footprint after the lift and cleaning, eight pads in two rows of four, every gap showing solder mask, the pads dull with removal-alloy residue, two lint fibres, and a ridge in the mask just below the inductor-side row where the part's body sat")
 
 fn e1_pad(number: Nat, name: NonEmptyStr) -> ElectricalTerminalRef {
   terminal_ref(component: e1_converter_near_footprint, terminal: pad_terminal_name(number: number, name: name) as TerminalIdentity)
@@ -1999,8 +2016,8 @@ data e1_vector_all_on: List<SwitchPoleState> = [e1_pole(package: e1_s2, pole: 1,
 data e1_all_on_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "i just keep all poles at on position" }
 
 data e1_switch_legend_photos: List<EvidenceRef> = [
-  e1_photo(taken_on: "2026-10-20", locator: "bench-session upload 9fe8a23b, S2 straight down with its legend legible, both sliders toward ON (not on Drive)"),
-  e1_photo(taken_on: "2026-10-20", locator: "bench-session upload 60ce8352, S1 straight down with its legend legible, both sliders toward ON (not on Drive)"),
+  e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session upload 9fe8a23b, S2 straight down with its legend legible, both sliders toward ON (not on Drive)"),
+  e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session upload 60ce8352, S1 straight down with its legend legible, both sliders toward ON (not on Drive)"),
 ]
 
 data e1_sw_a_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "SW-A1 48v, .097A, 4.653w - it shows CV, no CC / SW-A2 : 1.66v / SW-A3: pin 7 is 1.8v i believe, pin 6 is 0v / SW-A4: 4.37v / SW-A5: 0v / SW-A6: 48v (input voltage)" }
@@ -2205,24 +2222,24 @@ data e1_shared_tvs_rows: List<ElectronicComponentRow> = [tvs_5_0smdj60a, aos_tvs
 // were named in the session with no photograph attributing the silkscreen, so they carry no reading
 // and stay uncovered rather than cite one that does not show it.
 data e1_designator_readings: List<DesignatorReading> = [
-  DesignatorReading { specimen: e1_j20, designator: "J20", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
-  DesignatorReading { specimen: e1_f1, designator: "F1", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
-  DesignatorReading { specimen: e1_f300, designator: "F300", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
-  DesignatorReading { specimen: e1_f302, designator: "F302", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
-  DesignatorReading { specimen: e1_d2, designator: "D2", evidence: e1_photo(taken_on: "2026-10-15", locator: "D2 close-up sent in the session") },
-  DesignatorReading { specimen: e1_d5, designator: "D5", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session, D5 in frame") },
-  DesignatorReading { specimen: e1_c10, designator: "C10_P5", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
-  DesignatorReading { specimen: e1_c12, designator: "C12_P5", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
-  DesignatorReading { specimen: e1_q21, designator: "Q21_P5", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") },
-  DesignatorReading { specimen: e1_q22, designator: "Q22_P5", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") },
+  DesignatorReading { specimen: e1_j20, designator: "J20", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
+  DesignatorReading { specimen: e1_f1, designator: "F1", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
+  DesignatorReading { specimen: e1_f300, designator: "F300", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
+  DesignatorReading { specimen: e1_f302, designator: "F302", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
+  DesignatorReading { specimen: e1_d2, designator: "D2", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "D2 close-up sent in the session") },
+  DesignatorReading { specimen: e1_d5, designator: "D5", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session, D5 in frame") },
+  DesignatorReading { specimen: e1_c10, designator: "C10_P5", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
+  DesignatorReading { specimen: e1_c12, designator: "C12_P5", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
+  DesignatorReading { specimen: e1_q21, designator: "Q21_P5", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") },
+  DesignatorReading { specimen: e1_q22, designator: "Q22_P5", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") },
   DesignatorReading { specimen: e1_u1_p5, designator: "U1_P5", evidence: e1_u1_closeup_photo },
-  DesignatorReading { specimen: e1_component(local: "U522"), designator: "U522", evidence: e1_photo(taken_on: "2026-10-15", locator: "U522 close-up sent in the session") },
-  DesignatorReading { specimen: e1_component(local: "Q4_P5"), designator: "Q4_P5", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") },
-  DesignatorReading { specimen: e1_component(local: "U2_P5"), designator: "U2_P5", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") },
-  DesignatorReading { specimen: e1_component(local: "U3_P5"), designator: "U3_P5", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") },
+  DesignatorReading { specimen: e1_component(local: "U522"), designator: "U522", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "U522 close-up sent in the session") },
+  DesignatorReading { specimen: e1_component(local: "Q4_P5"), designator: "Q4_P5", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") },
+  DesignatorReading { specimen: e1_component(local: "U2_P5"), designator: "U2_P5", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") },
+  DesignatorReading { specimen: e1_component(local: "U3_P5"), designator: "U3_P5", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") },
   DesignatorReading { specimen: e1_q301, designator: "Q301", evidence: e1_q300_q301_photo },
   DesignatorReading { specimen: e1_q300, designator: "Q300", evidence: e1_q300_q301_photo },
-  DesignatorReading { specimen: e1_component(local: "U2_P1"), designator: "U2_P1", evidence: e1_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") },
+  DesignatorReading { specimen: e1_component(local: "U2_P1"), designator: "U2_P1", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") },
   DesignatorReading { specimen: e1_component(local: "Q5_P5"), designator: "Q5_P5", evidence: e1_back_cluster_photo },
   DesignatorReading { specimen: e1_component(local: "D5_P5"), designator: "D5_P5", evidence: e1_back_cluster_photo },
   DesignatorReading { specimen: e1_s1, designator: "S1", evidence: e1_switch_photo },
@@ -2259,12 +2276,12 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   design: e1_design,
   revision: p4261_e1,
   markings: [
-    AssemblyLabel { model: "P4261", part_number: "694-24261-0000-201", revision: "E1", serial: "1583323120274", evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
-    PcbCode { code: "180-14261-DAAF-B00", printed_beside: Absent, evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
+    AssemblyLabel { model: "P4261", part_number: "694-24261-0000-201", revision: "E1", serial: "1583323120274", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
+    PcbCode { code: "180-14261-DAAF-B00", printed_beside: Absent, evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
   ],
   module_receptacles: [],
   backplane_connectors: [
-    BackplaneConnectorObservation { seen: 1, face: Present { value: CavityGrid { columns: 9, rows: 4 } }, guide_pin_seen: true, power_blade_seen: false, evidence: e1_photo(taken_on: "2026-10-16", locator: "grey edge connector photographed face-on, sent in the session") },
+    BackplaneConnectorObservation { seen: 1, face: Present { value: CavityGrid { columns: 9, rows: 4 } }, guide_pin_seen: true, power_blade_seen: false, evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "grey edge connector photographed face-on, sent in the session") },
   ],
   j20: MappedOnHousing { housing: e1_j20_housing },
   j20_calipers: [
@@ -2279,39 +2296,39 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   },
   management_io_survey: PartlyPhotographed { not_covered: "the board has been photographed only in close-ups (J20 and its parts, F300, U522, the label area, one grey connector, one edge receptacle); its other edges and the region around U4 are unphotographed" },
   management_io: [
-    PinHeader { designator: Present { value: "J620" }, rows: 2, columns: 5, pin_one_marked: true, evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
+    PinHeader { designator: Present { value: "J620" }, rows: 2, columns: 5, pin_one_marked: true, evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
     EdgeReceptacle { marking: Present { value: "Amphenol / 1502" }, opening_widths: [micrometer(count: 7000), micrometer(count: 5000)], plug_fit: MicroUsbPlugFits, candidates: [UsbSuperSpeedMicroB], evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "one side is ~5mm and the other (micro usb) is ~7mm" } },
   ],
   components: [
     InstalledComponent { seen: seen_unordered(), component: e1_j20, terminals: map(e1_j20_housing.positions, p => p.terminal), identification: MarkingUnresolved { marking: Absent, discriminator: "read the housing's molded marking; its caliper spans are recorded in j20_calipers" } },
-    InstalledComponent { seen: seen_unordered(), component: e1_d2, terminals: names(ns: ["tab nearer J20", "tab farther from J20"]), identification: MarkingSharedByMakers { rows: e1_shared_tvs_rows, marking: MarkingReading { text: "5PGK / ZCN5U under a boxed maker logo that is not identified", evidence: e1_photo(taken_on: "2026-10-15", locator: "D2 close-up sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_d5, terminals: names(ns: ["top tab", "bottom tab"]), identification: MarkingSharedByMakers { rows: e1_shared_tvs_rows, marking: MarkingReading { text: "5PGK / 2CN5U", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session, D5 in frame") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_f300, terminals: names(ns: ["one end", "other end"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 100), interrupt_voltage: Present { value: volt(count: 75) } }, marking: MarkingReading { text: "LF 75V 100A", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_f302, terminals: names(ns: ["one pad", "other pad"]), identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") } },
-    InstalledComponent { seen: seen_unordered(), component: e1_f1, terminals: names(ns: ["end nearer J20", "end farther from J20"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 12), interrupt_voltage: Absent }, marking: MarkingReading { text: "LF 12A", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R010 shunt beside F1"), terminals: [], identification: ResistanceCodeRead { milliohms: 10, marking: MarkingReading { text: "R010", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_c10, terminals: names(ns: ["positive", "negative"]), identification: IdentifiedByMarking { row: eeh_zu1j151, marking: MarkingReading { text: "150 / J ZU / 26AL", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_c12, terminals: names(ns: ["positive", "negative"]), identification: IdentifiedByMarking { row: eeh_zu1j151, marking: MarkingReading { text: "150 / J ZU / 26AL", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_third_can, terminals: names(ns: ["positive", "negative"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "partly visible '...ZU / ...AL'", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } }, discriminator: "a full read of its top marking" } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "switch candidate between R010 and the capacitors"), terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "...08N10 / SWAC (partly legible, photographed upside down)", evidence: e1_photo(taken_on: "2026-10-15", locator: "switch close-up sent in the session") } }, discriminator: "a sharp close-up of the marking matched to its maker's marking table; 'N10' is how Infineon names its 100 V parts, a lead rather than an identification" } },
+    InstalledComponent { seen: seen_unordered(), component: e1_d2, terminals: names(ns: ["tab nearer J20", "tab farther from J20"]), identification: MarkingSharedByMakers { rows: e1_shared_tvs_rows, marking: MarkingReading { text: "5PGK / ZCN5U under a boxed maker logo that is not identified", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "D2 close-up sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_d5, terminals: names(ns: ["top tab", "bottom tab"]), identification: MarkingSharedByMakers { rows: e1_shared_tvs_rows, marking: MarkingReading { text: "5PGK / 2CN5U", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session, D5 in frame") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_f300, terminals: names(ns: ["one end", "other end"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 100), interrupt_voltage: Present { value: volt(count: 75) } }, marking: MarkingReading { text: "LF 75V 100A", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_f302, terminals: names(ns: ["one pad", "other pad"]), identification: FootprintUnpopulated { evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") } },
+    InstalledComponent { seen: seen_unordered(), component: e1_f1, terminals: names(ns: ["end nearer J20", "end farther from J20"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 12), interrupt_voltage: Absent }, marking: MarkingReading { text: "LF 12A", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R010 shunt beside F1"), terminals: [], identification: ResistanceCodeRead { milliohms: 10, marking: MarkingReading { text: "R010", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_c10, terminals: names(ns: ["positive", "negative"]), identification: IdentifiedByMarking { row: eeh_zu1j151, marking: MarkingReading { text: "150 / J ZU / 26AL", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_c12, terminals: names(ns: ["positive", "negative"]), identification: IdentifiedByMarking { row: eeh_zu1j151, marking: MarkingReading { text: "150 / J ZU / 26AL", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_third_can, terminals: names(ns: ["positive", "negative"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "partly visible '...ZU / ...AL'", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } }, discriminator: "a full read of its top marking" } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "switch candidate between R010 and the capacitors"), terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "...08N10 / SWAC (partly legible, photographed upside down)", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "switch close-up sent in the session") } }, discriminator: "a sharp close-up of the marking matched to its maker's marking table; 'N10' is how Infineon names its 100 V parts, a lead rather than an identification" } },
     InstalledComponent { seen: seen_unordered(), component: e1_input_fet, terminals: names(ns: e1_fet_terminal_names), identification: MarkingUnresolved { marking: Absent, discriminator: "read its designator and top marking; the K1's input-stage MOSFETs read 017N10LF (IPB017N10N5LF), a lead for this one, not its identity" } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U522"), terminals: names(ns: ["1", "2", "3", "4", "5", "6", "7", "8"]), identification: IdentifiedByMarking { row: tmp275_dgk, marking: MarkingReading { text: "TI 31 / T275", evidence: e1_photo(taken_on: "2026-10-15", locator: "U522 close-up sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_u1_p5, terminals: lm5066i_terminals, identification: IdentifiedByMarking { row: lm5066i_pwp, marking: MarkingReading { text: "LM5066I / X28A025UG3", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph (U1_P5 right side up beside Q21_P5 and Q22_P5), sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_q21, terminals: names(ns: e1_fet_terminal_names), identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: MarkingReading { text: "017N10LF / HAD228", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_q22, terminals: names(ns: e1_fet_terminal_names), identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: MarkingReading { text: "017N10LF / HAD228", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U522"), terminals: names(ns: ["1", "2", "3", "4", "5", "6", "7", "8"]), identification: IdentifiedByMarking { row: tmp275_dgk, marking: MarkingReading { text: "TI 31 / T275", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "U522 close-up sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_u1_p5, terminals: lm5066i_terminals, identification: IdentifiedByMarking { row: lm5066i_pwp, marking: MarkingReading { text: "LM5066I / X28A025UG3", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph (U1_P5 right side up beside Q21_P5 and Q22_P5), sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_q21, terminals: names(ns: e1_fet_terminal_names), identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: MarkingReading { text: "017N10LF / HAD228", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_q22, terminals: names(ns: e1_fet_terminal_names), identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: MarkingReading { text: "017N10LF / HAD228", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
     InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q4_P5"), terminals: names(ns: ["single lead", "pair, lead nearer U1_P5", "pair, lead farther from U1_P5"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a SOT-23 beside Q21_P5 with a capacitor across two leads (see p4261_q4_temperature_diode_hypothesis)" } },
     InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D4_P5"), terminals: names(ns: ["one end", "other end"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking" } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Coilcraft-labelled part beside Q21_P5"), terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "A850 / Coilcraft / D (a hand-written-style label)", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } }, discriminator: "a Coilcraft part number and its terminals' readings; the label is not a catalogue marking" } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R100 beside the Coilcraft-labelled part"), terminals: [], identification: ResistanceCodeRead { milliohms: 100, marking: MarkingReading { text: "R100", evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R150 above C10_P5, left"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: MarkingReading { text: "R150", evidence: e1_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R150 above C10_P5, right"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: MarkingReading { text: "R150", evidence: e1_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R150 beside U522"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: MarkingReading { text: "R150", evidence: e1_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U2_P5"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U3_P5"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Coilcraft-labelled part beside Q21_P5"), terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "A850 / Coilcraft / D (a hand-written-style label)", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } }, discriminator: "a Coilcraft part number and its terminals' readings; the label is not a catalogue marking" } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R100 beside the Coilcraft-labelled part"), terminals: [], identification: ResistanceCodeRead { milliohms: 100, marking: MarkingReading { text: "R100", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 input-stage photograph, sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R150 above C10_P5, left"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: MarkingReading { text: "R150", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R150 above C10_P5, right"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: MarkingReading { text: "R150", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "R150 beside U522"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: MarkingReading { text: "R150", evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U2_P5"), terminals: [], identification: FootprintUnpopulated { evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U3_P5"), terminals: [], identification: FootprintUnpopulated { evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "_P5 control-region photograph (U2_P5, U3_P5 bare QFN pads), sent in the session") } },
     InstalledComponent { seen: seen_unordered(), component: e1_q301, terminals: names(ns: ["lone lead of its three-lead package", "lead a: two-lead side, away from the silkscreen triangle", "lead b: two-lead side, beside the silkscreen triangle"]), identification: e1_k38_candidate },
     InstalledComponent { seen: seen_unordered(), component: e1_q300, terminals: names(ns: ["lone lead of its three-lead package", "lead a: two-lead side, away from the silkscreen triangle", "lead b: two-lead side, beside the silkscreen triangle"]), identification: e1_k38_candidate },
     InstalledComponent { seen: seen_unordered(), component: e1_q301_resistor, terminals: names(ns: ["end nearer Q301", "far end"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "18D (read from an enlarged photograph; first read as 180)", evidence: e1_resistor_marking_photo } }, discriminator: "the third character read under magnification: '18D' is 150 kohm by the EIA-96 code, which the 26 kohm read across its ends in circuit admits, since a resistor in circuit reads at or below its value; '180', 18 ohm by the three-digit code, that reading excludes" } },
-    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U2_P1"), terminals: [], identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } },
+    InstalledComponent { seen: seen_unordered(), component: e1_component(local: "U2_P1"), terminals: [], identification: FootprintUnpopulated { evidence: e1_unstored_photo(taken_on: "2026-10-19", locator: "J20 photograph with the temporary leads and a tape measure, sent in the session") } },
     InstalledComponent { seen: seen_unordered(), component: e1_component(local: "Q5_P5"), terminals: names(ns: ["single lead", "pair, first lead", "pair, second lead"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a back-side SOT-23 in the _P5 group (an enable-network candidate, see p4261_enable_network_hypothesis)" } },
     InstalledComponent { seen: seen_unordered(), component: e1_component(local: "D5_P5"), terminals: names(ns: ["end nearer the OVLO (pin 8) pad", "other end"]), identification: MarkingUnresolved { marking: Absent, discriminator: "read its marking; a small back-side part in the _P5 group, a different component from the input TVS D5" } },
     InstalledComponent { seen: seen_unordered(), component: e1_01b, terminals: names(ns: ["one end", "other end"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "01B", evidence: e1_back_photo } }, discriminator: "'01B' is 1.00 kohm in the EIA-96 code (a nominal-value candidate); its maker and its place in the enable network are unread" } },
@@ -2356,9 +2373,9 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   measured: Present { value: e1_measured },
   input: Present { value: e1_input },
   unresolved: [
-    UnresolvedPart { designator: Absent, marking: Present { value: "P617A / 01 14 / 226" }, obligation: "an 8-pin MSOP left of the VCI mark, read at the photograph's resolution: maker and function unresolved", evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
-    UnresolvedPart { designator: Present { value: "U1_P1" }, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor, designator read 2026-10-19: its marking is not legible; its _P5 twin U1_P5 is an LM5066I, a lead for this one, not its identity", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
-    UnresolvedPart { designator: Absent, marking: Present { value: "HA..." }, obligation: "a part below D5, partly in frame: read its marking", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
+    UnresolvedPart { designator: Absent, marking: Present { value: "P617A / 01 14 / 226" }, obligation: "an 8-pin MSOP left of the VCI mark, read at the photograph's resolution: maker and function unresolved", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
+    UnresolvedPart { designator: Present { value: "U1_P1" }, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor, designator read 2026-10-19: its marking is not legible; its _P5 twin U1_P5 is an LM5066I, a lead for this one, not its identity", evidence: e1_unstored_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
+    UnresolvedPart { designator: Absent, marking: Present { value: "HA..." }, obligation: "a part below D5, partly in frame: read its marking", evidence: e1_unstored_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
     UnresolvedPart { designator: Absent, marking: Absent, obligation: "the large bare pads by F300 and the copper-ringed mounting holes were read as populations ('all of the big bare pads', 'J20 connects to all copper holes'); each would be a terminal once numbered on a photograph", evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "all of the big bare pads are connected the to the power rail" } },
     UnresolvedPart { designator: Present { value: "J24" }, marking: Absent, obligation: "a keyed socket of about 2 x 5 positions in the debug corner: its ground and logic-reference points by unpowered readings and idle voltages, nothing bridged", evidence: e1_switch_photo },
     UnresolvedPart { designator: Present { value: "J540" }, marking: Absent, obligation: "a smaller multi-pin socket beside U71, U95, DS3 to DS6 and S1: its position count, its ground and logic-reference points, nothing bridged", evidence: e1_switch_photo },
