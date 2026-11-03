@@ -1,10 +1,13 @@
 module test.claim.product.p4261_finding_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import product.p4261.carrier { CarrierLayoutObservation, MeasuredBoard }
+import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading, MeasuredBoard }
 import product.electrical.bench_session { BenchRecord, DisplayAtProbeBaseline, DisplayValue, DisplayZeroWithoutBaseline, ResistanceDisplay, ResistanceObservation, ShortedProbeBaseline }
-import product.electrical.connectivity { terminal_ref_equal }
-import product.electrical.continuity { OperatorStatement }
+import product.electrical.connectivity { ComponentInstanceIdentity, terminal_ref_equal }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.list { first_where }
+import product.electrical.continuity { OperatorPhotograph, OperatorStatement }
+import product.electrical.photograph { BytesNotInStore, CapturedFrame, GeneratedImage, InStore, PhotographCitation }
 import product.p4261.findings {
   CarrierFinding,
   CarrierPhaseObserved,
@@ -28,9 +31,13 @@ import product.p4261.findings {
   ProtectedInputBusInPhase,
   finding_established,
   judge_finding,
+  ImageReadingsJudged,
+  ReadingsRestOnStoredFrames,
 }
 import product.p4261.readings { least_of, PolarityEstablished, PolarityGap, PolarityUnestablished, installed }
-import product.p4261.report { FindingEstablished, FindingNotEstablished, FindingStanding, carrier_finding, j24_text, render_finding }
+import product.p4261.report { FindingEstablished, FindingNotEstablished, FindingStanding, carrier_finding, j24_text, judgment_words, render_finding }
+import product.p4261.evidence { FromStore, NoPhotographStore, StoreHoldsAnotherBoardsFrames }
+import product.p4261.e1_photographs { e1_photographs }
 import product.p4261.e1_b { e1_j24_pin, e1_j24_read, e1_j24_resistances, p4261_e1_layout, e1_d2, e1_d5, e1_c10, e1_f300, e1_u1_p5, e1_converter_near, e1_third_can, e1_q21, e1_q22 }
 import product.p4261.k1_a { p4261_k1_layout, k1_u1_p5, k1_converter_near }
 
@@ -190,4 +197,105 @@ test fn j24_words_follow_what_its_readings_establish() -> Bool {
 test fn the_least_of_nothing_is_nothing() -> Bool {
   match least_of(vs: []) { Absent => true, Present { value: _ } => false }
     && match least_of(vs: [500, 300, 400]) { Present { value: v } => v == 300, Absent => false }
+}
+
+// ── THE PHOTO GROUNDING FINDING ──────────────────────────────────────────────
+// A frame the store holds, taken from the store itself rather than typed in here: if this witness named a
+// digest by hand, the store could drift away from it and the tests below would still pass.
+fn a_stored_frame() -> Photograph? {
+  first_where(e1_photographs, p => match p.origin { CapturedFrame { surface: _, capture: _, taken_on: _ } => true GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false })
+}
+
+// Bytes no atlas receipt produced: the shape of a guessed digest, or of a K1 frame cited to the E1 store.
+data never_hashed_frame: Sha256Digest = Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex }
+
+fn reading_on_frame(designator: NonEmptyStr, citation: PhotographCitation) -> DesignatorReading {
+  DesignatorReading {
+    specimen: ComponentInstanceIdentity { design: p4261_e1_layout.design, local_identity: designator },
+    designator: designator,
+    evidence: OperatorPhotograph { citation: citation },
+  }
+}
+
+// A board carrying exactly the readings a test needs: the E1's identity fields, no components, so a count
+// below is the fixture's and not the board's 60-odd marking rows arriving uninvited.
+fn e1_with_readings(readings: List<DesignatorReading>) -> CarrierLayoutObservation {
+  let b = p4261_e1_layout
+  CarrierLayoutObservation {
+    asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors,
+    j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey,
+    management_io: b.management_io, components: [], measured: b.measured, input: b.input, unresolved: b.unresolved, designator_readings: readings,
+  }
+}
+
+// The finding, judged. NO STORE ARGUMENT: which frames we hold for a board is one fact with one home
+// (product.p4261.photograph_store), and a finding a caller could feed a frame list to is a finding whose
+// verdict the caller owns. The store-as-control lives one level down, at product.p4261.evidence's
+// `judge_image_readings(store:, layout:)`, and the photograph witness exercises it there.
+fn on_stored_frames(layout: CarrierLayoutObservation) -> FindingJudgment {
+  judge_finding(layout: layout, f: ReadingsRestOnStoredFrames)
+}
+
+// FIVE WAYS THIS FINDING HAS TO REFUSE A FREE COVERAGE CLAIM, each refusing a different one:
+// (1) the real E1: NOT established. Its 94 image-readings came off frames whose bytes left the room in a
+// chat -- the true state of this board today and the reason the atlas was commissioned. A dossier that said
+// otherwise would be claiming coverage nobody can re-read.
+// (2) a board citing a frame we hold: ESTABLISHED, and only because the store it is judged against is the
+// one bound to its board. The fixture keeps the E1's identity fields, which is what makes the authority
+// answer for it.
+// (3) a board citing bytes nobody hashed: NOT established, and the judgement calls it BROKEN rather than a
+// gap -- "waiting on the operator's uploads" and "our own record names bytes that do not exist" are
+// different work, and a report that conflates them files a defect under coverage.
+// (4) a board with no image-readings: NOT established. `checkable == read` with `read > 0` is how that is
+// derived, so a bare board cannot earn a coverage finding by having nothing to cover, and a new standing
+// cannot slip between hand-enumerated lists.
+// (5) a board with NO STORE AT ALL (the K1): NOT established, and said as its own standing rather than as
+// zero rows -- "never photographed" and "photographed and found bare" need different work.
+// The rendered sentence is checked too: a judgement nobody can read is not a receipt.
+test fn readings_rest_on_stored_frames_only_when_the_store_holds_them() -> Bool {
+  match a_stored_frame() {
+    Absent => false
+    Present { value: frame } =>
+      let citing = e1_with_readings([reading_on_frame("U900", InStore { content: frame.content, region: Absent })])
+      let citing_absent_bytes = e1_with_readings([reading_on_frame("U900", InStore { content: never_hashed_frame, region: Absent })])
+      !finding_established(j: on_stored_frames(p4261_e1_layout))
+      && finding_established(j: on_stored_frames(citing))
+      && !finding_established(j: on_stored_frames(citing_absent_bytes))
+      && !finding_established(j: on_stored_frames(e1_with_readings([])))
+      && !finding_established(j: on_stored_frames(p4261_k1_layout))
+      && match on_stored_frames(citing_absent_bytes) {
+        ImageReadingsJudged { grounding } => match grounding {
+          FromStore { read, checkable: _, broken, gaps } => read == 1 && count(broken) == 1 && count(gaps) == 0
+          NoPhotographStore { board: _, obligation: _ } => false
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
+        }
+        _ => false
+      }
+      && match on_stored_frames(p4261_e1_layout) {
+        ImageReadingsJudged { grounding } => match grounding {
+          // Derived, not pinned to a count: the partitions must cover the rows, nothing may be broken, and
+          // the board must not establish. How many rows are checkable is the atlas witness's business, not
+          // this one's -- before the 2026-11-03 pass it was none of them, after it most of them, and the
+          // finding's job is only to refuse establishment while any gap stands.
+          FromStore { read, checkable, broken: _, gaps } =>
+            read > 0 && checkable < read && count(gaps) == read - checkable
+          NoPhotographStore { board: _, obligation: _ } => false
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
+        }
+        _ => false
+      }
+      && match on_stored_frames(p4261_k1_layout) {
+        ImageReadingsJudged { grounding } => match grounding {
+          NoPhotographStore { obligation } => string_length(obligation as String) > 0
+          FromStore { read: _, checkable: _, broken: _, gaps: _ } => false
+          // The K1 has a store of its own only once its photographs arrive; a store that turned out to hold
+          // another board's frames would be a defect to name, not a grounding to accept.
+          StoreHoldsAnotherBoardsFrames { board: _, foreign: _ } => false
+        }
+        _ => false
+      }
+      && string_contains(judgment_words(j: on_stored_frames(citing_absent_bytes), established: false), "U900")
+      && string_contains(judgment_words(j: on_stored_frames(citing), established: true), "rest on frames we hold for it")
+      && string_contains(judgment_words(j: on_stored_frames(p4261_k1_layout), established: false), "no photograph store is held for")
+  }
 }

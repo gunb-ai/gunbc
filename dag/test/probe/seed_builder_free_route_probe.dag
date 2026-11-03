@@ -1,0 +1,24 @@
+module test.probe.seed_builder_free_route_probe
+
+// THIS MODULE MUST NOT RESOLVE. build_seed_for_control takes the delivery route and client architecture as free
+// values; only the admitted-plan wrapper build_ubuntu_autoinstall_seed (and the named witness fixtures) may
+// call it. This caller is neither, so the route it names beside any plan is the bypass admit_callers closes.
+// The witness test.claim.provisioning.seed_builder_free_route_probe_witness hands this source to the compiler
+// and requires the refusal at build_seed_for_control by name. dag/test/probe/ sits under the whole-tree
+// strict-resolve exclusion, so this source reaches the compiler only through that witness.
+
+import std.types { List, Optional }
+import gunbc.boot_artifact_delivery { BootControlTarget }
+import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
+import gunbc.provisioning.ubuntu_autoinstall_seed {
+  build_seed_for_control, ProvisioningTargetAdmission, SeedNetworkPosture, UbuntuAutoinstallSeed, AdminAccessAuthorisation,
+  AdminCredentialPosture, SeedLocale, CeremonialKeyboardLayout, TargetDiskSelector, AdminPasswordHashReceipt,
+}
+
+fn free_route(target: ProvisioningTargetAdmission, network: SeedNetworkPosture, disk: TargetDiskSelector, entry: AdminAccessAuthorisation, credential: AdminCredentialPosture, password_read: Optional<AdminPasswordHashReceipt>, locale: SeedLocale, delivery: BootControlTarget, client_arch: DhcpProcessorArchitecture?, keyboard: CeremonialKeyboardLayout) -> Optional<UbuntuAutoinstallSeed> {
+  build_seed_for_control(
+    target: target, network: network, install_drivers: [], loadable_modules: [], late_drivers: [],
+    install_packages: [], late_packages: [], disk: disk, entry: entry, credential: credential,
+    password_read: password_read, locale: locale, delivery: delivery, client_arch: client_arch, keyboard: keyboard,
+  )
+}

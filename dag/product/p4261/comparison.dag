@@ -3,7 +3,7 @@ module product.p4261.comparison
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
-import extdeps.electronic_component.types { ElectronicComponentRow }
+import extdeps.electronic_component.types { ElectronicComponentRow , Designator, designator_eq }
 import extdeps.nvidia.p4261.population { P4261DesignPosition, p4261_e1_positions, p4261_k1_positions }
 import product.electrical.connectivity { component_identity_eq }
 import product.electrical.bench_session { alteration_refitted, removals_of }
@@ -99,7 +99,7 @@ type ObservedRelation
   | BoardReadingsDisagree { asset: PhysicalAssetIdentity, observations: List<InstalledComponent> }
 
 type PositionComparison {
-  designator: NonEmptyStr
+  designator: Designator
   e1: ComparedSide
   k1: ComparedSide
   observed: ObservedRelation
@@ -238,8 +238,11 @@ fn relate(e1: ComparedSide, k1: ComparedSide) -> ObservedRelation {
   }
 }
 
-fn labelled_on(positions: List<P4261DesignPosition>, d: NonEmptyStr) -> P4261DesignPosition? {
-  (filter(positions, p => (p.position.designator as String) == (d as String))).first()
+// A shared silkscreen label is matched by the designator authority and nothing else: two positions whose
+// spellings differ only in an underscore are two positions, and a comparison that tidied first would report
+// them as one board agreeing with itself.
+fn labelled_on(positions: List<P4261DesignPosition>, d: Designator) -> P4261DesignPosition? {
+  (filter(positions, p => designator_eq(a: p.position.designator, b: d))).first()
 }
 
 // Two boards over two revisions' position catalogues (the upstream ones in production; a witness may
