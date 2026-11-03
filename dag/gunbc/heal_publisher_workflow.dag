@@ -32,7 +32,7 @@ import gunbc.workflow_capability_closure {
 }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason,
-  step_installs_toolchain, step_isolates_toolchain_homes,
+  step_installs_toolchain, step_isolates_toolchain_homes, step_pins_default_toolchain,
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
@@ -494,20 +494,78 @@ fn heal_publisher_route_steps(source: PublisherCompilerSource) -> Outcome<List<H
 // THE ROLE OF A TOOLCHAIN-LANE STEP, DERIVED FROM THE STEP AND NOT FROM WHERE IT SITS IN A LIST.
 // gunbc.toolchain_home_standing is already the authority on what an install IS (a UsesStep of the upstream
 // setup action) and what an isolation IS (the run step that wipes and rebinds HOME, CARGO_HOME and
-// RUSTUP_HOME under RUNNER_TEMP). Asking IT those questions here means the capability role and the
-// standing verdict cannot disagree about the same step -- and a role read off a list position would be a
-// second, hand-kept account of the same fact, which is the shape that let the seed arm install into a
-// shared home while its own-checkout sibling composed the pair.
-fn heal_publisher_seed_toolchain_role(step: Step) -> StepCapabilityRole {
+// RUSTUP_HOME under RUNNER_TEMP); the pin is asked of the same module, by the command rows that make it
+// the pin. Asking IT those questions here means the capability role and the standing verdict cannot
+// disagree about the same step -- and a role read off a list position would be a second, hand-kept
+// account of the same fact, which is the shape that let the seed arm install into a shared home while
+// its own-checkout sibling composed the pair.
+//
+// THERE IS NO FALL-THROUGH ARM. A final `else` labelling whatever was left the default-toolchain pin
+// would be a fabricated default (DESIGN §5): any step at all -- a checkout, an upload, a build step --
+// would receive the pin's consumes-only by being unnamed, and the classification would stop deciding
+// anything about the step it annotated. A lane member the module cannot recognise is a lane that lost
+// that member, and it refuses with a reason rather than being assigned a role.
+fn heal_publisher_seed_toolchain_role(step: Step) -> Outcome<StepCapabilityRole> {
   if step_installs_toolchain(step: step) {
-    provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability])
+    outcome_accepted(value: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]))
   } else if step_isolates_toolchain_homes(step: step) {
-    capability_neutral
+    outcome_accepted(value: capability_neutral)
+  } else if step_pins_default_toolchain(step: step) {
+    outcome_accepted(value: consumes_only(capabilities: [RustupCapability, CargoCapability]))
   } else {
-    // The remaining member of the lane is the default-toolchain pin, which reads the toolchain the
-    // install provided and writes nothing else.
-    consumes_only(capabilities: [RustupCapability, CargoCapability])
+    outcome_rejected(
+      d: module_unavailable_diagnostic(
+        reason: "heal_publisher_seed_lane_step_unrecognised: the seed toolchain lane is the isolation, the install and the pin, each recognised by gunbc.toolchain_home_standing's own checks, and this step is none of them",
+        module_file: "gunbc.heal_publisher_workflow"
+      )
+    )
   }
+}
+
+// THE FOLD'S SEED, TYPED. An empty list literal in an argument position has no expected collection to
+// read its element type from, so the element type is stated once, in the return type of the helper that
+// hands it over.
+fn heal_publisher_seed_bound_steps_empty() -> List<HealPublisherBoundStep> {
+  []
+}
+
+// THE LANE ENTERS THE ROUTE AS A UNIT, AND THE UNIT IS AS SOUND AS ITS MEMBERS. Each member's role is
+// asked of the step itself, above; the first member the module cannot recognise refuses the whole route,
+// so a lane that lost a member never reaches the emitted YAML -- where the whole-workflow admission from
+// gunbc.toolchain_home_standing would refuse the file anyway. Refusing at emission keeps the reason
+// beside the fact that broke.
+//
+// WHY THE ORDER LIVES IN gunbc.ci.repository_seed_steps AND NOT HERE. THE LANE CARRIES ITS OWN ORDER
+// (isolation before install before pin): the isolation wipes and re-points HOME/CARGO_HOME/RUSTUP_HOME
+// under a per-job RUNNER_TEMP directory, and a self-hosted runner -- which is exactly where the seed
+// arm runs, in a declared fleet group -- keeps its home between jobs, so an install placed first lands
+// in a toolchain home shared with every other job on the machine and the pin then selects from it. The
+// standing module refuses that file by name, and it refused THIS job by name before the fix. The route
+// splices the shared lane's steps and owns only what a publisher owes a step, which is its role.
+fn heal_publisher_seed_lane_bound_steps() -> Outcome<List<HealPublisherBoundStep>> {
+  fold(
+    xs: seed_toolchain_lane_steps(lane: seed_toolchain_lane(step_name: heal_publisher_toolchain_install_step_name)),
+    init: outcome_accepted(value: heal_publisher_seed_bound_steps_empty()),
+    f: fn(acc, step) {
+      match acc {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: bound_so_far, diagnostics: _ } =>
+          match heal_publisher_seed_toolchain_role(step: step) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: role, diagnostics: _ } =>
+              outcome_accepted(
+                value: concat(
+                  bound_so_far,
+                  [HealPublisherBoundStep {
+                    step: heal_publisher_only_when_repair_owed(step: step),
+                    role: role,
+                  }]
+                )
+              )
+          }
+      }
+    }
+  )
 }
 
 fn heal_publisher_seed_route_steps(seed: PublicSeed) -> Outcome<List<HealPublisherBoundStep>> {
@@ -528,44 +586,42 @@ fn heal_publisher_seed_route_steps(seed: PublicSeed) -> Outcome<List<HealPublish
       match seed_lane_steps(seed: seed, pin: pin) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: seed_lane, diagnostics: _ } =>
-      outcome_accepted(
-        value: concat(
-          [
-            // THE GUARD BEFORE THE CHECKOUT, gated on the same condition the checkout is: a lane that
-            // checks out the seed at all is a lane that has to have been told which commit it checked out.
-            HealPublisherBoundStep {
-              step: heal_publisher_only_when_repair_owed(step: seed_lane.guard),
-              role: capability_neutral,
-            },
-            HealPublisherBoundStep {
-              step: heal_publisher_only_when_repair_owed(step: seed_lane.checkout),
-              role: capability_neutral,
-            },
-          ],
-          concat(
-            // THE TOOLCHAIN LANE AS ONE UNIT -- isolation, install, pin, in the order
-            // gunbc.ci.repository_seed_steps owns. This arm publishes from a self-hosted fleet group, so
-            // the install lands on a runner whose home persists and is shared with every other slot: the
-            // unisolated install this composition makes unconstructible is the one
-            // gunbc.toolchain_home_standing refuses, and it refused THIS job by name before the fix.
-            map(
-              xs: seed_toolchain_lane_steps(lane: seed_toolchain_lane(step_name: heal_publisher_toolchain_install_step_name)),
-              f: fn(step) {
-                HealPublisherBoundStep {
-                  step: heal_publisher_only_when_repair_owed(step: step),
-                  role: heal_publisher_seed_toolchain_role(step: step),
-                }
-              }
-            ),
-            [
-              HealPublisherBoundStep {
-                step: heal_publisher_only_when_repair_owed(step: build_step),
-                role: consumes_only(capabilities: [CargoCapability]),
-              },
-            ]
-          )
-        )
-      )
+          // THE TOOLCHAIN LANE AS ONE UNIT -- isolation, install, pin, in the order
+          // gunbc.ci.repository_seed_steps owns, each member's role asked of the step itself. This arm
+          // publishes from a self-hosted fleet group, so the install lands on a runner whose home
+          // persists and is shared with every other slot: the unisolated install this composition makes
+          // unconstructible is the one gunbc.toolchain_home_standing refuses, and it refused THIS job by
+          // name before the fix. An unrecognisable member refuses the route here.
+          match heal_publisher_seed_lane_bound_steps() {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: lane_bound, diagnostics: _ } =>
+              outcome_accepted(
+                value: concat(
+                  [
+                    // THE GUARD BEFORE THE CHECKOUT, gated on the same condition the checkout is: a lane
+                    // that checks out the seed at all is a lane that has to have been told which commit it
+                    // checked out.
+                    HealPublisherBoundStep {
+                      step: heal_publisher_only_when_repair_owed(step: seed_lane.guard),
+                      role: capability_neutral,
+                    },
+                    HealPublisherBoundStep {
+                      step: heal_publisher_only_when_repair_owed(step: seed_lane.checkout),
+                      role: capability_neutral,
+                    },
+                  ],
+                  concat(
+                    lane_bound,
+                    [
+                      HealPublisherBoundStep {
+                        step: heal_publisher_only_when_repair_owed(step: build_step),
+                        role: consumes_only(capabilities: [CargoCapability]),
+                      },
+                    ]
+                  )
+                )
+              )
+          }
       }
     }
   }
