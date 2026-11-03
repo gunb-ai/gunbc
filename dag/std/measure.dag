@@ -4,7 +4,7 @@ import std.optional { Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import extdeps.currency.currency { CurrencyCode }
-import std.nat { Nat }
+import std.nat { Nat, nat_ceil_div }
 import std.decimal { ExactDecimal, checked_decimal_pow10 }
 import std.checked_arithmetic {
   IntegerOverflow, IntegerAdd, IntegerMultiply, BinaryOperands, int_inclusive_max,
@@ -264,7 +264,8 @@ fn measure_fit_count_floor<Q, S>(capacity: Measure<Q, S, Nat>, each: Measure<Q, 
 
 fn measure_scale_fraction_ceil<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
 
-  Measure { count: if den == 0 { m.count * num } else { ((m.count * num) + (den - 1)) / den } }
+  let scaled = m.count * num
+  Measure { count: match nat_ceil_div(a: scaled, b: den) { Present { value: q } => q  Absent => scaled } }
 }
 
 fn measure_add<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
