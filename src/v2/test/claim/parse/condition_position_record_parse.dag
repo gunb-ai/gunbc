@@ -20,9 +20,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // starved of its block, and the module refused at PARSE with a token remainder AFTER the braces
 // (cc2-pp6, srv2 run.log dc759c24: BOTH executors, interpreted locus 151..152 = the tail). The
 // condition productions now carry the seed's separation declaratively: the record arm is admitted
-// only when its residue continues with `{` or an infix class (and_predicate over the heads
-// derived from dag_infix_operators), so the braces fall to the block when a statement would
-// start, and every reading that was right keeps its parse.
+// only when its residue continues with a head the ORDINARY chain could continue with -- the
+// block brace, an infix class from dag_infix_operators, or a postfix suffix head (`.`, `as`,
+// `is`, `[` newline-guarded) -- so the braces fall to the block when a statement would start,
+// and every reading that was right keeps its parse. The postfix heads are a stated divergence
+// from the seed's retry condition (`{` or infix only): the corpus datum
+// test/claim/review_sheet_converge_witness.dag:1745 (`match R { ... }.totalUpdatedCells { ... }`,
+// green on main) proves a record in condition position must keep its postfix chain; the seed's
+// narrower retry set is the hole keen-heron flagged, not a behavior to copy.
 //
 // WHAT EACH ARM ESTABLISHES (the set is a pair per shape, never a lone RED):
 //   - elseless_if_with_tail is THE RED: refused before the fix (token remainder at the tail),
@@ -132,6 +137,13 @@ fn infix_record_condition_still_parses() -> Bool { g_parse_accepted(text: infix_
 
 fn record_match_scrutinee_still_parses() -> Bool { g_parse_accepted(text: record_match_scrutinee_source, file: ^record_scrutinee_probe) }
 
+// CORPUS-FIXED CONTROL (keen-koi-376, #15639 v2-bootstrap run 41546355118): a match scrutinee
+// that is a record literal followed by a FIELD ACCESS -- review_sheet_converge_witness.dag:1745
+// shape, green on main, refused when the head set omits `.`.
+data record_scrutinee_dot_source: String = "module probe.record_scrutinee_dot\n\nfn f(x: Int) -> Int {\n  match R { value: x }.value {\n    _ => x\n  }\n}\n"
+
+fn record_scrutinee_dot_still_parses() -> Bool { g_parse_accepted(text: record_scrutinee_dot_source, file: ^record_scrutinee_dot_probe) }
+
 fn record_chain_condition_still_parses() -> Bool { g_parse_accepted(text: record_chain_condition_source, file: ^record_chain_probe) }
 
 fn else_if_chain_still_parses() -> Bool { g_parse_accepted(text: else_if_chain_source, file: ^else_chain_probe) }
@@ -155,6 +167,8 @@ test fn paren_record_condition_still_parses_holds() -> Bool { paren_record_condi
 test fn infix_record_condition_still_parses_holds() -> Bool { infix_record_condition_still_parses() }
 
 test fn record_match_scrutinee_still_parses_holds() -> Bool { record_match_scrutinee_still_parses() }
+
+test fn record_scrutinee_dot_still_parses_holds() -> Bool { record_scrutinee_dot_still_parses() }
 
 test fn record_chain_condition_still_parses_holds() -> Bool { record_chain_condition_still_parses() }
 
