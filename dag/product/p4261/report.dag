@@ -123,6 +123,8 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.electrical.investigation_hypothesis { hypothesis_text }
+import product.p4261.investigation { ClassifiedHypothesis, DesignAndSpecimen, DesignRelationRemainder, HypothesisClass, SpecimenDiagnostic, p4261_hypotheses }
+import extdeps.nvidia.p4261.netlist { p4261_net_propositions }
 import product.p4261.findings {
   CarrierFinding,
   FindingJudgment,
@@ -141,6 +143,7 @@ import product.p4261.findings {
   PhaseJudged,
   BusJudged,
   NotAComponent,
+  NetPropositionJudged,
   finding_established,
   j20_context,
   judge_finding,
@@ -164,6 +167,26 @@ import product.p4261.comparison {
   BoardReadingsDisagree,
 }
 import product.p4261.evidence {
+  NetGap,
+  OccupantNotPresentInState,
+  ConnectorNotMappedWhole,
+  RowContactNotReached,
+  InputClassesNotEstablished,
+  PartNotPlaced,
+  NetStateOutcome,
+  NetSupported,
+  NetCounterevidence,
+  NetEvidenceConflict,
+  NetUnresolved,
+  NetStateAssessment,
+  NetRevisionOutcome,
+  NetRevisionSupported,
+  NetRevisionCounterevidence,
+  NetRevisionConflict,
+  NetRevisionUnresolved,
+  NetRevisionNotAttributable,
+  NetPropositionAssessment,
+  net_assessment,
   RecountGap,
   InventoryAssessment,
   InventorySupportedOnSpecimen,
@@ -221,11 +244,6 @@ import product.p4261.carrier {
   TerminalAtTwoCoordinates,
   TwoTerminalsAtOneCoordinate,
   observed_inventory,
-  p4261_grey_path_hypothesis,
-  p4261_j20_main_input_hypothesis,
-  p4261_local_control_hypothesis,
-  p4261_q4_temperature_diode_hypothesis,
-  p4261_vdd_bypass_hypothesis,
   PartlyPhotographed,
   PinHeader,
   PlugFitUntried,
@@ -262,8 +280,6 @@ import product.p4261.e1_b {
   e1_u55_pins,
   e1_u5_2,
   e1_vector_all_on,
-  p4261_enable_network_hypothesis,
-  p4261_near_4r7_converter_hypothesis,
 }
 import product.p4261.readings {
   gate_pin_reading,
@@ -292,6 +308,7 @@ import product.p4261.readings {
   across_input,
   AcrossInput,
   AcrossInputContradicted,
+  AcrossGap,
   AcrossInputStanding,
   AcrossInputUnestablished,
   attachment_of,
@@ -830,12 +847,7 @@ fn across_text(s: AcrossInputStanding) -> String {
       component_text(c: component), " across the input ('", terminal_text(t: on_fused), "' on the fused side, '", terminal_text(t: on_return), "' on the return side)",
     ], "")
     AcrossInputContradicted { component, readings } => join([component_text(c: component), " placement CONTRADICTED (", join(map(readings, o => continuity_text(o: o)), "; "), ")"], "")
-    AcrossInputUnestablished { component, gap } => join([component_text(c: component), " not placed across the input (",
-      match gap {
-        InputPolarityNotEstablished => "the input polarity is not established"
-        NotTwoTerminals => "not a two-terminal part"
-        TerminalsNotPlaced => "its terminals are not read to the two sides"
-      }, ")"], "")
+    AcrossInputUnestablished { component, gap } => join([component_text(c: component), " not placed across the input (", across_gap_text(g: gap), ")"], "")
   }
 }
 
@@ -976,6 +988,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     ". J20 ", input_draw_text(d: input_draw(layout: layout)),
     ". ", input_stage_text(layout: layout),
     ". ", netlist_reading(layout: layout),
+    ". ", net_propositions_text(layout: layout),
     ". ", phases_reading(layout: layout),
     ". ", q300_gate_path_reading(layout: layout),
     ". ", u4_configuration_text(layout: layout),
@@ -984,7 +997,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     ". ", j24_text(layout: layout),
     ". ", j68_shape_text(layout: layout),
     ". ", alterations_text(layout: layout),
-    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis), ". ", hypothesis_text(h: p4261_near_4r7_converter_hypothesis),
+    ". ", hypotheses_text(),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
 }
@@ -1375,6 +1388,10 @@ fn judgment_words(j: FindingJudgment, established: Bool) -> String {
       Present { value: x } => protected_bus_text(s: x)
     }
     NotAComponent { component } => join([component_text(c: component), " is not a component of this carrier's observation"], "")
+    NetPropositionJudged { key, assessment } => match assessment {
+      Absent => join(["no reconstructed wiring proposition '", key as String, "'"], "")
+      Present { value: a } => net_assessment_text(a: a)
+    }
   }
 }
 
@@ -1397,4 +1414,82 @@ fn translator_pin_text(layout: CarrierLayoutObservation, c: ComponentInstanceIde
 
 fn j68_shape_from(all: List<ResistanceObservation>) -> String {
   j68_shape_text_of(shape: j68_shape(all: all))
+}
+
+// ── WIRING PROPOSITIONS ON THIS BOARD (product.p4261.evidence assess_net_proposition), RENDERED ─────
+
+fn across_gap_text(g: AcrossGap) -> String {
+  match g {
+    InputPolarityNotEstablished => "the input polarity is not established"
+    NotTwoTerminals => "not a two-terminal part"
+    TerminalsNotPlaced => "its terminals are not read to the two sides"
+  }
+}
+
+fn net_gap_text(g: NetGap) -> String {
+  match g {
+    OccupantNotPresentInState => "no part present at the position in that state"
+    ConnectorNotMappedWhole => "the connector is not mapped whole"
+    RowContactNotReached => "no terminal of the part is reached by every position of the row"
+    InputClassesNotEstablished => "the input's two row classes are not established"
+    PartNotPlaced { gap } => across_gap_text(g: gap)
+  }
+}
+
+fn net_state_outcome_text(o: NetStateOutcome) -> String {
+  match o {
+    NetSupported { terminals, readings: _ } => join(["supported at ", join(map(terminals, t => terminal_text(t: t)), " and ")], "")
+    NetCounterevidence { terminals, readings: _ } => join(["not so: ", join(map(terminals, t => terminal_text(t: t)), " and "), " both in one class"], "")
+    NetEvidenceConflict { readings, occupants } => if count(occupants) > 1 { join([to_string(count(occupants)), " distinct parts present at the position"], "") } else { join(["readings disagree (", to_string(count(readings)), ")"], "") }
+    NetUnresolved { gap } => join(["unresolved: ", net_gap_text(g: gap)], "")
+  }
+}
+
+fn net_state_text(a: NetStateAssessment) -> String {
+  join([if count(a.state.after) == 0 { "as received" } else { join(["after ", join(map(a.state.after, k => k as String), ", ")], "") }, ": ", net_state_outcome_text(o: a.outcome)], "")
+}
+
+fn net_revision_text(r: NetRevisionOutcome) -> String {
+  match r {
+    NetRevisionSupported => "supported by this board as received"
+    NetRevisionCounterevidence => "contradicted by this board as received"
+    NetRevisionConflict => "this board's readings as received disagree"
+    NetRevisionUnresolved => "not established by this board as received"
+    NetRevisionNotAttributable { gap: _ } => "not attributable to this board"
+  }
+}
+
+fn net_assessment_text(a: NetPropositionAssessment) -> String {
+  join([a.proposition.key as String, " (reconstructed, ", net_revision_text(r: a.revision), "; ", join(map(a.states, s => net_state_text(a: s)), "; "), ")"], "")
+}
+
+fn net_propositions_text(layout: CarrierLayoutObservation) -> String {
+  let assessed = flat_map(p4261_net_propositions, p => match net_assessment(layout: layout, key: p.key) { Absent => no_net_assessments(), Present { value: a } => [a] })
+  let applicable = filter(assessed, a => match a.revision { NetRevisionNotAttributable { gap: _ } => false, _ => true })
+  match applicable.first() {
+    Absent => "no reconstructed wiring proposition applies to this board"
+    Present { value: _ } => join(["Reconstructed wiring propositions (low-impedance reachability, not copper identity): ", join(map(applicable, a => net_assessment_text(a: a)), "; ")], "")
+  }
+}
+
+fn no_net_assessments() -> List<NetPropositionAssessment> {
+  []
+}
+
+// OUR HYPOTHESES (product.p4261.investigation), each with what it is about and the typed wiring
+// propositions it argues about. They are hypotheses, not derivations; nothing reads their prose.
+fn hypothesis_class_text(c: HypothesisClass) -> String {
+  match c {
+    DesignRelationRemainder { positions } => if count(positions) == 0 { "about the board's design, not yet modeled" } else { join(["about the board's design at ", join(map(positions, p => p.designator as String), ", "), ", not yet modeled"], "") }
+    SpecimenDiagnostic { asset } => join(["about ", asset as String, " as we hold it"], "")
+    DesignAndSpecimen { positions, asset } => join(["about the board's design at ", join(map(positions, p => p.designator as String), ", "), " and about ", asset as String, " as we hold it"], "")
+  }
+}
+
+fn classified_hypothesis_text(h: ClassifiedHypothesis) -> String {
+  join([hypothesis_text(h: h.hypothesis), " [", hypothesis_class_text(c: h.class), if count(h.concerns) == 0 { "" } else { join(["; argues about ", join(map(h.concerns, k => k as String), ", ")], "") }, "]"], "")
+}
+
+fn hypotheses_text() -> String {
+  join(map(p4261_hypotheses, h => classified_hypothesis_text(h: h)), ". ")
 }
