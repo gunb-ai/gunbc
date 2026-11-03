@@ -70,6 +70,17 @@ fn lexeme_builds(value: String) -> Bool {
   }
 }
 
+// An accepted token must come back out of the carrier as the exact bytes that went in. `JsonNumberLexeme`
+// is a branded String in extdeps.languages.json.grammar, so reading it out is the same cast the JSON emit
+// and parse code uses (`lexeme as String`). Without this half, a claim named "keeps its bytes" would only
+// ever have shown that SOMETHING was accepted.
+fn lexeme_keeps_its_bytes(spelling: String) -> Bool {
+  match json_number_lexeme(s: spelling) {
+    Absent => false
+    Present { value: lexeme } => (lexeme as String) == spelling
+  }
+}
+
 // THE DOCUMENTED SET IS ALL SEVEN, EACH IN ITS OWN ARM. Upstream's reasoning effort is
 // none|minimal|low|medium|high|xhigh|max; a model with four arms had no inhabitant for a valid request
 // that asks for "xhigh". RED WHEN: any documented arm is dropped from the parse chain -- that name then
@@ -137,12 +148,15 @@ test fn the_chunk_object_constructor_accepts_only_the_streamed_shape() -> Bool {
 // A SAMPLING PARAMETER IS A JSON NUMBER LEXEME, BUILT BY CHECKING, AND NOTHING HERE EVALUATES IT. The
 // four sampling members of the request are typed `JsonNumberLexeme`, obtainable only through the grammar's
 // checked constructor, so the position no request-building claim reached before is exercised here: a token
-// that is not a JSON number is refused rather than carried, and a value like "-1.5e10" keeps its exact
-// spelling because it was never parsed into a number. RED WHEN: the request's carrier is swapped for
-// something that accepts any text (the two refusals go red), or a read evaluates the lexeme into a number
-// and re-emits it differently (the byte-identity half goes red, including a float's habit of writing
-// "-1.5e10" as "-15000000000").
+// that is not a JSON number is refused rather than carried, and an accepted token comes back out of the
+// carrier as the exact bytes that went in. RED WHEN: the constructor accepts something that is not a JSON
+// number (the two refusals go red); it refuses a documented spelling (the two acceptances go red); or the
+// carrier normalizes what it accepted -- "-1.5e10" coming back as "-15000000000", or "2e3" as "2000", turns
+// the byte-identity half red.
 test fn a_sampling_parameter_is_a_checked_number_lexeme_and_keeps_its_bytes() -> Bool {
   if lexeme_builds(value: "0.7") && lexeme_builds(value: "-1.5e10") && !lexeme_builds(value: "hot")
-    && !lexeme_builds(value: "-") { true } else { false }
+    && !lexeme_builds(value: "-")
+    && lexeme_keeps_its_bytes(spelling: "0.7") && lexeme_keeps_its_bytes(spelling: "-1.5e10")
+    && lexeme_keeps_its_bytes(spelling: "2e3") && lexeme_keeps_its_bytes(spelling: "-0.0") { true }
+    else { false }
 }
