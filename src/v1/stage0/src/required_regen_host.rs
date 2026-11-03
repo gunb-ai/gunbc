@@ -5834,38 +5834,6 @@ fn rebuilt_seed_regen_failed_refusal(run: &RebuiltSeedChildRun) -> String {
     )
 }
 
-/// The two cgroup observation lines around the rebuilt-seed phase, printed by the PARENT at phase
-/// begin and phase end. A number has to be attached to the one phase whose cost moves: the same
-/// pass measured 5 minutes on one runner and 53 on another, and while the child's output was
-/// discarded there was nothing between the two marks to say why. This is an observation inside the
-/// existing receipt, not a gate -- nothing reads it back, no cap moves, nothing refuses.
-fn report_rebuilt_seed_regen_cgroup(phase: &str) {
-    let unreadable = || "unreadable".to_string();
-    let (dir_label, current, max, peak, events) = match crate::memory_governor::leaf_cgroup_dir() {
-        Some(dir) => (
-            dir.to_string_lossy().into_owned(),
-            crate::memory_governor::read_cgroup_u64(&dir, "memory.current")
-                .map(|value| value.to_string())
-                .unwrap_or_else(unreadable),
-            crate::memory_governor::read_cgroup_raw(&dir, "memory.max").unwrap_or_else(unreadable),
-            crate::memory_governor::read_cgroup_raw(&dir, "memory.peak").unwrap_or_else(unreadable),
-            crate::memory_governor::read_cgroup_raw(&dir, "memory.events")
-                .map(|body| body.lines().collect::<Vec<_>>().join(" "))
-                .unwrap_or_else(unreadable),
-        ),
-        None => (
-            unreadable(),
-            unreadable(),
-            unreadable(),
-            unreadable(),
-            unreadable(),
-        ),
-    };
-    eprintln!(
-        "required-regen: rebuilt-seed child {phase} cgroup={dir_label} memory.current={current} memory.max={max} memory.peak={peak} memory.events={events}"
-    );
-}
-
 /// `memory.stat` keys the diagnostic prints: the anonymous/file split and the swap-relevant lines.
 /// A key the kernel does not report is printed `absent`, never defaulted.
 const CGROUP_DIAGNOSTIC_STAT_KEYS: &[&str] = &[
@@ -5885,16 +5853,6 @@ const CGROUP_DIAGNOSTIC_STAT_KEYS: &[&str] = &[
     "unevictable",
 ];
 
-/// One cgroup control file as text: its trimmed content, `absent` when the file does not exist, and
-/// `unreadable(<kind>)` for any other failure. A missing file is never defaulted to a number.
-fn cgroup_file_or_absent(dir: &Path, file: &str) -> String {
-    match fs::read_to_string(dir.join(file)) {
-        Ok(body) => body.trim().to_string(),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => "absent".to_string(),
-        Err(error) => format!("unreadable({:?})", error.kind()),
-    }
-}
-
 fn cgroup_stat_field(stat_body: &str, key: &str) -> String {
     stat_body
         .lines()
@@ -5913,9 +5871,9 @@ fn cgroup_limits_group(dir: &Path) -> String {
     format!(
         "{}[memory.max={} memory.high={} memory.swap.max={}]",
         dir.display(),
-        cgroup_file_or_absent(dir, "memory.max"),
-        cgroup_file_or_absent(dir, "memory.high"),
-        cgroup_file_or_absent(dir, "memory.swap.max"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.max"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.high"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.swap.max"),
     )
 }
 
@@ -5924,13 +5882,13 @@ fn cgroup_limits_group(dir: &Path) -> String {
 /// and then for each ancestor up to and including the first one whose `memory.max` or `memory.high`
 /// is not `max` (the first level that can bind or throttle), or the mount root.
 fn cgroup_memory_diagnostic_line(dir: &Path, mount_root: &Path, phase: &str, pid: u32) -> String {
-    let stat_body = cgroup_file_or_absent(dir, "memory.stat");
+    let stat_body = crate::memory_governor::cgroup_file_or_absent(dir, "memory.stat");
     let stat = CGROUP_DIAGNOSTIC_STAT_KEYS
         .iter()
         .map(|key| format!("{key}={}", cgroup_stat_field(&stat_body, key)))
         .collect::<Vec<_>>()
         .join(" ");
-    let events = cgroup_file_or_absent(dir, "memory.events")
+    let events = crate::memory_governor::cgroup_file_or_absent(dir, "memory.events")
         .lines()
         .collect::<Vec<_>>()
         .join(" ");
@@ -5942,7 +5900,7 @@ fn cgroup_memory_diagnostic_line(dir: &Path, mount_root: &Path, phase: &str, pid
         }
         limits.push(cgroup_limits_group(ancestor));
         let binds = |file: &str| {
-            let value = cgroup_file_or_absent(ancestor, file);
+            let value = crate::memory_governor::cgroup_file_or_absent(ancestor, file);
             value != "max" && value != "absent"
         };
         if binds("memory.max") || binds("memory.high") || ancestor == mount_root {
@@ -5953,9 +5911,9 @@ fn cgroup_memory_diagnostic_line(dir: &Path, mount_root: &Path, phase: &str, pid
     format!(
         "required-regen: cgroup-diag phase={phase} pid={pid} cgroup={} memory.current={} memory.peak={} memory.swap.current={} memory.events={events} memory.stat[{stat}] limits={}",
         dir.display(),
-        cgroup_file_or_absent(dir, "memory.current"),
-        cgroup_file_or_absent(dir, "memory.peak"),
-        cgroup_file_or_absent(dir, "memory.swap.current"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.current"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.peak"),
+        crate::memory_governor::cgroup_file_or_absent(dir, "memory.swap.current"),
         limits.join(" > "),
     )
 }
@@ -7669,7 +7627,6 @@ pub fn run_regen_round_cost(
         stages.push(stage);
         generation_ordinal += 1;
         v1_rt::trace_mark("round.built_seed_regen.begin".to_string());
-        report_rebuilt_seed_regen_cgroup("begin");
         report_cgroup_memory_diagnostic("parent.begin");
         let next = run_built_seed_regen(
             &workspace,
@@ -7679,7 +7636,6 @@ pub fn run_regen_round_cost(
             affected_scope,
             &current_seed_digest,
         );
-        report_rebuilt_seed_regen_cgroup("end");
         report_cgroup_memory_diagnostic("parent.end");
         v1_rt::trace_mark("round.built_seed_regen.done".to_string());
         match next {
