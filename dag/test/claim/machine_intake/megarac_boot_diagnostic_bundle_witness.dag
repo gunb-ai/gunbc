@@ -11,6 +11,11 @@ import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused
 import gunbc.host.megarac_operation_standing { MegaRacSdrSocketNaming }
 import gunbc.machine_intake.megarac_sensor_observation { SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming }
 import gunbc.machine_intake.megarac_kvm_still { KvmObserverRecord, kvm_observer_record_not_started }
+import std.algebra { string_contains }
+import gunbc.machine_intake.megarac_media_attach {
+  AttachReadiness, PresentingRow, ReadinessLook, ReadinessStarted, ReadinessConnecting, ReadinessStartedUnbound,
+}
+import extdeps.bmc.megarac { RedirectionStartedConnectionAccepted, RedirectionConnecting }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
@@ -70,7 +75,7 @@ import gunbc.host.boot_console_observation {
   console_size_of_stat,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, BootOverrideClears, boot_override_clears_none_found, boot_param5_override_is_pending, megarac_override_release, BootParam5ClearIssued, OverrideClearLeftPending, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly,
+  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, BootOverrideClears, boot_override_clears_none_found, boot_param5_override_is_pending, megarac_override_release, BootParam5ClearIssued, OverrideClearLeftPending, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, processor_anomalies, readiness_look_text, redfish_budget_refusal, redfish_collection_assembly,
 }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_valid_after_bootdev_none,
@@ -1096,4 +1101,66 @@ test fn a_readback_whose_valid_bit_is_still_set_keeps_withholding_the_handoff() 
       OverrideClearLeftPending => false
       _ => true
     }
+}
+
+// The configurations document a pre-ready look decodes into one of the row-based arms: status 0 beside the
+// no-session marker, which is the interval this repository has never been able to observe. Two bodies that
+// differ only in their marker, so a claim can tell "the body was carried" from "the body was dropped".
+fn configurations_body(marker: String) -> String {
+  concat("[{\"image_name\":\"census.iso\",\"media_index\":0,\"session_index\":255,\"redirection_status\":0,\"marker\":\"",
+    concat(marker, "\"}]"))
+}
+
+fn pre_ready_row(wire: Int, session: String) -> PresentingRow {
+  PresentingRow {
+    image_name: "census.iso",
+    media_index: Present { value: "0" },
+    session_index: Present { value: session },
+    redirection_wire: wire,
+    redirection: if wire == 0 { RedirectionConnecting } else { RedirectionStartedConnectionAccepted },
+  }
+}
+
+fn a_look(reading: AttachReadiness) -> ReadinessLook {
+  ReadinessLook { observed_at: 1790776024465, reading: reading }
+}
+
+// THE PRE-READY LOOK KEEPS WHAT IT READ. Started, Connecting and Started-with-no-bound-session are the answers
+// a successful StartMedia produces, and the interval between that write and the started reading is the interval
+// megarac_start_media_interval is a hypothesis about (its read_obligation asks for exactly this look). Before
+// these arms carried the document, the look ran, decoded, and left nothing behind -- a read that happened with
+// nothing observed, so no boot could ever commit the interval. Each arm must reach the receipt text with the
+// configurations it was decoded from.
+test fn a_started_look_prints_the_configurations_it_read() -> Bool {
+  string_contains(
+    s: readiness_look_text(l: a_look(reading: ReadinessStarted { row: pre_ready_row(wire: 1, session: "0"), configurations: configurations_body(marker: "started-look") })),
+    pattern: "\"marker\":\"started-look\"",
+  )
+}
+
+test fn a_connecting_look_prints_the_configurations_it_read() -> Bool {
+  string_contains(
+    s: readiness_look_text(l: a_look(reading: ReadinessConnecting { row: pre_ready_row(wire: 0, session: "255"), configurations: configurations_body(marker: "connecting-look") })),
+    pattern: "\"marker\":\"connecting-look\"",
+  )
+}
+
+test fn an_unbound_started_look_prints_the_configurations_it_read() -> Bool {
+  string_contains(
+    s: readiness_look_text(l: a_look(reading: ReadinessStartedUnbound { row: pre_ready_row(wire: 1, session: "255"), configurations: configurations_body(marker: "unbound-look") })),
+    pattern: "\"marker\":\"unbound-look\"",
+  )
+}
+
+// RED: THE TEXT MAY NOT SILENTLY DROP THE DOCUMENT. The same row, the same arm, two bodies: if the render ever
+// stops carrying the configurations -- dropped in the fold, or printed from the row alone -- the two renders
+// collapse to one string and this claim goes red. Distinctness is the property; the marker checks above only
+// prove a body can appear at all.
+test fn the_receipt_text_distinguishes_two_configurations_of_the_same_row() -> Bool {
+  let row = pre_ready_row(wire: 0, session: "255")
+  let left = readiness_look_text(l: a_look(reading: ReadinessConnecting { row: row, configurations: configurations_body(marker: "left") }))
+  let right = readiness_look_text(l: a_look(reading: ReadinessConnecting { row: row, configurations: configurations_body(marker: "right") }))
+  left != right
+    && string_contains(s: left, pattern: "\"marker\":\"left\"")
+    && string_contains(s: right, pattern: "\"marker\":\"right\"")
 }
