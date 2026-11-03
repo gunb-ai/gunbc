@@ -1,11 +1,11 @@
 module product.electrical.photograph
 
-import std.content_hash { Sha256Digest }
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import std.list { first_where }
 import std.measure { FiniteByteSize }
 import std.nat { Nat }
 import std.optional { Absent, Present }
-import std.types { Bool, List, NonEmptyStr }
+import std.types { List, NonEmptyStr }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 
 // WHAT A PHOTOGRAPH IS IN THE MODEL. A reading of a board is read off an image, and the image is what
@@ -39,7 +39,8 @@ type PhotographSurface
   | BottomSurface
   // A frame nobody has placed on a face. Batch 5's unplaced SD frames are cap tops and label-less shots;
   // guessing a face would put a part on the wrong side of the board, so the absence is named instead, with
-  // the word that would close it. `is_captured_on` treats it as neither side.
+  // the word that would close it. Anything that filters the store by face counts this as neither side, so a
+  // frame here can be cited and read; it simply cannot be used to say which face of the board it shows.
   | SurfaceUnrecorded { obligation: NonEmptyStr }
 
 // WHEN THE FRAME WAS TAKEN, as the receipts record it. An atlas frame's file name carries its day; a
@@ -130,13 +131,9 @@ type CitationStanding
   // at another specimen's frame is a record defect, and the sheet has to say so.
   | FrameDepictsAnotherBoard { content: Sha256Digest, depicted_on: PhysicalAssetIdentity, obligation: NonEmptyStr }
 
-fn sha256_digest_eq(a: Sha256Digest, b: Sha256Digest) -> Bool {
-  a.hex == b.hex
-}
-
 // The store's lookup, and the only way a digest becomes a frame.
 fn photograph_in_store(store: List<Photograph>, content: Sha256Digest) -> Photograph? {
-  first_where(store, p => sha256_digest_eq(a: p.content, b: content))
+  first_where(store, p => content_hash_eq_cryptographic(left: p.content, right: content))
 }
 
 // WHAT A CITATION RESTS ON. Resolved by content, never by text: two rows with the same file name are

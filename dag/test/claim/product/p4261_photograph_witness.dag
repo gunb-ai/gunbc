@@ -20,7 +20,7 @@ module test.claim.product.p4261_photograph_witness
 //
 // (unset GUNBC_RESOLVED_GRAPH_CACHE_DIR and GUNBC_NATIVE_CACHE_ROOT first).
 
-import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
 import std.list { distinct_by_key, duplicated_by_key, first_where }
 import std.nat { Nat }
 import std.optional { Absent, Present }
@@ -60,7 +60,6 @@ import product.electrical.photograph {
   cite,
   photograph_citation_text,
   photograph_in_store,
-  sha256_digest_eq,
 }
 import std.measure {
   FiniteByteSizeBuilt,
@@ -312,7 +311,7 @@ test fn identity_is_the_bytes_and_not_the_file_name() -> Bool {
   let frames = same_name_two_frames(p4261_e1_layout.asset)
   count(distinct_by_key(frames, p => p.store.file_name as String)) == 1
     && count(distinct_by_key(frames, p => p.content.hex as String)) == 2
-    && !sha256_digest_eq(a: a, b: b)
+    && !content_hash_eq_cryptographic(left: a, right: b)
     && match photograph_in_store(store: frames, content: a) {
       Present { value } => finite_byte_size_count(size: value.bytes) == 100000
       Absent => false
@@ -333,7 +332,7 @@ test fn no_frame_is_held_twice() -> Bool {
 // lookup reads anything but the digest, or if the list and the rows disagree about what is in the store.
 test fn every_row_resolves_by_its_own_content() -> Bool {
   e1_photographs.all(p => match e1_photograph(p.content) {
-    Present { value } => sha256_digest_eq(a: value.content, b: p.content)
+    Present { value } => content_hash_eq_cryptographic(left: value.content, right: p.content)
     Absent => false
   })
 }
@@ -408,7 +407,7 @@ test fn a_frame_of_another_board_is_refused_where_the_same_frame_of_this_board_i
       && citation_verdict(standing: cite(store: [as_k1], citation: cited, judged: p4261_e1_layout.asset)) == Broken
       && match cite(store: [as_k1], citation: cited, judged: p4261_e1_layout.asset) {
         FrameDepictsAnotherBoard { content, depicted_on, obligation: _ } =>
-          sha256_digest_eq(a: content, b: frame.content)
+          content_hash_eq_cryptographic(left: content, right: frame.content)
             && physical_asset_identity_eq(a: depicted_on, b: p4261_k1_layout.asset)
         _ => false
       }
@@ -424,7 +423,7 @@ test fn a_citation_to_bytes_the_store_does_not_hold_is_refused() -> Bool {
   let citation = InStore { content: no_such_frame, region: Absent }
   citation_verdict(standing: cite(store: e1_photographs, citation: citation, judged: p4261_e1_layout.asset)) == Broken
     && match cite(store: e1_photographs, citation: citation, judged: p4261_e1_layout.asset) {
-      DigestNotInStore { content } => sha256_digest_eq(a: content, b: no_such_frame)
+      DigestNotInStore { content } => content_hash_eq_cryptographic(left: content, right: no_such_frame)
       _ => false
     }
     // ...and the refusal is about the STORE, not about the digest's shape: the very same construction IS
