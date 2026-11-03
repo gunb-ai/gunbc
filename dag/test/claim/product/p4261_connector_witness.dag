@@ -51,7 +51,7 @@ import product.p4261.evidence {
   assess_contact_inventory,
   j20_inventory_assessment,
 }
-import product.p4261.report { CarrierFinding, ComponentAcrossInput, J20ContactInventory, J20InventoryMatchesRevision, J20Polarity, carrier_finding, is_finding_established }
+import product.p4261.findings { CarrierFinding, ComponentAcrossInput, J20ContactInventory, J20InventoryMatchesRevision, J20Polarity, finding_established, judge_finding }
 import product.p4261.e1_b { e1_d2, e1_design, e1_input, e1_j20, e1_j20_housing, p4261_e1_layout }
 import product.p4261.k1_a { p4261_k1_layout }
 
@@ -162,7 +162,7 @@ fn by_row(i: ObservedInventory, latch: Nat, away: Nat) -> Bool {
 }
 
 fn established(layout: CarrierLayoutObservation, f: CarrierFinding) -> Bool {
-  is_finding_established(s: carrier_finding(layout: layout, f: f))
+  finding_established(j: judge_finding(layout: layout, f: f))
 }
 
 // ── OBSERVATION AND CONFORMANCE ARE TWO FINDINGS ──────────────────────────────────────────────

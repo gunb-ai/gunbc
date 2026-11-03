@@ -1,4 +1,5 @@
 module gunbc.roadmap.roadmap_style
+import extdeps.languages.css.selectors { RawSelector }
 import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
 import gunbc.roadmap.roadmap_surface_style { roadmap_surface_rules }
 import gunbc.site.document { SiteStyles, SiteThemeDecls, site_styles_css }
