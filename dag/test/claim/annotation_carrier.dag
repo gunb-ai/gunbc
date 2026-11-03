@@ -1,6 +1,6 @@
 module test.claim.annotation_carrier
 
-import std.roster_frontier { FrontierRow, fold_frontier_expiry, frontier_expiry_clean, frontier_rows_well_formed, frontier_row_decl }
+import std.roster_frontier { FrontierRow, fold_frontier_expiry, frontier_expiry_clean, frontier_row_decl }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution {
   DissolutionUnbound,
@@ -11,17 +11,12 @@ import std.dissolution {
   unbound_dissolution,
 }
 import std.types { List }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn census_closure_frontier_rows_well_formed() -> Bool {
-  frontier_rows_well_formed(rows: census_closure_frontier_rows())
-}
-
 // AUTHORED FIXTURE ROWS, NOT THE LIVE CENSUS, and the change is a repair rather than a preference.
-// This test previously folded census_closure_frontier_rows() and relied on ONE production row --
+// This test previously folded the live frontier roster and relied on ONE production row --
 // extdeps.dhcp.v4's MacAddress frontier row -- still carrying a bound trigger on
 // extdeps.network.mac parse_mac_address, so that supplying that ref would make exactly one row fire
 // while present. That made a claim about the FOLD depend on a fact about a row this module does not

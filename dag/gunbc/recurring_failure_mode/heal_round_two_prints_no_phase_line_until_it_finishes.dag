@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.heal_round_two_prints_no_phase_line_until_it_finishes
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data heal_round_two_prints_no_phase_line_until_it_finishes: RecurringFailureMode = RecurringFailureMode {
+  identity: "heal_round_two_prints_no_phase_line_until_it_finishes" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**heal round 2 prints no phase line until it finishes** (`claim_executor --regen-round-cost`, `round.built_seed_regen`).",
+
+    "INVALID STATE: a heal round that is slow and a heal round that does not converge are indistinguishable from the job log while the round runs, so a hang cannot be attributed.",
+
+    "RECEIPT (gunbc#15247): the run at 7a1931b was silent in round 2 for 53 minutes and was cancelled at the job timeout. The same corpus on a merged main head (72af527) passed, and A/B bisect arms did not attribute a cause.",
+
+    "RUNG FOUND AT: mitigatable only (the job timeout contains the harm; the cause is lost).",
+
+    "CEILING: structurally guaranteed for the observability gap -- every round emits a typed phase record. The hang's own cause is unattributed and stays open.",
+
+    "NEXT TRIGGER (can climb now, unbuilt): the heal-instrument owner emits a per-phase heartbeat inside round 2 so slow versus non-converging is decidable from the log.",
+  ],
+
+  evidence: [],
+}
