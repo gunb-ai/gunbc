@@ -582,6 +582,6 @@ fn ce_probe_refusing_text() -> String {
     Rejected { diagnostics: d } =>
       concat("REJECTED: ", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans))
     Accepted { value: e, diagnostics: _ } =>
-      concat("ACCEPTED: ", closure_emission_json(emission: e))
+      concat("ACCEPTED: ", closure_emission_json(emission: e, spans: located.spans))
   }
 }
