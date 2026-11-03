@@ -1,0 +1,66 @@
+module v2.test.claim.parse.coalesce_operator_parse
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE v2 DAG GRAMMAR ADMITS `??` AS A BINARY OPERATOR (gunbc.recurring_failure_mode
+// v2_does_not_parse_the_coalesce_operator). The grammar under judgment is the live
+// `dag_prepared_grammar`, the text is a value, so the RED is authorable here even though no corpus
+// module can carry `??` before the fix. The two specimens are the refusals read at gunbc#15501
+// (`let v = x ?? 1`, `(x ?? 1) == 1`); both are Rejected before the fix and Accepted after.
+// PRECEDENCE is the table row's fact (dag_infix_operators: `??` between `&&` and `==`, InfixLeft,
+// from the seed's dag_operators with its left_bp >= min admission rule); these arms prove only that
+// the operator parses in those neighbourhoods, not the tree shape. The control is an existing binary
+// operator chain, which must parse unchanged by the renumbering.
+
+fn c_parse_accepted(text: String, file: Symbol) -> Bool {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+          }
+      }
+  }
+}
+
+data let_bound_source: String = "module probe.coalesce_let\n\nfn f(x: Int) -> Int {\n  let v = x ?? 1\n  v\n}\n"
+
+data parenthesized_compare_source: String = "module probe.coalesce_paren\n\nfn f(x: Int) -> Bool {\n  (x ?? 1) == 1\n}\n"
+
+data tighter_than_and_source: String = "module probe.coalesce_and\n\nfn f(a: Bool, x: Int) -> Bool {\n  a && x ?? 1 == 1\n}\n"
+
+data left_chain_source: String = "module probe.coalesce_chain\n\nfn f(x: Int, y: Int) -> Int {\n  x ?? y ?? 1\n}\n"
+
+data ordinary_binary_source: String = "module probe.coalesce_control\n\nfn f(a: Bool, x: Int) -> Bool {\n  a && x + 1 == 2 || a\n}\n"
+
+test fn a_let_bound_coalesce_parses() -> Bool {
+  c_parse_accepted(text: let_bound_source, file: ^probe_coalesce_let)
+}
+
+test fn a_parenthesized_coalesce_compared_parses() -> Bool {
+  c_parse_accepted(text: parenthesized_compare_source, file: ^probe_coalesce_paren)
+}
+
+test fn a_coalesce_between_and_and_equality_parses() -> Bool {
+  c_parse_accepted(text: tighter_than_and_source, file: ^probe_coalesce_and)
+}
+
+test fn a_coalesce_chain_parses() -> Bool {
+  c_parse_accepted(text: left_chain_source, file: ^probe_coalesce_chain)
+}
+
+// POSITIVE CONTROL: ordinary binary operators (every renumbered row) parse unchanged.
+test fn ordinary_binary_operators_still_parse() -> Bool {
+  c_parse_accepted(text: ordinary_binary_source, file: ^probe_coalesce_control)
+}

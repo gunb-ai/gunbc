@@ -288,7 +288,7 @@ fn qualification_attempt_held(
         HostUnitSlotRefused { refusal: _ } => exit_failure(reason: concat("qualification attempt: no attempt slot binds on ", host as String))
         HostUnitSlotBound { slot: slot } =>
           match anchored_host_transport_live(host: host, attempt_raw: attempt as String) {
-            AnchoredBindingBound { bound: b } => qualification_attempt_with_key(host: host, slot: slot, attempt: attempt, revision: revision, user: user, hold: hold, transport: b.transport, wif: wif, key_path: key_path)
+            AnchoredBindingBound { bound: b, anchor: _ } => qualification_attempt_with_key(host: host, slot: slot, attempt: attempt, revision: revision, user: user, hold: hold, transport: b.transport, wif: wif, key_path: key_path)
             other => exit_failure(reason: concat("qualification attempt: no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)))
           }
       }

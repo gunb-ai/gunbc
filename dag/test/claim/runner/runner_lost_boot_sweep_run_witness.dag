@@ -1,5 +1,6 @@
 module test.claim.runner.runner_lost_boot_sweep_run_witness
 
+import gunbc.host.host_boot_id { HostBootId, host_boot_id_of_capture_run, BootIdReadVerdict, boot_id_read_verdict, BootIdReadEstablished, BootIdReadUnreadable }
 import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.algebra { string_contains }
 import extdeps.transports.rest { RestResult, RestAnswered }
@@ -22,7 +23,7 @@ import gunbc.host.managed_host { ManagedHost, managed_hosts }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId }
 import gunbc.runner.runner_slot_allocation { RunnerWidthDerived, RunnerWidthUnresolved, gunbc_runner_committed_width }
-import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_unit, current_service_population, current_service_population_over, CurrentServicePopulationRefusal, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationWidthUnresolved }
+import gunbc.runner.runner_host_unit_slot { service_slot_unit, current_service_population, current_service_population_over, CurrentServicePopulationRefusal, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationWidthUnresolved }
 import gunbc.runner.runner_jit_deregistration {
   LostBootSweep, LostBootSweepSelected, LostBootSweepRefused, lost_boot_sweep, deregistration_name, deregistration_app, deregistration_installation,
   JitDeregistration, JitDeregistrationRefused, DeregistrationAuthorityForAnotherInstallation, SlotLostBoot,
@@ -34,7 +35,6 @@ import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import gunbc.host.host_operation_exec { HostOperationObserved, HostOperationRefused }
 import gunbc.runner.runner_lost_boot_sweep_run {
-  BootIdReadVerdict, BootIdReadEstablished, BootIdReadUnreadable, boot_id_read_verdict,
   LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input, lost_boot_current_from_capture,
   CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved, mint_current_boot_evidence, lost_boot_observe_current_boot, lost_boot_observed_over,
   sweep_host_standing, SweepHostBound, SweepHostNotManaged,
@@ -57,7 +57,7 @@ data org: GitHubOrganizationRef = GitHubOrganizationRef { login: "gunb-ai" }
 
 fn the_host() -> ManagedHost? { first(managed_hosts()) }
 
-// A boot identity exists only through service_boot_id_of over a KernelBootId, so every fixture takes
+// A boot identity exists only through host_boot_id_of_capture_run over a KernelBootId, so every fixture takes
 // the real route; an unconstructible id reads as the empty name, which no assertion below accepts.
 fn kernel_boot(id: String) -> HostCaptureRunIdentity {
   match uuid_of(text: id) {
@@ -70,7 +70,7 @@ data old_boot_id: String = "11111111-1111-4111-8111-111111111111"
 data new_boot_id: String = "22222222-2222-4222-8222-222222222222"
 
 fn unit(m: ManagedHost, id: String, index: Int) -> String {
-  match service_boot_id_of(run: kernel_boot(id: id)) {
+  match host_boot_id_of_capture_run(run: kernel_boot(id: id)) {
     Present { value: b } => service_slot_unit(host: m.host, boot: b, index: index) as String
     Absent => ""
   }
@@ -91,7 +91,7 @@ fn supplied_population(host: HostControlStanding, id: String) -> SuppliedPopulat
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_over"),
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "plan_after_admission"),
 ] {
-  match service_boot_id_of(run: kernel_boot(id: id)) {
+  match host_boot_id_of_capture_run(run: kernel_boot(id: id)) {
     Present { value: b } => SuppliedPopulationBuilt { standing: current_service_population_over(host: host, width: RunnerWidthDerived { slots: 2 }, registration_labels: supplied_labels, boot: b) }
     Absent => SuppliedPopulationMalformedBoot
   }
@@ -147,7 +147,7 @@ fn observed_on(host: String, id: String) -> CurrentBootObservation admit_callers
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "an_observed_boot_capture_plans_exactly_the_stale_registration"),
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "the_dry_run_receipt_records_the_admitted_boot_the_plan_and_no_deletion"),
 ] {
-  match service_boot_id_of(run: kernel_boot(id: id)) {
+  match host_boot_id_of_capture_run(run: kernel_boot(id: id)) {
     Present { value: b } => CurrentBootObserved { evidence: mint_current_boot_evidence(host: host, boot: b) }
     Absent => CurrentBootUnobserved { cause: "unconstructible boot id" }
   }
@@ -306,7 +306,7 @@ test fn one_receipt_line_per_runner_and_any_refusal_fails_the_run() -> Bool {
     Absent => false
     Present { value: m } => {
       let names = [unit(m: m, id: old_boot_id, index: 0), unit(m: m, id: old_boot_id, index: 1), unit(m: m, id: new_boot_id, index: 0)]
-      match service_boot_id_of(run: kernel_boot(id: new_boot_id)) {
+      match host_boot_id_of_capture_run(run: kernel_boot(id: new_boot_id)) {
         Absent => false
         Present { value: current_boot } =>
       match run_sweep(m: m, authority: sweep_authority(), current: new_boot_id, names: names) {
@@ -351,7 +351,7 @@ test fn the_real_route_population_follows_the_committed_width() -> Bool {
       match sweep_host_standing(host: m.host as String as NonEmptyStr) {
         SweepHostNotManaged { host: _ } => false
         SweepHostBound { host: _, standing: st } =>
-          match service_boot_id_of(run: kernel_boot(id: new_boot_id)) {
+          match host_boot_id_of_capture_run(run: kernel_boot(id: new_boot_id)) {
             Absent => false
             Present { value: b } =>
               match gunbc_runner_committed_width(host: m.host) {
@@ -679,7 +679,7 @@ test fn the_dry_run_receipt_records_the_admitted_boot_the_plan_and_no_deletion()
 }
 
 test fn a_refused_dry_run_plan_still_records_the_admitted_boot() -> Bool {
-  match service_boot_id_of(run: kernel_boot(id: capture_boot_id)) {
+  match host_boot_id_of_capture_run(run: kernel_boot(id: capture_boot_id)) {
     Absent => false
     Present { value: b } => {
       let lines = dry_run_refused_lines(host: operator_host_mtcollins1, current: b, cause: "lost-boot sweep: organization runner roster was unavailable: r")

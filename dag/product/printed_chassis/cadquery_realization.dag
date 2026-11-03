@@ -1,5 +1,5 @@
 module product.printed_chassis.cadquery_realization
-import product.printed_chassis.assembly_geometry {Primitive,Block,RoundPrism,AssemblyPart}
+import product.printed_chassis.assembly_geometry {Primitive,Block,RoundPrism,ProfilePrism,ProfileVertex,AssemblyPart}
 import product.printed_chassis.assembly_review_checks {primitive_positive,component}
 import std.euclidean_geometry {Axis3X,Axis3Y,Axis3Z}
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -562,6 +562,30 @@ fn review_primitive_line(p:Primitive,action:ReviewCsgAction) -> LineEmission {
  SourceSubstitution {prefix:",",rendering:micrometre_millimetre_wire(m:s.size_z)},
  review_dimension(prefix:", centered=(True,True,True)).val().translate((",n:component(p:c,a:Axis3X)),
  review_dimension(prefix:",",n:component(p:c,a:Axis3Y)),review_dimension(prefix:",",n:component(p:c,a:Axis3Z))],tail:concat("))",end))
+ ProfilePrism {outline:o,axis:a,length:l,center:c}=>{
+ let cx=component(p:c,a:Axis3X)
+ let cy=component(p:c,a:Axis3Y)
+ let cz=component(p:c,a:Axis3Z)
+ let lx=match a {Axis3X=>micrometer_count(m:l) Axis3Y=>0 Axis3Z=>0}
+ let ly=match a {Axis3Y=>micrometer_count(m:l) Axis3X=>0 Axis3Z=>0}
+ let lz=match a {Axis3Z=>micrometer_count(m:l) Axis3X=>0 Axis3Y=>0}
+ let vertex_subs=flat_map(enumerate(o),r=>{
+  let v=r.second
+  let x=match a {Axis3X=>cx Axis3Y=>cx+v.u Axis3Z=>cx+v.u}
+  let y=match a {Axis3X=>cy+v.u Axis3Y=>cy Axis3Z=>cy+v.v}
+  let z=match a {Axis3X=>cz+v.v Axis3Y=>cz+v.v Axis3Z=>cz}
+  [review_dimension(prefix:if r.first==0 {concat(start,"cq.Solid.extrudeLinear(cq.Face.makeFromWires(cq.Wire.makePolygon([cq.Vector(")} else {"),cq.Vector("},n:x),
+   SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:lx))},
+   review_dimension(prefix:",",n:y),
+   SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:ly))},
+   review_dimension(prefix:",",n:z),
+   SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:lz))}]
+ })
+ emit_line(substitutions:concat(vertex_subs,[
+  SourceSubstitution {prefix:")],close=True)),cq.Vector(",rendering:micrometre_millimetre_wire(m:micrometer(count:lx))},
+  SourceSubstitution {prefix:",",rendering:micrometre_millimetre_wire(m:micrometer(count:ly))},
+  SourceSubstitution {prefix:",",rendering:micrometre_millimetre_wire(m:micrometer(count:lz))}]),tail:concat("))",end))
+ }
  RoundPrism {diameter:d,length:l,axis:a,center:c}=>{
  let axis=match a {Axis3X=>"(1,0,0)" Axis3Y=>"(0,1,0)" Axis3Z=>"(0,0,1)"}
  emit_line(substitutions:[

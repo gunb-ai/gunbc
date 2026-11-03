@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.v2_does_not_canonicalize_the_coalesce_operator
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data v2_does_not_canonicalize_the_coalesce_operator: RecurringFailureMode = RecurringFailureMode {
+  identity: "v2_does_not_canonicalize_the_coalesce_operator" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a CanonicalOperation for null coalescing in v2.std.compilers.target_model, with v2 inference (Optional<T> ?? T gives T) and evaluation/lowering reading it -- sufficient for a module using `x ?? 1` to pass v2 canonicalization, inference and emission, not only parse."
+    },
+  },
+
+  receipts: [
+    "**v2 parses the coalesce operator and then has no canonical operation for it** (the parse-admission fix for gunbc.recurring_failure_mode v2_does_not_parse_the_coalesce_operator moved the refusal one stage later; it did not remove it).",
+
+    "INVALID STATE: a module using `e1 ?? e2` parses natively, but v2.extdeps.languages.dag dag_surface_operator_canonicalization_member has no arm for the `??` token and v2.std.compilers.target_model has no canonical_operation for coalescing, so any v2 stage past parse that canonicalizes the operator refuses it with the existing typed dag_surface_operator_canonicalization_miss diagnostic.",
+
+    "HARM: loud and typed, not silent -- the refusal is a located Diagnostic at the dag_surface_operator_canonicalization_port invariant, so no wrong output is fabricated; the cost is that `??` is usable only where the v1 seed runs the program, not on v2's own pipeline past parse.",
+
+    "RUNG: found on rung 1 (mitigatable): typed refusal contains the harm.",
+
+    "CEILING 3, structurally guaranteed: a canonical coalesce operation with inference makes the operator a modeled construct, so no Accepted program lacks its meaning. Next-rung trigger names the capability above (climbable but unbuilt).",
+  ],
+
+  evidence: [],
+}

@@ -15,19 +15,19 @@ The default is delete-first with minimal Y able to hold the boundary immediately
 
 Existing plans supply evidence about terminal shapes and obligations, never authority to defer the cut through their old sequencing. Enumerate what is certainly scheduled for deletion and remove it before fix-forward work. Current, specifically superseding operator rulings still govern their stated scope.
 
-## Establish a discriminating census
+## Establish a discriminating red
 
 Deletion discovers loads and defects X concealed only where the actual acceptance path refuses broken dependencies. **Before interpreting destruction-green, destroy one genuinely required edge and exhibit RED on the same command, mode and reachable arm.** Discharge this per axis: a name-resolution red proves nothing about type binding. Without a reachable red, the missing wall is the finding; more green samples do not establish coverage.
 
 This destruction-witness rule is currently review discipline, rung1/mitigatable. A structural executor binding witness axis/path and rejecting fail-open acceptance arms does not yet exist; citing this document is not coverage.
 
-Declare the populations deletion cannot make loud: un-enrolled evidence, external consumers, already-silent coverage and prose-named referents. Their restoration/retirement is part of the bounded gap. Prose naming a deleted workflow is not a dependency edge and can continue asserting false present-tense behavior. Until carriers reference the typed artifact identity, **search deleted names across the corpus in the same change**. `generated_artifact` variants and workflow symbols provide existing homes; closed-coproduct consumers make retirement visible where adopted. A recurring prose sweep is mitigation, not the class fix.
+Name the populations deletion cannot make loud: un-enrolled evidence, external consumers, already-silent coverage and prose-named referents. Their restoration/retirement is part of the bounded gap. Prose naming a deleted workflow is not a dependency edge and can continue asserting false present-tense behavior. Until carriers reference the typed artifact identity, **grep for the deleted names in the same change** and rewrite the references found; an empty search is not proof that no reference exists, and no completeness is claimed. `generated_artifact` variants and workflow symbols provide existing homes; closed-coproduct consumers make retirement visible where adopted. A recurring prose sweep is mitigation, not the class fix.
 
 Historical evidence: #8283 deleted workflow files while prose survived; #8774 repaired dangling symbol citations but could not cover filenames in prose. The live `gunbc_ci_collect_fleet_convergence_invoke` claim had no surviving workflow consumer. `proxy_observation_mistaken_for_action_semantics` records the import-strip case where existing edges still produced green because the reachable checker declined to judge them. Raw dated counts remain in the pinned receipt; heuristic English classifications are hypotheses, never defect measurements.
 
 ## Root-first procedure
 
-1. **Name exact root and subject:** consumer × subject population × semantic contract. “Parser”, “CI” or “v1” alone is insufficient. Enumerate production consumers before assigning descendant migration work.
+1. **Name exact root and subject:** consumer × subject population × semantic contract. “Parser”, “CI” or “v1” alone is insufficient. Find production consumers by named grep and source inspection before assigning descendant migration work; report the dependencies found, claim no completeness, and do not hold the cut for a global inventory.
 2. **Trace one complete semantic vertical** backward from that consumer. Determine the smallest Y that answers its actual question, including every required refusal; do not translate X’s internal layers by default.
 3. **Delete production X** under the applicable default/exception above. Keep history/pinned X as evidence or external oracle, not live fallback.
 4. **Fix forward by deliberately chosen class:** implement terminal capability in Y; migrate source using independent offline X evidence; retire an obsolete need with receipt; or, if the error reveals another obsolete authority, recurse to its root. Distinguish dependency loads from previously concealed defects. Apply each chosen class mechanically; do not bulk-restore old bindings to obtain green.
@@ -42,7 +42,7 @@ A root is consumer-relative, not a file. If replacement `b1` covers the complete
 
 Every retained artifact must have a terminal consumer. Otherwise it belongs in branch-local experiments, historical quarry or the deletion population. A current caller establishes migration cost, **not correctness or a duty to survive**. Disposition obligations as unchanged retention, changed terminal contract, replacement by named Y, evidence-only for a surviving claim, or retirement with reason. Retention needs a surviving external contract, invariant, stored-artifact compatibility, independently useful consumer, deliberate transition or rollback commitment.
 
-Admission requires both `undispositioned consumers = 0` and `uncovered surviving consumers = 0`. Undecided blocks but is never presumed retained; retired obligations need no coverage. Internal delete-first obtains dispositions through breakage/fix-forward. Up-front census is required where deletion cannot be the instrument: gap-intolerant/frozen boundaries and silent residue.
+Admission requires both `undispositioned consumers = 0` and `uncovered surviving consumers = 0`. Undecided blocks but is never presumed retained; retired obligations need no coverage. Internal delete-first obtains dispositions through breakage/fix-forward. Where deletion cannot be the instrument (gap-intolerant/frozen boundaries and silent residue), the author names the consumers found by scoped inspection and states what remains unknown. A disposition or consumer census is not a prerequisite: it is retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`). This does not establish corpus-wide coverage; changes use scoped review and focused tests, and the actual correctness requirements (every required refusal preserved, no surviving production consumer of X in the change's reach) remain.
 
 `gunbc.replacement_cut` owns `ReplacementCut`, `ConsumerDisposition` and `admit_replacement_cut_plan`:
 
@@ -53,7 +53,7 @@ Admission requires both `undispositioned consumers = 0` and `uncovered surviving
 - Admission reports all typed causes: undecided rows; uncovered surviving consumers; coverage/replacement naming X itself; duplicate consumer/evidence/region member; identical old/new roots; self-referential descent; empty external-role enumeration or covered region.
 - `AdmittedReplacementCutPlan` is sole-constructor/caller-sealed to the admission fold, carrying cut identity and digest over every plan field; `admitted_matches_plan` recomputes. Authoring an admitted flag cannot qualify another plan.
 
-That plan admission does **not** establish independently observed consumer census, obligation-grain coverage or executed parent-refusal receipts. The migration-cut authority program owes those and roadmap registration; no roadmap node is structurally registered to a cut merely because this plan exists.
+That plan admission does **not** establish an independently observed consumer census, obligation-grain coverage or executed parent-refusal receipts, and it owes none of them: the census prerequisite is retired by the 2026-10-30 process ruling (`gunbc.design_ruling bad_process_is_worse_than_no_process`). The executed parent-refusal and obligation-coverage requirements stay with the change's focused tests. No roadmap node is structurally registered to a cut merely because this plan exists.
 
 ## Independence, vehicle and descent
 

@@ -61,7 +61,9 @@ import v2.std.compilers.lexing {
 import std.optional {
   Absent,
   Present,
-  Optional
+  Optional,
+  optional_absent,
+  optional_present
 }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,

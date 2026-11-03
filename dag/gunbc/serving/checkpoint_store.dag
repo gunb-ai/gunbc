@@ -91,7 +91,7 @@ type CheckpointRoots {
 
 fn checkpoint_scope(store: CheckpointStore) -> CheckpointResult<NonEmptyStr> {
   let binding: CheckpointResult<List<String>> = match store.metadata {
-    FabricStorageLocalFiles { root: r } => CheckpointReady { value: ["files", r.objects as String, r.heads as String] }
+    FabricStorageLocalFiles { operations: r } => CheckpointReady { value: ["files", r.objects as String, r.heads as String] }
     FabricStorageDoorSocket { socket: s, route_prefix: r } => if (r as String).ends_with(suffix: fabric_storage_state_suffix) {
       CheckpointReady { value: ["socket", s as String, r as String] }
     } else { checkpoint_refused(detail: "retention requires the authenticated state route") }
