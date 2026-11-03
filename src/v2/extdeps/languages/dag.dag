@@ -1689,13 +1689,13 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
 fn dag_grammar_arrow_lambda_name_head_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_ident_or_type_decl_modifier_name(),
+      left: dag_grammar_primary_name_expr(),
       right: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
     ),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
-        left: dag_grammar_ident_or_type_decl_modifier_name(),
+        left: dag_grammar_primary_name_expr(),
         right: dag_grammar_terminal(token_class: ^dag_token_comma)
       )
     )
@@ -1892,7 +1892,7 @@ fn dag_grammar_untyped_params_helper() -> GrammarExpr {
   dag_grammar_comma_list_expr(
     item: dag_grammar_sequence(
       left: dag_grammar_value_name_guard(binder: dag_grammar_value_name_keyword_terminal(admit_bool_literals: false)),
-      right: dag_grammar_ident_or_type_decl_modifier_name()
+      right: dag_grammar_primary_name_expr()
     )
   )
 }
@@ -2489,7 +2489,7 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_value_name_binder_before(
-        name: dag_grammar_ident_or_type_decl_modifier_name(),
+        name: dag_grammar_primary_name_expr(),
         follow: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
       ),
       right: dag_grammar_sequence(
@@ -2501,14 +2501,14 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
         left: dag_grammar_value_name_binder_before(
-          name: dag_grammar_ident_or_type_decl_modifier_name(),
+          name: dag_grammar_primary_name_expr(),
           follow: dag_grammar_terminal(token_class: ^dag_token_comma)
         ),
         right: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_comma),
           right: dag_grammar_sequence(
             left: dag_grammar_value_name_binder_before(
-              name: dag_grammar_ident_or_type_decl_modifier_name(),
+              name: dag_grammar_primary_name_expr(),
               follow: dag_grammar_value_name_ends_param()
             ),
             right: dag_grammar_sequence(
@@ -2516,7 +2516,7 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
                 element: dag_grammar_sequence(
                   left: dag_grammar_terminal(token_class: ^dag_token_comma),
                   right: dag_grammar_value_name_binder_before(
-                    name: dag_grammar_ident_or_type_decl_modifier_name(),
+                    name: dag_grammar_primary_name_expr(),
                     follow: dag_grammar_value_name_ends_param()
                   )
                 )
