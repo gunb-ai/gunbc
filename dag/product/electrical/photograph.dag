@@ -2,7 +2,7 @@ module product.electrical.photograph
 
 import std.content_hash { Sha256Digest }
 import std.list { first_where }
-import std.measure { PositiveByteSize, positive_byte_size_bytes }
+import std.measure { FiniteByteSize }
 import std.nat { Nat }
 import std.optional { Absent, Present }
 import std.types { Bool, List, NonEmptyStr }
@@ -85,11 +85,16 @@ type StoreLocation {
 
 // ONE PHOTOGRAPH THE STORE HOLDS. `bytes` is kept because content identity is checked by re-hashing
 // bytes: it says how many a reader should get, and what is wrong with what they got if they get otherwise.
+// Its type is std.measure's existing `FiniteByteSize` -- a `Measure<Memory, One, PositiveMeasureCount>`,
+// the byte size that cannot be zero, which is what a row asserting "a file sits at this Drive path" needs:
+// a length of nothing is not a short file, it is no file. Minting a second positive byte carrier beside it
+// would have been a failed decomposition (DESIGN §2), and the model's other byte consumers (the grain
+// rounder) already read this one.
 type Photograph {
   content: Sha256Digest,
   board: PhysicalAssetIdentity,
   origin: PhotographOrigin,
-  bytes: PositiveByteSize,
+  bytes: FiniteByteSize,
   store: StoreLocation,
 }
 

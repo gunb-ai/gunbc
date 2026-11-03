@@ -63,12 +63,13 @@ import product.electrical.photograph {
   sha256_digest_eq,
 }
 import std.measure {
-  PositiveByteSizeBuilt,
-  PositiveByteSizeRefused,
+  FiniteByteSizeBuilt,
+  FiniteByteSizeNonPositive,
+  byte_size,
   byte_size_count,
-  positive_byte_size,
-  positive_byte_size_bytes,
-  positive_byte_size_from_count,
+  finite_byte_size,
+  finite_byte_size_count,
+  finite_byte_size_from_byte_size,
   positive_measure_count,
 }
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
@@ -166,14 +167,14 @@ fn same_name_two_frames(board: PhysicalAssetIdentity) -> List<Photograph> {
     content: Sha256Digest { hex: "1111111111111111111111111111111111111111111111111111111111111111" as Sha256DigestHex },
     board: board,
     origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-    bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 99999)),
+    bytes: finite_byte_size(count: positive_measure_count(predecessor: 99999)),
     store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "t4_01.jpg" },
   },
   Photograph {
     content: Sha256Digest { hex: "2222222222222222222222222222222222222222222222222222222222222222" as Sha256DigestHex },
     board: board,
     origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-    bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 100199)),
+    bytes: finite_byte_size(count: positive_measure_count(predecessor: 100199)),
     store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "t4_01.jpg" },
   }]
 }
@@ -214,8 +215,9 @@ fn first_generated_image() -> Photograph? {
 // face of the board dropped, goes red here rather than quietly halving what the board's claims can be
 // checked against. The last clause checks a row against the manifest rather than against the store: the
 // frame the receipt describes as 2,108,657 bytes is the frame the row says it is. Byte positivity is NOT
-// checked here because it cannot be -- std.measure's `PositiveByteSize` has no zero constructor, so a
-// store-wide sweep would be validation standing where construction was available (DESIGN §5).
+// checked here because it cannot be -- the field is std.measure's `FiniteByteSize`, whose count has no
+// zero constructor, so a store-wide sweep would be validation standing where construction was
+// available (DESIGN §5).
 test fn the_store_holds_the_atlas_receipts() -> Bool {
   let held = rows_for(board: p4261_e1_layout.asset)
   count(held) == 201
@@ -234,7 +236,7 @@ test fn the_store_holds_the_atlas_receipts() -> Bool {
     && count(frames_captured_by(store: held, device: AndonstarSdCardSensor)) == 110
     && count(frames_with_a_silent_device(store: held)) == 55
     && match e1_photograph(manifest_first_top_frame) {
-      Present { value } => byte_size_count(positive_byte_size_bytes(size: value.bytes)) == 2108657
+      Present { value } => finite_byte_size_count(size: value.bytes) == 2108657
         && (value.store.folder_name as String) == "E1/photos_top"
       Absent => false
     }
@@ -245,26 +247,22 @@ test fn the_store_holds_the_atlas_receipts() -> Bool {
 // failure mode the store exists to prevent, since a re-export reuses names and a reading would then rest
 // on somebody else's pixels while citing a frame that looks correct.
 // A store row claims a FILE sits at a Drive path, so a length of nothing is a lie rather than a
-// measurement -- and after this change it is also unwritable: `PositiveByteSize` stores a
-// `PositiveMeasureCount`, whose single constructor is a successor, so no literal of it can say zero and the
-// red "a zero-sized frame was stored" CANNOT be authored. What can be authored, and is here, is the other
-// half of the claim: the path a receipt takes off a wire refuses a zero instead of storing one. Before the
-// change `PositiveByteSize { size: byte_size(count: 0) }` was a writable literal of a "positive" size, a
-// brand with no construction behind it (DESIGN §4b).
+// measurement. The field's type is std.measure's own `FiniteByteSize` -- `Measure<Memory, One,
+// PositiveMeasureCount>` -- so a row cannot state zero bytes: `PositiveMeasureCount`'s single constructor
+// is a successor over a Nat, and the red "a zero-sized frame was stored" is UNAUTHORABLE BY CONSTRUCTION.
+// That is the reason there is no fixture for it, and why the check that IS authorable is here: the path a
+// receipt takes off a wire, `finite_byte_size_from_byte_size`, must refuse a zero rather than store one --
+// and must not refuse one byte, or the refusal above would be about the path being broken rather than
+// about zero. A second positive byte carrier beside `FiniteByteSize` would have been a failed
+// decomposition (DESIGN §2); the store reuses the one the grain rounder already reads.
 test fn a_frame_cannot_claim_a_file_of_no_length() -> Bool {
-  // Zero has no constructor of its own: `PositiveByteSize` holds a `PositiveMeasureCount`, whose one
-  // constructor is a successor over a Nat, so no row can write `bytes: 0` at all. The only way to
-  // author the refusal is through the Int constructor, which must refuse.
-  match positive_byte_size(count: 0) {
-    PositiveByteSizeBuilt { size } => false
-    PositiveByteSizeRefused { cause } => cause.observed == 0
+  match finite_byte_size_from_byte_size(size: byte_size(count: 0)) {
+    FiniteByteSizeBuilt { size: _ } => false
+    FiniteByteSizeNonPositive { observed } => observed == 0
   }
-    // and one byte is expressible and keeps its number, so the refusal above is about zero and not
-    // about the path being broken
-    && match positive_byte_size(count: 1) {
-      PositiveByteSizeBuilt { size } =>
-        byte_size_count(b: positive_byte_size_bytes(size: size)) == 1
-      PositiveByteSizeRefused { cause } => false
+    && match finite_byte_size_from_byte_size(size: byte_size(count: 1)) {
+      FiniteByteSizeBuilt { size } => finite_byte_size_count(size: size) == 1
+      FiniteByteSizeNonPositive { observed: _ } => false
     }
 }
 
@@ -316,11 +314,11 @@ test fn identity_is_the_bytes_and_not_the_file_name() -> Bool {
     && count(distinct_by_key(frames, p => p.content.hex as String)) == 2
     && !sha256_digest_eq(a: a, b: b)
     && match photograph_in_store(store: frames, content: a) {
-      Present { value } => byte_size_count(positive_byte_size_bytes(size: value.bytes)) == 100000
+      Present { value } => finite_byte_size_count(size: value.bytes) == 100000
       Absent => false
     }
     && match photograph_in_store(store: frames, content: b) {
-      Present { value } => byte_size_count(positive_byte_size_bytes(size: value.bytes)) == 100200
+      Present { value } => finite_byte_size_count(size: value.bytes) == 100200
       Absent => false
     }
 }
@@ -576,7 +574,7 @@ test fn a_frame_the_board_cites_is_a_frame_somebody_can_open() -> Bool {
       Present { value: found } =>
         (found.store.folder_id as String) == (frame.store.folder_id as String)
           && (found.store.file_name as String) == (frame.store.file_name as String)
-          && positive_byte_size_bytes(size: found.bytes) == positive_byte_size_bytes(size: frame.bytes)
+          && finite_byte_size_count(size: found.bytes) == finite_byte_size_count(size: frame.bytes)
       Absent => false
     }
   }

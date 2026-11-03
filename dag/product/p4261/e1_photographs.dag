@@ -15,9 +15,11 @@ module product.p4261.e1_photographs
 // this carrier cites an artefact rather than a sentence: a marking row and a store row are about the same
 // frame because their digests match, whatever either is called in a folder.
 //
-// A row's byte count is the manifest's, carried as std.measure's `PositiveByteSize`: a store row claims a
-// file exists, and a zero-length frame has no constructor. The number a reader compares against the file
-// they open is the manifest's own, so `predecessor` is one less than it.
+// A row's byte count is the manifest's, carried as std.measure's existing `FiniteByteSize` -- the byte
+// size whose count is a `PositiveMeasureCount`, so a store row that claims a file exists cannot state a
+// zero-length frame. Minting a second positive byte carrier beside it would be a failed decomposition
+// (DESIGN §2). The number a reader compares against the file they open is the manifest's own, so
+// `predecessor` is one less than it.
 //
 // Rows are named for the atlas photo id the registries use (the inventories' `photos` column), or for what
 // the file is called where no registry lists it; batch 5's rows are named `e1_sd_photo_<photo id>`. The name
@@ -42,7 +44,7 @@ module product.p4261.e1_photographs
 // readings it was drawn from.
 
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import std.measure { positive_measure_count, positive_byte_size_from_count }
+import std.measure { finite_byte_size, positive_measure_count }
 import std.types { List, NonEmptyStr }
 import product.electrical.photograph {
   BottomSurface,
@@ -66,7 +68,7 @@ data e1_photo_bottom_function_zones_draft: Photograph = Photograph {
   content: Sha256Digest { hex: "f91c0778335e116b033116b2a3757ad9e705717ed3de59caa3de8a87f0117be1" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: GeneratedImage { depicts: "the bottom overview with our first-draft function zones drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-03", atlas_revision: "2026-11-03b" },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 638915)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 638915)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_bottom_function-zones_draft_2026-11-03.jpg" },
 }
 
@@ -74,7 +76,7 @@ data e1_photo_bottom_overview_grid: Photograph = Photograph {
   content: Sha256Digest { hex: "95d0d83d149878d3bb551332f46fefb848f1ff2ce9e1800db5f8a14ab0073ae5" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: GeneratedImage { depicts: "the bottom overview with the atlas grid drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 614766)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 614766)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_bottom_overview_grid_2026-11-02.jpg" },
 }
 
@@ -82,7 +84,7 @@ data e1_photo_bottom_overview_rectified: Photograph = Photograph {
   content: Sha256Digest { hex: "9c1c6325ab600b6b6b9cb08f163a9ee5098fe443f47aa4a57f276e86a2f4616f" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: GeneratedImage { depicts: "the bottom overview rectified onto the grid", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 541912)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 541912)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_bottom_overview_rectified_2026-11-02.jpg" },
 }
 
@@ -90,7 +92,7 @@ data e1_photo_power_path_diagram: Photograph = Photograph {
   content: Sha256Digest { hex: "7285782c57847023a7c2bf89d668c10fc7ab769ab1e20ffc8f19ca46206cec67" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: GeneratedImage { depicts: "a drawn power-path diagram of the carrier's rails", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 201691)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 201691)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_power-path-diagram_2026-11-02.png" },
 }
 
@@ -98,7 +100,7 @@ data e1_photo_top_b6_u10p2_rail_labels_1_11: Photograph = Photograph {
   content: Sha256Digest { hex: "252b5972aa32969f37e007c1f9604af390bccce1471d94e9a898420f94a20691" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: GeneratedImage { depicts: "the U10_P2 rail close-up with our candidate part labels drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1098845)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1098845)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_B6_U10P2-rail_LABELS-1-11_2026-11-02.jpg" },
 }
 
@@ -106,7 +108,7 @@ data e1_photo_top_b6_u10p2_pinout: Photograph = Photograph {
   content: Sha256Digest { hex: "090d1b99e2f2e7ae5cd7a71bbd21fca73019593da05705a115fb8308ee563cd8" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: GeneratedImage { depicts: "a drawn pinout of the U10_P2 footprint", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-10-31", atlas_revision: "2026-11-03b" },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1109875)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1109875)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_B6_U10P2_PINOUT_2026-10-31.jpg" },
 }
 
@@ -114,7 +116,7 @@ data e1_photo_top_function_zones_draft: Photograph = Photograph {
   content: Sha256Digest { hex: "015ca94f1644ff8e47d69ca91a98e3bd7ab50ebf7d1223d63b663b0773f2a3ef" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: GeneratedImage { depicts: "the top overview with our first-draft function zones drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-03", atlas_revision: "2026-11-03b" },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 893558)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 893558)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_function-zones_draft_2026-11-03.jpg" },
 }
 
@@ -122,7 +124,7 @@ data e1_photo_top_overview_a_grid: Photograph = Photograph {
   content: Sha256Digest { hex: "64d6b531bffe4e185e2e989a31f9ef105f46dd610e708b85b6b66cc1aac65b28" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: GeneratedImage { depicts: "the top overview with the atlas grid drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1455982)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1455982)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_overview_a_GRID_2026-11-02.jpg" },
 }
 
@@ -130,7 +132,7 @@ data e1_photo_top_overview_b_grid: Photograph = Photograph {
   content: Sha256Digest { hex: "2c266d5028cb7c1f18dd1353ba09d8fdd0090187076ab17c2a5bf98e5a1c5e21" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: GeneratedImage { depicts: "the top overview with the atlas grid drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 776685)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 776685)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_overview_b_GRID_2026-11-02.jpg" },
 }
 
@@ -138,7 +140,7 @@ data e1_photo_b4_02: Photograph = Photograph {
   content: Sha256Digest { hex: "8f5cdfc7d68b9020cd351281399b53cc910e88897c062a46cca4a8b86fc79849" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2068444)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2068444)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A1-A2-A3_Q5_P5_D5_P5_Q3_P5_D3_P5_2026-11-02_34.jpg" },
 }
 
@@ -146,7 +148,7 @@ data e1_photo_b4_01: Photograph = Photograph {
   content: Sha256Digest { hex: "40f7150867693b5eb3d32d817b1743a6f02421dfde8515a2dfc52aa4865e1a0a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2218713)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2218713)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A1-A2_no-anchor_2026-11-02_33.jpg" },
 }
 
@@ -154,7 +156,7 @@ data e1_photo_b4_03: Photograph = Photograph {
   content: Sha256Digest { hex: "db40a1c3f694256e912169d91e247308c670e7ee6870be30420ec14332848f14" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1957582)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1957582)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A3-A4_Q3_P1_Q2_P1_D8_P1_D2_P1_2026-11-02_35.jpg" },
 }
 
@@ -162,7 +164,7 @@ data e1_photo_b3_10: Photograph = Photograph {
   content: Sha256Digest { hex: "a5209eda96f2c2fd52a38c24ee05f4d6b383dcf9d98024056d568412b40f435a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1473506)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1473506)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A4-B4-B5_Y50_U43_U500_Q67_2026-11-02_26.jpg" },
 }
 
@@ -170,7 +172,7 @@ data e1_photo_b3_14: Photograph = Photograph {
   content: Sha256Digest { hex: "165f89e138d092fb3fede6c7177f51b1d22356a0c3578e2742fcd6cc6e567c88" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1887095)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1887095)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A5-A6-B5-B6_U51_2026-11-02_30.jpg" },
 }
 
@@ -178,7 +180,7 @@ data e1_photo_b3_16: Photograph = Photograph {
   content: Sha256Digest { hex: "eee906ce5640730bd75daa67db87e09191d5ceaed9268c8217827403df44661d" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1936906)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1936906)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A5-A6_U523_2026-11-02_32.jpg" },
 }
 
@@ -186,7 +188,7 @@ data e1_photo_b3_11: Photograph = Photograph {
   content: Sha256Digest { hex: "669a2e2de166e5d9b92d8049330307f0b42336a4854a72f42ddee45a69af82c0" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1471888)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1471888)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B2-B3-C2-C3_U3_2026-11-02_27.jpg" },
 }
 
@@ -194,7 +196,7 @@ data e1_photo_b3_12: Photograph = Photograph {
   content: Sha256Digest { hex: "5b5d2b423e1a5012716affea2d9a640608e07a4e2a1c70dd3b57752090b6c37f" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1851077)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1851077)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B5-B6-C5-C6_U31_U74_U16_D18_P2_2026-11-02_28.jpg" },
 }
 
@@ -202,7 +204,7 @@ data e1_photo_b3_15: Photograph = Photograph {
   content: Sha256Digest { hex: "11f6bf097c2af5f51aabf454b60b896af2e58fd2b44e481e25d3bf7f7a3864f3" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1986168)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1986168)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B5-B6_U51_U49_U11_Q7_P2_2026-11-02_31.jpg" },
 }
 
@@ -210,7 +212,7 @@ data e1_photo_b3_13: Photograph = Photograph {
   content: Sha256Digest { hex: "7bc46b8c367cba658f5e874dd36c32bdce1693e57e4943e70409cb1328a57ca1" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1975418)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1975418)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B5-B6_U51_U49_U500_U43_2026-11-02_29.jpg" },
 }
 
@@ -218,7 +220,7 @@ data e1_photo_b3_04: Photograph = Photograph {
   content: Sha256Digest { hex: "8a3874e1104bcd3d6c980189c93f83f53c0c3b8b1e7ee3eaa8a3ecbaa6b99704" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1967992)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1967992)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_C5-C6-D5-D6_U535_U536_U110_2026-11-02_20.jpg" },
 }
 
@@ -226,7 +228,7 @@ data e1_photo_b3_02: Photograph = Photograph {
   content: Sha256Digest { hex: "bb60d6352019ecb19c9c9a7963f06f6de47ac4317c71ca7d10ddcd7a148235e4" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1871151)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1871151)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_C5-C6-D5-D6_U536_U96_U481_U20_2026-11-02_18.jpg" },
 }
 
@@ -234,7 +236,7 @@ data e1_photo_b3_03: Photograph = Photograph {
   content: Sha256Digest { hex: "15a913c3931b4d0afcb75b980e2c1dc525783ef8a2584b7c495fb7cb18766cf2" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1982612)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1982612)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_C5-C6-D6_U535_2026-11-02_19.jpg" },
 }
 
@@ -242,7 +244,7 @@ data e1_photo_b3_09: Photograph = Photograph {
   content: Sha256Digest { hex: "6f3841e42c8735cf9ee5ef6947262d3791302bda60a74922408cd99c1e8786a0" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1446641)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1446641)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D1-D2-D3_D17_2026-11-02_25.jpg" },
 }
 
@@ -250,7 +252,7 @@ data e1_photo_b3_08: Photograph = Photograph {
   content: Sha256Digest { hex: "6264d3bbbbd0c0a16def841a595122837f53a9b9876efe3f1cfdf31dd131c679" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2008441)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2008441)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D2-D3_Q1_5_Q3_5_D3_5_2026-11-02_24.jpg" },
 }
 
@@ -258,7 +260,7 @@ data e1_photo_b3_07: Photograph = Photograph {
   content: Sha256Digest { hex: "4cfd2ed6972bb69174acc358d321307a0b8f584898d0d9c58753720879b4e50d" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1722045)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1722045)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D3-D4-D5_U84_2026-11-02_23.jpg" },
 }
 
@@ -266,7 +268,7 @@ data e1_photo_b3_06: Photograph = Photograph {
   content: Sha256Digest { hex: "3ef27b9d137514df61523d83bb5163b887159dac05aad7f4a1c5c53d98fe4c7f" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1797425)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1797425)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D4-D5-D6_U107_U110_U84_2026-11-02_22.jpg" },
 }
 
@@ -274,7 +276,7 @@ data e1_photo_b3_05: Photograph = Photograph {
   content: Sha256Digest { hex: "aea1422726d82f9607463afc9f929542da2fb2d1a00575b45dc9a7883d246a3d" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1915787)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1915787)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D5-D6_U107_U110_2026-11-02_21.jpg" },
 }
 
@@ -282,7 +284,7 @@ data e1_photo_b1_09: Photograph = Photograph {
   content: Sha256Digest { hex: "ebe90ab9281ac2cdd4db18450eb3cfe947996c154de917f9968fab24fcd4f636" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 964215)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 964215)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-J-connector_through-hole-field_1x8-pad-row_2026-11-02_09.jpg" },
 }
 
@@ -290,7 +292,7 @@ data e1_photo_b1_15: Photograph = Photograph {
   content: Sha256Digest { hex: "dc832358966dadfd356e4930d2d18aabb87fc743abff509f52dd959159e18d6e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 917223)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 917223)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-J-corner_U3_P1_Q63_Q64_Q67_Q70_D2_P1_D8_P1_Q3_P1_1002_Y50_U500_U43_U51_2026-11-02_15.jpg" },
 }
 
@@ -298,7 +300,7 @@ data e1_photo_b1_05: Photograph = Photograph {
   content: Sha256Digest { hex: "8de2faf2730b90bf501c38582cfcdebf9fbf789b2e67b722f141760a44689bb4" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1007260)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1007260)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-J1-corner_through-hole-field_mounting-rings_2026-11-02_05.jpg" },
 }
 
@@ -306,7 +308,7 @@ data e1_photo_b1_17: Photograph = Photograph {
   content: Sha256Digest { hex: "df469ae4a8365ffa416a3cd7da32a03ff1369cc74c12797c4d61ca875adb3a47" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 864178)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 864178)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-J20-corner_Q300_Q301_D5_P5_Q5_P5_D3_P5_Q3_P5_D2_P5_Q2_P5_1002_2026-11-02_17.jpg" },
 }
 
@@ -314,7 +316,7 @@ data e1_photo_b1_01: Photograph = Photograph {
   content: Sha256Digest { hex: "e3eea50f010e0165ebc82572e3cb4252573e4c3ad2828a6ffb0f88ec61fe1a78" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 915063)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 915063)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-J20-corner_U107_U110_U535_U536_Q73-Q75_U96_Q66_2026-11-02_01.jpg" },
 }
 
@@ -322,7 +324,7 @@ data e1_photo_b1_13: Photograph = Photograph {
   content: Sha256Digest { hex: "96a1e3d84c9cdbc7691d45ebc1bda9f15526bf4bb39b88c9a2534b551e211d31" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 941440)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 941440)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-J3-area_U3_via-arrays_pad-rows_2026-11-02_13.jpg" },
 }
 
@@ -330,7 +332,7 @@ data e1_photo_b1_06: Photograph = Photograph {
   content: Sha256Digest { hex: "a77de80a5304ce51204cc4ac312e328d3fecbf8aeddd7c416539d35713c86702" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 879288)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 879288)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-P-sections_U535_U536_Q73-Q75_U96_U66_Q65_U20_U481_Q2_2_U4_2_2026-11-02_06.jpg" },
 }
 
@@ -338,7 +340,7 @@ data e1_photo_b1_02: Photograph = Photograph {
   content: Sha256Digest { hex: "de21525327c8c34634f938aee1df9c15ed5dfef40eb18db8795772695efe079e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1106914)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1106914)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-P-sections_U84_U107_U110_U535_U536_Q73_Q74_Q75_U96_U66_Q65_2026-11-02_02.jpg" },
 }
 
@@ -346,7 +348,7 @@ data e1_photo_b1_07: Photograph = Photograph {
   content: Sha256Digest { hex: "8889f0f74cf00b2784f69ef9da342975d11d0e81385f7885b46d69231f25591a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1206200)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1206200)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-P-sections_U84_U536_Q73-Q75_U96_U66_Q65_U20_U481_2026-11-02_07.jpg" },
 }
 
@@ -354,7 +356,7 @@ data e1_photo_b1_16: Photograph = Photograph {
   content: Sha256Digest { hex: "6666e9fb7aa31e942493498a2909c442f39ba4067dfa16131b82e1bb37981079" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 943770)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 943770)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-P1-P5_D2_P5_D8_P5_Q2_P5_Q3_P5_D3_P5_1002_D2_P1_D8_P1_Q2_P1_Q3_P1_D3_P1_1002_2026-11-02_16.jpg" },
 }
 
@@ -362,7 +364,7 @@ data e1_photo_b1_10: Photograph = Photograph {
   content: Sha256Digest { hex: "42c0ccd0c0254256f30870316877587a2120bc482936954ee69d25fdbba85e67" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 874632)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 874632)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-P2-converters_U49_U51_Y50_U500_U43_D17_P2_D9_P2_Q7_P2_Q9_P2_1R00_D18_P2_Q8_P2_D1_P2_D10_P2_D12_P2_U11_Q10_P2_4R7_Q11_P2_Q12_P2_Q71_U31_U74_U4_2_U16_Q2_2_U20_U481_2026-11-02_10.jpg" },
 }
 
@@ -370,7 +372,7 @@ data e1_photo_b1_11: Photograph = Photograph {
   content: Sha256Digest { hex: "f03a1b6b9069206b1864bf5afeeecf4b877c5657ad08d685658c3726903fec0a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1139618)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1139618)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-P2-converters_U49_U51_Y50_U500_U43_D17_P2_D9_P2_Q7_P2_Q9_P2_1R00_U20_U481_Q66_Q65_D18_P2_Q8_P2_D1_P2_D10_P2_D12_P2_2026-11-02_11.jpg" },
 }
 
@@ -378,7 +380,7 @@ data e1_photo_b1_14: Photograph = Photograph {
   content: Sha256Digest { hex: "9b032fc96b1d2be7718f8c5ea45e74a4d7534e25783d670d75ffcc4892c0c1f8" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 904542)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 904542)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-U4-corner_U51_Y50_U500_U43_U523_Q71_Q11_P2_Q12_P2_through-hole-rows_2026-11-02_14.jpg" },
 }
 
@@ -386,7 +388,7 @@ data e1_photo_b1_08: Photograph = Photograph {
   content: Sha256Digest { hex: "db30e916de368a4d84e71210ea4c0cefab27f956883be64c1abd5787d742b6ed" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1082403)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1082403)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-input-section_Q3_5_Q1_5_D3_5_D17_5_150-b_2026-11-02_08.jpg" },
 }
 
@@ -394,7 +396,7 @@ data e1_photo_b1_04: Photograph = Photograph {
   content: Sha256Digest { hex: "2f9b710cf25f252ae46b1fe4306b79f7dbb666ce7882bbe01e0296e13b60539a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1085061)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1085061)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-input-section_Q3_5_Q1_5_D3_5_D17_5_150_2026-11-02_04.jpg" },
 }
 
@@ -402,7 +404,7 @@ data e1_photo_b1_03: Photograph = Photograph {
   content: Sha256Digest { hex: "f42f61f6b4d74fe8860f088cc30b5a6f4e7d333893554e86c4093f6b846f31e6" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1052452)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1052452)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-input-section_U84_through-hole-rows_2026-11-02_03.jpg" },
 }
 
@@ -410,7 +412,7 @@ data e1_photo_b1_12: Photograph = Photograph {
   content: Sha256Digest { hex: "5ecb33fc6bb87b27f73b7341958f796c59cbb5e58ebfb175e1271ded4b41aa85" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 928090)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 928090)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_cells-unregistered_under-module-keepout_plane-boundaries_2026-11-02_12.jpg" },
 }
 
@@ -418,7 +420,7 @@ data e1_photo_bottom_overview_2026_11_02_01b: Photograph = Photograph {
   content: Sha256Digest { hex: "5195c965921d42eb85bc991219a0e2a14c258a7ceb73c5daad5e499401ea4489" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 800957)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 800957)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_overview_2026-11-02_01b.jpg" },
 }
 
@@ -426,7 +428,7 @@ data e1_photo_t4_08: Photograph = Photograph {
   content: Sha256Digest { hex: "7c960ce9a78338faf4cbed178fd5d0f8bbe83afee6796d865d3801400f0ca6f2" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2108656)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2108656)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A1-A2-A3_U1_P5_U521_Q22_P5_Q21_P5_2026-11-02_43.jpg" },
 }
 
@@ -434,7 +436,7 @@ data e1_photo_t4_07: Photograph = Photograph {
   content: Sha256Digest { hex: "13cc395be05c69badbc652e4b8d7169b7f176a7e95ae35f50683cee6268d3303" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2091821)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2091821)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A1-A2_U521_U1_TSE_J1_D1_P5_2026-11-02_42.jpg" },
 }
 
@@ -442,7 +444,7 @@ data e1_photo_top_a1_b2_j1_150uf_caps_u521_017n10lf_r150: Photograph = Photograp
   content: Sha256Digest { hex: "6cec21f5e4c890ea69f895c929eedf84529b4ef8dc6b9d8aa3eb84113930fd99" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1281657)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1281657)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A1-B2_J1_150uF-caps_U521_017N10LF_R150_2026-11-02_26.jpg" },
 }
 
@@ -450,7 +452,7 @@ data e1_photo_t4_09: Photograph = Photograph {
   content: Sha256Digest { hex: "054257bcf890c0d24555a5e4419c341b1022dd1b59e576f6bf80c4ccd18562cd" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1952450)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1952450)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A2-A3-A4_J20_D2_D5_2026-11-02_44.jpg" },
 }
 
@@ -458,7 +460,7 @@ data e1_photo_top_a2_a3_f300_f75v100a_q21_q22_u1p5_lm5066_coilcraft: Photograph 
   content: Sha256Digest { hex: "bd69b71aa851c87a915f13fc7c253f789ada4e268158fc4fcfcb00767f2b0ce7" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1105320)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1105320)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A2-A3_F300-F75V100A_Q21_Q22_U1P5-LM5066_Coilcraft_2026-11-02_27.jpg" },
 }
 
@@ -466,7 +468,7 @@ data e1_photo_top_a3_a4_j20_150uf_caps_f300: Photograph = Photograph {
   content: Sha256Digest { hex: "48bf96d44d54192c13775a268130a9c107c310ce733ca4a9219724c829775e1b" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 985124)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 985124)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A3-A4_J20_150uF-caps_F300_2026-11-02_28.jpg" },
 }
 
@@ -474,7 +476,7 @@ data e1_photo_t4_11: Photograph = Photograph {
   content: Sha256Digest { hex: "171a286f7fd56d0ed40d39b72283f32aa3caf279ad765c68daebed976234acc6" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2051048)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2051048)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A4-A5_J6_U627_U510_U13_2026-11-02_46.jpg" },
 }
 
@@ -482,7 +484,7 @@ data e1_photo_top_a4_a6_regulatory_serial_no_u40_j16_u1p1_lm5066: Photograph = P
   content: Sha256Digest { hex: "5b44a473922db3a1d4db4e568230ad3fae8cf2f0ba72b5991cba33fddb6ba57c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1235156)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1235156)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A4-A6_regulatory_SERIAL-NO_U40_J16_U1P1-LM5066_2026-11-02_29.jpg" },
 }
 
@@ -490,7 +492,7 @@ data e1_photo_t4_10: Photograph = Photograph {
   content: Sha256Digest { hex: "863b85d21d48adbb4373932e470606a53173ae7d2dfda7a4241771500a2727be" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2050602)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2050602)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A4-B4_U1_P1_U522_D4_P1_D1_P1_2026-11-02_45.jpg" },
 }
 
@@ -498,7 +500,7 @@ data e1_photo_new04: Photograph = Photograph {
   content: Sha256Digest { hex: "fd170b8bc5c7305bdf92b9fd0f6ff8fae19b9c9c482d585fabfac15a193132bf" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1404062)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1404062)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5-A6-B5-B6-C5-C6_U21_U48_U86_U100_2026-11-02_33.jpg" },
 }
 
@@ -506,7 +508,7 @@ data e1_photo_new05: Photograph = Photograph {
   content: Sha256Digest { hex: "15f6ba1a2ae5626a18b4d6f15a98f50b92881a056307e57f7be344867c8d5990" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1289214)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1289214)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5-A6-B5-B6_U15_U48_U86_U90_2026-11-02_34.jpg" },
 }
 
@@ -514,7 +516,7 @@ data e1_photo_new02: Photograph = Photograph {
   content: Sha256Digest { hex: "8489f3295471de544839763eb3f6a283d1fc01a686e72af4293d667f4ac878e5" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1483017)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1483017)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6-B6-C6_J24_J68_U95_U1_TNE_2026-11-02_31.jpg" },
 }
 
@@ -522,7 +524,7 @@ data e1_photo_new03: Photograph = Photograph {
   content: Sha256Digest { hex: "5ee5587ac788dd75c9f3d243e49d59e0b8e4d369ae06cdc36c6a8dc72d7ec6dd" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1468491)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1468491)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6-B6_S1_U149_U85_U71_2026-11-02_32.jpg" },
 }
 
@@ -530,7 +532,7 @@ data e1_photo_top_b1_c2_d1_j3_j2_q533: Photograph = Photograph {
   content: Sha256Digest { hex: "471155264d4b3337a59c6eeaa55d14ce440a5d36b5b8d6e0d912d9eaec8e54db" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1387645)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1387645)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B1-C2_D1_J3_J2_Q533_2026-11-02_22.jpg" },
 }
 
@@ -538,7 +540,7 @@ data e1_photo_top_b1_c2_d1_j3_q533: Photograph = Photograph {
   content: Sha256Digest { hex: "b8cbb2a88309ca084efe1c0bfe12b3c5c16f9ec094a882554878ffcdbf563c3c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1307616)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1307616)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B1-C2_D1_J3_Q533_2026-11-02_23.jpg" },
 }
 
@@ -546,7 +548,7 @@ data e1_photo_b4_04: Photograph = Photograph {
   content: Sha256Digest { hex: "eef2c3a0d2c38eefcba3f4429cd92d764b9b98e26cf1e94328b0d1758a8f796d" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2034285)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2034285)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B1_Q533_2026-11-02_47.jpg" },
 }
 
@@ -554,7 +556,7 @@ data e1_photo_prior24: Photograph = Photograph {
   content: Sha256Digest { hex: "0038015efe985ea204335e0771a492c45d393b54738b1fa3acffa011a5578fc0" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: PhoneCamera, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1193026)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1193026)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B5-C5_J4_H2_2026-11-02_24.jpg" },
 }
 
@@ -562,7 +564,7 @@ data e1_photo_prior25: Photograph = Photograph {
   content: Sha256Digest { hex: "302d631d7c6f9fa07502749ee0a465180766e56572d4bd167de4c35e82de8f74" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: PhoneCamera, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1772815)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1772815)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B5-C6_J4_U4-heatsink_330caps_U48_U86_J68_J24_2026-11-02_25.jpg" },
 }
 
@@ -570,7 +572,7 @@ data e1_photo_new01: Photograph = Photograph {
   content: Sha256Digest { hex: "06dfda80b535cead277d28e94b213fd706128d415e2a22dfc4a53f9363acd69d" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1265526)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1265526)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6-C6-D6_U211_U103_U105_U104_2026-11-02_30.jpg" },
 }
 
@@ -578,7 +580,7 @@ data e1_photo_prior21: Photograph = Photograph {
   content: Sha256Digest { hex: "a8d267dbfbe5b64fa7d5f6497367b01ea458e07e11c482d07a97447b8ece9ed8" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: PhoneCamera, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1651127)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1651127)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6-D6_U4-heatsink_330caps_J24_J30_J9_J10-b_2026-11-02_21.jpg" },
 }
 
@@ -586,7 +588,7 @@ data e1_photo_prior20: Photograph = Photograph {
   content: Sha256Digest { hex: "92f0977f88e5b1f1d34ba33703a93f87f580a3ffbc36169be348ecc7f1d9c025" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: PhoneCamera, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1245123)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1245123)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6-D6_U4-heatsink_330caps_J24_J30_J9_J10_2026-11-02_20.jpg" },
 }
 
@@ -594,7 +596,7 @@ data e1_photo_prior19: Photograph = Photograph {
   content: Sha256Digest { hex: "196ecd076853ce786eaff9102241703d6c67fefe5bc51afbc180ba6c0ded4639" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: PhoneCamera, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1108074)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1108074)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6-D6_U4-heatsink_CEC1736_flash_J30_J9_J10_J11_2026-11-02_19.jpg" },
 }
 
@@ -602,7 +604,7 @@ data e1_photo_top_b6_u10p2_rail_outline: Photograph = Photograph {
   content: Sha256Digest { hex: "4c0e4692bb836e8aa1ec3404cadf9c2a4768a28b134f999649467aa99d2cc07e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1403178)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1403178)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_U10P2-rail-outline_2026-11-02_05.jpg" },
 }
 
@@ -610,7 +612,7 @@ data e1_photo_prior13: Photograph = Photograph {
   content: Sha256Digest { hex: "67a7d4429339d815b62fb20251c8d31d00225581f30d2dccdff5590c1509d266" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1274255)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1274255)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_U10P2_U2P2-both-4R7_U100_U21_U1TNE_2026-11-02_13.jpg" },
 }
 
@@ -618,7 +620,7 @@ data e1_photo_prior09: Photograph = Photograph {
   content: Sha256Digest { hex: "22d92877c2bc0cc0716787f93405d2961ee7eb05bbbbc929ce111bf981c4925e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1336234)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1336234)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_U1P2-1R0_U48_U86_U55_U92-94_U15_2026-11-02_09.jpg" },
 }
 
@@ -626,7 +628,7 @@ data e1_photo_prior10: Photograph = Photograph {
   content: Sha256Digest { hex: "25ef355e2a42c74f27317f475122d4ae6015ec70e837bd0f34831d5b24ff17c7" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1417810)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1417810)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_U2P2-4R7_U1TNE_U50_J22_Q72_U540-551_2026-11-02_10.jpg" },
 }
 
@@ -634,7 +636,7 @@ data e1_photo_prior12: Photograph = Photograph {
   content: Sha256Digest { hex: "1281a67a8cd5cd96b78a49d9e84a3b4c5c7a116617face56ea2d61602d660b64" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1192026)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1192026)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_U9P2-2R2_330caps_1R00_U48_U86_2026-11-02_12.jpg" },
 }
 
@@ -642,7 +644,7 @@ data e1_photo_top_b6_cap_ends_pair: Photograph = Photograph {
   content: Sha256Digest { hex: "1e02f2c9f930de96d5d29e18d06fa0b223d3ebe65b293a4f3569ccc3154ed11d" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 852510)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 852510)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_cap-ends-pair_2026-11-02_08.jpg" },
 }
 
@@ -650,7 +652,7 @@ data e1_photo_top_b6_cap2_body: Photograph = Photograph {
   content: Sha256Digest { hex: "9e67b1094702cc6afb3b50be4201a5648b75507bc405e896c0d4b11acdcbf6a5" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 960175)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 960175)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_cap2-body_2026-11-02_07.jpg" },
 }
 
@@ -658,7 +660,7 @@ data e1_photo_top_b6_cap2_termination: Photograph = Photograph {
   content: Sha256Digest { hex: "59d8fdf8b3fc3d79b040d78cdddf0a950ba6e2dd00671ff8f401dd916d43b805" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1266608)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1266608)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_cap2-termination_2026-11-02_06.jpg" },
 }
 
@@ -666,7 +668,7 @@ data e1_photo_top_c2_d5_j3_j4_label_vci: Photograph = Photograph {
   content: Sha256Digest { hex: "aa05ff842fec52c580952a342027443375587bef5fc64e20c2e40e2a12e020fe" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1211381)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1211381)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C2-D5_J3_J4_label_VCI_2026-11-02_18.jpg" },
 }
 
@@ -674,7 +676,7 @@ data e1_photo_top_c2_d5_j4_label_vci_j11_j12_1502: Photograph = Photograph {
   content: Sha256Digest { hex: "780092186d478f4bb48cf9f0156bb049a9fc3b197c78ee4abf2ce77109dfac37" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1101343)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1101343)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C2-D5_J4_label_VCI_J11_J12_1502_2026-11-02_17.jpg" },
 }
 
@@ -682,7 +684,7 @@ data e1_photo_new06: Photograph = Photograph {
   content: Sha256Digest { hex: "bfecf42aeb4af4b21869ee1ed028e22b9d8a6fc7230edc589e0292cd156cd1b1" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1191804)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1191804)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C5-C6-D5-D6_U41_U22_U106_U66_2026-11-02_35.jpg" },
 }
 
@@ -690,7 +692,7 @@ data e1_photo_new07: Photograph = Photograph {
   content: Sha256Digest { hex: "c597278d5989c8623f64eeec86b266ea5f54d73ca188a80f95b90c6a1ccd7b28" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1556944)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1556944)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C6-D6_J14_J13_J10_J741_2026-11-02_36.jpg" },
 }
 
@@ -698,7 +700,7 @@ data e1_photo_prior11: Photograph = Photograph {
   content: Sha256Digest { hex: "41ada9e1ad8600fa4a303436894495b721561a0d671f1f9c5ff60c7fcea81aa2" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CaptureDateUnrecorded { obligation: "the registry lists this frame as an earlier shot, so its file name carries the day it was uploaded (2026-11-02) and not the day it was taken; the operator's bench log dates it" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1244795)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1244795)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C6_U5_2-CEC1736_U2_2_U21_U53_U1_2_DS1_2_2026-11-02_11.jpg" },
 }
 
@@ -706,7 +708,7 @@ data e1_photo_t4_03: Photograph = Photograph {
   content: Sha256Digest { hex: "3137079d34df80f0797710b0330fd226fc5bcc506a29f474cfe982ecb9adcb71" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2293184)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2293184)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1-D2-D3_U511_U520_U60_3_U58_4_2026-11-02_39.jpg" },
 }
 
@@ -714,7 +716,7 @@ data e1_photo_top_d1_d2_d3_u511_u520_u60_3_u58_4: Photograph = Photograph {
   content: Sha256Digest { hex: "1868596e1126120e891eca3abbae45c04a49f64b61fd72699ae9ab9c9faacfc0" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1871981)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1871981)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1-D2-D3_U511_U520_U60_3_U58_4_2026-11-02_39_dup-blurrier.jpg" },
 }
 
@@ -722,7 +724,7 @@ data e1_photo_top_d1_d2_j2_j3end_1r0_l2r2_2r2_4r7_100_2215: Photograph = Photogr
   content: Sha256Digest { hex: "2fd7d6e8b77fb0b544e3331a2f42605d519fbc244b54f10c7f546239afacefb0" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 872019)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 872019)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1-D2_J2_J3end_1R0_L2R2_2R2_4R7_100-2215_2026-11-02_14.jpg" },
 }
 
@@ -730,7 +732,7 @@ data e1_photo_t4_06: Photograph = Photograph {
   content: Sha256Digest { hex: "7700061b686f144e70d5eee553c01fc7d118b24ea4d5afe62509621d59e76628" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2218718)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2218718)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1-D2_U1_TSW_U3_P3_U511_U520_2026-11-02_41.jpg" },
 }
 
@@ -738,7 +740,7 @@ data e1_photo_top_d1_d4_right_edge_strip_j2: Photograph = Photograph {
   content: Sha256Digest { hex: "f8a3c89797e9f7d7b4d14004218dd251f4dc1b0e5dad04580d65b27209ff10c4" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1160668)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1160668)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1-D4_right-edge-strip_J2_2026-11-02_16.jpg" },
 }
 
@@ -746,7 +748,7 @@ data e1_photo_top_d1_d4_right_edge_strip_vci_u83_tusb8042a_fan65004c: Photograph
   content: Sha256Digest { hex: "40aa6afe149a9694742ef1407dabc8c9b8198df9458ca9fe6215fb12412d45e2" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1067904)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1067904)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1-D4_right-edge-strip_VCI_U83-TUSB8042A_FAN65004C_2026-11-02_15.jpg" },
 }
 
@@ -754,7 +756,7 @@ data e1_photo_t4_02: Photograph = Photograph {
   content: Sha256Digest { hex: "d177d62fda631580463d4363eb19db7c307a3f70e9d8b629d92cead56fdc5af6" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2099639)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2099639)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D2-D3_U816_U58_4_U99_U501_2026-11-02_38.jpg" },
 }
 
@@ -762,7 +764,7 @@ data e1_photo_t4_01: Photograph = Photograph {
   content: Sha256Digest { hex: "03351197d52f90120c32628e2faa961761c1c9c130436d2d704adabf44d2086e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2350119)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2350119)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D3-D4-D5_J12_J11_U87_U12_2026-11-02_37.jpg" },
 }
 
@@ -770,7 +772,7 @@ data e1_photo_t4_04: Photograph = Photograph {
   content: Sha256Digest { hex: "3ce0b84a64a06d4f8f1baa023c2cd5f5ee563acc9b09ea8f948129805d99fd24" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarMicroscopeScreen, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2078444)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2078444)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D4-D5-D6_J190_U190_U6_U91_2026-11-02_40.jpg" },
 }
 
@@ -778,7 +780,7 @@ data e1_photo_top_overview_top_a: Photograph = Photograph {
   content: Sha256Digest { hex: "9340aa1b46d1a5d8361ce7ce2e57a657cf52b3b3317cd366f15b6cde6aff9aca" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2030649)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2030649)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_overview_top-a_2026-11-02_03.jpg" },
 }
 
@@ -786,7 +788,7 @@ data e1_photo_top_overview_top_b: Photograph = Photograph {
   content: Sha256Digest { hex: "e32c3040d13f05d8782c3bd9975f29b107d2b4b3c93db63f011985d1579e75c3" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: DeviceUnrecorded { obligation: "the registry's capture note for this frame does not name the device; the operator's capture log would close it" }, taken_on: CapturedOn { on: "2026-11-02" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 1018121)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 1018121)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_overview_top-b_2026-11-02_04.jpg" },
 }
 
@@ -794,7 +796,7 @@ data e1_sd_photo_p001: Photograph = Photograph {
   content: Sha256Digest { hex: "6b53bce7e1c03fa6b962ef31874fafa9415904c506ebfb191181e5626b21e9b2" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2974927)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2974927)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C6-D6_U38_J14_U524_U19_tape_2026-11-03_sd001.JPG" },
 }
 
@@ -802,7 +804,7 @@ data e1_sd_photo_p002: Photograph = Photograph {
   content: Sha256Digest { hex: "b82a6bcc31f920875666ce68c1c220c8254b1ccf52230ab96dfd289444cdc93b" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2980519)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2980519)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6-C6_U2_2_U3_2_U39_U5_2_tape_2026-11-03_sd002.JPG" },
 }
 
@@ -810,7 +812,7 @@ data e1_sd_photo_p003: Photograph = Photograph {
   content: Sha256Digest { hex: "758483cf3878451968002e43d4c3f61a775d8ee41cd4ce9d5b890ba5107390a8" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3400134)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3400134)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5-A6-B5-B6_U149_U85_U88_tape_2026-11-03_sd003.JPG" },
 }
 
@@ -818,7 +820,7 @@ data e1_sd_photo_p004: Photograph = Photograph {
   content: Sha256Digest { hex: "a2bb0d2349f8cd9a2ba3d7943c41ba54d94ae9e9de2c8edebbcf984f250d55fb" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2976292)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2976292)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C5-C6-D5-D6_U41_J10_U19_U22_2026-11-03_sd004.JPG" },
 }
 
@@ -826,7 +828,7 @@ data e1_sd_photo_p005: Photograph = Photograph {
   content: Sha256Digest { hex: "f43504aaf7732d1dff7937ec79becd9d4b96ddcd36e71d1fcfaa1f4e27b9e02c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2978910)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2978910)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5-A6-B5-B6-C5-C6_U21_U100_U550_U70_2026-11-03_sd005.JPG" },
 }
 
@@ -834,7 +836,7 @@ data e1_sd_photo_p006: Photograph = Photograph {
   content: Sha256Digest { hex: "1ae3cd6c16828fee82540e53c73bce8c76acc8a5636c269a796521b87c9fa29d" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2962345)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2962345)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6-B6_U540_U541_U550_U551_2026-11-03_sd006.JPG" },
 }
 
@@ -842,7 +844,7 @@ data e1_sd_photo_p007: Photograph = Photograph {
   content: Sha256Digest { hex: "a9351690f4175ee5b54555ef90c32adfc868776b6ce253cbe1383c0727ec90a1" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3157004)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3157004)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C1approx_J2_Q532_2026-11-03_sd007.JPG" },
 }
 
@@ -850,7 +852,7 @@ data e1_sd_photo_p008: Photograph = Photograph {
   content: Sha256Digest { hex: "3fad792530aa3ae0e5f08a1c27bb799026ecffbbd582139985ce3d1b76e67a9e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3412697)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3412697)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B1-C1-D1_no-label_2026-11-03_sd008.JPG" },
 }
 
@@ -858,7 +860,7 @@ data e1_sd_photo_p009: Photograph = Photograph {
   content: Sha256Digest { hex: "c3079987d738cd945be73e6defec6030d97c8ebd94ab65b936102e4a349d896c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3312178)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3312178)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B1-C1-D1_no-label_2026-11-03_sd009.JPG" },
 }
 
@@ -866,7 +868,7 @@ data e1_sd_photo_p010: Photograph = Photograph {
   content: Sha256Digest { hex: "01b7fc69bbf0f04fbacf6548274c2d6356758f0c855691be2b585f53ed652a4c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3444037)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3444037)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C1-D1_D1_P3_U3_P3_2026-11-03_sd010.JPG" },
 }
 
@@ -874,7 +876,7 @@ data e1_sd_photo_p011: Photograph = Photograph {
   content: Sha256Digest { hex: "3e72b23e87e796ab1c35a0cc07c824eae0f0345c97f45137442a9b0a135fe8a8" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2968716)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2968716)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C1-C2-D1-D2_U1_P3_D1_P3_U3_P3_2026-11-03_sd011.JPG" },
 }
 
@@ -882,7 +884,7 @@ data e1_sd_photo_p012: Photograph = Photograph {
   content: Sha256Digest { hex: "6d5bf68876a52ab6e153b76ebe2b0b810179ef8d22978ad8580d14a92d845d88" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2979428)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2979428)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_module-connector-J3-or-J4_2026-11-03_sd012.JPG" },
 }
 
@@ -890,7 +892,7 @@ data e1_sd_photo_p013: Photograph = Photograph {
   content: Sha256Digest { hex: "949d1b0ebcdc5a2d95edf983d7b90639794337a2007599c5975bbdb0f94ccef2" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: SurfaceUnrecorded { obligation: "this SD frame was never placed on a side: the operator names which face it shows, or it leaves the store" }, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2963354)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2963354)),
   store: StoreLocation { folder_id: "1J1R1AI6Bw17DiafVpFn3mt_Uv-K3A9Qg", folder_name: "E1/photos_sd_unplaced", file_name: "p4261_e1b_unplaced_no-label_2026-11-03_sd013.JPG" },
 }
 
@@ -898,7 +900,7 @@ data e1_sd_photo_p014: Photograph = Photograph {
   content: Sha256Digest { hex: "ddd4f9332987ca4279a195e29ca41e7765cd8f64964eb88d56f2ca0278ba395a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2975225)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2975225)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C1-D1_Q533_2026-11-03_sd014.JPG" },
 }
 
@@ -906,7 +908,7 @@ data e1_sd_photo_p015: Photograph = Photograph {
   content: Sha256Digest { hex: "7c7660f91aa41d9e7bbce93339a17ba8e5505fcf03436dcfa56167f8e388c1ba" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2958107)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2958107)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5approx_U627_J16_U13_U510_2026-11-03_sd015.JPG" },
 }
 
@@ -914,7 +916,7 @@ data e1_sd_photo_p016: Photograph = Photograph {
   content: Sha256Digest { hex: "d1c9096c1dcd8cebb6127c5b0b1af2a9601934a81102f4e9528a47ef53f1cea0" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2925942)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2925942)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A4approx_U510_J16_Q5_P1_D5_P1_tape_2026-11-03_sd016.JPG" },
 }
 
@@ -922,7 +924,7 @@ data e1_sd_photo_p017: Photograph = Photograph {
   content: Sha256Digest { hex: "fe2c30717331f2d3cc0ef652787f6db5382e472c6bd09504254b379e4f77815b" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3259282)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3259282)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5-A6_S2_J5_Q531_tape_2026-11-03_sd017.JPG" },
 }
 
@@ -930,7 +932,7 @@ data e1_sd_photo_p018: Photograph = Photograph {
   content: Sha256Digest { hex: "1f7a4f68782a3cd960c5c620c61407861265b2599c21e3bd70e1a0e4bed9ce16" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2965852)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2965852)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5-A6-B5-B6_J22_U50_U2_P2_U1_P2_2026-11-03_sd018.JPG" },
 }
 
@@ -938,7 +940,7 @@ data e1_sd_photo_p019: Photograph = Photograph {
   content: Sha256Digest { hex: "4eb39d5be3f0196b4f8369daa3359a2b3739c090062dc13f5ce454cb30d8773e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2947255)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2947255)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6-B6_S1_J540_J22_U70_2026-11-03_sd019.JPG" },
 }
 
@@ -946,7 +948,7 @@ data e1_sd_photo_p020: Photograph = Photograph {
   content: Sha256Digest { hex: "512d014fe0f01fcf87872249b926cac010b516933f3b4155254ee5ad16a0f6fa" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2952246)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2952246)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6_U60_U90_U54_U149_2026-11-03_sd020.JPG" },
 }
 
@@ -954,7 +956,7 @@ data e1_sd_photo_p021: Photograph = Photograph {
   content: Sha256Digest { hex: "3c697cf3c20a297798d8453a81cbae58955b220c5f347bba49b411b6123ecee8" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2986809)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2986809)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B5approx_U9_P2_2026-11-03_sd021.JPG" },
 }
 
@@ -962,7 +964,7 @@ data e1_sd_photo_p022: Photograph = Photograph {
   content: Sha256Digest { hex: "03125f3fcfafb1dbb9eb8b354371c723154499e53bc0a23c963806328fa81f14" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2990897)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2990897)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_J68_U95_U10_P2_U1_2_2026-11-03_sd022.JPG" },
 }
 
@@ -970,7 +972,7 @@ data e1_sd_photo_p023: Photograph = Photograph {
   content: Sha256Digest { hex: "273b7c8fb55ac7e6d219d3015665f11d3ed5db79cb93b56e03178e1288fb4e1c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2961928)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2961928)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6-C6_U5_2_U2_2_U21_U69_2026-11-03_sd023.JPG" },
 }
 
@@ -978,7 +980,7 @@ data e1_sd_photo_p024: Photograph = Photograph {
   content: Sha256Digest { hex: "0b5f1419e051fe9a0388d483c453967611b460fe850d4202309db01a630331db" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2955998)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2955998)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C6-D6_U27_U52_U211_U103_2026-11-03_sd024.JPG" },
 }
 
@@ -986,7 +988,7 @@ data e1_sd_photo_p025: Photograph = Photograph {
   content: Sha256Digest { hex: "5647de8126f77995060f7296cdd06c9854633d0ee2588ec09804d28fa7b32496" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3320608)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3320608)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C5-C6-D5-D6_U22_U67_U98_U145_2026-11-03_sd025.JPG" },
 }
 
@@ -994,7 +996,7 @@ data e1_sd_photo_p026: Photograph = Photograph {
   content: Sha256Digest { hex: "f98031a7957ce0f4b9143f7ee2ecf770a1177b5432b137f2858b9262d06f15ab" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3362540)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3362540)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B5-B6-C5-C6_U48_U100_Q6_P2_Q5_P2_2026-11-03_sd026.JPG" },
 }
 
@@ -1002,7 +1004,7 @@ data e1_sd_photo_p027: Photograph = Photograph {
   content: Sha256Digest { hex: "a46fbe016ad3634da969dd78c34a1c750c2652846eef97511253fa74ec59461e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3356634)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3356634)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6-C6_U21_U69_U53_J24_2026-11-03_sd027.JPG" },
 }
 
@@ -1010,7 +1012,7 @@ data e1_sd_photo_p028: Photograph = Photograph {
   content: Sha256Digest { hex: "1bfb5bb27ac969ed22d6de504cf20a06b87226c0a482c9956176db7da78f8a51" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2973255)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2973255)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D2_U58_P2_U60_3_2026-11-03_sd028.JPG" },
 }
 
@@ -1018,7 +1020,7 @@ data e1_sd_photo_p029: Photograph = Photograph {
   content: Sha256Digest { hex: "b634f2e460c455f061c6b63e0a78db82df840a8110aed57a3bc9997241c6db5a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2949799)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2949799)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1-D2_U511_U520_U451_TP124_2026-11-03_sd029.JPG" },
 }
 
@@ -1026,7 +1028,7 @@ data e1_sd_photo_p030: Photograph = Photograph {
   content: Sha256Digest { hex: "b72ec48850ca3ed45fb72c0a633d73d059c49b9c735438d0e3d9d5dc3b6c7e3f" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2967111)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2967111)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1-D2_U451_2026-11-03_sd030.JPG" },
 }
 
@@ -1034,7 +1036,7 @@ data e1_sd_photo_p031: Photograph = Photograph {
   content: Sha256Digest { hex: "ffaa18511573431d45844b698dfae31741bc7a4a640c69e74ee9d9f7bb228534" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3360595)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3360595)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D2_D3_P2_Q3_P2_2026-11-03_sd031.JPG" },
 }
 
@@ -1042,7 +1044,7 @@ data e1_sd_photo_p032: Photograph = Photograph {
   content: Sha256Digest { hex: "2a8a07267c74ad6bdb1830531dbca52553b290e525c26afd7813acfeb1870bfe" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3335231)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3335231)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D2_D3_P2_2026-11-03_sd032.JPG" },
 }
 
@@ -1050,7 +1052,7 @@ data e1_sd_photo_p033: Photograph = Photograph {
   content: Sha256Digest { hex: "44a5bc1123389fddbe72aaab804463ef8e22a6c1367e2fd7e340fb5bab0913d7" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2983571)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2983571)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D2-D3_U99_Q2_4_2026-11-03_sd033.JPG" },
 }
 
@@ -1058,7 +1060,7 @@ data e1_sd_photo_p034: Photograph = Photograph {
   content: Sha256Digest { hex: "fcb5749540cb6f86e1310a89dfac6af48f1ec1a8687090b398022f853beea7e4" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2957436)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2957436)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D2-D3_D4_4_Q2_4_Q4_4_2026-11-03_sd034.JPG" },
 }
 
@@ -1066,7 +1068,7 @@ data e1_sd_photo_p035: Photograph = Photograph {
   content: Sha256Digest { hex: "31d9198a31f4104d4a357fa47494b1000aeb6d01f43c5d733a711238b5ca5d0c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2998567)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2998567)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D3approx_U816_Q809_U817_2026-11-03_sd035.JPG" },
 }
 
@@ -1074,7 +1076,7 @@ data e1_sd_photo_p036: Photograph = Photograph {
   content: Sha256Digest { hex: "be29c2600ac874e91ddcbca88d0a2c1ebdaf30fb6fa63b976d8cfc552405e397" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2864185)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2864185)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C6_U39_U2_2_U3_2_Q1_2_2026-11-03_sd036.JPG" },
 }
 
@@ -1082,7 +1084,7 @@ data e1_sd_photo_p037: Photograph = Photograph {
   content: Sha256Digest { hex: "338acf4503710927f24f347d602686ca331036250f0e82891003cb8d6a139fe8" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3350467)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3350467)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C5-C6-D5-D6_U145_U14_Y360_U60_P2_2026-11-03_sd037.JPG" },
 }
 
@@ -1090,7 +1092,7 @@ data e1_sd_photo_p038: Photograph = Photograph {
   content: Sha256Digest { hex: "ea1bfb10dd5fdc5e56a2d7b4426c6082265ffb10d4ea90dfc5936ea0f36d1378" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3252527)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3252527)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C5-C6-D5-D6_U60_P2_U145_U14_Y360_2026-11-03_sd038.JPG" },
 }
 
@@ -1098,7 +1100,7 @@ data e1_sd_photo_p039: Photograph = Photograph {
   content: Sha256Digest { hex: "8b7d5d8169c7210d060480476e4aab1112b59c89f15c7e4511915c61db8a0b76" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3537208)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3537208)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C5-C6-D5-D6_U145_U33_U141_Y360_2026-11-03_sd039.JPG" },
 }
 
@@ -1106,7 +1108,7 @@ data e1_sd_photo_p040: Photograph = Photograph {
   content: Sha256Digest { hex: "698210c188f07739c75eb8e47a83a2167278dd7bbfcbfe81619b07d9a0dd91a4" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2951689)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2951689)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_U501_Y1_Y805_U816_2026-11-03_sd040.JPG" },
 }
 
@@ -1114,7 +1116,7 @@ data e1_sd_photo_p041: Photograph = Photograph {
   content: Sha256Digest { hex: "6d79e59d4e45c34cd20f734e805a0e62ca531f8893367ffe14c8282f95d8a476" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2983339)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2983339)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_U816_2026-11-03_sd041.JPG" },
 }
 
@@ -1122,7 +1124,7 @@ data e1_sd_photo_p042: Photograph = Photograph {
   content: Sha256Digest { hex: "44f0f91a18cf93b21c56a0aea7535eb43302dac2e1e3ecbd277b3c6032c413c6" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2964465)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2964465)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D3approx_U83_U817_2026-11-03_sd042.JPG" },
 }
 
@@ -1130,7 +1132,7 @@ data e1_sd_photo_p043: Photograph = Photograph {
   content: Sha256Digest { hex: "180da188d95b9bc8b2e62f928c9afa0222be3a7302ef32a1f6cff7dd9c746b8c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3467758)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3467758)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D4approx_U12_2026-11-03_sd043.JPG" },
 }
 
@@ -1138,7 +1140,7 @@ data e1_sd_photo_p044: Photograph = Photograph {
   content: Sha256Digest { hex: "699342c415f5cac6dab27c7ed1783078b9fafee8d9829113e3e4d0d83122db61" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2954569)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2954569)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D4approx_assembly-label_2026-11-03_sd044.JPG" },
 }
 
@@ -1146,7 +1148,7 @@ data e1_sd_photo_p045: Photograph = Photograph {
   content: Sha256Digest { hex: "6096852d99ae0b2238c2c62b2b7bc0960210f8de44570eee081872d2eaf14e05" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3489882)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3489882)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D4-D5_U190_J620_2026-11-03_sd045.JPG" },
 }
 
@@ -1154,7 +1156,7 @@ data e1_sd_photo_p046: Photograph = Photograph {
   content: Sha256Digest { hex: "3c542a2a39bbf62616b5831f05fa88ee070e9f5d7f0bf49b8cf5aef0ad791105" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2949262)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2949262)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D4-D5_U80_U81_U79_2026-11-03_sd046.JPG" },
 }
 
@@ -1162,7 +1164,7 @@ data e1_sd_photo_p047: Photograph = Photograph {
   content: Sha256Digest { hex: "b77e9fb5e012e7fd0a90ed210a2fdd5c56e8f68d75ab303df60e0a1fbca5f48e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2993089)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2993089)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D5_J190_J740_U9_U91_2026-11-03_sd047.JPG" },
 }
 
@@ -1170,7 +1172,7 @@ data e1_sd_photo_p048: Photograph = Photograph {
   content: Sha256Digest { hex: "992c000519cc9f3a278353bd1ec8aa28dfbb29876dc4d90e401d66d1d46c9b6e" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2973709)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2973709)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D5-D6_J741_U97_U482_U1_INV_2026-11-03_sd048.JPG" },
 }
 
@@ -1178,7 +1180,7 @@ data e1_sd_photo_p049: Photograph = Photograph {
   content: Sha256Digest { hex: "5d4b712cf98de0bcc46426ea7daac663791622e0cba91ece9e8c9e7af87b40a9" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2976196)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2976196)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D6_U485_U97_U482_2026-11-03_sd049.JPG" },
 }
 
@@ -1186,7 +1188,7 @@ data e1_sd_photo_p050: Photograph = Photograph {
   content: Sha256Digest { hex: "75826b553b56f4dae65dfeb003d5bd905f4b9afa83b22bc05672d4df6fbd1ac6" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2993838)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2993838)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D6_J741_J31_U102_U10_2026-11-03_sd050.JPG" },
 }
 
@@ -1194,7 +1196,7 @@ data e1_sd_photo_p051: Photograph = Photograph {
   content: Sha256Digest { hex: "c81cb3b7f5e6ddda3f2fa84f613b4778bc71d15d117ba8fd95a579503e6b28fe" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3317898)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3317898)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D6_U38_Q530_2026-11-03_sd051.JPG" },
 }
 
@@ -1202,7 +1204,7 @@ data e1_sd_photo_p052: Photograph = Photograph {
   content: Sha256Digest { hex: "52035bc51f7facd5a479618e497b1ef15c48b26152dd18412ffec85c0b2d3258" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3287081)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3287081)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D5approx_J740_2026-11-03_sd052.JPG" },
 }
 
@@ -1210,7 +1212,7 @@ data e1_sd_photo_p053: Photograph = Photograph {
   content: Sha256Digest { hex: "5f08a2225aa637514d8b1930b368d79669d744d8a3d13cd1af620a61c7398a50" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2982290)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2982290)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D6_J30_U483_U210_2026-11-03_sd053.JPG" },
 }
 
@@ -1218,7 +1220,7 @@ data e1_sd_photo_p054: Photograph = Photograph {
   content: Sha256Digest { hex: "79c879da012902ccd9396df04822ec4479e3dee7d692f2953270a117291e7d4d" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3061453)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3061453)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D4_J12_U87_2026-11-03_sd054.JPG" },
 }
 
@@ -1226,7 +1228,7 @@ data e1_sd_photo_p055: Photograph = Photograph {
   content: Sha256Digest { hex: "8090117f9193022cc7b09bfe2898fc2b2af573d7e8a62ad75d42cc52bfb96d18" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3150598)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3150598)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D4-D5_J620_U78_U81_2026-11-03_sd055.JPG" },
 }
 
@@ -1234,7 +1236,7 @@ data e1_sd_photo_p056: Photograph = Photograph {
   content: Sha256Digest { hex: "72b576987874f108d2d9e5b9147108cfcf9fb63ef4fbbb6633aa450254019243" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3517045)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3517045)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6-B6_J540_S1_U71_U540_2026-11-03_sd056.JPG" },
 }
 
@@ -1242,7 +1244,7 @@ data e1_sd_photo_p057: Photograph = Photograph {
   content: Sha256Digest { hex: "3dcb30f70bbb76897924c094b5b0adf73b1626422c0d1e30000f1194a63a4642" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3464341)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3464341)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_J68_U95_U1_TNE_2026-11-03_sd057.JPG" },
 }
 
@@ -1250,7 +1252,7 @@ data e1_sd_photo_p058: Photograph = Photograph {
   content: Sha256Digest { hex: "3afe32b169f70866718b9671a380f3d232bcb2f77ff6d263cd0d931a7093adaa" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3571277)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3571277)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_U50_U550_U2_P2_D6_P2_2026-11-03_sd058.JPG" },
 }
 
@@ -1258,7 +1260,7 @@ data e1_sd_photo_p059: Photograph = Photograph {
   content: Sha256Digest { hex: "466f8bb1db0dc62e5b4ee697fd5bd4e7a513eb35fa9610fe32175c693c77665a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3303667)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3303667)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6-B6_U15_J22_Q72_D5_P2_2026-11-03_sd059.JPG" },
 }
 
@@ -1266,7 +1268,7 @@ data e1_sd_photo_p060: Photograph = Photograph {
   content: Sha256Digest { hex: "a01da4e4a5f4387bf564fccb4bca9f626c81d710e626f383ee8c6b91f3811dac" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3301178)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3301178)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5-A6_U90_U54_U77_U60_2026-11-03_sd060.JPG" },
 }
 
@@ -1274,7 +1276,7 @@ data e1_sd_photo_p061: Photograph = Photograph {
   content: Sha256Digest { hex: "2166577cce72f5ca85c455f143e1e09a712e54e848e4ee73dc48a42f97b5cbb2" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3326358)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3326358)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5-A6-B5-B6_U15_U1_P2_U55_U86_2026-11-03_sd061.JPG" },
 }
 
@@ -1282,7 +1284,7 @@ data e1_sd_photo_p062: Photograph = Photograph {
   content: Sha256Digest { hex: "d062aeddc9478e7bc0289e4e4c1f9f27e853284f2d08e4ac342d63345879507d" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3533051)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3533051)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6-C6_U53_U69_U21_J24_2026-11-03_sd062.JPG" },
 }
 
@@ -1290,7 +1292,7 @@ data e1_sd_photo_p063: Photograph = Photograph {
   content: Sha256Digest { hex: "e1b6ca299edbb4d55b4e9dcaba9143ad8dc93318eea1d8ee7538e63650822129" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3405531)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3405531)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D6_U102_U10_J31_Q530_2026-11-03_sd063.JPG" },
 }
 
@@ -1298,7 +1300,7 @@ data e1_sd_photo_p064: Photograph = Photograph {
   content: Sha256Digest { hex: "ff625d57169237ee655acc0d1b078fe668527d8fdf264d82f199e67b5a5c30e3" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3296153)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3296153)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D6_U102_U10_J31_2026-11-03_sd064.JPG" },
 }
 
@@ -1306,7 +1308,7 @@ data e1_sd_photo_p065: Photograph = Photograph {
   content: Sha256Digest { hex: "c8d538b44bf374f7132bb3e2d7d7d614a183b7b1b4d9db1b87eeb44f2b508afe" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3139638)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3139638)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D6_J14_U38_U524_2026-11-03_sd065.JPG" },
 }
 
@@ -1314,7 +1316,7 @@ data e1_sd_photo_p066: Photograph = Photograph {
   content: Sha256Digest { hex: "90b1b65b08379ab075269a230cc69dad7c977cb3988008f673e07cb2e580e602" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3178692)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3178692)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C6approx_U1_J1_2026-11-03_sd066.JPG" },
 }
 
@@ -1322,7 +1324,7 @@ data e1_sd_photo_p067: Photograph = Photograph {
   content: Sha256Digest { hex: "d601617e854fd310497e4c339fd56f55ed9300cd9c3bad0bdc4f2767bc0a2527" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3170937)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3170937)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_U1_TSW_2026-11-03_sd067.JPG" },
 }
 
@@ -1330,7 +1332,7 @@ data e1_sd_photo_p068: Photograph = Photograph {
   content: Sha256Digest { hex: "a7b6e7358482c45dc7c371fe2c4b444ac98d68d7006288af4419e35a6f7853b7" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: SurfaceUnrecorded { obligation: "this SD frame was never placed on a side: the operator names which face it shows, or it leaves the store" }, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3078740)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3078740)),
   store: StoreLocation { folder_id: "1J1R1AI6Bw17DiafVpFn3mt_Uv-K3A9Qg", folder_name: "E1/photos_sd_unplaced", file_name: "p4261_e1b_unplaced_no-label_2026-11-03_sd068.JPG" },
 }
 
@@ -1338,7 +1340,7 @@ data e1_sd_photo_p069: Photograph = Photograph {
   content: Sha256Digest { hex: "f4a99b126ee98431d5fe11667009856278cf06d5c5a492ae8a31dc31b2dc487a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: SurfaceUnrecorded { obligation: "this SD frame was never placed on a side: the operator names which face it shows, or it leaves the store" }, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3222313)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3222313)),
   store: StoreLocation { folder_id: "1J1R1AI6Bw17DiafVpFn3mt_Uv-K3A9Qg", folder_name: "E1/photos_sd_unplaced", file_name: "p4261_e1b_unplaced_no-label_2026-11-03_sd069.JPG" },
 }
 
@@ -1346,7 +1348,7 @@ data e1_sd_photo_p070: Photograph = Photograph {
   content: Sha256Digest { hex: "13411738094203e13d81fea1a4205fc1b3a41cd06586bbe7525e96f3fba87e13" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: SurfaceUnrecorded { obligation: "this SD frame was never placed on a side: the operator names which face it shows, or it leaves the store" }, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2892472)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2892472)),
   store: StoreLocation { folder_id: "1J1R1AI6Bw17DiafVpFn3mt_Uv-K3A9Qg", folder_name: "E1/photos_sd_unplaced", file_name: "p4261_e1b_unplaced_no-label_2026-11-03_sd070.JPG" },
 }
 
@@ -1354,7 +1356,7 @@ data e1_sd_photo_p071: Photograph = Photograph {
   content: Sha256Digest { hex: "566ae50fa510bd44274366a8502e8495656db5fb4d4b4d95163ac4a8530ed241" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: SurfaceUnrecorded { obligation: "this SD frame was never placed on a side: the operator names which face it shows, or it leaves the store" }, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3222460)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3222460)),
   store: StoreLocation { folder_id: "1J1R1AI6Bw17DiafVpFn3mt_Uv-K3A9Qg", folder_name: "E1/photos_sd_unplaced", file_name: "p4261_e1b_unplaced_no-label_2026-11-03_sd071.JPG" },
 }
 
@@ -1362,7 +1364,7 @@ data e1_sd_photo_p072: Photograph = Photograph {
   content: Sha256Digest { hex: "950e97a3e6726f7962d7280988e4e2ccb6954b14f8e285005420d260aae441ab" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2967406)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2967406)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A2-A3_Q21_P5_2026-11-03_sd072.JPG" },
 }
 
@@ -1370,7 +1372,7 @@ data e1_sd_photo_p073: Photograph = Photograph {
   content: Sha256Digest { hex: "c4b5931f1b1b11cb11b21e01cc35d8b230044fcbcbaaf00ef6842359b53cb6ff" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3316299)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3316299)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A2-A3_no-label_2026-11-03_sd073.JPG" },
 }
 
@@ -1378,7 +1380,7 @@ data e1_sd_photo_p074: Photograph = Photograph {
   content: Sha256Digest { hex: "4591e0f9d5ea26563d462c507c893e04f6c94f922339260816a4ce96449ef9cb" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2965620)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2965620)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A2-A3_no-label_2026-11-03_sd074.JPG" },
 }
 
@@ -1386,7 +1388,7 @@ data e1_sd_photo_p075: Photograph = Photograph {
   content: Sha256Digest { hex: "4dd3fc1c8d2017a1b01128fc7156defd0cb45f8e5eb357521f64b0597220e288" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2985202)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2985202)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A2_Q4_P5_Q21_P5_Q22_P5_2026-11-03_sd075.JPG" },
 }
 
@@ -1394,7 +1396,7 @@ data e1_sd_photo_p076: Photograph = Photograph {
   content: Sha256Digest { hex: "c1e0dfedc059de88334ec23681c13fc2fd510a288e4052480807118da1a5b1ae" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3499298)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3499298)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A2_U3_P5_D1_P5_2026-11-03_sd076.JPG" },
 }
 
@@ -1402,7 +1404,7 @@ data e1_sd_photo_p077: Photograph = Photograph {
   content: Sha256Digest { hex: "ad7e3173ae68bdfd417378f18a2c24f4c016d66ff2f8070e4fe486c9a8cffb08" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3422381)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3422381)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A1-A2-B1-B2_U2_P5_U1_P5_2026-11-03_sd077.JPG" },
 }
 
@@ -1410,7 +1412,7 @@ data e1_sd_photo_p078: Photograph = Photograph {
   content: Sha256Digest { hex: "d1187d9758c9fca2911fbbdec7ca326b835f686aa0fb81c1d9efb2baeba81eb6" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3433871)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3433871)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A2_U1_P5_U3_P5_U2_P5_D1_P5_2026-11-03_sd078.JPG" },
 }
 
@@ -1418,7 +1420,7 @@ data e1_sd_photo_p079: Photograph = Photograph {
   content: Sha256Digest { hex: "098a788533732e506fa0e63b057a491498bc986be62378262fe83570621483a4" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3428008)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3428008)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A4_U2_D1_D4_2026-11-03_sd079.JPG" },
 }
 
@@ -1426,7 +1428,7 @@ data e1_sd_photo_p080: Photograph = Photograph {
   content: Sha256Digest { hex: "f6a462a3789850cae3c2594b20d60917a540cda314a1baa781869e91a21a6407" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2965900)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2965900)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A4-A5_D1_P1_D5_P1_2026-11-03_sd080.JPG" },
 }
 
@@ -1434,7 +1436,7 @@ data e1_sd_photo_p081: Photograph = Photograph {
   content: Sha256Digest { hex: "a3dd155d1dff3a36a21f410e70e46be212f4d8454b0a894f647f79badae7e465" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3483614)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3483614)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A4approx_F1_Q4_P1_Q1_P1_Q6_P1_2026-11-03_sd081.JPG" },
 }
 
@@ -1442,7 +1444,7 @@ data e1_sd_photo_p082: Photograph = Photograph {
   content: Sha256Digest { hex: "499eeb6274fbe6d0b6c6b59214f2c27afccab40df98853d17e17fd70803b043c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3439363)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3439363)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A4_C10_P1_Q5_P1_2026-11-03_sd082.JPG" },
 }
 
@@ -1450,7 +1452,7 @@ data e1_sd_photo_p083: Photograph = Photograph {
   content: Sha256Digest { hex: "a972c12b9589261bd173ac510a17450d04bef219df1495cc23a494fa99d777b9" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2897665)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2897665)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A4-A5_Q5_P1_C10_P1_tape_2026-11-03_sd083.JPG" },
 }
 
@@ -1458,7 +1460,7 @@ data e1_sd_photo_p084: Photograph = Photograph {
   content: Sha256Digest { hex: "2f2039b59c44fed66007de34afc2f55adc1dcc0f502df42a01223d35788cd9b9" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2931809)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2931809)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A2_Q5_P5_D5_P5_2026-11-03_sd084.JPG" },
 }
 
@@ -1466,7 +1468,7 @@ data e1_sd_photo_p085: Photograph = Photograph {
   content: Sha256Digest { hex: "810d00d7c0ba25787180eefc410e47e6b7c861291bfd60660c0c17a13220ad75" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3243872)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3243872)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A2-A3_D3_P5_D2_2026-11-03_sd085.JPG" },
 }
 
@@ -1474,7 +1476,7 @@ data e1_sd_photo_p086: Photograph = Photograph {
   content: Sha256Digest { hex: "bdfdef8c51003490029f283e5790cb21668844c4d2be76175da82d89857168cd" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2981219)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2981219)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A2-A3_D2_P5_2026-11-03_sd086.JPG" },
 }
 
@@ -1482,7 +1484,7 @@ data e1_sd_photo_p087: Photograph = Photograph {
   content: Sha256Digest { hex: "8440c31e28728e2b55a913cd6cca9689966ac804148def9a760a5f8f245e8c48" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2947340)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2947340)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A1-A2_Q301_Q300_2026-11-03_sd087.JPG" },
 }
 
@@ -1490,7 +1492,7 @@ data e1_sd_photo_p088: Photograph = Photograph {
   content: Sha256Digest { hex: "fbab9a0dfe7a16466b47c072d61e44dddbb6711ddeb709969bcc832565468e84" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2990250)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2990250)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A2_Q5_P5_D5_P5_2026-11-03_sd088.JPG" },
 }
 
@@ -1498,7 +1500,7 @@ data e1_sd_photo_p089: Photograph = Photograph {
   content: Sha256Digest { hex: "5479ddfab054192750b98213bb71611bce5350f68976d58324f5f7de6923cac7" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3439951)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3439951)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A2-A3_D2_P5_D3_P5_Q3_P5_2026-11-03_sd089.JPG" },
 }
 
@@ -1506,7 +1508,7 @@ data e1_sd_photo_p090: Photograph = Photograph {
   content: Sha256Digest { hex: "a44de847a682eab1cbf94c3896eaa332f2c5fe4de89137286543e3877b5db347" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3271154)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3271154)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A3approx_D3_P1_2026-11-03_sd090.JPG" },
 }
 
@@ -1514,7 +1516,7 @@ data e1_sd_photo_p091: Photograph = Photograph {
   content: Sha256Digest { hex: "63fd4eaaac09fdf2b9a8ddf3c172621c61c85b1dd687c95b89b54473bae73c1f" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: SurfaceUnrecorded { obligation: "this SD frame was never placed on a side: the operator names which face it shows, or it leaves the store" }, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3244946)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3244946)),
   store: StoreLocation { folder_id: "1J1R1AI6Bw17DiafVpFn3mt_Uv-K3A9Qg", folder_name: "E1/photos_sd_unplaced", file_name: "p4261_e1b_unplaced_no-label_2026-11-03_sd091.JPG" },
 }
 
@@ -1522,7 +1524,7 @@ data e1_sd_photo_p092: Photograph = Photograph {
   content: Sha256Digest { hex: "8d3a36da5b4a1620f19cc0a092358736934529993791bbb4800143e3fb65bb40" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3375639)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3375639)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A4approx_U3_P1_2026-11-03_sd092.JPG" },
 }
 
@@ -1530,7 +1532,7 @@ data e1_sd_photo_p093: Photograph = Photograph {
   content: Sha256Digest { hex: "f32bb48aedb9cdbd150472d9843f4637e383b5444e172aeb7a4216b241368d38" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3196082)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3196082)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A4-A5-B4-B5_Q63_Q64_Q70_Q67_2026-11-03_sd093.JPG" },
 }
 
@@ -1538,7 +1540,7 @@ data e1_sd_photo_p094: Photograph = Photograph {
   content: Sha256Digest { hex: "cdb34ea03521b9a3321c9c48fc5a481d6d137bbde0b96ade7804bf10e6ba2245" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3204006)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3204006)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A4-A5-B4-B5_Q63_Q64_Q70_Q67_2026-11-03_sd094.JPG" },
 }
 
@@ -1546,7 +1548,7 @@ data e1_sd_photo_p095: Photograph = Photograph {
   content: Sha256Digest { hex: "9a29db095fdb7f838e63de1eccb3b3cefecba4c08d285bcb9c9a6f08ad4c446c" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3189523)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3189523)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A4-A5-B4-B5_no-label_tape_2026-11-03_sd095.JPG" },
 }
 
@@ -1554,7 +1556,7 @@ data e1_sd_photo_p096: Photograph = Photograph {
   content: Sha256Digest { hex: "ed2f40c4461a514d15e526a2400bd4b6b7c60e99b030352e88948e2167ba5dee" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3183533)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3183533)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A4-A5-B4-B5_Q64_tape_2026-11-03_sd096.JPG" },
 }
 
@@ -1562,7 +1564,7 @@ data e1_sd_photo_p097: Photograph = Photograph {
   content: Sha256Digest { hex: "cf657a037afb088d003b106e2f3fa7c0ce8ea8210632a66221e980bf76ed4ff7" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3185162)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3185162)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_A4-A5-B4-B5_Q64_tape_2026-11-03_sd097.JPG" },
 }
 
@@ -1570,7 +1572,7 @@ data e1_sd_photo_p098: Photograph = Photograph {
   content: Sha256Digest { hex: "2fcf8c8b5d8c641b4dbfe262304dde1745e7d6676ceb06862cd543914415ff7f" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2933637)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2933637)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B6-C6_Q8_P2_D10_P2_D18_P2_2026-11-03_sd098.JPG" },
 }
 
@@ -1578,7 +1580,7 @@ data e1_sd_photo_p099: Photograph = Photograph {
   content: Sha256Digest { hex: "2d154dbcc9318c3960e31fadf84ac4e44f56b9b5c35a795d6c3892579688d453" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2985421)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2985421)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B6_U11_D12_P2_D1_P2_Q8_P2_2026-11-03_sd099.JPG" },
 }
 
@@ -1586,7 +1588,7 @@ data e1_sd_photo_p100: Photograph = Photograph {
   content: Sha256Digest { hex: "2459bb09b32090cdc7f487099e3d6ed23bb85713a30ec105a7970aeb156a8248" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2957296)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2957296)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B6_no-label_2026-11-03_sd100.JPG" },
 }
 
@@ -1594,7 +1596,7 @@ data e1_sd_photo_p101: Photograph = Photograph {
   content: Sha256Digest { hex: "9ddbfe5bd3dce9162cf15b9ac8306ca3656d1a28cd8658db7fecb6ac67ffcd77" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2936691)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2936691)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B6_Q71_Q11_2026-11-03_sd101.JPG" },
 }
 
@@ -1602,7 +1604,7 @@ data e1_sd_photo_p102: Photograph = Photograph {
   content: Sha256Digest { hex: "d928987a0528b3ea81ba38c25667498b24f9493e35e179b04a74f6d92e8a171a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2954085)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2954085)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_C6approx_U16_U74_2026-11-03_sd102.JPG" },
 }
 
@@ -1610,7 +1612,7 @@ data e1_sd_photo_p103: Photograph = Photograph {
   content: Sha256Digest { hex: "19a6ccc4b5fc44f9823cc191dc32f4edff2d418ef5b5d7951c498d58809427a8" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: SurfaceUnrecorded { obligation: "this SD frame was never placed on a side: the operator names which face it shows, or it leaves the store" }, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2982679)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2982679)),
   store: StoreLocation { folder_id: "1J1R1AI6Bw17DiafVpFn3mt_Uv-K3A9Qg", folder_name: "E1/photos_sd_unplaced", file_name: "p4261_e1b_unplaced_no-label_2026-11-03_sd103.JPG" },
 }
 
@@ -1618,7 +1620,7 @@ data e1_sd_photo_p104: Photograph = Photograph {
   content: Sha256Digest { hex: "6b54c792ccca62a225f4f01fe83a95a6bfcb96a76e1a2b55ad5ed0e7b373439a" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3117737)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3117737)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D6_U110_U107_2026-11-03_sd104.JPG" },
 }
 
@@ -1626,7 +1628,7 @@ data e1_sd_photo_p105: Photograph = Photograph {
   content: Sha256Digest { hex: "191ddaeab3e23c588abe36e1d080778fe22114fff1b1d916f6d2af54d70d9d50" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3322400)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3322400)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D4approx_U84_2026-11-03_sd105.JPG" },
 }
 
@@ -1634,7 +1636,7 @@ data e1_sd_photo_p106: Photograph = Photograph {
   content: Sha256Digest { hex: "5e94f3f4ae00b9cc1fde0259db7e50fb53ca01277b993886cd85f96900dcf519" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2952484)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2952484)),
   store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C6approx_U3_2026-11-03_sd106.JPG" },
 }
 
@@ -1642,7 +1644,7 @@ data e1_sd_photo_p107: Photograph = Photograph {
   content: Sha256Digest { hex: "88f340c86f07e2e7942fb8c273e7eec05156f67d3e8570a4598838d5ed47f45f" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3138155)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3138155)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_Q3_5_Q1_5_D3_5_D17_5_2026-11-03_sd107.JPG" },
 }
 
@@ -1650,7 +1652,7 @@ data e1_sd_photo_p108: Photograph = Photograph {
   content: Sha256Digest { hex: "680ae72f23a49b5e43f04766a571f78c9c0f4685ca9c5532a6da561c71f8b468" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 2922793)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2922793)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D4approx_U84_2026-11-03_sd108.JPG" },
 }
 
@@ -1658,7 +1660,7 @@ data e1_sd_photo_p109: Photograph = Photograph {
   content: Sha256Digest { hex: "4fc5010698a4f51c8e99c77e77832e54dca1ffcb94694720fba19fcf6b6d6fc3" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3402724)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3402724)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_Q3_5_D3_5_D17_5_2026-11-03_sd109.JPG" },
 }
 
@@ -1666,7 +1668,7 @@ data e1_sd_photo_p110: Photograph = Photograph {
   content: Sha256Digest { hex: "32eed7eb8f59d9f22466570bb225921df68df46408daa429819d7daf41c60cd5" as Sha256DigestHex },
   board: p4261_e1_b,
   origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
-  bytes: positive_byte_size_from_count(count: positive_measure_count(predecessor: 3497285)),
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3497285)),
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D6_U110_U107_2026-11-03_sd110.JPG" },
 }
 
