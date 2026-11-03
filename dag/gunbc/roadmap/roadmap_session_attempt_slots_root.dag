@@ -129,7 +129,7 @@ type SessionAttemptSlotStoreRef
 
 fn session_attempt_slot_store_handle(ref: SessionAttemptSlotStoreRef) -> SlotStore {
   match ref {
-    WorkerAttemptSlots(store: s) => s.slots
-    ReviewerAttemptSlots(store: s) => s.slots
+    WorkerAttemptSlots(s) => s.slots
+    ReviewerAttemptSlots(s) => s.slots
   }
 }
