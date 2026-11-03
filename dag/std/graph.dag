@@ -6,7 +6,7 @@ import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   TerminationProof
 }
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, list_push, map_lookup }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, list_push, map_lookup, list_flat_map }
 
 type GraphEdge {
   caller: String
@@ -239,7 +239,7 @@ fn is_valid_proof(proof: TerminationProof, edges: List<ProofEdge>) -> Bool {
   let has_self_cycle = non_descending |> any(e => e.caller == e.callee)
   if has_self_cycle { false }
   else {
-    let members = edges |> flat_map(e => [e.caller, e.callee])
+    let members = list_flat_map(xs: edges, f: e => [e.caller, e.callee])
     let nd_graph = build_call_graph_from_proof_edges(names: members, edges: non_descending)
     graph_has_multi_node_scc(names: members, graph: nd_graph) == false
   }
