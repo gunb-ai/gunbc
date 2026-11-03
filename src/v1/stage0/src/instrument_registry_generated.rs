@@ -229,16 +229,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "claim-coverage-census".to_string(),
-            },
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/claim_coverage_census_live.dag",
-                function: "claim_coverage_census_exit",
-            },
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "append-chain-ladder".to_string(),
             },
             TargetProducer::NativeClaimProgram {
