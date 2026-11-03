@@ -42,7 +42,7 @@ pub use crate::std_algebra::{
     CollectionSizeEffect, FreeMonoid, FreeSemigroup,
 };
 use crate::std_coercion::ArithmeticCarrierSelection::{
-    ArithmeticCarrierAmbiguous, ArithmeticNoCarrier,
+    ArithmeticCarrierAmbiguous, ArithmeticCarrierUndecided, ArithmeticNoCarrier,
 };
 use crate::std_coercion::ConversionPlanJudgment::{
     ConversionPlanAbsent, ConversionPlanAdmitted, ConversionPlanAmbiguous,
@@ -364,17 +364,17 @@ use crate::v1_std_core::CallTargetIdentity::{
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AlgebraApplicationEvidenceUnavailable, AmbiguousReference, ArithmeticAmbiguousCarrier,
-    ArithmeticWithoutCarrier, BareNoneNotAdmittedByFieldType, CallArgumentDuplicate,
-    CallArgumentNameUnknown, CallNamedArgOnFunctionValue, CallPositionalDeficit,
-    CallPositionalSurplus, ConstructorCallAdmissionRefused, EqualityMemberUnjudgeable,
-    EqualityOnFunctionMember, EqualityOnInadmissibleType, EqualityOptionalityMismatch,
-    FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError, KernelMintShapeMismatch,
-    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
-    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
-    SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
-    TextCrossingHasNoImplicitRoute, TextRepresentationUnidentifiedAtBoundary,
-    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
-    UnresolvedType, VariantCollision,
+    ArithmeticUndecidedCarrier, ArithmeticWithoutCarrier, BareNoneNotAdmittedByFieldType,
+    CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
+    CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
+    EqualityMemberUnjudgeable, EqualityOnFunctionMember, EqualityOnInadmissibleType,
+    EqualityOptionalityMismatch, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    KernelMintShapeMismatch, MethodExistenceFrontierAdmitted, MethodExistenceUndecided,
+    MethodNotFound, MissingField, OptionalCastNotEliminated, ReceiverTypeUnestablished,
+    ServiceConfigReferenceJudgmentDeferred, SiblingOperandEffectOrderUndetermined,
+    SoleConstructorViolation, TextCrossingHasNoImplicitRoute,
+    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
+    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -17979,6 +17979,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 }),
                                 scope.module_name.clone(),
                             )]),
+                            Some(ArithmeticCarrierSelection::ArithmeticCarrierUndecided) => {
+                                Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::ArithmeticUndecidedCarrier {
+                                        operation: req.field.clone(),
+                                        span: span.clone(),
+                                    }),
+                                    scope.module_name.clone(),
+                                )])
+                            }
                             Some(ArithmeticCarrierSelection::ArithmeticNoCarrier) => {
                                 Rc::new(vec![crate::v1_std_core::make_error_node(
                                     Rc::new(CompilerDiagnostic::ArithmeticWithoutCarrier {
@@ -18093,6 +18102,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                     }),
                                     scope.module_name.clone(),
                                 )]),
+                                Some(ArithmeticCarrierSelection::ArithmeticCarrierUndecided) => {
+                                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                                        Rc::new(CompilerDiagnostic::ArithmeticUndecidedCarrier {
+                                            operation: requirement.field.clone(),
+                                            span: span.clone(),
+                                        }),
+                                        scope.module_name.clone(),
+                                    )])
+                                }
                                 _ => Rc::new(vec![]),
                             }
                         }

@@ -224,6 +224,7 @@ pub enum ArithmeticCarrierSelection {
     ArithmeticCarrierAmbiguous {
         candidates: Rc<Vec<Rc<DeclarationRef>>>,
     },
+    ArithmeticCarrierUndecided,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
