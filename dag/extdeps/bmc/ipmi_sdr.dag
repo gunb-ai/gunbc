@@ -1,6 +1,6 @@
 module extdeps.bmc.ipmi_sdr
 
-import std.algebra { trim }
+import std.algebra { list_find_first, string_contains, trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Celsius, Percent, RevolutionsPerMinute, celsius, percent, rpm }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -361,22 +361,181 @@ fn sdr_temperature_publication(results: List<SdrLineResult>) -> SdrTemperaturePu
   }
 }
 
-// VERBOSE SDR ELIST: CAPTURE FIRST, CLASSIFY LATER (admission-rule work, manager
-// msg_4049c507/msg_56f4f57b). The plain elist's second field is the BMC-ASSIGNED SENSOR NUMBER -
-// classifying rows by it is number-matching and was rejected. The Sensor Type and the
-// Event/Reading Type code appear only in verbose records, read from the SDR repository (host
-// powered OFF is fine; the repository is BMC-side and the codes do not change with power state).
-// THIS STAGE GROUPS THE RAW RECORDS AND CLASSIFIES NOTHING: the admission rule will be grounded
-// on a committed capture, not on a hand-written shape. record_line is the elist-style line;
-// detail_lines are its indented verbose continuation lines, verbatim.
+// VERBOSE SDR ELIST: ONE PARSER, KEYED ON THE RECORD ITSELF.
+//
+// ipmitool's `sdr elist -v` prints NO pipe rows. Over the whole committed capture of srv1 (run
+// 41406891344, 144775 bytes) there is not one '|' line: each sensor is one block opening with
+//
+//   Sensor ID              : FAN1 (0x41)
+//
+// followed by indented ' Label  : value' continuation lines. The row-keyed grouping this file did
+// before (#15562, rendered by #15649) started a record only on a five-field '|' line, so against
+// real output it produced ZERO records while still reporting the read captured - dead code against
+// the only bytes that matter, and the gate downstream therefore refused on an empty repository.
+// The record boundary is the Sensor ID header, and the header's NAME is what joins a block to the
+// elist row the gate is deciding about. The number in the header is DISPLAY TEXT: the row spells it
+// EBh while the header spells it (0xeb), and no rule here compares the two - doing so would need a
+// hex parse invented to make a rule pass, and a wrong one would admit a sensor nobody typed.
+//
+// THIS STAGE MAKES NO ADMISSION DECISION, AND NOTHING BELOW IT DOES. The label test below is
+// ipmitool's own threshold decision, cited to the tool (ipmi_sdr.h:427 at be11d948); what a blank
+// 'ok' reading means FOR THIS PRODUCT, and which rows it may therefore admit, is consumer policy and
+// lives in gunbc.machine_intake.chassis_fan_establishment next to its only consumer -- DESIGN.md 3b:
+// observations this repository makes and the policy over them belong to the consuming layer, never to
+// extdeps (review 90055). Nothing here is grounded on a capture: the capture is this repository's
+// observation, so its bytes are witness data in test.fixture.machine_intake, never an extdeps fact.
 type SdrVerboseRecord {
-  record_line: String
+  name: String
+  number_hex: String
   detail_lines: List<String>
 }
 
+// THE TOOL'S OWN THRESHOLD TEST, NOT A SPECIFICATION TABLE.
+//
+// ipmi_sdr.h:427 at be11d948 reads `#define IS_THRESHOLD_SENSOR(s) ((s)->event_type == 1)`, where
+// event_type is the SDR event/reading type code (ipmi_sdr.h:380). The VERBOSE OUTPUT block PRINTS
+// that single test as a label: ' Sensor Type (Discrete): %s (0x%02x)' when the test fails
+// (lib/ipmi_sdr.c:1888) and ' Sensor Type (Threshold)  : %s (0x%02x)' when it holds
+// (lib/ipmi_sdr.c:1952) - note the TWO SPACES before the colon in the second, which is why this
+// matches the parenthesised WORD and never an aligned label. The raw code itself reaches only
+// lprintf(LOG_DEBUG, " Event Type Code : 0x%02x", ...) (lib/ipmi_sdr.c:1891) and so NEVER appears
+// in stdout: a rule keyed on an 'Event/Reading Type Code' line would key on a line that cannot
+// exist in a capture, and would classify every row absent while looking green.
+//
+// ipmitool prints EXACTLY ONE typing line per record, and that fact is the model: the detail lines
+// that BEGIN with the 'Sensor Type' label are collected, and the typing is read only when there is
+// exactly one of them and it matches one of the two exact label shapes. Zero, a malformed line, or
+// more than one means the typing is not readable, and the blank reading stays undecoded. A substring
+// search over the detail lines was the defect this replaces: a record carrying a valid
+// ' Sensor Type (Discrete): Power Supply (0x08)' plus a malformed competitor such as
+// ' Sensor Type (Threshold ) : ' typed as NOT threshold and admitted a row the repository never
+// typed. Under this model the two lines make the record's typing ambiguous, and ambiguity refuses.
 type SdrVerboseReadout
   = SdrVerboseRead { records: List<SdrVerboseRecord> }
+  | SdrVerboseEmptyRepository
   | SdrVerboseUnreadable
+
+type SdrBlockTyping
+  = SdrBlockThreshold
+  | SdrBlockNotThreshold
+  | SdrBlockTypingAmbiguous
+  | SdrBlockUntyped
+
+data ipmitool_sdr_threshold_test_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool/blob/be11d948/include/ipmitool/ipmi_sdr.h#L427"
+  }
+}
+
+// THE LABEL PREFIX, read off the text BEFORE the first '(' and compared exactly: a detail line begins
+// with the 'Sensor Type' label only when that label is what precedes the parenthesised kind. This is
+// what keeps a malformed competitor (' Sensor Type (Threshold ) : ') counted as a typing line at all,
+// so it can never be out-voted by a valid one -- it makes the record's typing ambiguous instead.
+fn sdr_detail_line_begins_with_typing_label(line: String) -> Bool {
+  match sdr_field_at(fields: split(s: line, delimiter: "("), index: 0) {
+    Absent => false
+    Present { value: head } => trim(head) == "Sensor Type"
+  }
+}
+
+// THE TWO EXACT SHAPES, from the same print path cited above: ' Sensor Type (Discrete): %s (0x%02x)'
+// (lib/ipmi_sdr.c:1888) and ' Sensor Type (Threshold)  : ' (:1952, two spaces before the colon). The
+// comparison is on the part before the first ": ", trimmed -- never on a substring of the whole line,
+// which is what let a malformed line pass for a label.
+fn sdr_typing_line_is_threshold(line: String) -> Bool {
+  match sdr_field_at(fields: split(s: line, delimiter: ": "), index: 0) {
+    Absent => false
+    Present { value: head } => trim(head) == "Sensor Type (Threshold)"
+  }
+}
+
+fn sdr_typing_line_is_discrete(line: String) -> Bool {
+  match sdr_field_at(fields: split(s: line, delimiter: ": "), index: 0) {
+    Absent => false
+    Present { value: head } => trim(head) == "Sensor Type (Discrete)"
+  }
+}
+
+fn sdr_verbose_block_typing(record: SdrVerboseRecord) -> SdrBlockTyping {
+  let typing_lines = flat_map(record.detail_lines, d => if sdr_detail_line_begins_with_typing_label(line: d) { [d] } else { [] })
+  let threshold = flat_map(typing_lines, d => if sdr_typing_line_is_threshold(line: d) { [d] } else { [] })
+  let discrete = flat_map(typing_lines, d => if sdr_typing_line_is_discrete(line: d) { [d] } else { [] })
+  if typing_lines.length() > 1 {
+    // More than one typing line in one record: ipmitool prints one, so the record is not something
+    // this tool wrote, and which label governs would be a guess. Refuse.
+    SdrBlockTypingAmbiguous
+  } else if threshold.length() == 1 {
+    SdrBlockThreshold
+  } else if discrete.length() == 1 {
+    SdrBlockNotThreshold
+  } else {
+    // No typing line at all, or one that matches neither exact shape. The repository said nothing
+    // readable about this record, which is NOT the same as saying it is not a threshold sensor.
+    SdrBlockUntyped
+  }
+}
+
+// THE BLOCK ID, read off the header's own text: 'PSU2_Status (0xeb)' after a ' : ' split of a
+// 'Sensor ID' label. Both halves must be there. Nothing parses the hex: it is carried as the text
+// the tool printed, for a human reading the receipt, and no admission decision reads it.
+type SdrBlockId {
+  name: String
+  number_hex: String
+}
+
+fn sdr_block_id(value: String) -> SdrBlockId? {
+  let opened = split(s: value, delimiter: " (") |> map(p => trim(p))
+  if opened.length() != 2 {
+    none
+  } else {
+    match sdr_field_at(fields: opened, index: 0) {
+      Absent => none
+      Present { value: nm } => match sdr_field_at(fields: opened, index: 1) {
+        Absent => none
+        Present { value: closed } => {
+          let hexes = split(s: closed, delimiter: ")") |> map(h => trim(h))
+          if hexes.length() != 2 {
+            none
+          } else {
+            match sdr_field_at(fields: hexes, index: 0) {
+              Absent => none
+              Present { value: hx } => if string_contains(s: hx, pattern: "0x") {
+                Present { value: SdrBlockId { name: nm, number_hex: hx } }
+              } else {
+                none
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE HEADER TEST IS AN EXACT LABEL, not a substring: a continuation line that merely mentions
+// Sensor ID must not open a block and steal the details of the record before it.
+fn sdr_block_open(text: String) -> SdrVerboseRecord? {
+  let parts = split(s: trim(text), delimiter: " : ") |> map(p => trim(p))
+  if parts.length() != 2 {
+    none
+  } else {
+    match sdr_field_at(fields: parts, index: 0) {
+      Absent => none
+      Present { value: label } => if label != "Sensor ID" {
+        none
+      } else {
+        match sdr_field_at(fields: parts, index: 1) {
+          Absent => none
+          Present { value: value_text } => match sdr_block_id(value: value_text) {
+            Absent => none
+            Present { value: id } => Present { value: SdrVerboseRecord { name: id.name, number_hex: id.number_hex, detail_lines: [] } }
+          }
+        }
+      }
+    }
+  }
+}
 
 fn sdr_verbose_group(lines: List<String>, current: SdrVerboseRecord?, acc: List<SdrVerboseRecord>) -> List<SdrVerboseRecord> {
   match lines {
@@ -384,16 +543,16 @@ fn sdr_verbose_group(lines: List<String>, current: SdrVerboseRecord?, acc: List<
       Present { value: r } => acc.concat([r])
       Absent => acc
     }
-    Cons { head: line, tail: rest } => match sdr_row_cells(text: line) {
-      Present { value: _ } => match current {
-        Present { value: r } => sdr_verbose_group(lines: rest, current: SdrVerboseRecord { record_line: line, detail_lines: [] }, acc: acc.concat([r]))
-        Absent => sdr_verbose_group(lines: rest, current: SdrVerboseRecord { record_line: line, detail_lines: [] }, acc: acc)
+    Cons { head: line, tail: rest } => match sdr_block_open(text: line) {
+      Present { value: opened } => match current {
+        Present { value: r } => sdr_verbose_group(lines: rest, current: opened, acc: acc.concat([r]))
+        Absent => sdr_verbose_group(lines: rest, current: opened, acc: acc)
       }
       Absent => match current {
         Present { value: r } => if trim(line) == "" {
           sdr_verbose_group(lines: rest, current: current, acc: acc)
         } else {
-          sdr_verbose_group(lines: rest, current: SdrVerboseRecord { record_line: r.record_line, detail_lines: r.detail_lines.concat([line]) }, acc: acc)
+          sdr_verbose_group(lines: rest, current: SdrVerboseRecord { name: r.name, number_hex: r.number_hex, detail_lines: r.detail_lines.concat([line]) }, acc: acc)
         }
         Absent => sdr_verbose_group(lines: rest, current: current, acc: acc)
       }
@@ -401,10 +560,17 @@ fn sdr_verbose_group(lines: List<String>, current: SdrVerboseRecord?, acc: List<
   }
 }
 
+// A successful read that yielded NO records is its own state, never 'captured': a caller that
+// treats an empty repository as a typed one would admit rows nothing typed.
 fn sdr_verbose_readout(success: Bool, stdout: String) -> SdrVerboseReadout {
   if !success {
     SdrVerboseUnreadable
   } else {
-    SdrVerboseRead { records: sdr_verbose_group(lines: split(s: stdout, delimiter: "\n"), current: none, acc: []) }
+    let records = sdr_verbose_group(lines: split(s: stdout, delimiter: "\n"), current: none, acc: [])
+    if records.length() == 0 {
+      SdrVerboseEmptyRepository
+    } else {
+      SdrVerboseRead { records: records }
+    }
   }
 }

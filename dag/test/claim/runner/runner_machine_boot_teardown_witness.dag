@@ -1,5 +1,6 @@
 module test.claim.runner.runner_machine_boot_teardown_witness
 
+import gunbc.host.host_boot_id { host_boot_id_of_capture_run }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Present, Absent }
@@ -20,7 +21,7 @@ import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import gunbc.runner.runner_job_initiator { RunnerEvidenceSource }
 import gunbc.runner.runner_usage_receipt { RunnerAttemptSubject }
 import gunbc.runner.runner_host_unit_slot {
-  service_boot_id_of, host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt, ListenerEndsTheBoot, ListenerOwnLifetime,
+  host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt, ListenerEndsTheBoot, ListenerOwnLifetime,
 }
 import gunbc.machine_intake.host_capture_envelope { KernelBootId }
 import extdeps.uuid { uuid_of }
@@ -51,7 +52,7 @@ fn observed_boot(host: String, id: String) -> CurrentBootObservation {
   match uuid_of(text: id) {
     Absent => CurrentBootUnobserved { cause: "unconstructible boot id" }
     Present { value: u } =>
-      match service_boot_id_of(run: KernelBootId { boot_id: u }) {
+      match host_boot_id_of_capture_run(run: KernelBootId { boot_id: u }) {
         Present { value: b } => CurrentBootObserved { evidence: mint_current_boot_evidence(host: host, boot: b) }
         Absent => CurrentBootUnobserved { cause: "unconstructible boot id" }
       }

@@ -558,6 +558,8 @@ type Millivolt = Measure<ElectricPotentialDifference, Milli, Nat>
 
 type Ampere = Measure<ElectricCurrent, One, Nat>
 
+type Ohm = Measure<Resistance, One, Nat>
+
 // The micrometre exists as a named carrier because EIA-310's rack unit is 44.45 mm - NOT a whole
 // number of millimetres - so any quantity derived from a rack unit count is inexact at millimetre
 // grain and exact at micrometre grain. Naming it lets a consumer stay exact instead of choosing
@@ -955,6 +957,14 @@ fn milliwatt_count(w: Milliwatt) -> Nat {
 
 fn volt(count: Nat) -> Volt {
   Measure { count: count }
+}
+
+fn ohm(count: Nat) -> Ohm {
+  Measure { count: count }
+}
+
+fn ohm_count(r: Ohm) -> Nat {
+  measure_count(r)
 }
 
 fn volt_count(v: Volt) -> Nat {

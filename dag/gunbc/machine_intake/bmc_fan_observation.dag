@@ -587,9 +587,13 @@ fn round_verbose_render_lines(round: FanObservationRound) -> List<String> {
     SdrVerboseNotRequired => [join(["  round=", to_string(round.round_index), " verbose_sdr=not_required"], "")]
     SdrVerboseCaptured { readout: ro } => match ro {
       SdrVerboseUnreadable => [join(["  round=", to_string(round.round_index), " verbose_sdr=unread"], "")]
-      SdrVerboseRead { records: recs } => flat_map(recs, rec =>
-        [join(["  round=", to_string(round.round_index), " verbose_record=[", rec.record_line, "]"], "")]
-          .concat(map(rec.detail_lines, d => join(["  round=", to_string(round.round_index), " verbose_detail=[", d, "]"], ""))))
+      // An empty repository is its OWN state (manager msg_d6bce079): a read that parsed nothing is not
+      // a read that typed anything, and a gate that could not tell them apart would admit rows nobody typed.
+      SdrVerboseEmptyRepository => [join(["  round=", to_string(round.round_index), " verbose_sdr=empty"], "")]
+      SdrVerboseRead { records: recs } => [join(["  round=", to_string(round.round_index), " verbose_sdr=captured(", to_string(recs.length()), ")"], "")]
+        .concat(flat_map(recs, rec =>
+          [join(["  round=", to_string(round.round_index), " verbose_record=[", rec.name, " (", rec.number_hex, ")]"], "")]
+            .concat(map(rec.detail_lines, d => join(["  round=", to_string(round.round_index), " verbose_detail=[", d, "]"], "")))))
     }
   }
 }
@@ -671,9 +675,13 @@ fn render_run_verbose_lines(capture: RunVerboseCapture) -> List<String> {
       // An ISSUED-and-FAILED read is `unread`: not the not_taken line above (that lane never read the
       // repository), and not the zero-records case below (an empty repository, read successfully).
       // #15562's lesson -- a repository that could not be read is not a repository that is empty.
+      // The count rides the marker (manager msg_d6bce079): "captured" alone was readable as "the
+      // repository was parsed" when the row-keyed parser of #15562 in fact produced ZERO records from
+      // real `sdr elist -v` output. A reader can now see 0 records without trusting the word.
       let state_marker = match readout {
         SdrVerboseUnreadable => join(["run=0 verbose_sdr=unread"], "")
-        SdrVerboseRead { records: _ } => join(["run=0 verbose_sdr=captured"], "")
+        SdrVerboseEmptyRepository => join(["run=0 verbose_sdr=empty"], "")
+        SdrVerboseRead { records: records } => join(["run=0 verbose_sdr=captured(", to_string(records.length()), ")"], "")
       }
       // The transport's OWN exit status and the bytes it said ride in BOTH arms: the parse is derived
       // output and is rendered alongside them, never instead of them (manager msg_abffa482), and a
@@ -686,8 +694,9 @@ fn render_run_verbose_lines(capture: RunVerboseCapture) -> List<String> {
       ]
       run_lines.concat(match readout {
         SdrVerboseUnreadable => []
+        SdrVerboseEmptyRepository => []
         SdrVerboseRead { records: records } => flat_map(records, rec =>
-          [join(["run=0 verbose_record=[", rec.record_line, "]"], "")]
+          [join(["run=0 verbose_record=[", rec.name, " (", rec.number_hex, ")]"], "")]
             .concat(map(rec.detail_lines, d => join(["run=0 verbose_detail=[", d, "]"], ""))))
       })
     }
