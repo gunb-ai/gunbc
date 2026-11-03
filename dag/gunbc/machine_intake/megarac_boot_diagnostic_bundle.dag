@@ -856,9 +856,12 @@ fn presentation_evidence_text(e: MegaRacPresentationEvidence) -> String {
 
 fn readiness_reading_text(r: AttachReadiness) -> String {
   match r {
-    ReadinessStarted { row: w } => concat("started, session_index ", optional_text(v: w.session_index))
-    ReadinessConnecting { row: w } => concat("connecting (status ", concat(to_string(w.redirection_wire), concat("), session_index ", optional_text(v: w.session_index))))
-    ReadinessStartedUnbound { row: w } => concat("started with no bound session, session_index ", optional_text(v: w.session_index))
+    ReadinessStarted { row: w, configurations: c } =>
+      join(["started, session_index ", optional_text(v: w.session_index), " configurations: ", c], "")
+    ReadinessConnecting { row: w, configurations: c } =>
+      join(["connecting (status ", to_string(w.redirection_wire), "), session_index ", optional_text(v: w.session_index), " configurations: ", c], "")
+    ReadinessStartedUnbound { row: w, configurations: c } =>
+      join(["started with no bound session, session_index ", optional_text(v: w.session_index), " configurations: ", c], "")
     ReadinessNotPresented { configurations: c } => concat("not presented: ", c)
     ReadinessUnanswered { detail: d } => concat("configurations GET unanswered: ", d)
     ReadinessUncatalogued { image_name: n, unread: u, configurations: c } => join(["UNCATALOGUED ", redirection_unread_text(unread: u), " on '", n, "': ", c], "")

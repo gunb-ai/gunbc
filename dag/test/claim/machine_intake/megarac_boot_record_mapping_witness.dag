@@ -202,7 +202,7 @@ fn a_look(readiness: AttachReadiness, cd: CdErrorReading, held: SessionRelease) 
 
 // The medium is being served: a Started row, a cd_error that answered, and OUR look's session released.
 fn a_still_served_look() -> MegaRacAttachResult {
-  a_look(readiness: ReadinessStarted { row: a_presenting_row() }, cd: CdErrorRead { code: CdErrorNone },
+  a_look(readiness: ReadinessStarted { row: a_presenting_row(), configurations: "[]" }, cd: CdErrorRead { code: CdErrorNone },
          held: SessionReleased)
 }
 
@@ -210,7 +210,7 @@ fn a_still_served_look() -> MegaRacAttachResult {
 // harness's session-release refusal raises, and the reason the neutral arm is neither Presented nor
 // Unread.
 fn a_session_held_look() -> MegaRacAttachResult {
-  a_look(readiness: ReadinessStarted { row: a_presenting_row() }, cd: CdErrorRead { code: CdErrorNone },
+  a_look(readiness: ReadinessStarted { row: a_presenting_row(), configurations: "[]" }, cd: CdErrorRead { code: CdErrorNone },
          held: SessionReleaseRefused { detail: "the BMC kept the look open" })
 }
 
@@ -222,7 +222,7 @@ fn a_not_served_look() -> MegaRacAttachResult {
       share: ShareMismatch { observed: MegaRacObservedShare {
         server_address: "other-host", source_path: "/mnt/other", share_type: "nfs",
         mount_cd: "0", remote_media_support: "1" } },
-      readiness: ReadinessStarted { row: a_presenting_row() }, cd_error: CdErrorRead { code: CdErrorNone },
+      readiness: ReadinessStarted { row: a_presenting_row(), configurations: "[]" }, cd_error: CdErrorRead { code: CdErrorNone },
       general: MegaRacRawRead { answered: true, body: "{}", observed_at: Present { value: 1000 } },
       configurations: MegaRacRawRead { answered: true, body: "[]", observed_at: Present { value: 1000 } },
     },
@@ -234,7 +234,7 @@ fn a_not_served_look() -> MegaRacAttachResult {
 // The look itself did not answer: an unread cd_error code beside a Started row is "the read told us
 // nothing", which must not become "not served".
 fn an_unread_look() -> MegaRacAttachResult {
-  a_look(readiness: ReadinessStarted { row: a_presenting_row() },
+  a_look(readiness: ReadinessStarted { row: a_presenting_row(), configurations: "[]" },
          cd: CdErrorUnread { detail: "general settings unreadable" }, held: SessionReleased)
 }
 

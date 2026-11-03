@@ -1933,9 +1933,14 @@ type ReadinessPhase
   | ReadinessOfPresented
 
 type AttachReadiness
-  = ReadinessStarted { row: PresentingRow }
-  | ReadinessConnecting { row: PresentingRow }
-  | ReadinessStartedUnbound { row: PresentingRow }
+  // THE THREE ROW-BASED ARMS CARRY THE CONFIGURATIONS THEY WERE READ FROM, as the arms below already do.
+  // They are the answers a successful StartMedia produces -- Started, Connecting, Started-with-no-bound-session
+  // -- which is exactly when the interval between the write and the started reading needs its own record.
+  // Without them the pre-ready look runs, decodes into one of these arms, and its body is dropped before any
+  // receipt can commit it: the read happens and nothing is observed.
+  = ReadinessStarted { row: PresentingRow, configurations: String }
+  | ReadinessConnecting { row: PresentingRow, configurations: String }
+  | ReadinessStartedUnbound { row: PresentingRow, configurations: String }
   | ReadinessNotPresented { configurations: String }
   | ReadinessUnanswered { detail: String }
   | ReadinessUncatalogued { image_name: String, unread: MegaRacRedirectionUnread, configurations: String }
@@ -1994,10 +1999,14 @@ fn attach_readiness(
             Present { value: r } =>
               match r.redirection {
                 RedirectionStartedConnectionAccepted =>
-                  if presenting_session_bound(row: r) { ReadinessStarted { row: r } } else { ReadinessStartedUnbound { row: r } }
-                RedirectionStopped => ReadinessConnecting { row: r }
-                RedirectionConnecting => ReadinessConnecting { row: r }
-                RedirectionWireUncatalogued { wire: _ } => ReadinessConnecting { row: r }
+                  if presenting_session_bound(row: r) {
+                    ReadinessStarted { row: r, configurations: body }
+                  } else {
+                    ReadinessStartedUnbound { row: r, configurations: body }
+                  }
+                RedirectionStopped => ReadinessConnecting { row: r, configurations: body }
+                RedirectionConnecting => ReadinessConnecting { row: r, configurations: body }
+                RedirectionWireUncatalogued { wire: _ } => ReadinessConnecting { row: r, configurations: body }
               }
           }
         }
@@ -2016,9 +2025,9 @@ type ReadinessStanding
 // --max-time, or the controller answered 5xx mid-transition) is one miss, not evidence either way.
 fn readiness_standing(look: ReadinessLook, phase: ReadinessPhase) -> ReadinessStanding {
   match look.reading {
-    ReadinessStarted { row: _ } => ReadinessEstablished { look: look }
-    ReadinessConnecting { row: _ } => ReadinessPending
-    ReadinessStartedUnbound { row: _ } => ReadinessPending
+    ReadinessStarted { row: _, configurations: _ } => ReadinessEstablished { look: look }
+    ReadinessConnecting { row: _, configurations: _ } => ReadinessPending
+    ReadinessStartedUnbound { row: _, configurations: _ } => ReadinessPending
     ReadinessUnanswered { detail: _ } => ReadinessPending
     ReadinessNotPresented { configurations: _ } =>
       match phase {
@@ -2202,7 +2211,7 @@ fn readiness_wait_outcome(
       let not_ready = MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
       let state_unestablished = MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
       match l.reading {
-        ReadinessStarted { row: r } =>
+        ReadinessStarted { row: r, configurations: _ } =>
           match cd_at_end {
             CdErrorUnread { detail: _ } => state_unestablished
             CdErrorRead { code: _ } =>
@@ -2222,8 +2231,8 @@ fn readiness_wait_outcome(
             },
           }
           }
-        ReadinessConnecting { row: _ } => not_ready
-        ReadinessStartedUnbound { row: _ } => not_ready
+        ReadinessConnecting { row: _, configurations: _ } => not_ready
+        ReadinessStartedUnbound { row: _, configurations: _ } => not_ready
         ReadinessNotPresented { configurations: _ } => not_ready
         ReadinessUnanswered { detail: _ } => not_ready
         ReadinessUncatalogued { image_name: _, unread: _, configurations: _ } => not_ready
@@ -2293,7 +2302,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
             ReadinessUnanswered { detail: _ } => PresentationUnobserved { reason: "the configurations read was not answered" }
             ReadinessMalformed { detail: _ } => PresentationUnobserved { reason: "the configurations document could not be read" }
             ReadinessUncatalogued { image_name: _, unread: _, configurations: _ } => PresentationUnobserved { reason: "a configurations row carries an uncatalogued status" }
-            ReadinessStarted { row: _ } =>
+            ReadinessStarted { row: _, configurations: _ } =>
               match cd {
                 CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
                 CdErrorRead { code: _ } =>
@@ -2302,8 +2311,8 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
                     other => PresentationReadyButSessionHeld { held: other }
                   }
               }
-            ReadinessConnecting { row: _ } => no_longer_ready
-            ReadinessStartedUnbound { row: _ } => no_longer_ready
+            ReadinessConnecting { row: _, configurations: _ } => no_longer_ready
+            ReadinessStartedUnbound { row: _, configurations: _ } => no_longer_ready
             ReadinessNotPresented { configurations: _ } =>
               no_longer_ready
             ReadinessDuplicate { configurations: _ } => no_longer_ready

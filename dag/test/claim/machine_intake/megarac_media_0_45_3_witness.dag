@@ -943,9 +943,9 @@ test fn w_the_hypothesized_interval_waits_and_never_satisfies_readiness_by_itsel
     Present { value: read } =>
       match attach_readiness(answered: true, body: rows1(row_at(name: boot6_leftover_iso as String, status: "16", session: "255")), image_name: boot6_leftover_iso, firmware: read) {
         ReadinessNotPresented { configurations: _ } => true
-        ReadinessStarted { row: _ } => false
-        ReadinessStartedUnbound { row: _ } => false
-        ReadinessConnecting { row: _ } => false
+        ReadinessStarted { row: _, configurations: _ } => false
+        ReadinessStartedUnbound { row: _, configurations: _ } => false
+        ReadinessConnecting { row: _, configurations: _ } => false
         _ => false
       }
   }

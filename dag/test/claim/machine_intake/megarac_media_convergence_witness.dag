@@ -258,7 +258,7 @@ test fn connecting_is_pending_inside_the_window() -> Bool {
 test fn connecting_only_times_out_keeping_the_last_look() -> Bool {
   match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: look(at: 31000, status: "100", session: "0"), phase: ReadinessAfterStart, looks: 15) {
     ReadinessWindowClosed { last: l, deadline: d, looks: n } =>
-      d == 31000 && n == 15 && (match l.reading { ReadinessConnecting { row: r } => r.redirection_wire == 100 _ => false })
+      d == 31000 && n == 15 && (match l.reading { ReadinessConnecting { row: r, configurations: _ } => r.redirection_wire == 100 _ => false })
     _ => false
   }
 }
@@ -274,7 +274,7 @@ test fn unknown_after_connecting_refuses() -> Bool {
 
 test fn started_without_a_bound_session_is_pending() -> Bool {
   match look(at: 2000, status: "1", session: "255").reading {
-    ReadinessStartedUnbound { row: r } => optional_text_is(v: r.session_index, want: "255")
+    ReadinessStartedUnbound { row: r, configurations: _ } => optional_text_is(v: r.session_index, want: "255")
     _ => false
   }
 }
