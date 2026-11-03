@@ -10,36 +10,35 @@ import std.durable_append_log {
   MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites,
 }
 
-// THE SEALED SHAPE OF AN APPEND-LOG / MULTI-WRITER STORE, and the per-member disposition of every row the
-// sealed-store migration left `Blocked: append-only` or `Blocked: written by the worker sandbox`.
+// THE APPEND-LOG / MULTI-WRITER DATA LAYER, and the per-member disposition of every row the sealed-store
+// migration left `Blocked: append-only` or `Blocked: written by the worker sandbox`.
 // Contract semantics (atomicity, order, torn tail, readback, writer windows) are std.durable_append_log's;
 // the exclusion is std.durable_exclusive_hold's, released on evidence (ReleasedOnEvidence); host-authored
-// generation logs are std.durable_compare_and_set's. This module adds only what those leave open: the
-// sealed handle, its one mint, and the census.
+// generation logs are std.durable_compare_and_set's. This module adds only what those leave open: the carrier
+// types, the pure operations over them, the listing classification, and the census.
 //
-// SEALED LIKE EVERY STORE THE MIGRATION HAS SEALED (gunbc.roadmap.roadmap_attempt_state_store AttemptState):
-// AppendLogStore is `sole_constructor`, minted from a parent handle and a declared slot row, never from a
-// path; AppendLogParent is itself `sole_constructor`, and the only producers of one are the owning cohort's
-// own sealed store (the attempt-state store for the attempt members). The declaration is data: the slot
-// rows below are the only place a log member's name is written.
+// UNSEALED DATA, NOT A WALL (amend to #15471: the seal moved to the declaring roadmap module; DESIGN 4b, do
+// not claim a rung you did not take). `AppendLogStore` and `AppendLogParent` carry NO `sole_constructor` here,
+// so any module can build one over a literal path -- exactly the accepted residual recorded by
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module (file_slot_store_over).
+// The wall is one rung up: `sole_constructor type AttemptAppendLogStore` in
+// gunbc.roadmap.roadmap_attempt_state_store, whose one mint takes the business key (instance, node, attempt_key,
+// member) and never a path. Nothing declared in this file is sealed.
 
-// ONE SLOT ROW PER LOG MEMBER. The entry NAME is not written here: it is the owning sealed store's row
-// (gunbc.roadmap.roadmap_attempt_state_store attempt_state_member_name for the attempt members), read by
-// `member`, so a log member's name has one spelling (DESIGN 3).
+// ONE SLOT ROW PER LOG MEMBER, keyed by the CENSUS KEY the owning store joins on (AttemptWorkerEvents, ...).
+// The census key is not the file name: the on-disk name comes from the declaring store's single name authority
+// (gunbc.roadmap.roadmap_attempt_state_store attempt_log_member_name / attempt_log_member_path), the mint joins
+// on the key and rebuilds the slot carrying that name (review 90137). What a row here owns is the framing and
+// the writer policy -- the facts this layer needs and no other layer restates.
 type AppendLogSlot {
   member: NonEmptyStr
   framing: AppendFraming
   writers: MemberWriterPolicy
 }
 
-// THE UNSEALED CARRIER (amend to #15471; the seal moved to the declaring roadmap module).
-// Copy of the #14944 layering: the GENERIC durable layer is data-only -- an unsealed carrier plus the
-// contract types and the pure operations over it -- and the SEAL (sole_constructor) plus the ONE business-key
-// mint live in the module that DECLARES the members (gunbc.roadmap.roadmap_attempt_state_store). This carrier
-// is therefore constructible by any module, exactly the accepted residual of
-// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module (file_slot_store_over):
-// it is NOT a wall, and it must not be presented as one. The wall is AttemptAppendLogStore's sole_constructor
-// in the declaring module, minted only from (instance, node, attempt_key, member) -- never a path.
+// THE UNSEALED CARRIER, both types below (the layering and its residual are stated once, in the header).
+// Data-only: no `sole_constructor`, no mint here. The seal and the ONE business-key mint live in the module
+// that declares the members -- gunbc.roadmap.roadmap_attempt_state_store, type AttemptAppendLogStore.
 type AppendLogParent {
   directory: NonEmptyStr
 }
