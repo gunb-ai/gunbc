@@ -58,12 +58,15 @@ data boot_run_40258937016_end_media_row: MegaRacMediaRowReceipt = MegaRacMediaRo
 // 1793678673678 and quoted verbatim on the line named below: media_type 1, media_index 0, session_index 255,
 // NO medium named, redirection_status 0. This is the FIRST reading of wire 0 on the release the controller
 // reports that this repository holds, and it is the whole of what the 0 arm of
-// extdeps.bmc.megarac.megarac_redirection_status_of_row is grounded on; the comment there states what is and
-// is not claimed, that the meaning is INFERRED rather than vendor-stated, and that an operator read of the
-// vendor's own UI for this row is being sought and is not yet held. THE ATTEMPT WAS HALTED AT MEDIA ATTACH
+// extdeps.bmc.megarac.megarac_redirection_status_of_row rests on. That arm returns an INFERENCE, not a
+// state -- RedirectionStoppedInferred -- because what was read is that the row PRESENTS 0 while naming
+// nothing, not that the controller calls 0 stopped on the release it runs. No lane acts on the inference; an
+// operator read of the vendor's own UI for this row is what would settle it. THE ATTEMPT WAS HALTED AT MEDIA ATTACH
 // BY THIS ROW: the lane would not stop it (it names no image, so nothing identifies it as this lane's) and 0
 // was not a code this release's catalogue named, so nothing was written, no session was started and the host
-// was never powered on. The refusal that says so is the `harness=` line of
+// was never powered on. Committing this reading does not lift that refusal: the row is still unread to the
+// lane, now with a cause that names the inference and the one reading that would settle it. The refusal that
+// says so is the `harness=` line of
 // artifacts/bmc/mtcollins1-boot-run-41573858366/mtcollins1-boot-receipt.txt, which quotes this same row.
 data boot_run_41573858366_end_media_row: MegaRacMediaRowReceipt = {
   run_id: "41573858366" as NonEmptyStr,

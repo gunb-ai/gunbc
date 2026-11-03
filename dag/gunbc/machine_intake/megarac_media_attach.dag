@@ -1523,11 +1523,18 @@ type PresentingRow {
 type MegaRacRedirectionUnread
   = RedirectionUnreadFirmware { firmware: BmcFirmwareReleaseIdentity, wire: Int }
   | RedirectionUnreadCode { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+  // THE CODE'S MEANING IS A BET THIS REPOSITORY DREW, not a gap in the catalogue: the row was read (boot run
+  // 41573858366's, status 0 beside the no-session marker, naming no medium) and what it means was inferred
+  // from the 0.32 table, the marker and the empty name. It refuses, because §4d forbids a lane acting on an
+  // inference -- but it refuses with its own cause so the operator is told which row, which code, and what
+  // reading would settle it, instead of being told the catalogue does not name it.
+  | RedirectionUnreadInferred { firmware: BmcFirmwareReleaseIdentity, wire: Int }
 
 fn redirection_unread_wire(unread: MegaRacRedirectionUnread) -> Int {
   match unread {
     RedirectionUnreadFirmware { firmware: _, wire: w } => w
     RedirectionUnreadCode { firmware: _, wire: w } => w
+    RedirectionUnreadInferred { firmware: _, wire: w } => w
   }
 }
 
@@ -1537,6 +1544,19 @@ fn redirection_unread_text(unread: MegaRacRedirectionUnread) -> String {
       join(["redirection_status ", to_string(w), " on firmware ", f.raw_version, ", a release whose status codes are not catalogued at all"], "")
     RedirectionUnreadCode { firmware: f, wire: w } =>
       join(["redirection_status ", to_string(w), " on firmware ", f.raw_version, ", a code that release's catalogue does not name"], "")
+    RedirectionUnreadInferred { firmware: f, wire: w } =>
+      join(
+        [
+          "redirection_status ",
+          to_string(w),
+          " on firmware ",
+          f.raw_version,
+          ", a code this release's catalogue does not name and whose meaning is INFERRED here (0.32 reads ",
+          to_string(w),
+          " as stopped, the row carries the no-session marker and names no medium) -- a lane does not boot on an inference; an operator's reading of the controller's own UI for this row would establish it",
+        ],
+        "",
+      )
   }
 }
 
@@ -1570,6 +1590,9 @@ fn unread_code_on_the_evidenced_release(unread: MegaRacRedirectionUnread) -> Boo
       Present { value: read } => bmc_firmware_release_identity_eq(a: f, b: read)
       Absent => false
     }
+    // THE EXCEPTION THAT ALLOWS A STOP ON AN UNREAD CODE IS FOR CODES THE EXECUTED RUNS GROUNDED, and a
+    // meaning guessed from another release is not one of them however well the build is evidenced.
+    RedirectionUnreadInferred { firmware: _, wire: _ } => false
   }
 }
 
@@ -1695,6 +1718,10 @@ fn configuration_row_reading(
                       image_name: named_medium,
                     ) {
                       RedirectionStatusFirmwareUncatalogued { firmware: f, wire: w } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadFirmware { firmware: f, wire: w } }
+                      // THE BET REFUSES, AS A BET. Not ConfigurationRowIdle: idle is the answer that lets the
+                      // lane attach and, downstream, call StartMedia on this row. The cause is the point --
+                      // it names the code, the release and the reading that would lift it.
+                      RedirectionStoppedInferred { firmware: f, wire: w } => ConfigurationRowUncatalogued { image_name: name, unread: RedirectionUnreadInferred { firmware: f, wire: w } }
                       RedirectionStatusKnown { firmware: f, status: status } =>
                         match status {
                           RedirectionStopped => ConfigurationRowIdle
