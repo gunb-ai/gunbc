@@ -24,10 +24,12 @@ import gunbc.dissolution_observation {
   DissolutionCensusAnswered,
   DissolutionCensusRefused,
   dissolution_census_verdict_for,
+  frontier_stale_subject_refs,
+  frontier_undecided_subject_refs,
 }
 import v2.std.decl_index { decl_facts }
 import v2.lens.module_graph { module_declaration_facts_live }
-import std.roster_frontier { FrontierRow, frontier_row_decl, fold_frontier_expiry, frontier_expiry_clean }
+import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_row_decl, fold_frontier_expiry, frontier_expiry_clean }
 
 fn planted_bound_ref() -> DeclarationRef {
   decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness", decl_name: "planted_bound_target")
@@ -282,4 +284,38 @@ test fn unbound_dissolution_empty_literal_refuses() -> Bool {
 
 test fn unbound_dissolution_nonempty_literal_accepts() -> Bool {
   w_unbound_dissolution_nonempty_literal_green()
+}
+
+// A DeclSubject naming a declaration the tree does not hold passes frontier_row_well_formed (non-empty
+// strings only); the subject resolution is what refuses it, located by the ref. The control is the
+// present subject beside it, resolved by the same call over the same live population.
+test fn a_frontier_subject_naming_an_absent_declaration_is_stale_and_a_present_one_is_not() -> Bool {
+  let present = decl_ref(module_path: "test.fixture.dissolution_live_discriminator.subject", decl_name: "present_subject_declaration")
+  let absent = decl_ref(module_path: "test.fixture.dissolution_live_discriminator.subject", decl_name: "no_such_declaration")
+  let rows = [
+    frontier_row_decl(ref: present, reason: "subject known present", dissolution: unbound_dissolution(description: "planted: never fires")),
+    frontier_row_decl(ref: absent, reason: "subject known absent", dissolution: unbound_dissolution(description: "planted: never fires")),
+  ]
+  let stale = frontier_stale_subject_refs(
+    rows: rows,
+    facts: decl_facts(pool_roots: live_discriminator_pool_roots),
+    modules: module_declaration_facts_live(pool_roots: live_discriminator_pool_roots),
+  )
+  frontier_rows_well_formed(rows: rows)
+    && length(xs: stale) == 1
+    && all(stale, r => r.decl_name as String == "no_such_declaration")
+}
+
+// A subject the resolver cannot decide (its module is known but the declaration index covers none of its
+// declarations: OutsideIndex) is neither stale nor present, and must not pass silently. The same row over
+// the covering index is decided, so the refusal is the undecidability and not the row.
+test fn a_frontier_subject_the_index_cannot_decide_is_reported_undecided_and_not_passed() -> Bool {
+  let subject = decl_ref(module_path: "test.fixture.dissolution_live_discriminator.subject", decl_name: "present_subject_declaration")
+  let rows = [frontier_row_decl(ref: subject, reason: "subject outside the index", dissolution: unbound_dissolution(description: "planted: never fires"))]
+  let modules = module_declaration_facts_live(pool_roots: live_discriminator_pool_roots)
+  let undecided = frontier_undecided_subject_refs(rows: rows, facts: [], modules: modules)
+  let decided = frontier_undecided_subject_refs(rows: rows, facts: decl_facts(pool_roots: live_discriminator_pool_roots), modules: modules)
+  length(xs: undecided) == 1
+    && length(xs: frontier_stale_subject_refs(rows: rows, facts: [], modules: modules)) == 0
+    && length(xs: decided) == 0
 }

@@ -22,8 +22,8 @@ module test.claim.printer_execution_hold_recovery_wet_witness
 
 import extdeps.shell
 import std.logic { Bool }
-import std.types { String, NonEmptyStr, Timestamp }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { String, NonEmptyStr, Timestamp, FilePath }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.algebra { string_contains }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { CasGeneration }
@@ -33,9 +33,11 @@ import gunbc.durable_exclusive_hold_file_store {
 }
 import gunbc.fleet.printer_execution_hold {
   PrinterExecutionHold, printer_hold_enter, printer_operator_observation_request,
+  printer_execution_hold_store, PrinterExecutionHoldStoreReady, PrinterExecutionHoldStoreUnready,
   printer_hold_observation_escalation_id, printer_hold_release_request_at,
-  HoldReleaseNothingHeld, HoldReleaseCardFiled, HoldReleaseCardOnFile, HoldReleaseRefused,
+  PrinterHoldReleaseRequest, HoldReleaseNothingHeld, HoldReleaseCardFiled, HoldReleaseCardOnFile, HoldReleaseRefused,
 }
+import gunbc.host_state_root { isolated_host_state_tree }
 import gunbc.process_hold_identity { process_hold_text, self_process_identity, SelfIdentified, SelfUnidentified }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import gunbc.auth.approval_broker { BrokerApproved, ExecutionObligation }
@@ -55,8 +57,34 @@ data printer_recovery_witness_attempt: AttemptIdentity = ("printer-recovery-witn
 // claims never flake on clock skew.
 data printer_recovery_witness_execute_by: Timestamp = "2999-01-01T00:00:00Z"
 
+// THE HOLD STORE'S OWN MEMBER OF AN ISOLATED HOST STATE TREE (isolated_host_state_tree over a fresh temp
+// directory): fresh_root() is the execution-hold directory the production mint derives, created here, and
+// store_over(hold_root) mints the sealed store the production route takes.
+data execution_hold_member_suffix: String = "/printer-starts/execution-hold"
+
 fn fresh_root() -> String {
-  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_print_recovery.XXXXXX").path
+  let tree = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_print_recovery.XXXXXX").path
+  let member = concat(tree, execution_hold_member_suffix)
+  let made = shell.Mkdir.Parents(path: member as FilePath)
+  member
+}
+
+fn tree_of(hold_root: String) -> String {
+  substring(s: hold_root, start: 0, end: length(hold_root) - length(execution_hold_member_suffix))
+}
+
+fn enter(hold_root: String, escalation_id: NonEmptyStr, use: fn(PrinterExecutionHold) -> ProcessExit, approvals_root: NonEmptyStr) -> ProcessExit {
+  match printer_execution_hold_store(tree: isolated_host_state_tree(dir: tree_of(hold_root: hold_root) as NonEmptyStr)) {
+    PrinterExecutionHoldStoreUnready { detail: d } => exit_failure(reason: d)
+    PrinterExecutionHoldStoreReady { store: store } => printer_hold_enter(store: store, escalation_id: escalation_id, use: use, approvals_root: approvals_root)
+  }
+}
+
+fn ask(hold_root: String, approvals_root: NonEmptyStr) -> PrinterHoldReleaseRequest {
+  match printer_execution_hold_store(tree: isolated_host_state_tree(dir: tree_of(hold_root: hold_root) as NonEmptyStr)) {
+    PrinterExecutionHoldStoreUnready { detail: d } => HoldReleaseRefused { reason: d as NonEmptyStr }
+    PrinterExecutionHoldStoreReady { store: store } => printer_hold_release_request_at(store: store, approvals_root: approvals_root)
+  }
 }
 
 // The print body every claim hands to the hold protocol: it ran iff it returns. Every refusal returns
@@ -136,9 +164,11 @@ fn printer_recovery_revision(
   holder: DurableHoldOwnerRef,
   generation: CasGeneration,
 ) -> NonEmptyStr {
-  request_revision_of(request: printer_operator_observation_request(
-    hold_root: hold_root as NonEmptyStr, hold_slot: printer_recovery_witness_slot,
-    holder: holder, generation: generation))
+  match printer_execution_hold_store(tree: isolated_host_state_tree(dir: tree_of(hold_root: hold_root) as NonEmptyStr)) {
+    PrinterExecutionHoldStoreUnready { detail: d } => d as NonEmptyStr
+    PrinterExecutionHoldStoreReady { store: store } => request_revision_of(request: printer_operator_observation_request(
+      store: store, holder: holder, generation: generation))
+  }
 }
 
 // THE OPERATOR OBSERVATION, filed and decided through the real approval route -- the device-approval
@@ -212,12 +242,7 @@ test fn a_dead_holders_stale_print_start_is_released_and_the_print_runs() -> Boo
       let dead = ProcessIdentity { boot_id: me.boot_id, pid: 4194303, start_time: "1" as NonEmptyStr }
       let stale_owner = concat("printer-start-deadholder-witness", process_hold_text(p: dead, pid_namespace: ns)) as DurableHoldOwnerRef
       plant(root: hold_root, owner: stale_owner)
-        && ran(e: printer_hold_enter(
-             escalation_id: "printer-start-newprint-witness" as NonEmptyStr,
-             use: print_ran,
-             root: hold_root as NonEmptyStr,
-             slot_key: printer_recovery_witness_slot,
-             approvals_root: hold_root as NonEmptyStr))
+        && ran(e: enter(hold_root: hold_root, escalation_id: "printer-start-newprint-witness" as NonEmptyStr, use: print_ran, approvals_root: hold_root))
         && free(root: hold_root)
     }
   }
@@ -230,19 +255,9 @@ test fn a_dead_holders_stale_print_start_is_released_and_the_print_runs() -> Boo
 // succeeding vacuously; the ONLY difference between (1) and (1b) is the stale hold.
 test fn an_empty_slot_acquires_runs_releases_and_admits_the_next_print() -> Bool {
   let hold_root = fresh_root()
-  let first = ran(e: printer_hold_enter(
-    escalation_id: "printer-start-empty-witness" as NonEmptyStr,
-    use: print_ran,
-    root: hold_root as NonEmptyStr,
-    slot_key: printer_recovery_witness_slot,
-    approvals_root: hold_root as NonEmptyStr))
+  let first = ran(e: enter(hold_root: hold_root, escalation_id: "printer-start-empty-witness" as NonEmptyStr, use: print_ran, approvals_root: hold_root))
     && free(root: hold_root)
-  let second = ran(e: printer_hold_enter(
-    escalation_id: "printer-start-empty-witness-2" as NonEmptyStr,
-    use: print_ran,
-    root: hold_root as NonEmptyStr,
-    slot_key: printer_recovery_witness_slot,
-    approvals_root: hold_root as NonEmptyStr))
+  let second = ran(e: enter(hold_root: hold_root, escalation_id: "printer-start-empty-witness-2" as NonEmptyStr, use: print_ran, approvals_root: hold_root))
     && free(root: hold_root)
   let removed = shell.Remove.RecursiveForce(path: hold_root)
   first && second && removed.success
@@ -259,12 +274,7 @@ test fn a_live_controller_is_refused_as_live_and_stays_held() -> Bool {
     SelfIdentified { process: me, pid_namespace: ns } => {
       let live_owner = concat("printer-start-live-witness", process_hold_text(p: me, pid_namespace: ns)) as DurableHoldOwnerRef
       plant(root: hold_root, owner: live_owner)
-        && match printer_hold_enter(
-             escalation_id: "printer-start-intruder-witness" as NonEmptyStr,
-             use: print_ran,
-             root: hold_root as NonEmptyStr,
-             slot_key: printer_recovery_witness_slot,
-             approvals_root: hold_root as NonEmptyStr) {
+        && match enter(hold_root: hold_root, escalation_id: "printer-start-intruder-witness" as NonEmptyStr, use: print_ran, approvals_root: hold_root) {
           ExitSuccess => false
           ExitFailure { code: _, reason: r } =>
             string_contains(s: r, pattern: "LIVE controller")
@@ -288,18 +298,8 @@ test fn repeated_intruders_keep_refusing_with_the_live_cause() -> Bool {
     SelfIdentified { process: me, pid_namespace: ns } => {
       let live_owner = concat("printer-start-live-witness", process_hold_text(p: me, pid_namespace: ns)) as DurableHoldOwnerRef
       plant(root: hold_root, owner: live_owner)
-        && string_contains(s: failure_reason(e: printer_hold_enter(
-             escalation_id: "printer-start-intruder-a" as NonEmptyStr,
-             use: print_ran,
-             root: hold_root as NonEmptyStr,
-             slot_key: printer_recovery_witness_slot,
-             approvals_root: hold_root as NonEmptyStr)), pattern: "LIVE controller")
-        && string_contains(s: failure_reason(e: printer_hold_enter(
-             escalation_id: "printer-start-intruder-b" as NonEmptyStr,
-             use: print_ran,
-             root: hold_root as NonEmptyStr,
-             slot_key: printer_recovery_witness_slot,
-             approvals_root: hold_root as NonEmptyStr)), pattern: "LIVE controller")
+        && string_contains(s: failure_reason(e: enter(hold_root: hold_root, escalation_id: "printer-start-intruder-a" as NonEmptyStr, use: print_ran, approvals_root: hold_root)), pattern: "LIVE controller")
+        && string_contains(s: failure_reason(e: enter(hold_root: hold_root, escalation_id: "printer-start-intruder-b" as NonEmptyStr, use: print_ran, approvals_root: hold_root)), pattern: "LIVE controller")
         && held(root: hold_root)
     }
   }
@@ -317,12 +317,7 @@ test fn an_unobservable_holder_without_any_observation_refuses_by_type_and_stays
   let approvals_root = fresh_root()
   let legacy = "d91310fe0000000000000000000000000000000000000000000000000000000" as DurableHoldOwnerRef
   let verdict = plant(root: hold_root, owner: legacy)
-    && match printer_hold_enter(
-         escalation_id: "printer-start-legacy-witness" as NonEmptyStr,
-         use: print_ran,
-         root: hold_root as NonEmptyStr,
-         slot_key: printer_recovery_witness_slot,
-         approvals_root: approvals_root as NonEmptyStr) {
+    && match enter(hold_root: hold_root, escalation_id: "printer-start-legacy-witness" as NonEmptyStr, use: print_ran, approvals_root: approvals_root) {
       ExitSuccess => false
       ExitFailure { code: _, reason: r } =>
         string_contains(s: r, pattern: "UNOBSERVABLE holder")
@@ -351,12 +346,7 @@ test fn an_unobservable_holder_is_released_by_an_approved_operator_observation()
         file_and_approve(
           approvals_root: approvals_root, hold_root: hold_root,
           holder: h, generation: g)
-          && ran(e: printer_hold_enter(
-               escalation_id: esc,
-               use: print_ran,
-               root: hold_root as NonEmptyStr,
-               slot_key: printer_recovery_witness_slot,
-               approvals_root: approvals_root as NonEmptyStr))
+          && ran(e: enter(hold_root: hold_root, escalation_id: esc, use: print_ran, approvals_root: approvals_root))
           && free(root: hold_root)
       _ => false
     }
@@ -386,23 +376,13 @@ test fn a_pending_or_foreign_observation_never_releases_the_stale_hold() -> Bool
         file_undecided(
           approvals_root: approvals_root, hold_root: hold_root,
           holder: h, generation: g)
-          && string_contains(s: failure_reason(e: printer_hold_enter(
-               escalation_id: "printer-start-legacy-pending-witness" as NonEmptyStr,
-               use: print_ran,
-               root: hold_root as NonEmptyStr,
-               slot_key: printer_recovery_witness_slot,
-               approvals_root: approvals_root as NonEmptyStr)), pattern: "nobody has decided it yet")
+          && string_contains(s: failure_reason(e: enter(hold_root: hold_root, escalation_id: "printer-start-legacy-pending-witness" as NonEmptyStr, use: print_ran, approvals_root: approvals_root)), pattern: "nobody has decided it yet")
           // approved -- but for a DIFFERENT claim directory, so it is filed under that hold's escalation
           // id and this hold's escalation carries nothing at all.
           && file_and_approve(
                approvals_root: foreign_approvals_root, hold_root: foreign_root,
                holder: h, generation: g)
-          && string_contains(s: failure_reason(e: printer_hold_enter(
-               escalation_id: "printer-start-legacy-foreign-witness" as NonEmptyStr,
-               use: print_ran,
-               root: hold_root as NonEmptyStr,
-               slot_key: printer_recovery_witness_slot,
-               approvals_root: foreign_approvals_root as NonEmptyStr)), pattern: "no operator observation is filed")
+          && string_contains(s: failure_reason(e: enter(hold_root: hold_root, escalation_id: "printer-start-legacy-foreign-witness" as NonEmptyStr, use: print_ran, approvals_root: foreign_approvals_root)), pattern: "no operator observation is filed")
           // The derivation is per-hold: the same holder and generation under a different claim
           // directory is a DIFFERENT escalation, which is what keeps one approval from covering both.
           && (printer_recovery_escalation(hold_root: hold_root, holder: h, generation: g)
@@ -433,10 +413,7 @@ test fn the_release_request_asks_through_the_broker_and_never_conscribes_a_decis
   let approvals_root = fresh_root()
   let legacy = "d91310fe0000000000000000000000000000000000000000000000000000000" as DurableHoldOwnerRef
   let planted = plant(root: hold_root, owner: legacy)
-  let asked = printer_hold_release_request_at(
-    root: hold_root as NonEmptyStr,
-    slot_key: printer_recovery_witness_slot,
-    approvals_root: approvals_root as NonEmptyStr)
+  let asked = ask(hold_root: hold_root, approvals_root: approvals_root as NonEmptyStr)
   let verdict = planted
     && match asked {
       // A hermetic witness has no admitted approval origin, so a real filing cannot have happened.
@@ -447,12 +424,7 @@ test fn the_release_request_asks_through_the_broker_and_never_conscribes_a_decis
     }
     // Nothing was written into the store the release arm reads: the arm still answers that this hold's
     // observation is NOT FILED, which is only true if the route did not file it by hand.
-    && string_contains(s: failure_reason(e: printer_hold_enter(
-         escalation_id: "printer-start-filer-witness" as NonEmptyStr,
-         use: print_ran,
-         root: hold_root as NonEmptyStr,
-         slot_key: printer_recovery_witness_slot,
-         approvals_root: approvals_root as NonEmptyStr)), pattern: "no operator observation is filed")
+    && string_contains(s: failure_reason(e: enter(hold_root: hold_root, escalation_id: "printer-start-filer-witness" as NonEmptyStr, use: print_ran, approvals_root: approvals_root as NonEmptyStr)), pattern: "no operator observation is filed")
     && held(root: hold_root)
   let removed1 = shell.Remove.RecursiveForce(path: hold_root)
   let removed2 = shell.Remove.RecursiveForce(path: approvals_root)
@@ -466,10 +438,7 @@ test fn the_release_request_asks_through_the_broker_and_never_conscribes_a_decis
 test fn an_absent_or_freed_slot_asks_for_nothing() -> Bool {
   let hold_root = fresh_root()
   let approvals_root = fresh_root()
-  let absent = match printer_hold_release_request_at(
-    root: hold_root as NonEmptyStr,
-    slot_key: printer_recovery_witness_slot,
-    approvals_root: approvals_root as NonEmptyStr) {
+  let absent = match ask(hold_root: hold_root, approvals_root: approvals_root as NonEmptyStr) {
     HoldReleaseNothingHeld { detail: d } => string_contains(s: d as String, pattern: "is absent")
     _ => false
   }
@@ -481,16 +450,8 @@ test fn an_absent_or_freed_slot_asks_for_nothing() -> Bool {
       let dead = ProcessIdentity { boot_id: me.boot_id, pid: 4194303, start_time: "1" as NonEmptyStr }
       let stale_owner = concat("printer-start-deadholder-witness", process_hold_text(p: dead, pid_namespace: ns)) as DurableHoldOwnerRef
       plant(root: hold_root, owner: stale_owner)
-        && ran(e: printer_hold_enter(
-             escalation_id: "printer-start-freed-slot-witness" as NonEmptyStr,
-             use: print_ran,
-             root: hold_root as NonEmptyStr,
-             slot_key: printer_recovery_witness_slot,
-             approvals_root: approvals_root as NonEmptyStr))
-        && match printer_hold_release_request_at(
-             root: hold_root as NonEmptyStr,
-             slot_key: printer_recovery_witness_slot,
-             approvals_root: approvals_root as NonEmptyStr) {
+        && ran(e: enter(hold_root: hold_root, escalation_id: "printer-start-freed-slot-witness" as NonEmptyStr, use: print_ran, approvals_root: approvals_root as NonEmptyStr))
+        && match ask(hold_root: hold_root, approvals_root: approvals_root as NonEmptyStr) {
           HoldReleaseNothingHeld { detail: d } => string_contains(s: d as String, pattern: "is free")
           _ => false
         }

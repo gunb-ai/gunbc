@@ -1,5 +1,6 @@
 module test.probe.service_slot_mint_forged_probe
 
+import gunbc.host.host_boot_id { HostBootId }
 // THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside the service
 // slot controller would mint a JIT registration without the independently read current boot and the sealed
 // population, with a key it did not hold, or for a listener that could read it. The witness
@@ -21,7 +22,7 @@ import extdeps.auth.jws { JwsSigningKeyRef }
 import extdeps.github.actions_jit_runner { EncodedJitConfig }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_control_route { HostControlStanding }
-import gunbc.runner.runner_host_unit_slot { HostUnitSlotBound, HostUnitSlot, ServiceBootId, CurrentServicePopulation, CurrentServicePopulationStanding }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlotBound, HostUnitSlot, CurrentServicePopulation, CurrentServicePopulationStanding }
 import gunbc.fleet.host_credential_custody_converge { HostCredentialCustodyRow, CustodyPathMetadata }
 import gunbc.runner.runner_service_slot_controller {
   ServiceSlotMintAdmission, ServiceSlotKeyHeld, ServiceSlotListenerIsolated, ServiceSlotPass, ServiceSlotAdmission, ServiceSlotKeyStanding, ServiceSlotIsolation,
@@ -30,7 +31,7 @@ import gunbc.runner.runner_service_slot_controller {
 }
 
 // (a) A FORGED ADMISSION, a record no admit built. Refuses at ServiceSlotMintAdmission.
-fn forged_admission(slot: HostUnitSlot, boot: ServiceBootId, population: CurrentServicePopulation) -> ServiceSlotMintAdmission {
+fn forged_admission(slot: HostUnitSlot, boot: HostBootId, population: CurrentServicePopulation) -> ServiceSlotMintAdmission {
   ServiceSlotMintAdmission { slot: slot, boot: boot, population: population }
 }
 
@@ -50,7 +51,7 @@ fn outside_pass(a: ServiceSlotMintAdmission, k: ServiceSlotKeyHeld, i: ServiceSl
 }
 
 // (e) AN ADMISSION BUILT FROM A POPULATION THE CALLER CHOSE. Refuses at service_slot_admit.
-fn outside_admit(boot: ServiceBootId, population: CurrentServicePopulationStanding, rebuilt: ServiceSlotRebuild) -> ServiceSlotAdmission {
+fn outside_admit(boot: HostBootId, population: CurrentServicePopulationStanding, rebuilt: ServiceSlotRebuild) -> ServiceSlotAdmission {
   service_slot_admit(current_boot: boot, population: population, rebuilt: rebuilt, unit: "x")
 }
 

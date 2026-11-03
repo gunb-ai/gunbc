@@ -229,6 +229,14 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     shape: NoResourceAccess
   ),
   operation_declaration_row(
+    module_path: "std.host_text",
+    decl_name: "string_length",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "text_decomposition") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
     module_path: "std.bytes",
     decl_name: "bytes_octets",
     requirement: RequiresNone,

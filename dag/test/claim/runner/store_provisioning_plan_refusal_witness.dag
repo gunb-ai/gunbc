@@ -60,7 +60,9 @@ import gunbc.runner.runner_host_deploy {
   runner_host_spec_for,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_start_claim_directory }
+import gunbc.fleet.printer_workflow_artifact { printer_starts_path }
+import gunbc.fleet.printer_state_layout { printer_state_directories }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, census_exit }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
@@ -306,7 +308,7 @@ test fn an_admitted_target_blocks_nothing() -> Bool {
 // refusing a writer who is neither owner nor group -- the one route by which any provisioning target
 // refuses), placed at the REAL printer-state path so the blocking row names a directory the host needs.
 fn refused_printer_target() -> OwnedDirectoryTarget {
-  managed_at(path: printer_start_claim_directory as String, writers: [stranger_user()])
+  managed_at(path: printer_starts_path(tree: host_state_tree()) as String, writers: [stranger_user()])
 }
 
 data census_reads_combined_source: String = "module probe_census_reads_combined\nimport std.types { NonEmptyStr }\nimport std.algebra { length }\nimport gunbc.runner.runner_host_deploy { srv1_runner_host_spec }\nimport gunbc.runner.runner_host_grants { runner_host_provisioning_plan_refusals }\nfn f() -> Int {\n  length(xs: runner_host_provisioning_plan_refusals(spec: srv1_runner_host_spec))\n}\n"
@@ -368,7 +370,7 @@ test fn a_refused_printer_state_target_blocks_the_apply() -> Bool {
 // 8b. THE CONTROL FOR CLAIM 8: an ADMITTED target over the same real path blocks nothing, so the stop
 // above is caused by the refusal and not by the path or the row shape.
 test fn an_admitted_printer_state_target_blocks_nothing() -> Bool {
-  let admitted = executor_privileged_owned_directory_plans(targets: printer_state_directories())
+  let admitted = executor_privileged_owned_directory_plans(targets: printer_state_directories(tree: host_state_tree()))
   let rows = host_grant_provisioning_target_rows_of(refusals: admitted.refusals, lease_owner: "lease")
   count(rows) == 0
     && match host_grant_awaiting_capability(rows: rows) {
@@ -389,11 +391,11 @@ test fn the_printer_host_demands_every_printer_state_directory() -> Bool {
     RunnerHostSpecAbsent { host: _ } => false
     RunnerHostSpecFound { spec: spec } =>
       count(executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec)))
-        == count(printer_state_directories())
+        == count(printer_state_directories(tree: host_state_tree()))
       // and each demanded directory is its own row, matched BY PATH -- a count two unrelated
       // directories could not satisfy.
       && for_all(
-        xs: map(printer_state_directories(), t => owned_directory_path(t: t) as String),
+        xs: map(printer_state_directories(tree: host_state_tree()), t => owned_directory_path(t: t) as String),
         predicate: fn(p) {
           any(
             xs: executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec)),

@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present }
 import std.measure { hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
-import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, InterconnectUnread, PassiveThermalSolution, PcieAddInBoard, RatedBoardPower, SeveralGpus }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { Gen3, PcieLink }
 import extdeps.pci.identity { PciDeviceId }
@@ -16,7 +16,8 @@ import extdeps.uri { Uri, Https }
 // GPUs, "GM107-570-A2 x4", 640 CUDA cores and 8 GB GDDR5 per GPU, "83 GB/s x4", 225 W total board power,
 // passively cooled. The device id 13bd ("GM107GL [Tesla M10]") is the PCI ID Repository's; the driver
 // README's appendix (extdeps.nvidia.linux_driver_supported_chips) lists no "Tesla M10" in any table, so the
-// board has no driver-listed name.
+// board has no driver-listed name. The brief states no on-board interconnect, so it is unread; the Legacy
+// CUDA GPUs page lists no Tesla M10, so its compute capability is unread too.
 
 data m10_product_brief_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -65,7 +66,7 @@ data nvidia_tesla_m10_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: nvidia,
   model: "Tesla M10",
   gpu: nvidia_tesla_m10_catalog,
-  gpu_count: 4,
+  composition: SeveralGpus { count: 4, interconnect: InterconnectUnread { read_obligation: "The Tesla M10 product brief states the board's PCIe Gen3 x16 host interface and nothing about how its four GM107 GPUs are joined on the board; read it off a board specification or an nvidia-smi topo reading of a real M10." } },
   attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen3, lane_count: 16 } } },
   board_power: Present { value: RatedBoardPower { rated: watt(count: 225) } },
   zero_power: none,
@@ -73,7 +74,7 @@ data nvidia_tesla_m10_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   pci_device_id: Present { value: "13bd" as PciDeviceId },
   driver_listed_name: none,
   figure_citations: [
-    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m10", decl_name: "nvidia_tesla_m10_board_facts", field_name: "gpu_count"), authority: m10_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m10", decl_name: "nvidia_tesla_m10_board_facts", field_name: "composition"), authority: m10_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m10", decl_name: "nvidia_tesla_m10_board_facts", field_name: "attachment"), authority: m10_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m10", decl_name: "nvidia_tesla_m10_board_facts", field_name: "board_power"), authority: m10_product_brief_authority },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_m10", decl_name: "nvidia_tesla_m10_board_facts", field_name: "thermal"), authority: m10_product_brief_authority },

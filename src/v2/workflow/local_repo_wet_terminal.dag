@@ -840,6 +840,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_supplied_principal_is_the_hosts_own" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_supplied_principal_is_the_hosts_own",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_posture" },
       entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
       function: "the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_posture",
@@ -3968,6 +3974,60 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.record_escapes_declared_optional_return_witness", function: "w_an_equality_between_unrelated_records_is_refused" },
       entry: "dag/test/claim/record_escapes_declared_optional_return_witness.dag",
       function: "w_an_equality_between_unrelated_records_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "the_executed_lane_body_passes_a_clean_compile" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "the_executed_lane_body_passes_a_clean_compile",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "the_executed_lane_body_refuses_an_unexpected_exit_by_its_number" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "the_executed_lane_body_refuses_an_unexpected_exit_by_its_number",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "the_executed_lane_body_fails_on_a_rendered_refusal_the_reader_found" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "the_executed_lane_body_fails_on_a_rendered_refusal_the_reader_found",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "the_executed_lane_body_refuses_a_nonzero_exit_without_its_terminal_count" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "the_executed_lane_body_refuses_a_nonzero_exit_without_its_terminal_count",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "the_executed_reader_refuses_a_log_it_cannot_read" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "the_executed_reader_refuses_a_log_it_cannot_read",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "the_anchored_candidate_directory_resolves_from_the_composed_root" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "the_anchored_candidate_directory_resolves_from_the_composed_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "the_relative_candidate_directory_finds_nothing_from_the_composed_root" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "the_relative_candidate_directory_finds_nothing_from_the_composed_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "the_relative_candidate_directory_resolves_at_the_workspace" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "the_relative_candidate_directory_resolves_at_the_workspace",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ci.mirror_lane_4c_execution_local_wet", function: "an_inherited_runner_temp_leaves_the_outside_tree_untouched" },
+      entry: "dag/test/claim/ci/mirror_lane_4c_execution_local_wet.dag",
+      function: "an_inherited_runner_temp_leaves_the_outside_tree_untouched",
       expectation: ExpectedToHold {}
     }
   ]

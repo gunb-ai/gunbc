@@ -35,6 +35,7 @@ import gunbc.roadmap.roadmap_review_function {
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
+import gunbc.roadmap.roadmap_attempt_identity_store_root { attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at }
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
@@ -365,6 +366,7 @@ import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_f
   VerificationSelectionPublished,
   VerificationSelectionPublishRefused,
   verification_directory_segment,
+  verification_evidence_moves_lamp,
 }
 import extdeps.github.github { Repository }
 import gunbc.roadmap.roadmap_dispatch_destination {
@@ -449,7 +451,7 @@ import extdeps.git {
   git_dir_path_from_gitfile, git_untrusted_config_env_words,
   git_worktree_commondir_relative, git_dir_flag_prefix, git_work_tree_flag_prefix,
 }
-import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision, CandidateCommitSubject, belt_candidate_commit_subject }
+import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision, CandidateCommitSubject, belt_candidate_commit_subject, belt_candidate_commit_message }
 import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { ancestry_walk, AncestryTraced, AncestryBrokenAt, AncestryStartNotInHistory, AncestryRevisitsACommit }
 import gunbc.scm.object_store {
@@ -605,7 +607,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire }
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
@@ -703,6 +705,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 
 // Slice 2b actuation: the belt DECISION (gunbc.roadmap.roadmap_belt.belt_reconcile) is CLOSED against the
 // host by three single-authorities — the actuator's HostExecArgv argv model
@@ -760,6 +763,15 @@ type BeltExecOutcome
 // availability probe (consumed as the refuse/fail discriminator, never discarded), BeltExecOutcome,
 // BeltObserve — never unit. Dispatch failure is not an exit code, stays anomalous, and does not
 // travel this arm.
+// A store that is not Ready (the directory unlistable, or legacy flat identities still present) refuses the
+// spawn at step attempt-identity with the store's own detail; it is never read as an empty store.
+fn belt_dispatch_attempt_identity_mint(instance: HostDashboardInstance, node_id: RoadmapNodeId, minted_at: String) -> DispatchAttemptIdentity {
+  match attempt_identity_store(instance: instance) {
+    AttemptIdentityStoreUnready { detail } => DispatchAttemptIdentityRefused { detail: detail }
+    AttemptIdentityStoreReady { store } => dispatch_attempt_identity_mint(store: store, node_id: node_id, minted_at: minted_at)
+  }
+}
+
 fn belt_program_available(program: String) -> Bool {
   shell.PosixCommandV.Check(command: program as NonEmptyStr, expect: OutcomeIsData).exists
 }
@@ -2368,7 +2380,7 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+      match belt_dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
         DispatchAttemptIdentityRefused { detail } =>
           SpawnFailed {
             node_id: node.node as String,
@@ -3539,7 +3551,7 @@ fn belt_actuate_spawn(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+      match belt_dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
         DispatchAttemptIdentityRefused { detail } =>
           SpawnFailed {
             node_id: node.node as String,
@@ -11966,6 +11978,14 @@ fn belt_launch_process(instance: HostDashboardInstance, node_id: String, attempt
         AttemptExitRecordNone =>
           attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: belt_launch_start_standing(instance: instance, node_id: node_id, attempt_key: attempt_key, metered: metered))
         AttemptExitRecordFound { record: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+        // THE ARTIFACT DOES NOT EVEN PROVE THE START. A decodable exit record implies the hook ran, and
+        // the hook only runs for a unit that started, which is why the two arms above may record the
+        // start standing without reading it. An entry whose name still spells the stop variables was
+        // written by something that never substituted them -- on srv1, a path run as the operator, not
+        // as the unit's user -- so it is not known to be this unit's hook at all. The start standing is
+        // READ here, exactly as in the no-record arm. Either way the observation is indeterminate: the
+        // artifact reports no end status, and it is not evidence that the holder lives or started.
+        AttemptExitRecordWriterUnsubstituted { entries: _, variables: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: belt_launch_start_standing(instance: instance, node_id: node_id, attempt_key: attempt_key, metered: metered))
         AttemptExitRecordUnreadable { reason: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
       }
     }

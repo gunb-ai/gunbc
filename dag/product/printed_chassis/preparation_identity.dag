@@ -7,6 +7,7 @@ import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json
 import extdeps.filesystem.filesystem_io {Filesystem}
 import extdeps.tools.sha256sum {sha256sum_file_digest_via_shell,Sha256FileDigest,Sha256FileDigestUnavailable}
 import extdeps.crypto.sha2 {sha256_hex}
+import product.printed_chassis.prepared_bundle_store {PreparedBundle}
 import std.bytes {bytes_octets,utf8_encode_bytes}
 
 // Exact realization identity: CAD and the sliced project (including process and placement).
@@ -64,8 +65,8 @@ fn manifest_identity(content:String) -> ManifestIdentity? {
   JsonDocumentUnreadable {gap:_}=>none
  }
 }
-fn read_prepared_assembly(output:String) -> PreparedAssembly? {
- if !starts_with(s:output,prefix:"/") {return none}
+fn read_prepared_assembly(bundle:PreparedBundle) -> PreparedAssembly? {
+ let output=bundle.root as String
  let read=Filesystem.Read(path:concat(output,"/cad/assembly.json"))
  if !read.success {return none}
  let identity=match manifest_identity(content:read.content) {Present {value:m}=>m Absent=>return none}
