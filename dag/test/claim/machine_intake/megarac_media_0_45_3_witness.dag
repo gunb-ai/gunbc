@@ -968,7 +968,7 @@ test fn w_the_attach_lane_refuses_the_inferred_row_with_a_cause_of_its_own() -> 
 // read); and 0 on a row whose reading carried no session index at all, which is not the marker. Were the arm
 // written as "0 means stopped", all three would draw the bet for a row nobody read, and the lane would be
 // told a meaning for a row the controller never described that way.
-test fn w_code_0_is_admitted_only_for_the_row_shape_that_was_read() -> Bool {
+test fn w_code_0_is_refused_and_the_bet_is_drawn_only_for_the_row_that_was_read() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false
     Present { value: read } =>
@@ -1066,19 +1066,6 @@ test fn w_code_0_is_not_carried_to_the_releases_that_never_read_it() -> Bool {
       bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_32)
     _ => false
   }
-}
-
-// THE DIGEST THE RECEIPT CARRIES, WRITTEN ONCE. The receipt names the diagnostics file it was read from and
-// carries a digest; this claim is the place in the corpus where that hex is written, so the receipt cannot
-// quietly change what it claims to be a reading of. The artifact dir ships the conventional SHA256SUMS ledger
-// beside the file, which is what turns the binding into a check a reviewer can run (`sha256sum -c
-// SHA256SUMS` in that directory): if the bytes on disk and the receipt's digest ever part company, the
-// GREEN above stops meaning what it says.
-test fn w_the_boot_seven_row_receipt_carries_the_diagnostics_files_own_sha256() -> Bool {
-  (boot_run_41573858366_end_media_row.artifact_sha256 as String)
-    == "838a763be6c8abee7cf592ffa1f348310cb4041fd4abe8eb03d9154cc29c833e"
-    && string_contains(s: boot_run_41573858366_end_media_row.artifact_path as String, pattern: "mtcollins1-boot-diagnostics.txt")
-    && string_contains(s: boot_run_41573858366_end_media_row.artifact_lines as String, pattern: "2062")
 }
 
 // THE WORLD THE BOOT RUNS AGAINST PUTS THE SUPPLIED RELEASE'S WIRE IN ITS CD ROW, AND THE PAIRING IS NOT

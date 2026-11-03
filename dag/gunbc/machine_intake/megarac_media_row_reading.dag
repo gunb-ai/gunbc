@@ -12,8 +12,11 @@ module gunbc.machine_intake.megarac_media_row_reading
 // status beside the no-session marker -- and never as a bare code, so the row is what is retained, and the
 // meaning follows only as far as the row was read. The fourth receipt, boot_run_41573858366_end_media_row,
 // is a DIFFERENT code (0) on the same row position, read by the attempt after that one, and it is retained
-// for the same reason: it is the only reading of wire 0 this release holds, and the arm that admits it in
-// extdeps.bmc.megarac is written no wider than the row that was read.
+// for the same reason: it is the only reading of wire 0 this release holds. The code is NOT admitted anywhere
+// -- extdeps.bmc.megarac answers it as the uncatalogued wire the vendor leaves it, and
+// gunbc.machine_intake.megarac_media_attach megarac_status_zero_row_inference carries what this repository
+// makes of that one reading as a bet no lane acts on, its guard written no wider than the row that was read.
+// Retaining the reading is what lets a refusal name its evidence; it is not a step toward admitting the code.
 
 import std.algebra { string_contains }
 import std.types { Bool, Int, NonEmptyStr }
@@ -30,7 +33,8 @@ type MegaRacMediaRowReceipt {
   // THE MEDIUM THE ROW NAMES, OR NOTHING. The controller answers the empty string for a leftover row that
   // names no image, and this layer keeps that as `none` rather than a name that happens to be empty: a row
   // naming no medium is a different case from a row whose name is "", and `none` is what boot run
-  // 41573858366 actually read. Only the value that was read is what the status fold promotes.
+  // 41573858366 actually read. The reading of that answer is what the inference below -- and the refusal it
+// produces -- is keyed to; nothing promotes a code from a value a row carried.
   image_name: NonEmptyStr?
   redirection_status: Int
 }
