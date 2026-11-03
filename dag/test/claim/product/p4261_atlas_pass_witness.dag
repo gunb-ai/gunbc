@@ -3,12 +3,21 @@ module test.claim.product.p4261_atlas_pass_witness
 // ==================================================================================================
 // The 2026-11-03b atlas pass, pinned.
 //
-// The atlas pass put roughly two hundred and eighteen new E1 positions on the record, along with the
-// readings, the installed-component states, the held-unresolved rows and one ambiguous sighting that
-// came out of the corrected inventories. The pass was rebuilt after a cleanup bug merged distinct
-// designators by stripping underscores (U1_2 into U12, U2_2 into U22, U3_2 into U32), so what these
-// tests hold is not the count -- a count is a receipt, and the operator's ruling of 2026-11-03 says
-// counts stay derived -- it is the SHAPE the pass must keep:
+// The atlas pass put two hundred and sixty-two E1 positions on the record, along with the readings,
+// the installed-component states, the held-unresolved rows and one ambiguous sighting that came out
+// of the corrected inventories. The pass was rebuilt after a cleanup bug merged distinct designators
+// by stripping underscores (U1_2 into U12, U2_2 into U22, U3_2 into U32).
+//
+// Completeness here is an IDENTITY JOIN, not a count: `p4261_e1_positions` is joined at designator
+// grain to `e1_position_receipts` -- the same inventory rows the pass was read from, emitted as data
+// by scripts/gen_e1_position_receipts_dag.py with its commit named -- so a position that is not a
+// certain, complete, above-the-passive-level read cannot be added without turning this red, and a
+// read that the receipts have cannot go missing silently. A count would not do that job: delete a
+// position and add a misspelling, and the count still matches (DESIGN §5, "completeness is an
+// identity join, not a count equality"). The row counts that remain below are named for what they
+// are -- a per-pass change detector -- with the join that replaces each one.
+//
+// What these tests hold is the SHAPE the pass must keep:
 //
 //   * the merged pairs stay two positions, and the merged-away spellings do not appear at all;
 //   * no placeholder, group label, thermal pad or outline-owed-a-glance became a position;
@@ -342,3 +351,13 @@ test fn every_position_is_read_exactly_once_and_nothing_else_is() -> Bool {
     && p4261_e1_layout.designator_readings.all(r => is_position(r.designator))
 }
 
+test fn no_component_instance_is_recorded_twice() -> Bool {
+  // One board row per component instance. Two rows under one local name would put two
+  // identifications on the same part on the board, and whichever a lookup met first would win --
+  // a silent coin toss on what the part is. Duplicates cannot be seen in a total, so this counts
+  // each name's own occurrences.
+  count(p4261_e1_layout.components, c =>
+    count(p4261_e1_layout.components, d =>
+      component_identity_eq(a: c.component, b: d.component)) == 1)
+    == length(p4261_e1_layout.components)
+}
