@@ -17,9 +17,15 @@ import extdeps.linux.sysfs_pci {
 }
 import extdeps.pci.express_link_control { pcie_link_control_link_disabled }
 import extdeps.tools.pciutils_setpci { setpci_link_control_read_command, setpci_link_disable_set_command, setpci_word_reading }
+import extdeps.linux.efivarfs { EfiVariableReading, EfiVariableRead, EfiVariableUnread, efivarfs_read, efi_variable_unsigned_at }
+import extdeps.linux.dmi_id { DmiBoardName, DmiBiosVersion, dmi_id_read }
+import extdeps.boards.asrock_altrad8ud_setup_varstore {
+  setup_firmware_bios_version, setup_firmware_board_name, ras_menu, ras_pcie_aer_firmware_first_item, ras_ifr_nv_data_variable, ras_ifr_nv_data_octet_count, ras_setup_checkbox_row,
+}
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
-import extdeps.boards.types { BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort }
+import std.algebra { trim }
+import extdeps.boards.types { FirmwareSetupSwitch, JumperSwitch, SwitchNotStated, BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling, OnboardEthernetPort }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.fleet.fleet_host_identity { operator_hosts }
@@ -37,8 +43,10 @@ import gunbc.fleet.board_function_admission {
 // For each plan it does exactly what the plan's arm licenses and nothing more:
 //
 // - NothingToRemove and RemovalUnmodeled are reported, never acted on.
-// - RemovedAtBoard is the operator's switch (a jumper or a setup item). This route has no reading that shows
-//   such a switch's position, so it reports the switch and does not claim it is set.
+// - RemovedAtBoard is the operator's switch (a jumper or a setup item). A setup item with a readback route
+//   (extdeps.boards.asrock_altrad8ud_setup_varstore) is read from its UEFI variable: "set" when it reads as
+//   switched off, REFUSED with the observed value otherwise, so admission closes. A switch without a route (a
+//   jumper, another setup item, a BIOS version the layout is not grounded for) is reported and not claimed set.
 // - RemovedByHostAfterBoot is acted on through its route: the host reads the route's functions, decides,
 //   acts, and reads back. Every id on the route is checked before anything is written, so a host whose tree
 //   differs from the observed one refuses rather than having some other link disabled.
@@ -423,6 +431,91 @@ fn converge_line(plan: HostBoardFunctionPlan, word: String, detail: String, refu
   BoardFunctionConvergeLine { text: join(["board-function ", plan.host as String, " ", plan_label(plan: plan), ": ", word, " -- ", detail], ""), refused: refused }
 }
 
+// ── a setup switch read back from its UEFI variable ─────────────────────────────────────────────
+
+// PLAN POLICY: a setup item the plans use as a removal switch is switched off when its checkbox octet is
+// unchecked (0), which is what the catalog's off_meaning for PCIe AER Firmware First describes. A varstore row
+// is the route: a plan item with a row is read, one without stays unrouted.
+data setup_checkbox_switched_off_octet: Int = 0
+
+type SetupSwitchReadback
+  = SetupSwitchUnrouted { cause: String }
+  | SetupSwitchSet { detail: String }
+  | SetupSwitchWrong { detail: String }
+
+// THE DECISION over supplied readings: the board's BIOS version (as DMI reports it) and the variable.
+// The layout is grounded for one BIOS version and one variable size; anything else is unrouted rather than
+// decoded against offsets that may have moved.
+fn setup_switch_readback(menu: String, item: String, board_name: String?, bios_version: String?, reading: EfiVariableReading) -> SetupSwitchReadback {
+  match ras_setup_checkbox_row(menu: menu, item: item) {
+    Absent => SetupSwitchUnrouted { cause: "no readback route for this setup item" }
+    Present { value: row } =>
+      if board_name != optional_present_name() {
+        SetupSwitchUnrouted { cause: join(["the board is not the ", setup_firmware_board_name as String, " the varstore layout is grounded for (DMI board_name)"], "") }
+      } else {
+        match bios_version {
+          Absent => SetupSwitchUnrouted { cause: "the BIOS version was not read, so the varstore layout is not grounded" }
+          Present { value: v } =>
+            if v != (setup_firmware_bios_version as String) {
+              SetupSwitchUnrouted { cause: join(["BIOS ", v, " is not the grounded ", setup_firmware_bios_version as String], "") }
+            } else {
+              match reading {
+                EfiVariableUnread { cause } => SetupSwitchWrong { detail: join(["the setup variable could not be read: ", cause], "") }
+                EfiVariableRead { attributes: _, payload } =>
+                  if length(payload) != ras_ifr_nv_data_octet_count {
+                    SetupSwitchWrong { detail: join(["the setup variable holds ", to_string(length(payload)), " octets, not the ", to_string(ras_ifr_nv_data_octet_count), " the grounded layout has"], "") }
+                  } else {
+                    match efi_variable_unsigned_at(payload: payload, offset: row.offset, width: 1) {
+                      Absent => SetupSwitchWrong { detail: "the item's octet is out of the variable" }
+                      Present { value: o } =>
+                        if o == setup_checkbox_switched_off_octet {
+                          SetupSwitchSet { detail: join(["read back from RasIfrNVData octet ", to_string(row.offset), ": ", to_string(o), " (switched off)"], "") }
+                        } else {
+                          SetupSwitchWrong { detail: join(["RasIfrNVData octet ", to_string(row.offset), " reads ", to_string(o), ", not the switched-off ", to_string(setup_checkbox_switched_off_octet)], "") }
+                        }
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn optional_present_name() -> String? {
+  Present { value: setup_firmware_board_name as String }
+}
+
+fn read_dmi_board_name() -> String? {
+  dmi_id_read(attribute: DmiBoardName)
+}
+
+fn read_bios_version() -> String? {
+  dmi_id_read(attribute: DmiBiosVersion)
+}
+
+fn converge_unrouted_switch(plan: HostBoardFunctionPlan) -> BoardFunctionConvergeLine {
+  converge_line(plan: plan, word: "operator switch", detail: "switched off at the board by the operator; this route has no reading of the switch's position, so it is not claimed set", refused: false)
+}
+
+fn converge_setup_switch(plan: HostBoardFunctionPlan, menu: String, item: String) -> BoardFunctionConvergeLine {
+  match setup_switch_readback(menu: menu, item: item, board_name: read_dmi_board_name(), bios_version: read_bios_version(), reading: efivarfs_read(variable: ras_ifr_nv_data_variable)) {
+    SetupSwitchSet { detail } => converge_line(plan: plan, word: "set", detail: detail, refused: false)
+    SetupSwitchWrong { detail } => converge_line(plan: plan, word: "REFUSED", detail: join(["setup item not switched off: ", detail], ""), refused: true)
+    SetupSwitchUnrouted { cause } => converge_line(plan: plan, word: "operator switch", detail: join(["switched off at the board by the operator; not claimed set: ", cause], ""), refused: false)
+  }
+}
+
+// READ-ONLY ENTRY for a real-path receipt, invoked by name (`--function setup_switch_receipt_cli`) as root on a host, like board_function_converge_cli: prints the board, BIOS and the AER switch readback line, writes nothing.
+fn setup_switch_receipt_cli() -> CliWireResponse {
+  let line = match setup_switch_readback(menu: ras_menu as String, item: ras_pcie_aer_firmware_first_item as String, board_name: read_dmi_board_name(), bios_version: read_bios_version(), reading: efivarfs_read(variable: ras_ifr_nv_data_variable)) {
+    SetupSwitchSet { detail } => concat("set -- ", detail)
+    SetupSwitchWrong { detail } => concat("REFUSED -- ", detail)
+    SetupSwitchUnrouted { cause } => concat("unrouted -- ", cause)
+  }
+  CliWirePrintable { bytes: join(["board_name=", join(match read_dmi_board_name() { Absent => ["?"] Present { value: v } => [v] }, ""), " bios=", join(match read_bios_version() { Absent => ["?"] Present { value: v } => [v] }, ""), "\n", line, "\n"], ""), exit: ExitSuccess }
+}
+
 // ONE RUN PER DISTINCT ROUTE. Several plans can carry one route -- each port of an Ethernet controller the
 // host removes whole -- and the route is realized once, its outcome reported on every plan that carries it.
 type RouteOutcome {
@@ -464,7 +557,12 @@ fn converge_plan(plan: HostBoardFunctionPlan, outcomes: List<RouteOutcome>) -> B
   match plan.removal {
     NothingToRemove { consumer } => converge_line(plan: plan, word: "kept", detail: concat("admitted for ", consumer.module_path as String), refused: false)
     RemovalUnmodeled { cause } => converge_line(plan: plan, word: "unmodeled", detail: cause as String, refused: false)
-    RemovedAtBoard { switch: _ } => converge_line(plan: plan, word: "operator switch", detail: "switched off at the board by the operator; this route has no reading of the switch's position, so it is not claimed set", refused: false)
+    RemovedAtBoard { switch: s } =>
+      match s {
+        FirmwareSetupSwitch { menu, item, off_meaning: _, citation: _ } => converge_setup_switch(plan: plan, menu: menu as String, item: item as String)
+        JumperSwitch { designator: _, off_position: _, citation: _ } => converge_unrouted_switch(plan: plan)
+        SwitchNotStated { coarser: _ } => converge_unrouted_switch(plan: plan)
+      }
     RemovedByHostAfterBoot { residue: _, route } =>
       match filter(outcomes, o => o.route == route).first() {
         Present { value: o } => outcome_line(plan: plan, outcome: o.outcome)
