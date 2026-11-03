@@ -1,0 +1,63 @@
+module gunbc.recurring_failure_mode.effect_summary_join_refuses_a_bare_name_whose_import_is_missing
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE SAME SHAPE AS bare_name_resolved_by_proximity_standing_in_for_resolution, caught on the effect-join
+// side. A name used bare, declared in another module, and ABSENT from the using module's import list is
+// resolved by proximity: the v1 census finds it, so the corpus loads, and the effect-join analysis refuses
+// because proximity establishes no callee identity for it to join effects to. Found 2026-11-03 by
+// clever-carp-493 while moving the drift verdict off the interpreter route (routed by stern-bat-401); both
+// endpoints below were measured in this session and their logs are cited by run and step.
+
+data effect_summary_join_refuses_a_bare_name_whose_import_is_missing: RecurringFailureMode =
+  RecurringFailureMode {
+    identity: "effect_summary_join_refuses_a_bare_name_whose_import_is_missing" as NonEmptyStr,
+
+    // FOUND SILENTLY WRONG, SO BELOW THE LADDER. The state is a corpus whose effect join leans on
+    // proximity instead of imports. It is silent because the only lanes that run the join are the drift
+    // schedule (which has been red for other reasons since at least 2026-10-28, so its refusal is not read
+    // as a verdict) and the heal regeneration (which refuses earlier, at the surface comparison). The
+    // ceiling is MechanicallyPreventable: one required job that runs the effect join over the seed's own
+    // instruments refuses the corpus at the call site that lacks an import, naming the name and the line.
+    rung: RungRead {
+      found_at: FoundBelowTheLadder,
+      standing: BelowCeiling {
+        current: FoundBelowTheLadder,
+        ceiling: MechanicallyPreventable,
+        blocker: ClimbableButUnbuilt,
+        trigger_capability: "the capability of a required job to run the seed's effect join over its own instruments and refuse when a callee's identity rests on proximity rather than on an import, SUFFICIENT FOR a corpus where one such call site exists to stop somewhere that reads the diagnostic, instead of the lane that would have read it quietly failing for other reasons"
+      },
+    },
+
+    receipts: [
+      "**INVALID STATE.** Three call sites use a name declared in another module that the using module does not import: `ssh_ed25519_key_identity` and `debconf_selection_file`, both called in `gunbc.provisioning.ubuntu_autoinstall_seed` while its import lists carry `extdeps.ssh.keys { SshPublicKey, ssh_public_key_line }` and the `extdeps.debian.debconf` block without those two names; and `probe_identity_secret_access_requirement` — a `data` row of `gunbc.fleet.fleet_host_key_enrollment` — used bare in `gunbc.fleet.fleet_converge_workflow`, which imports nothing from that module at all (`gunbc.fleet.fleet_workflow_steps` imports it properly, so the correct spelling exists in the corpus). The fact 'this module calls that callee' has no owner: the import list is where it lives, and these three lists do not carry it.",
+
+      "**THE REFUSAL, VERBATIM, ON THE INTERPRETER ROUTE.** gunb-ai/gunbc scheduled drift-watch run **41638998733** (main at `9c0ec5bb3`), job `tier-o-drift`, 13:14:25Z: `error: resolve failed for dag/gunbc/instruments/tier_o_drift_check.dag` — `cause: dag/gunbc/provisioning/ubuntu_autoinstall_seed.dag:1511:17: error: effect summary incomplete: call to 'ssh_ed25519_key_identity' in gunbc.provisioning.ubuntu_autoinstall_seed.keys_are_the_admitted_authorisation has no established callee identity, so its effects cannot be joined`. The lane has concluded failure on every schedule since at least 2026-10-28, so this refusal has been in the log for a week without being read as a subject defect.",
+
+      "**THE REFUSAL, VERBATIM, ON THE COMPILED ROUTE.** Run **41727757878** (this session's dispatch of the converted lane at gunbc#15749's head `4f7b0ac56`): after frontend 1m, normalize 4s and reconcile 16m, `V2-NATIVE REFUSAL cause=EmissionRefused stage=emit — compile of dag/gunbc/instruments/tier_o_drift_check_native.dag [rust] produced 3 hard diagnostic(s)` — the two `ubuntu_autoinstall_seed` sites (`:1514:17` `ssh_ed25519_key_identity`, `:3601:3` `debconf_selection_file`) with `has no established callee identity`, and `gunbc.fleet.fleet_converge_workflow.fleet_converge_fleet_identity_auth_step` (`fleet_converge_workflow.dag:6087:131`) where `probe_identity_secret_access_requirement`'s `identity is established but names no registry row`: proximity gave it an identity inside the CALLING module, where no such declaration exists. Exit 2, 23 minutes of wall time, no verdict.",
+
+      "**TWO ENDPOINTS, DIFFERENT HOSTS, NOT BISECTED.** Endpoint A, measured in this session on the session container: the same lane command with a binary built locally from `2499194f4b2` (2026-10-21) RESOLVES the whole corpus and returns a verdict — exit 1 with five `DRIFT` lines (`fleet-converge.yml`, `heal.yml`, `.gitignore`, `.gitattributes`, `provisioning/srv1/gunbc-ghrunner.sudoers`), each carrying the tool's own remedy `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet`. Endpoint B, above: CI's build of main refuses at resolve. Same entry, same function, same source roots; different hosts and builds, nothing tested in between — so this locates a window and does not identify a change, and closing it needs a bisect on one host.",
+
+      "**WHAT THE SECOND ENDPOINT BUYS.** Because the lane has not judged on any current build, those five drifted artifacts have been invisible to it: the resolve refusal sat in front of the verdict. Whoever repairs the join should expect the drift verdict, not a green, on the first run after.",
+
+      "**INFERENCE, FLAGGED AS INFERENCE (§4d).** The missing imports are named as the earliest unjustified link — proximity is the only mechanism that resolves these three names, and the analysis says the callee identity is what it could not establish. That is an inference from the diagnostics plus the import lists, not a demonstrated cause: the repair (add the imports so the call sites' identity comes from the import list, which is where `gunbc.fleet.fleet_workflow_steps` already spells its use of `probe_identity_secret_access_requirement`) has not been built or run here, because this session has no compiler — `ctrl-build --remote` returns `start remote run: permission denied` and the standing host is closed. The claim recorded here is the measurement, not the fix.",
+
+      "**CEILING: mechanically preventable.** A required job that runs the effect join over the seed's instruments refuses the corpus at the site, naming the callee and the line. Until then the state is invisible rather than absent, and the lane that would have reported it fails for a reason nobody reads.",
+
+      "**REVIEW TELL.** `effect summary incomplete … has no established callee identity` naming a callee that plainly exists elsewhere in the corpus. Read the using module's `import` lists before touching the callee: the missing fact is almost always the import, and 'identity established but names no registry row' is the same defect one step further — proximity handed it an identity in the wrong module.",
+
+      "**CONSUMPTION.** Read by the derived `recurring_failure_mode_roster`; builds no step.",
+    ],
+
+    evidence: [
+      decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "keys_are_the_admitted_authorisation"),
+      decl_ref(module_path: "extdeps.ssh.keys", decl_name: "ssh_ed25519_key_identity"),
+      decl_ref(module_path: "extdeps.debian.debconf", decl_name: "debconf_selection_file"),
+      decl_ref(module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "probe_identity_secret_access_requirement"),
+      decl_ref(module_path: "gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution", decl_name: "bare_name_resolved_by_proximity_standing_in_for_resolution"),
+    ],
+  }
