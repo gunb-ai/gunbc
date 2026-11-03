@@ -1800,10 +1800,17 @@ fn dag_infix_operators() -> List<InfixOperatorRow> {
 // nothing, it raises the refusal where the line-break `-` stands (a refusal survives the predicate,
 // v2.compiler.parse parse_expr_not_predicate), and elsewhere it admits, so no choice exists here to
 // overlap (zero-ambiguity ruling 2026-10-02).
+// The line-break-before-`-` element, ONE copy: the infix table's guard wraps it in a refusal
+// (dag_grammar_additive_newline_minus_guard) and the condition peek admits only its negation
+// (dag_grammar_expr_continuation_minus_head_expr).
+fn dag_grammar_after_line_break_minus_expr() -> GrammarExpr {
+  grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_minus))
+}
+
 fn dag_grammar_additive_newline_minus_guard() -> GrammarExpr {
   grammar_expr_not_predicate(
     element: grammar_expr_refuse_on_match(
-      element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_minus)),
+      element: dag_grammar_after_line_break_minus_expr(),
       reason: NewlineBeforeDualRoleOperator
     )
   )
@@ -1936,9 +1943,14 @@ fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
 // why v2 could not read a fully-qualified record literal that v1 accepts. The leftover surfaced at a
 // different stage per position (parse in a match arm, normalize at a fn tail, and in a call argument it
 // parsed as a SECOND argument), so the spelling axis and the position axis had to be crossed to see it.
+// The `.` head, ONE copy: the dot suffix builder and the condition peek both read it.
+fn dag_grammar_postfix_dot_head_expr() -> GrammarExpr {
+  dag_grammar_terminal(token_class: ^dag_token_dot)
+}
+
 fn dag_grammar_postfix_dot_suffix_builder(ident_suffix: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_dot),
+    left: dag_grammar_postfix_dot_head_expr(),
     right: dag_grammar_sequence(
       left: dag_grammar_binding_name_terminal(),
       right: ident_suffix
@@ -1980,32 +1992,65 @@ fn dag_grammar_postfix_is_suffix_expr() -> GrammarExpr {
 // the block's value (src/v2/std/integer.dag integer_int_to_signed_i32_le_bytes). Without this
 // predicate the suffix read across the line break and parsed it as `f(..)[a, b]` with no body after
 // the let -- a different program, which normalize then refused for the missing body.
+fn dag_grammar_index_lbracket_head_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: grammar_expr_not_predicate(
+      element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_lbracket))
+    ),
+    right: dag_grammar_terminal(token_class: ^dag_token_lbracket)
+  )
+}
+
 fn dag_grammar_postfix_index_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: grammar_expr_not_predicate(element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_lbracket))),
+    left: dag_grammar_index_lbracket_head_expr(),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
-      right: dag_grammar_sequence(
-        left: dag_grammar_expr_list_helper(),
-        right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
-      )
+      left: dag_grammar_expr_list_helper(),
+      right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
     )
   )
+}
+
+// ONE list of postfix suffix rows (DESIGN section 3: the fact lives here, once). The postfix
+// repeat in dag_grammar_postfix_expr_builder folds these suffix bodies; the condition peek
+// dag_grammar_expr_continuation_head_expr folds these continuation heads. A new postfix suffix is
+// ONE row here and reaches both -- the drift the corpus datum in
+// dag.test.claim.review_sheet_converge_witness
+// (sheets_published_mock_corpus_covers_get_batch_update_and_metadata: a record literal followed by
+// a field access at a match scrutinee) would otherwise show unnoticed. The dot suffix is NOT a
+// row: its body differs per chain (the condition chain gates its ident suffix inside the dot
+// suffix), so it stays the builder's parameter, and its head is single-sourced by
+// dag_grammar_postfix_dot_head_expr, read by both the dot suffix builder and the peek.
+type DagPostfixSuffixRow {
+  continuation_head: GrammarExpr
+  suffix_body: GrammarExpr
+}
+
+fn dag_postfix_suffix_rows() -> List<DagPostfixSuffixRow> {
+  [
+    DagPostfixSuffixRow {
+      continuation_head: dag_grammar_terminal(token_class: ^dag_token_kw_as),
+      suffix_body: dag_grammar_postfix_as_suffix_expr()
+    },
+    DagPostfixSuffixRow {
+      continuation_head: dag_grammar_terminal(token_class: ^dag_token_kw_is),
+      suffix_body: dag_grammar_postfix_is_suffix_expr()
+    },
+    DagPostfixSuffixRow {
+      continuation_head: dag_grammar_index_lbracket_head_expr(),
+      suffix_body: dag_grammar_postfix_index_suffix_expr()
+    }
+  ]
 }
 
 fn dag_grammar_postfix_expr_builder(primary_production: Symbol, dot_suffix: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: primary_production),
     right: dag_grammar_repeat(
-      element: dag_grammar_choice(
-        left: dot_suffix,
-        right: dag_grammar_choice(
-          left: dag_grammar_postfix_as_suffix_expr(),
-          right: dag_grammar_choice(
-            left: dag_grammar_postfix_is_suffix_expr(),
-            right: dag_grammar_postfix_index_suffix_expr()
-          )
-        )
+      element: fold(
+        dag_postfix_suffix_rows(),
+        init: dot_suffix,
+        f: fn(acc, row) { dag_grammar_choice(left: acc, right: row.suffix_body) }
       )
     )
   )
@@ -2047,38 +2092,27 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
 
 // THE CONTINUATION HEAD SET: exactly the tokens the ORDINARY postfix chain can continue with
 // after a complete expression -- the `{` of the if/match block, the first token of any infix row
-// (the classes of dag_infix_operators() itself, so a new operator row extends the peek without a
-// second edit), and the first token of any postfix suffix: `.`, `as`, `is`, or a newline-guarded
-// `[` index. The peek set MUST equal the postfix repeat's head set (dag_grammar_postfix_expr_-
-// builder): a record the ordinary chain would keep may not be refused at a condition head --
-// corpus datum match R { ... }.totalUpdatedCells { ... } (test/claim/
-// review_sheet_converge_witness.dag:1745, green on main; control
+// (folded from dag_infix_operators() itself, so a new operator row extends the peek without a
+// second edit), and the head of any postfix suffix (folded from dag_postfix_suffix_rows() plus
+// dag_grammar_postfix_dot_head_expr -- the SAME rows and the SAME head the postfix repeat in
+// dag_grammar_postfix_expr_builder reads, so a record the ordinary chain would keep is never
+// refused at a condition head: corpus datum dag.test.claim.review_sheet_converge_witness,
+// sheets_published_mock_corpus_covers_get_batch_update_and_metadata -- a record literal followed
+// by a field access at a match scrutinee, green on main; control
 // record_scrutinee_dot_still_parses_holds). The seed's retry set ('{' or an operator class,
 // v1 02_parse parse_expr_bp_no_brace) is NARROWER and misses the postfix heads; that hole is the
 // divergence the grammar-owner directed, not a behavior to copy. `-` and `[` enter ONLY
-// newline-aware, mirroring dag_grammar_additive_newline_minus_guard and
-// dag_grammar_postfix_index_suffix_expr (#12817): a line-initial `-` or `[` never continues the
-// operand, so neither may admit a record. Call `(` is NOT a head: the call suffix lives inside
-// the ident suffix BEFORE the record arm (dag_grammar_primary_ident_suffix_builder), so after a
-// record the postfix repeat admits no `(`.
+// newline-aware, through the same elements the infix guard and the index suffix carry
+// (dag_grammar_after_line_break_minus_expr, dag_grammar_index_lbracket_head_expr; #12817): a
+// line-initial `-` or `[` never continues the operand, so neither may admit a record. Call `(` is
+// NOT a head: the call suffix lives inside the ident suffix BEFORE the record arm
+// (dag_grammar_primary_ident_suffix_builder), so after a record the postfix repeat admits no `(`.
 fn dag_grammar_expr_continuation_head_expr() -> GrammarExpr {
-  fold(
+  let infix_heads = fold(
     dag_infix_operators(),
     init: dag_grammar_choice(
-      left: dag_grammar_choice(
-        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
-        right: dag_grammar_expr_continuation_minus_head_expr()
-      ),
-      right: dag_grammar_choice(
-        left: dag_grammar_terminal(token_class: ^dag_token_dot),
-        right: dag_grammar_choice(
-          left: dag_grammar_terminal(token_class: ^dag_token_kw_as),
-          right: dag_grammar_choice(
-            left: dag_grammar_terminal(token_class: ^dag_token_kw_is),
-            right: dag_grammar_expr_continuation_lbracket_head_expr()
-          )
-        )
-      )
+      left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+      right: dag_grammar_expr_continuation_minus_head_expr()
     ),
     f: fn(acc, row) {
       if grammar_infix_row_class(row: row) == ^dag_token_minus {
@@ -2088,18 +2122,12 @@ fn dag_grammar_expr_continuation_head_expr() -> GrammarExpr {
       }
     }
   )
-}
-
-// The `[` head carries the SAME newline guard the index suffix carries (dag_grammar_postfix_-
-// index_suffix_expr): a line-initial `[` never continues the operand, so it must not admit a
-// record either.
-fn dag_grammar_expr_continuation_lbracket_head_expr() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: grammar_expr_not_predicate(
-      element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_lbracket))
-    ),
-    right: dag_grammar_terminal(token_class: ^dag_token_lbracket)
+  let postfix_heads = fold(
+    dag_postfix_suffix_rows(),
+    init: dag_grammar_postfix_dot_head_expr(),
+    f: fn(acc, row) { dag_grammar_choice(left: acc, right: row.continuation_head) }
   )
+  dag_grammar_choice(left: infix_heads, right: postfix_heads)
 }
 
 // The `-` row of the continuation set carries the SAME newline guard the infix table carries
@@ -2108,9 +2136,7 @@ fn dag_grammar_expr_continuation_lbracket_head_expr() -> GrammarExpr {
 // positive test, so the guard enters as not(after_line_break(minus)) before the terminal.
 fn dag_grammar_expr_continuation_minus_head_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: grammar_expr_not_predicate(
-      element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_minus))
-    ),
+    left: grammar_expr_not_predicate(element: dag_grammar_after_line_break_minus_expr()),
     right: dag_grammar_terminal(token_class: ^dag_token_minus)
   )
 }
