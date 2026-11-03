@@ -27,9 +27,7 @@ module extdeps.cloud.gcp.error_info
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { minutes_per_hour, second, second_count, seconds_per_day, seconds_per_minute, Second }
 import std.optional { Present, Absent }
-import std.types { Bool, Char, EpochSecs, Int, List, NonEmptyStr, String }
-import std.algebra { Cons, Empty, FreeMonoid, contains, for_all }
-import std.coercion { unicode_scalar_unfold }
+import std.types { Bool, EpochSecs, Int, List, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit { JsonArray, JsonValue }
@@ -233,37 +231,38 @@ fn quota_retry_wait_for(
 // definition and are safe by construction:
 //   * `error.status` is a google.rpc.Code canonical name (googleapis google/rpc/code.proto), a fixed
 //     list of seventeen names; any other spelling is dropped, never printed.
-//   * a google.rpc.ErrorInfo `reason` is, per google/rpc/error_details.proto (cited by AIP-193), "at
-//     most 63 characters" matching `[A-Z][A-Z0-9_]+[A-Z0-9]` (UPPER_SNAKE_CASE). A reason outside that
-//     shape is dropped. No token, key or message text can inhabit it.
+//   * a google.rpc.ErrorInfo `reason` is printed only when it is EXACTLY one of the reviewed reasons
+//     below, and then as OUR literal; any other string in that position -- unknown, empty, or anything a
+//     secret could be shaped into -- prints the one fixed label UNRECOGNIZED. A format check is not used:
+//     error_details.proto's UPPER_SNAKE_CASE shape admits an uppercase string derived from a secret.
 // The answer is a suffix (" status=<CODE>", " reason=<REASON>", either or both, or empty); a body that is
 // not JSON, has no error object, or names neither field contributes nothing, and nothing else is read.
+// The suffix MAY be empty: every caller prefixes a non-empty "HTTP <status>", so the refusal text it
+// joins never is (a refusal text read as control flow must never come out empty).
 data google_rpc_code_names: List<String> = [
   "OK", "CANCELLED", "UNKNOWN", "INVALID_ARGUMENT", "DEADLINE_EXCEEDED", "NOT_FOUND", "ALREADY_EXISTS",
   "PERMISSION_DENIED", "RESOURCE_EXHAUSTED", "FAILED_PRECONDITION", "ABORTED", "OUT_OF_RANGE",
   "UNIMPLEMENTED", "INTERNAL", "UNAVAILABLE", "DATA_LOSS", "UNAUTHENTICATED"
 ]
 
-data error_reason_start_chars: FreeMonoid<Char> = unicode_scalar_unfold(s: "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-data error_reason_continue_chars: FreeMonoid<Char> = unicode_scalar_unfold(s: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+// THE REVIEWED REASONS. Each is a google.rpc.ErrorInfo reason a credential read or token exchange on
+// these paths can plausibly answer with. STANDING: cited to authority -- every literal is a member of the
+// ErrorReason enum in googleapis google/api/error_reason.proto at commit
+// 0d0982bd9844aacc37a4e87c1cd43bbdb601884d (checked 2026-11-03). Which members are kept here is a
+// review choice, not the enum's; a reason absent from this list prints as UNRECOGNIZED, never as itself.
+data gcp_reviewed_error_reasons: List<String> = [
+  "ACCESS_TOKEN_EXPIRED", "ACCESS_TOKEN_SCOPE_INSUFFICIENT", "ACCESS_TOKEN_TYPE_UNSUPPORTED",
+  "CREDENTIALS_MISSING", "ACCOUNT_STATE_INVALID", "IAM_PERMISSION_DENIED", "SERVICE_DISABLED",
+  "USER_PROJECT_DENIED", "CONSUMER_INVALID", "RESOURCE_PROJECT_INVALID", "RATE_LIMIT_EXCEEDED",
+  "RESOURCE_QUOTA_EXCEEDED"
+]
 
-fn error_reason_char_in(alphabet: FreeMonoid<Char>, c: Char) -> Bool {
-  contains(xs: alphabet, item: c, eq: fn(a, b) { a == b })
-}
-
-// [A-Z][A-Z0-9_]+[A-Z0-9], at most 63 characters: a head from the start alphabet, a tail of at least
-// two from the continue alphabet, no trailing underscore.
-fn error_reason_is_upper_snake(reason: String) -> Bool {
-  match unicode_scalar_unfold(s: reason) {
-    Empty => false
-    Cons { head: first, tail: rest } => {
-      let tail_count = fold(rest, init: 0, f: (acc, _c) => acc + 1)
-      error_reason_char_in(alphabet: error_reason_start_chars, c: first)
-        && for_all(xs: rest, predicate: fn(c) { error_reason_char_in(alphabet: error_reason_continue_chars, c: c) })
-        && tail_count >= 2
-        && tail_count <= 62
-        && !reason.ends_with("_")
-    }
+// The printed reason is looked up, never copied: the answer is the matching element of OUR list, or the
+// fixed label. So no upstream byte reaches the text, whatever the body holds.
+fn gcp_reviewed_reason_label(reason: String) -> String {
+  match filter(xs: gcp_reviewed_error_reasons, predicate: fn(r) { r == reason }).first() {
+    Present { value: ours } => ours
+    Absent => "UNRECOGNIZED"
   }
 }
 
@@ -280,7 +279,7 @@ fn gcp_safe_reason_suffix(error_value: JsonValue) -> String {
       Absent => ""
       Present { value: info } => match error_info_string_member(v: info, key: "reason") {
         Absent => ""
-        Present { value: reason } => if error_reason_is_upper_snake(reason: reason) { concat(" reason=", reason) } else { "" }
+        Present { value: reason } => concat(" reason=", gcp_reviewed_reason_label(reason: reason))
       }
     }
     _ => ""

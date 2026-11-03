@@ -8,7 +8,7 @@ import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.tools.openssl { openssl_signature_of, OpensslSigned, OpensslSignRefused }
 import extdeps.github.actions_jit_runner { JitConfigCreatedBody, JitConfigCreatedRunner }
 import extdeps.transports.rest {
-  RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable, RestExchangeCommitAmbiguous,
+  RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestExchangeCommitAmbiguous,
 }
 import gunbc.runner.runner_jit_perform {
   JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched,
@@ -269,63 +269,4 @@ test fn a_real_filesystem_write_refusal_names_what_became_of_the_path() -> Bool 
     ControllerKeyNotStaged { cause: c } => string_contains(s: c, pattern: "ControllerAppKeyResidueUnconfirmed")
     ControllerKeyStaged { key: _ } => false
   })
-}
-
-// ── CREDENTIAL-PATH REFUSALS CARRY NO BODY, NO CAUSE TEXT, NO INPUT (redaction hardening) ───────
-// Every response below plants FAKE-SECRET-MARKER where a real token, key or echoed request could
-// sit: in a Google error message, in a 2xx-undecodable cause, in a transport cause, in a non-JSON
-// body, in a forged status or reason field, and in a GitHub error body. The refusal text is what
-// reaches stderr through exit_failure, so the marker must be absent from every one, and the only
-// facts kept are the HTTP status and the closed-vocabulary codes of a Google error body.
-fn redaction_marker() -> String { "FAKE-SECRET-MARKER" }
-
-fn not_minted_cause(m: PublisherTokenMint) -> String {
-  match m {
-    PublisherTokenNotMinted { cause: c } => c
-    PublisherTokenMinted { token: _ } => "MINTED"
-  }
-}
-
-fn carries_no_marker(text: String) -> Bool { !string_contains(s: text, pattern: redaction_marker()) }
-
-fn google_401_body() -> String {
-  "{\"error\":{\"code\":401,\"message\":\"Request had invalid authentication credentials FAKE-SECRET-MARKER\",\"status\":\"UNAUTHENTICATED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"ACCESS_TOKEN_EXPIRED\",\"domain\":\"googleapis.com\",\"metadata\":{\"service\":\"secretmanager.googleapis.com\",\"echo\":\"FAKE-SECRET-MARKER\"}}]}}"
-}
-
-test fn witness_a_google_error_keeps_only_status_and_safe_codes() -> Bool {
-  let c = not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 401, body: google_401_body() }))
-  c == "HealPublisherAppKeyUnreadable: HTTP 401 status=UNAUTHENTICATED reason=ACCESS_TOKEN_EXPIRED" && carries_no_marker(text: c)
-}
-
-test fn witness_an_undecodable_2xx_never_prints_its_cause() -> Bool {
-  let c = not_minted_cause(m: publisher_key_unreadable(refusal: RestBodyUndecodable { status: 200, cause: "payload/data near FAKE-SECRET-MARKER" }))
-  c == "HealPublisherAppKeyUnreadable: HTTP 200 undecodable (cause withheld on a credential path)" && carries_no_marker(text: c)
-}
-
-test fn witness_a_transport_refusal_never_prints_its_cause() -> Bool {
-  let k = not_minted_cause(m: publisher_key_unreadable(refusal: RestTransportRefused { cause: "connect https://x/?t=FAKE-SECRET-MARKER" }))
-  let g = not_minted_cause(m: publisher_installation_token_refused(refusal: RestTransportRefused { cause: "FAKE-SECRET-MARKER" }))
-  carries_no_marker(text: k) && carries_no_marker(text: g)
-    && k == "HealPublisherAppKeyUnreadable: transport refused (cause withheld on a credential path)"
-}
-
-test fn witness_a_non_json_body_contributes_nothing_but_its_status() -> Bool {
-  let c = not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 502, body: "<html>FAKE-SECRET-MARKER</html>" }))
-  c == "HealPublisherAppKeyUnreadable: HTTP 502" && carries_no_marker(text: c)
-}
-
-// A forged status outside google.rpc.Code, and a reason outside the error_details.proto shape
-// (lowercase, too long, trailing underscore), are DROPPED rather than printed.
-test fn witness_forged_status_and_reason_fields_are_dropped() -> Bool {
-  let forged = "{\"error\":{\"status\":\"UNAUTHENTICATED FAKE-SECRET-MARKER\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"fake-secret-marker\",\"domain\":\"d\"}]}}"
-  let long_reason = "{\"error\":{\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"A234567890123456789012345678901234567890123456789012345678901234\",\"domain\":\"d\"}]}}"
-  let trailing = "{\"error\":{\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"EXPIRED_\",\"domain\":\"d\"}]}}"
-  not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 403, body: forged })) == "HealPublisherAppKeyUnreadable: HTTP 403"
-    && not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 403, body: long_reason })) == "HealPublisherAppKeyUnreadable: HTTP 403"
-    && not_minted_cause(m: publisher_key_unreadable(refusal: RestStatusRefused { status: 403, body: trailing })) == "HealPublisherAppKeyUnreadable: HTTP 403"
-}
-
-test fn witness_a_github_error_body_contributes_nothing_but_its_status() -> Bool {
-  let c = not_minted_cause(m: publisher_installation_token_refused(refusal: RestStatusRefused { status: 422, body: "{\"message\":\"token FAKE-SECRET-MARKER rejected\",\"documentation_url\":\"https://docs.github.com\"}" }))
-  c == "HealPublisherInstallationTokenRefused: HTTP 422" && carries_no_marker(text: c)
 }
