@@ -43,6 +43,7 @@ import extdeps.languages.rust.emit {
 import extdeps.languages.rust.syntax {
   rust_item_forms, rust_operators
 }
+import std.types { Map }
 
 
 

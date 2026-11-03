@@ -2,7 +2,7 @@ module v1.compiler.infer_service
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, Map }
 
 import v1.std.core { Unmarked,
   call_semantics_target, callable_identity, DeclaredCallableIdentity,

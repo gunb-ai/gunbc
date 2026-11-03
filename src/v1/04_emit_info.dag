@@ -20,7 +20,7 @@ import v1.std.core {
   DeclaredCallableIdentity, callable_identity,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
-import std.types { is_kernel_type }
+import std.types { is_kernel_type, Map }
 import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, bare_occurrence_binding }
