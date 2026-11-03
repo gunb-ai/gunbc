@@ -343,3 +343,16 @@ fn configfs_plan_without_qualification() -> BootDeliveryPlan {
     },
   }
 }
+
+// A hand-built solution whose boot_control contradicts its delivery (PXE delivery, removable-media control):
+// the shape admission refuses and a consumer that skipped admission would arm.
+data incoherent_pxe_solution: BootDeliverySolution = BootDeliveryPlanned {
+  plan: BootDeliveryPlan {
+    target: pxe_plan.target,
+    artifact: pxe_plan.artifact,
+    delivery: pxe_plan.delivery,
+    boot_control: BootFromRemovableMedia,
+    boot_control_route: pxe_plan.boot_control_route,
+    eligibility: pxe_plan.eligibility,
+  }
+}

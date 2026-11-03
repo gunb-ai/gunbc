@@ -150,7 +150,7 @@ import extdeps.storage.types {
 }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
-import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliveryPlan, BootDeliverySolution, BootDeliveryPlanned, PxeChainBoot, BootDeliveryRefused, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
+import gunbc.boot_artifact_delivery { BootControlTarget, BootDeliveryPlan, BootDeliverySolution, BootDeliveryPlanned, BootDeliveryPlanAdmitted, BootDeliveryPlanIncoherent, admit_boot_delivery_plan, PxeChainBoot, BootDeliveryRefused, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, BiosX86, UefiX86_64, UefiArm64, HttpBootX86_64, HttpBootArm64 }
 import extdeps.os.ubuntu_kernel_nic_coverage { UbuntuKernelFlavour, r8169_claims_pci_device }
 import extdeps.pci.identity { PciDeviceId }
@@ -2398,13 +2398,17 @@ fn build_ubuntu_autoinstall_seed(
 ) -> Optional<UbuntuAutoinstallSeed> {
   match solution {
     BootDeliveryRefused { cause: _ } => Absent
-    BootDeliveryPlanned { plan: planned } =>
-      build_seed_for_control(
-        target: target, network: network, install_drivers: install_drivers, loadable_modules: loadable_modules,
-        late_drivers: late_drivers, install_packages: install_packages, late_packages: late_packages, disk: disk,
-        entry: entry, credential: credential, password_read: password_read, locale: locale,
-        delivery: planned.boot_control, client_arch: plan_observed_client_arch(plan: planned), keyboard: keyboard,
-      )
+    BootDeliveryPlanned { plan: unadmitted } =>
+      match admit_boot_delivery_plan(plan: unadmitted) {
+        BootDeliveryPlanIncoherent { cause: _ } => Absent
+        BootDeliveryPlanAdmitted { plan: planned } =>
+          build_seed_for_control(
+          target: target, network: network, install_drivers: install_drivers, loadable_modules: loadable_modules,
+          late_drivers: late_drivers, install_packages: install_packages, late_packages: late_packages, disk: disk,
+          entry: entry, credential: credential, password_read: password_read, locale: locale,
+          delivery: planned.boot_control, client_arch: plan_observed_client_arch(plan: planned), keyboard: keyboard,
+          )
+      }
   }
 }
 

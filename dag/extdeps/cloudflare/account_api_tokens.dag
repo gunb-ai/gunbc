@@ -1,4 +1,5 @@
 module extdeps.cloudflare.account_api_tokens
+import std.types { Bearer }
 import std.resources { Network }
 
 // `String` HERE IS THE KERNEL STRING, UNIMPORTED, BECAUSE THE VALUES ARE HOST TEXT. This module

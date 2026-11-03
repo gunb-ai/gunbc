@@ -1,82 +1,277 @@
 module product.p4261.findings
 
-import std.types { Bool, List }
-import product.electrical.continuity { EvidenceRef, OperatorPhotograph }
-import extdeps.nvidia.p4261 { P4261AssemblyRevision }
-import product.p4261.carrier { AssemblyLabel, BoardMarking, CarrierLayoutObservation, PcbCode }
+import std.types { Bool, List, NonEmptyStr }
+import product.electrical.connectivity { ComponentInstanceIdentity }
+import product.electrical.identification { InstalledComponent, identification_established }
+import product.electrical.carrier_phase {
+  AuxiliaryDomainActive,
+  BridgeHeld,
+  BridgeReleaseRecovery,
+  CarrierPhaseStanding,
+  ControlSteady,
+  InputBiasOnly,
+  PhaseUnclassified,
+  ProtectedBusInconsistent,
+  ProtectedBusStanding,
+  ProtectedBusUnread,
+  ProtectedInputBusActive,
+  ProtectedInputBusHeldOff,
+  SequenceTransient,
+}
+import product.p4261.carrier { CarrierLayoutObservation, ConnectorPositionCensus, ObservedInventory, observed_inventory }
+import product.p4261.readings {
+  AcrossInput,
+  AcrossInputContradicted,
+  AcrossInputStanding,
+  AcrossInputUnestablished,
+  BoundContradicted,
+  BoundEstablished,
+  BoundUnestablished,
+  ControllerPinStanding,
+  EnableProjection,
+  EnableProjectionUnestablished,
+  EnableReachableWithinInputBound,
+  EnableUnreachableWithinInputBound,
+  InputBoundStanding,
+  InputDrawBounded,
+  InputDrawContradicted,
+  InputDrawStanding,
+  InputDrawUnestablished,
+  InputPolarity,
+  InputSwitchStanding,
+  PinAboveThreshold,
+  PinBelowThreshold,
+  PinThresholdUnestablished,
+  PitchFit,
+  PolarityContradicted,
+  PolarityEstablished,
+  PolarityUnestablished,
+  SwitchBlocking,
+  SwitchConducting,
+  SwitchStateUnestablished,
+  across_input,
+  caliper_pitch_fits,
+  controller_enable_standing,
+  controller_overvoltage_standing,
+  enable_projection,
+  input_bound,
+  input_draw,
+  input_polarity,
+  input_switch_standing,
+  installed,
+  phase_standing_in,
+  protected_bus_in,
+}
+import product.p4261.evidence {
+  InventoryAssessment,
+  InventoryContradicted,
+  InventoryMissing,
+  InventoryNotAttributable,
+  InventorySupportedOnSpecimen,
+  RecountEstablished,
+  RecountNotEstablished,
+  RecountStanding,
+  j20_inventory_assessment,
+  j20_recount,
+  NetPropositionAssessment,
+  NetRevisionConflict,
+  NetRevisionCounterevidence,
+  NetRevisionNotAttributable,
+  NetRevisionSupported,
+  NetRevisionUnresolved,
+  net_assessment,
+}
 
 // WHAT THE P4261 RECORDS ESTABLISH, AS TYPED RESULTS A CONSUMER READS BEFORE ANYTHING IS RENDERED.
-// product.p4261.readings interprets selected observations; this module turns them into the findings
-// consumers cite, and product.p4261.report only renders them, so rewording, omitting or translating a
-// sentence cannot change whether a finding holds. The carrier findings (CarrierFinding,
-// carrier_finding) still live in product.p4261.report while the private strategy imports them from
-// there; they move here with the ownership cutover that rewires that consumer.
+// product.p4261.readings and product.p4261.evidence interpret selected observations; this module
+// names the findings consumers cite and judges each into a typed result; product.p4261.report only
+// renders a judgment it is handed, so rewording, omitting or translating a sentence cannot change
+// whether a finding holds. A consumer that decides (the private qualification) asks
+// finding_established here; one that shows text asks the report.
+//
+// A consumer cites ONE finding, not the whole carrier report, so that removing or contradicting that
+// fact reopens that consumer and nothing else.
+type CarrierFinding
+  = J20ContactInventory
+  | J20InventoryMatchesRevision
+  | J20Polarity
+  | ComponentAcrossInput { component: ComponentInstanceIdentity }
+  | ComponentIdentified { component: ComponentInstanceIdentity }
+  | InputUpperBound
+  | J20EnergizedDraw
+  | InputSwitchState { component: ComponentInstanceIdentity }
+  | ControllerEnableState { component: ComponentInstanceIdentity }
+  | ControllerOvervoltageState { component: ComponentInstanceIdentity }
+  | EnableInputProjection { component: ComponentInstanceIdentity }
+  | CarrierPhaseObserved { key: NonEmptyStr }
+  | ProtectedInputBusInPhase { key: NonEmptyStr }
+  | RevisionNetPropositionSupported { key: NonEmptyStr }
 
-// THE RECEIVED BOARD IS NAMED BY ITS OWN LABEL. A label in a listing photograph names what was sold,
-// possibly a sibling unit; only the operator's photograph of the board in hand names this one, so every
-// consumer that labels the carrier reads it here rather than restating it.
-fn is_operator_photograph(e: EvidenceRef) -> Bool {
-  match e {
-    OperatorPhotograph { taken_on: _, locator: _ } => true
-    _ => false
+// THE J20 OBSERVATION A J20 FINDING RESTS ON, captured with the judgment so that its rendering needs no
+// second look at the board: the census as recorded, its observed inventory, and the caliper spans'
+// fit to the pitches J20's family could have.
+type J20ObservationContext {
+  census: ConnectorPositionCensus
+  observed: ObservedInventory
+  calipers: List<PitchFit>
+}
+
+// ONE FINDING, JUDGED: the typed result it rests on, with what its rendering needs. A component finding
+// whose component is not in the board's observation is NotAComponent, never a guess.
+type FindingJudgment
+  = J20InventoryJudged { recount: RecountStanding, agreement: InventoryAssessment?, context: J20ObservationContext }
+  | J20AgreementJudged { agreement: InventoryAssessment?, context: J20ObservationContext }
+  | PolarityJudged { polarity: InputPolarity }
+  | AcrossJudged { standing: AcrossInputStanding }
+  | IdentificationJudged { observed: InstalledComponent }
+  | BoundJudged { bound: InputBoundStanding }
+  | DrawJudged { draw: InputDrawStanding }
+  | SwitchJudged { standing: InputSwitchStanding }
+  | EnableJudged { standing: ControllerPinStanding }
+  | OvervoltageJudged { standing: ControllerPinStanding }
+  | ProjectionJudged { projection: EnableProjection }
+  | PhaseJudged { key: NonEmptyStr, standing: CarrierPhaseStanding? }
+  | BusJudged { key: NonEmptyStr, standing: ProtectedBusStanding? }
+  | NotAComponent { component: ComponentInstanceIdentity }
+  | NetPropositionJudged { key: NonEmptyStr, assessment: NetPropositionAssessment? }
+
+fn j20_context(layout: CarrierLayoutObservation) -> J20ObservationContext {
+  J20ObservationContext { census: layout.j20, observed: observed_inventory(census: layout.j20), calipers: caliper_pitch_fits(spans: layout.j20_calipers) }
+}
+
+fn judge_component(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity, f: CarrierFinding) -> FindingJudgment {
+  match installed(layout: layout, c: c) {
+    Absent => NotAComponent { component: c }
+    Present { value: x } => match f {
+      ComponentAcrossInput { component: _ } => AcrossJudged { standing: across_input(layout: layout, c: x) }
+      ComponentIdentified { component: _ } => IdentificationJudged { observed: x }
+      InputSwitchState { component: _ } => SwitchJudged { standing: input_switch_standing(layout: layout, c: x) }
+      ControllerEnableState { component: _ } => EnableJudged { standing: controller_enable_standing(layout: layout, c: x) }
+      ControllerOvervoltageState { component: _ } => OvervoltageJudged { standing: controller_overvoltage_standing(layout: layout, c: x) }
+      EnableInputProjection { component: _ } => ProjectionJudged { projection: enable_projection(layout: layout, c: x) }
+      J20ContactInventory => NotAComponent { component: c }
+      J20InventoryMatchesRevision => NotAComponent { component: c }
+      J20Polarity => NotAComponent { component: c }
+      InputUpperBound => NotAComponent { component: c }
+      J20EnergizedDraw => NotAComponent { component: c }
+      CarrierPhaseObserved { key: _ } => NotAComponent { component: c }
+      ProtectedInputBusInPhase { key: _ } => NotAComponent { component: c }
+      RevisionNetPropositionSupported { key: _ } => NotAComponent { component: c }
+    }
   }
 }
 
-fn is_received_label(m: BoardMarking) -> Bool {
-  match m {
-    AssemblyLabel { model: _, part_number: _, revision: _, serial: _, evidence } => is_operator_photograph(e: evidence)
-    _ => false
+fn judge_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> FindingJudgment {
+  match f {
+    J20ContactInventory => J20InventoryJudged { recount: j20_recount(layout: layout), agreement: j20_inventory_assessment(layout: layout), context: j20_context(layout: layout) }
+    J20InventoryMatchesRevision => J20AgreementJudged { agreement: j20_inventory_assessment(layout: layout), context: j20_context(layout: layout) }
+    J20Polarity => PolarityJudged { polarity: input_polarity(layout: layout) }
+    ComponentAcrossInput { component } => judge_component(layout: layout, c: component, f: f)
+    ComponentIdentified { component } => judge_component(layout: layout, c: component, f: f)
+    InputUpperBound => BoundJudged { bound: input_bound(layout: layout) }
+    J20EnergizedDraw => DrawJudged { draw: input_draw(layout: layout) }
+    InputSwitchState { component } => judge_component(layout: layout, c: component, f: f)
+    ControllerEnableState { component } => judge_component(layout: layout, c: component, f: f)
+    ControllerOvervoltageState { component } => judge_component(layout: layout, c: component, f: f)
+    EnableInputProjection { component } => judge_component(layout: layout, c: component, f: f)
+    CarrierPhaseObserved { key } => PhaseJudged { key: key, standing: phase_standing_in(layout: layout, key: key) }
+    ProtectedInputBusInPhase { key } => BusJudged { key: key, standing: protected_bus_in(layout: layout, key: key) }
+    RevisionNetPropositionSupported { key } => NetPropositionJudged { key: key, assessment: net_assessment(layout: layout, key: key) }
   }
 }
 
-fn received_labels(layout: CarrierLayoutObservation) -> List<BoardMarking> {
-  filter(layout.markings, m => is_received_label(m: m))
-}
-
-// WHICH REVISION A BOARD WAS BUILT TO IS READ OFF ITS OWN LABEL AND PCB PRINT. The record names the
-// NVIDIA revision it claims (layout.revision, extdeps.nvidia.p4261). Any received-board marking that
-// disagrees with the row wins, whatever else was read, so a board recorded against the wrong revision
-// says so instead of inheriting another revision's identity. Agreement is reported only for what was
-// read: the assembly label (part number and revision code) and the PCB print (PCB code) are separate
-// evidence, and one agreeing does not stand for the other. A label only in a seller's listing is not
-// the received board's (is_received_label).
-type AssemblyRevisionStanding
-  = RevisionReadOnBoard { revision: P4261AssemblyRevision }
-  | RevisionLabelReadPcbUnread { revision: P4261AssemblyRevision }
-  | RevisionPcbReadLabelUnread { revision: P4261AssemblyRevision }
-  | RevisionContradictedOnBoard { revision: P4261AssemblyRevision, marking: BoardMarking }
-  | RevisionUnreadOnBoard { revision: P4261AssemblyRevision }
-
-fn is_received_pcb_print(m: BoardMarking) -> Bool {
-  match m {
-    PcbCode { code: _, printed_beside: _, evidence } => is_operator_photograph(e: evidence)
-    _ => false
+// WHETHER THE FINDING HOLDS, from its typed result alone, exhaustively. "Established" means this finding
+// is established -- a switch read blocking, a pin read below its threshold, a phase classified, a
+// reconstructed wiring proposition supported by the board as received -- not
+// that the hardware is healthy or any operation authorized. The J20 inventory finding rests on the
+// recount, never on whether the revision agrees; an identification on whether its arm establishes one.
+fn finding_established(j: FindingJudgment) -> Bool {
+  match j {
+    J20InventoryJudged { recount, agreement: _, context: _ } => match recount {
+      RecountEstablished { latch_row: _, away_row: _ } => true
+      RecountNotEstablished { gap: _, observed: _ } => false
+    }
+    J20AgreementJudged { agreement, context: _ } => match agreement {
+      Absent => false
+      Present { value: a } => match a.outcome {
+        InventorySupportedOnSpecimen => true
+        InventoryContradicted { observed: _ } => false
+        InventoryMissing { gap: _ } => false
+        InventoryNotAttributable { gap: _ } => false
+      }
+    }
+    PolarityJudged { polarity } => match polarity {
+      PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => true
+      PolarityContradicted { readings: _ } => false
+      PolarityUnestablished { gaps: _ } => false
+    }
+    AcrossJudged { standing } => match standing {
+      AcrossInput { component: _, on_fused: _, on_return: _, fused_path: _, return_path: _ } => true
+      AcrossInputContradicted { component: _, readings: _ } => false
+      AcrossInputUnestablished { component: _, gap: _ } => false
+    }
+    IdentificationJudged { observed } => identification_established(i: observed.identification)
+    BoundJudged { bound } => match bound {
+      BoundEstablished { bound: _, equally_limiting: _, observed: _ } => true
+      BoundContradicted { contradicted: _, observed: _ } => false
+      BoundUnestablished { observed: _ } => false
+    }
+    DrawJudged { draw } => match draw {
+      InputDrawBounded { bounded: _, observed: _ } => true
+      InputDrawContradicted { contradicted: _, observed: _ } => false
+      InputDrawUnestablished { gaps: _ } => false
+    }
+    SwitchJudged { standing } => match standing {
+      SwitchBlocking { component: _, drain: _, sources: _ } => true
+      SwitchConducting { component: _, drain: _, sources: _ } => true
+      SwitchStateUnestablished { component: _, gap: _ } => false
+    }
+    EnableJudged { standing } => pin_standing_read(s: standing)
+    OvervoltageJudged { standing } => pin_standing_read(s: standing)
+    ProjectionJudged { projection } => match projection {
+      EnableUnreachableWithinInputBound { component: _, readings: _, turn_on_millivolts: _, bound: _ } => true
+      EnableReachableWithinInputBound { component: _, readings: _, turn_on_millivolts: _, bound: _ } => true
+      EnableProjectionUnestablished { component: _, gap: _ } => false
+    }
+    PhaseJudged { key: _, standing } => match standing {
+      Absent => false
+      Present { value: s } => match s {
+        InputBiasOnly { phase: _, draw: _, bias_ceiling: _ } => true
+        AuxiliaryDomainActive { phase: _, draw: _, bias_ceiling: _ } => true
+        SequenceTransient { phase: _ } => true
+        ControlSteady { phase: _ } => true
+        BridgeHeld { phase: _, bridge: _ } => true
+        BridgeReleaseRecovery { phase: _, bridge: _ } => true
+        PhaseUnclassified { phase: _, gap: _ } => false
+      }
+    }
+    BusJudged { key: _, standing } => match standing {
+      Absent => false
+      Present { value: s } => match s {
+        ProtectedInputBusActive { phase: _, readings: _, source: _ } => true
+        ProtectedInputBusHeldOff { phase: _, readings: _, source: _ } => true
+        ProtectedBusInconsistent { phase: _, readings: _, source: _ } => false
+        ProtectedBusUnread { phase: _, gap: _ } => false
+      }
+    }
+    NotAComponent { component: _ } => false
+    NetPropositionJudged { key: _, assessment } => match assessment {
+      Absent => false
+      Present { value: a } => match a.revision {
+        NetRevisionSupported => true
+        NetRevisionCounterevidence => false
+        NetRevisionConflict => false
+        NetRevisionUnresolved => false
+        NetRevisionNotAttributable { gap: _ } => false
+      }
+    }
   }
 }
 
-fn is_revision_marking(m: BoardMarking) -> Bool {
-  is_received_label(m: m) || is_received_pcb_print(m: m)
-}
-
-fn marking_contradicts_revision(m: BoardMarking, r: P4261AssemblyRevision) -> Bool {
-  match m {
-    AssemblyLabel { model, part_number, revision, serial: _, evidence: _ } =>
-      !(model == r.model && part_number == r.assembly_part_number && revision == r.revision_code)
-    PcbCode { code, printed_beside: _, evidence: _ } => !(code == r.pcb_code)
-    _ => false
-  }
-}
-
-fn assembly_revision_standing(layout: CarrierLayoutObservation) -> AssemblyRevisionStanding {
-  let read = filter(layout.markings, m => is_revision_marking(m: m))
-  let label_read = any(read, m => is_received_label(m: m))
-  let pcb_read = any(read, m => is_received_pcb_print(m: m))
-  match (filter(read, m => marking_contradicts_revision(m: m, r: layout.revision))).first() {
-    Present { value: m } => RevisionContradictedOnBoard { revision: layout.revision, marking: m }
-    Absent =>
-      if label_read && pcb_read { RevisionReadOnBoard { revision: layout.revision } }
-      else { if label_read { RevisionLabelReadPcbUnread { revision: layout.revision } }
-      else { if pcb_read { RevisionPcbReadLabelUnread { revision: layout.revision } }
-      else { RevisionUnreadOnBoard { revision: layout.revision } } } }
+fn pin_standing_read(s: ControllerPinStanding) -> Bool {
+  match s {
+    PinBelowThreshold { component: _, readings: _, minimum: _ } => true
+    PinAboveThreshold { component: _, readings: _, maximum: _ } => true
+    PinThresholdUnestablished { component: _, readings: _, gap: _ } => false
   }
 }

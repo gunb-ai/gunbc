@@ -1,0 +1,50 @@
+module extdeps.linux.dmi_id
+
+import std.types { NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/admin-guide/abi-testing.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.dmi_id",
+      decl_name: "dmi_id_attribute_path",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Linux exposes the SMBIOS/DMI identity strings as one text file each under /sys/class/dmi/id/ (the kernel's
+// sysfs ABI, Documentation/ABI/testing/sysfs-devices-dmi... as `board_name`, `bios_version`); the content is
+// the string and a newline.
+data dmi_id_directory: NonEmptyStr = "/sys/class/dmi/id"
+
+type DmiIdAttribute
+  = DmiBoardName
+  | DmiBiosVersion
+
+fn dmi_id_attribute_path(attribute: DmiIdAttribute) -> String {
+  concat(dmi_id_directory as String, match attribute {
+    DmiBoardName => "/board_name"
+    DmiBiosVersion => "/bios_version"
+  })
+}
+
+// The attribute's string, or none when it could not be read.
+fn dmi_id_read(attribute: DmiIdAttribute) -> String? {
+  let r = Filesystem.Read(path: dmi_id_attribute_path(attribute: attribute))
+  if !r.success { none } else { Present { value: trim(s: r.content) } }
+}
