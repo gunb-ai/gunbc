@@ -8,15 +8,27 @@ import extdeps.electronic_component.types {
   DrainSourceMaximum,
   ElectronicComponentRow,
   FuseInterruptRating,
+  CapacitorSpec,
+  ConnectorSpec,
+  HotSwapControllerSpec,
+  LevelTranslatorSpec,
+  LogicGateSpec,
+  MosfetSpec,
+  ProgrammableLogicSpec,
   RegulatorPin,
+  RootOfTrustSpec,
+  SerialFlashSpec,
+  ShiftRegisterSpec,
   SwitchingRegulatorSpec,
+  TemperatureSensorSpec,
+  TvsDiodeSpec,
   TvsReverseStandoff,
   voltage_withstand,
   VoltageWithstand,
   VoltageWithstandKind,
 }
 import product.electrical.connectivity { ComponentInstanceIdentity, TerminalIdentity }
-import product.electrical.continuity { EvidenceRef }
+import product.electrical.continuity { EvidenceRef, OrderUnrecorded, ReadingOrder }
 
 // HOW AN INSTALLED PART IS IDENTIFIED, for any board read at the bench. A part credits its
 // datasheet row (extdeps.electronic_component) only once its marking is read and matched; until then it
@@ -54,10 +66,45 @@ type ComponentIdentification
   | MarkingUnresolved { marking: MarkingReading?, discriminator: NonEmptyStr }
   | FootprintUnpopulated { evidence: EvidenceRef }
 
+// WHEN THE COMPONENT WAS SEEN. seen is the observation's order against the board's dividing events, in
+// the vocabulary its readings use (product.electrical.continuity ReadingOrder). A part removed from the
+// board later is still the part that was seen fitted before, and only an order stated against that
+// removal says which side of it the observation fell on (product.electrical.bench_session
+// place_against). Whether a part was there at all is what the observation saw (observed_presence), and
+// whether it has been removed is the board's alteration ledger: neither is authored here.
 type InstalledComponent {
   component: ComponentInstanceIdentity
   terminals: List<TerminalIdentity>
   identification: ComponentIdentification
+  seen: ReadingOrder
+}
+
+// WHAT AN OBSERVATION ESTABLISHES ABOUT PRESENCE. A part read in any way -- a matched, shared,
+// candidate or unresolved marking, a printed rating, a resistance code -- was seen on the board; an
+// empty footprint was seen without one. An entry with no marking read and no other reading records a
+// part named in the session, not one seen: its presence is unobserved, and the entry's type name is
+// not evidence.
+type ObservedPresence
+  = PartPresent
+  | PartAbsent
+  | PresenceUnobserved
+
+fn observed_presence(i: ComponentIdentification) -> ObservedPresence {
+  match i {
+    IdentifiedByMarking { row: _, marking: _ } => PartPresent
+    MarkingSharedByMakers { rows: _, marking: _ } => PartPresent
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => PartPresent
+    RatingPrintedOnBody { rating: _, marking: _ } => PartPresent
+    ResistanceCodeRead { milliohms: _, marking: _ } => PartPresent
+    MarkingUnresolved { marking, discriminator: _ } => match marking { Present { value: _ } => PartPresent, Absent => PresenceUnobserved }
+    FootprintUnpopulated { evidence: _ } => PartAbsent
+  }
+}
+
+// An observation whose order against the board's dividing events was not stated: it is placed against
+// none of them, so it can never stand for a state that follows a removal of its own part.
+fn seen_unordered() -> ReadingOrder {
+  OrderUnrecorded { relative_to: [] }
 }
 
 fn names(ns: List<NonEmptyStr>) -> List<TerminalIdentity> {
@@ -146,6 +193,35 @@ fn regulator_pins(row: ElectronicComponentRow) -> List<RegulatorPin> {
     SwitchingRegulatorSpec { regulator } => regulator.pins
     _ => []
   }
+}
+
+fn no_pin_numbers() -> List<Nat> {
+  []
+}
+
+// The numbered pins a manufacturer's pin table declares, whatever the part's kind; a part whose row
+// carries no pin table answers none. A package feature with no pin number (an exposed pad) is not here.
+fn numbered_pins(row: ElectronicComponentRow) -> List<Nat> {
+  match row.specification {
+    TvsDiodeSpec { tvs: _ } => no_pin_numbers()
+    CapacitorSpec { capacitor: _ } => no_pin_numbers()
+    MosfetSpec { mosfet: _ } => no_pin_numbers()
+    TemperatureSensorSpec { sensor } => map(sensor.pins, p => p.number)
+    ConnectorSpec { connector: _ } => no_pin_numbers()
+    HotSwapControllerSpec { controller } => map(controller.pins, p => p.number)
+    ShiftRegisterSpec { register } => map(register.pins, p => p.number)
+    LevelTranslatorSpec { translator } => map(translator.pins, p => p.number)
+    LogicGateSpec { gate } => map(gate.pins, p => p.number)
+    ProgrammableLogicSpec { logic: _ } => no_pin_numbers()
+    RootOfTrustSpec { root_of_trust: _ } => no_pin_numbers()
+    SerialFlashSpec { flash: _ } => no_pin_numbers()
+    SwitchingRegulatorSpec { regulator } => map(regulator.pins, p => p.number)
+  }
+}
+
+// A pin read on a part whose readings name it by number alone.
+fn pin_number_name(number: Nat) -> NonEmptyStr {
+  join(["pin ", to_string(number)], "") as NonEmptyStr
 }
 
 // THE BARE FOOTPRINTS ARE THEIR OWN POINTS. A pad read with its part lifted is a different physical

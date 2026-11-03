@@ -150,7 +150,7 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Boundaries.**
 
 - A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.
-- Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection.
+- Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; the changed site executes the selection (a census of every current site is not required: retired by the 2026-10-30 process ruling, gunbc.design_ruling bad_process_is_worse_than_no_process).
 
 **Existing authorities**
 
@@ -457,6 +457,16 @@ Done means a new ordinary case is data, not control flow: adding it edits a row,
 Families that grew leaf by leaf: alias identity at type-compatibility call sites, per-trait bound pipelines, and qualified-call resolution; receipts and positive specimens are in the ruling and the reviewer brief.
 
 The vertical half is `gunbc.recurring_failure_mode` `symptom_link_patched_without_the_earliest_unjustified_boundary`; the horizontal half is `gunbc.recurring_failure_mode` `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling`, whose recognition rule is addressed to the author, who stops when the prompting instance is fixed. So the same question is asked of the reviewer, for every domain: `gunbc.design_argument` row `s6b.root-generalization`. A repeated pattern is rejected until the author answers why it should not be generalized (§3b, diverges with a stated reason) or that it should be but not now, naming the trigger and follow-up (§4b); the reviewer accepts or rejects that answer, and no answer is a reject.
+
+### Continuous generalization (integration over time)
+
+Root generalization closes a family once its leaves are visible. Continuous generalization is the practice that keeps unfinished integration visible until it is closed (ruling `gunbc.design_ruling continuous_generalization_is_two_sided`). Use cases begin specific, and that is admitted; an individual change may leave integration unfinished. A material integration concern it has already identified may not disappear: it stays discoverable, with an explicit disposition, after the session that found it ends.
+
+**Reconciliation is two-sided.** A newcomer accounts for the incumbent's valid obligations, and the incumbent for the newcomer's valid requirements; neither has authority because it arrived first or is the current task. The new case is another instance of an existing rule, or exposes a missing dimension or mistaken assumption in it, or belongs to a genuinely different concept. Forcing it into a model that cannot express it (a sentinel value, flag or adapter branch) and bypassing a model that could (a second path) are both forks. Apply this through the affected dependency slice and its known sibling consumers, and generalize only as far as the combined requirements justify. Namespace views locate the work; **namespace ancestry does not determine semantic ownership.**
+
+**An unfinished reconciliation is recorded, not remembered.** It lives in its existing owning record or in `gunbc.integration_concern`, which separates a suspected fork (two or more distinct authorities answering one question) from a suspected capability gap (one model that cannot express a concrete requirement), and an affected location from a semantic home. Recording neither satisfies an obligation nor authorizes a contract or safety deviation. A sighting of a known concern updates its row rather than adding one. A concern closes as integrated, with the integrated revision, the superseded declarations cited at the revision where they existed (so deletion does not break the record) and retained execution results; as distinct, with a reason scoped to what was examined; or as withdrawn, with a reason. A completed work item, a merged abstraction or a shorter ledger is not evidence of integration.
+
+Conformance (§3b) stays three-valued; what is being done about an inadequate model is a concern's disposition, not a conformance answer. Concerns are read by relevance to a change -- the modules it changes and the existing models it references -- and browsed by subtree. Discovery is not exhaustive and nothing here is a census: a reviewer may require a disposition for a concern that was raised, never proof that nothing else was noticed.
 
 ## 7. Self-hosting (the principles applied to the compiler itself)
 

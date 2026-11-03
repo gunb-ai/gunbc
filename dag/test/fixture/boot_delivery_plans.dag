@@ -1,0 +1,345 @@
+module test.fixture.boot_delivery_plans
+
+import std.algebra { FreeSemigroup }
+import std.types { List, NonEmptyStr }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, UefiArm64 }
+import extdeps.provisioning.network_boot { NativeDhcpBootOptions, UefiPxe }
+import extdeps.crypto.mac { MacKeyId }
+import extdeps.uri { Uri, Https, Tftp }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaLocator, TransferHttps, UnderManager }
+import extdeps.bmc.virtual_media { RedfishVirtualMediaParams, ConfigfsGadgetParams }
+import extdeps.bmc.access_profile { SurfaceRedfishVirtualMedia, RedfishRoute, BmcBootControlRouteObservation, ProfileFromExternalAuthority }
+import extdeps.uri { uri_https }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.network.mac { mac_address }
+import product.placement_supply { SiteIdentity }
+import gunbc.machine_intake.subject {
+  AssemblyManifest,
+  ComponentIdentity,
+  DimmComponent,
+  FirmwareEntry,
+  FirmwareManifest,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  UnitKey,
+  qualification_subject_of,
+}
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import gunbc.machine_intake.access { AccessContextProfileLookupNotRun, BootDeliveryTarget, NetworkAddressedTarget, ControllerAddressedTarget, boot_delivery_target_subject }
+import gunbc.network_boot_delivery {
+  ArchitectureChainloader,
+  BootBundleAvailabilityReceipt,
+  ControlledNetworkTrustObservation,
+  DhcpFilenameHint,
+  EstablishedControlledNetwork,
+  FleetBootServiceReceipt,
+  GlobalHttpsEndpointReachable,
+  NetworkBootBootControlReceipt,
+  NetworkBootDeliveryEstablished,
+  NetworkBootDeliveryEstablishment,
+  NetworkBootDeliveryStanding,
+  ObservedClientBootModeReceipt,
+  ObservedDhcpPxeClient,
+  SignedBootManifestIdentity,
+  SignedBootManifestReceipt,
+  SiteAnsweredDhcp,
+  SitePxeEdge,
+  SitePxeEdgeReceipt,
+}
+import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
+import gunbc.boot_artifact_delivery {
+  BootControlByFirmwareBootOrder,
+  BootControlRouteOnController,
+  BootDeliveryRefused,
+  DeliveryAccessUnbound,
+  BootDeliveryEligibilityProvenance,
+  BootDeliveryPlan,
+  BootDeliveryPlanned,
+  BootDeliverySolution,
+  BootControlTarget,
+  BootFromNetworkPxe,
+  BootFromRemovableMedia,
+  BootFromUefiHttp,
+  PxeChainBoot,
+  RedfishVirtualMediaPull,
+  SelectedFromNetworkBootEstablishment,
+  SelectedFromProfileIntersection,
+  SelectedFromUefiHttpEvidence,
+  SelectedFromConfigfsQualification,
+  OpenBmcConfigfsUsbGadget,
+  UefiHttpBoot,
+  UefiHttpBootParams,
+}
+
+// Shared boot-delivery fixtures: the intake subject, artifact and network target, the established
+// network-boot evidence, and the two admitted plans a consumer of the route authority is fed. The plans
+// are SUPPLIED values at the consumer's interface; gunbc.boot_artifact_delivery_witness owns the claims
+// that the real solver emits exactly these shapes (a network-addressed target plans PxeChainBoot over
+// BootFromNetworkPxe; a bound Redfish profile plans RedfishVirtualMediaPull over BootFromRemovableMedia).
+
+data unit: UnitKey = "BRD-000777" as UnitKey
+
+data assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-2U-MTC",
+  components: [ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-A1-777" }],
+}
+
+data firmware_manifest: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "1.2.3" }],
+  configuration_digests: [],
+}
+
+data attempt_one: IntakeAttemptId = "intake-20260830-0001" as IntakeAttemptId
+data attempt_two: IntakeAttemptId = "intake-20260830-0002" as IntakeAttemptId
+
+data intake_subject: MachineIntakeSubject = MachineIntakeSubject {
+  subject: qualification_subject_of(unit_key: unit, assembly: assembly, firmware: firmware_manifest),
+  attempt_id: attempt_one,
+}
+
+
+data intake_artifact: BootArtifact = BootArtifact {
+  purpose: IntakeLinuxEnvironment,
+  architecture: Aarch64,
+  digest: content_hash_of_value(value: "intake-linux-aarch64-fixture"),
+  format: IsoImage,
+  entrypoint: "/EFI/BOOT/BOOTAA64.EFI",
+  build_identity: "intake-agent-0.1.0-fixture",
+}
+
+
+data network_target: BootDeliveryTarget = NetworkAddressedTarget {
+  subject: intake_subject,
+  mac: mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 1),
+}
+
+fn network_boot_establishment_for(t: BootDeliveryTarget, digest: ContentHash) -> NetworkBootDeliveryEstablishment {
+  network_boot_establishment_observing(t: t, digest: digest, arch: UefiArm64)
+}
+
+fn network_boot_establishment_observing(t: BootDeliveryTarget, digest: ContentHash, arch: DhcpProcessorArchitecture) -> NetworkBootDeliveryEstablishment {
+  let obs = DeclarationRef {
+    module_path: "test.fixture.boot_delivery_plans",
+    decl_name: "network_boot_establishment_for",
+    field: WholeDeclaration,
+  }
+  let site = "onboarding-segment" as SiteIdentity
+  NetworkBootDeliveryEstablishment {
+    target: t,
+    fleet: FleetBootServiceReceipt {
+      https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
+      origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
+      signing_key_identity: "boot-manifest-key-0" as MacKeyId,
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+    site: SitePxeEdgeReceipt {
+      edge: SitePxeEdge {
+        site: site,
+        discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
+        bootstrap_transports: FreeSemigroup { head: ArchitectureChainloader {
+          architecture: Aarch64,
+          filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+          chainloader_digest: digest,
+          tftp_root: Uri { scheme: Tftp, locator: "192.0.2.10/snponly.efi" },
+        }, tail: [] },
+        global_endpoint_reachability: GlobalHttpsEndpointReachable {
+          broker_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
+          artifact_origin: Uri { scheme: Https, locator: "boot-origin.example.test" },
+          observation: obs,
+          observed_at: 1788000000000,
+        },
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+    client: ObservedClientBootModeReceipt {
+      target: t,
+      site: site,
+      client: ObservedDhcpPxeClient {
+        vendor_class: "PXEClient:Arch:00011:UNDI:003016",
+        arch: arch,
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+    boot_control: NetworkBootBootControlReceipt {
+      target: t,
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+    manifest: SignedBootManifestReceipt {
+        identity: SignedBootManifestIdentity {
+        target_unit: boot_delivery_target_subject(target: t).subject.unit_key,
+        attempt_id: boot_delivery_target_subject(target: t).attempt_id,
+        nonce: "nonce-boot-artifact",
+        architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: Uri { scheme: Tftp, locator: "192.0.2.10/snponly.efi" } },
+        chainloader_digest: digest,
+        kernel_digest: digest,
+        initrd_digest: digest,
+        root_digest: digest,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+    bundle: BootBundleAvailabilityReceipt {
+      kernel_digest: digest,
+      initrd_digest: digest,
+      root_digest: digest,
+      served_from: Uri { scheme: Https, locator: "boot-origin.example.test" },
+      publication_observation: obs,
+      readback_observation: obs,
+    },
+    trust: EstablishedControlledNetwork {
+      evidence: ControlledNetworkTrustObservation { site: site, observation: obs, observed_at: 1788000000000 },
+    },
+  }
+}
+
+fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> NetworkBootDeliveryStanding {
+  NetworkBootDeliveryEstablished { evidence: network_boot_establishment_for(t: t, digest: digest) }
+}
+
+data pxe_plan: BootDeliveryPlan = BootDeliveryPlan {
+  target: network_target,
+  artifact: intake_artifact,
+  delivery: PxeChainBoot { evidence: pxe_establishment },
+  boot_control: BootFromNetworkPxe,
+  boot_control_route: BootControlByFirmwareBootOrder,
+  eligibility: BootDeliveryEligibilityProvenance {
+    profile_provenance: none,
+    evidence_manifest: [],
+    selected: SelectedFromNetworkBootEstablishment { establishment: pxe_establishment },
+    considered: [],
+  },
+}
+
+data pxe_establishment: NetworkBootDeliveryEstablishment = network_boot_establishment_for(t: network_target, digest: intake_artifact.digest)
+
+// The controller-addressed target a media plan is solved for: a network-addressed target has no controller, so
+// the solver cannot reach a BMC delivery for it.
+data controller_target: BootDeliveryTarget = ControllerAddressedTarget {
+  subject: intake_subject,
+  endpoint: BmcControllerEndpoint { host: "192.168.1.60" },
+}
+
+data removable_media_plan: BootDeliveryPlan = BootDeliveryPlan {
+  target: controller_target,
+  artifact: intake_artifact,
+  delivery: RedfishVirtualMediaPull {
+    params: RedfishVirtualMediaParams {
+      media: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "1" }, media_id: "CD1" },
+      image: Uri { scheme: Https, locator: "boot-origin.example.test/intake.iso" },
+      transfer_protocol: TransferHttps,
+    },
+  },
+  boot_control: BootFromRemovableMedia,
+  boot_control_route: BootControlRouteOnController {
+    observation: BmcBootControlRouteObservation {
+      route: RedfishRoute { system_locator: "/redfish/v1/Systems/1", chassis_locator: "/redfish/v1/Chassis/1", manager_locator: "/redfish/v1/Managers/1" },
+      raw_response: content_hash_of_value(value: "boot-control-redfish-fixture"),
+      observed_at: 1788000000000,
+    },
+  },
+  eligibility: BootDeliveryEligibilityProvenance {
+    profile_provenance: Present { value: ProfileFromExternalAuthority { authority: ExternalAuthority { uri: uri_https(locator: "example.invalid/witness-fixture-not-fleet-fact") } } },
+    evidence_manifest: [],
+    selected: SelectedFromProfileIntersection { surface: SurfaceRedfishVirtualMedia },
+    considered: [],
+  },
+}
+
+data pxe_solution: BootDeliverySolution = BootDeliveryPlanned { plan: pxe_plan }
+data removable_media_solution: BootDeliverySolution = BootDeliveryPlanned { plan: removable_media_plan }
+
+data refused_solution: BootDeliverySolution = BootDeliveryRefused {
+  cause: DeliveryAccessUnbound {
+    standing: AccessContextProfileLookupNotRun { endpoint: BmcControllerEndpoint { host: "192.168.1.60" } },
+  },
+}
+
+// A solution whose plan selected `control`, for consumers parameterised over the control target. The PXE
+// plan's evidence observes `client_arch` (removable media ignores it). A network-addressed control with no
+// observed architecture answers the refused solution: no value is substituted for the unobserved client. Delivery and eligibility are
+// the PXE plan's or the removable-media plan's; only boot_control varies for the HTTP-boot arm, which no
+// real-solver witness plans here.
+fn solution_selecting_control(control: BootControlTarget, client_arch: DhcpProcessorArchitecture?) -> BootDeliverySolution {
+  match control {
+    BootFromRemovableMedia => removable_media_solution
+    _ => match client_arch {
+      Present { value: a } => network_solution_selecting_control(control: control, arch: a)
+      Absent => refused_solution
+    }
+  }
+}
+
+fn network_solution_selecting_control(control: BootControlTarget, arch: DhcpProcessorArchitecture) -> BootDeliverySolution {
+  let establishment = network_boot_establishment_observing(t: network_target, digest: intake_artifact.digest, arch: arch)
+  let observing_pxe = BootDeliveryPlan {
+    target: network_target,
+    artifact: intake_artifact,
+    delivery: PxeChainBoot { evidence: establishment },
+    boot_control: BootFromNetworkPxe,
+    boot_control_route: BootControlByFirmwareBootOrder,
+    eligibility: BootDeliveryEligibilityProvenance {
+      profile_provenance: none,
+      evidence_manifest: [],
+      selected: SelectedFromNetworkBootEstablishment { establishment: establishment },
+      considered: [],
+    },
+  }
+  match control {
+    BootFromRemovableMedia => removable_media_solution
+    BootFromNetworkPxe => BootDeliveryPlanned { plan: observing_pxe }
+    BootFromUefiHttp =>
+      BootDeliveryPlanned { plan: BootDeliveryPlan {
+        target: observing_pxe.target,
+        artifact: observing_pxe.artifact,
+        delivery: observing_pxe.delivery,
+        boot_control: BootFromUefiHttp,
+        boot_control_route: observing_pxe.boot_control_route,
+        eligibility: observing_pxe.eligibility,
+      } }
+  }
+}
+
+fn uefi_http_plan_serving(digest: ContentHash) -> BootDeliveryPlan {
+  BootDeliveryPlan {
+    target: network_target,
+    artifact: intake_artifact,
+    delivery: UefiHttpBoot { params: UefiHttpBootParams { image: Uri { scheme: Https, locator: "boot.example.test/image" }, artifact_digest: digest } },
+    boot_control: BootFromUefiHttp,
+    boot_control_route: BootControlByFirmwareBootOrder,
+    eligibility: BootDeliveryEligibilityProvenance {
+      profile_provenance: none,
+      evidence_manifest: [],
+      selected: SelectedFromUefiHttpEvidence { evidence: [] },
+      considered: [],
+    },
+  }
+}
+
+fn configfs_plan_without_qualification() -> BootDeliveryPlan {
+  BootDeliveryPlan {
+    target: removable_media_plan.target,
+    artifact: intake_artifact,
+    delivery: OpenBmcConfigfsUsbGadget { params: ConfigfsGadgetParams { nbd_server_host: "nbd.example.test" as NonEmptyStr, nbd_port: 10809, export_name: "export0" as NonEmptyStr, nbd_device: "/dev/nbd0" as NonEmptyStr, udc: "udc0" as NonEmptyStr } },
+    boot_control: BootFromRemovableMedia,
+    boot_control_route: removable_media_plan.boot_control_route,
+    eligibility: BootDeliveryEligibilityProvenance {
+      profile_provenance: removable_media_plan.eligibility.profile_provenance,
+      evidence_manifest: [],
+      selected: SelectedFromConfigfsQualification { qualified_by: [] },
+      considered: [],
+    },
+  }
+}

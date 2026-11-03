@@ -1,4 +1,5 @@
 module extdeps.github.users
+import std.types { Bearer }
 
 import std.types { String, Int, Secret }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

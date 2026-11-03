@@ -1,4 +1,5 @@
 module extdeps.cloud.gcp.storage
+import std.types { Bearer }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

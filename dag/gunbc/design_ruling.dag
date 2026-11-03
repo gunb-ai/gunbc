@@ -140,6 +140,13 @@ data root_generalization_closes_breadth: DesignRuling = DesignRuling {
   provenance: "Operator ruling, amended 2026-10-16 after side-chat review: the method is named root generalization, with anti-unification (Plotkin) as its formal core, and lives in 6b beside chain re-derivation rather than in its own section. Root-cause repair fixes depth; this closes breadth. A new case that needs new code is first asked whether it is another instance of what existing leaves already do; if so, every leaf of that shape is collected, generalized to the least general rule at the earliest unjustified boundary (6b), and deleted (3, delete-first), repeating while the generalizations form a family. The horizontal half was filed as a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling with a recognition rule addressed to authors, which did not work: three fork families grew in one week while it existed (type-alias identity at node_type_compatible call sites, #13941 #14069 #13974 #14043 #14057; v1 Rust trait-bound pipelines, #13978 #14010 #14020; qualified-call resolution, #13925 #14085 #14089); positive specimens #14151 #14193 #13872 #14187). So the check is placed on the reviewer: a repeated pattern is rejected until the author answers with a stated reason not to generalize or a named trigger and follow-up, and the reviewer accepts or rejects that answer; no answer is a reject.",
 }
 
+data continuous_generalization_is_two_sided: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "continuous_generalization_is_two_sided"),
+  decided: "2026-11-02",
+  section: "6b",
+  provenance: "Operator ruling, 2026-11-02: use cases begin specific, and the repository rather than the operator carries the pressure to integrate them over time. Reconciliation is two-sided: neither the incumbent nor the newcomer has authority because it arrived first or is the current task. A change may leave integration unfinished, but a material concern it identifies stays discoverable with an explicit disposition, survives the session that found it, and is revisited by bounded periodic integration work. The operator scoped the first deliverable to an honestly scoped integration record and reading path, with automatic briefing, periodic scheduling and ownership handoff reported as unconnected until their routes exist; conformance stays three-valued.",
+}
+
 data v2_better_than_the_seed: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v2_better_than_the_seed"),
   decided: "2026-10-02",
@@ -618,6 +625,7 @@ fn design_rulings() -> List<DesignRuling> {
     epistemic_humility_is_symmetric,
     chain_re_derivation,
     root_generalization_closes_breadth,
+    continuous_generalization_is_two_sided,
     instrument_is_a_row_not_a_flag,
     authorization_pattern_is_a_selection,
     one_approval_route_for_every_privileged_action,

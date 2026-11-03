@@ -1,4 +1,5 @@
 module extdeps.github.org_actions
+import std.types { Bearer }
 
 import std.types { NonEmptyStr, String, Bool, Int, List, Secret }
 import extdeps.github.github { default_api_base }
