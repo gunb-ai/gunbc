@@ -58,7 +58,6 @@ data self_host_wet_route_receipt_lifetime_stall: GuaranteeStall = GuaranteeStall
       "test.claim.self_host_source_authority_behavioral_witness.self_host_source_authority_behavioral_receipt_holds",
       "test.claim.self_host_target_carriers_behavioral_witness.self_host_target_carriers_behavioral_receipt_holds",
       "test.claim.self_host_use_site_verdict_behavioral_witness.self_host_use_site_verdict_behavioral_receipt_holds",
-      "test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses",
       "v2.test.claim.auth_declared_but_unwired_witness.auth_declared_but_unwired_witness_keystone_holds",
       "v2.test.claim.bootstrap.bootstrap_witness_keystone_holds",
       "v2.test.claim.dag_acceptance_rustc_wet.rustc_accepts_valid_target_source",
