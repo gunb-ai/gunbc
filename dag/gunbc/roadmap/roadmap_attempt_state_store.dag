@@ -695,8 +695,8 @@ fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, 
 // store op is CREATE-NEW on BOTH branches so an existing member is a typed outcome (AlreadyExists), never an
 // overwrite. Business key only; the path is derived from the sealed attempt-state record, never supplied.
 // The dedicated-account events member is group-writable AT CREATION (owner rw, group rw, other none), never
-// widened afterwards. THE SINGLE AUTHORITY for this FileMode value; the actuator's former copy
-// (dispatch_attempt_events_group_writable_mode) was deleted as dead when its consumer was removed.
+// widened afterwards. THE SINGLE AUTHORITY for this FileMode value: the actuator's duplicate row was deleted as
+// dead when its only consumer was removed (review 90098), and nothing else declares a FileMode for this member.
 data attempt_append_log_events_group_writable_mode: FileMode = FileMode {
   owner: PermissionBits { read: true, write: true, execute: false },
   group: PermissionBits { read: true, write: true, execute: false },
