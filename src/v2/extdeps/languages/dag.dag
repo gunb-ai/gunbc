@@ -2129,11 +2129,9 @@ fn dag_grammar_expr_continuation_row_rest_expr(
 // -- that branch has no block slot, so the record reading is the only one that fits there.
 fn dag_grammar_condition_ident_suffix_expr() -> GrammarExpr {
   dag_grammar_primary_ident_suffix_builder(
-    record_arm: grammar_expr_and_predicate(
-      element: dag_grammar_sequence(
-        left: dag_grammar_record_literal_arm_expr(),
-        right: dag_grammar_expr_continuation_head_expr()
-      )
+    record_arm: dag_grammar_sequence(
+      left: dag_grammar_record_literal_arm_expr(),
+      right: grammar_expr_and_predicate(element: dag_grammar_expr_continuation_head_expr())
     )
   )
 }
