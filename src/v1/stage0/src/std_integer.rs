@@ -105,6 +105,12 @@ pub type Int = i64;
 
 pub type UInt = i64;
 
+pub fn nat_to_int(n: Nat) -> i64 {
+    {
+        n
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UInt8Result {

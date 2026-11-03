@@ -5,6 +5,7 @@ use self::CheckedInt::*;
 use self::CheckedIntOperands::*;
 use self::CheckedNat::*;
 use self::IntegerArithmeticOperation::*;
+pub use crate::std_algebra::collection_concat_shape;
 pub use crate::std_nat::Nat;
 pub use crate::std_optional::Optional;
 use crate::v1_rt;

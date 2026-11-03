@@ -21,7 +21,7 @@ import product.fabric.isolation {
   IsolationProfile, IsolationGuarantee,
   unsatisfied_isolation_guarantees, unsatisfied_isolation_wire,
 }
-import std.nat { Nat }
+import std.nat { Nat, nat_ceil_div }
 
 // A SupplierOffer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
@@ -615,11 +615,14 @@ fn seconds_per_hour() -> Nat {
 // vendor into the per-hour arm made a three-minute job project a whole hour, a
 // twentyfold overstatement that would have kept the selection fold from ever
 // choosing that supplier. The quantum is now the supplier's own.
+// Ceiling division through the one Nat home, std.nat nat_ceil_div. `quantum_seconds - 1` is a Nat
+// difference, which is an Int (std.coercion arithmetic carrier selection), so the old
+// `(seconds + (quantum_seconds - 1)) / q` was an Int beside the Nat branch. A zero quantum bills
+// per second, as before (nat_ceil_div answers Absent exactly there).
 fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
-  if quantum_seconds == 0 {
-    seconds
-  } else {
-    (seconds + (quantum_seconds - 1)) / quantum_seconds
+  match nat_ceil_div(a: seconds, b: quantum_seconds) {
+    Present { value: units } => units
+    Absent => seconds
   }
 }
 
