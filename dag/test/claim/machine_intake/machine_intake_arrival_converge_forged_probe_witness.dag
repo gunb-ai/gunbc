@@ -108,7 +108,7 @@ test fn the_witness_identity_mints_refuse_an_outside_caller() -> Bool {
 // witness-provenanced identity through a mint that saw its admitted caller. This probe calls the ACTUAL
 // helpers from an outside module and requires the call-admission refusal at each. Paired positive: the six
 // claims in the witness that call the same helpers and run the forced-change path (the claim above the row).
-data outside_identity_carrier_helper_probe_source: String = "module probe_identity_carrier_helpers_outside\nimport gunbc.machine_intake.mtjade1_access_observation { IdentityBindInputs, RecordedFruObservation }\nimport test.claim.machine_intake.machine_intake_arrival_converge_witness { srv13_identity_bind_inputs, srv13_witness_fru_observation }\nfn borrow_bind() -> IdentityBindInputs { srv13_identity_bind_inputs() }\nfn borrow_observation() -> RecordedFruObservation? { srv13_witness_fru_observation() }\n"
+data outside_identity_carrier_helper_probe_source: String = "module probe_identity_carrier_helpers_outside\nimport gunbc.machine_intake.arrival_converge { IdentityBindInputs }\nimport gunbc.machine_intake.mtjade1_access_observation { RecordedFruObservation }\nimport test.claim.machine_intake.machine_intake_arrival_converge_witness { srv13_identity_bind_inputs, srv13_witness_fru_observation }\nfn borrow_bind() -> IdentityBindInputs { srv13_identity_bind_inputs() }\nfn borrow_observation() -> RecordedFruObservation? { srv13_witness_fru_observation() }\n"
 
 test fn the_witness_identity_carrier_helpers_refuse_an_outside_caller() -> Bool {
   let c = compile_dag_diagnostic_census(outside_identity_carrier_helper_probe_source)

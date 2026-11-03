@@ -617,6 +617,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
 import extdeps.rust.cargo { cargo_default_release_dir }
+import gunbc.shell_command_text { shell_command_text_of_argv }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
