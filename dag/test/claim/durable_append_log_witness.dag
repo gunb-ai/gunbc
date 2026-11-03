@@ -19,7 +19,7 @@ import std.durable_append_log {
   AppendLogReadback, AppendLogSettled, AppendLogOpenPrefix, AppendLogTornTail, AppendLogStandingUnobserved,
   append_stream_readback,
   MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites, AppendWriter, HostWriter, SandboxWriter,
-  IntentAppendRecord, AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused,
+  AppendWriteAdmission, AppendWriteAdmitted, AppendWriteRefused,
   append_write_admission, append_host_create_admission,
   WriterExitObservation, WriterExitSeen, WriterExitUnseen, WriterExitedClean, append_window_completion,
 }
@@ -203,20 +203,20 @@ test fn the_host_creates_the_member_once_and_only_while_it_does_not_exist() -> B
 // APPENDS are what the sandbox window admits -- create is covered by the two claims above, so this one stays
 // about the window: its own window admits, a released window refuses, another principal's window refuses.
 test fn the_declared_principal_appends_only_inside_its_own_window() -> Bool {
-  admitted(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterHoldsWindow { owner: worker() }))
-    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterWindowReleased {}))
-    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: other() }, intent: IntentAppendRecord {}, standing: WriterHoldsWindow { owner: worker() }))
+  admitted(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, standing: WriterHoldsWindow { owner: worker() }))
+    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, standing: WriterWindowReleased {}))
+    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: other() }, standing: WriterHoldsWindow { owner: worker() }))
 }
 
 test fn a_host_only_member_refuses_the_sandbox() -> Bool {
-  refused(append_write_admission(policy: HostOnly {}, writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterWindowReleased {}))
+  refused(append_write_admission(policy: HostOnly {}, writer: SandboxWriter { principal: worker() }, standing: WriterWindowReleased {}))
 }
 
 // The standing decides APPENDS: an unobserved one admits nobody, host or sandbox. (A create has no standing
 // parameter at all, so there is nothing here to fabricate for a create -- see the compile-fed pair below.)
 test fn an_unobserved_standing_admits_nobody() -> Bool {
-  refused(append_write_admission(policy: handed_off(), writer: HostWriter {}, intent: IntentAppendRecord {}, standing: WriterStandingUnobserved { cause: "x" as NonEmptyStr }))
-    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, intent: IntentAppendRecord {}, standing: WriterStandingUnobserved { cause: "x" as NonEmptyStr }))
+  refused(append_write_admission(policy: handed_off(), writer: HostWriter {}, standing: WriterStandingUnobserved { cause: "x" as NonEmptyStr }))
+    && refused(append_write_admission(policy: handed_off(), writer: SandboxWriter { principal: worker() }, standing: WriterStandingUnobserved { cause: "x" as NonEmptyStr }))
 }
 
 // THE STANDING PARAMETER IS ABSENT FROM THE CREATE ADMISSION -- PROVEN AT COMPILE TIME, not by convention.
@@ -240,22 +240,22 @@ test fn a_standing_handed_to_the_host_create_admission_is_refused_at_compile() -
   ))
 }
 
-// THE HOLE IS NOW A CONSTRUCTION HOLE, SO THE CONTROL IS A COMPILER, NOT A RUNTIME REFUSAL: `AppendWriteIntent`
-// has no create variant, so an append admission call cannot be written with a create intent at all. The two
-// fixtures below are the same call in the same import closure -- the only difference is `IntentCreateEmpty {}`
-// against `IntentAppendRecord {}` -- so a blocking-diagnostic delta of >= 1 can only be the create intent, and
-// the append twin must be clean. A runtime "the create is refused" claim is no longer writable, and that is the
-// point: the mistake cannot be expressed, so no arm of any admission has to decide whether a standing or a
-// policy speaks about a create.
-data append_intent_accepted_source: String = "module probe_append_intent_ok\nimport std.types { Bool }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport std.durable_append_log { HostCreatesThenSandboxWrites, HostWriter, IntentAppendRecord, WriterWindowReleased, AppendWriteAdmitted, AppendWriteRefused, append_write_admission }\nfn principal() -> DurableHoldOwnerRef { \"worker\" as DurableHoldOwnerRef }\nfn f() -> Bool {\n  match append_write_admission(policy: HostCreatesThenSandboxWrites { principal: principal() }, writer: HostWriter {}, intent: IntentAppendRecord {}, standing: WriterWindowReleased {}) {\n    AppendWriteAdmitted => true\n    AppendWriteRefused { refusal: _ } => false\n  }\n}\n"
+// THE HOLE IS A CONSTRUCTION HOLE, SO THE CONTROL IS A COMPILER, NOT A RUNTIME REFUSAL. `AppendWriteIntent`
+// is gone and the append admission takes no intent at all: an append call names (policy, writer, standing), and
+// the create-intent call below has no such parameter AND names a type that no longer exists. The two fixtures are
+// the same call in the same import closure, differing only by that `intent:` argument, so a blocking-diagnostic
+// delta of >= 1 can only be the create intent, and the append twin must be clean. No runtime "the create is
+// refused" claim is writable any more -- that is the point: the mistake cannot be written, so no arm of any
+// admission ever decides whether a standing or a policy speaks about a create.
+data append_intent_accepted_source: String = "module probe_append_intent_ok\nimport std.types { Bool }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport std.durable_append_log { HostCreatesThenSandboxWrites, HostWriter, WriterWindowReleased, AppendWriteAdmitted, AppendWriteRefused, append_write_admission }\nfn principal() -> DurableHoldOwnerRef { \"worker\" as DurableHoldOwnerRef }\nfn f() -> Bool {\n  match append_write_admission(policy: HostCreatesThenSandboxWrites { principal: principal() }, writer: HostWriter {}, standing: WriterWindowReleased {}) {\n    AppendWriteAdmitted => true\n    AppendWriteRefused { refusal: _ } => false\n  }\n}\n"
 
-data append_intent_create_source: String = "module probe_append_intent_create\nimport std.types { Bool }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport std.durable_append_log { HostCreatesThenSandboxWrites, HostWriter, IntentAppendRecord, WriterWindowReleased, AppendWriteAdmitted, AppendWriteRefused, append_write_admission }\nfn principal() -> DurableHoldOwnerRef { \"worker\" as DurableHoldOwnerRef }\nfn f() -> Bool {\n  match append_write_admission(policy: HostCreatesThenSandboxWrites { principal: principal() }, writer: HostWriter {}, intent: IntentCreateEmpty {}, standing: WriterWindowReleased {}) {\n    AppendWriteAdmitted => true\n    AppendWriteRefused { refusal: _ } => false\n  }\n}\n"
+data append_intent_create_source: String = "module probe_append_intent_create\nimport std.types { Bool }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport std.durable_append_log { HostCreatesThenSandboxWrites, HostWriter, IntentCreateEmpty, WriterWindowReleased, AppendWriteAdmitted, AppendWriteRefused, append_write_admission }\nfn principal() -> DurableHoldOwnerRef { \"worker\" as DurableHoldOwnerRef }\nfn f() -> Bool {\n  match append_write_admission(policy: HostCreatesThenSandboxWrites { principal: principal() }, writer: HostWriter {}, intent: IntentCreateEmpty {}, standing: WriterWindowReleased {}) {\n    AppendWriteAdmitted => true\n    AppendWriteRefused { refusal: _ } => false\n  }\n}\n"
 
-test fn the_append_admission_with_an_append_intent_constructs_clean() -> ProcessExit {
+test fn the_append_admission_takes_no_intent_and_constructs_clean() -> ProcessExit {
   census_exit(census_verdict(census: total_blocking_census(source: append_intent_accepted_source), holds: fn(n) { n == 0 }))
 }
 
-test fn a_create_intent_at_the_append_admission_does_not_construct() -> ProcessExit {
+test fn a_create_intent_handed_to_the_append_admission_does_not_construct() -> ProcessExit {
   census_exit(census_delta_verdict(
     red: total_blocking_census(source: append_intent_create_source),
     control: total_blocking_census(source: append_intent_accepted_source),

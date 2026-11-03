@@ -4,10 +4,9 @@ import std.types { String, NonEmptyStr, Int, List }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { retires_dissolution }
-import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadOutcome, FilesystemReadRefused, filesystem_read_outcome, FilesystemWriteOutcome, FilesystemWriteRefused, filesystem_write_outcome, FilesystemFileObservation, FilesystemFileIndeterminate, filesystem_file_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_observation, FilesystemEntryPresence, filesystem_entry_presence, FilesystemCreateNew, FilesystemCreateRefused, FilesystemNotFound, filesystem_create_new, FilesystemEntrySubjectRefused, FilesystemEntryPresenceIndeterminate, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, FilesystemFileAbsent, FilesystemFileRead }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadOutcome, FilesystemReadRefused, filesystem_read_outcome, FilesystemWriteOutcome, FilesystemWriteRefused, filesystem_write_outcome, FilesystemFileObservation, FilesystemFileIndeterminate, filesystem_file_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_observation, FilesystemEntryPresence, filesystem_entry_presence, FilesystemCreateNew, FilesystemCreateRefused, FilesystemNotFound, filesystem_create_new, FilesystemEntrySubjectRefused, FilesystemEntryPresenceIndeterminate, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, FilesystemFileAbsent, FilesystemFileRead, filesystem_listing_entry_names }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import std.optional { Present, Absent }
-import extdeps.filesystem.filesystem_io { filesystem_listing_entry_names, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import gunbc.durable_append_log_store { AppendLogParent, AppendLogSlot, AppendLogReady, AppendLogUnready, AppendLogLegacyRefused, AppendLogLegacyCause, append_log_store_mint, sandbox_provider, attempt_worker_principal_role }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, WorkerIsServiceUser, WorkerDedicatedAccount }
 import std.durable_append_log { AppendFraming, NewlineDelimitedStream, HostCreatesThenSandboxWrites, AppendWriteAdmitted, AppendWriteRefused, AppendWriteRefusal, append_host_create_admission }
@@ -662,7 +661,8 @@ fn attempt_append_log_store_open(instance: HostDashboardInstance, node: String, 
 // to the sandbox by the member's existence. Contract: std.durable_append_log append_host_create_admission
 // (policy, member existence) -- it takes NO AppendWriterStanding, so this call fabricates nothing (review 90279);
 // the create is exclusive through the Filesystem.WriteCreateNew effect below, and the append admission now
-// has NO create intent in its intent type any more, so handing a create to it does not even construct: this
+// takes NO intent parameter at all (its intent type was deleted with the create variant), so handing a create
+// to it does not even construct:
 // create admission is the only create route there is. The dedicated-account branch keeps the old
 // group-writable mode at creation; the service-user branch was historically an overwrite-capable Write, but the
 // store op is CREATE-NEW on BOTH branches so an existing member is a typed outcome (AlreadyExists), never an

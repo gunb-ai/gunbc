@@ -195,7 +195,7 @@ fn append_stream_readback_at(observed: AppendStreamObservation, standing: Append
 // it. The contract is therefore a SEQUENCE of exclusive windows, never two writers at once:
 //   HostCreatesThenSandboxWrites   host create-new (empty), then ONE sandbox window, then host reads only.
 // The create and the append are DIFFERENT admissions over DIFFERENT types, and a create CANNOT be handed to the
-// append admission at all: AppendWriteIntent has no create variant, so such a call never constructs (review
+// append admission at all: that admission takes no intent parameter, so such a call never constructs (review
 // 90279). append_write_admission judges appends only (policy, writer, standing); the ONE create route is
 // append_host_create_admission(policy, existence), which has NO standing argument -- a create is exclusive
 // through create-new, so a standing there could only ever be fabricated by the caller.
@@ -208,16 +208,13 @@ type AppendWriter
   = HostWriter
   | SandboxWriter { principal: DurableHoldOwnerRef }
 
-// AN APPEND INTENT ONLY. There is deliberately NO create variant here: a create is a different effect
-// (Filesystem.WriteCreateNew, exclusive) with a different admission (append_host_create_admission, which takes
-// no standing). Review 90279's third round: while `IntentCreateEmpty` lived here, THREE arms had to refuse it at
-// runtime, and which one answered first decided whether a standing or a policy spoke about a create -- a
-// construction hole dressed up as validation. With the variant deleted, handing a create to the append admission
-// cannot be constructed at all, so no runtime create-refusal is needed and none exists. The "member already
-// exists" fact for a create is the create admission's own CreateOverExistingMember.
-// The `| ` on the variant line is what makes this a one-variant SUM; `type X = Name` would be an alias.
-type AppendWriteIntent
-  = | IntentAppendRecord
+// NO INTENT PARAMETER ANYWHERE. There used to be an `AppendWriteIntent` with `IntentCreateEmpty` alongside
+// `IntentAppendRecord`, and three arms had to refuse the create at runtime -- which arm answered first decided
+// whether a standing or a policy spoke about a create (review 90279). Deleting the create variant left exactly
+// one inhabitant, so the parameter went too: this module's admission admits APPENDS, which is what its name
+// already says, and a create has its own admission below. A call that still passes `intent:` -- a create intent
+// or anything else -- has no such parameter and does not construct. The "member already exists" fact for a
+// create is the create admission's own CreateOverExistingMember.
 
 type AppendWriteRefusal
   = WriterNotAuthorizedByPolicy
@@ -238,26 +235,21 @@ type AppendWriteAdmission
 fn append_write_admission(
   policy: MemberWriterPolicy,
   writer: AppendWriter,
-  intent: AppendWriteIntent,
   standing: AppendWriterStanding,
 ) -> AppendWriteAdmission {
-  // APPENDS ONLY: `intent` cannot carry anything else (AppendWriteIntent has no create variant), so this body
-  // judges the standing, the policy and the principal -- and never has to answer a create.
-  match intent {
-    IntentAppendRecord => match standing {
-      WriterStandingUnobserved { cause: c } => AppendWriteRefused { refusal: WriterStandingUnknown { cause: c } }
-      _ => match policy {
-        HostOnly => match writer {
-          HostWriter => append_host_admission(standing: standing)
-          SandboxWriter { principal: _ } => AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
+  match standing {
+    WriterStandingUnobserved { cause: c } => AppendWriteRefused { refusal: WriterStandingUnknown { cause: c } }
+    _ => match policy {
+      HostOnly => match writer {
+        HostWriter => append_host_admission(standing: standing)
+        SandboxWriter { principal: _ } => AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
+      }
+      HostCreatesThenSandboxWrites { principal: allowed } => match writer {
+        HostWriter => match standing {
+          WriterHoldsWindow { owner: o } => AppendWriteRefused { refusal: HostWriteDuringSandboxWindow { holder: o } }
+          _ => AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
         }
-        HostCreatesThenSandboxWrites { principal: allowed } => match writer {
-          HostWriter => match standing {
-            WriterHoldsWindow { owner: o } => AppendWriteRefused { refusal: HostWriteDuringSandboxWindow { holder: o } }
-            _ => AppendWriteRefused { refusal: WriterNotAuthorizedByPolicy }
-          }
-          SandboxWriter { principal: p } => append_sandbox_admission(allowed: allowed, principal: p, standing: standing)
-        }
+        SandboxWriter { principal: p } => append_sandbox_admission(allowed: allowed, principal: p, standing: standing)
       }
     }
   }
@@ -279,8 +271,8 @@ fn append_host_admission(standing: AppendWriterStanding) -> AppendWriteAdmission
 // an existing member fails at the effect, so a writer-window standing cannot add a refusal here and a caller
 // would have to FABRICATE one to satisfy a standing-carrying signature. There is no standing parameter to
 // fabricate; policy still decides WHO may create, and under HostCreatesThenSandboxWrites the host may create
-// only while the member is absent. A create CANNOT reach the append admission above at all: AppendWriteIntent
-// has no create variant, so that mistake is a construction error, not a runtime refusal.
+// only while the member is absent. A create CANNOT reach the append admission above at all: it takes no
+// intent parameter, so that mistake is a construction error, not a runtime refusal.
 fn append_host_create_admission(policy: MemberWriterPolicy, member_exists: Bool) -> AppendWriteAdmission {
   match policy {
     HostOnly => if member_exists { AppendWriteRefused { refusal: CreateOverExistingMember } } else { AppendWriteAdmitted }
