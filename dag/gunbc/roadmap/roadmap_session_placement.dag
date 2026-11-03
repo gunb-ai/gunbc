@@ -27,6 +27,7 @@ import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, compute_reservation_wire,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, compute_capacity_store,
+  ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
   compute_memory_ceiling,
 }
 import gunbc.compute.work_class_grant {
@@ -252,12 +253,18 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
           match session_attempt_slots_store(instance: instance) {
             SessionAttemptSlotsStoreUnready { detail } => SessionStoresUnresolved { detail: detail }
             SessionAttemptSlotsStoreReady { store: slots } =>
-              SessionStoresResolved { stores: SessionPlacementStores {
-                slots: slots,
-                records_dir: session_placement_records_dir(instance: instance),
-                store: compute_capacity_store(subject: subject),
-                partition: subject.partition,
-              } }
+              // THE LEDGER ARRIVES AS A STANDING. An unstanding ledger is an unresolved store set -- the
+              // evidence and settle readers already carry a SessionStoresUnresolved path, so no default
+              // store is invented and no seat is freed on a store nobody opened.
+              match compute_capacity_store(subject: subject) {
+                ComputeCapacityStoreUnready { area: area, detail: detail } => SessionStoresUnresolved { detail: join(["the capacity ledger is not standing at ", area, ": ", detail], "") }
+                ComputeCapacityStoreReady { store: ledger } => SessionStoresResolved { stores: SessionPlacementStores {
+                  slots: slots,
+                  records_dir: session_placement_records_dir(instance: instance),
+                  store: ledger,
+                  partition: subject.partition,
+                } }
+              }
           }
       }
   }
@@ -272,7 +279,6 @@ type SessionPlacementGrant {
   partition: PartitionId
   amount: Kibibyte
   class_grant: WorkClassGrant
-  store: FabricStorageBinding
   slot: AttemptRecord
   slot_generation: CasGeneration
 }
@@ -321,10 +327,10 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
               SessionPlacementRefused { detail: join(["the session slot could not be opened, so nothing was reserved: ", d], "") }
             AttemptAdvanced { state: _, generation: g } =>
               match host_capacity_reserve(instance: instance, pool: pool, reference: record.unit as NonEmptyStr, term_seconds: session_placement_term_seconds, request: record.granted) {
-                ComputeReserved { grant: lease, partition: p, amount: a, store: s } =>
+                ComputeReserved { grant: lease, partition: p, amount: a, store: _ } =>
                   SessionPlacementGranted { grant: SessionPlacementGrant {
                     node_id: node_id, attempt_key: attempt_key, unit: record.unit as NonEmptyStr,
-                    lease: lease, partition: p, amount: a, class_grant: class_grant, store: s, slot: record, slot_generation: g,
+                    lease: lease, partition: p, amount: a, class_grant: class_grant, slot: record, slot_generation: g,
                   } }
                 ComputeCapacityFull { wire: w } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeCapacityFull { wire: w }))
                 ComputeHostBelowFloor { requested: rq, available: av } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeHostBelowFloor { requested: rq, available: av }))
@@ -362,7 +368,7 @@ fn session_placement_begin_launch(stores: SessionPlacementStores, grant: Session
     AttemptAdvanced { state: s, generation: g } =>
       SessionLaunchAdmitted { grant: SessionPlacementGrant {
         node_id: grant.node_id, attempt_key: grant.attempt_key, unit: grant.unit, lease: grant.lease, partition: grant.partition,
-        amount: grant.amount, class_grant: grant.class_grant, store: grant.store,
+        amount: grant.amount, class_grant: grant.class_grant,
         slot: attempt_record_with_state(r: grant.slot, state: s),
         slot_generation: g,
       } }
@@ -391,7 +397,11 @@ type SessionAbandonment {
 }
 
 fn session_abandon_release(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr, closed: String) -> SessionAbandonment {
-  let freed = compute_release_on(store: grant.store, partition: grant.partition, appropriation: session_ledger_fold_ceiling, reference: grant.lease.reference, reason: reason)
+  // THE LEDGER IS THE ROUTE'S, NOT THE GRANT'S. SessionPlacementStores already carries the capacity ledger the
+  // route opened (and the settlement path releases through it); the grant used to carry a SECOND handle to the
+  // same store, which every holder could point somewhere else -- including a witness handing it a directory it
+  // picked. The grant is data about what was granted; the capability to move capacity stays in one place.
+  let freed = compute_release_on(store: stores.store, partition: grant.partition, appropriation: session_ledger_fold_ceiling, reference: grant.lease.reference, reason: reason)
   let write = session_placement_release_write(
     records_dir: stores.records_dir, node_id: grant.node_id, attempt_key: grant.attempt_key,
     grant_binding: Present { value: SessionGrantBinding { grant_identity: grant.lease.fence.grant as String, fence_generation: grant.lease.fence.generation } },

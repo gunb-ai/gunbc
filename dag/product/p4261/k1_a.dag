@@ -37,10 +37,8 @@ import product.electrical.connectivity {
   TerminalIdentity,
 }
 import product.electrical.bench_session {
-  AfterIncidents,
   AssetAlteration,
   AutoRanging,
-  BeforeIncidents,
   BenchRecord,
   DisplayAboveBaseline,
   DisplayOverRange,
@@ -62,6 +60,8 @@ import product.electrical.bench_session {
   StatementCertainty,
 }
 import product.electrical.continuity {
+  AfterIncidents,
+  BeforeIncidents,
   BenchConditions,
   both_points_inferred,
   both_points_recorded,
@@ -78,6 +78,7 @@ import product.electrical.continuity {
   Unpowered,
 }
 import product.electrical.identification {
+  seen_unordered,
   FootprintUnpopulated,
   IdentifiedByMarking,
   InstalledComponent,
@@ -91,6 +92,8 @@ import product.electrical.identification {
   ResistanceCodeRead,
 }
 import product.p4261.carrier {
+  DesignatorReading,
+  AnalysisSelection,
   AssemblyLabel,
   BackplaneConnectorObservation,
   beige_part_discriminator,
@@ -196,6 +199,10 @@ data k1_pin21_photo: EvidenceRef = k1_photo(locator: "K1 photograph of U1_P5 wit
 
 data k1_u1_p5: ComponentInstanceIdentity = k1_component(local: "U1_P5")
 
+// The input connector the seller's listing photograph shows, counted there. Its designator was not read
+// on the received board, so it is bound to no design position.
+data k1_listed_input_connector: ComponentInstanceIdentity = k1_component(local: "input connector counted on the seller's listing photograph (designator not read on the received board)")
+
 data k1_200: ComponentInstanceIdentity = k1_component(local: "'200' resistor below U1_P5, under the '95C' resistor")
 
 data k1_beige: ComponentInstanceIdentity = k1_component(local: "beige two-terminal part directly across from U1_P5 pin 21")
@@ -215,7 +222,7 @@ fn k1_u1_pin(pin: NonEmptyStr) -> ElectricalTerminalRef {
 fn k1_read(first: ElectricalTerminalRef, second: ElectricalTerminalRef, record: ProbeRecord, display: ResistanceDisplay, certainty: StatementCertainty, evidence: List<EvidenceRef>) -> ResistanceObservation {
   ResistanceObservation {
     asset: p4261_k1_a, first: first, second: second, record: record, conditions: k1_bench, polarity: PolarityUnrecorded,
-    range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: certainty, order: BeforeIncidents { keys: [] }, evidence: evidence,
+    range: RangeUnrecorded, display: display, stability: StabilityUnrecorded, certainty: certainty, order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: evidence,
   }
 }
 
@@ -366,6 +373,7 @@ data k1_transitions: List<CarrierTransitionObservation> = [
 
 data k1_measured: MeasuredBoard = MeasuredBoard {
   asset: p4261_k1_a,
+  analysis: AnalysisSelection { after: [], module: ModuleUnrecorded },
   continuity: [],
   diode_readings: [],
   source_draws: [],
@@ -376,6 +384,23 @@ data k1_measured: MeasuredBoard = MeasuredBoard {
 
 // "Rework" beside the PCB code is a printed marking; whether any rework was performed, and what, is
 // unknown. The labels read "0000-100" where the listing title says "000-100"; the label is the reading.
+// THE DESIGNATORS READ ON THE K1. F1 to C12_P5 were read off the seller's listing photographs of this
+// unit. S1 and S2 are named only on a board-corner photograph whose carrier was not stated, so they
+// carry no reading and stay uncovered. J68 and J30 were read on the K1 but have no component
+// observation recorded, so they carry no reading either.
+data k1_designator_readings: List<DesignatorReading> = [
+  DesignatorReading { specimen: k1_component(local: "F1"), designator: "F1", evidence: k1_listing },
+  DesignatorReading { specimen: k1_component(local: "F300"), designator: "F300", evidence: k1_listing },
+  DesignatorReading { specimen: k1_component(local: "D2"), designator: "D2", evidence: k1_listing },
+  DesignatorReading { specimen: k1_component(local: "C10_P5"), designator: "C10_P5", evidence: k1_listing },
+  DesignatorReading { specimen: k1_component(local: "C12_P5"), designator: "C12_P5", evidence: k1_listing },
+  DesignatorReading { specimen: k1_u1_p5, designator: "U1_P5", evidence: k1_arrow_photo },
+  DesignatorReading { specimen: k1_u100, designator: "U100", evidence: k1_two_4r7_photo_1031 },
+  DesignatorReading { specimen: k1_converter_near, designator: "U10_P2", evidence: k1_two_4r7_photo_1031 },
+  DesignatorReading { specimen: k1_converter_near_footprint, designator: "U10_P2", evidence: k1_two_4r7_photo_1031 },
+  DesignatorReading { specimen: k1_converter_far, designator: "U2_P2", evidence: k1_converter_area_photo_1031 },
+]
+
 data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   asset: p4261_k1_a,
   design: k1_design,
@@ -392,7 +417,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   backplane_connectors: [
     BackplaneConnectorObservation { seen: 2, face: Absent, guide_pin_seen: false, power_blade_seen: false, evidence: k1_listing },
   ],
-  j20: CountedFromPhotograph { positions: 16, evidence: k1_listing },
+  j20: CountedFromPhotograph { component: k1_listed_input_connector, positions: 16, evidence: k1_listing },
   j20_calipers: [],
   edge_high_speed_connectors: CensusPartial {
     counted_at_least: 10,
@@ -406,26 +431,26 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     FlatCableConnectors { count: 2, evidence: k1_listing },
   ],
   components: [
-    InstalledComponent { component: k1_converter_near, terminals: names(ns: converter_pin_terminals), identification: IdentifiedByMarking { row: mp2333cgtl, marking: MarkingReading { text: "BDFP 528", evidence: k1_converter_lead_row_photo_1031 } } },
-    InstalledComponent { component: k1_converter_near_footprint, terminals: names(ns: footprint_pad_terminals), identification: FootprintUnpopulated { evidence: k1_u10p2_lift_said } },
-    InstalledComponent { component: k1_converter_far, terminals: names(ns: converter_pin_terminals), identification: MarkingUnresolved { marking: Absent, discriminator: "the same 8-lead package as U10_P2's by eye, below the farther 4R7 with two large ceramics at its right (k1_two_4r7_photo_1031), its top unread: whether it is a second MP2333CGTL is read from its own marking, and its pins are named by that row only on the strength of the match; its eight leads were read to the return 2026-10-31 (k1_converter_lead_resistances)" } },
-    InstalledComponent { component: k1_u100, terminals: names(ns: u100_lead_terminals), identification: MarkingUnresolved { marking: Absent, discriminator: "the K1's U100, found by its silkscreen; its top was reported to the plan as 'C3U / S62 / 1D' (2026-10-23) with no statement or photograph transcribed here, so the marking is carried unread until one is: the same code as the E1's 'C3U / S22 / 25' with another lot. Its eight leads were read 2026-10-23 (k1_u100_lead_resistances)" } },
-    InstalledComponent { component: k1_component(local: "input-stage MOSFET, first of two"), terminals: [], identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: k1_marking(text: "017N10LF, lot line HAL225") } },
-    InstalledComponent { component: k1_component(local: "input-stage MOSFET, second of two"), terminals: [], identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: k1_marking(text: "017N10LF") } },
-    InstalledComponent { component: k1_component(local: "F300"), terminals: names(ns: ["one end", "other end"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 100), interrupt_voltage: Present { value: volt(count: 75) } }, marking: k1_marking(text: "75V 100A (leading maker glyph not legible), the body spanning the F300/F302 pads") } },
-    InstalledComponent { component: k1_component(local: "input-stage inductor"), terminals: [], identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "A850 / Coilcraft / D") }, discriminator: "look up Coilcraft's part for code A850 and read its current and inductance" } },
-    InstalledComponent { component: k1_component(local: "D2"), terminals: names(ns: ["tab nearer J20", "tab farther from J20"]), identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "5P0X / ZCNSU (as read)") }, discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" } },
-    InstalledComponent { component: k1_component(local: "input-stage diode"), terminals: [], identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "5P0X / ZCNSU (as read)") }, discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" } },
-    InstalledComponent { component: k1_component(local: "F1"), terminals: names(ns: ["end nearer J20", "end farther from J20"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 12), interrupt_voltage: Absent }, marking: k1_marking(text: "12A (leading maker glyph not legible)") } },
-    InstalledComponent { component: k1_component(local: "R010 shunt beside F1"), terminals: [], identification: ResistanceCodeRead { milliohms: 10, marking: k1_marking(text: "R010") } },
-    InstalledComponent { component: k1_component(local: "R150 above the upper capacitor"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: k1_marking(text: "R150") } },
-    InstalledComponent { component: k1_component(local: "R150 below F1"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: k1_marking(text: "R150") } },
-    InstalledComponent { component: k1_component(local: "C10_P5"), terminals: names(ns: ["positive", "negative"]), identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "150 / J ZU / 29AH (photographed upside down)") }, discriminator: polymer_cap_discriminator } },
-    InstalledComponent { component: k1_component(local: "C12_P5"), terminals: names(ns: ["positive", "negative"]), identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "150 / J ZU / 29AH") }, discriminator: polymer_cap_discriminator } },
-    InstalledComponent { component: k1_component(local: "capacitor below J20 by U522"), terminals: [], identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "150 / J ZU / 29AH") }, discriminator: polymer_cap_discriminator } },
-    InstalledComponent { component: k1_u1_p5, terminals: lm5066i_terminals, identification: IdentifiedByMarking { row: lm5066i_pwp, marking: MarkingReading { text: "LM5066I / 28A025UG3 after a maker logo glyph", evidence: k1_arrow_photo } } },
-    InstalledComponent { component: k1_200, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "200", evidence: k1_arrow_photo } }, discriminator: "'200' is 20 ohm in the three-digit code (a nominal-value candidate, as the E1's '01B' is); its maker and its place in pin 7's network are unread" } },
-    InstalledComponent { component: k1_beige, terminals: names(ns: ["top end", "bottom end"]), identification: MarkingUnresolved { marking: Absent, discriminator: beige_part_discriminator } },
+    InstalledComponent { seen: BeforeIncidents { keys: [k1_u10p2_lift.key] }, component: k1_converter_near, terminals: names(ns: converter_pin_terminals), identification: IdentifiedByMarking { row: mp2333cgtl, marking: MarkingReading { text: "BDFP 528", evidence: k1_converter_lead_row_photo_1031 } } },
+    InstalledComponent { seen: AfterIncidents { keys: [k1_u10p2_lift.key] }, component: k1_converter_near_footprint, terminals: names(ns: footprint_pad_terminals), identification: FootprintUnpopulated { evidence: k1_u10p2_lift_said } },
+    InstalledComponent { seen: seen_unordered(), component: k1_converter_far, terminals: names(ns: converter_pin_terminals), identification: MarkingUnresolved { marking: Absent, discriminator: "the same 8-lead package as U10_P2's by eye, below the farther 4R7 with two large ceramics at its right (k1_two_4r7_photo_1031), its top unread: whether it is a second MP2333CGTL is read from its own marking, and its pins are named by that row only on the strength of the match; its eight leads were read to the return 2026-10-31 (k1_converter_lead_resistances)" } },
+    InstalledComponent { seen: seen_unordered(), component: k1_u100, terminals: names(ns: u100_lead_terminals), identification: MarkingUnresolved { marking: Absent, discriminator: "the K1's U100, found by its silkscreen; its top was reported to the plan as 'C3U / S62 / 1D' (2026-10-23) with no statement or photograph transcribed here, so the marking is carried unread until one is: the same code as the E1's 'C3U / S22 / 25' with another lot. Its eight leads were read 2026-10-23 (k1_u100_lead_resistances)" } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "input-stage MOSFET, first of two"), terminals: [], identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: k1_marking(text: "017N10LF, lot line HAL225") } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "input-stage MOSFET, second of two"), terminals: [], identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: k1_marking(text: "017N10LF") } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "F300"), terminals: names(ns: ["one end", "other end"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 100), interrupt_voltage: Present { value: volt(count: 75) } }, marking: k1_marking(text: "75V 100A (leading maker glyph not legible), the body spanning the F300/F302 pads") } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "input-stage inductor"), terminals: [], identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "A850 / Coilcraft / D") }, discriminator: "look up Coilcraft's part for code A850 and read its current and inductance" } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "D2"), terminals: names(ns: ["tab nearer J20", "tab farther from J20"]), identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "5P0X / ZCNSU (as read)") }, discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "input-stage diode"), terminals: [], identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "5P0X / ZCNSU (as read)") }, discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "F1"), terminals: names(ns: ["end nearer J20", "end farther from J20"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 12), interrupt_voltage: Absent }, marking: k1_marking(text: "12A (leading maker glyph not legible)") } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "R010 shunt beside F1"), terminals: [], identification: ResistanceCodeRead { milliohms: 10, marking: k1_marking(text: "R010") } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "R150 above the upper capacitor"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: k1_marking(text: "R150") } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "R150 below F1"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: k1_marking(text: "R150") } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "C10_P5"), terminals: names(ns: ["positive", "negative"]), identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "150 / J ZU / 29AH (photographed upside down)") }, discriminator: polymer_cap_discriminator } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "C12_P5"), terminals: names(ns: ["positive", "negative"]), identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "150 / J ZU / 29AH") }, discriminator: polymer_cap_discriminator } },
+    InstalledComponent { seen: seen_unordered(), component: k1_component(local: "capacitor below J20 by U522"), terminals: [], identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "150 / J ZU / 29AH") }, discriminator: polymer_cap_discriminator } },
+    InstalledComponent { seen: seen_unordered(), component: k1_u1_p5, terminals: lm5066i_terminals, identification: IdentifiedByMarking { row: lm5066i_pwp, marking: MarkingReading { text: "LM5066I / 28A025UG3 after a maker logo glyph", evidence: k1_arrow_photo } } },
+    InstalledComponent { seen: seen_unordered(), component: k1_200, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "200", evidence: k1_arrow_photo } }, discriminator: "'200' is 20 ohm in the three-digit code (a nominal-value candidate, as the E1's '01B' is); its maker and its place in pin 7's network are unread" } },
+    InstalledComponent { seen: seen_unordered(), component: k1_beige, terminals: names(ns: ["top end", "bottom end"]), identification: MarkingUnresolved { marking: Absent, discriminator: beige_part_discriminator } },
   ],
   measured: Present { value: k1_measured },
   input: Absent,
@@ -436,6 +461,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     UnresolvedPart { designator: Present { value: "U522" }, marking: Absent, obligation: "marking not legible in the listing close-up", evidence: k1_listing },
     UnresolvedPart { designator: Absent, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up", evidence: k1_listing },
   ],
+  designator_readings: k1_designator_readings,
 }
 
 // The K1's same pad, read unpowered the same evening as the comparison: about 4 kohm on the 2k
@@ -443,7 +469,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
 data k1_l_4r7_near_resistance: ResistanceObservation = ResistanceObservation {
   asset: p4261_k1_a, first: terminal_ref(component: k1_l_4r7_near, terminal: inductor_pad_unrecorded as TerminalIdentity), second: k1_return, record: both_points_recorded,
   conditions: k1_bench, polarity: PolarityUnrecorded, range: RangeFullScale { ohms: 2000 }, display: DisplayValue { ohms: 4000, approximate: true }, stability: StabilityUnrecorded,
-  certainty: StatedHedged { verbatim: "~4k ohms" }, order: BeforeIncidents { keys: [] }, evidence: [e1_short_after_said],
+  certainty: StatedHedged { verbatim: "~4k ohms" }, order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [e1_short_after_said],
 }
 
 data converter_said_1023_k1: EvidenceRef = OperatorStatement { stated_on: "2026-10-23", verbatim: "The right side is still ground, but the left side is 6k, 6k, 10k 10k from the bottom up - the baseline is 0" }
@@ -477,7 +503,7 @@ fn converter_lead_read_k1(number: Nat, name: NonEmptyStr, basis: NonEmptyStr, di
     asset: p4261_k1_a, first: terminal_ref(component: k1_converter_far, terminal: pin_terminal_name(number: number, name: name) as TerminalIdentity), second: k1_return,
     record: ProbeRecord { first: PointInferred { basis: join([basis as String, "; ", k1_far_site_basis as String], "") as NonEmptyStr }, second: PointRecorded },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] },
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] },
     evidence: [converter_said_1031, k1_converter_area_photo_1031, k1_two_4r7_photo_1031],
   }
 }
@@ -487,7 +513,7 @@ fn near_converter_lead_read_k1(number: Nat, name: NonEmptyStr, display: Resistan
     asset: p4261_k1_a, first: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: number, name: name) as TerminalIdentity), second: k1_return,
     record: ProbeRecord { first: PointInferred { basis: k1_near_site_basis }, second: PointRecorded },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: certainty,
-    order: BeforeIncidents { keys: [] },
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] },
     evidence: [converter_said_1031_near, k1_two_4r7_photo_1031],
   }
 }
@@ -496,7 +522,7 @@ fn u100_lead_read_k1(lead: NonEmptyStr, second: ElectricalTerminalRef, record: P
   ResistanceObservation {
     asset: p4261_k1_a, first: terminal_ref(component: k1_u100, terminal: lead as TerminalIdentity), second: second, record: record,
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] },
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] },
     evidence: evidence,
   }
 }
@@ -589,14 +615,14 @@ data k1_converter_pair_resistances: List<ResistanceObservation> = [
     asset: p4261_k1_a, first: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: 3, name: "SW") as TerminalIdentity), second: k1_pad_1023(name: inductor_pad_far_u4),
     record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointInferred { basis: converter_side_terminal_basis } },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayZeroWithoutBaseline { reported: "0ohm" }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1031_pairs, k1_two_4r7_photo_1031],
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [converter_said_1031_pairs, k1_two_4r7_photo_1031],
   },
   // The K1's in-circuit figure for VIN to SW before the lift (2026-11-01): 13 kohm on U10_P2, red on VIN.
   ResistanceObservation {
     asset: p4261_k1_a, first: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: 2, name: "VIN") as TerminalIdentity), second: terminal_ref(component: k1_converter_near, terminal: pin_terminal_name(number: 3, name: "SW") as TerminalIdentity),
     record: ProbeRecord { first: PointInferred { basis: pair_list_basis }, second: PointInferred { basis: pair_list_basis } },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayValue { ohms: 13000, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1101_checks],
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [converter_said_1101_checks],
   },
 ]
 
@@ -632,11 +658,11 @@ data k1_l_4r7_near_pad_resistances: List<ResistanceObservation> = [
   ResistanceObservation {
     asset: p4261_k1_a, first: k1_pad_1023(name: inductor_pad_near_u4), second: k1_return, record: ProbeRecord { first: PointInferred { basis: k1_u100_inductor_basis }, second: PointRecorded },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayValue { ohms: 8300, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1024],
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [converter_said_1024],
   },
   ResistanceObservation {
     asset: p4261_k1_a, first: k1_pad_1023(name: inductor_pad_far_u4), second: k1_return, record: ProbeRecord { first: PointInferred { basis: k1_u100_inductor_basis }, second: PointRecorded },
     conditions: k1_bench, polarity: RedOnFirst, range: AutoRanging, display: DisplayValue { ohms: 8300, approximate: false }, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: BeforeIncidents { keys: [] }, evidence: [converter_said_1024],
+    order: BeforeIncidents { keys: [k1_u10p2_lift.key] }, evidence: [converter_said_1024],
   },
 ]

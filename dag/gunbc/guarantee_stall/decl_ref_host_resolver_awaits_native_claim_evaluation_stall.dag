@@ -19,7 +19,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // as the permanent control when the host module is retired (DESIGN 4b(4)).
 //
 // WHAT EXISTS: v2.compiler.live_resolution_context, the native live-tree ResolutionContext, consumed
-// today by the decl-ref-census (v2.compiler.source_root_eval native_decl_ref_census_output).
+// today by v2.test.claim.decl_ref_resolution_native_witness.
 //
 // THE GAP IS TWO FACTS. (1) the capability: a claim run by the seed evaluates no native code.
 // gunbc.documentary_refs waits on the same capability. (2) DeclarationIdentity carries qualified_name
