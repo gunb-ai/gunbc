@@ -3004,7 +3004,11 @@ fn roster_rename_control_names() -> List<String> {
     "occurrences-two-rows-one-call-each-scope-rewrites-only-its-own",
     "occurrences-unknown-row-key-refuses",
     "occurrences-key-on-a-bound-site-refuses",
-    "occurrences-key-outside-the-paths-refuses"
+    "occurrences-key-outside-the-paths-refuses",
+    "occurrences-keyed-pipe-site-rewrites",
+    "occurrences-keyed-negated-pipe-site-rewrites",
+    "occurrences-keyed-chained-pipe-refuses-not-skips",
+    "occurrences-keyed-non-head-reference-refuses-arity"
   ]
 }
 
