@@ -927,14 +927,15 @@ fn no_continuity() -> List<ContinuityObservation> {
 
 fn row_reaches_in(g: ReachabilityGraph, row_terminals: List<ElectricalTerminalRef>, o: InstalledComponent) -> NetStateOutcome {
   let targets = component_terminal_refs(c: o)
-  let all_standings = flat_map(targets, t => standings_to(g: g, ts: row_terminals, target: t))
-  let contradicted = filter(all_standings, x => is_reachability_contradicted(s: x))
   let qualifying = filter(targets, t => all_reachable(ss: standings_to(g: g, ts: row_terminals, target: t)))
-  match contradicted.first() {
-    Present { value: _ } => NetEvidenceConflict { readings: readings_of(ss: contradicted), occupants: no_component_ids() }
-    Absent => match qualifying.first() {
-      Absent => NetUnresolved { gap: RowContactNotReached }
-      Present { value: _ } => NetSupported { terminals: qualifying, readings: flat_map(qualifying, t => class_readings(ss: standings_to(g: g, ts: row_terminals, target: t))) }
+  match qualifying.first() {
+    Present { value: _ } => NetSupported { terminals: qualifying, readings: flat_map(qualifying, t => class_readings(ss: standings_to(g: g, ts: row_terminals, target: t))) }
+    Absent => {
+      let contradicted = filter(flat_map(targets, t => standings_to(g: g, ts: row_terminals, target: t)), x => is_reachability_contradicted(s: x))
+      match contradicted.first() {
+        Present { value: _ } => NetEvidenceConflict { readings: readings_of(ss: contradicted), occupants: no_component_ids() }
+        Absent => NetUnresolved { gap: RowContactNotReached }
+      }
     }
   }
 }
@@ -1036,13 +1037,14 @@ fn assess_in_state(prop: P4261NetProposition, layout: CarrierLayoutObservation, 
 fn revision_from(states: List<NetStateAssessment>) -> NetRevisionOutcome {
   let rs = filter(states, a => received(s: a.state))
   if any(rs, a => outcome_rank(o: a.outcome) == 3) { NetRevisionConflict }
+  else if any(rs, a => outcome_rank(o: a.outcome) == 2) && any(rs, a => outcome_rank(o: a.outcome) == 1) { NetRevisionConflict }
   else if any(rs, a => outcome_rank(o: a.outcome) == 2) { NetRevisionCounterevidence }
   else if any(rs, a => outcome_rank(o: a.outcome) == 1) { NetRevisionSupported }
   else { NetRevisionUnresolved }
 }
 
-// Conflict outranks counterevidence, which outranks support: one received configuration that
-// contradicts or refutes is not outvoted by another that supports.
+// One received configuration in conflict, or received configurations that disagree (one supports,
+// another refutes), is a conflict; refutation alone is counterevidence; support alone is support.
 fn outcome_rank(o: NetStateOutcome) -> Nat {
   match o {
     NetEvidenceConflict { readings: _, occupants: _ } => 3

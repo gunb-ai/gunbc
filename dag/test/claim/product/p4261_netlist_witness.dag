@@ -45,7 +45,7 @@ import product.p4261.evidence {
   net_assessment,
 }
 import product.p4261.findings { J20Polarity, NetPropositionJudged, RevisionNetPropositionSupported, finding_established, judge_finding }
-import product.p4261.e1_b { e1_bench, e1_bridge_incident, e1_f1_far, e1_f1_near, e1_fuse_ends_said, e1_inductor_short_incident, e1_j20_at, e1_j24, e1_u10p2_lift, p4261_e1_layout }
+import product.p4261.e1_b { e1_bench, e1_bridge_incident, e1_d2_far, e1_f1_far, e1_f1_near, e1_fuse_ends_said, e1_inductor_short_incident, e1_j20_at, e1_j24, e1_rail_ref, e1_u10p2_lift, p4261_e1_layout }
 import product.p4261.k1_a { p4261_k1_layout }
 
 // THE NETLIST IS NVIDIA'S, THE ASSESSMENT IS OURS (Stage B3). Each control supplies the E1's own record
@@ -308,6 +308,26 @@ test fn one_conflicting_received_configuration_is_conflict() -> Bool {
   match net_assessment(layout: with_readings(extra: installed), key: f1_key()) {
     Present { value: a } => rank(o: a.revision) == 3 && count(received_states(a: a)) == 2
       && any(a.states, s => state_rank(o: s.outcome) == 1)
+    Absent => false
+  }
+}
+
+// RECEIVED CONFIGURATIONS THAT DISAGREE ARE A CONFLICT. The E1's own readings repeated with the module
+// installed, except that D2's far tab beeps to the rail instead of to ground: that configuration refutes
+// the span while the module-removed one supports it, and the revision verdict is a conflict -- not
+// counterevidence, and not support.
+fn installed_with_d2_on_one_side() -> List<ContinuityObservation> {
+  concat(
+    map(filter(e1_continuity(), o => !terminal_ref_equal(a: o.first, b: e1_d2_far)), o => ContinuityObservation {
+      asset: o.asset, first: o.first, second: o.second, record: o.record, conditions: module_installed(), result: o.result, order: o.order, evidence: o.evidence,
+    }),
+    [read(a: e1_d2_far, b: e1_rail_ref, conditions: module_installed(), result: BuzzerAsserted, order: received_order())])
+}
+
+test fn received_configurations_that_disagree_are_a_conflict() -> Bool {
+  match net_assessment(layout: with_readings(extra: installed_with_d2_on_one_side()), key: "e1-d2-spans-j20-input") {
+    Present { value: a } => rank(o: a.revision) == 3 && count(received_states(a: a)) == 2
+      && any(a.states, s => state_rank(o: s.outcome) == 1) && any(a.states, s => state_rank(o: s.outcome) == 2)
     Absent => false
   }
 }
