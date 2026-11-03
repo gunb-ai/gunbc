@@ -82,3 +82,46 @@ test fn every_row_identity_is_in_the_roster() -> Bool {
     any(attempt_state_unowned_class_identity_roster, id => row_identity_key(row: r) == id)
   )
 }
+// One control PER IDENTITY (stern-ram-763: "removing any ONE class's row makes the control fail naming that
+// class"). Each claim below is named after its class and asserts exactly one row carries that identity, so the
+// verdict line itself names the class that went missing or duplicated -- no count, no aggregate, no join needed
+// to localize the fault.
+fn class_row_is_singular(identity: String) -> Bool {
+  count_with_identity(rows: attempt_state_unowned_entries_frontier_rows, identity: identity) == 1
+}
+
+test fn the_job_pid_out_row_is_present_exactly_once() -> Bool {
+  class_row_is_singular(identity: "job-<pid>.out")
+}
+
+test fn the_job_pid_err_row_is_present_exactly_once() -> Bool {
+  class_row_is_singular(identity: "job-<pid>.err")
+}
+
+test fn the_harness_response_json_row_is_present_exactly_once() -> Bool {
+  class_row_is_singular(identity: "<stem>.harness-request.json.response.json")
+}
+
+test fn the_harness_response_headers_row_is_present_exactly_once() -> Bool {
+  class_row_is_singular(identity: "<stem>.harness-request.json.response.headers")
+}
+
+test fn the_handin_row_is_present_exactly_once() -> Bool {
+  class_row_is_singular(identity: "handin")
+}
+
+test fn the_supervision_observation_row_is_present_exactly_once() -> Bool {
+  class_row_is_singular(identity: "supervision-observation-after-turn-<N>")
+}
+
+test fn the_supervision_check_verdict_row_is_present_exactly_once() -> Bool {
+  class_row_is_singular(identity: "supervision-check-verdict-after-turn-<N>")
+}
+
+test fn the_supervision_check_request_row_is_present_exactly_once() -> Bool {
+  class_row_is_singular(identity: "supervision-check-request-after-turn-<N>")
+}
+
+test fn the_supervision_check_events_row_is_present_exactly_once() -> Bool {
+  class_row_is_singular(identity: "supervision-check-events-after-turn-<N>")
+}
