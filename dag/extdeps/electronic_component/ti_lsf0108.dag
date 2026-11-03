@@ -1,0 +1,107 @@
+module extdeps.electronic_component.ti_lsf0108
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import std.measure { millivolt }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow,
+  LevelTranslatorSpec,
+  LevelTranslatorSpecification,
+  MillivoltRange,
+  TranslatorPin,
+  TranslatorPinRole,
+  OutputEnable,
+  PortA,
+  PortB,
+  SupplyA,
+  SupplyB,
+  TranslatorGround,
+}
+
+// TI's LSF0108 data sheet, SDLS966M (December 2013, revised May 2023), fetched from
+// www.ti.com/lit/ds/symlink/lsf0108.pdf and read 2026-11-03. What this row takes from it:
+//   - §8.1 Overview, in the document's words: "an auto bidirectional voltage level translator that is
+//     operational from 0.95 to 5.5 V on Vref_A and 1.8 to 5.5 V on V_ref_B" -- those two ranges are
+//     this row's supply_a and supply_b, so they are the rails the part is operational on, not the
+//     absolute-maximum 7 V of §6.1.
+//   - §6.3 Recommended Operating Conditions: I/O 0 to 5.5 V, VREF 0 to 5.5 V, EN enabled at not less
+//     than 1.5 V, pass-switch current 64 mA, ambient -40 to 125 C. The EN figure is why
+//     three_state_when_high is false: the enable is active-high, so it is the LOW level that stops
+//     translation.
+//   - Table 5-1 Pin Functions with Figure 5-1 (the PW/DGS 20-pin top view): GND 1, Vref_A 2,
+//     A1..A8 = 3..10, B8..B1 = 11..18, Vref_B 19, EN 20. The pinout figure and the pin table agree,
+//     which is why the table is transcribed; a table read from a drawing alone would not be.
+//   - §10.1/§10.2 (Marking, Orderable Information): the PW (TSSOP, 20 pins) carries the customer top
+//     mark "LSF0108", while the DGS (VSSOP, 20 pins) is marked "LSF08". The two packages are
+//     therefore distinguishable by the marking alone.
+//
+// WHY OUR BOARD'S U50 IS A CANDIDATE HERE AND NOT YET AN IDENTIFICATION. The E1's U50 was read as
+// "LSF0108 / TI 2CH" (product.p4261.e1_b cites the frame and the box). Under TI's own marking column
+// that string is the PW part, so the datasheet does discriminate -- but what remains open is the
+// physical package on this board, which is what the operator's ruling of 2026-11-03 asks for
+// ("candidate for the level translator until maker/package evidence settles it"). The observation
+// side keeps it at MarkingCandidate until a frame settles the outline; promoting it here would put
+// on the design layer a fact the board has not yet confirmed.
+//
+// WHAT THIS ROW DOES NOT CARRY. The electrical characteristics (switch resistance, leakage, the
+// bias-resistor network) and the §9 biasing arithmetic stay in the document: no consumer reads them
+// yet. The RKS (VQFN) variant is a different orderable and is not this row.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/ds/symlink/lsf0108.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.ti_lsf0108",
+      decl_name: "lsf0108_pw",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data lsf0108_pw: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: texas_instruments,
+  ordering_code: "LSF0108PWR",
+  package: "TSSOP (PW), 20 pins",
+  top_marking: "LSF0108",
+  specification: LevelTranslatorSpec { translator: LevelTranslatorSpecification {
+    channels: 8,
+    supply_a: MillivoltRange { minimum: millivolt(count: 950), maximum: millivolt(count: 5500) },
+    supply_b: MillivoltRange { minimum: millivolt(count: 1800), maximum: millivolt(count: 5500) },
+    pins: [
+      TranslatorPin { number: 1, name: "GND", role: TranslatorGround },
+      TranslatorPin { number: 2, name: "Vref_A", role: SupplyA },
+      TranslatorPin { number: 3, name: "A1", role: PortA { channel: 1 } },
+      TranslatorPin { number: 4, name: "A2", role: PortA { channel: 2 } },
+      TranslatorPin { number: 5, name: "A3", role: PortA { channel: 3 } },
+      TranslatorPin { number: 6, name: "A4", role: PortA { channel: 4 } },
+      TranslatorPin { number: 7, name: "A5", role: PortA { channel: 5 } },
+      TranslatorPin { number: 8, name: "A6", role: PortA { channel: 6 } },
+      TranslatorPin { number: 9, name: "A7", role: PortA { channel: 7 } },
+      TranslatorPin { number: 10, name: "A8", role: PortA { channel: 8 } },
+      TranslatorPin { number: 11, name: "B8", role: PortB { channel: 8 } },
+      TranslatorPin { number: 12, name: "B7", role: PortB { channel: 7 } },
+      TranslatorPin { number: 13, name: "B6", role: PortB { channel: 6 } },
+      TranslatorPin { number: 14, name: "B5", role: PortB { channel: 5 } },
+      TranslatorPin { number: 15, name: "B4", role: PortB { channel: 4 } },
+      TranslatorPin { number: 16, name: "B3", role: PortB { channel: 3 } },
+      TranslatorPin { number: 17, name: "B2", role: PortB { channel: 2 } },
+      TranslatorPin { number: 18, name: "B1", role: PortB { channel: 1 } },
+      TranslatorPin { number: 19, name: "Vref_B", role: SupplyB },
+      TranslatorPin { number: 20, name: "EN", role: OutputEnable { three_state_when_high: false } },
+    ],
+  } },
+  vendor_application_statements: [
+    "VCCA must always be at least 0.8 V less than VCCB (VCCA + 0.8 <= VCCB).",
+    "Place LSF device close to the high voltage side.",
+    "Select the appropriate pull-up resistor that applies to translation levels and driving capability of the transmitter.",
+  ],
+}

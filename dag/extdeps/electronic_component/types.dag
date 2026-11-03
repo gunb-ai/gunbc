@@ -461,6 +461,50 @@ type ComponentSpecification
   | RootOfTrustSpec { root_of_trust: RootOfTrustSpecification }
   | SerialFlashSpec { flash: SerialFlashSpecification }
   | SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification }
+  | BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification }
+  | UsbHubSpec { hub: UsbHubSpecification }
+  | ClockFanoutSpec { clock: ClockFanoutSpecification }
+
+/// A switch or multiplexer on a shared bus: `channels` independent buses, each reachable from
+/// `inputs_per_channel` candidates, powered by `supplies` (a translating switch lists one range per
+/// rail domain, so a single-supply part lists one). This one shape covers both the TCA9546A (four
+/// channels, one input each, one rail) and the PI3CH480QE (four channels, two inputs each, two
+/// rails); minting an "I2C switch" type beside a "bus multiplexer" type would name the same
+/// decomposition twice, and the two would drift.
+///
+/// A consumer reads it to say how many buses a position reaches and at how many candidates each
+/// is loaded -- which is what the position-grain net relation needs. Terminal grain needs pin
+/// numbers, and those come from the datasheet only when a pin-level relation actually asks.
+type BusMultiplexerSpecification {
+  channels: Nat
+  inputs_per_channel: Nat
+  supplies: List<MillivoltRange>
+}
+
+/// A USB hub: `downstream_ports` ports facing devices, `upstream_ports` facing the host, at the
+/// generator named in `generation` (kept as the vendor's own string, because "USB 3.2 x1 Gen1" is
+/// SuperSpeed 5 Gbps under a name only the vendor chose; inventing a speed type for one row would
+/// be a second home for a fact USB-IF already owns).
+type UsbHubSpecification {
+  downstream_ports: Nat
+  upstream_ports: Nat
+  generation: NonEmptyStr
+  /// The package's ball names, when a pin-level consumer needs them. Absent means NOT READ, which
+  /// is different from an empty list: an empty list would claim the part has no pins to name.
+  pins: List<NonEmptyStr>?
+}
+
+/// A clock fanout buffer: `inputs` selectable reference sources, `outputs` copies of the chosen one,
+/// at the core supplies the vendor's own list offers. `pins` holds what the pin table says -- "number
+/// NAME (type)" strings -- because no pin-level consumer exists yet: typing roles for a table nobody
+/// reads would be a second authority waiting for a caller. Absent means NOT READ, which is not the
+/// same claim as an empty list.
+type ClockFanoutSpecification {
+  inputs: Nat
+  outputs: Nat
+  supplies: List<MillivoltRange>
+  pins: List<NonEmptyStr>?
+}
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -506,9 +550,14 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     RootOfTrustSpec { root_of_trust: _ } => Absent
     SerialFlashSpec { flash: _ } => Absent
     SwitchingRegulatorSpec { regulator: _ } => Absent
+    BusMultiplexerSpec { multiplexer: _ } => Absent
+    UsbHubSpec { hub: _ } => Absent
+    ClockFanoutSpec { clock: _ } => Absent
   }
 }
 
+// ── THE REFERENCE DESIGNATOR: ITS SPELLING IS ITS IDENTITY ──────────────────────────────────────
+//
 // One position on one assembly, named the way the silkscreen names it. THE VERBATIM TEXT IS THE IDENTITY:
 // U1_2 and U12 are two components, U3_2 and U32 two components, U3_P3 and U3_3 two positions, U1_P1 and
 // U1_P5 two channels. This is not pedantry -- the atlas cleanup of 2026-11-03 normalised designators by
