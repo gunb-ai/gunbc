@@ -462,6 +462,8 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     RosterHeadRow { call: "reverse", key: "reverse", import_name: "list_reverse", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_reverse", positional: ["xs"], appended: [] } },
     RosterHeadRow { call: "take", key: "take", import_name: "take_prefix", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "take_prefix", positional: ["xs", "n"], appended: [] } },
     RosterHeadRow { call: "flat_map", key: "flat_map", import_name: "list_flat_map", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_flat_map", positional: ["xs", "f"], appended: [] } },
+    // `last` had no body; std.algebra list_last is list_head's mirror (Empty => Absent).
+    RosterHeadRow { call: "last", key: "last", import_name: "list_last", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "list_last", positional: ["xs"], appended: [] } },
   ]
 }
 
@@ -2994,7 +2996,7 @@ fn roster_rename_control_names() -> List<String> {
     "appended-argument-symbol-order",
     "appended-argument-string-order", "appended-argument-digest-order",
     "sort-by-undeclared-order-refuses",
-    "collection-head-first", "collection-head-reverse", "collection-head-take", "collection-head-flat_map",
+    "collection-head-first", "collection-head-reverse", "collection-head-take", "collection-head-flat_map", "collection-head-last",
     "appended-callee-uncovered-refuses",
     "appended-callee-covered-admitted",
     "occurrences-byte-column-after-multibyte-text",
@@ -3021,7 +3023,8 @@ fn roster_head_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Lis
     roster_control_verdict(name: "collection-head-first", fail: roster_head_expect(name: "collection-head-first", call: "first", sig: "xs: List<Int>", arg: "xs", to: "list_head", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-reverse", fail: roster_head_expect(name: "collection-head-reverse", call: "reverse", sig: "xs: List<Int>", arg: "xs", to: "list_reverse", out: "List<Int>", labeled: "xs: xs", prepared: prepared, lex: lex)),
     roster_control_verdict(name: "collection-head-take", fail: roster_head_expect(name: "collection-head-take", call: "take", sig: "xs: List<Int>, n: Int", arg: "xs, n", to: "take_prefix", out: "List<Int>", labeled: "xs: xs, n: n", prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "collection-head-flat_map", fail: roster_head_expect(name: "collection-head-flat_map", call: "flat_map", sig: "xs: List<Int>", arg: "xs, fn(s) { [s] }", to: "list_flat_map", out: "List<Int>", labeled: "xs: xs, f: fn(s) { [s] }", prepared: prepared, lex: lex))
+    roster_control_verdict(name: "collection-head-flat_map", fail: roster_head_expect(name: "collection-head-flat_map", call: "flat_map", sig: "xs: List<Int>", arg: "xs, fn(s) { [s] }", to: "list_flat_map", out: "List<Int>", labeled: "xs: xs, f: fn(s) { [s] }", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "collection-head-last", fail: roster_head_expect(name: "collection-head-last", call: "last", sig: "xs: List<Int>", arg: "xs", to: "list_last", out: "Optional<Int>", labeled: "xs: xs", prepared: prepared, lex: lex))
   ]
 }
 

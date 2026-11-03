@@ -375,12 +375,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
-            instrument_label("rfm-rung-census"),
-            TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/rfm_rung_census.dag",
-            },
-        ),
-        (
             instrument_label("native-app-attest"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_app_attest.dag",
@@ -530,18 +524,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
-            instrument_label("decl-ref-census"),
-            TargetProducer::NativeCensusVerb {
-                verb: "decl-ref-census",
-            },
-        ),
-        (
-            instrument_label("effect-pair-census"),
-            TargetProducer::NativeCensusVerb {
-                verb: "effect-pair-census",
-            },
-        ),
-        (
             instrument_label("self-host-frontier"),
             TargetProducer::SelfHostFrontier,
         ),
@@ -622,18 +604,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 function: "rehome_controls_wire",
             },
         ),
-        (
-            instrument_label("claim-coverage-census"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/claim_coverage_census_live.dag",
-                function: "claim_coverage_census_exit",
-            },
-        ),
         // Second home for a binding `gunbc.instrument_targets` `known_red_derivation_binding` already
         // owns: this table is hand-maintained -- `heal` never regenerates it -- so a rostered label with
         // no row here exits 2 'no such target' whatever the .dag registry says. Adding the row is the
-        // only way to make the instrument's label reachable, and it follows the table's existing shape
-        // (the `claim-coverage-census` row is built the same way).
+        // only way to make the instrument's label reachable, and it follows the table's existing shape.
         // RECEIPT / DEFERRAL for the duplicated mapping: generating this table from
         // `gunbc.instrument_targets` is the repair, and it is a seed lane rather than this instrument's
         // lane because it touches every instrument's binding at once. The hand-maintained table is

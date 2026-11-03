@@ -156,12 +156,13 @@ import product.electrical.identification {
 }
 import product.p4261.carrier {
   PcbCode,
-  AwayFromLatch,
   CarrierLayoutObservation,
   ConnectorHousing,
   HousingPosition,
   InputConnector,
-  LatchSide,
+  RowRead,
+  away_side,
+  latch_side,
   lv165a_pins,
   ManagementIoSurvey,
   AnalysisSelection,
@@ -301,7 +302,6 @@ import product.p4261.e1_b {
   e1_w4_end,
   e1_y50,
   p4261_e1_layout,
-  p4261_near_4r7_converter_hypothesis,
 }
 import product.p4261.k1_a {
   k1_label_photo,
@@ -339,6 +339,7 @@ import product.p4261.k1_a {
   p4261_k1_layout,
 }
 import product.p4261.readings {
+  installed,
   AccessPointUnseparated,
   across_input,
   AcrossInput,
@@ -416,9 +417,10 @@ import product.p4261.readings {
   terminals_reading_at_most,
   TerminalsNotPlaced,
 }
-import product.p4261.evidence { p4261_e1_revision_standing, p4261_k1_revision_standing, revision_supported }
-import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, observed_receipt_ref }
-import product.p4261.findings {
+import product.p4261.evidence {
+  p4261_e1_revision_standing,
+  p4261_k1_revision_standing,
+  revision_supported,
   is_received_label,
   RevisionLabelReadPcbUnread,
   RevisionPcbReadLabelUnread,
@@ -428,11 +430,27 @@ import product.p4261.findings {
   RevisionReadOnBoard,
   RevisionContradictedOnBoard,
 }
+import extdeps.external_authority { CitedFigureStanding, ObservedByReceipt, observed_receipt_ref }
 import product.p4261.report {
   carrier_label_text,
   alterations_text,
   carrier_finding,
   carrier_input_reading,
+  gate_pin_text,
+  island_flash_text,
+  j20_position_count,
+  j24_text,
+  j68_shape_from,
+  j68_shape_text,
+  management_io_text,
+  phases_reading,
+  register_pin_direction_text,
+  translator_pin_text,
+  u4_configuration_text,
+  u5_2_root_of_trust_text,
+}
+import product.p4261.investigation { p4261_near_4r7_converter_hypothesis }
+import product.p4261.findings {
   CarrierFinding,
   CarrierPhaseObserved,
   ComponentAcrossInput,
@@ -440,26 +458,14 @@ import product.p4261.report {
   ControllerEnableState,
   ControllerOvervoltageState,
   EnableInputProjection,
-  gate_pin_text,
   InputSwitchState,
   InputUpperBound,
-  installed,
-  is_finding_established,
-  island_flash_text,
-  j20_position_count,
   J20ContactInventory,
   J20EnergizedDraw,
   J20Polarity,
-  j24_text,
-  j68_shape_from,
-  j68_shape_text,
-  management_io_text,
-  phases_reading,
   ProtectedInputBusInPhase,
-  register_pin_direction_text,
-  translator_pin_text,
-  u4_configuration_text,
-  u5_2_root_of_trust_text,
+  finding_established,
+  judge_finding,
 }
 import extdeps.electronic_component.diodes_bss138 { bss138 }
 import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
@@ -472,6 +478,7 @@ import product.electrical.carrier_phase {
   transition_text, phase_standing_text,
 }
 import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1 }
+import extdeps.nvidia.p4261.connectors { LatchRow, AwayFromLatchRow }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
@@ -600,7 +607,7 @@ test fn a_reading_on_the_e1_cannot_qualify_the_k1() -> Bool {
     PolarityContradicted { readings: _ } => false
   }
   unpolarized && is_unestablished_bound(b: input_bound(layout: k1_given_e1))
-    && j20_position_count(layout: p4261_k1_layout) == 16
+    && match j20_position_count(layout: p4261_k1_layout) { Present { value: n } => n == 16, Absent => false }
     && physical_asset_identity_eq(a: e1_measured.asset, b: p4261_e1_b)
 }
 
@@ -622,9 +629,8 @@ test fn identical_labels_on_another_design_do_not_join() -> Bool {
 
 fn row_is(s: RowSide, away: Bool) -> Bool {
   match s {
-    AwayFromLatch => away
-    LatchSide => !away
     SideUnrecorded => false
+    RowRead { row } => match row { AwayFromLatchRow => away, LatchRow => !away }
   }
 }
 
@@ -634,12 +640,12 @@ fn housing_with_sides(latch_row: RowSide, away_row: RowSide) -> ConnectorHousing
     positions: map(e1_j20_housing.positions, p => HousingPosition {
       terminal: p.terminal,
       side: match p.side {
-        LatchSide => latch_row
-        AwayFromLatch => away_row
         SideUnrecorded => SideUnrecorded
+        RowRead { row } => match row { LatchRow => latch_row, AwayFromLatchRow => away_row }
       },
       index: p.index,
     }),
+    coverage: e1_j20_housing.coverage,
     sides_evidence: e1_j20_housing.sides_evidence,
   }
 }
@@ -666,12 +672,12 @@ test fn j20_polarity_is_derived_from_the_readings() -> Bool {
     PolarityContradicted { readings: _ } => false
     PolarityUnestablished { gaps: _ } => false
   }
-  let swapped = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: AwayFromLatch, away_row: LatchSide))) {
+  let swapped = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: away_side(), away_row: latch_side()))) {
     PolarityEstablished { fused_side, return_side: _, fused: _, returns: _, isolation: _ } => row_is(s: fused_side, away: false)
     PolarityContradicted { readings: _ } => false
     PolarityUnestablished { gaps: _ } => false
   }
-  let unrecorded = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: LatchSide, away_row: SideUnrecorded))) {
+  let unrecorded = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: latch_side(), away_row: SideUnrecorded))) {
     PolarityUnestablished { gaps } => any(gaps, g => match g {
       SidesUnrecorded => true
       _ => false
@@ -872,7 +878,7 @@ fn rl_diode(o: DiodeModeObservation) -> DiodeModeObservation {
 }
 
 fn rl_housing(h: ConnectorHousing) -> ConnectorHousing {
-  ConnectorHousing { component: rl_c(c: h.component), positions: map(h.positions, p => HousingPosition { terminal: rl_t(t: p.terminal), side: p.side, index: p.index }), sides_evidence: h.sides_evidence }
+  ConnectorHousing { component: rl_c(c: h.component), positions: map(h.positions, p => HousingPosition { terminal: rl_t(t: p.terminal), side: p.side, index: p.index }), coverage: h.coverage, sides_evidence: h.sides_evidence }
 }
 
 fn rl_draw(o: SourceDrawObservation) -> SourceDrawObservation {
@@ -1042,15 +1048,15 @@ test fn population_statements_infer_their_endpoints() -> Bool {
 // consumer citing one finding is reopened by that finding and no other.
 test fn a_narrow_finding_stands_or_falls_alone() -> Bool {
   let e1_findings = [J20ContactInventory, J20Polarity, ComponentAcrossInput { component: e1_d2 }, ComponentAcrossInput { component: e1_d5 }, ComponentIdentified { component: e1_c10 }, ComponentIdentified { component: e1_d2 }, InputUpperBound, J20EnergizedDraw]
-  let e1_all = all(e1_findings, f => is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: f)))
-  let k1_open = !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: J20Polarity))
-    && !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: InputUpperBound))
-    && !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: J20ContactInventory))
+  let e1_all = all(e1_findings, f => finding_established(j: judge_finding(layout: p4261_e1_layout, f: f)))
+  let k1_open = !finding_established(j: judge_finding(layout: p4261_k1_layout, f: J20Polarity))
+    && !finding_established(j: judge_finding(layout: p4261_k1_layout, f: InputUpperBound))
+    && !finding_established(j: judge_finding(layout: p4261_k1_layout, f: J20ContactInventory))
   let without_d2 = e1_with_continuity(cs: filter(e1_measured.continuity, o => !terminal_ref_equal(a: o.first, b: e1_d2_near) && !terminal_ref_equal(a: o.first, b: e1_d2_far)))
-  let only_d2_falls = !is_finding_established(s: carrier_finding(layout: without_d2, f: ComponentAcrossInput { component: e1_d2 }))
-    && is_finding_established(s: carrier_finding(layout: without_d2, f: J20ContactInventory))
-    && is_finding_established(s: carrier_finding(layout: without_d2, f: ComponentIdentified { component: e1_c10 }))
-  let unresolved = !is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_third_can }))
+  let only_d2_falls = !finding_established(j: judge_finding(layout: without_d2, f: ComponentAcrossInput { component: e1_d2 }))
+    && finding_established(j: judge_finding(layout: without_d2, f: J20ContactInventory))
+    && finding_established(j: judge_finding(layout: without_d2, f: ComponentIdentified { component: e1_c10 }))
+  let unresolved = !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_third_can }))
   e1_all && k1_open && only_d2_falls && unresolved
 }
 
@@ -1073,10 +1079,9 @@ test fn a_shared_marking_supports_only_what_every_candidate_supports() -> Bool {
 // COUNTS ARE DERIVED. J20's position count is its contact inventory's length -- nine a side -- and the
 // K1's is the photograph count; component counts are counts of instances.
 test fn counts_are_derived_from_inventories() -> Bool {
-  j20_position_count(layout: p4261_e1_layout) == count(e1_j20_housing.positions)
-    && j20_position_count(layout: p4261_e1_layout) == 18
-    && count(side_terminals(h: e1_j20_housing, side: LatchSide)) == 9
-    && count(side_terminals(h: e1_j20_housing, side: AwayFromLatch)) == 9
+  match j20_position_count(layout: p4261_e1_layout) { Present { value: n } => n == count(e1_j20_housing.positions) && n == 18, Absent => false }
+    && count(side_terminals(h: e1_j20_housing, side: latch_side())) == 9
+    && count(side_terminals(h: e1_j20_housing, side: away_side())) == 9
     && count(component_of(layout: p4261_e1_layout, c: e1_c10)) == 1
     && count(component_of(layout: p4261_e1_layout, c: e1_c12)) == 1
 }
@@ -1143,7 +1148,7 @@ fn e1_with_draws(ds: List<SourceDrawObservation>) -> CarrierLayoutObservation {
 }
 
 fn draw_finding(layout: CarrierLayoutObservation) -> Bool {
-  is_finding_established(s: carrier_finding(layout: layout, f: J20EnergizedDraw))
+  finding_established(j: judge_finding(layout: layout, f: J20EnergizedDraw))
 }
 
 fn bounded_by(d: InputDrawStanding, above_open: Nat, headroom: Nat) -> Bool {
@@ -1312,7 +1317,7 @@ fn switch_gap_is(ss: List<InputSwitchStanding>, between: Bool) -> Bool {
 }
 
 fn finding_holds(layout: CarrierLayoutObservation, f: CarrierFinding) -> Bool {
-  is_finding_established(s: carrier_finding(layout: layout, f: f))
+  finding_established(j: judge_finding(layout: layout, f: f))
 }
 
 // A SWITCH'S STATE COMES FROM ITS DATASHEET ROLES AND ITS READINGS OF ONE STATE. The live E1 readings
@@ -2577,11 +2582,11 @@ test fn j24_is_named_measured_and_reads_no_return() -> Bool {
     && all(valued, o => match valued_ohms(o: o) { Present { value: v } => v >= 405 && v <= 485, Absent => false })
     && !any(e1_j24_positions, n => one_node(net: live, a: e1_j24_pin(n: n), b: e1_ground_ref))
     && e1_j24_pitch.along_row_tenths_mm == 13 && e1_j24_pitch.between_rows_tenths_mm == 25
-    && j24_text(layout: p4261_e1_layout).contains("J24 has 10 positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about 13/10 mm along a row and 25/10 mm between rows, within 3/10 mm, by a photograph against a tape aligned to neither axis; 10 read to J20's black lead, 8 with a value (405 ohm the least), none near zero, so no position is read as the return")
+    && j24_text(layout: p4261_e1_layout).contains("J24 has 10 positions, one keyed (A3's mating cavity is plugged; its board-side contact was read at the housing base), at about 13/10 mm along a row and 25/10 mm between rows, within 3/10 mm, by a photograph against a tape aligned to neither axis; 10 readings recorded to J20's black lead, covering 10 of the 10 positions; 8 with a value (405 ohm the least), 0 reporting zero without a baseline, 0 recorded at the probe baseline")
     && e1_j24_pitch.tolerance_tenths_mm == 3
     && all(component_of(layout: p4261_e1_layout, c: e1_u104), c => count(c.terminals) == 6)
     && j24_text(layout: without).contains("J24 is not a component of this carrier's observation")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("no position is read as the return")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("covering 10 of the 10 positions")
     && count(e1_ds1_2_resistances) == 1 && all(e1_ds1_2_resistances, o => is_reported_zero(o: o))
     && !one_node(net: live, a: terminal_ref(component: e1_ds1_2, terminal: "one side (which of the two unrecorded)" as TerminalIdentity), b: terminal_ref(component: e1_u104, terminal: "inner side, middle" as TerminalIdentity))
     && count(component_of(layout: p4261_e1_layout, c: e1_u104)) == 1
@@ -2985,10 +2990,10 @@ test fn a_candidate_marking_is_not_an_identification() -> Bool {
   let near = component_of(layout: p4261_e1_layout, c: e1_converter_near)
   count(near) == 1
     && all(near, c => !identification_established(i: c.identification) && match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("CANDIDATE") })
-    && !is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_converter_near }))
-    && is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_c10 }))
-    && is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_d2 }))
-    && !is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_third_can }))
+    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_converter_near }))
+    && finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_c10 }))
+    && finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_d2 }))
+    && !finding_established(j: judge_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_third_can }))
 }
 
 fn order_is_unrecorded(o: ReadingOrder) -> Bool {

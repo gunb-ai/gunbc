@@ -1110,9 +1110,27 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   if is_kernel_type(name: name) { none } else { global_bare_lookup_candidates(env: env, name: name) }
 }
 
+// A pool entry declared once corpus-wide answers a bare occurrence only when its declarer sits on
+// the referencing module's containment chain, or the module IMPORTS that declarer and the name is
+// visible through the import (DESIGN 4b "names resolve"; the unique arm obeys the same chain test as
+// the homonym arm). The import arm is the author's own binding: a callee whose signature the import
+// closure cannot carry (a generic fold_list, optional_absent) still has its identity established by
+// the import, never by corpus coincidence. env.parents is built from the resolved imports, one
+// interface env per import. This gate covers the UNIQUE arm and is unconditional. The HOMONYM arm
+// under the default ImportScoped policy (global_bare_nearest_ancestor, longest shared prefix, exact ties refuse) is NOT
+// filtered here: it can still bind an off-chain, un-imported homonym. Flipping it to chain-only is the
+// NamespaceOnlyY policy, gated on namespace-resolution-design.md 13 step 4; that residue is recorded on the
+// recurring_failure_mode row bare_name_resolved_by_proximity_standing_in_for_resolution.
+fn global_bare_declarer_in_scope(env: TypeEnv, name: String, declarer: String) -> Bool {
+  let declarer_segs = module_path_segments(path: declarer)
+  segment_lcp_len(a: declarer_segs, b: module_path_segments(path: env.module_path)) == (declarer_segs |> count)
+    || (import_visible_name(env: env, name: name) && env.parents |> any(p => p.module_path == declarer))
+}
+
 fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
+    Present { value: GlobalBareUniqueBinding { module_path: declarer, binding: binding } } =>
+      if global_bare_declarer_in_scope(env: env, name: name, declarer: declarer) { Present { value: binding } } else { Absent }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
       if name_resolution_policy_is_namespace_only() {
         match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {
@@ -2451,6 +2469,22 @@ fn transparent_alias_rhs(pre: Node) -> Node? {
 // An alias declared outside the module and its direct imports (a record field typed by an alias a transitive module owns) is not in
 // any reachable env binding; its item is read from the symbol index by its exact module path and name, and its right-hand side is
 // admitted only when the resolver already recorded the head's identity there. No spelling is re-resolved.
+// THE REFINEMENT RIGHT-HAND SIDE OF A DECLARED REFINEMENT TYPE (`type EpochMs = Int where range(min: 0)`), read from the
+// declaring item in the symbol index. Kept APART from alias_rhs_of_declaration on purpose: a refinement is not a transparent
+// alias (transparent_alias_rhs refuses it), so EpochMs never agrees with Int at an assignment through this reader. It exists for
+// readings that legitimately see through the refinement to its base, the arithmetic carrier (v1.compiler.infer_types
+// operand_carrier_reading_settled): a refinement narrows the value set, not the algebra.
+fn refinement_rhs_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Node? {
+  match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(item_ref.module_path as String, ".", item_ref.decl_name as String)) {
+    Absent => none
+    Present { value: item } =>
+      match item.inferred {
+        Present { value: Resolved { node: rhs } } => if is_where_refinement_node(n: rhs) { Present { value: rhs } } else { none }
+        _ => none
+      }
+  }
+}
+
 fn alias_rhs_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Node? {
   let declaring = if env.module_path == (item_ref.module_path as String) {
     Present { value: env }

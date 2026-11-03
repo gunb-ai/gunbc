@@ -295,6 +295,28 @@ fn primary_effective_refusal(v: PrimaryEffectiveVerdict) -> NonEmptyStr? {
   }
 }
 
+// WHICH VERDICTS A RECONFIGURE PASSES THROUGH. When a try applies, networkd drops the NIC's lease
+// and asks again, so for a few seconds the row's NIC can lack carrier, hold no IPv4 address, or have
+// no default route, and a leg that crosses the network mid-change can fail to answer; each of those is
+// the network on its way to the row's state, not a judgment of it. A held address that is wrong, an
+// uplink on another device, a missing NIC, a wrong MTU or a wrong route metric is the configuration's
+// answer, so it settles at once. srv1, fleet-converge run 41595676342 (2026-11-03): the readback read
+// enP3p6s0 at 07:48:02Z holding no IPv4 address, one second before its DHCPv4 lease returned at
+// 07:48:03Z, and stopped a try whose configuration was right.
+fn primary_effective_settling(v: PrimaryEffectiveVerdict) -> Bool {
+  match v {
+    PrimaryEffectiveHolds { device: _ } => false
+    PrimaryNicNotPresent => false
+    PrimaryNicNoCarrier { device: _ } => true
+    PrimaryUplinkOnAnotherDevice { device: _, default_device: _ } => false
+    PrimaryNoDefaultRoute => true
+    PrimaryAddressDiverges { device: _, held: h, expected: _ } => h == []
+    PrimaryMtuDiverges { device: _, held: _ } => false
+    PrimaryRouteMetricDiverges { held: _ } => false
+    PrimaryEffectiveUnjudged { cause: _ } => true
+  }
+}
+
 fn plan_primary_network(d: HostPrimaryNetworkDesired, observation: PrimaryNetworkObservation) -> UpsertDecision<PrimaryNetplanSwap> {
   match primary_nic_admission(d: d) {
     PrimaryNicRefusedOpenBets { bets: bs } =>

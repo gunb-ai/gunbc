@@ -69,8 +69,8 @@ type OperandDeclaration {
 // compared by the target (a residual the census rows bound: gunbc.rung_drop
 // derived_equality_residual_field_equality). BY CONSTRUCTION every EqualityThroughPlan in a plan names
 // a declaration the same plan carries, and every step below a plan's root reaches a routed step:
-// the checker rewrites pruned references to EqualityByTarget before it stamps the plan, so a reader
-// has no 'missing declaration' or 'empty container' case to answer.
+// the checker rewrites pruned references to EqualityByTarget before it stamps the plan. There is no
+// comparison by the target for a reference the plan does not carry; a reader that meets one refuses.
 type EqualityStep
   = EqualityByTarget
   | EqualityRouted { function: DeclarationRef }
@@ -84,24 +84,33 @@ type EqualityPlanField {
   step: EqualityStep
 }
 
-type EqualityPlanArm {
+type EqualityVariantArm {
   arm: String
   fields: List<EqualityPlanField>
 }
 
-// A product has one arm, named by the empty string; a coproduct has one per variant, and two values
-// in different variants differ. A plan is keyed by the declaration's identity as the checker keys
-// it (its declaring file and declared name: v1.compiler.type_head_exposure
-// type_declaration_identity_key), which is what EqualityThroughPlan names; an EqualityThroughPlan
-// whose declaration has no plan in the same EqualityPlan compares by the target.
-// `reference` is the same declaration as a DeclarationRef, for a reader that must name the
-// declaration's realization (the emitter's eq fn signature); absent when the checker could not read
-// it, and a reader that needs it then refuses.
+// A declaration's equality structure is one of two shapes, each with no state the other's fields would
+// have to encode. A product has one set of members and no arm name. A coproduct has one arm per
+// variant and at least one (`first` and `rest`, so an empty arm list is unwritable); two values in
+// different variants differ. A plan is keyed by the declaration's identity as the checker keys it (its
+// declaring file and declared name: v1.compiler.type_head_exposure type_declaration_identity_key),
+// which is what EqualityThroughPlan names.
+type EqualityStructure
+  = ProductPlan { fields: List<EqualityPlanField> }
+  | CoproductPlan { first: EqualityVariantArm, rest: List<EqualityVariantArm> }
+
+// The declaration as a DeclarationRef, for a reader that must name the declaration's realization (the
+// emitter's eq fn signature). A reading that failed is its own arm naming what could not be read, so
+// a reader refuses with that cause instead of meeting a bare absence.
+type EqualityDeclarationReading
+  = DeclarationRead { reference: DeclarationRef }
+  | DeclarationUnreadable { declaration_name: String }
+
 type DeclarationEqualityPlan {
   declaration: String
-  reference: DeclarationRef?
+  reading: EqualityDeclarationReading
   generic: Bool
-  arms: List<EqualityPlanArm>
+  structure: EqualityStructure
 }
 
 type EqualityPlan {

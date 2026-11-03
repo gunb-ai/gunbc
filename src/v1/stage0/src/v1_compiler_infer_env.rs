@@ -82,7 +82,6 @@ pub struct TypeEnv {
     pub module_path: String,
     pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
     pub unit_variant_index_observed: bool,
-    pub equality_by_target: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -403,7 +402,6 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
             Rc<HashMap<String, Rc<UnitVariantContribution>>>,
         >(),
         unit_variant_index_observed: false,
-        equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
     })
 }
 
@@ -1950,13 +1948,41 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
     }
 }
 
+pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
+    {
+        let declarer_segs = crate::v1_std_core::module_path_segments(declarer.clone());
+        ((segment_lcp_len(
+            declarer_segs.clone(),
+            crate::v1_std_core::module_path_segments(env.module_path.clone()),
+        ) == (declarer_segs.clone().len() as i64))
+            || (import_visible_name(env.clone(), name) && {
+                let mut __found = false;
+                for p in env.parents.clone().iter().cloned() {
+                    if (p.module_path.clone() == declarer.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }))
+    }
+}
+
 pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-            Some(binding.clone())
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: declarer,
+            binding,
+            ..
+        }) => {
+            if global_bare_declarer_in_scope(env.clone(), name.clone(), declarer.clone()) {
+                Some(binding.clone())
+            } else {
+                std::option::Option::None
+            }
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
@@ -2593,30 +2619,6 @@ pub fn inductive_fields_list_to_map(
     }
 }
 
-pub fn type_env_with_equality_by_target(
-    env: Rc<TypeEnv>,
-    by_target: Rc<HashMap<String, bool>>,
-) -> Rc<TypeEnv> {
-    Rc::new(TypeEnv {
-        module_path: env.module_path.clone(),
-        bindings: env.bindings.clone(),
-        str_bindings: env.str_bindings.clone(),
-        ancestry_str_bindings: env.ancestry_str_bindings.clone(),
-        parents: env.parents.clone(),
-        recursive_types: env.recursive_types.clone(),
-        recursive_type_set: env.recursive_type_set.clone(),
-        inductive_fields: env.inductive_fields.clone(),
-        source_indices: env.source_indices.clone(),
-        intern_table: env.intern_table.clone(),
-        source_visible_names: env.source_visible_names.clone(),
-        authored_import_names: env.authored_import_names.clone(),
-        symbol_index: env.symbol_index.clone(),
-        unit_variant_index: env.unit_variant_index.clone(),
-        unit_variant_index_observed: env.unit_variant_index_observed.clone(),
-        equality_by_target: by_target.clone(),
-    })
-}
-
 pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
     tp_names
         .iter()
@@ -2694,7 +2696,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 symbol_index: e.symbol_index.clone(),
                 unit_variant_index: updated_index.clone(),
                 unit_variant_index_observed: e.unit_variant_index_observed.clone(),
-                equality_by_target: e.equality_by_target.clone(),
             })
         })
 }
@@ -2725,7 +2726,6 @@ pub fn census_declaration_type_env(
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
             >(),
             unit_variant_index_observed: false,
-            equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
         });
         env_with_type_variable_bindings(base, tp_names)
     }
@@ -4159,6 +4159,31 @@ pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
             }
             _ => std::option::Option::None,
         }
+    }
+}
+
+pub fn refinement_rhs_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    match symbol_index_lookup(
+        env.symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
+            item_ref.decl_name.clone(),
+        ),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(item) => match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rhs, .. }) => {
+                if is_where_refinement_node(rhs.clone()) {
+                    Some(rhs.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            _ => std::option::Option::None,
+        },
     }
 }
 

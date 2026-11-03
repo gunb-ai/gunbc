@@ -543,7 +543,6 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
             >(),
             unit_variant_index_observed: false,
-            equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
             name: "".to_string(),
