@@ -12,7 +12,7 @@ import gunbc.fleet.fleet_runner_connectivity { RosterObserved, RosterObservedPar
 import gunbc.host.host_cli_dependency { HostCliDependencyAbsence }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if, fleet_converge_org_runner_roster_step_timeout_minutes }
 import gunbc.fleet.fleet_workflow_steps { gunbc_ci_aux_step_timeout_minutes }
-import std.measure { second_count }
+import std.measure { Second, second, second_count }
 import gunbc.fleet.organization_runner_roster_read {
   OrganizationRunnerScope,
   OrganizationRunnerListing,
@@ -569,11 +569,11 @@ test fn a_smaller_page_size_is_admitted_and_an_oversized_one_refuses() -> Bool {
 // THE ROSTER STEP OUTLASTS ITS OWN STARTUP AND A FULL WALK. The measured startup is run 41655364699's
 // closure resolve on srv3 (resolve_entry_graph_inclusive=285166 ms), which the flat aux budget did not
 // cover: the step was killed twelve pages in. RED: put the step back on gunbc_ci_aux_step_timeout_minutes.
-data roster_step_measured_resolve_seconds: Int = 286
+data roster_step_measured_resolve: Second = second(count: 286)
 
 test fn the_roster_step_outlasts_its_measured_resolve_and_a_full_page_walk() -> Bool {
-  let step_seconds = fleet_converge_org_runner_roster_step_timeout_minutes() * 60
-  step_seconds >= roster_step_measured_resolve_seconds + (second_count(s: organization_runner_roster_read_budget()) as Int)
+  let needed = second(count: second_count(s: roster_step_measured_resolve) + second_count(s: organization_runner_roster_read_budget()))
+  fleet_converge_org_runner_roster_step_timeout_minutes() * 60 >= (second_count(s: needed) as Int)
     && fleet_converge_org_runner_roster_step_timeout_minutes() > gunbc_ci_aux_step_timeout_minutes
 }
 
