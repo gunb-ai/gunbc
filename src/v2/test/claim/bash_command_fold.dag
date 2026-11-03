@@ -21,6 +21,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_or_else,
   bash_build_pipe,
   bash_build_subshell_from_stmts,
+  bash_build_word_cmdsubst,
   bash_build_with_redir,
   bash_build_with_redir_to_file,
   bash_build_with_redir_from_file,
@@ -62,11 +63,12 @@ import v2.workflow.bash_emit {
   bash_emit_negation,
   bash_emit_negation_spelling,
   bash_emit_raw_line_matches_golden,
+  bash_emit_stmts,
   bash_emit_wrong_spelling_oracle_holds,
   bash_emit_wrong_target_oracle_holds
 }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, None, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.node { node_same_occurrence, Node }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -711,6 +713,94 @@ test fn bash_fold_raw_line_x_eq_holds() -> Bool {
 
 test fn bash_fold_raw_line_cmdsubst_holds() -> Bool {
   bash_emit_raw_line_matches_golden(text: "$(a)", golden: bash_fold_raw_cmdsubst_golden)
+}
+
+// THE RENDERER OWNS THE `$((` SHAPE; NO CALL SITE DOES. `$(` immediately followed by
+// `(` opens an arithmetic expression in bash, so a command substitution whose body is a
+// subshell statement renders to a script bash cannot parse. The mirror's compose step did
+// exactly that -- `PRIVATE_ROOT=$(('cd' '..'; 'pwd'))` -- and both of its workflows died
+// with `syntax error: operand expected` before the overlay existed (gunbc-private runs
+// 41593920495 and 41593920470, 2026-11-03); no gunbc emission could show it, because only
+// a mirror row composes an overlay. Repairing only that call site would leave the shape
+// reachable for the next emitter -- DESIGN §6b puts the fault in `b` (the renderer), where
+// patching the call site would encode an undeclared fact about it. The fold therefore
+// refuses the shape at `bash_fold_serialize_node`, the one gate every statement passes,
+// and these controls execute the refusal on the entry point the emitters themselves use,
+// so it is a refusal on the real acceptance path and not a decoration.
+fn cmdsubst_subshell_assignment() -> Node {
+  bash_build_assign(
+    name: "PRIVATE_ROOT",
+    value: bash_build_word_cmdsubst(
+      body: bash_build_subshell_from_stmts(
+        stmts: [
+          bash_build_command_from_lits(lits: ["cd", ".."]),
+          bash_build_command_from_lits(lits: ["pwd"])
+        ]
+      )
+    )
+  )
+}
+
+fn cmdsubst_subshell_command() -> Node {
+  bash_build_command_from_word_nodes(
+    words: [
+      bash_build_word_cmdsubst(
+        body: bash_build_subshell_from_stmts(
+          stmts: [
+            bash_build_command_from_lits(lits: ["cd", ".."]),
+            bash_build_command_from_lits(lits: ["pwd"])
+          ]
+        )
+      )
+    ]
+  )
+}
+
+fn cmdsubst_subshell_refuses(text: Outcome<String>) -> Bool {
+  match text {
+    Rejected { diagnostics: NonEmptyDiagnostics { head: diagnostic, tail: _ } } =>
+      diagnostic.reason == ^bash_fold_serialize_cmdsubst_body_subshell_refused
+    _ => false
+  }
+}
+
+// THE ASSIGNMENT PATH -- the shape the compose step actually asks for.
+test fn bash_fold_cmdsubst_body_subshell_refused_in_assignment_holds() -> Bool {
+  cmdsubst_subshell_refuses(
+    text: bash_emit_stmts(statements: [cmdsubst_subshell_assignment()], set_e: false)
+  )
+}
+
+// THE LEAF PATH. A command serializes from its row and never visits the word arms, so a rule
+// written only inside the substitution's word arm would be bypassed here; this is the row that
+// keeps the rule at the gate rather than in one arm behind it.
+test fn bash_fold_cmdsubst_body_subshell_refused_in_command_holds() -> Bool {
+  cmdsubst_subshell_refuses(
+    text: bash_emit_stmts(statements: [cmdsubst_subshell_command()], set_e: false)
+  )
+}
+
+// THE DISCRIMINATOR. A substitution whose body is one COMMAND -- what the compose step now asks
+// for -- still renders, and its bytes open no arithmetic expression. Without this row the two
+// refusals above could be satisfied by banning command substitution altogether.
+test fn bash_fold_cmdsubst_operand_command_renders_holds() -> Bool {
+  match bash_emit_stmts(
+    statements: [
+      bash_build_assign(
+        name: "PRIVATE_ROOT",
+        value: bash_build_word_cmdsubst(
+          body: bash_build_command_from_lits(lits: ["realpath", ".."])
+        )
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: text, diagnostics: _ } =>
+      string_contains(s: text, pattern: "PRIVATE_ROOT=$(") &&
+      string_contains(s: text, pattern: "'realpath' '..'") &&
+      !(string_contains(s: text, pattern: "$(("))
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn bash_fold_raw_line_paren_holds() -> Bool {

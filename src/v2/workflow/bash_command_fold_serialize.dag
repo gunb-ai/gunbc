@@ -7,7 +7,7 @@ import v2.extdeps.languages.bash { bash_stmt_andor_emitted, bash_stmt_andor_targ
 import v2.extdeps.languages.bash_build { bash_build_stmt_list_single, bash_build_subshell }
 import v2.extdeps.languages.bash_orch_if { bash_stmt_if_else_emitted, bash_stmt_if_else_target_model }
 import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_refused, bash_fold_relation_row_witness, bash_fold_target_model_for_row, bash_fold_translation_rules_budget_for_row, bash_fold_unsupported_variant_diagnostic }
-import std.algebra { list_head, list_tail, list_at_optional }
+import std.algebra { fold_list, list_head, list_tail, list_at_optional }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, None, Outcome, Rejected, Some, Unavailable, bind_outcome, diagnostics_singleton, node_locus }
 import v2.std.node { positional_child_target_nodes, Atom, Node, Symbol, TypeNode }
@@ -291,6 +291,9 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
           } else if kind == ^bash_fold_word_kind_cmdsubst {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
               Present { value: body } =>
+                // The `$((` shape a subshell body would produce is refused by
+                // bash_fold_serialize_node, the one gate every folded emission passes
+                // through; see the comment there.
                 bind_outcome(
                   o: bash_fold_serialize_node(stmt: body),
                   f: fn(body_spelling) {
@@ -627,7 +630,61 @@ fn bash_fold_serialize_negation_node(stmt: Node) -> Outcome<String> {
   }
 }
 
+// THE RENDERER, NOT A CALL SITE, OWNS THE `$((` SHAPE. `$(` immediately followed by `(`
+// is bash's arithmetic expansion, so a command substitution whose body is a SUBSHELL
+// statement renders bytes that cannot parse. gunbc-private's CI found exactly that on
+// 2026-11-03: the compose step emitted `PRIVATE_ROOT=$(('cd' '..'; 'pwd'))` and both of
+// its workflows died with `line 5: 'cd' '..'; 'pwd': syntax error: operand expected`
+// (runs 41593920495 and 41593920470) before the overlay was ever composed. No `gunbc`
+// emission could show it, because only a mirror repository reaches the compose step -- the
+// two-command body sits in the substitution's own parsing context and needs no carrier
+// subshell at all (gunbc.plans.convergence_coverage_program cc-structural-carriers, F37).
+//
+// The rule is asked of every folded statement, not of the caller: `bash_fold_serialize_node`
+// is the single gate each statement passes before any spelling is produced, whether it
+// arrives through a word arm or through a leaf-row derivation (a command serializes from its
+// row and never visits the word arms, which is why a check inside the word arm alone would be
+// bypassable). Spacing tricks -- `$(( ` -- are deliberately not offered: they would silence
+// this one script while leaving the same bytes one call away from reappearing, DESIGN §6b.
+fn bash_fold_subshell_sits_in_cmdsubst(node: Node) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
+    Present { value: kind_node } =>
+      match node_atom_identity_optional(node: kind_node) {
+        Present { value: kind } =>
+          kind == ^bash_fold_word_kind_cmdsubst &&
+          match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
+            Present { value: body } =>
+              bash_fold_built_stmt_production_binding(stmt: body) == ^bash_production_fold_subshell
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn bash_fold_stmt_carries_cmdsubst_subshell(node: Node) -> Bool {
+  if bash_fold_subshell_sits_in_cmdsubst(node: node) {
+    true
+  } else {
+    fold_list(
+      xs: positional_child_target_nodes(node: node),
+      empty: false,
+      cons: fn(acc, child) {
+        if acc {
+          true
+        } else {
+          bash_fold_stmt_carries_cmdsubst_subshell(node: child)
+        }
+      }
+    )
+  }
+}
+
 fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
+  if bash_fold_stmt_carries_cmdsubst_subshell(node: stmt) {
+    bash_fold_serialize_refused(variant: ^bash_fold_serialize_cmdsubst_body_subshell_refused)
+  } else {
   let binding = bash_fold_built_stmt_production_binding(stmt: stmt)
   if binding == ^bash_production_fold_command {
     bash_fold_serialize_command_node(stmt: stmt)
@@ -666,6 +723,7 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
       rule_name: ^bash_relation_rule_fold_unsupported
     )
   }
+  } // the admitted branch of the `$((` gate above
 }
 
 fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
