@@ -1,5 +1,22 @@
 module test.claim.nbd_proxy_virtual_media_install
 
+import extdeps.bmc.types { BootTargetCd, BootTargetPxe }
+import extdeps.bmc.webui.nbd_proxy { VmSlotIndexEndpoint }
+import extdeps.bmc.webui.nbd_proxy_serve { nbd_proxy_serve_systemd_realization_disposition }
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_built }
+import extdeps.tools.websocat { websocat_header_argv_word_dissolution_trigger }
+import gunbc.boot_artifact_delivery { BootDeliveryPlanned, BootDeliveryRefused, BootFromNetworkPxe, BootFromRemovableMedia, redfish_boot_target_of_control }
+import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.host.host_effect { Srv3NbdProxyServe }
+import gunbc.nbd_proxy_virtual_media_install { ActuatorArmNbdProxy, ActuatorArmPxe, ActuatorBootOnce, ActuatorFirmwareUpdate, ActuatorForceRestart, ActuatorNbdProxyServe, ActuatorPlanReady, ActuatorPlanRealized, ActuatorPlanRefused, ActuatorPlanUnrealized, ActuatorPxeNetworkBootStaging, ActuatorRedfishInsertMedia, ActuatorStepActuatorHostUnsatisfiable, ActuatorStepImageUnresolved, ActuatorStepReady, ActuatorStepRealizationAbsent, ActuatorStepRefused, OsInstallActuatorStep, actuator_plan_realization, actuator_step_realization, actuator_step_realization_under, os_install_actuator_steps, srv3_nbd_proxy_export_dissolution_trigger, srv3_nbd_proxy_export_placeholder, srv3_os_install_actuator_plan_standing }
+import gunbc.os_install_actuator_selection { ActuatorSelected, ActuatorUnsatisfiable, OsInstallActuatorSelection, srv3_os_install_actuator_selection }
+import gunbc.provisioning.seeded_install_media_publish { SeededImageNotBuilt, SeededImageRecordDiverged, SeededImageRecordedImageAbsent, SeededImageResolution, SeededImageResolved, SeededImageUnobservable }
+import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_input_for }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, list_length }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
