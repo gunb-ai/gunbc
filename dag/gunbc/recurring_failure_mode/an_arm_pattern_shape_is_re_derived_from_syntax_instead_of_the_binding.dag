@@ -12,8 +12,14 @@ data an_arm_pattern_shape_is_re_derived_from_syntax_instead_of_the_binding: Recu
   // contains -- so no silent wrongness of this class is on the record. The disagreement is reachable the
   // moment a route records a binding that does not leave the shape on the node, and that route is the one
   // #15671 adds. MECHANICALLY PREVENTABLE is therefore the rung it was found at: one classifier reading
-  // one recorded fact removes the pair of derivations, and this PR carries that change. CEILING:
-  // structurally guaranteed -- with one authority there is no second derivation left to disagree.
+  // one recorded fact removes the pair of derivations, and this PR carries that change. That rung is
+  // supportable ONLY because this PR also carries the claim that catches the class by execution --
+  // mbt_an_arm_the_name_door_cannot_see_binds_by_the_scrutinee_type_and_is_counted_as_that_arm_holds in
+  // v2.test.claim.match_binder.match_binder_typing, whose fixture imports a coproduct for its type only, so
+  // the arm spelling has no name-door answer; it is RED at the base and at a resolve-only ref and GREEN at
+  // the head. Without a claim that runs on the real path this row would be declaring a preventive change it
+  // has not demonstrated, and the rung would not be earned. CEILING: structurally guaranteed -- with one
+  // authority there is no second derivation left to disagree.
   rung: RungRead {
     found_at: FoundOnRung { rung: MechanicallyPreventable },
     standing: AtCeiling {
