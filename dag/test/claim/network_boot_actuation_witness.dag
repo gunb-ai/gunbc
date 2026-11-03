@@ -1,6 +1,6 @@
 module test.claim.network_boot_actuation_witness
 
-import gunbc.boot_artifact_delivery { BootDeliverySolution }
+import gunbc.boot_artifact_delivery { BootDeliverySolution, BootFromRemovableMedia }
 import test.fixture.boot_delivery_plans { pxe_solution, refused_solution, removable_media_solution, intake_subject }
 import std.types { Bool, String, EpochMs, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -90,7 +90,6 @@ import test.claim.ubuntu_autoinstall_seed_witness {
   one_key,
   locked_console,
   seeded_handle,
-  virtual_media_strategy,
   target_altra,
   SeedAndBinding,
   serial_selector,
@@ -356,7 +355,7 @@ test fn the_s5_frontier_names_this_declaration() -> Bool {
 // axis (the netplan source) differs. If either side refuses to bind, this is FALSE: a refusal never counts as
 // covering seed-varies.
 fn alt_seed_binding() -> UbuntuAutoinstallSeedBinding? {
-  match build_seed_fixture(network: network_posture_alt_netplan, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra) {
+  match build_seed_fixture(network: network_posture_alt_netplan, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra) {
     Present { value: seed } =>
       match bind_ubuntu_autoinstall_seed(seed: seed, target: target_altra, unit_key: intake_subject.subject.unit_key, attempt: intake_subject.attempt_id, selection: select_target_disk(selector: serial_selector, observed: bay_population)) {
         Bound { binding: b } => Present { value: b }
